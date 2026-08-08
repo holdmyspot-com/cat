@@ -1,0 +1,190 @@
+<?xml version="1.0" ?>
+<!--
+	PMD ruleset from cowwoc/styler.
+	Defines code quality rules for Java projects.
+-->
+<ruleset name="cowwoc" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+				 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+				 xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+	<description>cowwoc's preferred rules</description>
+	<rule ref="category/java/bestpractices.xml">
+		<exclude name="AvoidReassigningParameters"/>
+		<exclude name="AvoidReassigningLoopVariables"/>
+		<exclude name="LiteralsFirstInComparisons"/>
+		<exclude name="UseVarargs"/>
+		<exclude name="GuardLogStatement"/>
+		<exclude name="AbstractClassWithoutAbstractMethod"/>
+		<!--
+		WORKAROUND: https://github.com/pmd/pmd/issues/5025
+		PMD cannot yet configure exception-wrapper getters that preserve the original stack trace.
+		-->
+		<exclude name="PreserveStackTrace"/>
+		<exclude name="AvoidStringBufferField"/>
+		<exclude name="UnitTestShouldIncludeAssert"/>
+		<!-- Overly strict - multiple assertions per test are often appropriate -->
+		<exclude name="UnitTestContainsTooManyAsserts"/>
+		<exclude name="UnitTestAssertionsShouldIncludeMessage"/>
+		<!-- Hooks communicate via stdout/stderr by design -->
+		<exclude name="SystemPrintln"/>
+	</rule>
+
+	<rule ref="category/java/bestpractices.xml/ForLoopVariableCount">
+		<properties>
+			<!-- Allow declaring the iteration count as a constant or nesting an if-statement inside a loop -->
+			<property name="maximumVariables" value="2"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/codestyle.xml">
+		<exclude name="UselessParentheses"/>
+		<exclude name="MethodArgumentCouldBeFinal"/>
+		<exclude name="LocalVariableCouldBeFinal"/>
+		<exclude name="OnlyOneReturn"/>
+		<exclude name="FieldDeclarationsShouldBeAtStartOfClass"/>
+		<exclude name="ShortVariable"/>
+		<exclude name="LongVariable"/>
+		<exclude name="UnnecessaryConstructor"/>
+		<exclude name="ControlStatementBraces"/>
+		<exclude name="EmptyControlStatement"/>
+		<exclude name="CallSuperInConstructor"/>
+		<exclude name="CommentDefaultAccessModifier"/>
+		<exclude name="TooManyStaticImports"/>
+		<exclude name="LinguisticNaming"/>
+		<exclude name="ShortClassName"/>
+		<exclude name="UnnecessaryLocalBeforeReturn"/>
+		<exclude name="ShortMethodName"/>
+		<exclude name="MethodNamingConventions"/>
+		<exclude name="AtLeastOneConstructor"/>
+		<!-- Using if-else per Checkstyle rules, this becomes redundant -->
+		<exclude name="ConfusingTernary"/>
+	</rule>
+	<rule ref="category/java/codestyle.xml/MethodNamingConventions"
+				message="The {0} name {1} must be camelCase and 40 characters or less">
+		<properties>
+			<property name="methodPattern" value="[a-z][a-zA-Z0-9]{0,39}"/>
+			<property name="staticPattern" value="[a-z][a-zA-Z0-9]{0,39}"/>
+			<property name="nativePattern" value="[a-z][a-zA-Z0-9]{0,39}"/>
+			<property name="junit3TestPattern" value="test[A-Z0-9][a-zA-Z0-9]{0,35}"/>
+			<property name="junit4TestPattern" value="[a-z][a-zA-Z0-9]{0,39}"/>
+			<property name="junitJupiterTestPattern" value="[a-z][a-zA-Z0-9]{0,39}"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/codestyle.xml/UseExplicitTypes">
+		<properties>
+			<property name="allowLiterals" value="true"/>
+			<property name="allowCtors" value="true"/>
+		</properties>
+	</rule>
+	<!-- Add support for underscore-prefixed parameters (unused) -->
+	<rule ref="category/java/codestyle.xml/LocalVariableNamingConventions">
+		<properties>
+			<property name="localVarPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+			<property name="finalVarPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+			<property name="catchParameterPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/codestyle.xml/FormalParameterNamingConventions">
+		<properties>
+			<property name="methodParameterPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+			<property name="finalMethodParameterPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+			<property name="lambdaParameterPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+			<property name="explicitLambdaParameterPattern" value="_[a-z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/design.xml">
+		<exclude name="LawOfDemeter"/>
+		<exclude name="LoosePackageCoupling"/>
+		<exclude name="AvoidThrowingNullPointerException"/>
+		<exclude name="ExcessiveImports"/>
+		<exclude name="DataClass"/>
+		<exclude name="GodClass"/>
+		<exclude name="TooManyMethods"/>
+		<exclude name="SignatureDeclareThrowsException"/>
+		<exclude name="ExcessiveParameterList"/>
+		<exclude name="UseObjectForClearerAPI"/>
+		<exclude name="CouplingBetweenObjects"/>
+		<exclude name="TooManyFields"/>
+		<exclude name="ExcessivePublicCount"/>
+		<!-- Too vague to tune -->
+		<exclude name="CognitiveComplexity"/>
+		<exclude name="CyclomaticComplexity"/>
+		<exclude name="NPathComplexity"/>
+		<exclude name="ExceptionAsFlowControl"/>
+		<!--
+		This policy permits explicit rethrows: prohibiting them makes it harder to temporarily comment out
+		intermediate handling while debugging.
+		-->
+		<exclude name="AvoidRethrowingException"/>
+		<!-- Allow deep nesting for structured hook logic -->
+		<exclude name="AvoidDeeplyNestedIfStmts"/>
+		<!-- Entry point classes have only static main -->
+		<exclude name="InstantiableUtilityClass"/>
+		<!-- Allow long methods in parser/renderer logic -->
+		<exclude name="NcssCount"/>
+	</rule>
+	<rule ref="category/java/documentation.xml">
+		<exclude name="UncommentedEmptyConstructor"/>
+		<exclude name="UncommentedEmptyMethodBody"/>
+		<exclude name="CommentSize"/>
+	</rule>
+	<rule ref="category/java/documentation.xml/CommentRequired">
+		<properties>
+			<property name="methodWithOverrideCommentRequirement" value="ignored"/>
+			<property name="accessorCommentRequirement" value="ignored"/>
+			<property name="classCommentRequirement" value="ignored"/>
+			<property name="fieldCommentRequirement" value="ignored"/>
+			<property name="publicMethodCommentRequirement" value="required"/>
+			<property name="protectedMethodCommentRequirement" value="ignored"/>
+			<property name="enumCommentRequirement" value="ignored"/>
+			<property name="serialVersionUIDCommentRequired" value="ignored"/>
+			<property name="serialPersistentFieldsCommentRequired" value="ignored"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/errorprone.xml">
+		<exclude name="AvoidFieldNameMatchingMethodName"/>
+		<exclude name="AvoidLiteralsInIfCondition"/>
+		<exclude name="AvoidDuplicateLiterals"/>
+		<!-- POSIX file-mode literals use octal so owner/group/other permissions remain visible. -->
+		<exclude name="AvoidUsingOctalValues"/>
+		<exclude name="NullAssignment"/>
+		<exclude name="SuspiciousEqualsMethodName"/>
+		<exclude name="CompareObjectsWithEquals"/>
+		<!-- https://stackoverflow.com/a/36228195/14731 -->
+		<exclude name="UseProperClassLoader"/>
+		<!-- Allow catching generic Exception for error handling consolidation -->
+		<exclude name="AvoidCatchingGenericException"/>
+		<!-- TestNG is the project's test framework. -->
+		<exclude name="WrongTestAnnotation"/>
+	</rule>
+	<!-- Add support for underscore parameters -->
+	<rule ref="category/java/errorprone.xml/EmptyCatchBlock">
+		<properties>
+			<property name="allowExceptionNameRegex" value="^(_|ignored|expected)$"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/errorprone.xml/TestClassWithoutTestCases">
+		<properties>
+			<property name="testClassPattern" value="^^(?:.*\.)?.*Tests?$|^(?:.*\.)?.*TestCase$"/>
+		</properties>
+	</rule>
+	<rule ref="category/java/errorprone.xml/AvoidBranchingStatementAsLastInLoop">
+		<properties>
+			<property name="checkReturnLoopTypes" value=""/>
+		</properties>
+	</rule>
+	<rule ref="category/java/multithreading.xml">
+		<exclude name="UseConcurrentHashMap"/>
+		<exclude name="DoNotUseThreads"/>
+		<exclude name="AvoidUsingVolatile"/>
+		<!--
+		WORKAROUND: https://github.com/pmd/pmd/issues/6218
+		On JDK 24+, synchronized no longer pins virtual threads, but PMD still reports this rule.
+		-->
+		<exclude name="AvoidSynchronizedStatement"/>
+	</rule>
+	<rule ref="category/java/performance.xml">
+		<exclude name="AvoidInstantiatingObjectsInLoops"/>
+		<exclude name="ConsecutiveLiteralAppends"/>
+		<exclude name="TooFewBranchesForSwitch"/>
+	</rule>
+	<rule ref="category/java/security.xml"/>
+</ruleset>
