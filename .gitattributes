@@ -1,0 +1,8 @@
+# Default to LF line endings for all text files
+* text=auto eol=lf
+
+# Ensure Unix shell scripts use LF
+*.sh text eol=lf
+
+# Ensure the extensionless Maven wrapper uses LF
+mvnw text eol=lf
