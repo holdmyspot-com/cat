@@ -96,7 +96,7 @@ public final class ProjectRuleLoaderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			write(plugin, "rules/common/target-audience.md", "# Audience\n\nAudience guidance\n");
+			write(plugin, "rules/common/write-clearly.md", "# Write clearly\n\nWrite-clearly guidance\n");
 			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
 
 			String context;
@@ -105,7 +105,7 @@ public final class ProjectRuleLoaderTest
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
 
-			requireThat(context.indexOf("# Routes"), "routeIndex").isLessThan(context.indexOf("# Audience"));
+			requireThat(context.indexOf("# Routes"), "routeIndex").isLessThan(context.indexOf("# Write clearly"));
 		}
 	}
 
