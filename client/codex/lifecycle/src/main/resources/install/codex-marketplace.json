@@ -1,0 +1,20 @@
+{
+  "name": "cat",
+  "interface": {
+    "displayName": "CAT"
+  },
+  "plugins": [
+    {
+      "name": "cat",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cat"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

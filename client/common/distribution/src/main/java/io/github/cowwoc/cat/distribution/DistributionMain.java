@@ -5,6 +5,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.distribution.bundle.ArtifactLayer;
 import io.github.cowwoc.cat.distribution.bundle.JlinkImageBuilder;
@@ -21,6 +22,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
+import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * Builds the platform-specific Claude and Codex CAT release archives from Maven module outputs.
@@ -125,7 +127,13 @@ public final class DistributionMain
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.InvocationDirectory")), jlinkDirectory.resolve("claude"));
+					"io.github.cowwoc.cat.common.InvocationDirectory"),
+				new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.claude.cli",
+					"io.github.cowwoc.cat.claude.ClaudeSessionStartHook"),
+				new JlinkImageBuilder.Launcher("session-end", "io.github.cowwoc.cat.claude.cli",
+					"io.github.cowwoc.cat.claude.ClaudeSessionEndHook"),
+				new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.claude.cli",
+					"io.github.cowwoc.cat.claude.ClaudeSubagentStartHook")), jlinkDirectory.resolve("claude"));
 		List<Path> codexModules = append(append(sharedRuntimeModules, packagedCodexCli), jsonRuntimeModules);
 		Path codexImage = imageBuilder.build(codexModules,
 			Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"),
@@ -135,7 +143,11 @@ public final class DistributionMain
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.InvocationDirectory")), jlinkDirectory.resolve("codex"));
+					"io.github.cowwoc.cat.common.InvocationDirectory"),
+				new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexSessionStartHook"),
+				new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexSubagentStartHook")), jlinkDirectory.resolve("codex"));
 
 		// Resolve these eagerly so a missing runtime dependency fails with a specific artifact name.
 		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(claudeCli) ||
@@ -193,15 +205,17 @@ public final class DistributionMain
 		Path codexLegalMaterials = legalMaterialsBuilder.build(catLicense, codexLegalComponents, canonicalLicenses,
 			runtimeDirectory.resolve("codex-legal"));
 		Path claudeRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
-			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh")),
+			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
+				"hooks/subagent-start.sh")),
 			new ArtifactLayer("common-skills", commonSkills), new ArtifactLayer("claude-skills", claudeSkills),
 			new ArtifactLayer("common-rules", commonRules),
-			new ArtifactLayer("claude-plugin", claudePlugin),
+			new ArtifactLayer("claude-plugin", claudePlugin, Set.of(), Set.of("hooks/session-end.sh")),
 			new ArtifactLayer("claude-rules", claudeRules)),
 			claudeImage, claudeLegalMaterials, List.of(commonInstallers, claudeInstallers),
 			runtimeDirectory.resolve("claude"));
 		Path codexRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
-			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh")),
+			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
+				"hooks/subagent-start.sh")),
 			new ArtifactLayer("common-skills", commonSkills),
 			new ArtifactLayer("common-rules", commonRules), new ArtifactLayer("codex-skills", codexSkills, Set.of(
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
@@ -211,6 +225,7 @@ public final class DistributionMain
 			codexLegalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
 		try (ToolScope scope = new ToolScope())
 		{
+			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
 			RuleArtifactRouter.route(claudeRoot, scope.yaml());
 			RuleArtifactRouter.route(codexRoot, scope.yaml());
 		}
@@ -226,6 +241,23 @@ public final class DistributionMain
 	 */
 	private DistributionMain()
 	{
+	}
+
+	/**
+	 * Validates the rule graphs that each packaged harness will inject before modifying the assembled artifacts.
+	 *
+	 * @param claudeRoot the assembled Claude artifact
+	 * @param codexRoot the assembled Codex artifact
+	 * @param projectRoot the CAT project root
+	 * @param yamlMapper the YAML parser
+	 * @throws IOException if a direct rule dependency is missing or cyclic
+	 */
+	private static void validateRuleDependencies(Path claudeRoot, Path codexRoot, Path projectRoot, YAMLMapper yamlMapper)
+		throws IOException
+	{
+		ProjectRuleLoader loader = new ProjectRuleLoader(yamlMapper);
+		loader.loadForMainAgent(claudeRoot, projectRoot, "claude");
+		loader.loadForMainAgent(codexRoot, projectRoot, "codex");
 	}
 
 	/**
