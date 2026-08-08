@@ -1,0 +1,22 @@
+{
+  "name": "cat",
+  "version": "1.0",
+  "description": "An agentic workflow with a focus on reliability and developer experience",
+  "author": {
+    "name": "cowwoc",
+    "url": "https://github.com/cowwoc"
+  },
+  "repository": "https://github.com/cowwoc/cat",
+  "license": "CAT Commercial License",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "CAT",
+    "shortDescription": "An agentic workflow with a focus on reliability and developer experience",
+    "longDescription": "An agentic workflow with a focus on reliability and developer experience",
+    "developerName": "cowwoc",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://cowwoc.github.io/cat/"
+  }
+}
