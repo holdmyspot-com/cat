@@ -1,0 +1,13 @@
+# IntelliJ IDEA project settings, except shared code-style configuration.
+.idea/*
+*.iml
+!.idea/codeStyles/
+.idea/codeStyles/*
+!.idea/codeStyles/Project.xml
+!.idea/codeStyles/codeStyleConfig.xml
+
+# Maven build output.
+**/target/
+
+# Disposable CAT-generated files.
+.cat/temp/

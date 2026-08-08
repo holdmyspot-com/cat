@@ -1,0 +1,2 @@
+# target-version<TAB>script-relative-to-this-directory
+# Keep target versions strictly increasing. Register the first migration when CAT 1.1 is released.

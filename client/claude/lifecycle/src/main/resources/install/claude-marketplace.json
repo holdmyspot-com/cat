@@ -1,0 +1,13 @@
+{
+  "name": "cat",
+  "owner": {
+    "name": "cowwoc"
+  },
+  "plugins": [
+    {
+      "name": "cat",
+      "source": "./plugins/cat",
+      "description": "An agentic workflow with a focus on reliability and developer experience"
+    }
+  ]
+}
