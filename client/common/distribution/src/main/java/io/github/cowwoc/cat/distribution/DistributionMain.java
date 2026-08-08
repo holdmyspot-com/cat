@@ -124,6 +124,8 @@ public final class DistributionMain
 			List.of(
 				new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.claude.cli",
 					"io.github.cowwoc.cat.claude.ClaudePluginInfo"),
+				new JlinkImageBuilder.Launcher("claude-runner", "io.github.cowwoc.cat.claude.cli",
+					"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
@@ -144,6 +146,8 @@ public final class DistributionMain
 			List.of(
 				new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.codex.cli",
 					"io.github.cowwoc.cat.codex.CodexPluginInfo"),
+				new JlinkImageBuilder.Launcher("codex-runner", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",

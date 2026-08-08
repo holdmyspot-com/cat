@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.testng.annotations.Test;
@@ -118,6 +119,37 @@ public final class ClaudeSessionStartHookTest
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(Files.exists(context), "contextExists").isFalse();
+			requireThat(error, "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies one resumable session retains its context until it ends and that ending another session cannot remove it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void preservesOtherResumableSessionContext() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/rules.md", "rules");
+			String firstSession = UUID.randomUUID().toString();
+			String secondSession = UUID.randomUUID().toString();
+			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString());
+			Path first = referencedFile(context(invoke("{\"cwd\":\"" + project + "\",\"session_id\":\"" +
+				firstSession + "\"}", environment, project)));
+			Path second = referencedFile(context(invoke("{\"cwd\":\"" + project + "\",\"session_id\":\"" +
+				secondSession + "\"}", environment, project)));
+
+			requireThat(Files.exists(first), "firstBeforeSessionEnd").isTrue();
+			requireThat(Files.exists(second), "secondBeforeSessionEnd").isTrue();
+			String error = invokeSessionEnd("{\"session_id\":\"" + firstSession + "\"}", environment, project);
+
+			requireThat(Files.exists(first), "firstAfterSessionEnd").isFalse();
+			requireThat(Files.exists(second), "secondAfterOtherSessionEnd").isTrue();
 			requireThat(error, "error").isEmpty();
 		}
 	}
@@ -385,8 +417,10 @@ public final class ClaudeSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		Map<String, String> nativeEnvironment = new HashMap<>(environment);
+		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSubagentStartHook.run(new String[0], new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), environment, workingDirectory);
+			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
