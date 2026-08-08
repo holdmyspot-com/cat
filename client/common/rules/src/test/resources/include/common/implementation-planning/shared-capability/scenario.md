@@ -1,0 +1,9 @@
+## Scenario
+
+Create an implementation plan for AI agents correcting a duplicate filter shared by a command-line importer and a scheduled importer. The accepted existing API contract requires suppressing a repeated stable activity ID while retaining two distinct IDs even when their payloads are identical. Both callers already supply the verified stable IDs; the filter currently compares payloads instead. The shared library has a runnable focused unit-test harness, and each caller has a runnable integration check. No interface, user workflow, deployment, or external provider contract changes are needed. Existing tests pass but omit the two-distinct-IDs/same-payload case. State the work assignments, edit-and-check order, and completion evidence. Remain read-only: do not implement, run tests, or delegate.
+
+## Assertions
+
+### observable-decisions
+
+Uses the established ID contract and permits one shared-filter assignment; retains both callers' integration evidence. Schedules a focused behavioral failure for distinct IDs with equal payloads before the implementation correction, then passing focused and relevant broader checks. Keeps repeated-ID suppression covered. Does not require a journey document, duplicate capability implementations, or a new provider probe.

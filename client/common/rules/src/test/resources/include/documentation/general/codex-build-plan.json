@@ -1,0 +1,35 @@
+{
+  "working_directory": "../../../../../../../..",
+  "command": [
+    "./mvnw",
+    "-pl",
+    "common/distribution",
+    "-am",
+    "package",
+    "-DskipTests=false"
+  ],
+  "inputs": [
+    "mvnw",
+    "pom.xml",
+    "common/pom.xml",
+    "common/agents/src",
+    "common/cli/src",
+    "common/distribution/src",
+    "common/evaluation/src",
+    "common/lifecycle/src",
+    "common/plugin/src",
+    "common/rules/src",
+    "common/skills/src",
+    "claude/pom.xml",
+    "claude/cli/src",
+    "claude/plugin/src",
+    "claude/rules/src",
+    "claude/skills/src",
+    "codex/pom.xml",
+    "codex/cli/src",
+    "codex/plugin/src",
+    "codex/rules/src",
+    "codex/skills/src"
+  ],
+  "runner_artifact": "common/distribution/target/runtime/codex"
+}

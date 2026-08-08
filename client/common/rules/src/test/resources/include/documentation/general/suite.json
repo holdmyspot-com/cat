@@ -1,0 +1,61 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "product-license-with-internal-packaging": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "api-with-replaceable-storage": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "overgeneralized-documentation-prohibition": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "security-guarantee": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/documentation/general.md"
+        ]
+      }
+    }
+  }
+}

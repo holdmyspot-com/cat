@@ -1,0 +1,49 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "inline-chain-whitespace": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/java/style.md"
+        ]
+      }
+    },
+    "analogous-inline-chain-whitespace": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/java/style.md"
+        ]
+      }
+    },
+    "wrapped-chain": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/java/style.md"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "media-import-plan-review": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "component-closure-and-dependent-snapshot": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "historical-evidence-after-resume": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "indirect-input-dependency-cycle": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "source-contract-coverage": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "slice-readiness-and-sequential-focus": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/design-quality.md"
+        ]
+      }
+    },
+    "pre-slice-recovery-and-producer-frontier": {
+      "measures": ["organic_selection", "application"],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": ["common/design-quality.md"]
+      }
+    }
+  }
+}
