@@ -16,10 +16,15 @@ public final class InvocationDirectory
 	 */
 	public static void main(String[] args)
 	{
-		try
+		try (ToolScope scope = new ToolScope())
 		{
+			if (args.length == 1 && args[0].equals("root"))
+			{
+				System.out.println(root(scope.catWork()));
+				return;
+			}
 			if (args.length != 1 || !args[0].matches("[a-z][a-z0-9-]*"))
-				throw new IllegalArgumentException("Usage: workflow-temp <lowercase-workflow-name>");
+				throw new IllegalArgumentException("Usage: workflow-temp root | <lowercase-workflow-name>");
 			Path directory = Files.createTempDirectory(Path.of(System.getProperty("java.io.tmpdir")),
 				"cat-" + args[0] + "-");
 			System.out.print("directory=" + directory.toAbsolutePath().normalize() + "\n");
@@ -29,6 +34,17 @@ public final class InvocationDirectory
 			System.err.println(e.getMessage());
 			System.exit(1);
 		}
+	}
+
+	/**
+	 * Returns the normalized CAT workflow root for shell callers.
+	 *
+	 * @param workRoot the CAT work root resolved by the invocation scope
+	 * @return the normalized workflow root
+	 */
+	static Path root(Path workRoot)
+	{
+		return workRoot.toAbsolutePath().normalize();
 	}
 
 	/**
