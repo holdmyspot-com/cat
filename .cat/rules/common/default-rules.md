@@ -1,0 +1,39 @@
+---
+agents: ["main"]
+---
+# Project Rule Routing
+
+## Design Goals
+
+- Route each project-specific reader decision directly to its authoritative rule before the reader takes the governed
+  action.
+- Keep project routes narrow enough that unrelated work does not receive policy it cannot apply.
+
+## Guidance
+
+When changing an API, configuration entry, file format, data structure, command, or documented procedure, lazy load
+`../include/contract-maintenance.md`.
+
+When writing or editing documentation for a function or method, command, configuration entry, or user-facing workflow, lazy
+load `../include/documentation.md`.
+
+When applying a rule, convention, policy, migration, or systematic correction across existing artifacts, lazy load
+`../include/rule-coverage.md`.
+
+When a proposed prevention, rule revision, or prompt-file change itself creates or preserves the wrong prevention for a
+reported failure, lazy load `../include/mistake-learning.md` to identify the meta-level cause, owning artifact, and
+evidence for a corrected prevention. Analyze the reported operational failure first through the bundled Failure
+Prevention rule.
+
+When creating or revising a Git commit message, lazy load `../include/commit-messages.md` to state the observable change
+clearly and consistently.
+
+When a CAT workflow creates, retains, hands off, or cleans up uncommitted state or evidence, lazy load
+`../include/workflow-temporary-resources.md` to assign its location, consumers, handoff, and cleanup ownership.
+
+When adding, moving, splitting, merging, or otherwise reorganizing rules, lazy load `../include/rule-organization.md`.
+
+When defining or changing a skill's frontmatter `description`, lazy load `skill-routing.md`.
+
+When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
+`plugin-data-migration.md`.
