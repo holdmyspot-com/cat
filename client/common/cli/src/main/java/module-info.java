@@ -7,6 +7,7 @@ module io.github.cowwoc.cat.common.cli
 	requires tools.jackson.dataformat.yaml;
 
 	exports io.github.cowwoc.cat.common;
+	exports io.github.cowwoc.cat.common.history;
 
 	opens io.github.cowwoc.cat.common.git.replay to tools.jackson.databind;
 }
