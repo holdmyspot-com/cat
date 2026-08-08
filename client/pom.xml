@@ -13,7 +13,9 @@
 	<description>CAT plugin client reactor</description>
 
 	<modules>
-		<module>lifecycle</module>
+		<module>common</module>
+		<module>claude</module>
+		<module>codex</module>
 	</modules>
 
 	<properties>
@@ -68,12 +70,22 @@
 			</dependency>
 			<dependency>
 				<groupId>io.github.cowwoc.cat</groupId>
+				<artifactId>client-common-plugin</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.github.cowwoc.cat</groupId>
 				<artifactId>client-common-skills</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>io.github.cowwoc.cat</groupId>
 				<artifactId>client-common-rules</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.github.cowwoc.cat</groupId>
+				<artifactId>client-distribution</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
