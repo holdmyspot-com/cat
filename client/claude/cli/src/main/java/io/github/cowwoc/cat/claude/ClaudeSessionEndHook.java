@@ -13,7 +13,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Deletes CAT rule-context files when Claude ends their session.
+ * Deletes CAT rule-context files after Claude ends a session.
  */
 public final class ClaudeSessionEndHook
 {

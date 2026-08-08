@@ -1,0 +1,134 @@
+package io.github.cowwoc.cat.claude.runner;
+
+import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Supplies the allow-listed Claude connection settings that a host configuration exposes through its environment.
+ */
+final class ClaudeConnectionSettings
+{
+	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
+	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
+
+	/**
+	 * Copies absent connection variables from a host Claude settings file into an isolated process environment.
+	 *
+	 * @param scope services shared for the runner process lifetime
+	 * @param source the host settings file
+	 * @param environment the mutable isolated process environment
+	 * @throws IOException if the settings file cannot be read
+	 */
+	static void copy(HarnessRunnerScope scope, Path source, Map<String, String> environment) throws IOException
+	{
+		if (!Files.isRegularFile(source))
+			return;
+		JsonNode configured = scope.json().readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
+			"Claude settings")).path("env");
+		if (!configured.isObject())
+			return;
+		for (String variable : CONNECTION_VARIABLES)
+		{
+			JsonNode value = configured.path(variable);
+			if (!environment.containsKey(variable) && value.isString() && !value.stringValue().isBlank())
+				environment.put(variable, value.stringValue());
+		}
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance.
+	 *
+	 * <p>
+	 * The resulting file retains the parent sandbox network and filesystem policies, the permissions that give the
+	 * nested Claude instance access to its project and invocation-local home, and CAT-owned environment values.
+	 * Host settings must not control other isolated-instance behavior.
+	 *
+	 * @param scope services shared for the runner process lifetime
+	 * @param source the host Claude settings file
+	 * @param destination the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome the CAT-owned home directory for the isolated Claude process
+	 * @throws IOException if settings I/O fails
+	 */
+	static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome) throws IOException
+	{
+		JsonMapper mapper = scope.json();
+		ObjectNode settings = mapper.createObjectNode();
+		ObjectNode environment = settings.putObject("env");
+		environment.put("DISABLE_AUTOUPDATER", "1");
+		environment.put("CLAUDE_CODE_TMPDIR", claudeTemporaryDirectory.toString());
+		ObjectNode sandbox = settings.putObject("sandbox");
+		sandbox.put("enabled", true);
+		sandbox.put("failIfUnavailable", true);
+		sandbox.put("allowUnsandboxedCommands", false);
+		ObjectNode filesystem = sandbox.putObject("filesystem");
+		if (Files.isRegularFile(source))
+		{
+			JsonNode parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
+				"Claude settings"));
+			JsonNode parentSandbox = parentSettings.path("sandbox");
+			JsonNode network = parentSandbox.path("network");
+			JsonNode parentFilesystem = parentSandbox.path("filesystem");
+			if (network.isObject())
+				sandbox.set("network", network.deepCopy());
+			if (parentFilesystem.isObject())
+			{
+				filesystem = (ObjectNode) parentFilesystem.deepCopy();
+				sandbox.set("filesystem", filesystem);
+			}
+			JsonNode parentPermissions = parentSettings.path("permissions");
+			if (parentPermissions.isObject())
+				settings.set("permissions", parentPermissions.deepCopy());
+		}
+		allowWritesToInvocationHome(filesystem, claudeHome);
+
+		Files.createDirectories(claudeTemporaryDirectory);
+		Files.createDirectories(claudeHome);
+		Files.createDirectories(destination.getParent());
+		Files.writeString(destination, mapper.writeValueAsString(settings));
+	}
+
+	/**
+	 * Adds the invocation-local home to Claude's sandbox write policy.
+	 *
+	 * @param filesystem the isolated filesystem settings
+	 * @param claudeHome the writable invocation-local home
+	 */
+	private static void allowWritesToInvocationHome(ObjectNode filesystem, Path claudeHome)
+	{
+		assert filesystem != null;
+		assert claudeHome != null;
+		JsonNode configuredPaths = filesystem.path("allowWrite");
+		ArrayNode allowedPaths;
+		if (configuredPaths.isArray())
+			allowedPaths = (ArrayNode) configuredPaths;
+		else
+			allowedPaths = filesystem.putArray("allowWrite");
+		String home = claudeHome.toString();
+		for (JsonNode allowedPath : allowedPaths)
+		{
+			if (allowedPath.isString() && allowedPath.stringValue().equals(home))
+				return;
+		}
+		allowedPaths.add(home);
+	}
+
+	/**
+	 * Prevents construction of utility class instances.
+	 */
+	private ClaudeConnectionSettings()
+	{
+	}
+}
