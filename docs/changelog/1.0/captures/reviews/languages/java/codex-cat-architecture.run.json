@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp6st3w-b60nr790gx",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 93726,
+  "ownerStartedAt": "2026-08-11T21:43:10.370Z",
+  "nativePid": 98376,
+  "nativeStartedAt": "2026-08-11T21:43:19.780Z",
+  "createdAt": "2026-08-11T21:43:11.767437548Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/java/runs/codex-cat-architecture/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:43:20.599277392Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:44:39.142350573Z",
+  "diagnostic": ""
+}

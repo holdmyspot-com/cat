@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss80bp3-zffbg3ruh",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 368,
+  "ownerStartedAt": "2026-08-14T00:40:19.230Z",
+  "nativePid": 977,
+  "nativeStartedAt": "2026-08-14T00:40:20.460Z",
+  "createdAt": "2026-08-14T00:40:20.573219117Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/cpp-code-claude-base.SgTamZ/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence",
+  "startedAt": "2026-08-14T00:40:21.341688051Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:43:26.456750442Z",
+  "diagnostic": ""
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "mss85kbe-zic60wg2i",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 11228,
+  "ownerStartedAt": "2026-08-14T00:44:24.680Z",
+  "nativePid": 11250,
+  "nativeStartedAt": "2026-08-14T00:44:24.950Z",
+  "createdAt": "2026-08-14T00:44:25.003380954Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/.cat/temp/changelog-language-captures/typescript-documentation-codex-base.r0CbE4/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --disable plugins",
+  "startedAt": "2026-08-14T00:44:25.053132809Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:44:54.046931600Z",
+  "diagnostic": ""
+}

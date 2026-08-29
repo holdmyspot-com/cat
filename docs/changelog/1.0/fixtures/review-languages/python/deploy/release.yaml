@@ -1,0 +1,6 @@
+image: registry.example/receipts:latest
+environment:
+  RECEIPT_DIRECTORY: /srv/receipts
+  PAYMENT_API_KEY: development-key
+resources:
+  memory: 128Mi

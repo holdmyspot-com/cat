@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp6t4vi-b60urec60a",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 105690,
+  "ownerStartedAt": "2026-08-11T21:43:25.900Z",
+  "nativePid": 108714,
+  "nativeStartedAt": "2026-08-11T21:43:29.910Z",
+  "createdAt": "2026-08-11T21:43:26.982059712Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/java/runs/codex-cat-legal/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:43:30.728264453Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:44:35.734529425Z",
+  "diagnostic": ""
+}

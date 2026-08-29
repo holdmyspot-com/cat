@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp7031m-b64tywpere",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 239358,
+  "ownerStartedAt": "2026-08-11T21:48:50.680Z",
+  "nativePid": 242338,
+  "nativeStartedAt": "2026-08-11T21:48:54.540Z",
+  "createdAt": "2026-08-11T21:48:51.197483047Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/php/runs/codex-cat-design/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:48:56.088801827Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:50:27.655439193Z",
+  "diagnostic": ""
+}

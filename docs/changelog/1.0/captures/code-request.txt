@@ -1,0 +1,1 @@
+Create a class that calculates the total checkout price of an item given its subtotal, discount rate, tax rate and an indication if standard or expedited shipping should be used. If expedited shipping is used, add a 15.00 fee before tax. Do not add documentation to the generated code.

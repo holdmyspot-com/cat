@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss829s5-zgi9ht2ck",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 4654,
+  "ownerStartedAt": "2026-08-14T00:41:50.250Z",
+  "nativePid": 4756,
+  "nativeStartedAt": "2026-08-14T00:41:52.870Z",
+  "createdAt": "2026-08-14T00:41:51.383560419Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/python-code-claude-cat.HKHe0B/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --add-dir /tmp/.cat/claude/changelog-language-captures/python-code-claude-cat.HKHe0B/claude/mss829s5-zgi9ht2ck/home/.claude/plugins/cat-marketplace/plugins/cat --add-dir /tmp/.cat/claude/changelog-language-captures/python-code-claude-cat.HKHe0B/claude/mss829s5-zgi9ht2ck/home/.claude/projects",
+  "startedAt": "2026-08-14T00:41:53.809938644Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:46:00.315367527Z",
+  "diagnostic": ""
+}

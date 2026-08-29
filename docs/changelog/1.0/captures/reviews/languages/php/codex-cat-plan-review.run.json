@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp71r77-b65s20jcit",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 266859,
+  "ownerStartedAt": "2026-08-11T21:50:08.840Z",
+  "nativePid": 268159,
+  "nativeStartedAt": "2026-08-11T21:50:12.830Z",
+  "createdAt": "2026-08-11T21:50:09.160423826Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/php/runs/codex-cat-plan-review/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:50:12.890985426Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:51:33.185214238Z",
+  "diagnostic": ""
+}

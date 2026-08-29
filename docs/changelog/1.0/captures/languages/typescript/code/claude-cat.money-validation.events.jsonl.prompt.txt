@@ -1,0 +1,15 @@
+
+Review the generated TypeScript checkout-price calculator in this project. Do not edit any file.
+
+The following is the complete generation task. It is the sole caller-visible contract for this review:
+
+--- task begins ---
+In TypeScript, implement a checkout-price calculator for one caller-supplied item price. The item price, discount rate, and tax rate are exact decimal strings in plain nonnegative decimal notation: digits with an optional decimal point, and no sign, exponent, whitespace, or separator. Discount and tax rates must be in the inclusive range [0, 1] and are decimal fractions, so "0.1" means 10%. Return the final total as an exact decimal string with exactly two decimal places, rounded using half-even rounding. The caller selects standard or expedited shipping. Apply the discount only to the item price. If expedited shipping is used, add a 15.00 fee after that discount and before tax.
+--- task ends ---
+
+Accept it only when every task requirement is met and it uses a declared established exact-decimal or money dependency
+rather than binary floating point or custom decimal, rational, or bigint monetary arithmetic. Inspect the source and any
+package manifest or lockfile needed to support the conclusion. Do not require or reject an API shape, parameter or
+import name, representation, validation policy, or behavior that the generation task does not require. Do not add
+caller-visible requirements after generation. Your complete final response must be exactly APPROVED, or exactly
+REJECTED: followed by one concise, evidence-based reason.

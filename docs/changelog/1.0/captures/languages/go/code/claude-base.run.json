@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss82gko-zgmb3aitx",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 9509,
+  "ownerStartedAt": "2026-08-14T00:41:59.030Z",
+  "nativePid": 9549,
+  "nativeStartedAt": "2026-08-14T00:41:59.670Z",
+  "createdAt": "2026-08-14T00:42:00.189531213Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/go-code-claude-base.9fcbHF/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence",
+  "startedAt": "2026-08-14T00:42:00.607555907Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:45:32.868822423Z",
+  "diagnostic": ""
+}

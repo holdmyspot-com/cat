@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss892rd-zkas2r0v6",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 22770,
+  "ownerStartedAt": "2026-08-14T00:47:08.420Z",
+  "nativePid": 22810,
+  "nativeStartedAt": "2026-08-14T00:47:08.960Z",
+  "createdAt": "2026-08-14T00:47:08.875665092Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/go-documentation-claude-base.eNwipb/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence",
+  "startedAt": "2026-08-14T00:47:09.228047898Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:47:50.986961348Z",
+  "diagnostic": ""
+}

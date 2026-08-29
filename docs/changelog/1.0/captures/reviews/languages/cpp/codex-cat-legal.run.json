@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp6xxvd-b63lqwgwi5",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 198304,
+  "ownerStartedAt": "2026-08-11T21:47:10.240Z",
+  "nativePid": 200633,
+  "nativeStartedAt": "2026-08-11T21:47:14.630Z",
+  "createdAt": "2026-08-11T21:47:11.193531653Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/cpp/runs/codex-cat-legal/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:47:15.180324678Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:48:22.183198289Z",
+  "diagnostic": ""
+}
