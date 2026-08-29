@@ -1,0 +1,90 @@
+name: Release
+run-name: Release ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: macos-x64
+            runner: macos-15-intel
+          - platform: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+          cache-dependency-path: client/pom.xml
+      - name: Install test tools on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
+      - name: Install test tools on macOS
+        if: runner.os == 'macOS'
+        run: brew install bats-core shellcheck
+      - name: Verify and package
+        run: client/mvnw -f client/pom.xml verify
+      - name: Verify release tag
+        run: |
+          version="$(client/mvnw -q -f client/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Release tag ${GITHUB_REF_NAME} does not match the Maven project version ${version}; " \
+              "create tag v${version}." >&2
+            exit 1
+          fi
+      - name: Verify bootstrap boundaries
+        run: >-
+          bats client/distribution/src/test/bats/bootstrap-common.bats
+          client/distribution/src/test/bats/bootstrap-claude.bats
+          client/distribution/src/test/bats/bootstrap-codex.bats
+      - name: Verify artifact-runner boundaries
+        run: bats client/distribution/src/test/bats/artifact-runners.bats
+      - name: Upload native release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: cat-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            client/distribution/target/release/cat-*-*.tar.gz
+            client/distribution/target/release/SHA256SUMS.txt
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download native release files
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cat-*
+          path: native
+      - name: Assemble release
+        run: |
+          mkdir release
+          find native -type f -name 'cat-*-*.tar.gz' -exec cp '{}' release/ \;
+          find native -type f -name SHA256SUMS.txt -exec cat '{}' \; | LC_ALL=C sort > release/SHA256SUMS.txt
+          test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 8
+          test "$(wc -l < release/SHA256SUMS.txt)" -eq 8
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
+          --title "CAT ${GITHUB_REF_NAME}" --generate-notes
