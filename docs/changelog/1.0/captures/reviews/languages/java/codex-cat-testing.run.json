@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp6txv3-b61bfm6kl9",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 123290,
+  "ownerStartedAt": "2026-08-11T21:44:04.260Z",
+  "nativePid": 124477,
+  "nativeStartedAt": "2026-08-11T21:44:07.600Z",
+  "createdAt": "2026-08-11T21:44:04.545629953Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/java/runs/codex-cat-testing/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:44:07.693583371Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:45:17.214152188Z",
+  "diagnostic": ""
+}

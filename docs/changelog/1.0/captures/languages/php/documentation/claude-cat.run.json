@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss88i7z-zjzi1w8qc",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 20393,
+  "ownerStartedAt": "2026-08-14T00:46:41.870Z",
+  "nativePid": 20617,
+  "nativeStartedAt": "2026-08-14T00:46:44.500Z",
+  "createdAt": "2026-08-14T00:46:42.257932279Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/php-documentation-claude-cat.iZxJlg/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --add-dir /tmp/.cat/claude/changelog-language-captures/php-documentation-claude-cat.iZxJlg/claude/mss88i7z-zjzi1w8qc/home/.claude/plugins/cat-marketplace/plugins/cat --add-dir /tmp/.cat/claude/changelog-language-captures/php-documentation-claude-cat.iZxJlg/claude/mss88i7z-zjzi1w8qc/home/.claude/projects",
+  "startedAt": "2026-08-14T00:46:44.697907624Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:48:04.657363313Z",
+  "diagnostic": ""
+}

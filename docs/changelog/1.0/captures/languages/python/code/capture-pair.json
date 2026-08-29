@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "state": "published",
+  "reason": "Both captures passed and the staged pair was copied to the published directory.",
+  "exitCode": 0,
+  "signal": null,
+  "harness": "claude",
+  "language": "python",
+  "example": "code",
+  "processId": 16,
+  "startedAt": "2026-08-13T20:40:20-04:00",
+  "finishedAt": "2026-08-14T00:46:00Z"
+}

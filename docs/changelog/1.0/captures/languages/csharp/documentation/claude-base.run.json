@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mss8510k-zi1m5gi6d",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 15479,
+  "ownerStartedAt": "2026-08-14T00:43:59.700Z",
+  "nativePid": 15728,
+  "nativeStartedAt": "2026-08-14T00:44:00.540Z",
+  "createdAt": "2026-08-14T00:43:59.995400889Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/csharp-documentation-claude-base.564PV3/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence",
+  "startedAt": "2026-08-14T00:44:00.593081774Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:44:16.794091380Z",
+  "diagnostic": ""
+}

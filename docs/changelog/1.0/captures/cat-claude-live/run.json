@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "msm0w6wa-9dnbxicp0y",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 19,
+  "ownerStartedAt": "2026-08-09T16:34:32.190Z",
+  "nativePid": 1699,
+  "nativeStartedAt": "2026-08-09T16:34:35.040Z",
+  "createdAt": "2026-08-09T16:34:33.343049954Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/.cat/temp/changelog-code-refresh.JzbGaG/cat-claude/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --settings {\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"allowUnsandboxedCommands\":false,\"credentials\":{\"envVars\":[{\"name\":\"ANTHROPIC_API_KEY\",\"mode\":\"deny\"},{\"name\":\"ANTHROPIC_AUTH_TOKEN\",\"mode\":\"deny\"},{\"name\":\"CLAUDE_CODE_OAUTH_TOKEN\",\"mode\":\"deny\"}]}}} <redacted> /home/gili/cat/worktrees/v1.0/.cat/temp/changelog-code-refresh.JzbGaG/runner-runs/claude/msm0w6wa-9dnbxicp0y/home/plugins/cat-marketplace/plugins/cat --model sonnet",
+  "startedAt": "2026-08-09T16:34:35.981080998Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-09T16:36:30.903337118Z",
+  "diagnostic": ""
+}

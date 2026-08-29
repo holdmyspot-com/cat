@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "msp6zj4o-b64i41ylcu",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 230052,
+  "ownerStartedAt": "2026-08-11T21:48:24.830Z",
+  "nativePid": 233522,
+  "nativeStartedAt": "2026-08-11T21:48:32.670Z",
+  "createdAt": "2026-08-11T21:48:25.393363138Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/php/runs/claude-cat-architecture/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --settings {\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"allowUnsandboxedCommands\":false,\"credentials\":{\"envVars\":[{\"name\":\"ANTHROPIC_API_KEY\",\"mode\":\"deny\"},{\"name\":\"ANTHROPIC_AUTH_TOKEN\",\"mode\":\"deny\"},{\"name\":\"CLAUDE_CODE_OAUTH_TOKEN\",\"mode\":\"deny\"}]}}} <redacted> /home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/php/runs/claude-cat-architecture/claude/msp6zj4o-b64i41ylcu/home/plugins/cat-marketplace/plugins/cat --add-dir /home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/php/runs/claude-cat-architecture/claude/msp6zj4o-b64i41ylcu/home/projects",
+  "startedAt": "2026-08-11T21:48:32.971958197Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:49:44.038737419Z",
+  "diagnostic": ""
+}

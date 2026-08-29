@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp6ynys-b640pnsdqu",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 214224,
+  "ownerStartedAt": "2026-08-11T21:47:43.950Z",
+  "nativePid": 216117,
+  "nativeStartedAt": "2026-08-11T21:47:47.790Z",
+  "createdAt": "2026-08-11T21:47:45.004806965Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/cpp/runs/codex-cat-testing/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:47:48.580113609Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:49:08.262186092Z",
+  "diagnostic": ""
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "msp726tm-b660t6qmfl",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 270983,
+  "ownerStartedAt": "2026-08-11T21:50:28.710Z",
+  "nativePid": 271042,
+  "nativeStartedAt": "2026-08-11T21:50:29.650Z",
+  "createdAt": "2026-08-11T21:50:29.438142839Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/go/runs/claude-base-structured/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --settings {\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"allowUnsandboxedCommands\":false,\"credentials\":{\"envVars\":[{\"name\":\"ANTHROPIC_API_KEY\",\"mode\":\"deny\"},{\"name\":\"ANTHROPIC_AUTH_TOKEN\",\"mode\":\"deny\"},{\"name\":\"CLAUDE_CODE_OAUTH_TOKEN\",\"mode\":\"deny\"}]}}}",
+  "startedAt": "2026-08-11T21:50:29.904837299Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:51:42.640620529Z",
+  "diagnostic": ""
+}

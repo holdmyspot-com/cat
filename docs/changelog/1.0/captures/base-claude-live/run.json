@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "msm0w6we-9dnbxkoeyw",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 18,
+  "ownerStartedAt": "2026-08-09T16:34:32.190Z",
+  "nativePid": 223,
+  "nativeStartedAt": "2026-08-09T16:34:32.630Z",
+  "createdAt": "2026-08-09T16:34:33.345406909Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/.cat/temp/changelog-code-refresh.JzbGaG/base-claude/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --settings {\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"allowUnsandboxedCommands\":false,\"credentials\":{\"envVars\":[{\"name\":\"ANTHROPIC_API_KEY\",\"mode\":\"deny\"},{\"name\":\"ANTHROPIC_AUTH_TOKEN\",\"mode\":\"deny\"},{\"name\":\"CLAUDE_CODE_OAUTH_TOKEN\",\"mode\":\"deny\"}]}}} <redacted> sonnet",
+  "startedAt": "2026-08-09T16:34:33.572953958Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-09T16:35:15.753143895Z",
+  "diagnostic": ""
+}

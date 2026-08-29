@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "mss82e8c-zgkwvmce1",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 4880,
+  "ownerStartedAt": "2026-08-14T00:41:56.030Z",
+  "nativePid": 5048,
+  "nativeStartedAt": "2026-08-14T00:41:56.820Z",
+  "createdAt": "2026-08-14T00:41:57.147584929Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/.cat/temp/changelog-language-captures/php-code-codex-cat.QcTrjZ/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-14T00:41:57.755137293Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-14T00:44:58.957579639Z",
+  "diagnostic": ""
+}

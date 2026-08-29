@@ -1,0 +1,1036 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What’s New in CAT 1.0</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #10141f; color: #edf2ff; }
+    html { overflow-anchor: none; } body { margin: 0; line-height: 1.5; }
+    main { max-width: 1720px; margin: auto; padding: 68px 40px 96px; }
+    h1 { font-size: clamp(2.5rem, 7vw, 5.5rem); letter-spacing: -.06em; line-height: .95; margin: 0 0 18px; }
+    h2 { font-size: clamp(1.6rem, 4vw, 2.6rem); letter-spacing: -.035em; margin: 0; }
+    section { margin-top: 78px; } .lede, .section-copy { max-width: 780px; color: #c5cde1; } .lede { font-size: 1.2rem; }
+    .capture { background: #171d2b; border: 1px solid #437c67; border-radius: 14px; overflow: hidden; box-shadow: 0 12px 28px #0004; }
+    section[data-source-example="code"] > article.capture { display: none; }
+    body:not(.source-examples-ready) [data-source-example] { visibility: hidden; }
+    .bar { display: flex; align-items: center; gap: 7px; height: 39px; padding: 0 14px; background: #1d3a35; color: #baf6dc; font-size: .8rem; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f57070; box-shadow: 15px 0 #f4c260, 30px 0 #6cdca0; margin-right: 30px; }
+    pre { margin: 0; padding: 16px 0; overflow: auto; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; tab-size: 4; -moz-tab-size: 4; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .line { display: block; min-height: 1.55em; padding: 0 24px; } .same { color: #b9c4df; } .minus { color: #ffb4b4; background: #642d3b88; } .plus { color: #b8f5d1; background: #1e5a4588; }
+    .terminal-capture { overflow: hidden; background: #0c0c0c; border: 1px solid #437c67; border-radius: 14px; box-shadow: 0 12px 28px #0004; color: #d5d5d5; font: 14px/1.35 Consolas, "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .terminal-frame { display: flex; align-items: center; height: 32px; padding: 0 14px; border-bottom: 1px solid #315c50; background: #1d3a35; }
+    .terminal-frame-controls { display: flex; gap: 7px; }
+    .terminal-frame-control { width: 9px; height: 9px; border-radius: 50%; }
+    .terminal-frame-control.close { background: #f57070; } .terminal-frame-control.minimize { background: #f4c260; } .terminal-frame-control.maximize { background: #6cdca0; }
+    .terminal-output { margin: 0; max-height: 68vh; overflow: auto; background: #0c0c0c; font: inherit; tab-size: 4; -moz-tab-size: 4; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .terminal-launch { margin: 0; padding: 7px 10px 14px; overflow: auto; background: #0c0c0c; color: #cecece; font: inherit; white-space: normal; }
+    .terminal-capture.claude .terminal-launch { padding: 10px 6px; }
+    .terminal-claude-launch { color: #c8c8c8; }
+    .terminal-claude-identity { display: flex; align-items: center; gap: 12px; }
+    .terminal-claude-mark { flex: 0 0 64px; width: 64px; height: 64px; }
+    .terminal-claude-mark svg { display: block; width: 64px; height: 64px; }
+    .terminal-claude-details { display: grid; gap: 0; color: #999; } .terminal-claude-details strong { color: #ccc; }
+    .terminal-claude-details span { display: block; } .terminal-claude-directory { color: #b1b9f9; }
+    .terminal-capture.codex .terminal-launch { padding: 10px; }
+    .terminal-codex-card { width: min(394px, calc(100% - 24px)); padding: 8px 10px; border: 2px solid #888; border-radius: 5px; color: #ccc; }
+    .terminal-codex-card strong { color: #f8f8f2; } .terminal-codex-card em { color: #888; font-style: normal; }
+    .terminal-codex-details { display: grid; margin-top: 12px; color: #888; } .terminal-codex-details b { color: #d5d5d0; }
+    .terminal-codex-command { color: #3b78ff; } .terminal-codex-details .terminal-codex-directory { color: #b1b9f9; }
+    .comparison-toolbar.terminal-toolbar { justify-content: flex-start; gap: 8px; padding: 8px 10px; border-top: 1px solid #555; border-bottom: 1px solid #555; background: #161616; }
+    .comparison-toolbar.terminal-toolbar button { border: 1px solid #555; border-radius: 5px; padding: 5px 11px; background: #242424; color: #d5d5d5; box-shadow: inset 0 1px #ffffff12; font: 700 12px/1.2 inherit; cursor: pointer; }
+    .comparison-toolbar.terminal-toolbar button:hover { border-color: #8c8c8c; background: #303030; color: #fff; }
+    .comparison-toolbar.terminal-toolbar button[aria-pressed="true"] { border-color: #78a68d; background: #294536; color: #f0f0f0; box-shadow: inset 0 1px #ffffff22; }
+    .terminal-prompt { margin: 0; padding: 11px 20px 8px; color: #b9b9b9; white-space: pre-wrap; }
+    .terminal-capture.claude .terminal-prompt, .terminal-capture.codex .terminal-prompt { margin: 0 10px; padding: 4px 0; background: #2e2e2e; color: #ccc; }
+    .terminal-prompt::before { content: '❯ '; color: #f4f4f4; font-weight: 800; }
+    .terminal-result { display: block; margin: 0; padding: 8px 10px 18px; color: #d5d5d5; white-space: pre; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .terminal-write-operation { display: block; margin-bottom: 8px; color: #d5d5d5; font: inherit; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .terminal-write-operation-action { color: #f8f8f2; }
+    .terminal-result .diff-file-edit, .terminal-result .diff-line { display: block; }
+    .terminal-result .diff-file-edit { color: #f8f8f2; font-weight: 700; } .terminal-result .diff-edit-summary { margin-bottom: 8px; color: #c8c8c8; }
+    .terminal-result .diff-count-added { color: #16c60c; } .terminal-result .diff-count-removed { color: #f14c4c; }
+    .terminal-result .diff-line-number { display: inline-block; width: 2.5em; color: #999; text-align: right; }
+    .terminal-result .diff-line-prefix, .terminal-result .diff-line-code { color: #f8f8f2; }
+    .terminal-capture.claude .terminal-result.diff, .terminal-capture.codex .terminal-result.diff { padding: 12px 10px 18px; }
+    .terminal-result .diff-removed { color: #f8f8f2; background: #3d0100; }
+    .terminal-result .diff-added { color: #f8f8f2; background: #022800; }
+    .terminal-capture.claude .terminal-result .diff-removed .diff-line-number, .terminal-capture.claude .terminal-result .diff-removed .diff-line-prefix { color: #dc5a5a; }
+    .terminal-capture.claude .terminal-result .diff-added .diff-line-number, .terminal-capture.claude .terminal-result .diff-added .diff-line-prefix { color: #50c850; }
+    .terminal-capture.claude .terminal-result .diff-operation-marker { color: #50c850; }
+    .terminal-capture.claude .terminal-result .diff-count-added, .terminal-capture.claude .terminal-result .diff-count-removed { color: #ccc; }
+    .terminal-capture.claude .terminal-result .diff-edit-summary { color: #ccc; }
+    .terminal-capture.codex .terminal-result .diff-removed { color: #5e5f62; background: #4a221d; }
+    .terminal-capture.codex .terminal-result .diff-added { color: #bcbec4; background: #213a2b; }
+    .terminal-capture.codex .terminal-result .diff-line-number { color: #666; }
+    .terminal-capture.codex .terminal-result .diff-operation-marker { color: #666; }
+    .terminal-capture.codex .terminal-result .diff-count-added { color: #13a10e; }
+    .terminal-capture.codex .terminal-result .diff-count-removed { color: #c50f1f; }
+    .terminal-capture.codex .terminal-result .diff-removed .diff-line-prefix { color: #c50f1f; }
+    .terminal-capture.codex .terminal-result .diff-added .diff-line-prefix { color: #13a10e; }
+    .terminal-capture.codex .terminal-result .diff-removed .diff-line-code { color: #5e5f62; }
+    .terminal-capture.codex .terminal-result .diff-added .diff-line-code { color: #bcbec4; }
+    .terminal-status { display: flex; justify-content: space-between; gap: 12px; padding: 8px 22px; border-top: 1px solid #555; color: #aaa; font: inherit; font-size: 12px; }
+    .terminal-capture.claude .terminal-status { padding: 8px 20px; border-top-color: #888; border-bottom: 1px solid #888; background: #0c0c0c; }
+    .terminal-capture.codex .terminal-status { display: grid; justify-content: start; gap: 6px; padding: 8px 16px; border-top-color: #888; border-bottom: 1px solid #888; background: #0c0c0c; }
+    .terminal-status .terminal-status-mark { color: #00b8fb; font-weight: 800; }
+    .full-diff { margin: 0; padding: 16px 0; overflow: auto; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; tab-size: 4; -moz-tab-size: 4; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .full-diff .diff-line { display: block; padding: 0 24px; } .full-diff .diff-removed { color: #ffb4b4; background: #642d3b88; } .full-diff .diff-added { color: #b8f5d1; background: #1e5a4588; }
+    .comparison-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #2d3850; background: #141a28; }
+    .comparison-toolbar button, .comparison-toolbar a { border: 1px solid #52647f; border-radius: 6px; padding: 5px 9px; background: #1d2738; color: #dce6ff; font: 12px/1.2 inherit; cursor: pointer; text-decoration: none; }
+    .comparison-toolbar button[aria-pressed="true"] { border-color: #5dba8c; background: #22513e; color: #d9ffe9; }
+    .comparison-toolbar button:focus-visible, .harness-picker button:focus-visible { outline: 3px solid #f4c260; outline-offset: 2px; }
+    .comparison-toolbar .comparison-count { margin-left: auto; color: #9aa9c6; font-size: .78rem; }
+    .workflow-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; max-width: 1180px; margin: 22px 0 0; padding: 0; list-style: none; }
+    .workflow-list li { padding: 14px 16px; border: 1px solid #2d3850; border-radius: 10px; background: #171d2b; color: #c5cde1; }
+    .workflow-list strong { display: block; margin-bottom: 4px; color: #b8f5d1; }
+    .review-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 22px; }
+    .review-picker { position: sticky; top: 92px; display: grid; gap: 6px; padding: 10px; border: 1px solid #2d3850; border-radius: 12px; background: #171d2b; }
+    .review-picker button { width: 100%; border: 1px solid transparent; border-radius: 7px; padding: 8px 10px; background: transparent; color: #c5cde1; font: 700 .85rem/1.25 inherit; text-align: left; cursor: pointer; }
+    .review-picker button:hover { background: #253249; color: #edf2ff; } .review-picker button[aria-pressed="true"] { border-color: #5f7eaf; background: #283957; color: #dbe8ff; }
+    .review-picker button:focus-visible { outline: 3px solid #f4c260; outline-offset: 2px; }
+    .review-results { min-width: 0; }
+    .review-card .review-focus { margin: 0; padding: 10px 16px; border-top: 1px solid #2d3850; background: #1d2738; color: #d5def0; }
+    .review-card { border: 1px solid #2d3850; border-radius: 12px; overflow: hidden; background: #171d2b; }
+    .review-card h3 { margin: 0; padding: 13px 16px; color: #e1e9ff; font-size: 1.05rem; }
+    .review-card p { margin: 0; padding: 0 16px 14px; color: #c5cde1; }
+    .review-card details { border-top: 1px solid #2d3850; }
+    .capture-request { max-width: 1000px; margin: 12px 0; border: 1px solid #334564; border-radius: 8px; background: #121a28; }
+    .capture-request summary { padding: 9px 13px; cursor: pointer; color: #dce6ff; font-weight: 700; }
+    .capture-request .prompt { margin: 0; border-top: 1px solid #334564; }
+    .review-card summary { padding: 11px 16px; cursor: pointer; color: #dce6ff; font-weight: 700; }
+    .review-card pre { border-top: 1px solid #2d3850; color: #d4dced; font-size: 13px; }
+    .review-panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #2d3850; }
+    .review-pane { min-width: 0; overflow: clip; background: #0d121c; } .review-pane + .review-pane { border-left: 1px solid #2d3850; }
+    .review-pane h4 { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 16px; border-bottom: 1px solid #2d3850; font: 700 .78rem/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .01em; } .review-pane h4::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ff6b70; box-shadow: 15px 0 #f4c260, 30px 0 #65d49a; margin-right: 24px; }
+    .review-pane.base h4 { color: #dbe8ff; background: #1c2a43; } .review-pane.cat h4 { color: #eadfff; background: #35264a; }
+    .review-summary { margin: 0; padding: 12px 16px; border-top: 1px solid #2d3850; background: #121a28; color: #d6e1f5; font: 600 .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .review-summary ul { margin: 8px 0 0; padding-left: 1.25rem; font-weight: 400; } .review-summary li { margin: 3px 0; } .review-summary .cat-only { color: #b8f5d1; } .review-summary .summary-label { color: #a8bad9; font-weight: 700; }
+    .finding-cards { padding: 14px; } .finding-card { margin: 0 0 12px; border: 1px solid #31415e; border-radius: 8px; background: #121a28; overflow: hidden; }
+    .finding-card summary { padding: 11px 13px; cursor: pointer; color: #e6efff; font-weight: 750; } .finding-card summary::marker { color: #8fb7ff; }
+    .finding-field { margin: 0; padding: 10px 13px; border-top: 1px solid #273650; color: #d9e0ee; } .finding-field strong { display: block; margin-bottom: 3px; color: #bcd2fa; }
+    .finding-field.correction { background: #173c3155; border-left: 3px solid #65d49a; } .finding-field.correction strong { color: #b8f5d1; }
+    .review-markdown { padding: 20px 22px 32px; color: #d9e0ee; font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: break-word; }
+    .review-markdown > :first-child { margin-top: 0; } .review-markdown > :last-child { margin-bottom: 0; }
+    .review-markdown h5 { margin: 0 0 14px; color: #f2f5ff; font: 800 1rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .review-markdown p { margin: 0 0 14px; } .review-markdown ul, .review-markdown ol { margin: 0 0 14px; padding-left: 1.5rem; } .review-markdown li + li { margin-top: 10px; }
+    .review-markdown strong { color: #fff; } .review-markdown em { color: #c2cde5; } .review-markdown code { padding: 1px 4px; border-radius: 4px; background: #202a3b; color: #d4e6ff; font: .94em ui-monospace, SFMono-Regular, Menlo, monospace; } .review-markdown a { color: #9fc3ff; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+    .review-view-controls { display: none; gap: 6px; margin: 10px 0 0; } .review-view-controls button { border: 1px solid #52647f; border-radius: 7px; padding: 6px 10px; background: #1d2738; color: #dce6ff; font: 700 .82rem/1.2 inherit; cursor: pointer; } .review-view-controls button[aria-pressed="true"] { border-color: #5f7eaf; background: #283957; }
+    .review-card .review-base { color: #ffb4b4; background: #642d3b55; }
+    .review-card .review-cat { color: #b8f5d1; background: #1e5a4555; }
+    .source-view[hidden], .unified-diff[hidden] { display: none; }
+    .side-by-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .source-pane { min-width: 0; overflow: auto; max-height: 68vh; background: #151b29; -webkit-user-select: text !important; user-select: text !important; cursor: text; }
+    .source-pane + .source-pane { border-left: 1px solid #36445d; }
+    .source-pane-header { position: sticky; top: 0; z-index: 1; padding: 8px 14px; border-bottom: 1px solid #36445d; background: #20293b; color: #dce6ff; font: 700 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .source-pane-header.base { color: #ffb4b4; } .source-pane-header.cat { color: #b8f5d1; }
+    .source-lines { min-width: max-content; padding: 12px 0; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .source-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); min-height: 1.55em; }
+    .source-row[hidden] { display: none; }
+    .source-row.changed-base { color: #ffb4b4; background: #642d3b88; } .source-row.changed-cat { color: #b8f5d1; background: #1e5a4588; }
+    .source-line-number { padding: 0 12px; color: #71819f; text-align: right; user-select: none; border-right: 1px solid #29364c; }
+    .source-code { padding: 0 16px; white-space: pre; tab-size: 4; -moz-tab-size: 4; -webkit-user-select: text !important; user-select: text !important; } .source-row.blank .source-code { color: transparent; }
+    .unified-diff { max-height: 68vh; }
+    @media (max-width: 1160px) { main { padding: 68px 20px 72px; } .side-by-side, .review-layout { grid-template-columns: minmax(0, 1fr); } .review-picker { position: sticky; top: 76px; display: flex; overflow-x: auto; padding: 8px; } .review-picker button { flex: 0 0 auto; width: auto; } .review-view-controls { display: flex; } .review-panes { grid-template-columns: minmax(0, 1fr); } body[data-review-view="base"] .review-pane.cat, body[data-review-view="cat"] .review-pane.base { display: none; } .source-pane + .source-pane, .review-pane + .review-pane { border-left: 0; border-top: 1px solid #36445d; } .source-pane { max-height: 48vh; } .comparison-count { width: 100%; margin-left: 0 !important; } }
+    .tag { display: inline-block; padding: 3px 9px; border: 1px solid #477c68; color: #9cf1c8; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+    .prompt { max-width: 1000px; margin: 12px 0; padding: 12px 16px; border-left: 3px solid #5d917a; background: #17263a; color: #dce6ff; white-space: pre-wrap; }
+    .harness-picker { position: fixed; top: 20px; right: 28px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; max-width: calc(100vw - 40px); padding: 9px; z-index: 10; border: 1px solid #477c68; border-radius: 999px; background: #10141fe8; box-shadow: 0 10px 26px #0008; backdrop-filter: blur(12px); }
+    .picker-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; } .picker-group + .picker-group { padding-left: 10px; border-left: 1px solid #477c68; }
+    .harness-picker button { border: 1px solid #477c68; border-radius: 999px; padding: 8px 15px; background: #17251f; color: #c7f6dc; font: inherit; cursor: pointer; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .harness-picker button[aria-pressed="true"] { background: #3a8063; color: white; } [data-harness-output] { display: none; }
+    body[data-harness="codex"] [data-harness-output="codex"], body[data-harness="claude"] [data-harness-output="claude"] { display: block; }
+    .review-card[hidden] { display: none !important; }
+    .obsolete { display: none; }
+    .note { color: #91a0bd; font-size: .9rem; } code { color: #b8f5d1; }
+    @media (max-width: 640px) {
+      main { padding: 188px 12px 56px; }
+      h1 { font-size: clamp(2.25rem, 14vw, 3.25rem); }
+      section { margin-top: 48px; }
+      .harness-picker { top: 8px; right: 8px; left: 8px; max-width: none; flex-direction: column; align-items: stretch; border-radius: 14px; }
+      .picker-group { justify-content: flex-start; }
+      .picker-group + .picker-group { padding: 6px 0 0; border-top: 1px solid #477c68; border-left: 0; }
+      .review-picker { top: 188px; }
+      .source-pane { max-height: 34vh; }
+      .terminal-output { max-height: 46vh; font-size: 13px; tab-size: 2; -moz-tab-size: 2; }
+      .terminal-codex-card { width: calc(100% - 24px); }
+      .unified-diff { max-height: 46vh; }
+      .source-lines, .full-diff { font-size: 13px; }
+      .source-code, .full-diff { tab-size: 2; -moz-tab-size: 2; }
+      .source-line-number { padding: 0 8px; }
+      .source-code { padding: 0 12px; }
+    }
+  </style>
+</head>
+<body data-harness="codex" data-language="typescript">
+<main>
+  <h1>What’s New in CAT 1.0</h1>
+  <div class="harness-picker" aria-label="Harness and language examples"><span class="picker-group" role="group" aria-label="Harness"><button type="button" data-harness="codex" aria-pressed="true">Codex</button><button type="button" data-harness="claude" aria-pressed="false">Claude</button></span><span class="picker-group" role="group" aria-label="Language"><button type="button" data-language="typescript" aria-pressed="true">TypeScript</button><button type="button" data-language="python" aria-pressed="false">Python</button><button type="button" data-language="java" aria-pressed="false">Java</button><button type="button" data-language="csharp" aria-pressed="false">C#</button><button type="button" data-language="cpp" aria-pressed="false">C++</button><button type="button" data-language="php" aria-pressed="false">PHP</button><button type="button" data-language="go" aria-pressed="false">Go</button></span></div>
+  <script>
+    (() => {
+      const parameters = new URLSearchParams(window.location.search);
+      const harnesses = ['codex', 'claude'];
+      const languages = ['typescript', 'python', 'java', 'csharp', 'cpp', 'php', 'go'];
+      const preference = key => {
+        try { return window.localStorage.getItem(key); } catch { return null; }
+      };
+      const selected = (parameter, stored, allowed, fallback) =>
+        allowed.includes(parameter) ? parameter : allowed.includes(stored) ? stored : fallback;
+      const harness = selected(parameters.get('harness'), preference('cat.changelog.1.0.harness'), harnesses, 'codex');
+      const language = selected(parameters.get('language'), preference('cat.changelog.1.0.language'), languages, 'typescript');
+      document.body.dataset.harness = harness;
+      document.body.dataset.language = language;
+      for (const button of document.querySelectorAll('button[data-harness]'))
+        button.setAttribute('aria-pressed', String(button.dataset.harness === harness));
+      for (const button of document.querySelectorAll('button[data-language]'))
+        button.setAttribute('aria-pressed', String(button.dataset.language === language));
+    })();
+  </script>
+
+  <section data-source-example="code">
+    <h2>Safer monetary calculations</h2>
+    <div class="source-capture-slot"></div>
+    <article class="capture" data-harness-output="codex">
+      <div class="bar"><span class="dot"></span>Codex · complete generated source</div>
+      <div class="comparison-toolbar"><button type="button" data-comparison-view="split" aria-pressed="true">Side by side</button><button type="button" data-comparison-view="unified" aria-pressed="false">Unified diff</button><span class="comparison-count" aria-live="polite"></span></div>
+      <div class="source-view" aria-label="Side-by-side source comparison"></div>
+      <div class="full-diff unified-diff" role="region" aria-label="Unified source diff" tabindex="0" hidden>--- CheckoutPriceCalculator.java
++++ CheckoutPriceCalculator.java
+@@ -1,8 +1,11 @@
+ public final class CheckoutPriceCalculator {
++    private static final double EXPEDITED_SHIPPING_FEE = 15.00;
++
+     public double calculateTotal(double subtotal, double discountRate, double taxRate,
+                                  boolean expeditedShipping) {
+         double discountedSubtotal = subtotal * (1 - discountRate);
+-        double shippingFee = expeditedShipping ? 15.00 : 0.00;
+-        return (discountedSubtotal + shippingFee) * (1 + taxRate);
++        double preTaxTotal = discountedSubtotal
++                + (expeditedShipping ? EXPEDITED_SHIPPING_FEE : 0);
++        return preTaxTotal * (1 + taxRate);
+     }
+ }</div>
+    </article>
+    <article class="capture" data-harness-output="claude">
+      <div class="bar"><span class="dot"></span>Claude · complete generated source</div>
+      <div class="comparison-toolbar"><button type="button" data-comparison-view="split" aria-pressed="true">Side by side</button><button type="button" data-comparison-view="unified" aria-pressed="false">Unified diff</button><span class="comparison-count" aria-live="polite"></span></div>
+      <div class="source-view" aria-label="Side-by-side source comparison"></div>
+      <div class="full-diff unified-diff" role="region" aria-label="Unified source diff" tabindex="0" hidden>--- CheckoutPriceCalculator.java
++++ CheckoutPriceCalculator.java
+@@ -1,11 +1,21 @@
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
+ public final class CheckoutPriceCalculator {
+-    public double calculateTotal(
+-            double subtotal,
+-            double discountRate,
+-            double taxRate,
+-            boolean expeditedShipping) {
+-        double discountedSubtotal = subtotal * (1 - discountRate);
+-        double shippingFee = expeditedShipping ? 15.00 : 0.00;
+-        return (discountedSubtotal + shippingFee) * (1 + taxRate);
++    private static final BigDecimal EXPEDITED_SHIPPING_FEE = new BigDecimal("15.00");
++    private static final BigDecimal ONE_HUNDRED_PERCENT = BigDecimal.ONE;
++
++    public BigDecimal calculate(
++            BigDecimal subtotal,
++            BigDecimal discountRate,
++            BigDecimal taxRate,
++            boolean expeditedShipping
++    ) {
++        BigDecimal discountedSubtotal = subtotal.multiply(ONE_HUNDRED_PERCENT.subtract(discountRate));
++        BigDecimal taxableAmount = expeditedShipping
++                ? discountedSubtotal.add(EXPEDITED_SHIPPING_FEE)
++                : discountedSubtotal;
++
++        return taxableAmount.multiply(ONE_HUNDRED_PERCENT.add(taxRate)).setScale(2, RoundingMode.HALF_UP);
+     }
+ }</div>
+    </article>
+  </section>
+
+  <section data-source-example="documentation">
+    <h2>Clearer documentation</h2>
+    <p class="section-copy">We gave the selected harness this request:</p>
+    <blockquote class="prompt">Document this code</blockquote>
+    <p class="section-copy">Below is the complete returned source from the identical undocumented class. Red is the selected harness without CAT; green is its CAT-enabled result.</p>
+    <article class="capture" data-harness-output="codex">
+      <div class="bar"><span class="dot"></span>Codex · complete documentation result</div>
+      <div class="comparison-toolbar"><button type="button" data-comparison-view="split" aria-pressed="true">Side by side</button><button type="button" data-comparison-view="unified" aria-pressed="false">Unified diff</button><span class="comparison-count" aria-live="polite"></span></div>
+      <div class="source-view" aria-label="Side-by-side source comparison"></div>
+      <div class="full-diff unified-diff" role="region" aria-label="Unified source diff" tabindex="0" hidden>--- CheckoutPriceCalculator.java
++++ CheckoutPriceCalculator.java
+@@ -1,47 +1,51 @@
+ package example;
+&#32;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+&#32;
+ /**
+  * Calculates a checkout total after applying a discount, optional expedited
+  * shipping, and tax.
+  *
+  * &lt;p&gt;The calculation is performed in the following order:&lt;/p&gt;
+  * &lt;ol&gt;
+  *   &lt;li&gt;Apply the discount to the subtotal.&lt;/li&gt;
+  *   &lt;li&gt;Add the expedited shipping fee, when requested.&lt;/li&gt;
+  *   &lt;li&gt;Apply tax to the discounted subtotal and shipping fee.&lt;/li&gt;
+- *   &lt;li&gt;Round the result to two decimal places using
+- *       {@link RoundingMode#HALF_UP}.&lt;/li&gt;
++ *   &lt;li&gt;Round the result to two decimal places using half-up rounding.&lt;/li&gt;
+  * &lt;/ol&gt;
+- *
+- * &lt;p&gt;Rates are expressed as decimal fractions. For example, {@code 0.10}
+- * represents 10 percent.&lt;/p&gt;
+  */
+ public final class CheckoutPriceCalculator {
+     private static final BigDecimal EXPEDITED_SHIPPING_FEE = new BigDecimal("15.00");
+&#32;
+     /**
+-     * Calculates the final amount charged at checkout.
++     * Creates a checkout price calculator.
++     */
++    public CheckoutPriceCalculator() {
++    }
++
++    /**
++     * Calculates the final checkout price.
++     *
++     * &lt;p&gt;Rates are expressed as decimal fractions. For example, a value of
++     * {@code 0.10} represents 10 percent. Expedited shipping adds {@code 15.00}
++     * before tax is calculated.&lt;/p&gt;
+      *
+      * @param subtotal the price before discounts, shipping, and tax
+-     * @param discountRate the fraction of the subtotal to deduct; for example,
+-     *        {@code 0.20} for a 20 percent discount
+-     * @param taxRate the tax fraction applied after adding any shipping fee;
+-     *        for example, {@code 0.13} for 13 percent tax
+-     * @param expeditedShipping whether to add the fixed expedited shipping fee
+-     *        of {@code 15.00}
+-     * @return the final total, rounded to two decimal places using half-up
+-     *         rounding
++     * @param discountRate the fraction of the subtotal to deduct
++     * @param taxRate the fraction of the discounted subtotal and shipping fee
++     *        to add as tax
++     * @param expeditedShipping whether to add the expedited shipping fee
++     * @return the final price, rounded to two decimal places using
++     *         {@link RoundingMode#HALF_UP}
+      * @throws NullPointerException if {@code subtotal}, {@code discountRate},
+      *         or {@code taxRate} is {@code null}
+      */
+     public BigDecimal calculateTotal(BigDecimal subtotal, BigDecimal discountRate, BigDecimal taxRate,
+             boolean expeditedShipping) {
+         BigDecimal discountedSubtotal = subtotal.multiply(BigDecimal.ONE.subtract(discountRate));
+         BigDecimal shippingFee = expeditedShipping ? EXPEDITED_SHIPPING_FEE : BigDecimal.ZERO;
+         return discountedSubtotal.add(shippingFee).multiply(BigDecimal.ONE.add(taxRate)).setScale(2,
+                 RoundingMode.HALF_UP);
+     }
+ }</div>
+    </article>
+    <article class="capture" data-harness-output="claude">
+      <div class="bar"><span class="dot"></span>Claude · complete documentation result</div>
+      <div class="comparison-toolbar"><button type="button" data-comparison-view="split" aria-pressed="true">Side by side</button><button type="button" data-comparison-view="unified" aria-pressed="false">Unified diff</button><span class="comparison-count" aria-live="polite"></span></div>
+      <div class="source-view" aria-label="Side-by-side source comparison"></div>
+      <div class="full-diff unified-diff" role="region" aria-label="Unified source diff" tabindex="0" hidden>--- CheckoutPriceCalculator.java
++++ CheckoutPriceCalculator.java
+@@ -1,31 +1,37 @@
+ package example;
+&#32;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+&#32;
+ /**
+- * Calculates a checkout total after applying a discount, optional expedited shipping, and tax.
+- *
+- * &lt;p&gt;Tax is applied to the discounted subtotal plus any expedited shipping fee. The final amount is
+- * rounded to two decimal places using {@link RoundingMode#HALF_UP}.
++ * Calculates a checkout total by applying a discount, optional expedited-shipping fee, and tax.
+  */
+ public final class CheckoutPriceCalculator {
+     private static final BigDecimal EXPEDITED_SHIPPING_FEE = new BigDecimal("15.00");
+&#32;
+     /**
+-     * Calculates {@code (subtotal * (1 - discountRate) + shippingFee) * (1 + taxRate)}.
++     * Creates a checkout price calculator.
++     */
++    public CheckoutPriceCalculator() {
++    }
++
++    /**
++     * Calculates the charged total as {@code (subtotal * (1 - discountRate) + shippingFee) * (1 + taxRate)}.
++     * &lt;p&gt;
++     * Expedited shipping adds {@code 15.00} before tax; standard shipping adds no fee. The returned amount is
++     * rounded to two decimal places using {@link RoundingMode#HALF_UP}.
+      *
+-     * @param subtotal the pre-discount price
+-     * @param discountRate the fractional discount to apply, such as {@code 0.10} for 10%
+-     * @param taxRate the fractional tax rate to apply, such as {@code 0.08} for 8%
+-     * @param expeditedShipping whether to add the $15.00 expedited shipping fee before tax
+-     * @return the final total rounded to two decimal places using half-up rounding
++     * @param subtotal the monetary amount before the discount, shipping fee, and tax
++     * @param discountRate the decimal proportion subtracted from the subtotal before shipping and tax
++     * @param taxRate the decimal proportion applied after the discount and shipping fee
++     * @param expeditedShipping whether to add the {@code 15.00} expedited-shipping fee before tax
++     * @return the calculated total, rounded to two decimal places using half-up rounding
+      */
+     public BigDecimal calculateTotal(BigDecimal subtotal, BigDecimal discountRate, BigDecimal taxRate,
+             boolean expeditedShipping) {
+         BigDecimal discountedSubtotal = subtotal.multiply(BigDecimal.ONE.subtract(discountRate));
+         BigDecimal shippingFee = expeditedShipping ? EXPEDITED_SHIPPING_FEE : BigDecimal.ZERO;
+         return discountedSubtotal.add(shippingFee).multiply(BigDecimal.ONE.add(taxRate)).setScale(2,
+                 RoundingMode.HALF_UP);
+     }
+ }</div>
+    </article>
+  </section>
+
+  <section>
+    <h2>Safer Git workflows</h2>
+    <p class="section-copy">CAT turns familiar Git actions into named workflows that check scope, preserve recovery paths, and verify the result before calling the work complete.</p>
+    <ul class="workflow-list">
+      <li><strong>Commit / Amend</strong>Scopes staging to the current unit of work, keeping unrelated edits out; before amending a possibly shared tip, asks for confirmation.</li>
+      <li><strong>Rebase</strong>Keeps a backup and requires conflicts to be resolved and continued, or aborted when the intended resolution is unclear.</li>
+      <li><strong>Linear merge</strong>Enforces a requested preference for linear merges, preventing accidental merge commits.</li>
+      <li><strong>Rewrite history</strong>Restores the Git remotes after the operation completes.</li>
+      <li><strong>Squash</strong>Allows selected non-contiguous commits to be squashed without absorbing unselected changes.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>More thorough reviews</h2>
+    <p class="section-copy">Choose the review concern that matters: Architecture, Business, Deployment, Design, Legal, Performance, Requirements, Security, Testing, UX, or Plan Review. Each comparison below is a real review of the same deliberately incomplete release change. CAT reviewers inspect without editing; their “fix” is a specific recommended correction.</p>
+    <p class="section-copy">We gave the selected harness this request:</p>
+    <details class="capture-request"><summary>Show exact capture request</summary><blockquote class="prompt" id="review-prompt"></blockquote></details>
+    <p class="section-copy">Compare the selected concern in a general review with CAT’s specialist review.</p>
+    <div class="review-layout">
+      <nav class="review-picker" id="review-picker" aria-label="Review concern"></nav>
+      <div class="review-results">
+        <div class="review-view-controls" aria-label="Response to show">
+          <button type="button" data-review-view="base">Base</button>
+          <button type="button" data-review-view="cat">CAT</button>
+          <button type="button" data-review-view="both">Show both</button>
+        </div>
+        <p class="sr-only" id="review-selection" aria-live="polite"></p>
+        <div id="review-results"></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note">Source examples and the specialist-review matrix were captured on 2026-08-11. Both use packaged CAT
+  1.0 runners: Codex CLI 0.147.0 (<code>gpt-5.6-sol</code>) and Claude Code 2.1.220
+  (<code>sonnet</code>). Results vary by model, task, and project; these are observed outputs, not a promise of
+  identical completions.</p>
+</main>
+<script src="captures/languages/rendered-captures.js"></script>
+<script src="captures/reviews/rendered-captures.js"></script>
+<script>
+  function selectHarness(selected, updateLocation = true) {
+    const scrollPosition = window.scrollY;
+    for (const candidate of document.querySelectorAll('button[data-harness]')) candidate.setAttribute('aria-pressed', candidate.dataset.harness === selected ? 'true' : 'false');
+    document.body.dataset.harness = selected;
+    try { window.localStorage.setItem('cat.changelog.1.0.harness', selected); } catch { /* Storage may be unavailable. */ }
+    document.querySelectorAll('.harness-label').forEach(label => { label.textContent = selected === 'codex' ? 'Codex' : 'Claude'; });
+    if (typeof renderSourceExamples === 'function') renderSourceExamples();
+    if (typeof renderReviews === 'function') renderReviews();
+    if (updateLocation && typeof updateReviewLocation === 'function') updateReviewLocation();
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPosition }));
+  }
+  for (const button of document.querySelectorAll('button[data-harness]')) button.addEventListener('click', event => selectHarness(event.currentTarget.dataset.harness));
+  function selectLanguage(selected, updateLocation = true) {
+    const scrollPosition = window.scrollY;
+    selectedLanguage = selected;
+    for (const candidate of document.querySelectorAll('button[data-language]')) candidate.setAttribute('aria-pressed', candidate.dataset.language === selected ? 'true' : 'false');
+    document.body.dataset.language = selected;
+    try { window.localStorage.setItem('cat.changelog.1.0.language', selected); } catch { /* Storage may be unavailable. */ }
+    renderSourceExamples();
+    if (typeof renderReviews === 'function') renderReviews();
+    if (updateLocation && typeof updateReviewLocation === 'function') updateReviewLocation();
+    requestAnimationFrame(() => window.scrollTo({top: scrollPosition}));
+  }
+  for (const button of document.querySelectorAll('button[data-language]')) button.addEventListener('click', event => selectLanguage(event.currentTarget.dataset.language));
+  function parseUnifiedDiff(diff) {
+    const lines = diff.textContent.split('\n');
+    const baseName = lines[0].replace(/^--- /, '');
+    const catName = lines[1].replace(/^\+\+\+ /, '');
+    const rows = [];
+    let baseLine = 0;
+    let catLine = 0;
+    let removed = [];
+    let added = [];
+    const flushChanges = () => {
+      const length = Math.max(removed.length, added.length);
+      for (let index = 0; index < length; index++) {
+        const base = removed[index] ? { text: removed[index], line: baseLine++, changed: true } : null;
+        const cat = added[index] ? { text: added[index], line: catLine++, changed: true } : null;
+        rows.push({ base, cat, changed: true });
+      }
+      removed = [];
+      added = [];
+    };
+    for (const line of lines.slice(2)) {
+      const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunk) {
+        flushChanges();
+        baseLine = Number(hunk[1]);
+        catLine = Number(hunk[2]);
+      } else if (line.startsWith('-')) {
+        removed.push(line.slice(1));
+      } else if (line.startsWith('+')) {
+        added.push(line.slice(1));
+      } else if (line.startsWith(' ')) {
+        flushChanges();
+        rows.push({
+          base: { text: line.slice(1), line: baseLine++, changed: false },
+          cat: { text: line.slice(1), line: catLine++, changed: false },
+          changed: false
+        });
+      }
+    }
+    flushChanges();
+    return { baseName, catName, rows };
+  }
+
+  function renderPane(title, kind, rows) {
+    const pane = document.createElement('div');
+    pane.className = 'source-pane';
+    const header = document.createElement('div');
+    header.className = `source-pane-header ${kind}`;
+    header.textContent = title;
+    const lines = document.createElement('div');
+    lines.className = 'source-lines';
+    for (const row of rows) {
+      const entry = row[kind === 'base' ? 'base' : 'cat'];
+      const line = document.createElement('div');
+      line.className = `source-row${entry ? '' : ' blank'}${entry?.changed ? ` changed-${kind}` : ''}`;
+      if (row.changed) line.dataset.change = '';
+      const number = document.createElement('span');
+      number.className = 'source-line-number';
+      number.textContent = entry ? entry.line : '';
+      const code = document.createElement('span');
+      code.className = 'source-code';
+      code.textContent = entry ? entry.text : ' ';
+      line.append(number, code);
+      lines.append(line);
+    }
+    pane.append(header, lines);
+    return pane;
+  }
+
+  let selectedLanguage = document.body.dataset.language ?? 'typescript';
+  let selectedMonetaryView = (() => {
+    try {
+      const stored = window.localStorage.getItem('cat.changelog.1.0.monetary-view');
+      return ['base', 'cat', 'diff'].includes(stored) ? stored : 'base';
+    } catch { return 'base'; }
+  })();
+
+  function terminalLaunch(harness) {
+    const launch = document.createElement('section'); launch.className = `terminal-launch ${harness}`;
+    const isCodex = harness === 'codex';
+    if (!isCodex) {
+      launch.innerHTML = `<div class="terminal-claude-launch"><div class="terminal-claude-identity"><div class="terminal-claude-mark" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#D77757" fill-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"/></svg></div><div class="terminal-claude-details"><strong>Claude Code v2.1.226</strong><span>Opus 5 (1M context)</span><span class="terminal-claude-directory">~/cat/worktrees/v1.0</span></div></div></div>`;
+      return launch;
+    }
+    launch.innerHTML = `<div class="terminal-codex-card"><strong>&gt;_ OpenAI Codex</strong> <em>(v0.147.0)</em><div class="terminal-codex-details"><span>model:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>gpt-5.6-luna medium</b> &nbsp; <span class="terminal-codex-command">/model</span> to change</span><span>directory: <b class="terminal-codex-directory">~/codex/workspace</b></span></div></div>`;
+    return launch;
+  }
+
+  function terminalStatus(harness) {
+    const status = document.createElement('div'); status.className = 'terminal-status';
+    if (harness === 'codex') {
+      status.innerHTML = '<span>❯ Run <i>/review</i> on my current changes</span><span><b>gpt-5.6-luna medium</b> · <b class="terminal-codex-directory">~/codex/workspace</b></span>';
+    } else {
+      status.innerHTML = '<span><b class="terminal-status-mark">⏸</b>manual mode on · ← for agents</span><span>● high · /effort</span>';
+    }
+    return status;
+  }
+
+  function terminalCapture(capture, harness, language, prompt) {
+    const article = document.createElement('article'); article.className = `capture terminal-capture ${harness}`;
+    const harnessName = harness === 'codex' ? 'Codex' : 'Claude';
+    const frame = document.createElement('div'); frame.className = 'terminal-frame'; frame.setAttribute('aria-hidden', 'true');
+    frame.innerHTML = '<span class="terminal-frame-controls"><span class="terminal-frame-control close"></span><span class="terminal-frame-control minimize"></span><span class="terminal-frame-control maximize"></span></span>';
+    const launch = terminalLaunch(harness);
+
+    const toolbar = document.createElement('div'); toolbar.className = 'comparison-toolbar terminal-toolbar';
+    for (const [view, label] of [['base', 'Base'], ['cat', 'CAT'], ['diff', 'Diff']]) {
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.terminalView = view;
+      button.setAttribute('aria-pressed', String(view === selectedMonetaryView)); button.textContent = label; toolbar.append(button);
+    }
+
+    const terminal = document.createElement('div'); terminal.className = 'terminal-output'; terminal.tabIndex = 0;
+    terminal.setAttribute('role', 'region'); terminal.setAttribute('aria-label', `${harnessName} generated source`);
+    const request = document.createElement('div'); request.className = 'terminal-prompt'; request.textContent = prompt.trimEnd();
+    const result = document.createElement('pre'); result.className = 'terminal-result';
+    const status = terminalStatus(harness);
+    terminal.append(launch, request, result, status); article.append(frame, toolbar, terminal);
+
+    const selectTerminalView = event => {
+      const button = event.target instanceof Element ? event.target.closest('button[data-terminal-view]') : null;
+      if (!button || !toolbar.contains(button)) return;
+      selectedMonetaryView = button.dataset.terminalView;
+      try { window.localStorage.setItem('cat.changelog.1.0.monetary-view', selectedMonetaryView); } catch { /* Storage may be unavailable. */ }
+      renderTerminalView(article, capture);
+      event.stopPropagation();
+    };
+    toolbar.addEventListener('pointerdown', selectTerminalView, true);
+    toolbar.addEventListener('click', selectTerminalView, true);
+    renderTerminalView(article, capture); return article;
+  }
+
+  function renderTerminalView(terminal, capture) {
+    const view = selectedMonetaryView;
+    const result = terminal.querySelector('.terminal-result');
+    result.className = `terminal-result${view === 'cat' ? ' cat' : view === 'diff' ? ' diff' : ''}`;
+    for (const button of terminal.querySelectorAll('button[data-terminal-view]'))
+      button.setAttribute('aria-pressed', String(button.dataset.terminalView === view));
+    if (view !== 'diff') {
+      const sourceLines = capture[view].split('\n');
+      const width = String(sourceLines.length).length;
+      const fragment = document.createDocumentFragment();
+      const operation = document.createElement('span'); operation.className = 'terminal-write-operation';
+      appendSourceOperation(operation, terminal.classList.contains('codex') ? 'codex' : 'claude', capture.filename,
+        sourceLines.length, 0);
+      fragment.append(operation);
+      for (const [index, line] of sourceLines.entries()) {
+        const lineNumber = index + 1;
+        const rendered = document.createElement('span'); rendered.className = 'diff-line diff-added';
+        appendChangedSourceLine(rendered, {number: String(lineNumber).padStart(width), change: '+', code: line});
+        fragment.append(rendered);
+      }
+      result.replaceChildren(fragment);
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const line of terminalDiffLines(capture, terminal.classList.contains('codex') ? 'codex' : 'claude')) {
+      const rendered = document.createElement('span'); rendered.className = line.className;
+      if (line.operation === 'edit') appendDiffOperation(rendered, line);
+      else if (line.change) appendChangedSourceLine(rendered, line);
+      else rendered.textContent = line.text;
+      fragment.append(rendered);
+    }
+    result.replaceChildren(fragment);
+  }
+
+  function appendSourceOperation(rendered, harness, filename, addedCount, removedCount) {
+    const marker = document.createElement('span'); marker.className = 'diff-operation-marker'; marker.textContent = '•';
+    const action = document.createElement('span'); action.className = 'terminal-write-operation-action';
+    if (harness === 'codex') {
+      const added = document.createElement('span'); added.className = 'diff-count-added'; added.textContent = `+${addedCount}`;
+      const removed = document.createElement('span'); removed.className = 'diff-count-removed'; removed.textContent = ` -${removedCount}`;
+      action.textContent = 'Added';
+      rendered.append(marker, ' ', action, ` ${filename} (`, added, removed, ')');
+      return;
+    }
+    action.textContent = 'Update';
+    rendered.append(marker, ' ', action, `(${filename})`);
+  }
+
+  function appendDiffOperation(rendered, line) {
+    const marker = document.createElement('span'); marker.className = 'diff-operation-marker';
+    if (line.harness === 'codex') {
+      marker.textContent = '•';
+      rendered.append(marker, ' Edited ', line.filename, ' (');
+      const added = document.createElement('span'); added.className = 'diff-count-added'; added.textContent = `+${line.added}`;
+      const removed = document.createElement('span'); removed.className = 'diff-count-removed'; removed.textContent = ` -${line.removed}`;
+      rendered.append(added, removed, ')');
+      return;
+    }
+    marker.textContent = '●';
+    rendered.append(marker, ` Write(${line.filename})`);
+  }
+
+  function appendChangedSourceLine(rendered, line) {
+    const number = document.createElement('span'); number.className = 'diff-line-number'; number.textContent = line.number;
+    const prefix = document.createElement('span'); prefix.className = 'diff-line-prefix'; prefix.textContent = ` ${line.change}`;
+    const code = document.createElement('span'); code.className = 'diff-line-code'; code.textContent = line.code;
+    rendered.append(number, prefix, code);
+  }
+
+  function terminalDiffLines(capture, harness) {
+    let added = 0;
+    let removed = 0;
+    for (const line of capture.unifiedDiff.split('\n')) {
+      if (line.startsWith('+') && !line.startsWith('+++ ')) added++;
+      else if (line.startsWith('-') && !line.startsWith('--- ')) removed++;
+    }
+
+    const width = String(Math.max(capture.base.split('\n').length, capture.cat.split('\n').length)).length;
+    const addedLines = `${added} line${added === 1 ? '' : 's'}`;
+    const removedLines = `${removed} line${removed === 1 ? '' : 's'}`;
+    const lines = [{className: 'diff-file-edit', operation: 'edit', harness, filename: capture.filename, added, removed}];
+    if (harness === 'claude') lines.push({className: 'diff-line diff-edit-summary', text: `  └ Added ${addedLines}, removed ${removedLines}`});
+    let baseLine = 0;
+    let catLine = 0;
+
+    for (const line of capture.unifiedDiff.split('\n')) {
+      if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) continue;
+
+      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+      if (hunk) {
+        baseLine = Number(hunk[1]);
+        catLine = Number(hunk[2]);
+        continue;
+      }
+      if (line.startsWith('-')) {
+        lines.push({className: 'diff-line diff-removed', change: '-', number: String(baseLine).padStart(width), code: line.slice(1)});
+        baseLine++;
+      } else if (line.startsWith('+')) {
+        lines.push({className: 'diff-line diff-added', change: '+', number: String(catLine).padStart(width), code: line.slice(1)});
+        catLine++;
+      } else if (line.startsWith(' ')) {
+        baseLine++;
+        catLine++;
+      }
+    }
+    return lines;
+  }
+
+  function sourceCapture(capture, harness, language) {
+    const article = document.createElement('article'); article.className = 'capture';
+    const bar = document.createElement('div'); bar.className = 'bar';
+    const dot = document.createElement('span'); dot.className = 'dot';
+    bar.append(dot, document.createTextNode(`${language} · ${harness === 'codex' ? 'Codex' : 'Claude'} · complete source`));
+    const toolbar = document.createElement('div'); toolbar.className = 'comparison-toolbar';
+    for (const [view, label] of [['split', 'Side by side'], ['unified', 'Unified diff']]) {
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.comparisonView = view;
+      button.setAttribute('aria-pressed', String(view === 'split')); button.textContent = label; toolbar.append(button);
+    }
+    const selectToolbarView = event => {
+      const button = event.target instanceof Element ? event.target.closest('button[data-comparison-view]') : null;
+      if (!button || !toolbar.contains(button)) return;
+      selectComparisonView(button);
+      event.stopPropagation();
+    };
+    // Handle the control before page-level pointer/selection processing can retarget its synthetic click.
+    toolbar.addEventListener('pointerdown', selectToolbarView, true);
+    toolbar.addEventListener('click', selectToolbarView, true);
+    const count = document.createElement('span'); count.className = 'comparison-count'; count.setAttribute('aria-live', 'polite'); toolbar.append(count);
+    const sourceView = document.createElement('div'); sourceView.className = 'source-view'; sourceView.setAttribute('aria-label', 'Side-by-side source comparison');
+    const diff = document.createElement('div'); diff.className = 'full-diff unified-diff'; diff.setAttribute('role', 'region'); diff.setAttribute('aria-label', 'Unified source diff'); diff.tabIndex = 0; diff.hidden = true; diff.textContent = capture.unifiedDiff;
+    article.append(bar, toolbar, sourceView, diff); return article;
+  }
+  function renderSourceExamples() {
+    const language = window.catLanguageCaptures?.[selectedLanguage];
+    if (!language) return;
+    const harness = document.body.dataset.harness;
+    for (const section of document.querySelectorAll('[data-source-example]')) {
+      const example = section.dataset.sourceExample; const capture = language[example]?.[harness];
+      if (!capture) throw new Error(`Missing ${selectedLanguage}/${example}/${harness} capture`);
+      if (example === 'code') {
+        const copies = [...section.querySelectorAll('article.capture')];
+        let slot = section.querySelector('.source-capture-slot');
+        if (!slot) { slot = document.createElement('div'); slot.className = 'source-capture-slot'; section.append(slot); }
+        copies.forEach(copy => copy.remove());
+        const terminalCaptureData = {...capture, filename: language[example].filename};
+        slot.replaceChildren(terminalCapture(terminalCaptureData, harness, language.label, language[example].prompt));
+        continue;
+      }
+      section.querySelector('.prompt').textContent = language[example].prompt.trimEnd();
+      const copies = [...section.querySelectorAll('article.capture')];
+      let slot = section.querySelector('.source-capture-slot');
+      if (!slot) {
+        slot = document.createElement('div'); slot.className = 'source-capture-slot';
+        const copiesAnchor = section.querySelectorAll('.section-copy')[1]; copiesAnchor.after(slot);
+      }
+      copies.forEach(copy => copy.remove());
+      const article = sourceCapture(capture, harness, language.label); slot.replaceChildren(article);
+      initializeSourceComparison(article);
+    }
+  }
+
+  const reviewCategories = ['Architecture', 'Business', 'Deployment', 'Design', 'Legal', 'Performance',
+    'Requirements', 'Security', 'Testing', 'UX', 'Plan Review'];
+  const reviewPicker = document.querySelector('#review-picker');
+  const reviewResults = document.querySelector('#review-results');
+  const reviewSelection = document.querySelector('#review-selection');
+  const reviewPrompt = document.querySelector('#review-prompt');
+  const reviewFocuses = {
+    Architecture: 'System boundaries, dependencies, interfaces, data flow, and long-term maintainability.',
+    Business: 'Customer and product outcomes: value, scope, adoption, cost, and decisions that materially affect them.',
+    Deployment: 'How the change is built, configured, released, observed, recovered, and operated in supported environments.',
+    Design: 'Local responsibilities, abstractions, invariants, error handling, naming, and clarity of the implementation.',
+    Legal: 'Licensing, attribution, privacy, retention, contractual, regulatory, and policy implications.',
+    Performance: 'Latency, throughput, memory, storage, network, startup, scalability, and measurable resource use.',
+    Requirements: 'Whether the stated user outcome, acceptance conditions, constraints, and affected behavior are complete and verifiable.',
+    Security: 'Confidentiality, integrity, availability, authorization, input handling, secrets, trust boundaries, and unsafe defaults.',
+    Testing: 'Whether executable tests establish the required behavior and its meaningful failure modes.',
+    UX: 'The user workflow: discoverability, clarity, feedback, accessibility, recovery, consistency, and friction.',
+    'Plan Review': 'Whether the delivery plan is complete, ordered, feasible, and paired with evidence for its intended outcome.'
+  };
+  const reviewButtons = [];
+  const reviewCards = [];
+  let currentReviewCategory = reviewCategories[0];
+  let currentReviewView = 'both';
+  function updateReviewLocation() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('harness', document.body.dataset.harness);
+    url.searchParams.set('language', selectedLanguage);
+    url.searchParams.set('review', currentReviewCategory);
+    url.searchParams.set('reviewView', currentReviewView);
+    history.replaceState(null, '', url);
+  }
+  function selectReviewCategory(category, updateLocation = true) {
+    currentReviewCategory = category;
+    for (const button of reviewButtons) button.setAttribute('aria-pressed', button.textContent === category ? 'true' : 'false');
+    renderReviews();
+    reviewPrompt.textContent = window.catReviewRequestTemplate.replace("[Agent]", category);
+    reviewSelection.textContent = `${category} review selected for ${document.body.dataset.harness === 'codex' ? 'Codex' : 'Claude'}.`;
+    if (updateLocation) updateReviewLocation();
+  }
+  function selectReviewView(view, updateLocation = true) {
+    currentReviewView = view;
+    document.body.dataset.reviewView = view;
+    for (const button of document.querySelectorAll('[data-review-view]')) button.setAttribute('aria-pressed', button.dataset.reviewView === view ? 'true' : 'false');
+    if (updateLocation) updateReviewLocation();
+  }
+  function reviewFixturePath(fileReference) {
+    const project = fileReference.indexOf('/project/');
+    const path = (project < 0 ? fileReference : fileReference.slice(project + '/project/'.length)).
+      replace(/^\.claude\/worktrees\/[^/]+\//, '').replace(/(?::\d+(?:-\d+)?|#L\d+(?:-L\d+)?)$/, '');
+    return /^(?:CHANGE\.md|PLAN\.md|THIRD_PARTY_NOTICES\.md|deploy\/|src\/)/.test(path) ? path : null;
+  }
+  function markdownLinkTarget(value) {
+    const target = value.trim();
+    if (target.startsWith('<') && target.endsWith('>')) return target.slice(1, -1).trim();
+    return target;
+  }
+  function publishedFileUrl(url) {
+    const stableUrl = markdownLinkTarget(url);
+    const fixturePath = reviewFixturePath(stableUrl);
+    return fixturePath ? `fixtures/review/${fixturePath}` : stableUrl;
+  }
+  function reviewFixtureUrl(fileReference) {
+    const path = reviewFixturePath(fileReference);
+    return path ? `fixtures/review/${path}` : null;
+  }
+  function isSafeLink(url) {
+    return /^https?:/i.test(url) ||
+      (!/^[a-z][a-z0-9+.-]*:/i.test(url) && /^(?:\/|\.{1,2}\/|[A-Za-z0-9_])/.test(url));
+  }
+  function appendMarkdownInline(container, text) {
+    const token = /\[([^\]]+)]\(\s*([^\s)]+)\s*\)|\[([^\]]+:\d+(?:-\d+)?)\]|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
+    let offset = 0;
+    for (const match of text.matchAll(token)) {
+      container.append(document.createTextNode(text.slice(offset, match.index)));
+      if (match[1]) {
+        const url = publishedFileUrl(match[2]);
+        if (isSafeLink(url)) {
+          const link = document.createElement('a'); link.href = url; link.textContent = match[1]; container.append(link);
+        } else container.append(document.createTextNode(match[0]));
+      } else if (match[3]) {
+        const fixtureUrl = reviewFixtureUrl(match[3]);
+        if (fixtureUrl) {
+          const link = document.createElement('a'); link.href = fixtureUrl; link.textContent = match[3]; container.append(link);
+        } else container.append(document.createTextNode(match[0]));
+      } else if (match[4]) {
+        const fixtureUrl = reviewFixtureUrl(match[4]);
+        const code = document.createElement('code'); code.textContent = match[4];
+        if (fixtureUrl) {
+          const link = document.createElement('a'); link.href = fixtureUrl; link.append(code); container.append(link);
+        } else container.append(code);
+      } else if (match[5]) {
+        const strong = document.createElement('strong'); appendMarkdownInline(strong, match[5]); container.append(strong);
+      } else {
+        const emphasis = document.createElement('em'); emphasis.textContent = match[6]; container.append(emphasis);
+      }
+      offset = match.index + match[0].length;
+    }
+    container.append(document.createTextNode(text.slice(offset)));
+  }
+  function renderMarkdown(text) {
+    const output = document.createElement('div'); output.className = 'review-markdown';
+    const lines = text.split('\n');
+    const marker = line => line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
+    for (let index = 0; index < lines.length;) {
+      const line = lines[index]; const heading = line.match(/^#{1,6}\s+(.+)$/); const first = marker(line);
+      if (line.trim() === '') { index += 1; continue; }
+      if (heading) { const element = document.createElement('h5'); appendMarkdownInline(element, heading[1]); output.append(element); index += 1; continue; }
+      if (first) {
+        const indent = first[1].length; const ordered = /\d+\./.test(first[2]); const list = document.createElement(ordered ? 'ol' : 'ul');
+        while (index < lines.length) {
+          const item = marker(lines[index]);
+          if (!item || item[1].length !== indent || (/\d+\./.test(item[2]) !== ordered)) break;
+          const listItem = document.createElement('li'); appendMarkdownInline(listItem, item[3]); index += 1;
+          const continuation = []; const nested = [];
+          while (index < lines.length) {
+            const next = marker(lines[index]);
+            if (next && next[1].length === indent) break;
+            if (next && next[1].length > indent) { nested.push(next[3]); index += 1; continue; }
+            if (lines[index].trim() === '') { index += 1; continue; }
+            if (!next && /^\s+/.test(lines[index])) { continuation.push(lines[index].trim()); index += 1; continue; }
+            break;
+          }
+          if (continuation.length) { const paragraph = document.createElement('p'); appendMarkdownInline(paragraph, continuation.join(' ')); listItem.append(paragraph); }
+          if (nested.length) { const child = document.createElement('ul'); for (const value of nested) { const childItem = document.createElement('li'); appendMarkdownInline(childItem, value); child.append(childItem); } listItem.append(child); }
+          list.append(listItem);
+        }
+        output.append(list); continue;
+      }
+      const paragraph = [];
+      while (index < lines.length && lines[index].trim() !== '' && !/^#{1,6}\s+/.test(lines[index]) && !marker(lines[index])) paragraph.push(lines[index++]);
+      const element = document.createElement('p'); appendMarkdownInline(element, paragraph.join(' ')); output.append(element);
+    }
+    return output;
+  }
+  function findingBlocks(text) {
+    const lines = text.split('\n'); const starts = [];
+    for (let index = 0; index < lines.length; index++) if (/^- \*\*\[[^\]]+\]\([^\s)]+\)/.test(lines[index])) starts.push(index);
+    return starts.map((start, index) => {
+      const block = lines.slice(start, starts[index + 1] ?? lines.length);
+      const title = block[0].replace(/^- \*\*/, '').replace(/\*\*\s*$/, '');
+      const fields = {};
+      for (const field of ['Evidence', 'Consequence', 'Correction']) {
+        const line = block.find(value => new RegExp(`^  - \\*\\*${field}:\\*\\*`).test(value));
+        if (line) fields[field] = line.replace(new RegExp(`^  - \\*\\*${field}:\\*\\*\\s*`), '');
+      }
+      return {title, fields};
+    });
+  }
+  function baseFindings(text) { return text.split('\n').filter(line => /^- /.test(line)).map(line => line.slice(2)); }
+  function baseFindingCount(text) { return baseFindings(text).length; }
+  function renderFindingCards(findings) {
+    const output = document.createElement('div'); output.className = 'finding-cards';
+    for (const finding of findings) {
+      const card = document.createElement('details'); card.className = 'finding-card';
+      const title = document.createElement('summary'); appendMarkdownInline(title, finding.title); card.append(title);
+      for (const field of ['Evidence', 'Consequence', 'Correction']) {
+        const value = document.createElement('p'); value.className = `finding-field ${field.toLowerCase()}`;
+        const label = document.createElement('strong'); label.textContent = `${field}:`; value.append(label);
+        appendMarkdownInline(value, finding.fields[field]); card.append(value);
+      }
+      output.append(card);
+    }
+    return output;
+  }
+  function renderBaseFindingCards(findings) {
+    const output = document.createElement('div'); output.className = 'finding-cards';
+    for (const finding of findings) {
+      const card = document.createElement('details'); card.className = 'finding-card';
+      const title = document.createElement('summary'); appendMarkdownInline(title, finding); card.append(title);
+      const captured = document.createElement('p'); captured.className = 'finding-field';
+      const label = document.createElement('strong'); label.textContent = 'Captured finding:'; captured.append(label);
+      appendMarkdownInline(captured, finding); card.append(captured); output.append(card);
+    }
+    return output;
+  }
+  function reviewSummary(base, cat, correspondence) {
+    const summary = document.createElement('div'); summary.className = 'review-summary';
+    const catFindings = findingBlocks(cat);
+    const baseFindingsList = baseFindings(base);
+    summary.append(document.createTextNode(`Base: ${baseFindingCount(base)} findings · CAT specialist: ${catFindings.length} findings`));
+    if (baseFindingsList.length || catFindings.length) {
+      const list = document.createElement('ul');
+      for (const finding of baseFindingsList) {
+        const item = document.createElement('li'); const label = document.createElement('span'); label.className = 'summary-label';
+        label.textContent = 'Base: '; item.append(label); appendMarkdownInline(item, finding); list.append(item);
+      }
+      for (const [index, finding] of catFindings.entries()) {
+        const only = correspondence[String(index + 1)] === undefined;
+        const item = document.createElement('li'); if (only) item.className = 'cat-only';
+        item.append(document.createTextNode(only ? 'Additional finding: ' : 'Also found in Base: '));
+        appendMarkdownInline(item, finding.title); list.append(item);
+      }
+      summary.append(list);
+    }
+    return summary;
+  }
+  function renderReview(harness, category) {
+    const card = document.createElement('article');
+    card.className = 'review-card';
+    card.dataset.harnessOutput = harness;
+    card.dataset.reviewCategory = category;
+    const title = document.createElement('h3'); title.textContent = `${category} review · ${harness === 'codex' ? 'Codex' : 'Claude'}`;
+    const focus = document.createElement('p'); focus.className = 'review-focus';
+    const focusLabel = document.createElement('strong'); focusLabel.textContent = 'Focus: ';
+    focus.append(focusLabel, reviewFocuses[category]);
+    const base = window.catReviewCaptures?.[selectedLanguage]?.[harness]?.[category]?.base ?? 'Capture unavailable: the embedded raw response is missing.';
+    const cat = window.catReviewCaptures?.[selectedLanguage]?.[harness]?.[category]?.cat ?? 'Capture unavailable: the embedded raw response is missing.';
+    const panes = document.createElement('div'); panes.className = 'review-panes';
+    for (const [kind, label] of [['base', 'Without CAT · general review'], ['cat', `With CAT · ${category} specialist`]]) {
+      const pane = document.createElement('section'); pane.className = `review-pane ${kind}`;
+      const heading = document.createElement('h4'); heading.textContent = label;
+      const response = kind === 'base' ? base : cat;
+      const findings = findingBlocks(response);
+      const baseCards = kind === 'base' ? baseFindings(response) : [];
+      pane.append(heading, findings.length ? renderFindingCards(findings) : baseCards.length ? renderBaseFindingCards(baseCards) : renderMarkdown(response)); panes.append(pane);
+    }
+    const correspondence = window.catReviewCorrespondence?.[selectedLanguage]?.[harness]?.[category] ?? {};
+    card.append(title, focus, reviewSummary(base, cat, correspondence), panes); reviewResults.append(card); reviewCards.push(card);
+  }
+  function renderReviews() {
+    if (!reviewResults) return;
+    reviewResults.replaceChildren();
+    reviewCards.length = 0;
+    renderReview(document.body.dataset.harness ?? 'codex', currentReviewCategory);
+  }
+  for (const category of reviewCategories) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = category;
+    button.addEventListener('click', () => selectReviewCategory(category));
+    reviewPicker.append(button); reviewButtons.push(button);
+  }
+  for (const button of document.querySelectorAll('[data-review-view]')) button.addEventListener('click', () => selectReviewView(button.dataset.reviewView));
+  const query = new URLSearchParams(window.location.search);
+  const initialCategory = query.get('review');
+  const initialView = query.get('reviewView');
+  selectHarness(document.body.dataset.harness, false);
+  selectLanguage(document.body.dataset.language, false);
+  document.body.classList.add('source-examples-ready');
+  selectReviewCategory(reviewCategories.includes(initialCategory) ? initialCategory : reviewCategories[0], false);
+  selectReviewView(['base', 'cat', 'both'].includes(initialView) ? initialView : 'both', false);
+
+  function initializeSourceComparison(comparison) {
+    if (comparison.dataset.sourceComparisonInitialized === 'true') return;
+    comparison.dataset.sourceComparisonInitialized = 'true';
+    const diff = comparison.querySelector('.full-diff');
+    const parsed = parseUnifiedDiff(diff);
+    const sourceView = comparison.querySelector('.source-view');
+    const basePane = renderPane(`Base · ${parsed.baseName}`, 'base', parsed.rows);
+    const catPane = renderPane(`CAT · ${parsed.catName}`, 'cat', parsed.rows);
+    sourceView.className = 'source-view side-by-side';
+    sourceView.append(basePane, catPane);
+
+    let syncing = false;
+    for (const [source, target] of [[basePane, catPane], [catPane, basePane]]) {
+      source.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true;
+        target.scrollTop = source.scrollTop;
+        syncing = false;
+      });
+    }
+
+    const changes = [...sourceView.querySelectorAll('.source-pane:first-child [data-change]')];
+    comparison.querySelector('.comparison-count').textContent = `${changes.length} changed line groups`;
+    const fragment = document.createDocumentFragment();
+    for (const line of diff.textContent.split('\n')) {
+      const rendered = document.createElement('span');
+      rendered.className = 'diff-line';
+      if (line.startsWith('+')) rendered.classList.add('diff-added');
+      else if (line.startsWith('-')) rendered.classList.add('diff-removed');
+      rendered.textContent = line;
+      fragment.append(rendered);
+    }
+    diff.replaceChildren(fragment);
+  }
+
+  function selectComparisonView(button) {
+    const comparison = button.closest('.capture');
+    if (!comparison) return;
+    const split = button.dataset.comparisonView === 'split';
+    const sourceView = comparison.querySelector('.source-view');
+    const diff = comparison.querySelector('.unified-diff');
+    if (!sourceView || !diff) return;
+    sourceView.hidden = !split;
+    diff.hidden = split;
+    for (const candidate of comparison.querySelectorAll('[data-comparison-view]')) {
+      candidate.setAttribute('aria-pressed', String(candidate === button));
+    }
+  }
+
+  for (const comparison of document.querySelectorAll('.capture:not(.terminal-capture)')) initializeSourceComparison(comparison);
+</script>
+</body>
+</html>

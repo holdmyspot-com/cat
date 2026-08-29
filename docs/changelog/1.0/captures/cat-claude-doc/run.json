@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "mslek02g-90h6wgyeot",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 17,
+  "ownerStartedAt": "2026-08-09T06:09:12.640Z",
+  "nativePid": 1023,
+  "nativeStartedAt": "2026-08-09T06:09:15.790Z",
+  "createdAt": "2026-08-09T06:09:13.064670211Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/.cat/temp/changelog-refresh.eNgvrg/doc-cat-claude/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --settings {\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"allowUnsandboxedCommands\":false,\"credentials\":{\"envVars\":[{\"name\":\"ANTHROPIC_API_KEY\",\"mode\":\"deny\"},{\"name\":\"ANTHROPIC_AUTH_TOKEN\",\"mode\":\"deny\"},{\"name\":\"CLAUDE_CODE_OAUTH_TOKEN\",\"mode\":\"deny\"}]}}} <redacted> /home/gili/cat/worktrees/v1.0/.cat/temp/runner-runs/claude/mslek02g-90h6wgyeot/home/plugins/cat-marketplace/plugins/cat --model sonnet",
+  "startedAt": "2026-08-09T06:09:16.008141272Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-09T06:10:25.409320839Z",
+  "diagnostic": ""
+}

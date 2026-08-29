@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "codex",
+  "id": "msp72a85-b662u5bp6p",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 272772,
+  "ownerStartedAt": "2026-08-11T21:50:33.170Z",
+  "nativePid": 275239,
+  "nativeStartedAt": "2026-08-11T21:50:38.950Z",
+  "createdAt": "2026-08-11T21:50:33.845549621Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/codex",
+  "projectPath": "/home/gili/cat/worktrees/v1.0/docs/changelog/1.0/captures/reviews/languages/go/runs/codex-cat-architecture/project",
+  "transport": "codex-app-server",
+  "nativeCommand": "codex app-server --stdio --enable hooks",
+  "startedAt": "2026-08-11T21:50:39.200107499Z",
+  "turnNumber": 2,
+  "exitCode": 0,
+  "finishedAt": "2026-08-11T21:53:22.638652865Z",
+  "diagnostic": ""
+}

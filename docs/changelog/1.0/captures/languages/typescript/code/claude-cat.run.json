@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "catVersion": "1.0",
+  "harness": "claude",
+  "id": "msrway06-suxd1iz72",
+  "state": "completed",
+  "phase": "completed",
+  "ownerPid": 15866,
+  "ownerStartedAt": "2026-08-13T19:12:39.440Z",
+  "nativePid": 16229,
+  "nativeStartedAt": "2026-08-13T19:12:42.260Z",
+  "createdAt": "2026-08-13T19:12:40.631231409Z",
+  "artifactPath": "/home/gili/cat/worktrees/v1.0/client/distribution/target/runtime/claude",
+  "projectPath": "/tmp/.cat/claude/changelog-language-captures/typescript-code-claude-cat.miEGWb/project",
+  "transport": "claude-stream-json",
+  "nativeCommand": "claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose --include-partial-messages --no-session-persistence --add-dir /tmp/.cat/claude/changelog-language-captures/typescript-code-claude-cat.miEGWb/claude/msrway06-suxd1iz72/home/.claude/plugins/cat-marketplace/plugins/cat --add-dir /tmp/.cat/claude/changelog-language-captures/typescript-code-claude-cat.miEGWb/claude/msrway06-suxd1iz72/home/.claude/projects",
+  "startedAt": "2026-08-13T19:12:44.841353084Z",
+  "turnNumber": 1,
+  "exitCode": 0,
+  "finishedAt": "2026-08-13T19:15:48.921679447Z",
+  "diagnostic": ""
+}
