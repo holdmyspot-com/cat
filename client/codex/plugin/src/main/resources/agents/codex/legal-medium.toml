@@ -1,0 +1,10 @@
+name = "cat-legal-medium"
+nickname_candidates = ["legal-medium"]
+description = "Medium-tier CAT Legal reviewer."
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: medium.
+<!-- cat:include ../common/stakeholder-legal.md -->
+'''

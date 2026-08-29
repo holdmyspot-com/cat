@@ -1,0 +1,10 @@
+name = "cat-requirements-high"
+nickname_candidates = ["requirements-high"]
+description = "High-tier CAT Requirements reviewer."
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: high.
+<!-- cat:include ../common/stakeholder-requirements.md -->
+'''

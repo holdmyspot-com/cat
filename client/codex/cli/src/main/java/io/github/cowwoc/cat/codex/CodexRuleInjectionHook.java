@@ -58,12 +58,13 @@ final class CodexRuleInjectionHook
 				throw new IOException(eventName + " input must be a JSON object");
 			Path projectDir = scope.projectDir(event, workingDirectory);
 			Path pluginRoot = scope.pluginRoot();
+			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String context;
 			if (eventName.equals("SubagentStart"))
-				context = loader.loadForSubagent(pluginRoot, projectDir, "codex", subagentType(event));
+				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "codex", subagentType(event));
 			else
-				context = loader.loadForMainAgent(pluginRoot, projectDir, "codex");
+				context = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "codex");
 			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 				"additionalContext", context))));
 			output.write('\n');

@@ -1,0 +1,10 @@
+name = "cat-plan-review-medium"
+nickname_candidates = ["plan-review-medium"]
+description = "Medium-tier CAT Plan Review reviewer."
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: medium.
+<!-- cat:include ../common/plan-review.md -->
+'''

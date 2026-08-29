@@ -1,0 +1,10 @@
+name = "cat-plan-builder-high"
+nickname_candidates = ["plan-builder-high"]
+description = "High-tier CAT Plan Builder reviewer."
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: high.
+<!-- cat:include ../common/plan-builder.md -->
+'''

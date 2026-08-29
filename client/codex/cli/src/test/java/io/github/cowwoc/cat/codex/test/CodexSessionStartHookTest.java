@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -95,6 +96,29 @@ public final class CodexSessionStartHookTest
 				isLessThan(context.indexOf("project common"));
 			requireThat(context.indexOf("project common"), "projectCommonIndex").
 				isLessThan(context.indexOf("project codex"));
+		}
+	}
+
+	/**
+	 * Verifies Codex injects a user rule derived from its native configuration directory without placing it in a project.
+	 */
+	@Test
+	public void injectsUserRulesOutsideTheProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userHome = cleanup.add(Files.createTempDirectory("cat-user-home-"));
+			Path codexHome = userHome.resolve(".codex");
+			Files.writeString(Files.createDirectories(userHome.resolve(".cat/rules/common")).resolve("personal.md"),
+				"personal guidance");
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT", plugin.toString(),
+				"CODEX_HOME", codexHome.toString(), "HOME", userHome.toString()), Path.of("."));
+
+			requireThat(context(result), "context").contains("personal guidance");
+			requireThat(result.error(), "error").isEmpty();
 		}
 	}
 
@@ -281,8 +305,10 @@ public final class CodexSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		Map<String, String> nativeEnvironment = new HashMap<>(environment);
+		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), environment, workingDirectory);
+			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

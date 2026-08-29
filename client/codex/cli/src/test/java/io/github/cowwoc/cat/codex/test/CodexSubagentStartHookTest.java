@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -63,8 +64,10 @@ public final class CodexSubagentStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		Map<String, String> nativeEnvironment = new HashMap<>(environment);
+		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), environment, workingDirectory);
+			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

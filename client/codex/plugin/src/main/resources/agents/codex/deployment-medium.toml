@@ -1,0 +1,10 @@
+name = "cat-deployment-medium"
+nickname_candidates = ["deployment-medium"]
+description = "Medium-tier CAT Deployment reviewer."
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: medium.
+<!-- cat:include ../common/stakeholder-deployment.md -->
+'''

@@ -1,0 +1,10 @@
+name = "cat-design-low"
+nickname_candidates = ["design-low"]
+description = "Low-tier CAT Design reviewer."
+model = "gpt-6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: low.
+<!-- cat:include ../common/stakeholder-design.md -->
+'''

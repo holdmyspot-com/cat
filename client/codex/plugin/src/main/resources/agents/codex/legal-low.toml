@@ -1,0 +1,10 @@
+name = "cat-legal-low"
+nickname_candidates = ["legal-low"]
+description = "Low-tier CAT Legal reviewer."
+model = "gpt-6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: low.
+<!-- cat:include ../common/stakeholder-legal.md -->
+'''
