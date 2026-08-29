@@ -14,6 +14,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 final class CodexHookScope implements AutoCloseable
 {
 	private final HookScope delegate;
+	private final Path userRulesRoot;
 
 	/**
 	 * Creates a scope from Codex's native hook environment.
@@ -28,8 +29,13 @@ final class CodexHookScope implements AutoCloseable
 			throw new IOException("Codex PLUGIN_ROOT is not set");
 
 		Path resolvedPluginRoot = Path.of(pluginRoot.strip()).toAbsolutePath().normalize();
+		String home = environment.get("HOME");
+		if (home == null || home.isBlank())
+			throw new IOException("Codex HOME is not set");
+		Path userHome = Path.of(home.strip()).toAbsolutePath().normalize();
 		validateCatVariables(environment, resolvedPluginRoot);
 		delegate = new HookScope(resolvedPluginRoot);
+		userRulesRoot = userHome.resolve(".cat/rules");
 	}
 
 	/**
@@ -82,6 +88,16 @@ final class CodexHookScope implements AutoCloseable
 	Path pluginRoot() throws IOException
 	{
 		return delegate.pluginRoot();
+	}
+
+	/**
+	 * Returns the current user's CAT rule directory derived from its native home directory.
+	 *
+	 * @return the normalized user-rule directory, which may not exist yet
+	 */
+	Path userRulesRoot()
+	{
+		return userRulesRoot;
 	}
 
 	/**

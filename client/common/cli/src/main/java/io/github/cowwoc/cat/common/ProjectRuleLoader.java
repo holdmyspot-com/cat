@@ -57,7 +57,25 @@ public final class ProjectRuleLoader
 	 */
 	public String loadForMainAgent(Path pluginRoot, Path projectRoot, String harness) throws IOException
 	{
-		return load(pluginRoot, projectRoot, harness, RuleAudience.primary());
+		return load(pluginRoot, null, projectRoot, harness, RuleAudience.primary());
+	}
+
+	/**
+	 * Loads all direct rules addressed to a harness's primary agent and their declared prerequisites.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @return the generated context
+	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, or {@code harness} are null
+	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	public String loadForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
+		throws IOException
+	{
+		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.primary());
 	}
 
 	/**
@@ -76,47 +94,86 @@ public final class ProjectRuleLoader
 	public String loadForSubagent(Path pluginRoot, Path projectRoot, String harness, String agentType) throws IOException
 	{
 		requireThat(agentType, "agentType").isNotNull();
-		return load(pluginRoot, projectRoot, harness, RuleAudience.subagent(agentType));
+		return load(pluginRoot, null, projectRoot, harness, RuleAudience.subagent(agentType));
+	}
+
+	/**
+	 * Loads all direct rules addressed to one harness subagent and their declared prerequisites.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @param agentType the harness subagent type, or blank when the host did not provide one
+	 * @return the generated context
+	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, {@code harness}, or {@code agentType}
+	 *         are null
+	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	public String loadForSubagent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness,
+		String agentType) throws IOException
+	{
+		requireThat(agentType, "agentType").isNotNull();
+		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.subagent(agentType));
 	}
 
 	/**
 	 * Loads all direct rules addressed to one recipient and their declared prerequisites.
 	 *
 	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
 	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
 	 * @param harness a non-blank lowercase harness identifier
 	 * @param audience the rule recipient
 	 * @return the generated context
 	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
 	 */
-	private String load(Path pluginRoot, Path projectRoot, String harness, RuleAudience audience) throws IOException
+	private String load(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness, RuleAudience audience)
+		throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		if (!harness.matches("[a-z][a-z0-9-]*"))
 			throw new IllegalArgumentException("Invalid CAT harness: " + harness);
 		List<Rule> rules = new ArrayList<>();
-		loadDirectory(pluginRoot, pluginRoot.resolve("rules/common"), RuleRoot.PLUGIN, audience, rules);
-		loadDirectory(pluginRoot, pluginRoot.resolve("rules").resolve(harness), RuleRoot.PLUGIN, audience, rules);
-		loadDirectory(projectRoot, projectRoot.resolve(".cat/rules/common"), RuleRoot.PROJECT, audience, rules);
-		loadDirectory(projectRoot, projectRoot.resolve(".cat/rules").resolve(harness), RuleRoot.PROJECT, audience, rules);
+		Path pluginRules = pluginRoot.resolve("rules");
+		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience, rules);
+		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN, audience, rules);
+		if (userRulesRoot != null)
+		{
+			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER, audience, rules);
+			loadDirectory(userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER, audience, rules);
+		}
+		Path projectRules = projectRoot.resolve(".cat/rules");
+		loadDirectory(projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT, audience, rules);
+		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT, audience, rules);
 		List<String> context = new ArrayList<>(ordered(rules).stream().map(Rule::context).toList());
-		String lazyDependencies = lazyDependencies(projectRoot, audience);
+		if (userRulesRoot != null)
+		{
+			String userLazyDependencies = lazyDependencies(userRulesRoot, userRulesRoot, RuleRoot.USER, audience);
+			if (!userLazyDependencies.isBlank())
+				context.add(userLazyDependencies);
+		}
+		String lazyDependencies = lazyDependencies(projectRoot, projectRules, RuleRoot.PROJECT, audience);
 		if (!lazyDependencies.isBlank())
 			context.add(lazyDependencies);
 		return String.join("\n\n---\n", context);
 	}
 
 	/**
-	 * Renders dependency-first lazy-loading instructions for project-local included rules.
+	 * Renders dependency-first lazy-loading instructions for one non-bundled rule source's included rules.
 	 *
-	 * @param projectRoot the project that owns the optional included rules
+	 * @param ownerRoot the directory that owns the source
+	 * @param ruleRoot the root that bounds the source's rule tree
+	 * @param root the source kind
 	 * @param audience the recipient whose routes are loaded
 	 * @return direct context for lazy dependency routes, or an empty string when none exist
 	 * @throws IOException if declared lazy-rule metadata is invalid or names an unavailable file
 	 */
-	private String lazyDependencies(Path projectRoot, RuleAudience audience) throws IOException
+	private String lazyDependencies(Path ownerRoot, Path ruleRoot, RuleRoot root, RuleAudience audience)
+		throws IOException
 	{
-		Path include = projectRoot.resolve(".cat/rules/include");
+		Path include = ruleRoot.resolve("include");
 		if (!Files.isDirectory(include, NOFOLLOW_LINKS))
 			return "";
 		List<String> routes = new ArrayList<>();
@@ -124,7 +181,7 @@ public final class ProjectRuleLoader
 		{
 			for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".md")).sorted().toList())
 			{
-				String path = relative(projectRoot, file);
+				String path = rulePath(ownerRoot, ruleRoot, root, file);
 				Frontmatter frontmatter = frontmatter(Files.readString(file, UTF_8), path);
 				if (!matches(frontmatter, path, audience))
 					continue;
@@ -134,12 +191,14 @@ public final class ProjectRuleLoader
 				{
 					Path resolved = file.getParent().resolve(dependency).normalize();
 					if (!Files.isRegularFile(resolved, NOFOLLOW_LINKS))
-						throw new IOException("Lazy rule dependency is not available: " + path + " depends on " + dependency);
+						throw new IOException("Lazy rule dependency is not available: " + displayPath(ownerRoot, root,
+							file) + " depends on " + dependency);
 					if (resolved.startsWith(include))
-						lazy.add(relative(projectRoot, resolved));
+						lazy.add(displayPath(ownerRoot, root, resolved));
 				}
 				if (!lazy.isEmpty())
-					routes.add("When lazy loading `" + path + "`, first lazy load `" + String.join("` and `", lazy) + "`.");
+					routes.add("When lazy loading `" + displayPath(ownerRoot, root, file) +
+						"`, first lazy load `" + String.join("` and `", lazy) + "`.");
 			}
 		}
 		if (routes.isEmpty())
@@ -152,34 +211,36 @@ public final class ProjectRuleLoader
 	/**
 	 * Loads one direct rule directory.
 	 *
-	 * @param projectRoot a non-null project root
+	 * @param ownerRoot a non-null rule-source owner directory
 	 * @param directory a non-null rule directory
-	 * @param root the source root that contains {@code directory}
+	 * @param ruleRoot the source root that bounds included rules
+	 * @param root the source kind that contains {@code directory}
 	 * @param audience the recipient whose rules are loaded
 	 * @param rules a non-null list of discovered rules
 	 * @throws IOException if the directory is not a real directory or one of its rules is invalid
 	 */
-	private void loadDirectory(Path projectRoot, Path directory, RuleRoot root, RuleAudience audience, List<Rule> rules)
+	private void loadDirectory(Path ownerRoot, Path directory, Path ruleRoot, RuleRoot root, RuleAudience audience,
+		List<Rule> rules)
 		throws IOException
 	{
 		if (!Files.exists(directory, NOFOLLOW_LINKS))
 			return;
 		if (Files.isSymbolicLink(directory))
 		{
-			throw new IOException("CAT rule directory is a symbolic link: " + relative(projectRoot, directory) +
-				". Replace the symbolic link with a real directory inside the project.");
+			throw new IOException("CAT rule directory is a symbolic link: " + displayPath(ownerRoot, root, directory) +
+				". Replace the symbolic link with a real directory inside the rule root.");
 		}
 		if (!Files.isDirectory(directory, NOFOLLOW_LINKS))
 		{
-			throw new IOException("CAT rule directory is not a directory: " + relative(projectRoot, directory) +
-				". Replace it with a directory containing CAT rule files.");
+			throw new IOException("CAT rule directory is not a directory: " + displayPath(ownerRoot, root, directory) +
+				". Replace it with a directory containing CAT rule files inside the rule root.");
 		}
 		try (Stream<Path> entries = Files.list(directory))
 		{
 			for (Path file : entries.filter(path -> path.getFileName().toString().endsWith(".md")).sorted(
 				Comparator.comparing(this::ruleOrder).thenComparing(path -> path.getFileName().toString())).toList())
 			{
-				Rule rule = render(projectRoot, file, root, audience);
+				Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
 				if (rule != null)
 					rules.add(rule);
 			}
@@ -203,29 +264,32 @@ public final class ProjectRuleLoader
 	/**
 	 * Renders one rule as immediate or lazy context.
 	 *
-	 * @param projectRoot a non-null project root
+	 * @param ownerRoot a non-null rule-source owner directory
 	 * @param file a non-null rule file
-	 * @param root the source root that contains {@code file}
+	 * @param ruleRoot the source root that bounds included rules
+	 * @param root the source kind that contains {@code file}
 	 * @param audience the recipient whose rules are loaded
 	 * @return the rule's dependency metadata and context block
 	 * @throws IOException if the rule is not a regular file, is too large, or has invalid content
 	 */
-	private Rule render(Path projectRoot, Path file, RuleRoot root, RuleAudience audience) throws IOException
+	private Rule render(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root, RuleAudience audience)
+		throws IOException
 	{
 		if (Files.isSymbolicLink(file))
 		{
-			throw new IOException("CAT rule must be a regular file, not a symbolic link: " + relative(projectRoot, file) +
-				". Replace the symbolic link with a regular Markdown rule file inside the project.");
+			throw new IOException("CAT rule must be a regular file, not a symbolic link: " + displayPath(ownerRoot, root,
+				file) +
+				". Replace the symbolic link with a regular Markdown rule file inside the rule root.");
 		}
 		if (!Files.isRegularFile(file, NOFOLLOW_LINKS))
 		{
-			throw new IOException("CAT rule must be a regular file: " + relative(projectRoot, file) +
-				". Replace it with a regular Markdown rule file inside the project.");
+			throw new IOException("CAT rule must be a regular file: " + displayPath(ownerRoot, root, file) +
+				". Replace it with a regular Markdown rule file inside the rule root.");
 		}
 		if (Files.size(file) > MAXIMUM_RULE_BYTES)
-			throw new IOException("CAT rule is too large: " + relative(projectRoot, file));
+			throw new IOException("CAT rule is too large: " + displayPath(ownerRoot, root, file));
 		String content = Files.readString(file, UTF_8);
-		String path = relative(projectRoot, file);
+		String path = rulePath(ownerRoot, ruleRoot, root, file);
 		Frontmatter frontmatter = frontmatter(content, path);
 		if (!matches(frontmatter, path, audience))
 			return null;
@@ -234,14 +298,11 @@ public final class ProjectRuleLoader
 			paths = frontmatter.metadata().get("paths");
 		if (paths == null)
 		{
-			Path ruleRoot = projectRoot.resolve(".cat/rules");
-			if (root == RuleRoot.PLUGIN)
-				ruleRoot = projectRoot.resolve("rules");
 			String body = content;
 			if (frontmatter != null)
 				body = frontmatter.body();
-			return new Rule(root, path, true, dependencies(frontmatter, path), injectedBody(null,
-				expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file, ruleRoot));
+			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
+				injectedBody(null, expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file, ruleRoot));
 		}
 		if (!paths.isArray())
 			throw new IOException("Invalid paths frontmatter: " + path);
@@ -254,7 +315,8 @@ public final class ProjectRuleLoader
 				throw new IOException("Invalid paths frontmatter: " + path);
 			globs.add(glob.asString());
 		}
-		return new Rule(root, path, false, List.of(), "Load `" + path +
+		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), "Load `" +
+			displayPath(ownerRoot, root, file) +
 			"` only when an accessed file matches " + globs + ".");
 	}
 
@@ -298,14 +360,14 @@ public final class ProjectRuleLoader
 		if (visited.contains(rule.path()))
 			return;
 		if (!visiting.add(rule.path()))
-			throw new IOException("Cyclic rule dependency: " + rule.path());
+			throw new IOException("Cyclic rule dependency: " + rule.displayPath());
 		for (String dependency : rule.dependencies())
 		{
 			String dependencyPath = resolveDependency(rule, dependency);
 			Rule prerequisite = byPath.get(dependencyPath);
 			if (prerequisite == null)
 			{
-				throw new IOException("Rule dependency is not available: " + rule.path() + " depends on " +
+				throw new IOException("Rule dependency is not available: " + rule.displayPath() + " depends on " +
 					dependency);
 			}
 			addWithDependencies(prerequisite, byPath, visiting, visited, result);
@@ -327,12 +389,12 @@ public final class ProjectRuleLoader
 	{
 		Path declaredPath = Path.of(dependency);
 		if (declaredPath.isAbsolute())
-			throw new IOException("Rule dependency must be relative: " + rule.path() + " depends on " + dependency);
+			throw new IOException("Rule dependency must be relative: " + rule.displayPath() + " depends on " + dependency);
 		Path resolvedPath = Path.of(rule.path()).getParent().resolve(declaredPath).normalize();
 		String resolved = resolvedPath.toString().replace(resolvedPath.getFileSystem().getSeparator(), "/");
 		if (!resolved.equals(rule.root().path()) && !resolved.startsWith(rule.root().path() + "/"))
 		{
-			throw new IOException("Rule dependency leaves its source root: " + rule.path() + " depends on " +
+			throw new IOException("Rule dependency leaves its source root: " + rule.displayPath() + " depends on " +
 				dependency);
 		}
 		return resolved;
@@ -543,15 +605,53 @@ public final class ProjectRuleLoader
 	}
 
 	/**
-	 * Returns a slash-separated project-relative path.
+	 * Returns a slash-separated path relative to one source root.
 	 *
-	 * @param projectRoot a non-null project root
-	 * @param path a non-null path below the project root
-	 * @return the project-relative path
+	 * @param root a non-null source root
+	 * @param path a non-null path below the source root
+	 * @return the source-root-relative path
 	 */
-	private static String relative(Path projectRoot, Path path)
+	private static String relative(Path root, Path path)
 	{
-		return projectRoot.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+		return root.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+	}
+
+	/**
+	 * Returns the internal source-root-relative identity of a rule.
+	 *
+	 * @param ownerRoot the directory that owns this rule source
+	 * @param ruleRoot the root that bounds this source's rule tree
+	 * @param root the source kind
+	 * @param file the rule file
+	 * @return a source-unique rule identity
+	 */
+	private static String rulePath(Path ownerRoot, Path ruleRoot, RuleRoot root, Path file)
+	{
+		assert ownerRoot != null;
+		assert ruleRoot != null;
+		assert root != null;
+		assert file != null;
+		if (root == RuleRoot.USER)
+			return root.path() + "/" + relative(ruleRoot, file);
+		return relative(ownerRoot, file);
+	}
+
+	/**
+	 * Returns the path a recipient can use to read a rule.
+	 *
+	 * @param ownerRoot the directory that owns this rule source
+	 * @param root the source kind
+	 * @param file the rule file
+	 * @return a reader-visible path
+	 */
+	private static String displayPath(Path ownerRoot, RuleRoot root, Path file)
+	{
+		assert ownerRoot != null;
+		assert root != null;
+		assert file != null;
+		if (root == RuleRoot.USER)
+			return file.toAbsolutePath().normalize().toString();
+		return relative(ownerRoot, file);
 	}
 
 	private record Frontmatter(JsonNode metadata, String body)
@@ -591,6 +691,7 @@ public final class ProjectRuleLoader
 	private enum RuleRoot
 	{
 		PLUGIN("rules"),
+		USER("user-rules"),
 		PROJECT(".cat/rules");
 
 		private final String path;
@@ -616,7 +717,8 @@ public final class ProjectRuleLoader
 		}
 	}
 
-	private record Rule(RuleRoot root, String path, boolean direct, List<String> dependencies, String context)
+	private record Rule(RuleRoot root, String path, String displayPath, boolean direct, List<String> dependencies,
+		String context)
 	{
 	}
 }

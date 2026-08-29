@@ -24,14 +24,13 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies CAT is removed before it is reinstalled from this run's marketplace.
+	 * Verifies CAT is installed from this run's marketplace into the fresh isolated home.
 	 */
 	@Test
 	public void reinstallsCatFromTheRunMarketplace()
 	{
 		requireThat(CodexRunner.pluginSetupCommands("codex", Path.of("marketplace")), "commands").isEqualTo(List.of(
 			List.of("codex", "plugin", "marketplace", "add", "marketplace"),
-			List.of("codex", "plugin", "remove", "cat@cat"),
 			List.of("codex", "plugin", "add", "cat@cat")));
 	}
 }

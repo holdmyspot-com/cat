@@ -18,8 +18,10 @@ public final class CodexAppServerProtocol
 	 */
 	public static String initialize()
 	{
+		// Validator runs supply runtimeWorkspaceRoots so Codex can preserve the executor evidence as read-only. That
+		// app-server field is gated behind this explicitly negotiated capability.
 		return "{\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"cat-runner\",\"version\":\"" +
-			PluginInfo.CAT_VERSION + "\"}}}\n";
+			PluginInfo.CAT_VERSION + "\"},\"capabilities\":{\"experimentalApi\":true}}}\n";
 	}
 
 	/**
@@ -41,17 +43,57 @@ public final class CodexAppServerProtocol
 	 */
 	public static String threadStart(Path workingDirectory, String model)
 	{
+		return threadStart(workingDirectory, model, "");
+	}
+
+	/**
+	 * Frames a request that creates one isolated thread with an optional direct developer contract.
+	 *
+	 * @param workingDirectory the absolute copied-project directory
+	 * @param model the optional model name
+	 * @param developerInstructions the optional direct developer contract
+	 * @return the JSON-RPC request line
+	 */
+	public static String threadStart(Path workingDirectory, String model, String developerInstructions)
+	{
+		return threadStart(workingDirectory, model, developerInstructions, "");
+	}
+
+	/**
+	 * Frames a request that creates one isolated thread with an optional named permission profile.
+	 *
+	 * @param workingDirectory the absolute copied-project directory
+	 * @param model the optional model name
+	 * @param developerInstructions the optional direct developer contract
+	 * @param permissionProfile the optional named Codex permission profile
+	 * @return the JSON-RPC request line
+	 */
+	public static String threadStart(Path workingDirectory, String model, String developerInstructions,
+		String permissionProfile)
+	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
+		requireThat(developerInstructions, "developerInstructions").isNotNull();
+		requireThat(permissionProfile, "permissionProfile").isNotNull();
 		if (!workingDirectory.isAbsolute())
 			throw new IllegalArgumentException("workingDirectory must be absolute");
 		String modelParameter = "";
 		if (!model.isBlank())
 			modelParameter = ",\"model\":\"" + escape(model) + "\"";
+		String developerInstructionsParameter = "";
+		if (!developerInstructions.isBlank())
+			developerInstructionsParameter = ",\"developerInstructions\":\"" + escape(developerInstructions) + "\"";
+		String permissionParameter = "\"sandbox\":\"workspace-write\"";
+		if (!permissionProfile.isBlank())
+		{
+			// Validators must inspect executor evidence without being able to alter the evidence used to justify a verdict.
+			permissionParameter = "\"permissions\":\"" + escape(permissionProfile) +
+				"\",\"runtimeWorkspaceRoots\":[\"" + escape(workingDirectory.toString()) + "\"]";
+		}
 		return "{\"id\":2,\"method\":\"thread/start\",\"params\":{\"cwd\":\"" +
-			escape(workingDirectory.toString()) + "\",\"sandbox\":\"workspace-write\",\"approvalPolicy\":\"never\"," +
+			escape(workingDirectory.toString()) + "\"," + permissionParameter + ",\"approvalPolicy\":\"never\"," +
 			"\"sessionStartSource\":\"startup\"" +
-			modelParameter + "}}\n";
+			modelParameter + developerInstructionsParameter + "}}\n";
 	}
 
 	/**
@@ -85,12 +127,30 @@ public final class CodexAppServerProtocol
 	 */
 	public static String turnStart(long requestId, String threadId, String prompt)
 	{
+		return turnStart(requestId, threadId, prompt, "");
+	}
+
+	/**
+	 * Frames a text turn with an optional reasoning effort.
+	 *
+	 * @param requestId the positive JSON-RPC request identifier
+	 * @param threadId the non-blank app-server thread identifier
+	 * @param prompt the non-blank user prompt
+	 * @param effort the optional reasoning effort
+	 * @return the JSON-RPC request line
+	 */
+	public static String turnStart(long requestId, String threadId, String prompt, String effort)
+	{
 		requireThat(requestId, "requestId").isPositive();
 		requireThat(threadId, "threadId").isNotBlank();
 		requireThat(prompt, "prompt").isNotBlank();
+		requireThat(effort, "effort").isNotNull();
+		String effortParameter = "";
+		if (!effort.isBlank())
+			effortParameter = ",\"effort\":\"" + escape(effort) + "\"";
 		return "{\"id\":" + requestId + ",\"method\":\"turn/start\",\"params\":{\"threadId\":\"" +
 			escape(threadId) + "\",\"input\":[{\"type\":\"text\",\"text\":\"" + escape(prompt) +
-			"\"}]}}\n";
+			"\"}]" + effortParameter + "}}\n";
 	}
 
 	/**

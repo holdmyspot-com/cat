@@ -123,6 +123,84 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies a nested Codex shell uses the verified npm cache instead of a default cache that its sandbox may expose
+	 * read-only.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void configuresNestedNpmCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-npm-cache-"));
+			Path cache = Files.createDirectories(root.resolve("npm-cache"));
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache);
+
+			String configuration = Files.readString(destination);
+			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").contains(
+				"writable_roots = [\"" + cache + "\"]").contains("[shell_environment_policy.set]").contains(
+				"NPM_CONFIG_CACHE = \"" + cache + "\"");
+		}
+	}
+
+	/**
+	 * Verifies an isolated Codex process retains the parent's CAT filesystem permission policy.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void copiesCatPermissionPolicy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-permissions-"));
+			Path source = root.resolve("host.toml");
+			Path destination = root.resolve("isolated/config.toml");
+			Files.writeString(source, """
+				[permissions.cat]
+				extends = ":workspace"
+				[permissions.cat.filesystem]
+				"/cache" = "write"
+				[permissions.cat.filesystem.":workspace_roots"]
+				"." = "write"
+				[permissions.other]
+				"/secret" = "write"
+				""");
+
+			CodexConnectionConfiguration.copy(source, destination);
+
+			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat]").
+				contains("\"/cache\" = \"write\"").contains("[permissions.cat.filesystem.\":workspace_roots\"]").
+				doesNotContain("[permissions.other]");
+		}
+	}
+
+	/**
+	 * Verifies a validator profile can inspect immutable executor evidence without making it writable.
+	 */
+	@Test
+	public void addsReadOnlyEvidenceProfile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-validator-permissions-"));
+			Path destination = root.resolve("isolated/config.toml");
+
+			Files.createDirectories(destination.getParent());
+			Files.writeString(destination, "[permissions.cat]\nextends = \":workspace\"\n");
+			Path evidence = Files.createDirectories(root.resolve("evidence"));
+			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
+
+			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
+				contains("extends = \"cat\"").contains("\"" + evidence + "\" = \"read\"").
+				doesNotContain("\"" + evidence + "\" = \"write\"");
+		}
+	}
+
+	/**
 	 * Verifies only CAT's approved context-hook hashes are copied into an isolated configuration.
 	 *
 	 * @throws IOException if fixture I/O fails

@@ -17,7 +17,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -61,12 +64,14 @@ public final class CodexRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
-			HarnessOneShotOptions options = HarnessOneShotOptions.parse(args, "codex", scope.catTemp());
+			String agentName = agentName(args);
+			HarnessOneShotOptions options = HarnessOneShotOptions.parse(withoutAgent(args), "codex", scope.catTemp());
+			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			String prompt = options.prompt();
 			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
-				options.executable(), environment, options.model(), options.installCat()), manager, prompt, options.output(),
-				options.keepRun());
+				options.executable(), environment, options.model(), options.installCat(), agent), manager, prompt,
+				options.output(), options.keepRun());
 		}
 	}
 
@@ -110,11 +115,13 @@ public final class CodexRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
-			HarnessRunnerOptions options = HarnessRunnerOptions.parseServe(args, "codex", scope.catTemp());
+			String agentName = agentName(args);
+			HarnessRunnerOptions options = HarnessRunnerOptions.parseServe(withoutAgent(args), "codex", scope.catTemp());
+			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
-				options.executable(), environment, options.model(), options.installCat()), manager, options.keepRun(), input,
-				output);
+				options.executable(), environment, options.model(), options.installCat(), agent), manager, options.keepRun(),
+				input, output);
 		}
 	}
 
@@ -148,5 +155,64 @@ public final class CodexRunnerCli
 	{
 		assert args != null;
 		return args.length > 0 && args[0].equals("run");
+	}
+
+	/**
+	 * Extracts the optional direct CAT agent name from one runner command.
+	 *
+	 * @param args the supplied command arguments
+	 * @return the selected agent name, or an empty value
+	 */
+	private static String agentName(String[] args)
+	{
+		assert args != null;
+		for (int index = 1; index < args.length; ++index)
+		{
+			if (!args[index].equals("--agent"))
+				continue;
+			if (index + 1 == args.length || args[index + 1].startsWith("--"))
+				throw new IllegalArgumentException("Missing value for --agent");
+			return args[index + 1];
+		}
+		return "";
+	}
+
+	/**
+	 * Loads the requested CAT agent when one was selected.
+	 *
+	 * @param artifact the complete Codex artifact
+	 * @param agentName the optional agent name
+	 * @return the agent definition, or {@code null} when no agent was selected
+	 * @throws IOException if the selected agent cannot be loaded
+	 */
+	private static CodexAgentDefinition loadAgent(Path artifact, String agentName) throws IOException
+	{
+		assert artifact != null;
+		assert agentName != null;
+		if (agentName.isBlank())
+			return null;
+		return CodexAgentDefinition.load(artifact, agentName);
+	}
+
+	/**
+	 * Removes the Codex-only agent option before parsing the shared runner options.
+	 *
+	 * @param args the supplied command arguments
+	 * @return arguments accepted by the shared parser
+	 */
+	private static String[] withoutAgent(String[] args)
+	{
+		assert args != null;
+		List<String> result = new ArrayList<>(args.length);
+		for (int index = 0; index < args.length; ++index)
+		{
+			if (args[index].equals("--agent"))
+			{
+				index += 1;
+				continue;
+			}
+			result.add(args[index]);
+		}
+		return result.toArray(String[]::new);
 	}
 }

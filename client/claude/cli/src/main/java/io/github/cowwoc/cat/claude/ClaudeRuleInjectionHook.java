@@ -63,10 +63,11 @@ final class ClaudeRuleInjectionHook
 				throw new IOException(eventName + " input must be a JSON object");
 			Path projectDir = scope.projectDir(event, workingDirectory);
 			Path pluginRoot = scope.pluginRoot();
+			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
-			String rules = loader.loadForMainAgent(pluginRoot, projectDir, "claude");
+			String rules = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "claude");
 			if (eventName.equals("SubagentStart"))
-				rules = loader.loadForSubagent(pluginRoot, projectDir, "claude", subagentType(event));
+				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "claude", subagentType(event));
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
 				Path contextFile = ClaudeSessionContext.write(toolScope.catTemp(), event, eventName, rules);

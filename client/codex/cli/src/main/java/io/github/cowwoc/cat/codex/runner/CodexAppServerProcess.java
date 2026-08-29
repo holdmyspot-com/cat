@@ -34,6 +34,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	private final StringBuilder startupEvents = new StringBuilder();
 	private long nextRequestId = 3;
 	private String threadId;
+	private String effort = "";
 
 	/**
 	 * Wraps a started Codex app-server process.
@@ -64,14 +65,49 @@ public final class CodexAppServerProcess implements HarnessProcess
 	 */
 	public void initialize(Path workingDirectory, String model) throws IOException
 	{
+		initialize(workingDirectory, model, "", "");
+	}
+
+	/**
+	 * Initializes the app-server and creates its one workspace-write thread with an optional direct agent contract.
+	 *
+	 * @param workingDirectory the copied-project directory
+	 * @param model the optional model name
+	 * @param developerInstructions the optional direct developer contract
+	 * @param effort the optional reasoning effort
+	 * @throws IOException if startup fails or no thread ID is returned
+	 */
+	public void initialize(Path workingDirectory, String model, String developerInstructions, String effort)
+		throws IOException
+	{
+		initialize(workingDirectory, model, developerInstructions, effort, "");
+	}
+
+	/**
+	 * Initializes the app server with optional profile-based filesystem authority.
+	 *
+	 * @param workingDirectory the copied project directory
+	 * @param model the optional model name
+	 * @param developerInstructions the optional direct agent contract
+	 * @param effort the optional reasoning effort
+	 * @param permissionProfile the optional named Codex permission profile
+	 * @throws IOException if startup fails or no thread ID is returned
+	 */
+	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
+		String permissionProfile) throws IOException
+	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
+		requireThat(developerInstructions, "developerInstructions").isNotNull();
+		requireThat(effort, "effort").isNotNull();
+		this.effort = effort;
 		synchronized (input)
 		{
 			readResponse(1, CodexAppServerProtocol.initialize());
 			input.write(CodexAppServerProtocol.initialized());
 			input.flush();
-			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model)));
+			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
+				developerInstructions, permissionProfile)));
 			if (verifyCatHookDelivery)
 			{
 				long requestId = nextRequestId;
@@ -106,7 +142,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 			throw new IOException("Codex app-server was not initialized");
 		synchronized (input)
 		{
-			input.write(CodexAppServerProtocol.turnStart(nextRequestId, threadId, request));
+			input.write(CodexAppServerProtocol.turnStart(nextRequestId, threadId, request, effort));
 			nextRequestId += 1;
 			input.flush();
 			StringBuilder events = new StringBuilder(startupEvents);

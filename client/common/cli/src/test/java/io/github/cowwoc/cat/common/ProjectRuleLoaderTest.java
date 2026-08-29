@@ -318,6 +318,32 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies user-owned rules are injected between bundled and repository rules without requiring a repository change.
+	 */
+	@Test
+	public void loadsUserRulesOutsideTheProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path userLazyRule = userRules.resolve("include/common/terms.md");
+			write(plugin, "rules/common/rule.md", "bundled rule");
+			write(userRules, "common/default-rules.md", "user rule: lazy load `../include/common/terms.md`");
+			write(userRules, "include/common/terms.md", "user terms");
+			write(project, ".cat/rules/common/rule.md", "project rule");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, userRules, project, "harnessa");
+
+			requireThat(context, "context").contains("bundled rule").contains("user rule").contains("project rule").
+				contains("`" + userLazyRule + "`").doesNotContain("user terms");
+			requireThat(context.indexOf("bundled rule"), "bundledIndex").isLessThan(context.indexOf("user rule"));
+			requireThat(context.indexOf("user rule"), "userIndex").isLessThan(context.indexOf("project rule"));
+		}
+	}
+
+	/**
 	 * Writes a UTF-8 rule below a root directory.
 	 *
 	 * @param root the rule root

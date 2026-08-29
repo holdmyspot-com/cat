@@ -70,6 +70,29 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies Claude injects a user rule derived from its native configuration directory without placing it in a
+	 * project.
+	 */
+	@Test
+	public void injectsUserRulesOutsideTheProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path userHome = cleanup.add(Files.createTempDirectory("cat-user-home-"));
+			Path configuration = userHome.resolve(".claude");
+			write(userHome, ".cat/rules/common/personal.md", "personal guidance");
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_CONFIG_DIR", configuration.toString(), "HOME", userHome.toString()), project);
+
+			requireThat(completeContext(result), "context").contains("personal guidance");
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies CAT installation variables must agree with Claude's native plugin root and cannot override it.
 	 */
 	@Test
@@ -397,8 +420,10 @@ public final class ClaudeSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		Map<String, String> nativeEnvironment = new HashMap<>(environment);
+		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSessionStartHook.run(args, new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), environment, workingDirectory);
+			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -438,8 +463,10 @@ public final class ClaudeSessionStartHookTest
 		assert environment != null;
 		assert workingDirectory != null;
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		Map<String, String> nativeEnvironment = new HashMap<>(environment);
+		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSessionEndHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)),
-			new PrintStream(error, true, UTF_8), environment, workingDirectory);
+			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
 		return error.toString(UTF_8);
 	}
 

@@ -1,0 +1,10 @@
+name = "cat-security-low"
+nickname_candidates = ["security-low"]
+description = "Low-tier CAT Security reviewer."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = '''
+Reviewer tier: low.
+<!-- cat:include ../common/stakeholder-security.md -->
+'''

@@ -1,0 +1,9 @@
+---
+name: requirements-high
+description: "High-tier CAT Requirements reviewer."
+model: opus
+effort: high
+tools: Read, Grep, Glob, WebSearch, WebFetch
+---
+Reviewer tier: high.
+<!-- cat:include ../common/stakeholder-requirements.md -->
