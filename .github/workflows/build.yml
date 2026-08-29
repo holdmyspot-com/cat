@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'v*'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: macos-x64
+            runner: macos-15-intel
+          - platform: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '27'
+          cache: maven
+          cache-dependency-path: client/pom.xml
+      - name: Install test tools on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
+      - name: Install test tools on macOS
+        if: runner.os == 'macOS'
+        run: brew install bats-core shellcheck
+      - name: Verify
+        run: client/mvnw -f client/pom.xml verify
+      - name: Verify bootstrap boundaries
+        run: >-
+          bats client/common/distribution/src/test/bats/bootstrap-common.bats
+          client/common/distribution/src/test/bats/bootstrap-claude.bats
+          client/common/distribution/src/test/bats/bootstrap-codex.bats
+      - name: Verify artifact-runner boundaries
+        run: bats client/common/distribution/src/test/bats/artifact-runners.bats
+      - name: Upload native distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: cat-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            client/common/distribution/target/release/cat-*-*.tar.gz
+            client/common/distribution/target/release/SHA256SUMS.txt
