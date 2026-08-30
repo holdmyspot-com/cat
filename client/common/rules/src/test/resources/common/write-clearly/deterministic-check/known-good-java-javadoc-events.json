@@ -1,0 +1,23 @@
+[
+  {
+    "type": "route-selected",
+    "selection_turn": 1,
+    "rules": [
+      "include/common/write-clearly.md",
+      "include/java/javadoc.md"
+    ]
+  },
+  {
+    "type": "route-delivered",
+    "delivery_turn": 2,
+    "precedes_task_turn": 3,
+    "rules": [
+      {
+        "relative_path": "include/common/write-clearly.md"
+      },
+      {
+        "relative_path": "include/java/javadoc.md"
+      }
+    ]
+  }
+]

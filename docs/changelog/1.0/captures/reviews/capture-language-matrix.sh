@@ -3,7 +3,7 @@
 set -u
 
 project_root="$(CDPATH= cd -- "$(dirname -- "$0")/../../../../.." && pwd)"
-capture_root="${1:-${project_root}/.cat/temp/changelog-review-captures}"
+capture_root="${1:-${project_root}/.cat/work/temp/changelog-review-captures}"
 parallelism="${2:-${CAPTURE_PARALLELISM:-20}}"
 matrix="${project_root}/docs/changelog/1.0/captures/reviews/capture-matrix.sh"
 fixtures="${project_root}/docs/changelog/1.0/fixtures/review-languages"

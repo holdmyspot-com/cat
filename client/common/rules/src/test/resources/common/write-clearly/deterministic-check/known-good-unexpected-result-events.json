@@ -1,0 +1,10 @@
+[
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"commandExecution\",\"id\":\"route\",\"command\":\"cat \\\"$CAT_PLUGIN_ROOT/rules/include/common/write-clearly/unexpected-result.md\\\"\"}}}"
+  },
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/completed\",\"params\":{\"item\":{\"type\":\"commandExecution\",\"id\":\"route\",\"status\":\"completed\",\"exitCode\":0,\"command\":\"cat \\\"$CAT_PLUGIN_ROOT/rules/include/common/write-clearly/unexpected-result.md\\\"\"}}}"
+  }
+]

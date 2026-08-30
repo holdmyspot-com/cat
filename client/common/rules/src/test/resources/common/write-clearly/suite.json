@@ -1,0 +1,425 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "generalization": {
+    "fixture_distinctives": [
+      {
+        "case_id": "test-requires-repair",
+        "text": "empty value"
+      }
+    ]
+  },
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "review-requires-narrower-change": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly/unexpected-result.md"
+        ],
+        "optional_selected": [
+          "include/common/check-assumptions.md"
+        ]
+      },
+      "deterministic_check": {
+        "type": "organic_route_delivery",
+        "assertions": [
+          "route-delivery"
+        ],
+        "self_tests": [
+          {
+            "project": "review-requires-narrower-change/project",
+            "evidence_events": "deterministic-check/known-good-unexpected-result-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "review-requires-narrower-change/project",
+            "evidence_events": "deterministic-check/known-good-optional-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "review-requires-narrower-change/project",
+            "evidence_events": "deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "review-requires-narrower-change/project",
+            "evidence_events": "deterministic-check/known-failed-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "review-requires-narrower-change/project",
+            "evidence_events": "deterministic-check/known-stale-rule-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          }
+        ]
+      },
+      "semantic_controls": [
+        {
+          "id": "missing-expected-versus-actual",
+          "response": "semantic-controls/review-missing-expected-versus-actual.md",
+          "expected_assertions": {
+            "expected-versus-actual": "failed",
+            "user-consequence": "passed",
+            "concrete-next-action": "passed"
+          }
+        },
+        {
+          "id": "missing-user-consequence",
+          "response": "semantic-controls/review-missing-user-consequence.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "failed",
+            "concrete-next-action": "passed"
+          }
+        },
+        {
+          "id": "missing-concrete-next-action",
+          "response": "semantic-controls/review-missing-concrete-next-action.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "passed",
+            "concrete-next-action": "failed"
+          }
+        },
+        {
+          "id": "wrong-condition-actor",
+          "response": "semantic-controls/review-wrong-condition-actor.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "passed",
+            "concrete-next-action": "failed"
+          }
+        },
+        {
+          "id": "missing-preserved-branch",
+          "response": "semantic-controls/review-missing-preserved-branch.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "passed",
+            "concrete-next-action": "failed"
+          }
+        }
+      ]
+    },
+    "test-requires-repair": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly/unexpected-result.md"
+        ],
+        "optional_selected": [
+          "include/common/check-assumptions.md"
+        ]
+      },
+      "deterministic_check": {
+        "type": "organic_route_delivery",
+        "assertions": [
+          "route-delivery"
+        ],
+        "self_tests": [
+          {
+            "project": "test-requires-repair/project",
+            "evidence_events": "deterministic-check/known-good-unexpected-result-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "test-requires-repair/project",
+            "evidence_events": "deterministic-check/known-good-optional-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "test-requires-repair/project",
+            "evidence_events": "deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "test-requires-repair/project",
+            "evidence_events": "deterministic-check/known-failed-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "test-requires-repair/project",
+            "evidence_events": "deterministic-check/known-stale-rule-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          }
+        ]
+      },
+      "semantic_controls": [
+        {
+          "id": "missing-expected-versus-actual",
+          "response": "semantic-controls/test-missing-expected-versus-actual.md",
+          "expected_assertions": {
+            "expected-versus-actual": "failed",
+            "user-consequence": "passed",
+            "concrete-repair": "passed"
+          }
+        },
+        {
+          "id": "missing-user-consequence",
+          "response": "semantic-controls/test-missing-user-consequence.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "failed",
+            "concrete-repair": "passed"
+          }
+        },
+        {
+          "id": "missing-concrete-repair",
+          "response": "semantic-controls/test-missing-concrete-repair.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "passed",
+            "concrete-repair": "failed"
+          }
+        },
+        {
+          "id": "generic-concrete-repair",
+          "response": "semantic-controls/test-generic-concrete-repair.md",
+          "expected_assertions": {
+            "expected-versus-actual": "passed",
+            "user-consequence": "passed",
+            "concrete-repair": "failed"
+          }
+        },
+        {
+          "id": "acceptance-instead-of-constraint",
+          "response": "semantic-controls/test-acceptance-instead-of-constraint.md",
+          "expected_assertions": {
+            "expected-versus-actual": "failed",
+            "user-consequence": "passed",
+            "concrete-repair": "passed"
+          }
+        }
+      ]
+    },
+    "completed-build": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/check-assumptions.md"
+        ]
+      },
+      "deterministic_check": {
+        "type": "organic_route_delivery",
+        "assertions": [
+          "route-delivery"
+        ],
+        "self_tests": [
+          {
+            "project": "completed-build/project",
+            "evidence_events": "deterministic-check/known-good-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "completed-build/project",
+            "evidence_events": "deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "completed-build/project",
+            "evidence_events": "deterministic-check/known-failed-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "completed-build/project",
+            "evidence_events": "deterministic-check/known-stale-rule-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          }
+        ]
+      },
+      "semantic_controls": [
+        {
+          "id": "invented-problem",
+          "response": "semantic-controls/success-invented-problem.md",
+          "expected_assertions": {
+            "concise-success": "failed"
+          }
+        }
+      ]
+    },
+    "completed-build-unchanged-next-step": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/check-assumptions.md"
+        ]
+      },
+      "deterministic_check": {
+        "type": "organic_route_delivery",
+        "assertions": [
+          "route-delivery"
+        ],
+        "self_tests": [
+          {
+            "project": "completed-build-unchanged-next-step/project",
+            "evidence_events": "deterministic-check/known-good-events.json",
+            "expected_assertions": {
+              "route-delivery": "passed"
+            }
+          },
+          {
+            "project": "completed-build-unchanged-next-step/project",
+            "evidence_events": "deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "completed-build-unchanged-next-step/project",
+            "evidence_events": "deterministic-check/known-failed-route-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          },
+          {
+            "project": "completed-build-unchanged-next-step/project",
+            "evidence_events": "deterministic-check/known-stale-rule-events.json",
+            "expected_assertions": {
+              "route-delivery": "failed"
+            }
+          }
+        ]
+      },
+      "semantic_controls": [
+        {
+          "id": "invented-problem",
+          "response": "semantic-controls/success-invented-problem.md",
+          "expected_assertions": {
+            "concise-success": "failed"
+          }
+        }
+      ]
+    },
+    "java-javadoc-method-lifecycle": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/java/javadoc.md"
+        ]
+      },
+      "deterministic_check": {
+        "type": "organic_route_delivery",
+        "assertions": [
+          "write-clearly-before-javadoc-authoring"
+        ],
+        "self_tests": [
+          {
+            "project": "java-javadoc-method-lifecycle/project",
+            "evidence_events": "deterministic-check/known-good-java-javadoc-events.json",
+            "expected_assertions": {
+              "write-clearly-before-javadoc-authoring": "passed"
+            }
+          },
+          {
+            "project": "java-javadoc-method-lifecycle/project",
+            "evidence_events": "deterministic-check/known-bad-java-javadoc-events.json",
+            "expected_assertions": {
+              "write-clearly-before-javadoc-authoring": "failed"
+            }
+          }
+        ]
+      }
+    },
+    "java-change-without-javadoc": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "not_selected": [
+          "include/common/write-clearly.md",
+          "include/java/javadoc.md"
+        ]
+      }
+    },
+    "invalid-input-accepted": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly/unexpected-result.md"
+        ],
+        "optional_selected": [
+          "include/common/check-assumptions.md"
+        ]
+      }
+    },
+    "invalid-input-reaches-caller": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly/unexpected-result.md"
+        ],
+        "optional_selected": [
+          "include/common/check-assumptions.md"
+        ]
+      }
+    }
+  }
+}

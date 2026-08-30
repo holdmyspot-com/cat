@@ -1,15 +1,23 @@
 # Commit Git History One Topic at a Time
 
+## Terms
+
+- A **semantic unit** is one changed code, configuration, test, documentation, or other artifact fragment considered
+  for its contribution to an observable behavior or bug fix.
+- A **candidate topic** is a possible replacement commit that delivers one independently useful behavior or bug fix.
+- A **fixed point** is reached only after a complete review finds no additional candidate topic.
+- A **manifest** is the workflow-owned record that identifies the authorized Git range and retains the review evidence
+  for its replacement commits.
+
 ## Design Goals
 
-- Require complete, explicit semantic intent before changing Git history: persist every reviewer-declared semantic
-  unit's placement, exclusion, or combination decision in a manifest-local artifact that is evidence-backed and
-  independently auditable.
+- Require an explicit, evidence-backed decision for every semantic unit before changing Git history: retain whether it
+  becomes one commit, joins another, or is excluded.
 - Ensure a commit-per-topic completion claim covers the exact user-authorized branch range, or an explicitly verified
   fixed prefix completed under the same governing rule, rather than an apparently tidy log or current worktree
   increment.
-- Ensure a commit-per-topic invocation uses one identified, current workflow and launcher revision, with auditable
-  source-neutral topic-reviewer handoff evidence and planner challenge evidence rather than a cached prompt or asserted
+- Ensure a commit-per-topic invocation records the current workflow and launcher revision, the independent topic
+  review based on original inputs, and the planner's challenges rather than relying on a cached prompt or a claim of
   reviewer independence.
 - Reconstruct an authorized Git-history range into the smallest buildable feature or bug-fix commits that each make an
   observable user or developer change. Discover candidate topics from observable user and developer results and affected
@@ -80,7 +88,7 @@ infer topic organization.
 
 Before invoking `git-topic-replay`, resolve its launcher instead of assuming it is on `PATH`. From a CAT source-checkout
 root, build the distribution with `client/mvnw -f client/pom.xml -pl distribution -am package` and run
-`client/distribution/target/jlink/<harness>/bin/git-topic-replay`. Otherwise, use the selected harness wrapper's
+`client/common/distribution/target/jlink/<harness>/bin/git-topic-replay`. Otherwise, use the selected harness wrapper's
 installed `git-topic-replay` launcher. Record the
 workflow revision and launcher artifact used for the invocation. When the workflow source changed, rebuild the
 distribution before review; do not combine a cached installed skill with a launcher built from newer source, or use an
@@ -115,8 +123,9 @@ number of, or more entries than the source commits. Only after declaration run `
 bootstrap-preserved-output-batches MANIFEST` once to capture immutable raw source patches and source reconstructions.
 The command deliberately creates no output batch: a raw source patch proves reconstruction, but cannot decide a topic.
 Write every output batch from the sealed behavior plan. For a safe fixed-prefix extension, run `git-topic-replay
-prepare-fixed-prefix REBASE_BASE FIXED_TIP TIP`, then use its returned `manifest` value to bootstrap the manifest. The command records the fixed
-source hashes; the semantic placement ledger and its mechanical source/origin projections then cover only later sources.
+prepare-fixed-prefix REBASE_BASE FIXED_TIP TIP`, then use its returned `manifest` value to bootstrap the manifest.
+The command records the fixed source hashes; the semantic placement ledger and its mechanical source/origin
+projections then cover only later sources.
 
 If an earlier review artifact cannot be read by the current launcher, stop output planning. Preserve its behavioral
 findings as evidence, then migrate each field with a documented mapping or re-author the affected review; never restart

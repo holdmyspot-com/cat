@@ -13,8 +13,10 @@ import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.UserRuleTree;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -69,7 +71,7 @@ public final class CodexRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, installCat, null, List.of());
+		return start(artifact, project, manager, executable, environment, model, "", installCat, true, null, List.of());
 	}
 
 	/**
@@ -89,7 +91,7 @@ public final class CodexRunner
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat, CodexAgentDefinition agent) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, installCat, agent, List.of());
+		return start(artifact, project, manager, executable, environment, model, "", installCat, true, agent, List.of());
 	}
 
 	/**
@@ -101,14 +103,17 @@ public final class CodexRunner
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
 	 * @param model the optional Codex model name
+	 * @param effort the optional Codex reasoning effort
 	 * @param installCat whether CAT is installed in the isolated home
+	 * @param includeUserRules whether CAT copies the parent user's rules into the isolated home
 	 * @param agent the optional direct CAT agent definition
 	 * @param readOnlyEvidence the optional completed evidence directory
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, boolean installCat, CodexAgentDefinition agent,
+		Map<String, String> environment, String model, String effort, boolean installCat, boolean includeUserRules,
+		CodexAgentDefinition agent,
 		List<Path> readOnlyEvidence) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
@@ -117,6 +122,7 @@ public final class CodexRunner
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(model, "model").isNotNull();
+		requireThat(effort, "effort").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -126,11 +132,13 @@ public final class CodexRunner
 		{
 			manager.copyProject(project, run);
 			Path isolatedHome = run.directory().resolve("home");
+			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
-			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache);
+			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
+				temporaryDirectory);
 			if (!readOnlyEvidence.isEmpty())
 				CodexConnectionConfiguration.addValidatorProfile(isolatedConfiguration, readOnlyEvidence);
 			if (installCat)
@@ -140,12 +148,16 @@ public final class CodexRunner
 				// declaration differs, while preserving the workspace-write sandbox for the actual run.
 				CodexConnectionConfiguration.copyTrustedCatHooks(hostHome.resolve("config.toml"),
 					isolatedConfiguration);
+				if (includeUserRules)
+					UserRuleTree.copy(userRulesRoot(environment), isolatedHome.resolve(".cat/rules"));
 			}
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared npm cache so
 			// independent trials do not redownload the same immutable registry artifacts.
 			isolatedEnvironment.put("NPM_CONFIG_CACHE", npmCache.toString());
+			isolatedEnvironment.put("TMPDIR", temporaryDirectory.toString());
+			isolatedEnvironment.put("HOME", isolatedHome.toString());
 			isolatedEnvironment.put("CODEX_HOME", isolatedHome.toString());
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			Path worktree = run.directory().resolve("project");
@@ -161,14 +173,13 @@ public final class CodexRunner
 				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run, "marketplace-add");
 				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-add");
 			}
-			List<String> command = new ArrayList<>(List.of(executable, "app-server", "--stdio"));
-			if (installCat)
-				command.addAll(List.of("--enable", "hooks"));
-			else
-				command.addAll(List.of("--disable", "plugins"));
+			List<String> command = appServerCommand(executable, installCat);
 			manager.initialize(run, artifact, project, "codex-app-server", command);
 			HarnessRunnerScope scope = new HarnessRunnerScope();
 			lock = manager.acquireLock(run);
+			Path catRules = null;
+			if (installCat)
+				catRules = CodexMarketplace.pluginRoot(isolatedHome).resolve("rules");
 			CodexAppServerProcess process = new CodexAppServerProcess(HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment), scope, installCat);
 			try
@@ -176,18 +187,25 @@ public final class CodexRunner
 				manager.recordNativeProcess(run, process.pid(), process.startedAt());
 				String selectedModel = model;
 				String developerInstructions = "";
-				String effort = "";
+				String selectedEffort = effort;
 				if (agent != null)
 				{
 					selectedModel = agent.model();
 					developerInstructions = agent.developerInstructions();
-					effort = agent.effort();
+					selectedEffort = agent.effort();
 				}
-				String permissionProfile = "";
-				if (!readOnlyEvidence.isEmpty())
-					permissionProfile = "cat-validator";
-				process.initialize(worktree, selectedModel, developerInstructions, effort, permissionProfile);
-				return new HarnessRunSession(run, process, scope, lock);
+			String permissionProfile = CodexConnectionConfiguration.RUNNER_PERMISSION_PROFILE;
+			if (!readOnlyEvidence.isEmpty())
+				permissionProfile = "cat-validator";
+				List<Path> runtimeWorkspaceRoots = new ArrayList<>();
+				runtimeWorkspaceRoots.add(worktree);
+				runtimeWorkspaceRoots.addAll(readOnlyEvidence);
+				process.initialize(worktree, selectedModel, developerInstructions, selectedEffort, permissionProfile,
+					runtimeWorkspaceRoots);
+				Path routeRuleRoot = null;
+				if (agent == null && installCat)
+					routeRuleRoot = catRules;
+				return new HarnessRunSession(run, process, scope, lock, routeRuleRoot);
 			}
 			catch (IOException e)
 			{
@@ -213,6 +231,23 @@ public final class CodexRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Returns the native command for one isolated CAT app-server session.
+	 *
+	 * @param executable the Codex executable
+	 * @param installCat whether the session installs CAT's hooks
+	 * @return the native command
+	 */
+	static List<String> appServerCommand(String executable, boolean installCat)
+	{
+		List<String> command = new ArrayList<>(List.of(executable, "app-server", "--stdio"));
+		if (installCat)
+			command.addAll(List.of("--enable", "hooks"));
+		else
+			command.addAll(List.of("--disable", "plugins"));
+		return command;
 	}
 
 	/**
@@ -247,6 +282,22 @@ public final class CodexRunner
 		if (home == null || home.isBlank())
 			return Path.of(".codex").toAbsolutePath();
 		return Path.of(home).resolve(".codex");
+	}
+
+	/**
+	 * Derives the non-repository CAT user-rule directory from the parent process's native home directory.
+	 *
+	 * @param environment the parent process environment
+	 * @return the CAT user-rule directory
+	 * @throws IOException if the native home directory is unavailable
+	 */
+	private static Path userRulesRoot(Map<String, String> environment) throws IOException
+	{
+		String home = environment.get("HOME");
+		if (home == null || home.isBlank())
+			throw new IOException("Codex user rules require the parent HOME");
+		Path userHome = Path.of(home.strip()).toAbsolutePath().normalize();
+		return userHome.resolve(".cat/rules");
 	}
 
 	/**

@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
-import java.util.Arrays;
 
 /**
  * Represents command-line settings for a JSONL bridge that serves one or more turns through one harness process.
@@ -25,24 +24,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency)
 {
-	/**
-	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
-	 *
-	 * @param args the legacy command and its options
-	 * @param defaultExecutable the harness executable name
-	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
-	 * @return parsed runner options
-	 * @throws IllegalArgumentException if the command is not {@code serve} or its options are invalid
-	 */
-	public static HarnessRunnerOptions parseServe(String[] args, String defaultExecutable, Path temporaryRoot)
-	{
-		requireThat(args, "args").isNotNull();
-		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
-		if (args.length == 0 || !args[0].equals("serve"))
-			throw new IllegalArgumentException("Usage: <runner> serve --artifact <path> [options]");
-		return parse(Arrays.copyOfRange(args, 1, args.length), defaultExecutable, temporaryRoot);
-	}
-
 	/**
 	 * Parses one bridge invocation. Input is always the JSONL turn/complete protocol on standard input, so a one-turn
 	 * invocation sends one {@code turn} message followed by {@code complete}.

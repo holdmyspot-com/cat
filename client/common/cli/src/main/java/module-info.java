@@ -1,7 +1,9 @@
 module io.github.cowwoc.cat.common.cli
 {
 	requires io.github.cowwoc.requirements13.java;
+	requires io.github.cowwoc.cat.common.evaluation;
 	requires io.github.cowwoc.pouch10.core;
+	requires org.commonmark;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;

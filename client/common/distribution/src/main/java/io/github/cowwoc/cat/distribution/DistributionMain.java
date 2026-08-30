@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.distribution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PluginInfo;
@@ -18,6 +19,7 @@ import io.github.cowwoc.cat.distribution.license.ThirdPartyComponent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -40,12 +42,103 @@ public final class DistributionMain
 	public static void main(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
+		if (args.length == 4 && args[0].equals("repackage-prompt-bundle"))
+		{
+			Path projectRoot = Path.of(args[1]);
+			Path artifact = Path.of(args[2]);
+			String harness = args[3];
+			repackagePromptBundle(projectRoot, artifact, harness);
+			return;
+		}
 		if (args.length != 3)
 		{
 			throw new IllegalArgumentException(
-				"Usage: DistributionMain <project-root> <module-directory> <release-directory>");
+				"Usage: DistributionMain <project-root> <module-directory> <release-directory> or " +
+					"DistributionMain repackage-prompt-bundle <project-root> <artifact-directory> <harness>");
 		}
 		build(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current());
+	}
+
+	/**
+	 * Repackages one installed artifact's model-facing prompt bundle from the current version-controlled sources.
+	 *
+	 * <p>
+	 * The existing Java runtime is not copied, rebuilt, or modified. Fresh staged rules, skills, and agent
+	 * instructions replace the prior prompt bundle only after source-only includes and direct rule routes have been
+	 * resolved successfully.
+	 *
+	 * @param projectRoot the repository that owns the rule source trees
+	 * @param artifact the existing harness artifact whose prompt resources are updated
+	 * @param harness the selected harness name
+	 * @throws IOException if a source tree, artifact, or generated rule route is invalid
+	 */
+	private static void repackagePromptBundle(Path projectRoot, Path artifact, String harness) throws IOException
+	{
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(harness, "harness").isNotBlank();
+		projectRoot = projectRoot.toAbsolutePath().normalize();
+		artifact = artifact.toAbsolutePath().normalize();
+		repackagePromptBundle(artifact, promptResourceRoots(projectRoot, harness), new YAMLMapper());
+		new ProjectRuleLoader(new YAMLMapper()).loadForMainAgent(artifact, projectRoot, harness);
+	}
+
+	/**
+	 * Returns the ordered source layers for one harness's installed prompt bundle.
+	 *
+	 * @param projectRoot the repository that owns the source layers
+	 * @param harness the harness whose prompt resources will be installed
+	 * @return the common layers followed by the selected harness layers
+	 */
+	static List<Path> promptResourceRoots(Path projectRoot, String harness)
+	{
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(harness, "harness").isNotBlank();
+		projectRoot = projectRoot.toAbsolutePath().normalize();
+		Path harnessRoot = projectRoot.resolve("client").resolve(harness);
+		return List.of(
+			projectRoot.resolve("client/common/agents/src/main/resources"),
+			projectRoot.resolve("client/common/skills/src/main/resources"),
+			projectRoot.resolve("client/common/rules/src/main/resources"),
+			harnessRoot.resolve("plugin/src/main/resources"),
+			harnessRoot.resolve("skills/src/main/resources"),
+			harnessRoot.resolve("rules/src/main/resources"));
+	}
+
+	/**
+	 * Replaces an artifact's packaged model-facing resources from ordered source layers without changing its runtime
+	 * files.
+	 *
+	 * @param artifact the existing harness artifact whose prompt resources are updated
+	 * @param sourceRoots ordered resource directories whose {@code agents}, {@code skills}, and {@code rules} contents
+	 *        are layered into the new prompt bundle
+	 * @param yamlMapper the YAML parser used to generate packaged routes
+	 * @throws IOException if prompt-resource layers collide, cannot be assembled, or cannot replace the prior bundle
+	 */
+	static void repackagePromptBundle(Path artifact, List<Path> sourceRoots, YAMLMapper yamlMapper) throws IOException
+	{
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(sourceRoots, "sourceRoots").isNotNull();
+		requireThat(yamlMapper, "yamlMapper").isNotNull();
+		artifact = artifact.toAbsolutePath().normalize();
+		requireThat(artifact, "artifact").isDirectory();
+		if (sourceRoots.isEmpty())
+			throw new IllegalArgumentException("Prompt source roots must not be empty");
+
+		Path temporary = Files.createTempDirectory(artifact.getParent(), "cat-prompt-bundle-");
+		try
+		{
+			Path stagedArtifact = temporary.resolve("artifact");
+			for (Path sourceRoot : sourceRoots)
+				copyPromptResources(sourceRoot, stagedArtifact);
+			PluginArtifactBuilder.resolvePromptIncludes(stagedArtifact);
+			RuleArtifactRouter.route(stagedArtifact, yamlMapper);
+			replacePromptBundle(artifact, stagedArtifact);
+		}
+		finally
+		{
+			deleteTree(temporary);
+		}
 	}
 
 	/**
@@ -83,6 +176,7 @@ public final class DistributionMain
 		deleteAndRecreateDirectory(jlinkModules);
 
 		Path commonCli = findDependencyJar(moduleDirectory, "client-common-cli");
+		Path commonEvaluation = findDependencyJar(moduleDirectory, "client-common-evaluation");
 		Path claudeCli = findDependencyJar(moduleDirectory, "client-claude-cli");
 		Path codexCli = findDependencyJar(moduleDirectory, "client-codex-cli");
 		Path requirements = findDependencyJar(moduleDirectory, "requirements-java");
@@ -106,11 +200,15 @@ public final class DistributionMain
 		Path jacksonDatabind = findDependencyJar(moduleDirectory, "jackson-databind");
 		Path jacksonYaml = findDependencyJar(moduleDirectory, "jackson-dataformat-yaml");
 		Path snakeyaml = findDependencyJar(moduleDirectory, "snakeyaml-engine");
+		Path commonmark = findDependencyJar(moduleDirectory, "commonmark");
+		Path testng = findDependencyJar(moduleDirectory, "testng");
 
-		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
+		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules), copyModule(commonEvaluation,
+			jlinkModules),
 			copyModule(requirements, jlinkModules), copyModule(requirementsAnnotation, jlinkModules),
 			copyModule(pouch, jlinkModules), copyModule(slf4j, jlinkModules), copyModule(slf4jNop, jlinkModules),
-			modularizeJavaDiff(javaDiff, jlinkModules));
+			modularizeJavaDiff(javaDiff, jlinkModules), copyModule(commonmark, jlinkModules),
+			modularizeTestNg(testng, jlinkModules));
 		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore, jlinkModules), copyModule(jacksonAnnotations,
@@ -128,6 +226,14 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
+				new JlinkImageBuilder.Launcher("prompt-file-check", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptFileCheck"),
+				new JlinkImageBuilder.Launcher("source-documentation-inventory", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.SourceDocumentationInventory"),
+				new JlinkImageBuilder.Launcher("prompt-evidence-check", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptEvidenceCheck"),
+				new JlinkImageBuilder.Launcher("prompt-evaluation", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptEvaluation"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.InvocationDirectory"),
 				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
@@ -150,6 +256,14 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
+				new JlinkImageBuilder.Launcher("prompt-file-check", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptFileCheck"),
+				new JlinkImageBuilder.Launcher("source-documentation-inventory", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.SourceDocumentationInventory"),
+				new JlinkImageBuilder.Launcher("prompt-evidence-check", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptEvidenceCheck"),
+				new JlinkImageBuilder.Launcher("prompt-evaluation", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.PromptEvaluation"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.InvocationDirectory"),
 				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
@@ -162,7 +276,8 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.codex.CodexSubagentStartHook")), jlinkDirectory.resolve("codex"));
 
 		// Resolve these eagerly so a missing runtime dependency fails with a specific artifact name.
-		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(claudeCli) ||
+		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(commonEvaluation) ||
+			!Files.isRegularFile(claudeCli) ||
 			!Files.isRegularFile(codexCli) ||
 			!Files.isRegularFile(requirements))
 			throw new IOException("One or more Java runtime modules are missing from " + moduleDirectory);
@@ -175,6 +290,10 @@ public final class DistributionMain
 		Path claudeInstallers = projectRoot.resolve("client/claude/lifecycle/src/main/resources/install");
 		Path codexInstallers = projectRoot.resolve("client/codex/lifecycle/src/main/resources/install");
 		List<ThirdPartyComponent> commonLegalComponents = List.of(
+			new ThirdPartyComponent("CommonMark Java", "org.commonmark:commonmark:0.30.0", "BSD-2-Clause.txt", commonmark,
+				List.of("META-INF/LICENSE.txt")),
+			new ThirdPartyComponent("TestNG", "org.testng:testng:7.12.0", "Apache-2.0.txt", testng,
+				List.of("META-INF/LICENSE.txt")),
 			new ThirdPartyComponent("java-diff-utils", "io.github.java-diff-utils:java-diff-utils:4.16",
 				"Apache-2.0.txt", javaDiff, List.of()),
 			new ThirdPartyComponent("Pouch", "io.github.cowwoc.pouch:pouch-core:10.3", "Apache-2.0.txt", pouch,
@@ -349,6 +468,148 @@ public final class DistributionMain
 	}
 
 	/**
+	 * Adds the TestNG API module descriptor required by evaluator Java checks.
+	 *
+	 * @param source the original TestNG JAR
+	 * @param moduleDirectory the patched-module directory
+	 * @return the patched JAR
+	 * @throws IOException if the descriptor cannot be added
+	 */
+	private static Path modularizeTestNg(Path source, Path moduleDirectory) throws IOException
+	{
+		return new ModuleDescriptorPatcher().patch(source, moduleDirectory.resolve(source.getFileName()), "org.testng",
+			Set.of("org.testng", "org.testng.xml"));
+	}
+
+	/**
+	 * Copies model-facing resources from one source layer into the staged bundle while rejecting a source-layer
+	 * collision.
+	 *
+	 * @param sourceRoot the root containing one source resource layer
+	 * @param stagedArtifact the destination prompt bundle
+	 * @throws IOException if the source is invalid or conflicts with an earlier layer
+	 */
+	private static void copyPromptResources(Path sourceRoot, Path stagedArtifact) throws IOException
+	{
+		sourceRoot = sourceRoot.toAbsolutePath().normalize();
+		if (!Files.isDirectory(sourceRoot, NOFOLLOW_LINKS))
+			throw new IOException("Prompt source directory does not exist: " + sourceRoot);
+		for (String resourceDirectory : List.of("agents", "skills", "rules"))
+		{
+			Path resourceRoot = sourceRoot.resolve(resourceDirectory);
+			if (!Files.exists(resourceRoot, NOFOLLOW_LINKS))
+				continue;
+			if (!Files.isDirectory(resourceRoot, NOFOLLOW_LINKS))
+				throw new IOException("Prompt source path is not a directory: " + resourceRoot);
+			try (Stream<Path> paths = Files.walk(resourceRoot))
+			{
+				for (Path source : paths.sorted().toList())
+				{
+					Path target = stagedArtifact.resolve(sourceRoot.relativize(source));
+					if (Files.isDirectory(source, NOFOLLOW_LINKS))
+					{
+						Files.createDirectories(target);
+						continue;
+					}
+					if (!Files.isRegularFile(source, NOFOLLOW_LINKS))
+						throw new IOException("Prompt source contains a non-regular file: " + source);
+					if (Files.exists(target, NOFOLLOW_LINKS))
+					{
+						throw new IOException("Prompt source collision at " + target + " while copying " + sourceRoot);
+					}
+					Files.createDirectories(target.getParent());
+					Files.copy(source, target);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Exchanges installed prompt resources for a fully assembled staged bundle and restores the prior bundle on a failed
+	 * replacement.
+	 *
+	 * @param artifact the existing plugin artifact
+	 * @param stagedArtifact the prepared replacement artifact
+	 * @throws IOException if the replacement or recovery cannot complete
+	 */
+	private static void replacePromptBundle(Path artifact, Path stagedArtifact) throws IOException
+	{
+		Path backup = stagedArtifact.getParent().resolve("previous-prompt-bundle");
+		List<Path> backedUp = new ArrayList<>();
+		List<Path> replaced = new ArrayList<>();
+		for (String resourceDirectory : List.of("agents", "skills", "rules"))
+		{
+			Path staged = stagedArtifact.resolve(resourceDirectory);
+			if (!Files.isDirectory(staged, NOFOLLOW_LINKS))
+				throw new IOException("Staged prompt directory is missing: " + staged);
+		}
+		Files.createDirectories(backup);
+		try
+		{
+			for (String resourceDirectory : List.of("agents", "skills", "rules"))
+			{
+				Path installed = artifact.resolve(resourceDirectory);
+				if (!Files.isDirectory(installed, NOFOLLOW_LINKS))
+					throw new IOException("Plugin artifact has no installed prompt directory: " + installed);
+				Path previous = backup.resolve(resourceDirectory);
+				move(installed, previous);
+				backedUp.add(previous);
+				move(stagedArtifact.resolve(resourceDirectory), installed);
+				replaced.add(installed);
+			}
+			deleteTree(backup);
+		}
+		catch (IOException replacementFailure)
+		{
+			for (int index = replaced.size() - 1; index >= 0; --index)
+				deleteTree(replaced.get(index));
+			for (int index = backedUp.size() - 1; index >= 0; --index)
+			{
+				Path previous = backedUp.get(index);
+				if (Files.exists(previous, NOFOLLOW_LINKS))
+					move(previous, artifact.resolve(previous.getFileName()));
+			}
+			throw replacementFailure;
+		}
+	}
+
+	/**
+	 * Moves one directory within its filesystem, preserving atomic visibility when the filesystem supports it.
+	 *
+	 * @param source the existing source directory
+	 * @param target the initially absent destination
+	 * @throws IOException if the move cannot complete
+	 */
+	private static void move(Path source, Path target) throws IOException
+	{
+		try
+		{
+			Files.move(source, target, ATOMIC_MOVE);
+		}
+		catch (java.nio.file.AtomicMoveNotSupportedException _)
+		{
+			Files.move(source, target);
+		}
+	}
+
+	/**
+	 * Deletes one temporary directory after its staged bundle or backup is no longer needed.
+	 *
+	 * @param directory the directory to delete when it exists
+	 * @throws IOException if an owned temporary path cannot be removed
+	 */
+	private static void deleteTree(Path directory) throws IOException
+	{
+		if (!Files.exists(directory, NOFOLLOW_LINKS))
+			return;
+		try (Stream<Path> paths = Files.walk(directory))
+		{
+			for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+				Files.delete(path);
+		}
+	}
+
+	/**
 	 * Deletes the directory and all of its contents when it exists, then creates an empty directory at the same path.
 	 *
 	 * @param directory the directory to delete and recreate
@@ -356,14 +617,7 @@ public final class DistributionMain
 	 */
 	private static void deleteAndRecreateDirectory(Path directory) throws IOException
 	{
-		if (Files.exists(directory, NOFOLLOW_LINKS))
-		{
-			try (Stream<Path> paths = Files.walk(directory))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
-		}
+		deleteTree(directory);
 		Files.createDirectories(directory);
 	}
 }

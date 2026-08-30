@@ -5,4 +5,4 @@ allowed-tools: [Bash]
 
 Use `${CAT_PLUGIN_ROOT}/client/bin/git-topic-replay` for the installed CAT plugin.
 
-<!-- cat:include ../shared-lazy-body.md -->
+<!-- cat:include ../shared-first-use-route.md -->

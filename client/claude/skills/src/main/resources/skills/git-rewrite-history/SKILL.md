@@ -3,4 +3,4 @@ description: Use when the user asks to rewrite Git history or use git-filter-rep
 allowed-tools: [Bash]
 ---
 
-<!-- cat:include ../shared-lazy-body.md -->
+<!-- cat:include ../shared-first-use-route.md -->

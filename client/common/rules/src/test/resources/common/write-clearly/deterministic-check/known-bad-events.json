@@ -1,0 +1,6 @@
+[
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"commandExecution\",\"command\":\"pwd\"}}}"
+  }
+]

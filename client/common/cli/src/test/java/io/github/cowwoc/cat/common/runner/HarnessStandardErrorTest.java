@@ -59,6 +59,30 @@ public final class HarnessStandardErrorTest
 	}
 
 	/**
+	 * Verifies a parent process's stderr consumer completes after its forked child process closes stderr.
+	 *
+	 * @throws IOException if test stream I/O fails
+	 */
+	@Test
+	public void parentProcessReadsChildStderrEof() throws IOException
+	{
+		try (PipedInputStream parentChildStderr = new PipedInputStream())
+		{
+			HarnessStandardError parentStderrConsumer;
+			// This output scope simulates the forked child process owning stderr.
+			try (PipedOutputStream childStderr = new PipedOutputStream(parentChildStderr))
+			{
+				parentStderrConsumer = new HarnessStandardError(parentChildStderr);
+				childStderr.flush();
+			}
+
+			// Closing the child stderr scope delivers EOF to the parent consumer before it waits for the reader to finish.
+			// PipedInputStream.close() would not wake the parent reader while it is blocked in read().
+			requireThat(parentStderrConsumer.await(), "parentStderrConsumer").isEmpty();
+		}
+	}
+
+	/**
 	 * Writes and closes one connected output stream.
 	 *
 	 * @param output the connected output stream

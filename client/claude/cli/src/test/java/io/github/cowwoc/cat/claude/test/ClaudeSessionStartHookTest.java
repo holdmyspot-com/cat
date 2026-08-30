@@ -26,7 +26,7 @@ import tools.jackson.databind.JsonNode;
 public final class ClaudeSessionStartHookTest
 {
 	/**
-	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root.
+	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's work root.
 	 */
 	@Test
 	public void injectsClaudeRules() throws IOException
@@ -53,7 +53,7 @@ public final class ClaudeSessionStartHookTest
 				doesNotContain("plugin codex");
 			try (ToolScope scope = ToolScope.forWorkingDirectory(project))
 			{
-				requireThat(rules.startsWith(scope.catTemp()), "rulesLocation").isTrue();
+				requireThat(rules.startsWith(scope.catWork()), "rulesLocation").isTrue();
 			}
 			try
 			{
@@ -136,6 +136,8 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/common/rules.md", "rules");
 			Path context = referencedFile(context(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project)));
+			requireThat(context, "context").isEqualTo(project.resolve(".cat/work/claude-context").
+				resolve(context.getFileName()));
 
 			String sessionId = context.getFileName().toString().replace(".md", "");
 			String error = invokeSessionEnd("{\"session_id\":\"" + sessionId + "\"}",

@@ -1,0 +1,14 @@
+[
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\",\"text\":\"You are preparing to execute the later user task below.\"}]}}}"
+  },
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"commandExecution\",\"command\":\"cat $CAT_PLUGIN_ROOT/rules/include/common/prefer-reuse.md && cat $CAT_PLUGIN_ROOT/rules/include/common/preserve-required-distinctions.md\"}}}"
+  },
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\",\"text\":\"Implement the supplied TypeScript service configuration reader.\"}]}}}"
+  }
+]

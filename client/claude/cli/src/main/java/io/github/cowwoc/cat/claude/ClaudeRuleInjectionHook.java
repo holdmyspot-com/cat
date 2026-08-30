@@ -70,7 +70,7 @@ final class ClaudeRuleInjectionHook
 				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "claude", subagentType(event));
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
-				Path contextFile = ClaudeSessionContext.write(toolScope.catTemp(), event, eventName, rules);
+				Path contextFile = ClaudeSessionContext.write(toolScope.catWork(), event, eventName, rules);
 				String context = CONTEXT_FILE_INSTRUCTION.formatted(eventName, contextFile);
 				output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 					"additionalContext", context))));

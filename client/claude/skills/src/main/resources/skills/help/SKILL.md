@@ -5,4 +5,4 @@ allowed-tools: [Bash]
 
 Run `${CAT_PLUGIN_ROOT}/client/bin/plugin-info`.
 
-<!-- cat:include ../shared-lazy-body.md -->
+<!-- cat:include ../shared-first-use-route.md -->

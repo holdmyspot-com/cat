@@ -53,6 +53,19 @@ public final class Git
 	}
 
 	/**
+	 * Reads one repository file exactly as it existed at a selected revision.
+	 *
+	 * @param revision the Git revision that owns the requested version
+	 * @param repositoryRelativePath the file path relative to the repository root
+	 * @return the file's unmodified contents
+	 * @throws IOException if Git cannot resolve the revision or file
+	 */
+	public byte[] fileAtRevision(String revision, String repositoryRelativePath) throws IOException
+	{
+		return bytes("show", revision + ":" + repositoryRelativePath);
+	}
+
+	/**
 	 * Runs Git with environment overrides and returns its standard-output lines.
 	 *
 	 * @param environment variable values that override this process's environment

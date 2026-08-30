@@ -1,8 +1,8 @@
 # CAT 1.0 Controlled Capture Artifacts
 
 These files are the source evidence for [`../overview.html`](../overview.html). They retain no isolated home or credentials. The runner resolves
-its temporary root from the calling tool scope, which defaults to the gitignored `.cat/temp` directory; complete temporary
-run directories, including isolated homes, remain below it on the capture host.
+its work root from the calling tool scope, which defaults to the gitignored `.cat/work` directory. Complete
+invocation-local run directories, including isolated homes, remain below `.cat/work/temp` on the capture host.
 
 Captured on 2026-08-09 UTC from worktree revision `421fba359` plus the uncommitted runner, Claude SessionStart
 spill-context, monetary-routing, and safe-API rule changes represented by this capture set. Every run started from the

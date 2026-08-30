@@ -1,0 +1,6 @@
+[
+  {
+    "type": "native-event",
+    "event": "{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"commandExecution\",\"command\":\"cat \\\"$CAT_PLUGIN_ROOT/rules/common/write-clearly.md\\\"\"}}}"
+  }
+]

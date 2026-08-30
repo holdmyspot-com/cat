@@ -1,7 +1,7 @@
 ---
-description: Use when the user asks to optimize a prompt-driven workflow: observe it, diagnose mistakes without interruption, apply backward design, update the prompt, and retest.
+description: Use when the user asks to optimize a prompt-driven workflow: observe it, diagnose mistakes without interruption, hand prompt changes to prompt-builder, and independently retest.
 ---
 
-Use `${PLUGIN_ROOT}/client/bin/workflow-temp` to create invocation-local optimizer evidence storage.
+Use `${CAT_PLUGIN_ROOT}/client/bin/workflow-temp` to create, hand off, or delete invocation-local optimizer storage.
 
-<!-- cat:include ../shared-lazy-body.md -->
+<!-- cat:include ../shared-first-use-route.md -->

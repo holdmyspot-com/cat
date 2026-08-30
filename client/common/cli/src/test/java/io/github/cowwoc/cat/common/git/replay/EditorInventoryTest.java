@@ -208,7 +208,7 @@ public final class EditorInventoryTest
 				"Add Codex help skill");
 			commit(git, repository, "client/claude/skills/src/main/resources/skills/help/SKILL.md", "help\n",
 				"Add Claude help skill");
-			String tip = commit(git, repository, "client/lifecycle/src/main/resources/install/install-codex.sh",
+			String tip = commit(git, repository, "client/codex/lifecycle/src/main/resources/install/install-codex.sh",
 				"#!/bin/sh\n", "Add Codex installer");
 			Path manifest = invocationManifest(repository);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
@@ -246,7 +246,7 @@ public final class EditorInventoryTest
 				"client/common/cli/src/main/java/io/github/cowwoc/cat/common/git/replay/GitTopicReplayEditor.java",
 				"class GitTopicReplayEditor {}\n", "Add topic replay command");
 			String tip = commit(git, repository,
-				"client/lifecycle/src/main/resources/install/install-codex.sh", "#!/bin/sh\n", "Add Codex installer");
+				"client/codex/lifecycle/src/main/resources/install/install-codex.sh", "#!/bin/sh\n", "Add Codex installer");
 			Path manifest = invocationManifest(repository);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
 			editor.prepare(base, tip, manifest);

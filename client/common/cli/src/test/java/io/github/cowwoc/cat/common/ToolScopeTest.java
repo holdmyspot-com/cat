@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.evaluation.PromptEvaluationOperation;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +54,37 @@ public final class ToolScopeTest
 				requireThat(scope.catWork(), "catWork").isEqualTo(root.resolve(".cat/work"));
 				requireThat(scope.temporaryWorkRoot(), "temporaryWorkRoot").isEqualTo(root.resolve(".cat/work/temp"));
 			}
+		}
+	}
+
+	/**
+	 * Verifies a closed tool scope rejects JSON mapper access.
+	 */
+	@SuppressWarnings("try")
+	@Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Scope is closed.*")
+	public void rejectsJsonAccessAfterClose()
+	{
+		try (ToolScope scope = new ToolScope())
+		{
+			scope.close();
+
+			scope.json();
+		}
+	}
+
+	/**
+	 * Verifies operation services cannot access a mapper after their owning scope closes.
+	 */
+	@SuppressWarnings("try")
+	@Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Scope is closed.*")
+	public void rejectsOperationJsonAfterClose()
+	{
+		try (ToolScope scope = new ToolScope())
+		{
+			PromptEvaluationOperation operation = new PromptEvaluationOperation(scope);
+			scope.close();
+
+			operation.json();
 		}
 	}
 }

@@ -42,6 +42,11 @@
 			<artifactId>client-codex-plugin</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>io.github.cowwoc.cat</groupId>
+			<artifactId>client-codex-rules</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -49,6 +54,13 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<argLine>--add-reads io.github.cowwoc.cat.codex.cli=org.testng --add-opens io.github.cowwoc.cat.codex.cli/io.github.cowwoc.cat.codex.runner=org.testng --add-opens io.github.cowwoc.cat.codex.cli/io.github.cowwoc.cat.codex.test=org.testng</argLine>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

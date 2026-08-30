@@ -235,7 +235,7 @@ final class History
 			String[] segments = path.substring(skillPrefix.length()).split("/");
 			return "skill:" + segments[6];
 		}
-		String installerPrefix = "client/lifecycle/src/main/resources/install/";
+		String installerPrefix = "client/codex/lifecycle/src/main/resources/install/";
 		if (path.matches(installerPrefix + "(bootstrap(-[a-z]+)?|install-[a-z]+|uninstall-[a-z]+)\\.sh"))
 			return "installer:" + path.substring(installerPrefix.length(), path.length() - ".sh".length());
 		if (path.equals("client/common/cli/src/main/java/io/github/cowwoc/cat/common/git/replay/GitTopicReplayEditor.java"))

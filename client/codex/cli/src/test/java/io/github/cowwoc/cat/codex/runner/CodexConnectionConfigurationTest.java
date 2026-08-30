@@ -136,13 +136,14 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-npm-cache-"));
 			Path cache = Files.createDirectories(root.resolve("npm-cache"));
 			Path destination = root.resolve("isolated/config.toml");
+			Path temporaryDirectory = root.resolve("isolated/tmp");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache, temporaryDirectory);
 
 			String configuration = Files.readString(destination);
 			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").contains(
 				"writable_roots = [\"" + cache + "\"]").contains("[shell_environment_policy.set]").contains(
-				"NPM_CONFIG_CACHE = \"" + cache + "\"");
+				"NPM_CONFIG_CACHE = \"" + cache + "\"").contains("TMPDIR = \"" + temporaryDirectory + "\"");
 		}
 	}
 
@@ -179,6 +180,31 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies an isolated process can write its own native runtime state while preserving the parent's CAT policy.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void grantsRunnerProfileItsRuntimeState() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-runner-permissions-"));
+			Path source = root.resolve("host.toml");
+			Path destination = root.resolve("isolated-home/config.toml");
+			Files.writeString(source, "[permissions.cat]\nextends = \":workspace\"\n");
+
+			Path temporaryDirectory = destination.getParent().resolve("tmp");
+			CodexConnectionConfiguration.copy(source, destination, null, temporaryDirectory);
+
+			String configuration = Files.readString(destination);
+			requireThat(configuration, "configuration").contains("[permissions.cat-runner]").
+				contains("extends = \"cat\"").contains("\"" + destination.getParent() + "\" = \"write\"").
+				contains("\":tmpdir\" = \"write\"").contains("TMPDIR = \"" + temporaryDirectory + "\"");
+		}
+	}
+
+	/**
 	 * Verifies a validator profile can inspect immutable executor evidence without making it writable.
 	 */
 	@Test
@@ -190,12 +216,12 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 
 			Files.createDirectories(destination.getParent());
-			Files.writeString(destination, "[permissions.cat]\nextends = \":workspace\"\n");
+			Files.writeString(destination, "[permissions.cat-runner]\nextends = \":workspace\"\n");
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
-				contains("extends = \"cat\"").contains("\"" + evidence + "\" = \"read\"").
+				contains("extends = \"cat-runner\"").contains("\"" + evidence + "\" = \"read\"").
 				doesNotContain("\"" + evidence + "\" = \"write\"");
 		}
 	}

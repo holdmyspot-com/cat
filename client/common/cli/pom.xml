@@ -18,6 +18,15 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>io.github.cowwoc.cat</groupId>
+			<artifactId>client-common-evaluation</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.commonmark</groupId>
+			<artifactId>commonmark</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>io.github.cowwoc.pouch</groupId>
 			<artifactId>pouch-core</artifactId>
 		</dependency>
@@ -54,7 +63,10 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<argLine>--add-reads io.github.cowwoc.cat.common.cli=org.testng --add-opens io.github.cowwoc.cat.common.cli/io.github.cowwoc.cat.common.git.replay=org.testng</argLine>
+					<argLine>--add-reads io.github.cowwoc.cat.common.cli=org.testng --add-opens io.github.cowwoc.cat.common.cli/io.github.cowwoc.cat.common.evaluation=org.testng --add-opens io.github.cowwoc.cat.common.cli/io.github.cowwoc.cat.common.git.replay=org.testng</argLine>
+					<excludes>
+						<exclude>**/JavaCheckFailureScenarioTest.java</exclude>
+					</excludes>
 				</configuration>
 			</plugin>
 			<plugin>

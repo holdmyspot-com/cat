@@ -28,6 +28,11 @@
 		</dependency>
 		<dependency>
 			<groupId>io.github.cowwoc.cat</groupId>
+			<artifactId>client-common-evaluation</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.cowwoc.cat</groupId>
 			<artifactId>client-common-plugin</artifactId>
 		</dependency>
 		<dependency>
@@ -79,12 +84,17 @@
 			<artifactId>requirements-java</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.commonmark</groupId>
+			<artifactId>commonmark</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>tools.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-yaml</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.testng</groupId>
 			<artifactId>testng</artifactId>
+			<scope>runtime</scope>
 		</dependency>
 	</dependencies>
 
@@ -159,4 +169,40 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<profile>
+			<id>repackage-prompt-bundle</id>
+			<properties>
+				<cat.prompt.bundle.project.root>.</cat.prompt.bundle.project.root>
+				<cat.prompt.bundle.artifact>${project.build.directory}/runtime/codex</cat.prompt.bundle.artifact>
+				<cat.prompt.bundle.harness>codex</cat.prompt.bundle.harness>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>exec-maven-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>repackage-current-prompt-bundle</id>
+								<phase>process-classes</phase>
+								<goals>
+									<goal>java</goal>
+								</goals>
+								<configuration>
+									<mainClass>io.github.cowwoc.cat.distribution.DistributionMain</mainClass>
+									<arguments>
+									<argument>repackage-prompt-bundle</argument>
+									<argument>${cat.prompt.bundle.project.root}</argument>
+									<argument>${cat.prompt.bundle.artifact}</argument>
+									<argument>${cat.prompt.bundle.harness}</argument>
+									</arguments>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

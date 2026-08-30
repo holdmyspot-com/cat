@@ -27,20 +27,20 @@ final class ClaudeSessionContext
 	/**
 	 * Writes the complete rules for one native Claude event.
 	 *
-	 * @param catTemp CAT's temporary root
+	 * @param catWork CAT's work root
 	 * @param event the native hook event
 	 * @param eventName the event name
 	 * @param rules the complete rules
 	 * @return the written context file
 	 * @throws IOException if the session identifier is invalid or the context cannot be written
 	 */
-	static Path write(Path catTemp, JsonNode event, String eventName, String rules) throws IOException
+	static Path write(Path catWork, JsonNode event, String eventName, String rules) throws IOException
 	{
-		assert catTemp != null;
+		assert catWork != null;
 		assert event != null;
 		assert eventName != null;
 		assert rules != null;
-		Path directory = contextDirectory(catTemp);
+		Path directory = contextDirectory(catWork);
 		Files.createDirectories(directory);
 		Path context = directory.resolve(fileName(event, eventName));
 		Files.writeString(context, rules, StandardCharsets.UTF_8);
@@ -50,15 +50,15 @@ final class ClaudeSessionContext
 	/**
 	 * Deletes the context files owned by a completed Claude session.
 	 *
-	 * @param catTemp CAT's temporary root
+	 * @param catWork CAT's work root
 	 * @param event the native SessionEnd event
 	 * @throws IOException if the session identifier is invalid or a context file cannot be deleted
 	 */
-	static void delete(Path catTemp, JsonNode event) throws IOException
+	static void delete(Path catWork, JsonNode event) throws IOException
 	{
-		assert catTemp != null;
+		assert catWork != null;
 		assert event != null;
-		Path directory = contextDirectory(catTemp);
+		Path directory = contextDirectory(catWork);
 		if (!Files.isDirectory(directory))
 			return;
 		String sessionId = sessionId(event);
@@ -81,13 +81,13 @@ final class ClaudeSessionContext
 	/**
 	 * Returns the CAT-owned context directory.
 	 *
-	 * @param catTemp CAT's temporary root
+	 * @param catWork CAT's work root
 	 * @return the context directory
 	 */
-	private static Path contextDirectory(Path catTemp)
+	private static Path contextDirectory(Path catWork)
 	{
-		assert catTemp != null;
-		return catTemp.resolve(CONTEXT_DIRECTORY);
+		assert catWork != null;
+		return catWork.resolve(CONTEXT_DIRECTORY);
 	}
 
 	/**

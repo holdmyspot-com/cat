@@ -78,8 +78,9 @@ by that harness and, when required by the host authentication relay, allow-liste
 no CAT marketplace, plugin cache, project rules, skills, agents, hooks, or inherited behavior configuration. Record the
 empty plugin/marketplace inventory before launching the harness.
 
-For every run, the calling tool scope resolves the CAT temporary root, defaulting to the gitignored project
-`.cat/temp` directory. For a **CAT** run, use the packaged `codex-runner` or `claude-runner` with `--install-cat` and
+For every run, the calling tool scope resolves the CAT work root, defaulting to the gitignored project `.cat/work`
+directory. It creates invocation-local capture resources below `.cat/work/temp`. For a **CAT** run, use the packaged
+`codex-runner` or `claude-runner` with `--install-cat` and
 the built artifact and retain its run directory, including its `run.json`, isolated home, plugin inventory, hook output,
 and event log. Record the installed CAT artifact revision. Do not use the host harness home for either side of a
 comparison.

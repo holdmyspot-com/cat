@@ -57,7 +57,7 @@ public final class ClaudeSessionEndHook
 			Path projectDir = scope.projectDir(event, workingDirectory);
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
-				ClaudeSessionContext.delete(toolScope.catTemp(), event);
+				ClaudeSessionContext.delete(toolScope.catWork(), event);
 			}
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)

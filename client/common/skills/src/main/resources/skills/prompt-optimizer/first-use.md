@@ -5,8 +5,8 @@
 - Turn an observed workflow failure into a verified, reusable improvement instead of an untested suggestion.
 - Preserve the independence of the observed run while making every finding and prevention goal auditable.
 - Stop only when a fresh retest supplies failure-capable evidence that the identified mistakes no longer occur.
-- Ensure prompt-file improvements use the canonical backward-design procedure to derive and revise their Design Goals,
-  guidance, and acceptance evidence together.
+- Route every prompt-artifact change to `prompt-builder`, which owns prompt design, organization, revision, validation,
+  assembly, and certification.
 - Prefer an upstream behavior-producing correction at the earliest mistaken decision over a later rejection, retry, or
   compensating guard; retain a downstream guard only for a distinct remaining failure mode.
 - Detect and prevent completion claims that lack a passed or explicitly excluded record for every required terminal
@@ -18,17 +18,19 @@
   the task's generated behavior.
 
 Use this skill when the user asks to observe an agent or workflow, identify its mistakes without steering it, derive
-prevention goals, update the workflow, and retest the result. Use it for a bounded, repeatable process improvement; do
-not use it for a one-off implementation task that has no observed failure pattern.
+prevention goals, route the correction to its authoritative owner, and retest the result. Use it for a bounded,
+repeatable process improvement; do not use it for a one-off implementation task that has no observed failure pattern.
 
 ## Loop
 
 1. State the scope, the terminal observable outcome, acceptance evidence, every required terminal gate, and the
    non-interference boundary. Record each gate as passed, failed, unrun, or explicitly excluded; a related check does
-   not substitute for an unrun or failed gate. Use the selected harness's `workflow-temp create prompt-optimizer` launcher
+   not substitute for an unrun or failed gate. Use the selected harness's `workflow-temp create prompt-optimizer`
+   launcher
    to create the fresh invocation-local evidence directory, and use its returned `directory` value; do not create or
    select that directory in the prompt or place it in the repository, `.cat`, an installation, or a cache. At the
-   terminal boundary, invoke `workflow-temp handoff <directory> <retained-directory-under-cat-temp>` when a later
+   terminal boundary, invoke `workflow-temp handoff <directory> <retained-directory-under-cat-work-temp>` when a
+   later
    workflow needs its uncommitted evidence; otherwise invoke `workflow-temp delete <directory>`. Record the later
    workflow as the cleanup owner, then delete the retained evidence after that workflow reaches its terminal result.
 2. Delegate or run one representative workflow execution. Before every material action, require a short narration of the
@@ -50,14 +52,19 @@ not use it for a one-off implementation task that has no observed failure patter
    claimed result. Reject it as a standalone feature when no such interface invokes it. For an agent or skill that
    claims only availability, accept a host-native named availability or selection check; do not require a live model
    task unless the candidate claims the model-generated result.
-5. Update the narrowest authoritative workflow artifact. When that artifact is a prompt file—including a skill, rule, or
-   agent instruction—apply the canonical `rules/common/backward-design.md` rule. It owns the
-   Design-Goal audit and derives the corresponding guidance and acceptance evidence; do not replace that procedure with
-   a local checklist or guard. Preserve existing safety constraints. For a delegated review, use an allowlisted handoff:
-   exact permitted inputs and destinations, no expected result, count, names, plan, or prior-artifact discovery. Require
-   behavior-first discovery before source provenance, and require validations to fail closed.
-6. Rebuild any executable artifact that packages the updated workflow. Add or update focused automated tests whenever
-   the behavior can be enforced in code. Run the applicable quality gates.
+5. Send each correction to its authoritative owner. When it changes a prompt artifact—including a skill, rule, or agent
+   instruction—apply `prompt-builder`; do not author, organize, validate, assemble, or certify the prompt here. Hand it
+   only the retained observed-run evidence, failure classification, earliest mistaken decision, prevention goals,
+   affected artifact scope, and required terminal gates. Hand off the retained evidence with `prompt-builder` as its
+   recorded later consumer and cleanup owner. `prompt-builder` returns the revised artifact, its Design-Goal and
+   ownership audit, deterministic-check results, assembled/build evidence, formal-certification result, and any blocker.
+   Preserve existing safety constraints. For a delegated review, use an allowlisted handoff: exact permitted inputs and
+   destinations, no expected result, count, names, plan, or prior-artifact discovery. Require behavior-first discovery
+   before source provenance, and require validations to fail closed.
+6. Record the authoritative owner's returned evidence and any blocker. Do not repeat `prompt-builder`'s authoring,
+   validation, assembly, or certification procedure. Run only the optimizer's fresh independent retest and terminal-gate
+   audit. For a retest that may outlast one tool result, start its synchronous command in the available PTY-capable
+   interface, retain the returned session identifier, and poll that same session until its terminal result is available.
 7. Retest with fresh inputs and an independent reviewer or executor. Do not pass the earlier conclusion, suspected bug,
    intended fix, or expected outcome. The retest must exercise every previously failed decision, preserve its trace, and
    produce a terminal-gate audit showing that every required gate passed or was explicitly excluded. If it finds a new
@@ -78,7 +85,8 @@ not use it for a one-off implementation task that has no observed failure patter
 - Does every candidate claim a result reachable through a supported interface rather than the existence of internal
   classes, tests, or packaging helpers? For availability-only agents and skills, does its evidence use a host-native
   availability or selection check instead of treating source inspection as proof?
-- For every revised prompt file, was the canonical backward-design procedure applied, including its Design-Goal audit?
+- For every revised prompt artifact, does the `prompt-builder` handoff and return record show its Design-Goal audit,
+  ownership decision, deterministic checks, assembly/build validation, and formal certification?
 - Does the correction cause the desired behavior at the earliest mistaken decision rather than merely rejecting it
   later?
 - Did the retest run in the recorded working context and propagate validation failures?

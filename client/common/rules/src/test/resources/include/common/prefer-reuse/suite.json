@@ -1,0 +1,129 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "toml-parser-library": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/prefer-reuse.md",
+          "include/common/preserve-required-distinctions.md"
+        ]
+      },
+      "deterministic_check": {
+        "artifact": "toml-parser-library/deterministic-check/dependency-declaration.mjs",
+        "writable_project": true,
+        "command": [
+          "node",
+          "${check}",
+          "${project}",
+          "${executor_result}"
+        ],
+        "assertions": [
+          "dependency-declaration",
+          "organic-routing",
+          "resolved-routing",
+          "final-public-boundary"
+        ],
+        "self_tests": [
+          {
+            "project": "toml-parser-library/deterministic-check/known-good",
+            "evidence_events": "toml-parser-library/deterministic-check/known-good-events.json",
+            "expected_assertions": {
+              "dependency-declaration": "passed",
+              "organic-routing": "passed",
+              "resolved-routing": "passed",
+              "final-public-boundary": "passed"
+            }
+          },
+          {
+            "project": "toml-parser-library/deterministic-check/known-bad",
+            "evidence_events": "toml-parser-library/deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "dependency-declaration": "passed",
+              "organic-routing": "passed",
+              "resolved-routing": "passed",
+              "final-public-boundary": "failed"
+            }
+          }
+        ]
+      }
+    },
+    "unrelated-documentation": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "not_selected": [
+          "include/common/prefer-reuse.md"
+        ]
+      },
+      "deterministic_check": {
+        "artifact": "unrelated-documentation/deterministic-check/reuse-route.mjs",
+        "command": [
+          "node",
+          "${check}",
+          "${executor_result}"
+        ],
+        "assertions": [
+          "unrelated-route-not-selected"
+        ],
+        "self_tests": [
+          {
+            "project": "unrelated-documentation/project",
+            "evidence_events": "unrelated-documentation/deterministic-check/known-good-events.json",
+            "expected_assertions": {
+              "unrelated-route-not-selected": "passed"
+            }
+          },
+          {
+            "project": "unrelated-documentation/project",
+            "evidence_events": "unrelated-documentation/deterministic-check/known-bad-events.json",
+            "expected_assertions": {
+              "unrelated-route-not-selected": "failed"
+            }
+          }
+        ]
+      }
+    },
+    "configuration-presence": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/prefer-reuse.md",
+          "include/common/preserve-required-distinctions.md"
+        ]
+      }
+    },
+    "platform-facility": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/prefer-reuse.md",
+          "include/common/preserve-required-distinctions.md"
+        ]
+      }
+    }
+  }
+}

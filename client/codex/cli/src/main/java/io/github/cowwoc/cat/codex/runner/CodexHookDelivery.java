@@ -17,7 +17,7 @@ final class CodexHookDelivery
 	private static final String SUBAGENT_START = "cat@cat:hooks/hooks.json:subagent_start:0:0";
 
 	/**
-	 * Verifies that Codex has accepted CAT's two context hooks before a CAT-enabled run starts.
+	 * Verifies that Codex has accepted CAT's context hooks before a CAT-enabled run starts.
 	 *
 	 * @param response the native {@code hooks/list} response
 	 * @throws IOException if either CAT hook is unavailable or not trusted

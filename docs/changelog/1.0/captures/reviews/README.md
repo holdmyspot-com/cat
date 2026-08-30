@@ -13,7 +13,7 @@ not temporary runner artifacts. They are stable review targets, not production g
 The previously published matrix predates the equal-prompt protocol and is diagnostic-only. Regenerate it before
 publishing this section. Under `languages/`, the valid matrix contains one Base stream and one validated CAT specialist
 stream for every concern, harness, and TypeScript, Python, Java, C#, C++, PHP, or Go fixture. Failed and superseded
-retries remain only below the gitignored `.cat/temp` capture workspace; they are not publication candidates.
+retries remain only below the gitignored `.cat/work/temp` capture workspace; they are not publication candidates.
 
 Each `codex-*` and `claude-*` event stream names its harness, Base or CAT mode, and concern. Both modes receive the
 same retained task. The CAT capture tool derives the Review Contract's marked response-format block from the selected
@@ -24,7 +24,7 @@ refuses a CAT response without the required grammar, fields, or complete Markdow
 when opened directly, without a network request.
 
 Run `capture-language-matrix.sh` to capture the complete language matrix beneath the gitignored
-`.cat/temp/changelog-review-captures` workspace. Pass a different workspace outside this published directory only when
+`.cat/work/temp/changelog-review-captures` workspace. Pass a different workspace outside this published directory only when
 needed. It gives every harness, language, and review concern a fresh project, home, and retained manifest while one
 persistent parent supervises a bounded pool of twenty child processes by default. Set `CAPTURE_PARALLELISM` or pass its
 second argument to select a different positive bound; do not background the script from a shell that will terminate

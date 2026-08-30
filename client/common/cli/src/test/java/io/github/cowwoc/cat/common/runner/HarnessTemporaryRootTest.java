@@ -18,7 +18,7 @@ public final class HarnessTemporaryRootTest
 	}
 
 	/**
-	 * Verifies every runner operation defaults beneath the scope-provided CAT temporary root.
+	 * Verifies every runner operation defaults beneath the scope-provided CAT work temporary root.
 	 */
 	@Test
 	public void defaultsBelowCatTemporaryRoot()

@@ -118,16 +118,6 @@ public final class ToolScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the CAT-owned root for invocation-local temporary resources.
-	 *
-	 * @return the CAT work temp directory
-	 */
-	public Path catTemp()
-	{
-		return temporaryWorkRoot();
-	}
-
-	/**
 	 * Returns whether this scope is closed.
 	 *
 	 * @return true if this scope is closed
