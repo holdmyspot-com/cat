@@ -6,7 +6,7 @@
 
 	<groupId>io.github.cowwoc.cat</groupId>
 	<artifactId>client</artifactId>
-	<version>1.0.2</version>
+	<version>1.0.3</version>
 	<packaging>pom</packaging>
 
 	<name>Client</name>
