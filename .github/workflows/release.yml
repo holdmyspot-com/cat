@@ -76,7 +76,11 @@ jobs:
       - name: Record WSL platform evidence
         shell: pwsh
         run: |
-          $distribution = 'Ubuntu-24.04'
+          $distribution = wsl.exe --list --quiet | Where-Object { $_.Trim() } | Select-Object -First 1
+          if ($null -eq $distribution) {
+            throw 'The GitHub-hosted Windows runner has no installed WSL distribution.'
+          }
+          $distribution = $distribution.Trim()
           wsl.exe --distribution $distribution --exec bash -lc 'true'
           $workspace = (wsl.exe --distribution $distribution --exec wslpath "$env:GITHUB_WORKSPACE").Trim()
           wsl.exe --distribution $distribution --exec bash -lc "'$workspace/client/release/test-platform-matrix.sh' --record-wsl '$workspace/native/personal' '$workspace/native/commercial' '${{ github.ref_name }}' '$workspace/platform-receipt.json'"
