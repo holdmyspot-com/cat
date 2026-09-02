@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>io.github.cowwoc.cat</groupId>
 		<artifactId>client-codex</artifactId>
-		<version>1.0.1</version>
+		<version>1.0.2</version>
 	</parent>
 	<artifactId>client-codex-plugin</artifactId>
 	<name>Codex Plugin Resources</name>
