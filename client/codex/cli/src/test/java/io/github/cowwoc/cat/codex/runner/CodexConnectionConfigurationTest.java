@@ -221,7 +221,7 @@ public final class CodexConnectionConfigurationTest
 			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
-				contains("extends = \"cat-runner\"").contains("\"" + evidence + "\" = \"read\"").
+				contains("extends = \"cat-runner\"").contains("\"" + evidence.toRealPath() + "\" = \"read\"").
 				doesNotContain("\"" + evidence + "\" = \"write\"");
 		}
 	}
