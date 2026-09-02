@@ -105,8 +105,8 @@ documentation, commands, or rules, lazy load `../include/common/consistent-termi
 When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
 `../include/common/parameter-validation.md`.
 
-When writing or editing documentation for a function, method, command, configuration entry, or user-facing workflow,
-lazy load `../include/documentation/general.md`.
+When writing or editing maintained documentation, including product, legal, API, function, method, command,
+configuration, or user-facing workflow documentation, lazy load `../include/documentation/general.md`.
 
 Before writing or editing a reader-facing update whose new evidence requires an actor to correct, narrow, or otherwise
 change an action, run this one shell action:
@@ -152,11 +152,13 @@ Before designing or changing a component, API, collaborator, integration boundar
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
 
 Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
-result, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs and authority can
-determine every required decision.
+result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
+benefit, or other future outcome, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs
+and authority can determine every required decision.
 
-When designing, updating, or executing a prompt-driven workflow, lazy load `../include/common/delegation.md` to assign
-deterministic, bounded-review, and high-judgment work to the appropriate authority.
+Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
+work, lazy load `../include/common/delegation.md` to assign deterministic, bounded-review, and high-judgment work to the
+appropriate authority and isolate write-capable recipients.
 
 When accessing environment-dependent state, lazy load `../include/common/environment.md` to preserve an explicit,
 testable boundary.
@@ -226,8 +228,12 @@ its invocation evidence.
 When answering a user question whose relevant research, authoritative source, or supported probe remains inconclusive,
 lazy load `../include/common/check-assumptions.md` before drafting the answer.
 
-When a workflow records progress for handoff, retry, or resumption, lazy load `../include/common/monotonic-progress.md`
-to preserve verified state across transitions.
+When defining or changing a workflow with progress handoff, retry, or resumption, lazy load
+`../include/common/monotonic-progress.md` to preserve verified state across transitions.
+
+When defining or changing an externally visible operation that declares idempotency or can create an externally durable
+effect before a caller can observe its result, lazy load `../include/common/idempotency.md` to preserve one logical
+operation across retries.
 
 When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
 dependency, lazy load `../include/common/workflow-error-reporting.md` before handoff.

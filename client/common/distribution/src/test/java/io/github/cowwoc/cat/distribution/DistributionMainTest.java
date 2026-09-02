@@ -97,4 +97,101 @@ public final class DistributionMainTest
 			requireThat(sourceRoots, "sourceRoots").contains(harnessPluginResources);
 		}
 	}
+
+	/**
+	 * Finds the repository root from the test process working directory.
+	 *
+	 * @return the repository root
+	 * @throws IllegalStateException if no ancestor contains the client reactor
+	 */
+	private static Path findProjectRoot()
+	{
+		Path candidate = Path.of("").toAbsolutePath().normalize();
+		while (candidate != null)
+		{
+			if (Files.isRegularFile(candidate.resolve("client/pom.xml")))
+				return candidate;
+			candidate = candidate.getParent();
+		}
+		throw new IllegalStateException("No ancestor of the test working directory contains client/pom.xml");
+	}
+
+	/**
+	 * Verifies one native build materializes separate Personal and Commercial repository trees for both harnesses.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void materializesBothEditionRepositories() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("edition-repositories-"));
+			Path claude = createAssembledArtifact(temporary.resolve("assembled-claude"));
+			Path codex = createAssembledArtifact(temporary.resolve("assembled-codex"));
+
+			DistributionMain.materializeReleaseTrees(findProjectRoot(), claude, codex, temporary.resolve("release"),
+				io.github.cowwoc.cat.common.Platform.LINUX_X64);
+
+			for (ReleaseManifest.Edition edition : ReleaseManifest.Edition.values())
+			{
+				Path editionRoot = temporary.resolve("release").resolve(edition.externalValue());
+				requireThat(editionRoot.resolve("claude/linux-x86_64"), "claudeTarget").isDirectory();
+				requireThat(editionRoot.resolve("codex/linux-x86_64"), "codexTarget").isDirectory();
+				requireThat(editionRoot.resolve("LICENSE.md"), "license").isRegularFile();
+				requireThat(editionRoot.resolve("README.md"), "readme").isRegularFile();
+				requireThat(editionRoot.resolve("release-manifest.json"), "releaseManifest").isRegularFile();
+			}
+		}
+	}
+
+	/**
+	 * Verifies an in-tree JDK-style legal alias becomes a regular release input without changing its bytes.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void normalizesJdkLegalSymlinks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("assembly-link-"));
+			Path legal = Files.createDirectories(root.resolve("client/legal/java.base"));
+			Path source = Files.writeString(legal.resolve("LICENSE"), "license text");
+			Path aliasDirectory = Files.createDirectories(root.resolve("client/legal/java.xml"));
+			Path alias = aliasDirectory.resolve("LICENSE");
+			Files.createSymbolicLink(alias, Path.of("../java.base/LICENSE"));
+
+			DistributionMain.normalizeSafeSymlinks(root);
+
+			requireThat(Files.isSymbolicLink(alias), "aliasIsLink").isFalse();
+			requireThat(Files.readString(alias), "aliasText").isEqualTo(Files.readString(source));
+		}
+	}
+
+	/**
+	 * Creates a representative assembled artifact for edition-integration tests.
+	 *
+	 * @param root the artifact root
+	 * @return the artifact root
+	 * @throws IOException if fixture creation fails
+	 */
+	private static Path createAssembledArtifact(Path root) throws IOException
+	{
+		Path launchers = Files.createDirectories(root.resolve("client/bin"));
+		Files.writeString(launchers.resolve("prompt-file-check"), "shared");
+		for (String launcher : EditionArtifactMaterializer.COMMERCIAL_LAUNCHERS)
+			Files.writeString(launchers.resolve(launcher), "commercial");
+		Files.createDirectories(root.resolve("skills/prompt-builder"));
+		Files.writeString(root.resolve("skills/prompt-builder/SKILL.md"), "shared");
+		Files.createDirectories(root.resolve("skills/prompt-optimizer"));
+		Files.writeString(root.resolve("skills/prompt-optimizer/SKILL.md"), "commercial");
+		Files.createDirectories(root.resolve("skills/prompt-optimizer"));
+		Files.writeString(root.resolve("skills/prompt-optimizer/SKILL.md"), "commercial");
+		Files.createDirectories(root.resolve("skills/feedback"));
+		Files.writeString(root.resolve("skills/feedback/SKILL.md"), "commercial");
+		Files.writeString(root.resolve("LICENSE.txt"), "license");
+		Files.writeString(root.resolve("NOTICE.txt"), "notice");
+		return root;
+	}
 }

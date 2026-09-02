@@ -52,13 +52,6 @@
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<argLine>--add-reads io.github.cowwoc.cat.claude.cli=org.testng --add-opens io.github.cowwoc.cat.claude.cli/io.github.cowwoc.cat.claude=org.testng --add-opens io.github.cowwoc.cat.claude.cli/io.github.cowwoc.cat.claude.runner=org.testng --add-opens io.github.cowwoc.cat.claude.cli/io.github.cowwoc.cat.claude.test=org.testng</argLine>
-				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-pmd-plugin</artifactId>
 			</plugin>
 		</plugins>

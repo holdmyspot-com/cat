@@ -131,6 +131,7 @@ public final class HarnessRunnerBridge
 							response.put("runId", session.run().id());
 							response.put("exitCode", result.exitCode());
 							response.put("error", result.standardError());
+							response.put("assistant_response", result.assistantResponse());
 							write(session.scope(), output, response);
 							return null;
 						});
@@ -299,6 +300,7 @@ public final class HarnessRunnerBridge
 		response.put("runId", session.run().id());
 		response.put("exitCode", result.exitCode());
 		response.put("error", result.standardError());
+		response.put("assistant_response", result.assistantResponse());
 		write(session.scope(), output, response);
 		return result;
 	}

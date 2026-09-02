@@ -124,6 +124,28 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Uses the hook launcher's installation directory when Claude does not export its plugin-root variable.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void fallsBackToLauncherInstallationDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/rule.md", "rule");
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}",
+				Map.of("CAT_INSTALL_DIR", plugin.toString()), project);
+
+			requireThat(completeContext(result), "context").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies SessionEnd removes the rule context owned by its session.
 	 */
 	@Test
@@ -287,7 +309,7 @@ public final class ClaudeSessionStartHookTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			HookResult malformed = invoke("{", Map.of("CLAUDE_PLUGIN_ROOT", project.toString()), project);
-			HookResult missingInstallDirectory = invoke("{}", Map.of("CAT_INSTALL_DIR", project.toString()), project);
+			HookResult missingInstallDirectory = invoke("{}", Map.of(), project);
 
 			requireThat(malformed.output(), "malformedOutput").isEqualTo("{}\n");
 			requireThat(missingInstallDirectory.output(), "missingInstallDirectoryOutput").isEqualTo("{}\n");

@@ -51,10 +51,10 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
-	 * Verifies generated launchers retain JVM performance data in a private temporary filesystem.
+	 * Verifies generated launchers preserve caller paths while isolating process and device namespaces.
 	 */
 	@Test
-	public void isolatesPerfDataWithoutDisablingIt() throws IOException
+	public void preservesPathsAndKeepsPerfData() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -67,7 +67,9 @@ public final class JlinkImageBuilderTest
 
 			String launcher = Files.readString(output.resolve("bin/plugin-info"));
 			requireThat(launcher, "launcher").
-				contains("bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev --").
+				contains("bwrap --bind / / --proc /proc --dev /dev --").
+				doesNotContain("--tmpfs /tmp").
+				doesNotContain("dirname").
 				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'").
 				doesNotContain("PerfDisableSharedMem");
 			try (Process first = new ProcessBuilder(output.resolve("bin/plugin-info").toString(), "-version").

@@ -10,7 +10,6 @@ Use CAT's uninstaller. It removes only the files recorded in CAT's ownership man
 marketplace registration:
 
 ```bash
-curl -fsSL \
-  "https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/"\
-  "bootstrap-uninstall-codex.sh" | sh
+CAT_BOOTSTRAP_RELEASE_TREE="$PWD/cat-1.0" \
+  sh cat-1.0/codex/linux-x86_64/install/bootstrap-uninstall-codex.sh
 ```

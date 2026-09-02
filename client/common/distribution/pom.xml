@@ -28,11 +28,6 @@
 		</dependency>
 		<dependency>
 			<groupId>io.github.cowwoc.cat</groupId>
-			<artifactId>client-common-evaluation</artifactId>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
 			<artifactId>client-common-plugin</artifactId>
 		</dependency>
 		<dependency>
@@ -142,6 +137,27 @@
 								<argument>${project.basedir}/../lifecycle/src/main/resources/install/common.sh</argument>
 								<argument>${project.basedir}/../../claude/lifecycle/src/main/resources/install/uninstall-claude.sh</argument>
 								<argument>${project.basedir}/../../codex/lifecycle/src/main/resources/install/uninstall-codex.sh</argument>
+								<argument>${project.basedir}/../../release/run-frontend-launch-gate.sh</argument>
+								<argument>${project.basedir}/../../release/publish-release.sh</argument>
+								<argument>${project.basedir}/../../release/test-staged-release.sh</argument>
+								<argument>${project.basedir}/../../release/test-license-offer-consistency.sh</argument>
+								<argument>${project.basedir}/../../release/test-release-tag.sh</argument>
+								<argument>${project.basedir}/../../release/test-private-install.sh</argument>
+								<argument>${project.basedir}/../../release/test-platform-matrix.sh</argument>
+								<argument>${project.basedir}/../../release/test-terminal-certification.sh</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>terminal-certification</id>
+						<phase>test</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>bats</executable>
+							<arguments>
+								<argument>${project.basedir}/../../release/test-terminal-certification.bats</argument>
 							</arguments>
 						</configuration>
 					</execution>

@@ -74,6 +74,28 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Uses the hook launcher's installation directory when Codex does not export its plugin-root variable.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void fallsBackToLauncherInstallationDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}",
+				Map.of("CAT_INSTALL_DIR", plugin.toString()), Path.of("."));
+
+			requireThat(context(result), "context").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies bundled rules precede project rules in the harness-specific order.
 	 */
 	@Test
@@ -223,7 +245,7 @@ public final class CodexSessionStartHookTest
 				"---\npaths:");
 
 			HookResult malformed = invoke("{", Map.of("PLUGIN_ROOT", plugin.toString()), project);
-			HookResult missingInstallDirectory = invoke("{}", Map.of("CAT_INSTALL_DIR", project.toString()), project);
+			HookResult missingInstallDirectory = invoke("{}", Map.of(), project);
 			HookResult invalidRule = invoke("{}", Map.of("PLUGIN_ROOT", plugin.toString()), project);
 			HookResult oversized = invoke("x".repeat(1_048_577), Map.of("PLUGIN_ROOT", plugin.toString()),
 				project);

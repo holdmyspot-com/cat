@@ -26,6 +26,8 @@ final class CodexHookScope implements AutoCloseable
 	{
 		String pluginRoot = environment.get("PLUGIN_ROOT");
 		if (pluginRoot == null || pluginRoot.isBlank())
+			pluginRoot = environment.get("CAT_INSTALL_DIR");
+		if (pluginRoot == null || pluginRoot.isBlank())
 			throw new IOException("Codex PLUGIN_ROOT is not set");
 
 		Path resolvedPluginRoot = Path.of(pluginRoot.strip()).toAbsolutePath().normalize();

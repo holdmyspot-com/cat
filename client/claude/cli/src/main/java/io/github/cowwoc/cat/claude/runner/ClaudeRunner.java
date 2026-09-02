@@ -188,9 +188,7 @@ public final class ClaudeRunner
 				hookResults, readOnlyEvidence);
 			manager.initialize(run, artifact, project, "claude-stream-json", command);
 			lock = manager.acquireLock(run);
-			Path catRules = null;
-			if (marketplace != null)
-				catRules = marketplace.resolve("plugins/cat/rules");
+			Path catRules = routeRuleRoot(marketplace, agent != null);
 			ClaudeHarnessProcess process = new ClaudeHarnessProcess(scope, HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment));
 			try
@@ -223,6 +221,20 @@ public final class ClaudeRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Selects the rule root for ordinary CAT routing without routing a direct packaged agent through a second model turn.
+	 *
+	 * @param marketplace the installed CAT marketplace, or {@code null} when CAT is not installed
+	 * @param directAgentSelected whether the runner selected a packaged direct agent
+	 * @return the CAT rule root for ordinary routing, or {@code null} when routing is inapplicable
+	 */
+	static Path routeRuleRoot(Path marketplace, boolean directAgentSelected)
+	{
+		if (marketplace == null || directAgentSelected)
+			return null;
+		return marketplace.resolve("plugins/cat/rules");
 	}
 
 	/**

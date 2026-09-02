@@ -12,7 +12,6 @@ import io.github.cowwoc.cat.distribution.bundle.ArtifactLayer;
 import io.github.cowwoc.cat.distribution.bundle.JlinkImageBuilder;
 import io.github.cowwoc.cat.distribution.bundle.ModuleDescriptorPatcher;
 import io.github.cowwoc.cat.distribution.bundle.PluginArtifactBuilder;
-import io.github.cowwoc.cat.distribution.bundle.ReleasePackager;
 import io.github.cowwoc.cat.distribution.bundle.RuleArtifactRouter;
 import io.github.cowwoc.cat.distribution.license.LegalMaterialsBuilder;
 import io.github.cowwoc.cat.distribution.license.ThirdPartyComponent;
@@ -176,7 +175,6 @@ public final class DistributionMain
 		deleteAndRecreateDirectory(jlinkModules);
 
 		Path commonCli = findDependencyJar(moduleDirectory, "client-common-cli");
-		Path commonEvaluation = findDependencyJar(moduleDirectory, "client-common-evaluation");
 		Path claudeCli = findDependencyJar(moduleDirectory, "client-claude-cli");
 		Path codexCli = findDependencyJar(moduleDirectory, "client-codex-cli");
 		Path requirements = findDependencyJar(moduleDirectory, "requirements-java");
@@ -203,9 +201,8 @@ public final class DistributionMain
 		Path commonmark = findDependencyJar(moduleDirectory, "commonmark");
 		Path testng = findDependencyJar(moduleDirectory, "testng");
 
-		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules), copyModule(commonEvaluation,
-			jlinkModules),
-			copyModule(requirements, jlinkModules), copyModule(requirementsAnnotation, jlinkModules),
+		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules), copyModule(requirements,
+			jlinkModules), copyModule(requirementsAnnotation, jlinkModules),
 			copyModule(pouch, jlinkModules), copyModule(slf4j, jlinkModules), copyModule(slf4jNop, jlinkModules),
 			modularizeJavaDiff(javaDiff, jlinkModules), copyModule(commonmark, jlinkModules),
 			modularizeTestNg(testng, jlinkModules));
@@ -230,10 +227,16 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.common.PromptFileCheck"),
 				new JlinkImageBuilder.Launcher("source-documentation-inventory", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.SourceDocumentationInventory"),
-				new JlinkImageBuilder.Launcher("prompt-evidence-check", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.PromptEvidenceCheck"),
-				new JlinkImageBuilder.Launcher("prompt-evaluation", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.PromptEvaluation"),
+				new JlinkImageBuilder.Launcher("certification-contract", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.contract.CertificationContractCommand"),
+				new JlinkImageBuilder.Launcher("certification", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.certification.CertificationCommand"),
+				new JlinkImageBuilder.Launcher("certificate-history", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.history.CertificateHistoryCommand"),
+				new JlinkImageBuilder.Launcher("feedback", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.commercial.FeedbackCommand"),
+				new JlinkImageBuilder.Launcher("certification-process", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.CertificationProcessCommand"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.InvocationDirectory"),
 				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
@@ -260,10 +263,16 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.common.PromptFileCheck"),
 				new JlinkImageBuilder.Launcher("source-documentation-inventory", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.SourceDocumentationInventory"),
-				new JlinkImageBuilder.Launcher("prompt-evidence-check", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.PromptEvidenceCheck"),
-				new JlinkImageBuilder.Launcher("prompt-evaluation", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.PromptEvaluation"),
+				new JlinkImageBuilder.Launcher("certification-contract", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.contract.CertificationContractCommand"),
+				new JlinkImageBuilder.Launcher("certification", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.certification.CertificationCommand"),
+				new JlinkImageBuilder.Launcher("certificate-history", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.history.CertificateHistoryCommand"),
+				new JlinkImageBuilder.Launcher("feedback", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.commercial.FeedbackCommand"),
+				new JlinkImageBuilder.Launcher("certification-process", "io.github.cowwoc.cat.common.cli",
+					"io.github.cowwoc.cat.common.optimization.CertificationProcessCommand"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.InvocationDirectory"),
 				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
@@ -276,8 +285,7 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.codex.CodexSubagentStartHook")), jlinkDirectory.resolve("codex"));
 
 		// Resolve these eagerly so a missing runtime dependency fails with a specific artifact name.
-		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(commonEvaluation) ||
-			!Files.isRegularFile(claudeCli) ||
+		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(claudeCli) ||
 			!Files.isRegularFile(codexCli) ||
 			!Files.isRegularFile(requirements))
 			throw new IOException("One or more Java runtime modules are missing from " + moduleDirectory);
@@ -362,10 +370,76 @@ public final class DistributionMain
 			RuleArtifactRouter.route(codexRoot, scope.yaml());
 		}
 
-		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
-		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
-		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
-		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive), releaseDirectory.resolve("SHA256SUMS.txt"));
+		materializeReleaseTrees(projectRoot, claudeRoot, codexRoot, releaseDirectory, platform);
+	}
+
+	/**
+	 * Materializes both edition repositories for the two harness artifacts produced by one native-platform build.
+	 *
+	 * @param projectRoot the repository containing the release documents
+	 * @param claudeRoot the assembled Claude artifact
+	 * @param codexRoot the assembled Codex artifact
+	 * @param releaseDirectory the empty staged release root
+	 * @param platform the native target platform
+	 * @throws IOException if an edition tree cannot be materialized
+	 */
+	static void materializeReleaseTrees(Path projectRoot, Path claudeRoot, Path codexRoot, Path releaseDirectory,
+		Platform platform)
+		throws IOException
+	{
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(claudeRoot, "claudeRoot").isNotNull();
+		requireThat(codexRoot, "codexRoot").isNotNull();
+		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		normalizeSafeSymlinks(claudeRoot);
+		normalizeSafeSymlinks(codexRoot);
+		EditionArtifactMaterializer materializer = new EditionArtifactMaterializer(PluginInfo.CAT_VERSION);
+		for (ReleaseManifest.Edition edition : ReleaseManifest.Edition.values())
+		{
+			Path editionRoot = releaseDirectory.resolve(edition.externalValue());
+			Files.createDirectories(editionRoot);
+			Files.copy(projectRoot.resolve("LICENSE.md"), editionRoot.resolve("LICENSE.md"));
+			Files.copy(projectRoot.resolve("README.md"), editionRoot.resolve("README.md"));
+			Path claude = materializer.materialize(new ReleaseManifest.ReleaseTarget(edition,
+				ReleaseManifest.Harness.CLAUDE, platform), claudeRoot, editionRoot);
+			Path codex = materializer.materialize(new ReleaseManifest.ReleaseTarget(edition,
+				ReleaseManifest.Harness.CODEX, platform), codexRoot, editionRoot);
+			materializer.writeReleaseManifest(List.of(claude, codex), editionRoot);
+		}
+	}
+
+	/**
+	 * Replaces safe in-tree assembly symlinks with the regular files they reference.
+	 *
+	 * <p>The bundled JDK creates legal-document aliases as relative symlinks. Release trees intentionally contain no
+	 * symlinks, so their bytes are copied into the assembled artifact before the release materializer validates it.
+	 *
+	 * @param artifactRoot the assembled artifact whose symlinks must be normalized
+	 * @throws IOException if normalization fails because the input is missing, unsafe, or cannot be replaced
+	 */
+	static void normalizeSafeSymlinks(Path artifactRoot) throws IOException
+	{
+		requireThat(artifactRoot, "artifactRoot").isNotNull();
+		Path normalizedRoot = artifactRoot.toAbsolutePath().normalize();
+		if (!Files.isDirectory(normalizedRoot, NOFOLLOW_LINKS))
+			throw new IOException("Assembled artifact is not a directory: " + normalizedRoot);
+		Path realRoot = normalizedRoot.toRealPath();
+		List<Path> links;
+		try (Stream<Path> paths = Files.walk(normalizedRoot))
+		{
+			links = paths.filter(Files::isSymbolicLink).toList();
+		}
+		for (Path link : links)
+		{
+			Path target = link.toRealPath();
+			if (!target.startsWith(realRoot))
+				throw new IOException("Assembled artifact link escapes its root: " + link);
+			if (!Files.isRegularFile(target, NOFOLLOW_LINKS))
+				throw new IOException("Assembled artifact link does not name a regular file: " + link);
+			Files.delete(link);
+			Files.copy(target, link);
+		}
 	}
 
 	/**

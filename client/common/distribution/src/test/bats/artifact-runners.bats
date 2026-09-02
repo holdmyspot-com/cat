@@ -16,7 +16,6 @@ setup()
 	export RUN_ROOT="${TEST_ROOT}/runs"
 	mkdir -p "${FAKE_BIN}" "${HOST_HOME}" "${RUN_ROOT}"
 }
-
 # Removes the test's CAT-work fixture after its last runner assertion completes.
 #
 # Side effects:
@@ -42,7 +41,13 @@ create_test_artifact()
 	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/client/bin" "${artifact}/agents/${harness}"
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
 	printf '1.0\n' > "${artifact}/client/VERSION"
-	printf '# test agent\n' > "${artifact}/agents/${harness}/fixture.toml"
+	printf '%s\n' \
+		'name = "fixture"' \
+		'model = "gpt-5.6-luna"' \
+		'model_reasoning_effort = "medium"' \
+		"developer_instructions = '''" \
+		'Follow the fixed test behavior.' \
+		"'''" > "${artifact}/agents/${harness}/fixture.toml"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/plugin-info"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/session-start"
 	chmod +x "${artifact}/client/bin/plugin-info" "${artifact}/client/bin/session-start"
@@ -173,7 +178,8 @@ SCRIPT
 "{\"type\":\"turn\",\"prompt\":\"first\"}" \
 "{\"type\":\"turn\",\"prompt\":\"second\"}" \
 "{\"type\":\"complete\"}" |
-"$1" --artifact "$2" --project "$3" --run-root "$4" --executable codex --keep-run --install-cat'
+"$1" --artifact "$2" --project "$3" --run-root "$4" --executable codex --model gpt-5.6-luna \
+--effort medium --keep-run --install-cat'
 	run env HOME="${HOST_HOME}" PATH="${FAKE_BIN}:${PATH}" sh -c "${runner_command}" \
 		sh "${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/codex-runner" "${artifact}" "${project}" "${RUN_ROOT}"
 
@@ -186,6 +192,8 @@ SCRIPT
 	grep -F "plugin marketplace add" "${FAKE_BIN}/harness.log"
 	grep -F "plugin add cat@cat" "${FAKE_BIN}/harness.log"
 	grep -F 'app-server --stdio --enable hooks' "${FAKE_BIN}/harness.log"
+	grep -F '"method":"thread/start"' "${FAKE_BIN}/harness.log" | grep -F '"model":"gpt-5.6-luna"'
+	grep -F '"method":"turn/start"' "${FAKE_BIN}/harness.log" | grep -F '"effort":"medium"'
 	grep -F "${RUN_ROOT}/codex/" "${FAKE_BIN}/harness.log"
 	[ -f "${HOST_HOME}/.codex/auth.json" ]
 }
@@ -206,47 +214,17 @@ SCRIPT
 	grep -F 'app-server --stdio --disable plugins' "${FAKE_BIN}/harness.log"
 }
 
+@test "packaged Codex runner delivers a selected agent's instructions to app-server" {
+	create_fake_codex_command
+	artifact="$(create_test_artifact codex)"
+	project="$(create_source_project)"
 
-# This opt-in boundary check invokes the real Codex service through the packaged evaluator and proves both typed runner
-# results are retained. It needs explicit token-spending consent because it starts an executor and independent validator.
-@test "opt-in packaged Codex smoke retains executor and validator evidence" {
-	if [ "${CAT_RUN_AUTHENTICATED_CODEX_EVALUATION:-}" != "1" ]; then
-		skip "Set CAT_RUN_AUTHENTICATED_CODEX_EVALUATION=1 to run the authenticated Codex evaluation"
-	fi
-	command -v codex
-
-	artifact="${TEST_ROOT}/codex-artifact"
-	suite="${TEST_ROOT}/suite"
-	retained="${TEST_ROOT}/.cat/work/temp/retained-smoke"
-	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${artifact}"
-	mkdir -p "${suite}/smoke/project"
-	printf '%s\n' '## Scenario' '' 'Create answer.txt containing the word completed.' '' '## Assertions' '' 		'### answer-created' '' 'The executor creates answer.txt with the requested content.' 		> "${suite}/smoke/scenario.md"
-	printf '%s\n' 'The executor must create answer.txt with the requested content.' > "${suite}/smoke/project/README.md"
-	printf '%s\n' 'Inspect the executor response and project, then state whether the scenario assertion passed.' \
-		> "${TEST_ROOT}/execution-context.md"
-	printf '%s\n' '{' '  "schema_version": 3,' '  "purpose": "certification",' \
-		'  "routing_owner": "common/default-rules.md",' \
-		'  "sprt": {"accept_pass_rate": 0.95, "reject_pass_rate": 0.85, "false_accept_rate": 0.05,' \
-		'    "false_reject_rate": 0.05},' \
-		'  "scenarios": {"smoke": {"measures": ["organic_selection", "application"],' \
-		'    "route_expectation": {"mode": "organic", "selected": ["include/common/write-clearly.md"]}}}' '}' \
-		> "${suite}/suite.json"
-	printf '%s\n' '{' '  "working_directory": ".",' '  "timeout_seconds": 60,' \
-		'  "command": ["/usr/bin/true"],' '  "inputs": ["suite/suite.json"],' \
-		'  "runner_artifact": "codex-artifact"' '}' > "${TEST_ROOT}/build-plan.json"
-
-	run "${artifact}/client/bin/prompt-evaluation" smoke-evaluate "${suite}" \
-		"${artifact}/rules/include/common/write-clearly.md" codex "${TEST_ROOT}/execution-context.md" \
-		"${artifact}/client/bin/codex-runner" "${TEST_ROOT}/build-plan.json" smoke "${retained}"
+runner_command='printf "%s\n" "{\"type\":\"turn\",\"prompt\":\"first\"}" "{\"type\":\"complete\"}" |
+"$1" --artifact "$2" --project "$3" --run-root "$4" --executable codex --keep-run --install-cat --agent fixture'
+	run env HOME="${HOST_HOME}" PATH="${FAKE_BIN}:${PATH}" sh -c "${runner_command}" \
+		sh "${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/codex-runner" "${artifact}" "${project}" "${RUN_ROOT}"
 
 	[ "${status}" -eq 0 ]
-	run_path="$(printf '%s\n' "${output}" | jq -r '.run')"
-	[ -f "${run_path}" ]
-	attempt_ledger="$(jq -r '.attempt_ledger' "${run_path}")"
-	[ -f "${attempt_ledger}" ]
-	jq -e '.raw_result != "" and .validator_result != ""' "${attempt_ledger}"
-	raw_result="$(jq -r '.raw_result' "${attempt_ledger}")"
-	validator_result="$(jq -r '.validator_result' "${attempt_ledger}")"
-	[ -f "${raw_result}" ]
-	[ -f "${validator_result}" ]
+	grep -F '"method":"thread/start"' "${FAKE_BIN}/harness.log" | grep -F \
+		'"developerInstructions":"Follow the fixed test behavior."'
 }

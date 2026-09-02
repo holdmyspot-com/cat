@@ -12,15 +12,14 @@ import java.util.List;
  * @param launcher the harness bridge launcher
  * @param artifact the complete harness artifact to execute
  * @param project the isolated project supplied to the harness
- * @param model the selected harness model
- * @param effort the selected harness reasoning effort
+ * @param profile the selected model and reasoning effort
  * @param input the complete JSONL bridge input
  * @param transcript the retained bridge transcript destination
  * @param receipt the retained-evidence receipt destination
  * @param installCat whether the harness installs the artifact's CAT content
  * @param readOnlyEvidence immutable evidence roots available to the harness
  */
-public record HarnessEvaluationRequest(Path launcher, Path artifact, Path project, String model, String effort,
+public record HarnessEvaluationRequest(Path launcher, Path artifact, Path project, HarnessModelProfile profile,
 	String input, Path transcript, Path receipt, boolean installCat, List<Path> readOnlyEvidence)
 {
 	/**
@@ -29,8 +28,7 @@ public record HarnessEvaluationRequest(Path launcher, Path artifact, Path projec
 	 * @param launcher the harness bridge launcher
 	 * @param artifact the complete harness artifact to execute
 	 * @param project the isolated project supplied to the harness
-	 * @param model the selected harness model
-	 * @param effort the selected harness reasoning effort
+	 * @param profile the selected model and reasoning effort
 	 * @param input the complete JSONL bridge input
 	 * @param transcript the retained bridge transcript destination
 	 * @param receipt the retained-evidence receipt destination
@@ -42,8 +40,7 @@ public record HarnessEvaluationRequest(Path launcher, Path artifact, Path projec
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
-		requireThat(model, "model").isNotBlank();
-		requireThat(effort, "effort").isNotBlank();
+		requireThat(profile, "profile").isNotNull();
 		requireThat(input, "input").isNotBlank();
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(receipt, "receipt").isNotNull();
@@ -56,5 +53,25 @@ public record HarnessEvaluationRequest(Path launcher, Path artifact, Path projec
 		readOnlyEvidence = readOnlyEvidence.stream().map(path -> path.toAbsolutePath().normalize()).toList();
 		if (readOnlyEvidence.stream().anyMatch(path -> !Files.isDirectory(path)))
 			throw new IllegalArgumentException("readOnlyEvidence must contain only directories");
+	}
+
+	/**
+	 * Returns the provider model identifier supplied to the harness adapter.
+	 *
+	 * @return the selected provider model identifier
+	 */
+	public String model()
+	{
+		return profile.model();
+	}
+
+	/**
+	 * Returns the reasoning-effort value supplied to the harness adapter.
+	 *
+	 * @return the selected external reasoning-effort spelling
+	 */
+	public String effort()
+	{
+		return profile.externalEffort();
 	}
 }

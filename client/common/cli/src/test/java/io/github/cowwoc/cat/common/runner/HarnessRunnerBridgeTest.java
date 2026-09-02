@@ -57,6 +57,29 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies the harness-neutral transcript retains the exact final assistant response for evaluator consumption.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void recordsFinalAssistantResponse() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess("result with an injected \"quote\"");
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input, output);
+
+			requireThat(output.toString(), "output").contains(
+				"\"assistant_response\":\"result with an injected \\\"quote\\\"\"");
+		}
+	}
+
+	/**
 	 * Verifies a completed bridge run is removed when the caller did not request retention.
 	 *
 	 * @throws IOException if the bridge fails

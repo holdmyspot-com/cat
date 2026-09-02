@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.Fingerprints;
+import io.github.cowwoc.cat.common.optimization.ReproductionState;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -10,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs a typed harness evaluation through its native bridge launcher.
@@ -62,11 +65,22 @@ public final class NativeHarnessEvaluationRunner implements HarnessEvaluationRun
 				{
 					input.write(request.input().getBytes(StandardCharsets.UTF_8));
 				}
-				int exitCode = waitFor(process, request.launcher());
-				if (exitCode != 0)
-					throw new IOException("Harness evaluation failed with exit code " + exitCode + ": " + command);
-				HarnessEvaluationResult result = HarnessRunReceipt.read(json, request.receipt());
-				return new HarnessEvaluationExecution(result, startedAtNanos, System.nanoTime());
+				WaitResult waitResult = waitFor(process);
+				try
+				{
+					if (waitResult.exitCode() != 0)
+					{
+						throw new IOException("Harness evaluation failed with exit code " + waitResult.exitCode() + ": " +
+							command);
+					}
+					return execution(request, startedAtNanos, waitResult);
+				}
+				catch (IOException e)
+				{
+					if (waitResult.interrupted())
+						throw new HarnessEvaluationFailure(e.getMessage(), e, true);
+					throw e;
+				}
 			}
 			finally
 			{
@@ -103,24 +117,71 @@ public final class NativeHarnessEvaluationRunner implements HarnessEvaluationRun
 	}
 
 	/**
-	 * Waits for one runner process and terminates it when the evaluator is interrupted.
+	 * Reads the preferred complete receipt, or projects a legacy receipt into non-certifiable execution evidence.
 	 *
-	 * @param process the owned harness bridge process
-	 * @param launcher the launcher used in a failure diagnostic
-	 * @return the bridge exit code
-	 * @throws IOException if waiting is interrupted
+	 * @param request the completed evaluation request
+	 * @param startedAtNanos the monotonic start time
+	 * @param waitResult the terminal process result
+	 * @return complete execution evidence
+	 * @throws IOException if no valid receipt exists
 	 */
-	private static int waitFor(Process process, Path launcher) throws IOException
+	private HarnessEvaluationExecution execution(HarnessEvaluationRequest request, long startedAtNanos,
+		WaitResult waitResult) throws IOException
 	{
 		try
 		{
-			return process.waitFor();
+			HarnessRunReceipt.Receipt receipt = HarnessRunReceipt.readComplete(json, request.receipt());
+			return new HarnessEvaluationExecution(receipt.result(), startedAtNanos, System.nanoTime(),
+				waitResult.interrupted(), receipt.harnessVersion(), receipt.runnerVersion(), receipt.usage(),
+				receipt.reproductionState(), receipt.evidenceFingerprints());
 		}
-		catch (InterruptedException e)
+		catch (IOException completeFailure)
 		{
-			HarnessProcessTermination.terminateImmediately(process);
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted while waiting for harness evaluation: " + launcher, e);
+			try
+			{
+				HarnessEvaluationResult result = HarnessRunReceipt.read(json, request.receipt());
+				return new HarnessEvaluationExecution(result, startedAtNanos, System.nanoTime(), waitResult.interrupted(),
+					"unknown", "unknown", ProviderUsage.unavailable(), ReproductionState.UNAVAILABLE,
+					Map.of("retained_project", Fingerprints.ofArtifact(result.retainedProject()), "raw_result",
+						Fingerprints.ofFile(result.rawResult())));
+			}
+			catch (IOException legacyFailure)
+			{
+				legacyFailure.addSuppressed(completeFailure);
+				throw legacyFailure;
+			}
 		}
+	}
+
+	/**
+	 * Waits for one runner process to finish even when its owner requests interruption.
+	 *
+	 * @param process the owned harness bridge process
+	 * @return the bridge exit code and whether interruption was requested while it ran
+	 */
+	private static WaitResult waitFor(Process process)
+	{
+		boolean interrupted = false;
+		while (true)
+		{
+			try
+			{
+				return new WaitResult(process.waitFor(), interrupted);
+			}
+			catch (InterruptedException _)
+			{
+				interrupted = true;
+			}
+		}
+	}
+
+	/**
+	 * Retains the terminal process result and interruption request until the operation receipt is durable.
+	 *
+	 * @param exitCode the harness bridge exit code
+	 * @param interrupted whether the operation owner requested interruption while the bridge was active
+	 */
+	private record WaitResult(int exitCode, boolean interrupted)
+	{
 	}
 }

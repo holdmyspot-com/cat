@@ -51,7 +51,7 @@ public final class ClaudeRunnerTest
 		requireThat(ClaudeRunnerCli.resolveProfile(new String[] {"--resolve-profile"}), "profile").isEqualTo("""
 			harness=claude
 			owner=default
-			model=haiku-4.5
+			model=haiku
 			effort=medium
 			""");
 	}
@@ -76,11 +76,23 @@ public final class ClaudeRunnerTest
 	@Test
 	public void configuresExplicitProfileAndAgent()
 	{
-		List<String> command = ClaudeRunner.command("claude", "haiku-4.5", "medium", "testing-low",
+		List<String> command = ClaudeRunner.command("claude", "haiku", "medium", "testing-low",
 			Path.of("marketplace"), true, Path.of("hook-results"), List.of());
 
-		requireThat(command, "command").contains("--model").contains("haiku-4.5").contains("--effort").
+			requireThat(command, "command").contains("--model").contains("haiku").contains("--effort").
 			contains("medium").contains("--agent").contains("testing-low");
+	}
+
+	/**
+	 * Verifies a direct agent receives its installed plugin but does not receive the separate CAT rule-routing protocol.
+	 */
+	@Test
+	public void bypassesRuleRoutingForDirectAgent()
+	{
+		Path marketplace = Path.of("marketplace");
+		requireThat(ClaudeRunner.routeRuleRoot(marketplace, true), "directAgentRules").isNull();
+		requireThat(ClaudeRunner.routeRuleRoot(marketplace, false), "ordinaryRunRules").isEqualTo(
+			marketplace.resolve("plugins/cat/rules"));
 	}
 
 	/**

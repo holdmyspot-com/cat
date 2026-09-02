@@ -38,16 +38,16 @@ Your team’s own rules stay in the repository, where you can improve them throu
 
 ## Try it on one project
 
-**CAT is free for non-commercial use.** Try it on the project you work on today. When the same workflow needs to support
-a team, see Pricing (docs/PRICING.md) for commercial plans and features.
+**CAT is free for personal projects.** Using CAT for an employer, client, business, product, or other organization
+requires a paid commercial license. Prompt optimization and certification run locally under that license. See
+[Pricing](docs/PRICING.md) for the commercial and support boundaries.
 
 ## Get Started
 
 ### 1. Select a release
 
-Each bootstrap command installs the latest CAT release by default, verifies the matching platform archive and checksum,
-and safely upgrades an existing CAT installation. To install a particular release, append its tag (for example,
-`v1.0`). For example, append `v1.0` after the pipe: `| sh -s v1.0`.
+Choose a released version tag, such as `1.0`. The installer checks out that exact tag, selects the matching platform
+tree, verifies its manifest and every listed file, and then installs through the harness's plugin boundary.
 
 ### 2. Choose a coding harness
 
@@ -55,16 +55,17 @@ and safely upgrades an existing CAT installation. To install a particular releas
 <summary>Claude Code</summary>
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
+git clone --depth 1 --branch 1.0 https://github.com/catsforbots/cat.git cat-1.0
+CAT_BOOTSTRAP_RELEASE_TREE="$PWD/cat-1.0" \
+  sh cat-1.0/claude/linux-x86_64/install/bootstrap-claude.sh
 ```
 
-To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
+On macOS ARM64, replace `linux-x86_64` with `macos-arm64`; the other supported target names are `linux-arm64` and
+`macos-x86_64`. To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
-  | CLAUDE_CONFIG_DIR=/path/to/claude-home sh
+CLAUDE_CONFIG_DIR=/path/to/claude-home \
+  CAT_BOOTSTRAP_RELEASE_TREE="$PWD/cat-1.0" sh cat-1.0/claude/linux-x86_64/install/bootstrap-claude.sh
 ```
 
 </details>
@@ -73,16 +74,16 @@ curl -fsSL \
 <summary>Codex</summary>
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
+git clone --depth 1 --branch 1.0 https://github.com/catsforbots/cat.git cat-1.0
+CAT_BOOTSTRAP_RELEASE_TREE="$PWD/cat-1.0" \
+  sh cat-1.0/codex/linux-x86_64/install/bootstrap-codex.sh
 ```
 
 To install into a custom Codex home directory, set `CODEX_HOME`:
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
-  | CODEX_HOME=/path/to/codex-home sh
+CODEX_HOME=/path/to/codex-home \
+  CAT_BOOTSTRAP_RELEASE_TREE="$PWD/cat-1.0" sh cat-1.0/codex/linux-x86_64/install/bootstrap-codex.sh
 ```
 
 </details>

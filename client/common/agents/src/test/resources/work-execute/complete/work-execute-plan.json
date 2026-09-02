@@ -1,0 +1,13 @@
+{
+  "schema_version": "cat-work-execute-plan-v1",
+  "plan_path": "plan.md",
+  "plan_sha256": "439ce79d5b12d55cc26c234cf2a1876a20fbd36d0d2b1a304d2b53027c0da204",
+  "workspace_mode": "exclusive_shared",
+  "writes": [
+    {
+      "step": "1",
+      "path": "result.txt",
+      "sha256": "59d5b5dd37b8ffcd852815de5703d69ce12ea4cd6b334d1e50597db28303f780"
+    }
+  ]
+}

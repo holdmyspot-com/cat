@@ -51,7 +51,7 @@ When designing or executing a multi-responsibility refactoring, lazy load
 
 ## Shared Review
 
-Implementors must apply the relevant requirements while designing and coding.
+Implementers must apply the relevant requirements while designing and coding.
 
 Design reviewers must assess the same requirements, identify missing outcomes, contradictions, or routing conflicts, and
 distinguish one-off implementation defects from gaps in this rule or related canonical rules.

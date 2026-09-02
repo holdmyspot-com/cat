@@ -14,6 +14,8 @@ import io.github.cowwoc.cat.common.runner.HarnessConcurrencyLimit;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenanceOptions;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
+import io.github.cowwoc.cat.common.runner.WorkExecutePlan;
+import io.github.cowwoc.cat.common.runner.WorkExecuteResult;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -111,11 +113,15 @@ public final class ClaudeRunnerCli
 		{
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(withoutClaudeOptions(args), "claude",
 				scope.temporaryWorkRoot());
-			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
+			String agentName = agentName(args);
+			WorkExecutePlan.Manifest workExecutePlan = workExecutePlan(scope.json(), options, agentName, args, output);
+			if (agentName.equals("work-execute") && workExecutePlan == null)
+				return;
+			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
-			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json());
+			serve(options, agent, readOnlyEvidence, workExecutePlan, manager, input, output, environment, scope.json());
 		}
 	}
 
@@ -125,6 +131,7 @@ public final class ClaudeRunnerCli
 	 * @param options parsed shared bridge options
 	 * @param agent optional direct CAT agent
 	 * @param readOnlyEvidence completed executor evidence visible without write authority
+	 * @param workExecutePlan the runner-validated work-execute manifest, or {@code null}
 	 * @param manager owned-run lifecycle manager
 	 * @param input bridge input
 	 * @param output bridge output when no durable destination was requested
@@ -133,6 +140,7 @@ public final class ClaudeRunnerCli
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(HarnessRunnerOptions options, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence,
+		WorkExecutePlan.Manifest workExecutePlan,
 		HarnessRunManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json) throws IOException
@@ -154,6 +162,20 @@ public final class ClaudeRunnerCli
 					run = HarnessRunnerBridge.serve(starter, manager, options.keepRun(), input, output);
 				else
 					run = HarnessRunnerBridge.serve(starter, manager, options.keepRun(), input, options.output());
+				if (workExecutePlan != null)
+				{
+					try
+					{
+						workExecutePlan.verifyWrites(run.directory().resolve("project"));
+						WorkExecuteResult.write(json, options.output(), output, WorkExecuteResult.Status.SUCCESS,
+							"The runner verified every declared file outcome.", options.output() != null);
+					}
+					catch (IOException e)
+					{
+						WorkExecuteResult.write(json, options.output(), output, WorkExecuteResult.Status.FAILED,
+							e.getMessage(), options.output() != null);
+					}
+				}
 				if (options.receipt() != null)
 				{
 					HarnessRunReceipt.write(json, options.receipt(), run, options.output());
@@ -180,7 +202,7 @@ public final class ClaudeRunnerCli
 	{
 		requireThat(args, "args").isNotNull();
 		if (args.length == 1)
-			return profile("default", "haiku-4.5", "medium");
+			return profile("default", "haiku", "medium");
 		if (args.length != 5 || !args[1].equals("--artifact") || !args[3].equals("--agent"))
 			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile [--artifact <path> --agent <name>]");
 		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(Path.of(args[2]), args[4]);
@@ -262,6 +284,63 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
+	 * Reads the required runner-enforced work-execute manifest before starting a harness.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param options shared runner options
+	 * @param agentName the selected CAT agent
+	 * @param args command-line arguments
+	 * @param output the caller-owned output
+	 * @return the validated manifest, or {@code null} when another agent is selected or preflight blocked execution
+	 * @throws IOException if an invalid option cannot be reported
+	 */
+	private static WorkExecutePlan.Manifest workExecutePlan(tools.jackson.databind.json.JsonMapper json,
+		HarnessRunnerOptions options, String agentName, String[] args, Writer output) throws IOException
+	{
+		Path source = workExecutePlanPath(args);
+		if (!agentName.equals("work-execute"))
+		{
+			if (source != null)
+				throw new IllegalArgumentException("--work-execute-plan requires --agent work-execute");
+			return null;
+		}
+		if (source == null)
+		{
+			WorkExecuteResult.write(json, options.output(), output, WorkExecuteResult.Status.BLOCKED_PLAN_NOT_MECHANICAL,
+				"The runner requires --work-execute-plan for work-execute.", false);
+			return null;
+		}
+		try
+		{
+			return WorkExecutePlan.read(json, source, options.project());
+		}
+		catch (IOException | IllegalArgumentException e)
+		{
+			WorkExecuteResult.write(json, options.output(), output, WorkExecuteResult.Status.BLOCKED_PLAN_NOT_MECHANICAL,
+				e.getMessage(), false);
+			return null;
+		}
+	}
+
+	/**
+	 * Extracts the optional work-execute manifest path.
+	 *
+	 * @param args command-line arguments
+	 * @return the manifest path, or {@code null} when no manifest was supplied
+	 */
+	private static Path workExecutePlanPath(String[] args)
+	{
+		for (int index = 0; index < args.length; ++index)
+			if (args[index].equals("--work-execute-plan"))
+			{
+				if (index + 1 == args.length || args[index + 1].startsWith("--"))
+					throw new IllegalArgumentException("Missing path after --work-execute-plan");
+				return Path.of(args[index + 1]);
+			}
+		return null;
+	}
+
+	/**
 	 * Removes Claude-specific options before shared option parsing.
 	 *
 	 * @param args the command-line arguments
@@ -272,7 +351,8 @@ public final class ClaudeRunnerCli
 		List<String> result = new ArrayList<>(args.length);
 		for (int index = 0; index < args.length; ++index)
 		{
-			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent"))
+			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent") ||
+				args[index].equals("--work-execute-plan"))
 			{
 				index += 1;
 				continue;

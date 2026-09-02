@@ -10,9 +10,9 @@ depends-on:
   other intermediate state, derive the concrete conditions required to achieve it, and reverse those conditions into an
   executable sequence.
 - Start with a concrete case or failure, compare meaningful similar and dissimilar cases—including a case that reaches
-  the same outcome through a different mechanism when the proposed invariant names a mechanism—retain the narrowest
-  invariant that explains them without imposing unrelated obligations, and distinguish that invariant from the
-  case-specific examples that validate it.
+  the same outcome through a different mechanism when the proposed invariant names a mechanism and the nearest allowed
+  case inside a proposed broader scope—retain the narrowest invariant that explains them without imposing unrelated
+  obligations, and distinguish that invariant from the case-specific examples that validate it.
 - Derive the smallest reliable change that satisfies the outcome conditions and established invariant while preserving
   required constraints.
 - Apply this derivation to code-design decisions—including APIs, data representations, module boundaries, lifecycle,
@@ -55,6 +55,11 @@ preserves the acceptance evidence, and excludes relevant counterexamples without
 the available cases or evidence do not prove that a broader, merged, or shorter statement preserves every existing
 reader decision, retain the narrower existing statement and report the candidate improvement; do not infer that similar
 wording permits a generalization.
+
+When proposed wording broadens a predicate, category, quantifier, or prohibition beyond the property that caused the
+original failure, test the nearest allowed case that the broader wording would also govern but that lacks that causal
+property. If the wording changes the required action for that allowed case, narrow the wording to the causal property.
+A dissimilar case outside the proposed scope cannot expose this overreach and does not satisfy this check.
 
 Before adding a normative rule paragraph, make the generalization evidence explicit: identify the concrete case, one
 meaningful analogous case, one relevant dissimilar case, and the invariant that survives all three. Then identify which

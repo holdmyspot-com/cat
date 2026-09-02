@@ -1,7 +1,7 @@
 module io.github.cowwoc.cat.common.cli
 {
+	requires java.net.http;
 	requires io.github.cowwoc.requirements13.java;
-	requires io.github.cowwoc.cat.common.evaluation;
 	requires io.github.cowwoc.pouch10.core;
 	requires org.commonmark;
 	requires tools.jackson.core;
@@ -9,8 +9,13 @@ module io.github.cowwoc.cat.common.cli
 	requires tools.jackson.dataformat.yaml;
 
 	exports io.github.cowwoc.cat.common;
+	exports io.github.cowwoc.cat.common.commercial;
 	exports io.github.cowwoc.cat.common.history;
 	exports io.github.cowwoc.cat.common.runner;
+	exports io.github.cowwoc.cat.common.optimization.certification;
+	exports io.github.cowwoc.cat.common.optimization.promptsystem;
+	exports io.github.cowwoc.cat.common.optimization;
 
 	opens io.github.cowwoc.cat.common.git.replay to tools.jackson.databind;
+	opens io.github.cowwoc.cat.common.optimization.contract to tools.jackson.databind;
 }

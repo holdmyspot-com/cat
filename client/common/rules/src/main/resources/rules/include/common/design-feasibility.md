@@ -12,6 +12,8 @@
   best-effort inference that must not be described as reliable automation.
 - Prevent an implementation from treating its own inferred output as proof of a business, specification, or other
   external decision.
+- Prevent a forecast objective such as minimizing expected cost from being accepted as an executable stopping or
+  strategy-selection policy without a defined predictor, uncertainty decision, and fallback.
 
 ## Guidance
 
@@ -25,6 +27,25 @@ distinguish a correct result from a plausible one.
 Apply the **information-sufficiency test** to each decision. Construct two permitted contexts with the same inputs the
 feature may inspect. If the correct decision differs between those contexts, the feature cannot make that decision
 reliably under the stated constraints. This is a proof of a missing input, not a request to improve the inference.
+
+When a workflow chooses, stops, or changes strategy from a predicted cost, duration, probability, benefit, or other
+future outcome, do not treat the optimization objective as its decision procedure. Before calling the workflow
+executable, require its design to identify:
+
+- the candidate actions and the observable boundary where one must be selected;
+- every feature the predictor may inspect and the operation that supplies it;
+- the predictor or statistical method that owns the estimate, its applicable reference population, and evidence that
+  its predictions are calibrated for that population;
+- how the decision represents uncertainty and the condition that makes a forecast too uncertain or inapplicable;
+- the loss, threshold, or comparison that selects one candidate action from the forecast; and
+- the bounded fallback when required data is absent, the case is outside the calibrated population, or the forecast
+  cannot support the decision.
+
+Keep the predictor and decision policy in authoritative automation. An agent may interpret their structured result or
+explain the selected action, but it must not replace an absent estimate, calibration result, uncertainty policy, or
+fallback with intuitive judgment. Record prediction error and the later observed outcome so the owner can test and
+recalibrate the method. Until those inputs and policies exist, label the forecast-dependent decision unspecified; a
+goal to minimize expected cost does not establish that the workflow can find the global or actual minimum.
 
 Treat the following as warning signals that require this test:
 

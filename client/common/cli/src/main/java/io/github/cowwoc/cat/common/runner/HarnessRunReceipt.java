@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.Fingerprints;
+import io.github.cowwoc.cat.common.optimization.ReproductionState;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import tools.jackson.databind.JsonNode;
@@ -10,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -17,6 +21,9 @@ import java.util.Set;
  */
 public final class HarnessRunReceipt
 {
+	private static final Set<String> COMPLETE_FIELDS = Set.of("schema_version", "retained_project",
+		"retained_project_sha256", "raw_result", "raw_result_sha256", "transcript", "transcript_sha256",
+		"harness_version", "runner_version", "usage", "reproduction_state");
 	/**
 	 * Writes one receipt after verifying that both referenced artifacts are retained.
 	 *
@@ -50,6 +57,149 @@ public final class HarnessRunReceipt
 		{
 			Files.deleteIfExists(temporary);
 			throw e;
+		}
+	}
+
+	/**
+	 * Writes the complete receipt used by certification and returns its validated value.
+	 *
+	 * @param json the JSON codec
+	 * @param destination the receipt destination
+	 * @param run the retained harness run
+	 * @param rawResult the retained raw result
+	 * @param transcript the retained harness transcript
+	 * @param harnessVersion the nonblank harness version
+	 * @param runnerVersion the nonblank CAT runner version
+	 * @param usage provider token usage
+	 * @param reproductionState retained-evidence reproduction state
+	 * @return the published and revalidated receipt
+	 * @throws IOException if the evidence or receipt cannot be read or written
+	 */
+	public static Receipt writeComplete(JsonMapper json, Path destination, HarnessRun run, Path rawResult,
+		Path transcript, String harnessVersion, String runnerVersion, ProviderUsage usage,
+		ReproductionState reproductionState) throws IOException
+	{
+		Objects.requireNonNull(json, "json must not be null");
+		Objects.requireNonNull(destination, "destination must not be null");
+		Objects.requireNonNull(run, "run must not be null");
+		Objects.requireNonNull(rawResult, "rawResult must not be null");
+		Objects.requireNonNull(transcript, "transcript must not be null");
+		Objects.requireNonNull(harnessVersion, "harnessVersion must not be null");
+		Objects.requireNonNull(runnerVersion, "runnerVersion must not be null");
+		Objects.requireNonNull(usage, "usage must not be null");
+		Objects.requireNonNull(reproductionState, "reproductionState must not be null");
+		Path project = run.directory().resolve("project").toAbsolutePath().normalize();
+		Path normalizedRaw = rawResult.toAbsolutePath().normalize();
+		Path normalizedTranscript = transcript.toAbsolutePath().normalize();
+		if (!Files.isDirectory(project) || !Files.isRegularFile(normalizedRaw) ||
+			!Files.isRegularFile(normalizedTranscript))
+			throw new IOException("Complete harness receipt requires retained project, result, and transcript");
+		Receipt result = new Receipt(HarnessEvaluationResult.retained(project, normalizedRaw), normalizedTranscript,
+			harnessVersion, runnerVersion, usage, reproductionState,
+			Map.of("retained_project", Fingerprints.ofArtifact(project), "raw_result",
+				Fingerprints.ofFile(normalizedRaw), "transcript", Fingerprints.ofFile(normalizedTranscript)));
+		ObjectNode encoded = json.createObjectNode();
+		encoded.put("schema_version", 1);
+		encoded.put("retained_project", result.result().retainedProject().toString());
+		encoded.put("retained_project_sha256", result.evidenceFingerprints().get("retained_project"));
+		encoded.put("raw_result", result.result().rawResult().toString());
+		encoded.put("raw_result_sha256", result.evidenceFingerprints().get("raw_result"));
+		encoded.put("transcript", result.transcript().toString());
+		encoded.put("transcript_sha256", result.evidenceFingerprints().get("transcript"));
+		encoded.put("harness_version", result.harnessVersion());
+		encoded.put("runner_version", result.runnerVersion());
+		encoded.set("usage", usageNode(json, usage));
+		encoded.put("reproduction_state", reproductionState.externalValue());
+		writeAtomically(json, destination, encoded);
+		return readComplete(json, destination);
+	}
+
+	/**
+	 * Reads and validates one complete receipt.
+	 *
+	 * @param json the JSON codec
+	 * @param source the receipt source
+	 * @return the validated receipt
+	 * @throws IOException if the receipt is malformed or its evidence has changed
+	 */
+	public static Receipt readComplete(JsonMapper json, Path source) throws IOException
+	{
+		Objects.requireNonNull(json, "json must not be null");
+		Objects.requireNonNull(source, "source must not be null");
+		return fromCompleteReceipt(json.readTree(source.toFile()), source);
+	}
+
+	/**
+	 * Converts a parsed complete receipt to its validated typed form.
+	 *
+	 * @param value the parsed receipt value
+	 * @param source the receipt source
+	 * @return the validated receipt
+	 * @throws IOException if the receipt is malformed or its evidence has changed
+	 */
+	public static Receipt fromCompleteReceipt(JsonNode value, Path source) throws IOException
+	{
+		if (!(value instanceof ObjectNode receipt) || !new HashSet<>(receipt.propertyNames()).equals(COMPLETE_FIELDS))
+			throw new IOException("Complete harness receipt has unsupported or missing fields: " + source);
+		if (!receipt.path("schema_version").isIntegralNumber() || receipt.path("schema_version").asInt(-1) != 1)
+			throw new IOException("Unsupported complete harness receipt schema: " + source);
+		Path project = absolute(receipt, "retained_project", source);
+		Path raw = absolute(receipt, "raw_result", source);
+		Path transcript = absolute(receipt, "transcript", source);
+		String projectFingerprint = requiredFingerprint(receipt, "retained_project_sha256", source);
+		String rawFingerprint = requiredFingerprint(receipt, "raw_result_sha256", source);
+		String transcriptFingerprint = requiredFingerprint(receipt, "transcript_sha256", source);
+		if (!Files.isDirectory(project) || !Files.isRegularFile(raw) || !Files.isRegularFile(transcript) ||
+			!Fingerprints.ofArtifact(project).equals(projectFingerprint) ||
+			!Fingerprints.ofFile(raw).equals(rawFingerprint) ||
+			!Fingerprints.ofFile(transcript).equals(transcriptFingerprint))
+			throw new IOException("Complete harness receipt evidence changed or is unavailable: " + source);
+		ProviderUsage usage = usage(receipt, source);
+		return new Receipt(HarnessEvaluationResult.retained(project, raw), transcript,
+			requiredText(receipt, "harness_version", source), requiredText(receipt, "runner_version", source), usage,
+			ReproductionState.fromExternalValue(requiredText(receipt, "reproduction_state", source)),
+			Map.of("retained_project", projectFingerprint, "raw_result", rawFingerprint, "transcript",
+				transcriptFingerprint));
+	}
+
+	/**
+	 * Complete retained runner receipt.
+	 *
+	 * @param result the retained project and raw result
+	 * @param transcript the retained harness transcript
+	 * @param harnessVersion the harness version
+	 * @param runnerVersion the CAT runner version
+	 * @param usage provider token usage
+	 * @param reproductionState retained-evidence reproduction state
+	 * @param evidenceFingerprints retained artifact fingerprints
+	 */
+	public record Receipt(HarnessEvaluationResult result, Path transcript, String harnessVersion, String runnerVersion,
+		ProviderUsage usage, ReproductionState reproductionState, Map<String, String> evidenceFingerprints)
+	{
+		/**
+		 * Validates and snapshots a complete receipt.
+		 *
+		 * @param result the retained project and raw result
+		 * @param transcript the retained harness transcript
+		 * @param harnessVersion the harness version
+		 * @param runnerVersion the CAT runner version
+		 * @param usage provider token usage
+		 * @param reproductionState retained-evidence reproduction state
+		 * @param evidenceFingerprints retained artifact fingerprints
+		 */
+		public Receipt
+		{
+			Objects.requireNonNull(result, "result must not be null");
+			Objects.requireNonNull(transcript, "transcript must not be null");
+			Objects.requireNonNull(harnessVersion, "harnessVersion must not be null");
+			Objects.requireNonNull(runnerVersion, "runnerVersion must not be null");
+			Objects.requireNonNull(usage, "usage must not be null");
+			Objects.requireNonNull(reproductionState, "reproductionState must not be null");
+			Objects.requireNonNull(evidenceFingerprints, "evidenceFingerprints must not be null");
+			if (harnessVersion.isBlank() || runnerVersion.isBlank())
+				throw new IllegalArgumentException("Version values must not be blank");
+			transcript = transcript.toAbsolutePath().normalize();
+			evidenceFingerprints = Map.copyOf(evidenceFingerprints);
 		}
 	}
 
@@ -93,6 +243,161 @@ public final class HarnessRunReceipt
 			throw new IOException("Harness receipt has unsupported fields: " + source);
 		return HarnessEvaluationResult.retained(path(receipt, "retained_project", source),
 			path(receipt, "raw_result", source));
+	}
+
+	/**
+	 * Atomically publishes one encoded receipt.
+	 *
+	 * @param json the JSON codec
+	 * @param destination the receipt destination
+	 * @param value the encoded receipt
+	 * @throws IOException if publication fails
+	 */
+	private static void writeAtomically(JsonMapper json, Path destination, ObjectNode value) throws IOException
+	{
+		Path normalized = destination.toAbsolutePath().normalize();
+		Path parent = normalized.getParent();
+		if (parent == null)
+			throw new IOException("Receipt has no parent directory: " + destination);
+		Files.createDirectories(parent);
+		Path temporary = Files.createTempFile(parent, ".harness-receipt-", ".json");
+		try
+		{
+			json.writeValue(temporary.toFile(), value);
+			Files.move(temporary, normalized, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+		}
+		catch (IOException e)
+		{
+			Files.deleteIfExists(temporary);
+			throw e;
+		}
+	}
+
+	/**
+	 * Reads a required canonical absolute path.
+	 *
+	 * @param object the source object
+	 * @param field the field name
+	 * @param source the source path
+	 * @return the normalized absolute path
+	 * @throws IOException if the field is not an absolute path
+	 */
+	private static Path absolute(ObjectNode object, String field, Path source) throws IOException
+	{
+		String value = requiredText(object, field, source);
+		try
+		{
+			Path path = Path.of(value).toAbsolutePath().normalize();
+			if (!Path.of(value).isAbsolute())
+				throw new IOException("Complete harness receipt has a relative " + field + ": " + source);
+			return path;
+		}
+		catch (java.nio.file.InvalidPathException e)
+		{
+			throw new IOException("Complete harness receipt has an invalid " + field + ": " + source, e);
+		}
+	}
+
+	/**
+	 * Reads required nonblank text.
+	 *
+	 * @param object the source object
+	 * @param field the field name
+	 * @param source the source path
+	 * @return the text value
+	 * @throws IOException if the field is invalid
+	 */
+	private static String requiredText(ObjectNode object, String field, Path source) throws IOException
+	{
+		JsonNode value = object.path(field);
+		if (!value.isString() || value.asString().isBlank())
+			throw new IOException("Complete harness receipt has no " + field + ": " + source);
+		return value.asString();
+	}
+
+	/**
+	 * Reads one lowercase SHA-256 fingerprint.
+	 *
+	 * @param object the source object
+	 * @param field the field name
+	 * @param source the source path
+	 * @return the fingerprint
+	 * @throws IOException if the field is invalid
+	 */
+	private static String requiredFingerprint(ObjectNode object, String field, Path source) throws IOException
+	{
+		String value = requiredText(object, field, source);
+		if (!value.matches("[0-9a-f]{64}"))
+			throw new IOException("Complete harness receipt has an invalid " + field + ": " + source);
+		return value;
+	}
+
+	/**
+	 * Reads one nonnegative integer.
+	 *
+	 * @param object the source object
+	 * @param field the field name
+	 * @param source the source path
+	 * @return the integer value
+	 * @throws IOException if the field is invalid
+	 */
+	private static long requiredNonnegative(ObjectNode object, String field, Path source) throws IOException
+	{
+		JsonNode value = object.path(field);
+		if (!value.isIntegralNumber() || value.asLong() < 0)
+			throw new IOException("Complete harness receipt has an invalid " + field + ": " + source);
+		return value.asLong();
+	}
+
+	/**
+	 * Encodes provider usage as the complete receipt's nested usage object.
+	 *
+	 * @param json the JSON codec
+	 * @param usage provider usage
+	 * @return the encoded usage object
+	 */
+	private static ObjectNode usageNode(JsonMapper json, ProviderUsage usage)
+	{
+		ObjectNode result = json.createObjectNode();
+		result.put("available", usage.available());
+		result.put("input_tokens", usage.inputTokens());
+		result.put("cached_input_tokens", usage.cachedInputTokens());
+		result.put("output_tokens", usage.outputTokens());
+		return result;
+	}
+
+	/**
+	 * Reads the complete receipt's nested provider usage object.
+	 *
+	 * @param object the complete receipt
+	 * @param source the receipt source
+	 * @return provider usage
+	 * @throws IOException if the usage object is invalid
+	 */
+	private static ProviderUsage usage(ObjectNode object, Path source) throws IOException
+	{
+		JsonNode value = object.path("usage");
+		if (!(value instanceof ObjectNode usage) || !new HashSet<>(usage.propertyNames()).equals(
+			Set.of("available", "input_tokens", "cached_input_tokens", "output_tokens")))
+		{
+			throw new IOException("Complete harness receipt has invalid usage: " + source);
+		}
+		JsonNode available = usage.path("available");
+		if (!available.isBoolean())
+			throw new IOException("Complete harness receipt has invalid usage availability: " + source);
+		if (!available.asBoolean())
+		{
+			if (requiredNonnegative(usage, "input_tokens", source) != 0 ||
+				requiredNonnegative(usage, "cached_input_tokens", source) != 0 ||
+				requiredNonnegative(usage, "output_tokens", source) != 0)
+			{
+				throw new IOException("Unavailable provider usage must have zero token counts: " + source);
+			}
+			return ProviderUsage.unavailable();
+		}
+		return ProviderUsage.of(requiredNonnegative(usage, "input_tokens", source),
+			requiredNonnegative(usage, "cached_input_tokens", source),
+			requiredNonnegative(usage, "output_tokens", source));
 	}
 
 	/**

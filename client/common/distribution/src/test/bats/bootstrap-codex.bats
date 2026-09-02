@@ -132,96 +132,69 @@ SCRIPT
 	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
 }
 
-@test "release bootstrap selects the v1.0 Linux x64 Codex archive" {
+@test "Git bootstrap installs the exact Codex release target" {
 	create_fake_engine_command codex
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
+	bootstrap="$(cd "${BATS_TEST_DIRNAME}/../../../../lifecycle/src/main/resources/install" && pwd)/bootstrap.sh"
+	cat > "${FAKE_BIN}/git" <<'SCRIPT'
 #!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Linux\n'; else printf 'x86_64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
-output=''
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-o" ]; then shift; output="$1"; fi
-	shift
-done
-case "${output}" in
-	*/SHA256SUMS.txt) printf 'ignored  cat-codex-v1.0-linux-x64.tar.gz\n' > "${output}" ;;
-	*) : > "${output}" ;;
-esac
-SCRIPT
-	cat > "${FAKE_BIN}/sha256sum" <<'SCRIPT'
-#!/usr/bin/env sh
-exit 0
-SCRIPT
-	cat > "${FAKE_BIN}/tar" <<'SCRIPT'
-#!/usr/bin/env sh
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-C" ]; then shift; destination="$1"; fi
-	shift
-done
-	root="${destination}/cat-codex-v1.0-linux-x64"
-	mkdir -p "${root}/.codex-plugin" "${root}/client/bin" "${root}/install/migrations" \
-		"${root}/agents/codex" "${root}/agents/common"
-	printf '{}\n' > "${root}/.codex-plugin/plugin.json"
-	printf 'name = "cat-reviewer"\n<!-- cat:include ../common/reviewer.md -->\n' > "${root}/agents/codex/reviewer.toml"
-	printf 'review\n' > "${root}/agents/common/reviewer.md"
-printf '1.0\n' > "${root}/client/VERSION"
-printf '# target-version<TAB>script-relative-to-this-directory\n' > "${root}/install/migrations/registry.tsv"
-cat > "${root}/client/bin/plugin-info" <<'INNER'
+printf 'git %s\n' "$*" >> "${COMMAND_LOG}"
+if [ "${1:-}" = "-C" ]; then
+	if [ "${3:-}" = "describe" ]; then
+		printf '1.0\n'
+		exit 0
+	fi
+	exit 1
+fi
+destination=''
+for argument in "$@"; do destination="${argument}"; done
+target="${destination}/codex/linux-x86_64"
+mkdir -p "${target}/.codex-plugin" "${target}/client/bin" "${target}/install/migrations" \
+	"${target}/agents/codex" "${target}/agents/common"
+printf '{}\n' > "${target}/.codex-plugin/plugin.json"
+printf 'name = "cat-reviewer"\n<!-- cat:include ../common/reviewer.md -->\n' > "${target}/agents/codex/reviewer.toml"
+printf 'review\n' > "${target}/agents/common/reviewer.md"
+printf '1.0\n' > "${target}/client/VERSION"
+printf '# target-version<TAB>script-relative-to-this-directory\n' > "${target}/install/migrations/registry.tsv"
+cp "${INSTALL_DIRECTORY}/common.sh" "${target}/install/common.sh"
+cp "${INSTALL_DIRECTORY}/install-codex.sh" "${target}/install/install-codex.sh"
+cp "${INSTALL_DIRECTORY}/codex-marketplace.json" "${target}/install/codex-marketplace.json"
+cat > "${target}/client/bin/plugin-info" <<'INNER'
 #!/usr/bin/env sh
 exit 0
 INNER
-chmod +x "${root}/client/bin/plugin-info"
+chmod +x "${target}/client/bin/plugin-info"
+{
+	printf '{\n  "files" : [\n'
+	first=true
+	find "${target}" -type f -print | LC_ALL=C sort | while IFS= read -r file; do
+		path="${file#"${destination}"/}"
+		hash="$(sha256sum "${file}" | awk '{ print $1 }')"
+		size="$(wc -c < "${file}" | tr -d '[:space:]')"
+		if [ "${first}" = true ]; then first=false; else printf ',\n'; fi
+		printf '    { "path" : "%s", "sha256" : "%s", "size" : %s }' "${path}" "${hash}" "${size}"
+	done
+	printf '\n  ]\n}\n'
+} > "${destination}/release-manifest.json"
+if [ "${CAT_BOOTSTRAP_BAD_FILE:-}" = true ]; then
+	printf 'tampered\n' >> "${target}/client/VERSION"
+fi
 SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl" "${FAKE_BIN}/sha256sum" "${FAKE_BIN}/tar"
+	chmod +x "${FAKE_BIN}/git"
 
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" INSTALL_DIRECTORY="${INSTALL_DIRECTORY}" \
+		CODEX_HOME="${CODEX_HOME}" CAT_BOOTSTRAP_GIT=git sh "${bootstrap}" codex 1.0
 
 	[ "${status}" -eq 0 ]
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/cat-codex-v1.0-linux-x64.tar.gz" \
-		"${COMMAND_LOG}"
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
+	grep -F "git clone --depth 1 --branch 1.0 https://github.com/catsforbots/cat.git" "${COMMAND_LOG}"
+	grep -F "codex plugin add cat@cat" "${COMMAND_LOG}"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" INSTALL_DIRECTORY="${INSTALL_DIRECTORY}" \
+		CODEX_HOME="${CODEX_HOME}" CAT_BOOTSTRAP_REPOSITORY="https://example.invalid/cat.git" \
+		CAT_BOOTSTRAP_GIT=git CAT_BOOTSTRAP_BAD_FILE=true sh "${bootstrap}" codex 1.0
+
+	[ "${status}" -eq 1 ]
+	[[ "${output}" == *"CAT release manifest size mismatch"* ]]
 }
-
-@test "bootstrap propagates a download failure" {
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
-#!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Linux\n'; else printf 'x86_64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-exit 23
-SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
-
-	run env PATH="${FAKE_BIN}:${PATH}" sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
-
-	[ "${status}" -eq 23 ]
-}
-
-@test "release bootstrap selects the v1.0 macOS ARM64 archive" {
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
-#!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Darwin\n'; else printf 'arm64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
-exit 23
-SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" \
-		CAT_RELEASE_BASE_URL="https://example.invalid/releases/v1.0" sh \
-		"${INSTALL_DIRECTORY}/install-codex.sh" v1.0
-
-	[ "${status}" -eq 23 ]
-	grep -F "https://example.invalid/releases/v1.0/cat-codex-v1.0-macos-arm64.tar.gz" "${COMMAND_LOG}"
-}
-
 @test "generated launchers work when the runtime path contains spaces" {
 	runtime="${TEST_ROOT}/generated runtime"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
@@ -253,6 +226,18 @@ SCRIPT
 	[[ "${output}" == *"Default Rule Routing"* ]]
 	[[ "${output}" == *"When handling Java exceptions, lazy load"*"/rules/include/java/exceptions.md"* ]]
 	[[ "${output}" == *"project session rule"* ]]
+}
+
+@test "generated Codex SessionStart launcher does not require hook PATH commands" {
+	project="${TEST_ROOT}/restricted path session project"
+	mkdir -p "${project}"
+	runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
+
+	run env -i HOME="${HOME}" PATH="/nonexistent" PLUGIN_ROOT="${runtime}" /bin/sh -c \
+		'printf "%s\\n" "$1" | "$2"' sh "{\"cwd\":\"${project}\"}" "${runtime}/hooks/session-start.sh"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *'"hookEventName":"SessionStart"'* ]]
 }
 
 @test "generated Codex SubagentStart launcher injects only addressed project rules" {

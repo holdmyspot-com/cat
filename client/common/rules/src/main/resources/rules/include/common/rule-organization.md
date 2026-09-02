@@ -24,6 +24,13 @@ before using a downstream report, estimate, log, test result, or warning to choo
 the receiving artifact's existing Design Goals and reader decision. If it governs a distinct action, create or select
 the focused action artifact instead. Record this comparison in the design checkpoint before editing.
 
+Do not assign guidance to a workflow rule merely because the reported failure occurred while that workflow was running.
+Name the decision the guidance governs, then compare a case that needs that decision outside the proposed parent and a
+case inside the parent that does not need it. Make the guidance independent when the first case still needs it; retain it
+under the parent only when its decision depends on the parent's distinct state or contract. For example, preserving
+verified progress across rounds belongs to monotonic-progress guidance, while reusing one operation identity after an
+unknown request outcome belongs to idempotency guidance even when both occur in one workflow.
+
 Give each skill, command, or workflow one primary decision contract. Split it when its alternatives have different
 invocation evidence, required inputs, placement or safety rules, irreversible actions, or verification outcomes. Do not
 hide such alternatives behind a mode selector. Keep alternatives together only when they differ in a mechanical
@@ -61,6 +68,11 @@ use minimal `paths` frontmatter when paths identify the trigger; otherwise use a
 activity or decision and lazy-loads the focused file. Before handoff, conceptually remove each companion and verify that
 the core has no undefined terminology, dangling reference, incomplete procedure, or dependent example. Verify that each
 companion adds only its focused context and does not redefine, contradict, or silently depend on another companion.
+
+When harness wrappers include one shared prompt body, place every normative instruction in that body unless a documented
+harness difference changes its reader, trigger, decision, or observable result. Identical additions to two wrappers are
+evidence that the shared body owns them. Do not duplicate an instruction merely to place it after an include; move it to
+the corresponding position in the shared body so every assembled harness artifact receives it once.
 
 Add or retain repository-maintained guidance only for project-specific conventions, explicit user decisions, or
 constraints whose correct application depends on the project's architecture, artifacts, or workflow. Do not add a rule

@@ -142,13 +142,13 @@ public final class JlinkImageBuilder
 
 	/**
 	 * Makes jlink launchers work from installation paths containing whitespace and gives each launched JVM an isolated
-	 * temporary filesystem when Bubblewrap is available.
+	 * isolated process namespace when Bubblewrap is available.
 	 * <p>
 	 * jlink emits {@code $DIR/java -m ...}. With {@code DIR=/opt/CAT Plugin/bin}, the shell splits that command at
 	 * the space. This method replaces it with {@code exec "$DIR/java" -m ...}, after deriving {@code DIR} from a
-	 * quoted launcher path. The temporary filesystem keeps HotSpot's supported shared performance-data feature enabled
-	 * without allowing separately sandboxed JVMs that reuse a namespace PID to contend for the same host {@code /tmp}
-	 * file.
+	 * quoted launcher path. The launcher must preserve the caller's filesystem paths: runner arguments may legitimately
+	 * name a project, retained evidence, or output directory under {@code /tmp}. It therefore cannot replace
+	 * {@code /tmp} with a private filesystem.
 	 *
 	 * @param output the runtime-image directory
 	 * @param launchers the launchers to rewrite
@@ -162,7 +162,11 @@ public final class JlinkImageBuilder
 		String configuredVmOptions = "JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'\n";
 		String unquotedDirectory = "DIR=`dirname $0`\n";
 		String unquotedInvocation = "$DIR/java ";
-		String quotedDirectory = "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n";
+		String quotedDirectory = "case \"$0\" in\n" +
+			"  */*) launcherDirectory=${0%/*} ;;\n" +
+			"  *) launcherDirectory=. ;;\n" +
+			"esac\n" +
+			"DIR=$(CDPATH='' cd -- \"$launcherDirectory\" && pwd)\n";
 		for (Launcher launcher : launchers)
 		{
 			Path script = output.resolve("bin").resolve(launcher.name());
@@ -176,7 +180,7 @@ public final class JlinkImageBuilder
 				throw new IOException("Jlink launcher invocation has no line ending: " + script);
 			String arguments = content.substring(invocationStart + unquotedInvocation.length(), invocationEnd);
 			String isolatedInvocation = "if command -v bwrap >/dev/null 2>&1; then\n" +
-				"  exec bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev -- \"$DIR/java\" " + arguments +
+				"  exec bwrap --bind / / --proc /proc --dev /dev -- \"$DIR/java\" " + arguments +
 				"\nfi\nexec \"$DIR/java\" " + arguments;
 			String rewritten = content.replace(unconfiguredVmOptions, configuredVmOptions).
 				replace(unquotedDirectory, quotedDirectory);

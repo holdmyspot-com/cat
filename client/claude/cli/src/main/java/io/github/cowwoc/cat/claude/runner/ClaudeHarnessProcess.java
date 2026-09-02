@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.time.Instant;
+import java.util.Optional;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -81,7 +82,26 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 			events.append(line).append('\n');
 			listener.accept(line);
 			if (line.contains("\"type\":\"result\""))
-				return new HarnessProcessResult(0, events.toString(), "", true, assistantResponse(events.toString()));
+			{
+				try
+				{
+					JsonNode terminalEvent = scope.json().readTree(line);
+					if (terminalEvent.path("type").asString().equals("result"))
+					{
+						Optional<String> providerFailure = providerFailureMessage(terminalEvent);
+						if (providerFailure.isPresent())
+						{
+							return new HarnessProcessResult(1, events.toString(), providerFailure.orElseThrow(), false,
+								"");
+						}
+						return new HarnessProcessResult(0, events.toString(), "", true, assistantResponse(events.toString()));
+					}
+				}
+				catch (JacksonException _)
+				{
+					// A malformed native event cannot complete this turn; the stream's later terminal event decides it.
+				}
+			}
 			line = output.readLine();
 		}
 		String error = standardError.await();
@@ -119,6 +139,29 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 			}
 		}
 		return response;
+	}
+
+	/**
+	 * Returns Claude's provider diagnostic when a terminal result reports an upstream request failure.
+	 *
+	 * @param terminalEvent the parsed native terminal result
+	 * @return the actionable provider diagnostic, or empty when Claude completed the request
+	 */
+	static Optional<String> providerFailureMessage(JsonNode terminalEvent)
+	{
+		requireThat(terminalEvent, "terminalEvent").isNotNull();
+		if (!terminalEvent.path("is_error").asBoolean(false))
+			return Optional.empty();
+
+		String response = terminalEvent.path("result").asString().strip();
+		int status = terminalEvent.path("api_error_status").asInt(0);
+		if (status > 0 && !response.isBlank())
+			return Optional.of("Claude provider request failed with HTTP " + status + ": " + response);
+		if (status > 0)
+			return Optional.of("Claude provider request failed with HTTP " + status);
+		if (!response.isBlank())
+			return Optional.of("Claude provider request failed: " + response);
+		return Optional.of("Claude provider request failed");
 	}
 
 	/**

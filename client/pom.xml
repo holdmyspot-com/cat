@@ -11,6 +11,13 @@
 
 	<name>Client</name>
 	<description>CAT plugin client reactor</description>
+	<licenses>
+		<license>
+			<name>CAT Personal and Commercial License 1.0</name>
+			<url>https://github.com/catsforbots/cat/blob/main/LICENSE.md</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
 
 	<modules>
 		<module>common</module>

@@ -343,6 +343,102 @@
         }
       ]
     },
+    "direct-answer-concise": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "material-caveat-retained": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "conditional-probability-subset": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "conditional-state-subset": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "actionable-certification-choice": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "actionable-system-repair-choice": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "mechanism-explanation-without-choice": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "justified-universal-category": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
     "java-javadoc-method-lifecycle": {
       "measures": [
         "organic_selection",
@@ -418,6 +514,62 @@
         ],
         "optional_selected": [
           "include/common/check-assumptions.md"
+        ]
+      }
+    },
+    "established-term-reused": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/consistent-terminology.md",
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "related-new-term-preferred": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/consistent-terminology.md",
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "independent-new-term-preferred": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/consistent-terminology.md",
+          "include/documentation/general.md"
+        ]
+      }
+    },
+    "generic-familiar-name-rejected": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md",
+          "include/common/consistent-terminology.md",
+          "include/documentation/general.md"
         ]
       }
     }

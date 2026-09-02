@@ -22,6 +22,9 @@ method needs Javadoc only when it changes the inherited contract or adds importa
 only to document existing code, do not add a constructor, method, field, or other executable declaration merely to
 create another documentation target.
 
+Do not add Javadoc consisting only of `{@inheritDoc}`. An overriding method inherits its documentation by default.
+Write new Javadoc only when it supplies caller-relevant information that the inherited contract does not already state.
+
 Document every parameter with `@param` and every return value with `@return`. Place component `@param` descriptions on
 a record declaration and repeat them on an explicit or compact canonical constructor. Put construction-contract tags
 such as `@throws` only on that constructor, not on the record declaration.
