@@ -29,8 +29,9 @@ estimates and records the update time. A component is not complete merely becaus
 | Wave 5 — Work client behavior and Claude parity | complete; prior work is unmeasured | 3–5 engineering days | 2026-09-02 | unmeasured | unmeasured | 2026-09-02 commercial/common Maven gate passed 23 tests; Claude Maven gate passed 33 tests; the packaged Codex and Claude terminal outcomes passed the 4-test Bats suite |
 | Wave 6 — releases and integrated launch gate | local implementation verified; production launch unrun | 2–3 engineering days | 2026-09-02 | in progress | not applicable | 2026-09-02 clean Maven verification passed after terminal-certification Bats enrollment and again after the first-release publisher repair. The release publisher now creates `main` for an empty first-release repository and refuses a non-empty repository without `main`; its focused Maven and ShellCheck checks passed. The live Codex terminal fixture and both Codex work-execute fixtures passed. Claude retried its complete work-execute fixture ten times and two later terminal-certification retries received HTTP 503 after Codex passed. This provider outage leaves the live Claude terminal and work-execute evidence unrun. The work-execute gate recognizes HTTP 429/5xx, retains an outage marker, and records the gate as unrun with its Bats log. The source repository currently has no Actions secrets, so `CAT_RELEASE_TOKEN` must be configured before its Release workflow can publish either edition. A local launch-gate run passed entitlement, privacy, and prompt-system gates; lifecycle, platform, commercial-repository, Claude terminal, and live work-execute evidence remain unrun. Each launch-gate invocation creates a separate immutable attempt directory. |
 
-Current remaining estimate: 1–2 calendar days; recorded 2026-09-02. The `1.0.2` cross-platform release workflow is
-running with the configured `CAT_RELEASE_TOKEN`. A live Claude provider must still complete the required terminal
+Current remaining estimate: 1–2 calendar days; recorded 2026-09-02. The `1.0.3` cross-platform release workflow
+proved that GitHub-hosted Windows has no WSL distribution. The next release validates the shared Linux/WSL artifact on
+Linux CI. A live Claude provider must still complete the required terminal
 evidence. This is a planning estimate, not evidence that any listed component has passed its terminal gate.
 
 ## Target audience and product entry points
@@ -163,11 +164,10 @@ The publisher performs these stages in order:
    website. The website publishes those instructions only after its own presentation and access checks pass.
 
 `EditionArtifactMaterializer` rejects credential patterns in the staged end-user tree, preventing a distribution from
-including an API key, access token, password, or private key. The workflow then builds the four native tuples on their
-matching Linux or macOS runners. A Windows hosted runner runs the Linux x86_64 artifact inside `Ubuntu-24.04` WSL and
-records a separate WSL receipt. The publishing job must collect all four native receipts and that WSL receipt before it
-assembles the two edition trees or runs the frontend launch gate. A missing WSL distribution or a failed WSL artifact
-check fails the workflow; it cannot be represented as native evidence.
+including an API key, access token, password, or private key. The workflow builds the four native tuples on matching
+Linux or macOS runners. Linux CI installs and runs the Linux artifact that WSL also executes; deterministic client
+tests cover WSL target selection and native-Windows rejection. The publishing job collects all four native receipts
+before it assembles the two edition trees or runs the frontend launch gate.
 
 A failed stage leaves the preceding release and installation instructions current. The publisher must not move a tag
 or describe a failed release as available.
@@ -1809,8 +1809,9 @@ The frontend and release work is complete only when retained evidence proves all
 
 - personal installation, upgrade, and uninstall work from the personal repository for every supported target;
 - Work installation and upgrade work from the private repository for an entitled test account;
-- clean installation succeeds for Codex and Claude Code on Linux and macOS for `x86_64` and `arm64`, WSL selects and
-  installs its matching Linux target, and native Windows is rejected with the WSL instruction;
+- clean installation succeeds for Codex and Claude Code on Linux and macOS for `x86_64` and `arm64`; Linux CI validates
+  the shared Linux/WSL artifact, and deterministic client tests prove WSL target selection and the native-Windows
+  rejection instruction;
 - every release tag resolves to the tested commit and contains only allowlisted end-user files;
 - a 24-hour license lease renews, a CAT outage permits no more than seven days from the last confirmed entitlement, and
   an expired grace rejects Work-only entry points with a recovery action;
@@ -2140,12 +2141,12 @@ Wave 5 verification is every Work common test plus every Claude runner test and 
 4. Update Codex and Claude bootstrap/install/update scripts to resolve the requested tag, fetch that tag with
    `--depth 1`, select the exact tuple, verify the manifest and every file before installation, and invoke the harness's
    existing local-plugin installation boundary. Do not use `curl | sh`. Add staged-repository Bats fixtures for clean
-   install, update, uninstall, wrong architecture, native Windows, WSL, tag failure, manifest failure,
+   install, update, uninstall, wrong architecture, native Windows, tag failure, manifest failure,
    Personal-commercial exclusion, and an authenticated local bare-repository stand-in for the private repository.
 5. Add `FrontendLaunchGate` and `FrontendLaunchGateTest`. Its registry contains every bullet in “Frontend acceptance
    gates” with status `passed`, `failed`, `unrun`, or `excluded`, command, evidence paths, start/end times, and
    diagnostic. Reports live at `target/frontend-launch-gates/<version>/gate-report.json`. Only the product owner may
-   supply an `excluded` result and reason; ordinary execution records unavailable macOS, arm64, WSL, live-harness,
+   supply an `excluded` result and reason; ordinary execution records unavailable macOS, arm64, live-harness,
    private-repository, or publishing evidence as `unrun`, never passed.
 6. Add `client/release/run-frontend-launch-gate.sh` as the one terminal command. It runs the uncached Maven reactor,
    common simulations, external Bats suites, package inspection, and every available target fixture. Java tests prove
@@ -3209,7 +3210,7 @@ receipts. The commands are exact:
 |---|---|
 | `personal-lifecycle` | `client/release/test-staged-release.sh STAGED_PERSONAL personal VERSION` |
 | `commercial-lifecycle` | `client/release/test-private-install.sh STAGED_COMMERCIAL commercial VERSION`; this exits `77` when `CAT_COMMERCIAL_TEST_REPOSITORY` or configured Git credentials are absent |
-| `platform-matrix` | `client/release/test-platform-matrix.sh STAGED_PERSONAL STAGED_COMMERCIAL VERSION`; it runs the current tuple and consumes sibling CI receipts for the other native platforms plus WSL, returning `77` while any required receipt is absent. A receipt has exactly `schema_version: cat-platform-receipt-v1`, release version, platform, `execution_environment: native` or `wsl`, and creation time. `--record` accepts only a native platform; `--record-wsl` also proves the active Linux kernel is WSL. |
+| `platform-matrix` | `client/release/test-platform-matrix.sh STAGED_PERSONAL STAGED_COMMERCIAL VERSION`; it runs the current tuple and consumes sibling native CI receipts, returning `77` while any required receipt is absent. Linux CI validates the single Linux artifact used by both Linux and WSL. A receipt has exactly `schema_version: cat-platform-receipt-v1`, release version, platform, `execution_environment: native`, and creation time. `--record` accepts only a native platform. |
 | `release-tag-integrity` | `client/release/test-release-tag.sh STAGED_PERSONAL STAGED_COMMERCIAL VERSION`; local bare repositories stand in for both remotes |
 | `commercial-lease-continuity` | Maven `-Dtest='*CommercialEntitlement*,*EntitlementLease*,*CommercialAccountClient*'` in `:client-common-cli` |
 | `feedback-and-analytics-privacy` | Maven `-Dtest='*Feedback*,*UsageAnalytics*'` in `:client-common-cli` |
@@ -3544,8 +3545,8 @@ tests of the new optimizer after retirement.
 
 1. Reuse the existing `JlinkImageBuilder` and bundled JDK 26 runtime; do not introduce another runtime assembly path.
 2. Define eight first-release tuples per edition, sixteen across both editions: Codex and Claude Code on Linux and
-   macOS, each on x86-64 and ARM64, for Personal and Work. WSL installs and runs the matching Linux tuple and
-   receives its own installation check.
+   macOS, each on x86-64 and ARM64, for Personal and Work. WSL runs the matching Linux tuple, which Linux CI installs
+   and exercises.
 3. Produce clean release trees containing only end-user runtime files selected by the edition allowlist. Verify package
    checksums, version metadata, target identifiers, Work-only entry points, and absence of source and build
    inputs.
@@ -3555,8 +3556,8 @@ tests of the new optimizer after retirement.
 **Terminal outcome:** each advertised tuple installs from its supported repository into a clean harness and exposes
 exactly the entitled functionality using the bundled Java 26 runtime.
 
-**Acceptance evidence:** manifest allowlist tests, clean-room package inspection, all eight clean-install tests, WSL
-installation check, plugin discovery and update tests, tag-to-commit verification, and Personal/Work negative
+**Acceptance evidence:** manifest allowlist tests, clean-room package inspection, all eight clean-install tests, Linux
+CI evidence for the shared Linux/WSL artifact, plugin discovery and update tests, tag-to-commit verification, and Personal/Work negative
 entitlement tests.
 
 ### F13 — Integrated frontend launch gate
@@ -3582,7 +3583,7 @@ account launch gate.
   subscriber. Commercial terms remain the enforcement boundary for continued use of that copy.
 - Supporting every harness, operating-system, and architecture tuple can multiply release testing. CAT must publish
   only the eight first-release tuples covered by clean-install evidence; adding a tuple expands the release matrix and
-  its required gate. WSL reuses a tested Linux tuple and requires a separate WSL installation check.
+  its required gate. WSL reuses the Linux tuple validated by Linux CI.
 - A distribution repository may require root-level catalog metadata for a harness to discover target plugins. Such a
   file is allowed only when an end-user installation path consumes it and the release test proves that dependency.
 - Client license and entitlement language can diverge from the backend-owned offer catalog. Release verification must

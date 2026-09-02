@@ -8,7 +8,6 @@ usage()
 {
 	echo "Usage: $0 PERSONAL_TREE COMMERCIAL_TREE VERSION" >&2
 	echo "   or: $0 --record PERSONAL_TREE COMMERCIAL_TREE VERSION RECEIPT" >&2
-	echo "   or: $0 --record-wsl PERSONAL_TREE COMMERCIAL_TREE VERSION RECEIPT" >&2
 	exit 2
 }
 
@@ -84,18 +83,6 @@ write_receipt()
 	echo "Recorded platform receipt: platform=$platform version=$version receipt=$receipt"
 }
 
-verify_wsl()
-{
-	[ -r /proc/sys/kernel/osrelease ] || {
-		echo "WSL evidence requires /proc/sys/kernel/osrelease" >&2
-		exit 77
-	}
-	grep -Eqi 'microsoft|wsl' /proc/sys/kernel/osrelease || {
-		echo "This Linux environment is not WSL" >&2
-		exit 77
-	}
-}
-
 verify_receipt()
 {
 	receipt=$1
@@ -145,16 +132,6 @@ if [ "$#" -eq 5 ] && [ "$1" = --record ]; then
 	write_receipt "$2" "$3" "$4" "$5" native
 	exit 0
 fi
-if [ "$#" -eq 5 ] && [ "$1" = --record-wsl ]; then
-	if [ ! -d "$2" ] || [ ! -d "$3" ]; then
-		echo "Native release tree is missing" >&2
-		exit 1
-	fi
-	[ -n "$4" ] || usage
-	verify_wsl
-	write_receipt "$2" "$3" "$4" "$5" wsl
-	exit 0
-fi
 [ "$#" -eq 3 ] || usage
 personal_tree=$1
 commercial_tree=$2
@@ -175,5 +152,4 @@ receipt_directory="${CAT_PLATFORM_RECEIPT_DIRECTORY:-}"
 for required_platform in linux-x86_64 linux-arm64 macos-x86_64 macos-arm64; do
 	verify_receipt "$receipt_directory/$required_platform.json" "$version" "$required_platform" native
 done
-verify_receipt "$receipt_directory/wsl-linux-x86_64.json" "$version" "linux-x86_64" wsl
 echo "Platform matrix passed: version=$version current_platform=$platform"

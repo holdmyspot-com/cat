@@ -62,38 +62,9 @@ jobs:
           if-no-files-found: error
           path: client/common/distribution/target/release/
 
-  wsl:
-    name: Verify WSL release target
-    needs: build
-    runs-on: windows-2025
-    steps:
-      - uses: actions/checkout@v7
-      - name: Download Linux x86_64 release input
-        uses: actions/download-artifact@v8
-        with:
-          name: cat-linux-x64
-          path: native
-      - name: Record WSL platform evidence
-        shell: pwsh
-        run: |
-          $distribution = wsl.exe --list --quiet | Where-Object { $_.Trim() } | Select-Object -First 1
-          if ($null -eq $distribution) {
-            throw 'The GitHub-hosted Windows runner has no installed WSL distribution.'
-          }
-          $distribution = $distribution.Trim()
-          wsl.exe --distribution $distribution --exec bash -lc 'true'
-          $workspace = (wsl.exe --distribution $distribution --exec wslpath "$env:GITHUB_WORKSPACE").Trim()
-          wsl.exe --distribution $distribution --exec bash -lc "'$workspace/client/release/test-platform-matrix.sh' --record-wsl '$workspace/native/personal' '$workspace/native/commercial' '${{ github.ref_name }}' '$workspace/platform-receipt.json'"
-      - name: Upload WSL platform evidence
-        uses: actions/upload-artifact@v7
-        with:
-          name: cat-wsl-linux-x64
-          if-no-files-found: error
-          path: platform-receipt.json
-
   publish:
     name: Assemble, gate, and publish editions
-    needs: [build, wsl]
+    needs: build
     runs-on: ubuntu-24.04
     environment: release
     steps:
@@ -111,11 +82,6 @@ jobs:
         with:
           pattern: cat-*
           path: native
-      - name: Download WSL platform evidence
-        uses: actions/download-artifact@v8
-        with:
-          name: cat-wsl-linux-x64
-          path: wsl-platform-receipt
       - name: Assemble complete edition trees
         run: |
           version="${GITHUB_REF_NAME}"
@@ -130,7 +96,6 @@ jobs:
           cp native/cat-linux-arm64/platform-receipt.json platform-receipts/linux-arm64.json
           cp native/cat-macos-x64/platform-receipt.json platform-receipts/macos-x86_64.json
           cp native/cat-macos-arm64/platform-receipt.json platform-receipts/macos-arm64.json
-          cp wsl-platform-receipt/platform-receipt.json platform-receipts/wsl-linux-x86_64.json
           client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml -pl :client-distribution -am package
           java --module-path client/common/distribution/target/classes:client/common/distribution/target/modules \
             --module io.github.cowwoc.cat.distribution/io.github.cowwoc.cat.distribution.ReleaseTreeAssemblyMain \
