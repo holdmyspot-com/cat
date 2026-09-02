@@ -31,9 +31,9 @@ final class HarnessProjectRepository
 		environment.put("HOME", gitHome.toString());
 		environment.put("GIT_CONFIG_NOSYSTEM", "1");
 		environment.put("GIT_TERMINAL_PROMPT", "0");
-		HarnessCommand.execute(List.of("git", "init", "--quiet"), project, environment);
-		HarnessCommand.execute(List.of("git", "add", "--all"), project, environment);
-		HarnessCommand.execute(List.of("git", "-c", "user.name=CAT fixture", "-c",
+		HarnessCommand.execute(List.of("git", "-c", "maintenance.auto=false", "init", "--quiet"), project, environment);
+		HarnessCommand.execute(List.of("git", "-c", "maintenance.auto=false", "add", "--all"), project, environment);
+		HarnessCommand.execute(List.of("git", "-c", "maintenance.auto=false", "-c", "user.name=CAT fixture", "-c",
 			"user.email=cat-fixture@example.invalid", "-c", "commit.gpgSign=false", "commit", "--quiet",
 			"--allow-empty", "--no-verify", "-m", "CAT fixture baseline"), project, environment);
 	}
