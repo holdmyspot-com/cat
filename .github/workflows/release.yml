@@ -112,6 +112,13 @@ jobs:
           CAT_COMMERCIAL_TEST_REPOSITORY: https://github.com/catsforbots/cat-work.git
           CAT_PLATFORM_RECEIPT_DIRECTORY: ${{ github.workspace }}/platform-receipts
         run: client/release/run-frontend-launch-gate.sh "${GITHUB_REF_NAME}" staged/personal staged/commercial
+      - name: Upload frontend launch-gate evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cat-frontend-launch-gates-${{ github.ref_name }}
+          if-no-files-found: warn
+          path: client/common/distribution/target/frontend-launch-gates/
       - name: Publish Personal release
         run: >-
           client/release/publish-release.sh --edition personal --staged-tree "${GITHUB_WORKSPACE}/staged/personal"

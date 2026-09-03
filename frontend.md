@@ -173,7 +173,9 @@ A failed stage leaves the preceding release and installation instructions curren
 or describe a failed release as available.
 
 Release acceptance evidence consists of the allowlist report, tree manifest and checksums, clean-install results for
-every declared target, the resolved commit and tag identifiers, and the post-publication installation results.
+every declared target, the resolved commit and tag identifiers, and the post-publication installation results. The
+release workflow uploads the immutable frontend launch-gate receipts after every attempt, including a failed attempt;
+the subsequent release decision uses those receipts rather than a lost runner workspace.
 
 ## Local-client behavior
 
