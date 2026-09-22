@@ -1,8 +1,9 @@
 package io.github.cowwoc.cat.common.runner;
 
+import org.testng.annotations.Test;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import org.testng.annotations.Test;
 
 /**
  * Tests {@link HarnessRunnerScope}.

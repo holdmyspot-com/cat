@@ -1,9 +1,11 @@
 package io.github.cowwoc.cat.common.runner;
 
+import java.io.IOException;
+
+import org.testng.annotations.Test;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.IOException;
-import org.testng.annotations.Test;
 
 /**
  * Tests the repeated-request and closure behavior of {@link HarnessProcess}.

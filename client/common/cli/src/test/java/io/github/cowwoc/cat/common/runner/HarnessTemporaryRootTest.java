@@ -1,9 +1,11 @@
 package io.github.cowwoc.cat.common.runner;
 
+import java.nio.file.Path;
+
+import org.testng.annotations.Test;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.nio.file.Path;
-import org.testng.annotations.Test;
 
 /**
  * Tests {@link HarnessTemporaryRoot}.

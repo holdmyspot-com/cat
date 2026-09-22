@@ -37,10 +37,16 @@ validate it as a published plugin artifact. Package only the shared plugin-rule 
 guidance for an installed plugin. Updating a project rule therefore does not require rebuilding the distribution or
 reinstalling a plugin. Rebuild and reinstall only when a packaged plugin artifact changes.
 
+Treat an installed plugin cache as generated output, never as a rule-source editing location. Change a packaged rule in
+its `client/**/rules/**` source, run the project's complete documented build successfully, then install or refresh the
+plugin through its documented lifecycle so that it populates the cache from the verified artifact. Do not copy, patch,
+or validate a cache entry as evidence of a source change; a source file, partial build, or manually changed cache does
+not establish that the installed plugin contains the change.
+
 When developing CAT and a task requires a CAT helper CLI, do not treat its absence from `PATH` as evidence that it is
 unavailable. Build the distribution, then run the launcher from
-`client/distribution/target/jlink/<harness>/bin/<command>`. For an installed plugin, the selected harness wrapper must
-resolve that harness's native plugin-root value and supply the launcher path. Before reporting a helper unavailable,
+`client/common/distribution/target/jlink/<harness>/bin/<command>`. For an installed plugin, the selected harness wrapper
+must resolve that harness's native plugin-root value and supply the launcher path. Before reporting a helper unavailable,
 inspect the distribution's declared launchers and the harness-specific installed location. When a workflow consumes both
 a shipped prompt and a helper launcher, record one artifact revision that supplies both. After changing either source,
 rebuild or reinstall before invoking the workflow. Do not treat a cached prompt, a similarly named installed plugin, or

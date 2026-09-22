@@ -1,14 +1,16 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import io.github.cowwoc.cat.common.BoundedInput;
 import io.github.cowwoc.cat.common.PluginInfo;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Validates that an unpacked CAT plugin directory contains the required version file, manifest, and executable
@@ -22,8 +24,11 @@ public final class HarnessArtifact
 	 * Validates a complete unpacked plugin directory for a caller-supplied plugin manifest.
 	 *
 	 * @param root the unpacked plugin directory
+	 *
 	 * @param manifestPath the plugin manifest path relative to {@code root}
+	 *
 	 * @return the normalized unpacked plugin directory
+	 *
 	 * @throws IOException if the artifact is incomplete or does not satisfy the required filesystem layout
 	 */
 	public static Path validate(Path root, Path manifestPath) throws IOException
@@ -33,7 +38,8 @@ public final class HarnessArtifact
 		if (manifestPath.isAbsolute() || manifestPath.normalize().startsWith(".."))
 		{
 			throw new IOException(
-				"Artifact manifest path must be relative to the artifact directory and must not escape it: " + manifestPath +
+				"Artifact manifest path must be relative to the artifact directory and must not escape it: " +
+				manifestPath +
 					". Use a relative path below the artifact directory.");
 		}
 		Path normalized = root.toAbsolutePath().normalize();

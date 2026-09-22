@@ -1,13 +1,15 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
-import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Tests {@link HarnessCredentials}.

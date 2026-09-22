@@ -1,18 +1,24 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import java.nio.file.Path;
 import java.time.Duration;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Represents command-line settings for one isolated-run lifecycle operation.
  *
  * @param operation the requested lifecycle operation
+ *
  * @param runRoot the absolute owned-run root
+ *
  * @param runId the generated run identifier for an explicit operation, or {@code null}
+ *
  * @param retention the stale-run retention period, or {@code null}
+ *
  * @param diagnostic the externally observed failure diagnostic, or {@code null}
+ *
  * @param exitCode the externally observed process exit status, or {@code null}
  */
 public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot, String runId, Duration retention,
@@ -49,8 +55,11 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	 * Parses one lifecycle-only runner command.
 	 *
 	 * @param args command-line arguments
+	 *
 	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
+	 *
 	 * @return parsed maintenance options
+	 *
 	 * @throws IllegalArgumentException if the command is incomplete or invalid
 	 */
 	public static HarnessRunnerMaintenanceOptions parse(String[] args, Path temporaryRoot)
@@ -98,10 +107,15 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	 * Validates parsed maintenance options.
 	 *
 	 * @param operation the requested lifecycle operation
+	 *
 	 * @param runRoot the absolute owned-run root
+	 *
 	 * @param runId the generated run identifier for an explicit operation, or {@code null}
+	 *
 	 * @param retention the stale-run retention period, or {@code null}
+	 *
 	 * @param diagnostic the externally observed failure diagnostic, or {@code null}
+	 *
 	 * @param exitCode the externally observed process exit status, or {@code null}
 	 */
 	public HarnessRunnerMaintenanceOptions
@@ -126,7 +140,8 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 		}
 		else if (operation == Operation.DELETE_STALE_RUNS)
 		{
-			if (runId != null || retention == null || retention.isNegative() || retention.isZero() || diagnostic != null ||
+			if (runId != null || retention == null || retention.isNegative() || retention.isZero() || diagnostic !=
+				null ||
 				exitCode != null)
 				throw new IllegalArgumentException("delete-stale-runs requires a positive retention period only");
 		}
@@ -138,6 +153,7 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	 * Maps a command token to its lifecycle operation.
 	 *
 	 * @param command the command token
+	 *
 	 * @return the matching operation
 	 */
 	private static Operation operation(String command)

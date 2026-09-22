@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -126,11 +127,13 @@ public final class CodexRunner
 		{
 			manager.copyProject(project, run);
 			Path isolatedHome = run.directory().resolve("home");
+			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
-			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache);
+			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
+				temporaryDirectory);
 			if (!readOnlyEvidence.isEmpty())
 				CodexConnectionConfiguration.addValidatorProfile(isolatedConfiguration, readOnlyEvidence);
 			if (installCat)

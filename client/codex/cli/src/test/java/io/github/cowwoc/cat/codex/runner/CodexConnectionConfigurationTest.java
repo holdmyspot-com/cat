@@ -136,13 +136,14 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-npm-cache-"));
 			Path cache = Files.createDirectories(root.resolve("npm-cache"));
 			Path destination = root.resolve("isolated/config.toml");
+			Path temporaryDirectory = root.resolve("isolated/tmp");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache, temporaryDirectory);
 
 			String configuration = Files.readString(destination);
 			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").contains(
 				"writable_roots = [\"" + cache + "\"]").contains("[shell_environment_policy.set]").contains(
-				"NPM_CONFIG_CACHE = \"" + cache + "\"");
+				"NPM_CONFIG_CACHE = \"" + cache + "\"").contains("TMPDIR = \"" + temporaryDirectory + "\"");
 		}
 	}
 
@@ -190,12 +191,12 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 
 			Files.createDirectories(destination.getParent());
-			Files.writeString(destination, "[permissions.cat]\nextends = \":workspace\"\n");
+			Files.writeString(destination, "[permissions.cat-runner]\nextends = \":workspace\"\n");
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
-				contains("extends = \"cat\"").contains("\"" + evidence + "\" = \"read\"").
+				contains("extends = \"cat-runner\"").contains("\"" + evidence + "\" = \"read\"").
 				doesNotContain("\"" + evidence + "\" = \"write\"");
 		}
 	}

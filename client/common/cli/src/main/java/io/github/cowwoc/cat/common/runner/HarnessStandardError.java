@@ -1,13 +1,15 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
-import io.github.cowwoc.pouch10.core.WrappedCheckedException;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+
+import io.github.cowwoc.pouch10.core.WrappedCheckedException;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Drains a harness process's standard-error stream without blocking its protocol stream.
@@ -51,6 +53,7 @@ public final class HarnessStandardError
 	 * Waits for the stream to close and returns the retained diagnostic text.
 	 *
 	 * @return the captured standard-error text
+	 *
 	 * @throws IOException if reading the stream fails or this thread is interrupted
 	 */
 	public String await() throws IOException

@@ -27,3 +27,4 @@ only happens to contain a prompt fragment without supplying reader-facing instru
 Before introducing a synonym or renaming an established term, inspect the authoritative definition and every in-scope
 use. Make the change only when the existing term is inaccurate, ambiguous, or conflicts with an external required term.
 Then update every governed use and verify that each remaining different term denotes a genuinely different concept or
+is required by an external interface.

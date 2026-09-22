@@ -1,7 +1,5 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
@@ -10,17 +8,21 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.io.StringReader;
+
 
 /**
  * Forwards line-delimited JSON requests to one persistent harness process and writes each response.
@@ -32,9 +34,13 @@ public final class HarnessRunnerBridge
 	 * {@code native-event} responses; the terminal response records only the final status and error.
 	 *
 	 * @param starter starts the isolated persistent session
+	 *
 	 * @param input the JSONL client input
+	 *
 	 * @param output the JSONL client output
+	 *
 	 * @return the run that completed the protocol
+	 *
 	 * @throws IOException if the bridge protocol, harness, or stream fails
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Writer output) throws IOException
@@ -46,9 +52,13 @@ public final class HarnessRunnerBridge
 	 * Starts one session and retains the complete JSONL bridge transcript at the requested path.
 	 *
 	 * @param starter starts the isolated persistent session
+	 *
 	 * @param input the JSONL client input
+	 *
 	 * @param output the durable JSONL client-output destination
+	 *
 	 * @return the run that completed the protocol
+	 *
 	 * @throws IOException if the bridge protocol, harness, or transcript I/O fails
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Path output) throws IOException
@@ -60,11 +70,17 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
 	 *
 	 * @param starter starts the isolated persistent session
+	 *
 	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
+	 *
 	 * @param keepRun whether a completed run should be retained
+	 *
 	 * @param input the JSONL client input
+	 *
 	 * @param output the JSONL client output
+	 *
 	 * @return the run that completed the protocol
+	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
@@ -89,7 +105,7 @@ public final class HarnessRunnerBridge
 				if (manager != null)
 					manager.markIdle(run);
 				write(session.scope(), output, event(session.scope(), "started").put("runId", session.run().id()));
-				BufferedReader lines = new BufferedReader(new java.io.StringReader(preparedInput.jsonl()));
+				BufferedReader lines = new BufferedReader(new StringReader(preparedInput.jsonl()));
 				String line = lines.readLine();
 				while (line != null)
 				{
@@ -131,6 +147,7 @@ public final class HarnessRunnerBridge
 							response.put("runId", session.run().id());
 							response.put("exitCode", result.exitCode());
 							response.put("error", result.standardError());
+							response.put("assistant_response", result.assistantResponse());
 							write(session.scope(), output, response);
 							return null;
 						});
@@ -143,7 +160,8 @@ public final class HarnessRunnerBridge
 							throw new IOException("Bridge has no active turn to steer");
 						awaitRequestedTurnStart(request, activeTurnStarted);
 						session.steer(requiredText(request, "prompt"));
-						write(session.scope(), output, event(session.scope(), "steered").put("runId", session.run().id()));
+						write(session.scope(), output, event(session.scope(), "steered").put("runId", session.run().
+				id()));
 					}
 					else if (type.equals("interrupt"))
 					{
@@ -151,12 +169,14 @@ public final class HarnessRunnerBridge
 							throw new IOException("Bridge has no active turn to interrupt");
 						awaitRequestedTurnStart(request, activeTurnStarted);
 						session.interrupt();
-						write(session.scope(), output, event(session.scope(), "interrupted").put("runId", session.run().id()));
+						write(session.scope(), output, event(session.scope(), "interrupted").put("runId", session.run().
+				id()));
 					}
 					else if (type.equals("complete"))
 					{
 						awaitActiveTurn(activeTurn);
-						write(session.scope(), output, event(session.scope(), "completed").put("runId", session.run().id()));
+						write(session.scope(), output, event(session.scope(), "completed").put("runId", session.run().
+				id()));
 						completed = true;
 						break;
 					}
@@ -199,9 +219,13 @@ public final class HarnessRunnerBridge
 	 * Writes the receipt that proves a native pre-task turn received the selected installed prerequisites.
 	 *
 	 * @param session the session that delivered the rules
+	 *
 	 * @param output the retained bridge transcript
+	 *
 	 * @param preparedInput the constructed input and direct-delivery receipt
+	 *
 	 * @param turn the completed pre-task turn number
+	 *
 	 * @throws IOException if the receipt cannot be written
 	 */
 	private static void writeRouteDelivery(HarnessRunSession session, Writer output,
@@ -228,11 +252,17 @@ public final class HarnessRunnerBridge
 	 * any later task turn can start.
 	 *
 	 * @param session the live harness session
+	 *
 	 * @param manager the optional run lifecycle owner
+	 *
 	 * @param output the retained bridge transcript
+	 *
 	 * @param prompt the model route-selection prompt
+	 *
 	 * @param priorTurn the completed turn count before selection
+	 *
 	 * @return the completed turn count after selection and any delivery turn
+	 *
 	 * @throws IOException if selection, rule validation, delivery, or native transport fails
 	 */
 	private static int completeRouteSelection(HarnessRunSession session, HarnessRunManager manager, Writer output,
@@ -246,7 +276,8 @@ public final class HarnessRunnerBridge
 			throw new IOException("CAT route selection requires an installed rule root");
 		int selectionTurn = priorTurn + 1;
 		HarnessProcessResult selection = completeTurn(session, manager, output, selectionTurn, prompt);
-		List<String> selectedPaths = RoutePreparationInput.selectedRules(selection.assistantResponse(), session.scope());
+		List<String> selectedPaths = RoutePreparationInput.selectedRules(selection.assistantResponse(), session.
+				scope());
 		ObjectNode selected = event(session.scope(), "route-selected");
 		selected.put("runId", session.run().id());
 		selected.put("selection_turn", selectionTurn);
@@ -267,14 +298,21 @@ public final class HarnessRunnerBridge
 	 * Runs one pre-task turn to a terminal native result and records its ordinary bridge evidence.
 	 *
 	 * @param session the live harness session
+	 *
 	 * @param manager the optional run lifecycle owner
+	 *
 	 * @param output the retained bridge transcript
+	 *
 	 * @param turn the one-based turn number
+	 *
 	 * @param prompt the native prompt
+	 *
 	 * @return the completed native turn result
+	 *
 	 * @throws IOException if the harness cannot complete the turn
 	 */
-	private static HarnessProcessResult completeTurn(HarnessRunSession session, HarnessRunManager manager, Writer output,
+	private static HarnessProcessResult completeTurn(HarnessRunSession session, HarnessRunManager manager,
+				Writer output,
 		int turn, String prompt) throws IOException
 	{
 		assert session != null;
@@ -299,6 +337,7 @@ public final class HarnessRunnerBridge
 		response.put("runId", session.run().id());
 		response.put("exitCode", result.exitCode());
 		response.put("error", result.standardError());
+		response.put("assistant_response", result.assistantResponse());
 		write(session.scope(), output, response);
 		return result;
 	}
@@ -307,10 +346,15 @@ public final class HarnessRunnerBridge
 	 * Writes a receipt for installed rules delivered after a model-selected route.
 	 *
 	 * @param session the live harness session
+	 *
 	 * @param output the retained bridge transcript
+	 *
 	 * @param rules the exact delivered rules
+	 *
 	 * @param deliveryTurn the pre-task delivery turn
+	 *
 	 * @param taskTurn the later task turn
+	 *
 	 * @throws IOException if the receipt cannot be written
 	 */
 	private static void writeRouteDelivery(HarnessRunSession session, Writer output,
@@ -339,6 +383,7 @@ public final class HarnessRunnerBridge
 	 * Waits for the active turn so a later bridge request observes its terminal outcome.
 	 *
 	 * @param activeTurn the active turn, or {@code null} when none was started
+	 *
 	 * @throws IOException if the turn failed or this thread was interrupted
 	 */
 	private static void awaitActiveTurn(Future<?> activeTurn) throws IOException
@@ -367,7 +412,9 @@ public final class HarnessRunnerBridge
 	 * Waits for the currently submitted turn only when a test explicitly requests an active-turn control point.
 	 *
 	 * @param request the steering or interruption request
+	 *
 	 * @param turnStarted the current turn's start signal
+	 *
 	 * @throws IOException if the requested control point is unsupported or the wait is interrupted
 	 */
 	private static void awaitRequestedTurnStart(JsonNode request, CountDownLatch turnStarted) throws IOException
@@ -394,11 +441,17 @@ public final class HarnessRunnerBridge
 	 * Starts one managed session and retains the complete JSONL bridge transcript at the requested path.
 	 *
 	 * @param starter starts the isolated persistent session
+	 *
 	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
+	 *
 	 * @param keepRun whether a completed run should be retained
+	 *
 	 * @param input the JSONL client input
+	 *
 	 * @param output the durable JSONL client-output destination
+	 *
 	 * @return the run that completed the protocol
+	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
@@ -426,6 +479,7 @@ public final class HarnessRunnerBridge
 	 * Converts a native turn that ended without a terminal result into the bridge's caller-visible failure.
 	 *
 	 * @param result the completed native turn result
+	 *
 	 * @return the failure that preserves the native exit status and safe diagnostic
 	 */
 	private static IOException nativeTurnFailure(HarnessProcessResult result)
@@ -442,8 +496,11 @@ public final class HarnessRunnerBridge
 	 * Parses one JSONL request.
 	 *
 	 * @param scope the live session scope
+	 *
 	 * @param line the request line
+	 *
 	 * @return the parsed object
+	 *
 	 * @throws IOException if the line is not a JSON object
 	 */
 	private static JsonNode read(HarnessRunnerScope scope, String line) throws IOException
@@ -467,8 +524,11 @@ public final class HarnessRunnerBridge
 	 * Gets a required non-blank string property.
 	 *
 	 * @param object the request object
+	 *
 	 * @param name the property name
+	 *
 	 * @return the property value
+	 *
 	 * @throws IOException if the property is absent or invalid
 	 */
 	private static String requiredText(JsonNode object, String name) throws IOException
@@ -485,7 +545,9 @@ public final class HarnessRunnerBridge
 	 * Creates a bridge response object.
 	 *
 	 * @param scope the live session scope
+	 *
 	 * @param type the response type
+	 *
 	 * @return the response object
 	 */
 	private static ObjectNode event(HarnessRunnerScope scope, String type)
@@ -499,8 +561,11 @@ public final class HarnessRunnerBridge
 	 * Writes one native event before its enclosing turn reaches completion.
 	 *
 	 * @param session the live harness session
+	 *
 	 * @param output the JSONL client output
+	 *
 	 * @param nativeEvent the raw native event line
+	 *
 	 * @throws IOException if client output fails
 	 */
 	private static void forwardNativeEvent(HarnessRunSession session, Writer output, String nativeEvent)
@@ -519,8 +584,11 @@ public final class HarnessRunnerBridge
 	 * Writes and flushes one JSONL response.
 	 *
 	 * @param scope the live session scope
+	 *
 	 * @param output the output stream
+	 *
 	 * @param event the response object
+	 *
 	 * @throws IOException if output fails
 	 */
 	private static void write(HarnessRunnerScope scope, Writer output, ObjectNode event) throws IOException

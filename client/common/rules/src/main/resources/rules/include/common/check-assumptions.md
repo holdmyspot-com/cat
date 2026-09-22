@@ -12,6 +12,13 @@
   inspection needs it.
 - Ensure a claim that a callable capability is absent is based on the complete authoritative interface for the current
   environment, not on an abbreviated display or the absence of one local executable.
+<!-- Agents previously treated an `exec`-sandbox tool catalog as the authoritative delegation interface and converted
+     that partial observation into false launch and blocking conclusions. Each consequential decision must instead be
+     justified by the governing interface and receipt at the boundary that owns it. -->
+- Keep operation selection, acceptance, recovery, workflow-state changes, and consequential claims within an
+  evidence-gated procedure: identify the required condition and authoritative contract or interface; use the smallest
+  authorized action or observation that can establish it; classify matching evidence while retaining unresolved
+  conditions as unknown; and take only the transition or recovery that the evidence permits.
 - Let a user distinguish an established answer from an answer that remains unknown after the available research.
 
 ## Guidance
@@ -29,6 +36,17 @@ it true or executable. Classify each premise as one of these:
    the point at which the reader retrieves it.
 3. An external condition: identify the required authority, actor, dependency, or decision and do not imply that it is
    already available.
+
+Before selecting an operation, accepting a result, retrying, choosing a fallback, changing workflow state, or making a
+consequential claim, identify the required condition and the contract that governs that decision. Check that the
+proposed operation can produce the required effect within the available authority and satisfied preconditions. Match
+the evidence's authority, subject, scope, operation identity, determining inputs, and lifecycle stage to the required
+condition. Use evidence from another boundary when an authoritative contract establishes the relationship and the
+evidence identifies the relevant operation and inputs; such a receipt need not be replaced with a new direct invocation.
+Keep unsupported conditions unknown. Obtain the smallest safe, authorized observation that distinguishes the remaining
+possibilities, reconciling possible side effects before repeating work. When no such observation is available, retain
+the unresolved condition and continue any independent authorized work. Apply the owning workflow's transition rule
+only after its required evidence is established.
 
 When a tool observation supplies a premise, request only the fields, records, lines, or bytes that can establish that
 premise. Bound enumerations and broad documentation before they enter the reader context. For example, a package search
@@ -96,12 +114,21 @@ use the platform's ingestion or runtime boundary for validation. For the Codex p
 Before claiming that a tool, skill, subagent, command, test, or investigation has run or is unavailable—or that an
 available tool, protocol, API, or workflow cannot perform an action—inspect the currently exposed invocation interface
 and every authoritative contract available at that boundary, such as its documented interface, protocol schema, command
-help, or installed implementation. When safe, execute the smallest supported sequence that could establish the action.
+help, or installed implementation. When safe and authorized, obtain any missing invocation evidence through the
+smallest supported sequence that could establish the action.
 Report the action, its invocation evidence, and its status: completed, failed, or not invocable. If no invocation
 interface is exposed, state only that the action cannot be invoked in the current turn; do not infer why. Treat an
 untested candidate as unknown rather than unavailable, and do not claim that work ran without its invocation result. If
 the sources conflict or the probe is inconclusive, report the evidence, the unresolved condition, and the next
 discriminating check instead of declaring a limitation.
+
+For tool calls that create or resume work, preserve the operation identity returned by the creating call and use it only
+with that operation's documented continuation. In particular, an `exec` wait requires the exact live cell identifier
+returned by `exec`; it cannot launch or wait for a subagent. A subagent wait requires a delegate identity returned by a
+successful direct top-level launch; it cannot be substituted with an `exec` wait. Do not invent an identity or choose a
+similarly named operation after another operation is unavailable or fails. First inspect the direct top-level contract,
+then make the smallest operation that has the required input state; if that state does not exist, report it as not
+invocable rather than probing a different operation.
 
 When the environment exposes a discoverable capability catalog, inventory that catalog before reporting that a named
 tool or operation is unavailable. An initially displayed tool list is a preview, not absence evidence. Match the named

@@ -1,13 +1,16 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+
 import org.testng.annotations.Test;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Tests {@link HarnessStandardError}.
@@ -62,6 +65,7 @@ public final class HarnessStandardErrorTest
 	 * Writes and closes one connected output stream.
 	 *
 	 * @param output the connected output stream
+	 *
 	 * @throws IOException if test stream I/O fails
 	 */
 	private static void write(PipedOutputStream output) throws IOException

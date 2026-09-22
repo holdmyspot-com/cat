@@ -1,0 +1,11 @@
+{
+  "schema_version": "scripted-monitor-v1",
+  "fixture_id": "progress-reporting-backoff-v1",
+  "initial_instant": "2026-09-08T12:00:00Z",
+  "run_id": "4242",
+  "states": [
+    {"offset_seconds": 0, "status": "queued", "conclusion": null, "jobs": "pending"},
+    {"offset_seconds": 1830, "status": "in_progress", "conclusion": null, "jobs": "tests=success,static_analysis=in_progress"},
+    {"offset_seconds": 1920, "status": "completed", "conclusion": "success", "jobs": "tests=success,static_analysis=success"}
+  ]
+}

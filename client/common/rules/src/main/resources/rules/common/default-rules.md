@@ -105,8 +105,11 @@ documentation, commands, or rules, lazy load `../include/common/consistent-termi
 When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
 `../include/common/parameter-validation.md`.
 
-When writing or editing documentation for a function, method, command, configuration entry, or user-facing workflow,
-lazy load `../include/documentation/general.md`.
+When writing or editing maintained documentation, including product, legal, API, function, method, command,
+configuration, or user-facing workflow documentation, lazy load `../include/documentation/general.md`.
+
+When applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
+diverge from the user's intent, lazy load `../include/common/skill-interruption-reporting.md` before taking that action.
 
 Before writing or editing a reader-facing update whose new evidence requires an actor to correct, narrow, or otherwise
 change an action, run this one shell action:
@@ -142,6 +145,8 @@ until both rules are available.
 
 When selecting a Java platform or available project API, lazy load `../include/java/standard-apis.md`.
 
+When editing the layout of a Java method chain, lazy load `../include/java/style.md`.
+
 When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
 `../include/java/piped-input-stream.md`.
 
@@ -152,11 +157,13 @@ Before designing or changing a component, API, collaborator, integration boundar
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
 
 Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
-result, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs and authority can
-determine every required decision.
+result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
+benefit, or other future outcome, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs
+and authority can determine every required decision.
 
-When designing, updating, or executing a prompt-driven workflow, lazy load `../include/common/delegation.md` to assign
-deterministic, bounded-review, and high-judgment work to the appropriate authority.
+Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
+work, lazy load `../include/common/delegation.md` to assign deterministic, bounded-review, and high-judgment work to the
+appropriate authority and isolate write-capable recipients.
 
 When accessing environment-dependent state, lazy load `../include/common/environment.md` to preserve an explicit,
 testable boundary.
@@ -167,10 +174,27 @@ precise failure semantics and actionable diagnostics.
 When considering a workaround for an external defect, lazy load `../include/common/external-workarounds.md` to require
 authoritative evidence and keep any workaround narrow and removable.
 
+When debugging a failed CI or hosted-workflow step, lazy load `../include/common/ci-debugging.md` to choose the
+authoritative local or hosted reproduction boundary before retrying.
+
 When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
 user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, lazy
 load `../include/common/failure-prevention.md` to classify its cause, isolate the earliest controllable decision or
 delivery boundary, and verify the prevention.
+
+When the Failure Prevention analysis confirms a reproducible failure involving prompt, rule, or workflow guidance,
+the affected guidance is user-owned, and prompt optimization is available for this session, lazy load
+`../include/common/failure-regression-promotion.md` and start its optimization procedure before resuming dependent
+work. The first qualifying failure is the trigger: establish availability from the session's enabled skills or
+capabilities, then invoke `cat:prompt-optimizer`; do not wait for or infer prior optimizer use. User-owned guidance is
+under the current project's `.cat/rules/` tree or the current user's
+`${HOME}/.cat/rules/` tree, or is CAT plugin source while the user is that plugin's developer. Do not infer prompt-
+optimization availability from a source checkout; do not load this rule for installed/cache, third-party, or
+unknown-owner guidance.
+
+Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
+`../include/common/failure-prevention.md` to use its transactional snapshot, scope-validation, conditional-rollback,
+and acceptance procedure.
 
 When editing source code or configuration, lazy load `../include/common/semantic-blank-lines.md` to make independently
 nameable stages and groups easy to scan.
@@ -194,6 +218,9 @@ When creating, using, or handing off temporary files or directories, lazy load
 
 When designing, changing, or reviewing tests, lazy load `../include/common/testing.md` to keep their observable claims,
 boundaries, and fixtures aligned.
+
+Before selecting or reporting a command as evidence that a project's build passes, lazy load
+`../include/common/build-verification.md`.
 
 When handling Java exceptions, lazy load `../include/java/exceptions.md` to choose precise exception semantics.
 
@@ -226,8 +253,12 @@ its invocation evidence.
 When answering a user question whose relevant research, authoritative source, or supported probe remains inconclusive,
 lazy load `../include/common/check-assumptions.md` before drafting the answer.
 
-When a workflow records progress for handoff, retry, or resumption, lazy load `../include/common/monotonic-progress.md`
-to preserve verified state across transitions.
+When defining or changing a workflow with progress handoff, retry, or resumption, lazy load
+`../include/common/monotonic-progress.md` to preserve verified state across transitions.
+
+When defining or changing an externally visible operation that declares idempotency or can create an externally durable
+effect before a caller can observe its result, lazy load `../include/common/idempotency.md` to preserve one logical
+operation across retries.
 
 When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
 dependency, lazy load `../include/common/workflow-error-reporting.md` before handoff.

@@ -5,6 +5,8 @@
 - Let each intended reader understand the observable situation, make the required decision, and act correctly without
   translating project-specific shorthand; for a rule or prompt, the executing agent is the primary reader and a user
   must still be able to audit the same guidance.
+- Use the shortest response that preserves the answer, required action, decision-relevant evidence, material conditions,
+  and readability at the reader's requested level of detail.
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
@@ -17,11 +19,37 @@ able to check that trigger, action, and result without translating project short
 instruction with a friendly summary, and do not hide the instruction behind language that only an agent can interpret.
 
 For every other reader-facing artifact, name the actor, input or state, action, result, and next decision that its
-intended reader needs. Use common precise language unless a specialized term preserves a necessary distinction. Define
-that term at its first use by saying what it represents, who uses it, and what result it affects. Do not define a term
-by repeating it or replacing it with another project label. For example, say “a new folder containing the copied project
-that the validator examines” instead of “an integration project.” Do not explain ordinary technical terms unless this
-project gives them a specialized meaning.
+intended reader needs. Use common precise language unless a specialized term preserves a necessary distinction.
+
+Before naming a concept, identify the established terms already used for the same subject. For each candidate name,
+consider what the intended reader would infer before reading its definition. Do not assume that familiar words make a
+name intuitive. Reject a name that hides the concept's subject or purpose, suggests a false relationship, or is too
+generic to distinguish the concept from nearby concepts.
+
+Reuse an established term when it accurately denotes the same concept. When the concept is distinct, compare a name
+related to the nearest established term with an independent name. Choose the shortest candidate that accurately signals
+the concept and the distinction the reader must make. Prefer the related name when it makes the relationship easier to
+infer without implying an equivalence, role, lifecycle, or behavior that does not exist. Use the independent name only
+when it is clearer or more intuitive while preserving the distinction. If neither candidate meets these conditions,
+generate another name or use a short descriptive phrase.
+
+Remove each qualifier in turn and compare the shorter name at the interface where its reader encounters it. Keep a
+qualifier only when removing it would collide with a nearby term or create a meaningful ambiguity for that reader. Do
+not retain a word merely because it truthfully describes the implementation, or when its information is already
+supplied by the package, owning type, method, generic bound, or surrounding terminology.
+
+Omit an internal structural qualifier when the intended reader never uses that distinction. When the distinction does
+affect the reader's decision, name its observable consequence instead of relying on structural jargon.
+
+Define a new term at its first use by saying what it represents, who uses it, and what result it affects, then use it
+consistently. Do not define a term by repeating it or replacing it with another project label. For example, say “a new
+folder containing the copied project that the validator examines” instead of “an integration project.” Do not explain
+ordinary technical terms unless this project gives them a specialized meaning.
+
+When reporting an implementation decision that the user did not need to approve, first state the observable behavior,
+then define any unfamiliar workflow term and the concrete problem it prevents. For example, explain that a release gate
+is a required release check and that a fresh evidence directory prevents a rerun from replacing an earlier check's
+receipts. Do not present an internal mechanism as an unexplained approval question.
 
 When a source comment explains a local representation of an external actor, resource, or boundary, name both the
 represented role and the concrete value or scope that models it. At a lifecycle transition, identify the actor, the
@@ -31,6 +59,18 @@ consumer; do not leave the reader to infer the process relationship from a pipe 
 
 Use a product or framework name only when it changes the explained behavior. When an ordinary parent and child process
 would behave the same way, name those generic roles instead.
+
+## Prefer the Shortest Complete Response
+
+Lead with the answer or outcome and match the reader's requested level of detail. Include only the content needed to
+understand it, act correctly, verify a material claim, or avoid a material misunderstanding. Omit process narration,
+repeated conclusions, redundant summaries, optional examples, and alternatives the reader does not need to choose
+among. Use a list only when it makes parallel items easier to scan.
+
+Concision does not permit omitting a condition, uncertainty, consequence, recovery action, or causal explanation that
+changes the reader's decision. Before finalizing, remove repetition and optional elaboration, then confirm that the
+remaining response is readable and complete for the requested outcome. Do not remove a sentence merely because it is
+explanatory or does not itself prescribe an action.
 
 ## Explain Decisions From Observable Facts
 
@@ -52,6 +92,18 @@ configure or interpret the setting. If an error bound covers a range, name the b
 apart from the accepted side, explain why, and compare a meaningfully farther value. For example, 90% compliance can
 produce evidence similar to an accepted 95% rate, while 12% compliance produces many more failures and is much less
 likely to be accepted by mistake. Do not add this comparison for a fixed option whose effect does not vary by value.
+
+When a conclusion applies only to the items or cases established by a preceding condition, retain that subset in the
+conclusion. Refer to “those” items when the antecedent is unambiguous, or restate the condition when another subset could
+be inferred. Do not broaden the conditioned subset with “all,” “every,” or an unqualified category name unless the
+condition covers that full category. State a complementary case separately when it produces a different result.
+
+When asking a reader to choose among alternatives, describe the concrete work each alternative starts and the
+observable consequence that could make it preferable. State the decision-relevant evidence, affected scope, expected
+cost or effort, benefit, and risk when they are known. Recommend an alternative when the available evidence supports
+one, and connect that recommendation to the stated facts. Do not substitute an internal mechanism or a broad activity
+label for the action and consequences the reader must compare. An explanation that does not ask the reader to choose
+may name the mechanism directly.
 
 ## Explain Causes and Evidence
 
@@ -88,6 +140,11 @@ procedure: what to inspect, what comparison or decision to make, and what eviden
 diagnosis, likewise name the producer, the artifact, the observed values, and the resulting behavior in causal order.
 State only what those facts establish. If the unobserved step is still unknown, say that it remains to be located and
 name the next check instead of assigning it to a component by guesswork.
+
+When reporting an unavailable prerequisite that the reader must restore, name the exact affected path, command, account,
+or other resource; the attempted operation and its observed failure; and the smallest recovery action with its actor.
+Do not say that a configuration, permission, or dependency is unavailable without identifying the target the reader
+must inspect or change. Omit a recovery action only when no supported recovery exists, and say that explicitly.
 
 When a term names a location by its workflow purpose, such as a test project, validation workspace, staging area, or
 recreation directory, say at its first use whether it is new or existing, what it contains or excludes, who uses it

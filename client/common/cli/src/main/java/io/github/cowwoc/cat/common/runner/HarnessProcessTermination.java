@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+
 /**
  * Terminates a harness process and every descendant that remains visible to its process handle.
  */
@@ -16,7 +17,9 @@ public final class HarnessProcessTermination
 	 * Stops the process tree before its runner publishes a terminal result.
 	 *
 	 * @param process the live harness process
+	 *
 	 * @param harnessName the harness name for diagnostics
+	 *
 	 * @throws IOException if interruption prevents termination from being confirmed
 	 */
 	public static void terminate(Process process, String harnessName) throws IOException

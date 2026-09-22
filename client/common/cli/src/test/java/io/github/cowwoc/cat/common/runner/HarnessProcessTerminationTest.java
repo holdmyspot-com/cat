@@ -1,12 +1,14 @@
 package io.github.cowwoc.cat.common.runner;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+
+import org.testng.annotations.Test;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.IOException;
-import java.util.Locale;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import org.testng.annotations.Test;
 
 /**
  * Tests {@link HarnessProcessTermination}.
@@ -52,6 +54,7 @@ public final class HarnessProcessTerminationTest
 	 * Verifies shutdown cleanup does not leave a runner child alive after the owning JVM starts to exit.
 	 *
 	 * @throws IOException if process execution fails
+	 *
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test
@@ -66,7 +69,8 @@ public final class HarnessProcessTerminationTest
 				waitForDescendant(process);
 				HarnessProcessTermination.terminateImmediately(process);
 				requireThat(process.waitFor(5, TimeUnit.SECONDS), "processExit").isTrue();
-				requireThat(process.toHandle().descendants().anyMatch(ProcessHandle::isAlive), "liveDescendants").isFalse();
+				requireThat(process.toHandle().descendants().anyMatch(ProcessHandle::isAlive), "liveDescendants").
+				isFalse();
 			}
 			finally
 			{
@@ -80,6 +84,7 @@ public final class HarnessProcessTerminationTest
 	 * Waits until the test harness has started its child.
 	 *
 	 * @param process the direct test harness process
+	 *
 	 * @throws IOException if the child did not start
 	 */
 	private static void waitForDescendant(Process process) throws IOException

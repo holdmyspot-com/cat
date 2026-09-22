@@ -1,8 +1,5 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
-import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -12,7 +9,12 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Tests {@link HarnessRunnerBridge}.
@@ -57,6 +59,30 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies the harness-neutral transcript retains the exact final assistant response for evaluator consumption.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void recordsFinalAssistantResponse() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess("result with an injected \"quote\"");
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+				output);
+
+			requireThat(output.toString(), "output").contains(
+				"\"assistant_response\":\"result with an injected \\\"quote\\\"\"");
+		}
+	}
+
+	/**
 	 * Verifies a completed bridge run is removed when the caller did not request retention.
 	 *
 	 * @throws IOException if the bridge fails
@@ -71,7 +97,8 @@ public final class HarnessRunnerBridgeTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager, false,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+				false,
 				input, new StringWriter());
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
@@ -94,7 +121,8 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			Path transcript = cleanup.add(Files.createTempFile("cat-bridge-", ".jsonl"));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input, transcript);
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+				transcript);
 
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
 				contains("\"type\":\"completed\"");
@@ -231,7 +259,8 @@ public final class HarnessRunnerBridgeTest
 			try (FakeProcess process = new FakeProcess();
 				StringReader input = new StringReader("{\"type\":\"unknown\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager, false,
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+				false,
 					input, new StringWriter());
 				throw new AssertionError("Expected the bridge protocol failure");
 			}
@@ -302,7 +331,8 @@ public final class HarnessRunnerBridgeTest
 				requireThat(e.getMessage(), "message").contains("before completing the requested turn");
 			}
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("\"state\": \"failed\"");
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+				contains("\"state\": \"failed\"");
 		}
 	}
 
@@ -323,7 +353,8 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input, output);
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+				output);
 
 			requireThat(process.steers, "steers").isEqualTo(1);
 			requireThat(process.interrupts, "interrupts").isEqualTo(1);

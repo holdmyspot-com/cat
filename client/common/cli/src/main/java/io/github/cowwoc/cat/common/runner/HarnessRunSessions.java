@@ -1,11 +1,12 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Tracks and closes the persistent harness processes started by one request bridge.
@@ -25,7 +26,9 @@ public final class HarnessRunSessions implements AutoCloseable
 	 * Registers a newly started live session.
 	 *
 	 * @param session the live session
+	 *
 	 * @throws NullPointerException if {@code session} is null
+	 *
 	 * @throws IllegalArgumentException if its run ID is already registered
 	 */
 	public void add(HarnessRunSession session)
@@ -43,8 +46,11 @@ public final class HarnessRunSessions implements AutoCloseable
 	 * Sends a turn to a registered live session.
 	 *
 	 * @param runId the non-blank run ID
+	 *
 	 * @param request the non-blank framed request
+	 *
 	 * @return the terminal turn result
+	 *
 	 * @throws IOException if the run is unknown or cannot accept the turn
 	 */
 	public HarnessProcessResult sendTurn(String runId, String request) throws IOException
@@ -58,6 +64,7 @@ public final class HarnessRunSessions implements AutoCloseable
 	 * Completes and unregisters a live session.
 	 *
 	 * @param runId the non-blank run ID
+	 *
 	 * @throws IOException if the run is unknown or shutdown fails
 	 */
 	public void complete(String runId) throws IOException
@@ -106,7 +113,9 @@ public final class HarnessRunSessions implements AutoCloseable
 	 * Returns one registered session without transferring its ownership.
 	 *
 	 * @param runId the non-blank run ID
+	 *
 	 * @return the live registered session
+	 *
 	 * @throws IOException if the run is unknown
 	 */
 	private HarnessRunSession session(String runId) throws IOException
@@ -125,6 +134,7 @@ public final class HarnessRunSessions implements AutoCloseable
 	 * Removes one registered session and transfers ownership to the caller.
 	 *
 	 * @param runId the non-blank run ID
+	 *
 	 * @return the removed session, or {@code null} if it was unknown
 	 */
 	private HarnessRunSession remove(String runId)

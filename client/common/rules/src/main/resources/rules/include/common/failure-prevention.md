@@ -19,8 +19,23 @@
   fixed rather than hidden by suppression or feature removal.
 - Diagnose a claimed instruction violation against the product the instruction governs, so an intermediate description
   is not mistaken for a prohibited action unless reader-visible language is itself the required product.
+<!-- A formatter ignored its requested path filter and corrupted multiline logical operators in a dirty worktree.
+     The general prevention covers every multi-artifact mutation with an unproven write set. -->
+- Keep an unverified multi-artifact mutation recoverable without discarding pre-existing dirty-worktree content, even
+  when its actual write set expands beyond the declared scope or it produces invalid artifacts.
+<!-- Earlier prevention attempted to forbid false conclusions without identifying the unsupported transition that
+     produced them, leaving an agent no evidence-based recovery procedure to follow. -->
+- Locate the first unjustified decision in a failure's causal sequence by comparing actual actions and observations
+  with the governing contract, so prevention repairs that decision's owner.
+<!-- Telling an agent that a worker's local failure must not block its parent goal did not prevent it from inferring
+     that the worker's report established global impossibility. A prevention must replace that unsupported inference
+     with the evidence-based decision that selects its conclusion. -->
+- Make a prevention for an uncertain consequential judgment an explicit evidence-gated decision procedure, rather than
+  only a prohibition or desired conclusion, so it governs new cases that share the same faulty inference.
 - Make progress in an iterative workflow monotonic: retain resolved acceptance conditions across rounds, so a later
   candidate cannot appear to improve while reintroducing a failure that an earlier candidate had removed.
+- Keep an active failure investigation under its evidence-gathering owner until terminal evidence selects its outcome,
+  so an observation timeout or impatience cannot replace its causal result with a premature conclusion.
 
 ## Guidance
 
@@ -37,6 +52,44 @@ requirements, ambiguous wording or routing, a rule missed through an incomplete 
 adequate existing requirement. Recommend the smallest correction for that cause. Add or strengthen a rule only when the
 inventoried rules leave an observable requirement gap; repair the specific rule or route when they conflict or are
 ambiguous; improve application or coverage procedures when the requirement was already adequate.
+
+Before choosing the owner of a proposed preventive prompt or rule edit, lazy load `./contract-design.md`. Compare the
+plausible owners' readers, observable triggers, required decisions, evidence boundaries, and durable concepts; update
+an existing owner only when those factors match. This route is required even when the reported failure appears to name
+the likely file: its example may expose the mistake without defining every future trigger that needs the prevention.
+
+Before accepting a prevention as sufficient, compare the first failed decision's shared authority with every local
+workflow or actor that can reinforce it. If the same trigger, decision, and evidence boundary govern an analogous
+reader outside the reported workflow, repair the shared authority first. A local guard may remain only as independent
+defense for a distinct local delivery boundary; it cannot substitute for the shared correction. Verify the reported
+reader, an analogous reader that uses the shared authority, and a dissimilar reader whose trigger is absent. Reject a
+candidate prevention that passes only because it narrows the affected audience or moves detection after the original
+decision.
+
+Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven—such as a
+formatter, source rewriter, codemod, generator, migration, installer, bulk fixer, or repository-maintenance tool—use
+a project-owned transactional operation rather than its write mode directly. The operation first establishes the tool's
+full reachable path set from its documented invocation and a disposable probe; a requested include or path filter is not
+scope evidence until the probe proves it. It snapshots the pre-operation bytes and filesystem metadata of every
+reachable tracked, untracked, and ignored file through one uniform content-addressed manifest, records every pre-image
+hash, and retains that manifest outside the reachable tree. Create one invocation-owned transaction directory through
+the active harness's `workflow-temp create mutation-transaction` operation. Under the standard project work root, the
+launcher returns a unique `.cat/work/temp/mutation-transaction-<unique>/` directory; retain the snapshot below its
+`snapshot/` child and the manifest and terminal receipt in that returned transaction directory. Use the returned path
+rather than synthesizing its unique suffix or substituting `/tmp` or a repository path. It then runs the tool,
+inventories actual changed paths and post-image hashes, and accepts the result
+only when all changes are inside the declared allowlist and the required parse, compile, test, and scoped static checks
+pass.
+
+On an out-of-allowlist change or failed gate, the operation conditionally restores a path only when its current hash
+equals the recorded tool-produced post-image; a different hash is a concurrent-write conflict that it preserves and
+reports rather than overwriting. It records the snapshot identity, declared and reachable scopes, actual inventory,
+validation results, and every restoration/conflict in its receipt. A dirty worktree is permitted: the uniform snapshot
+preserves its existing tracked, untracked, and ignored content. A single explicit-target edit whose effect is already
+established does not require this route. For a database, cloud resource, publication, or another external state system,
+use its domain-native transaction, idempotency, rollback, and receipt boundary instead of a filesystem snapshot. Until
+the project owns and verifies the applicable transactional operation for a tool, do not invoke that tool's write mode;
+use a narrower verified tool or make the required targeted source repair directly.
 
 When diagnosing or improving a workflow from output produced over two or more rounds, first determine whether its
 progress is monotonic. Give each observed unmet acceptance condition a stable signature made from the affected case,
@@ -91,6 +144,12 @@ workflow repair. An expected failing test that demonstrates its intended guard r
 repair. This does not authorize unrelated changes: report or request direction when the needed owner is outside the
 authorized scope.
 
+Once an investigation has a live evidence-gathering owner, do not interrupt, terminate, replace, or impose an arbitrary
+time, turn, token, or polling limit on it merely because no conclusion is available yet. Continue the same investigation
+until its retained evidence establishes a terminal result, its documented recovery boundary reports a terminal failure,
+or the user explicitly stops, narrows, or replaces it. A waiting observation may time out, but that is evidence to
+classify through the investigation's recovery workflow; it is not authority to stop the investigation itself.
+
 Treat suppressing a warning, ignoring a result, disabling a check or feature, or hiding diagnostic output as containment,
 not a correction. Before using containment, trace whether the underlying behavior has an in-scope, controllable owner
 and attempt the earliest source correction that preserves the supported behavior. Verify that correction at the affected
@@ -111,6 +170,21 @@ conflict, or a permission denial; it does not by itself authorize changing the d
 that names one cause may support the corresponding mitigation, while a task with no detailed diagnostic remains an
 investigation rather than a configuration decision. Record the component and operation, the code, the detailed
 diagnostic, the rejected hypotheses, and the evidence linking the selected mitigation to the confirmed cause.
+
+When analyzing a failure involving operation selection, acceptance, recovery, a workflow-state change, or a
+consequential claim, lazy load `./check-assumptions.md`. Extend the attribution record with the required condition,
+governing contract, actual action, resulting evidence, and decision that consumed it. Identify the first transition
+the evidence did not justify, including any lost distinction in scope, identity, lifecycle stage, or authority.
+Correct that transition's owner and verify the reported failure, a meaningful analogous case, and the nearest case
+where the transition is justified. If an adequate requirement already governed the decision, investigate its delivery
+and application rather than adding another prohibition.
+
+When a prevention must correct a consequential conclusion made under uncertainty, do not stop at an instruction to
+avoid that conclusion or produce its preferred opposite. Specify the replacement decision procedure: the condition to
+establish; its authoritative contract or interface; the smallest authorized observation or action; the interpretation
+of every result, including `unknown`; and the only permitted transition or recovery for each interpretation. A direct
+authoritative observation may support a conclusion without a separate procedure. Verify the procedure against the
+reported failure, a meaningful analogous case, and the nearest case where the original conclusion is justified.
 
 When an agent or delegated reviewer fails to follow a rule, inspect the actual instructions delivered to that recipient
 before changing the rule or prompt. Verify that the intended rule was loaded into that agent's context in its rendered

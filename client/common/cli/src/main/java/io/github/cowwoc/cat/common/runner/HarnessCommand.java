@@ -1,8 +1,5 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +10,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Runs a short-lived harness CLI setup command and captures its result.
@@ -25,8 +27,11 @@ public final class HarnessCommand
 	 * Executes a native setup command and rejects non-zero exit codes.
 	 *
 	 * @param command the non-empty command and arguments
+	 *
 	 * @param workingDirectory the command working directory
+	 *
 	 * @param environment the complete scrubbed environment
+	 *
 	 * @throws IOException if the command fails or is interrupted
 	 */
 	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment)
@@ -39,11 +44,17 @@ public final class HarnessCommand
 	 * Executes a native setup command, retaining bounded diagnostics under an owned run.
 	 *
 	 * @param command the non-empty command and arguments
+	 *
 	 * @param workingDirectory the command working directory
+	 *
 	 * @param environment the complete scrubbed environment
+	 *
 	 * @param manager the owned-run lifecycle manager
+	 *
 	 * @param run the owned run
+	 *
 	 * @param commandName the generated command artifact name
+	 *
 	 * @throws IOException if the command fails, is interrupted, or diagnostics cannot be persisted
 	 */
 	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment,
@@ -86,7 +97,9 @@ public final class HarnessCommand
 	 * Drains one command stream while retaining a bounded diagnostic excerpt.
 	 *
 	 * @param input the process stream
+	 *
 	 * @return the retained text, with a truncation marker when necessary
+	 *
 	 * @throws IOException if the stream cannot be read
 	 */
 	private static String readOutput(InputStream input) throws IOException

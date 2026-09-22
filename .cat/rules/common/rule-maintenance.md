@@ -23,6 +23,13 @@ CAT project rules belong under `.cat/rules/`; bundled rules belong under `client
 `client/<harness>/rules` source tree. Put harness-specific project rules under `.cat/rules/<harness>/` and
 harness-specific bundled rules under `client/<harness>/rules/`. Keep common rule sources harness-neutral.
 
+To preserve a short explanation of why one bundled-rule Design Goal exists without delivering that history to agents,
+put a complete HTML comment immediately before the annotated Design Goal bullet. State the concrete prevented mistake
+and the preserved invariant directly; do not put normative guidance only in the comment. Distribution assembles
+source-only includes, then strips every HTML comment from staged rule Markdown before routing and installation. A
+comment therefore documents source maintenance only and must not be the only place a packaged reader needs to make a
+decision. Keep lengthy incident history and evolving evidence in source-only tests or records rather than comments.
+
 When deciding whether guidance belongs in a bundled rule or CAT's project rules, lazy load
 `rule-coverage/plugin-rule-placement.md`.
 

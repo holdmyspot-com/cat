@@ -1,15 +1,17 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.FileVisitResult.CONTINUE;
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+
+import static java.nio.file.FileVisitResult.CONTINUE;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Copies a user's CAT rules into an isolated harness home without following links.
@@ -20,7 +22,9 @@ public final class UserRuleTree
 	 * Copies an optional user-rule tree into an isolated location.
 	 *
 	 * @param source the user's rule root
+	 *
 	 * @param destination the owned isolated rule root
+	 *
 	 * @throws IOException if an existing source is not a real directory or contains a symbolic link
 	 */
 	public static void copy(Path source, Path destination) throws IOException

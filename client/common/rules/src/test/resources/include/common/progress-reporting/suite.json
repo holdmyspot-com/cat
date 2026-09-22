@@ -1,0 +1,43 @@
+{
+  "schema_version": 3,
+  "purpose": "certification",
+  "routing_owner": "common/default-rules.md",
+  "sprt": {
+    "accept_pass_rate": 0.95,
+    "reject_pass_rate": 0.85,
+    "false_accept_rate": 0.05,
+    "false_reject_rate": 0.05
+  },
+  "scenarios": {
+    "state-aware-backoff": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/progress-reporting.md",
+          "include/common/execution-lifecycle.md"
+        ],
+        "optional_selected": [
+          "include/common/write-clearly.md",
+          "include/common/environment.md"
+        ]
+      },
+      "fixture": "state-aware-backoff/fixture.json"
+    },
+    "completion-scope-accounting": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/progress-reporting.md"
+        ]
+      }
+    }
+  }
+}

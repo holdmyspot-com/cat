@@ -1,11 +1,12 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Builds the minimal environment inherited by isolated harness processes.
@@ -16,6 +17,7 @@ public final class HarnessEnvironment
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
 	 *
 	 * @param source the host environment
+	 *
 	 * @return the scrubbed environment
 	 */
 	public static Map<String, String> scrub(Map<String, String> source)
@@ -34,7 +36,9 @@ public final class HarnessEnvironment
 	 * Copies explicitly approved authentication variables into an isolated environment.
 	 *
 	 * @param source the host environment
+	 *
 	 * @param destination the mutable isolated environment
+	 *
 	 * @param names the approved authentication variable names
 	 */
 	public static void copyAllowed(Map<String, String> source, Map<String, String> destination, Set<String> names)
@@ -53,6 +57,7 @@ public final class HarnessEnvironment
 	 * Stops Git commands in an owned project copy from discovering a repository in the host's parent directories.
 	 *
 	 * @param environment the mutable isolated environment
+	 *
 	 * @param runDirectory the owned directory immediately above the copied project
 	 */
 	public static void preventGitDiscoveryAbove(Map<String, String> environment, Path runDirectory)
@@ -75,7 +80,9 @@ public final class HarnessEnvironment
 	 * Copies a non-blank environment value.
 	 *
 	 * @param source the source environment
+	 *
 	 * @param destination the destination environment
+	 *
 	 * @param name the variable name
 	 */
 	private static void copy(Map<String, String> source, Map<String, String> destination, String name)

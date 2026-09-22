@@ -2,9 +2,9 @@ package io.github.cowwoc.cat.common.runner;
 
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
-
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
+
 
 /**
  * Owns the mapper and services shared while one runner process serves requests for a harness execution.
@@ -26,6 +26,7 @@ public final class HarnessRunnerScope implements AutoCloseable
 	 * Returns the JSON mapper shared by this run's protocol and bridge.
 	 *
 	 * @return the shared JSON mapper
+	 *
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	public JsonMapper json()

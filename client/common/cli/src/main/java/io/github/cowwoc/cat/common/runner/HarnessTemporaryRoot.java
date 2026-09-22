@@ -2,8 +2,9 @@ package io.github.cowwoc.cat.common.runner;
 
 import java.nio.file.Path;
 
+
 /**
- * Resolves runner-owned temporary workflow state beneath the CAT root supplied by the owning tool scope.
+ * Resolves runner-owned temporary workflow state below the CAT work temp directory from the owning tool scope.
  */
 public final class HarnessTemporaryRoot
 {
@@ -18,18 +19,20 @@ public final class HarnessTemporaryRoot
 	/**
 	 * Returns the default root for isolated harness runs.
 	 *
-	 * @param catTemp the CAT-owned temporary root from the owning tool scope
-	 * @return the absolute runner-owned temporary root
+	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
+	 *
+	 * @return the absolute directory that will contain isolated runner runs
 	 */
-	public static Path defaultRunRoot(Path catTemp)
+	public static Path defaultRunRoot(Path temporaryRoot)
 	{
-		return catTemp.toAbsolutePath().normalize().resolve("runner-runs");
+		return temporaryRoot.toAbsolutePath().normalize().resolve("runner-runs");
 	}
 
 	/**
 	 * Resolves an explicitly selected run root.
 	 *
 	 * @param runRoot the requested run root
+	 *
 	 * @return the normalized requested run root
 	 */
 	static Path explicitRunRoot(Path runRoot)

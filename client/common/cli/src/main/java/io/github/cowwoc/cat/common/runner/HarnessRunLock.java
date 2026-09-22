@@ -1,14 +1,16 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.StandardOpenOption.WRITE;
-
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static java.nio.file.StandardOpenOption.WRITE;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Keeps an execution's isolated directory locked while its owning runner process is active.
@@ -31,7 +33,9 @@ public final class HarnessRunLock implements AutoCloseable
 	 * Acquires an exclusive lock on an existing run lock file.
 	 *
 	 * @param file the regular run lock file
+	 *
 	 * @return the acquired lock
+	 *
 	 * @throws IOException if the file cannot be locked or is already locked
 	 */
 	public static HarnessRunLock acquire(Path file) throws IOException
@@ -65,6 +69,7 @@ public final class HarnessRunLock implements AutoCloseable
 	 * Creates a lock lease from an acquired channel lock.
 	 *
 	 * @param channel the lock channel
+	 *
 	 * @param lock the acquired lock, or {@code null} for the no-op lease
 	 */
 	private HarnessRunLock(FileChannel channel, FileLock lock)

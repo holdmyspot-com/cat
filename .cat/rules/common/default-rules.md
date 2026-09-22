@@ -37,3 +37,9 @@ When defining or changing a skill's frontmatter `description`, lazy load `skill-
 
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
 `plugin-data-migration.md`.
+
+Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, lazy load
+`plugin-artifacts.md` to distinguish repository-only project guidance from a changed packaged artifact.
+
+When evaluating or adopting a newly available Codex model, or changing CAT's Codex supported-model configuration or
+Codex-facing prompts or rules, lazy load `../codex/model-guidance-review.md`.

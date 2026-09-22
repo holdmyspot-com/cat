@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+
 /**
  * Defines the shared ceiling for concurrently running CAT harness instances.
  */
@@ -27,7 +28,9 @@ public final class HarnessConcurrencyLimit implements AutoCloseable
 	 * Acquires one of the configured cross-harness capacity slots.
 	 *
 	 * @param maximumConcurrency the shared maximum number of harness instances
+	 *
 	 * @return the held capacity slot
+	 *
 	 * @throws IOException if a capacity slot cannot be acquired
 	 */
 	public static HarnessConcurrencyLimit acquire(int maximumConcurrency) throws IOException
@@ -89,6 +92,7 @@ public final class HarnessConcurrencyLimit implements AutoCloseable
 	 * Creates one acquired capacity slot.
 	 *
 	 * @param channel the open slot channel
+	 *
 	 * @param lock the held slot lock
 	 */
 	private HarnessConcurrencyLimit(FileChannel channel, FileLock lock)

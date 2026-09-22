@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Test observable behavior with isolated, controlled inputs and state, ensuring each claim, exercised boundary, and
-  assertion describe that same outcome and remain distinct from structural artifact validation.
+  assertion describe that same outcome rather than an implementation or artifact shape.
 - Ensure an artifact-wide audit finds every executable verification artifact whose claimed outcome is not directly
   exercised and observed.
 - Make application behavior directly and safely testable in the same process by passing environmental dependencies
@@ -56,8 +56,8 @@ change, then the complete verification suite before handoff.
 
 Before accepting any test, state in one plain sentence what it says happens and identify the operation that makes it
 happen. For example: "Installing the extension makes the host run its startup hook." If the test does not run the
-operation that makes its claimed behavior happen, rename it as a structure test or move it to the supported consumer
-entry point.
+operation that makes its claimed behavior happen, remove it or move it to the supported consumer entry point where it
+can exercise and observe that behavior.
 
 When a test uses a local value to simulate an external actor, resource, or boundary, make the mapping explicit in the
 test's name, documentation, fixture names, and comments at the simulated transition. Identify the real actor and
@@ -80,13 +80,6 @@ fixture-backed check, and executable example. For each one, apply the claim, exe
 observable-assertion requirements in this rule. Correct every unsupported claim by narrowing it, adding the missing
 direct exercise and assertion, or splitting independently observable outcomes.
 
-Structural artifact tests are allowed when their claim is limited to packaged layout or validity. Build or obtain the
-assembled artifact, parse its structured metadata, and assert required files, references, and formats using the artifact
-as the input. Name these tests as packaging, structure, or validation tests, not as runtime registration or execution
-tests. Keep structural coverage separate from behavior coverage; neither substitutes for the other.
-
-Use the complete artifact produced by the production packaging operation. Do not extract one resource and add a fake
-launcher, script, or other missing component before calling it an assembled artifact. A test that supplies such a
-fixture may claim only the behavior of the component that consumes it; it may not claim packaging, registration,
-installation, lifecycle, or execution behavior. A manifest, hook, or configuration file is a valid structural input only
-when its exact format is the documented external artifact contract being validated.
+Do not add or retain a structural test. A test must not establish a claim by inspecting source code, type shape,
+constructors, modifiers, record components, reflection metadata, generated configuration, package layout, or assembled
+artifact contents. Exercise the behavior's supported consumer boundary and assert its observable effect instead.

@@ -1,8 +1,9 @@
 package io.github.cowwoc.cat.common.runner;
 
+import java.io.IOException;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.IOException;
 
 /**
  * Represents a started harness CLI process that accepts multiple requests before it is closed.
@@ -13,7 +14,9 @@ public interface HarnessProcess extends AutoCloseable
 	 * Sends one turn without restarting the native harness.
 	 *
 	 * @param request the framed turn request
+	 *
 	 * @return the terminal result for the turn
+	 *
 	 * @throws IOException if the process cannot accept or complete the turn
 	 */
 	HarnessProcessResult sendTurn(String request) throws IOException;
@@ -22,8 +25,11 @@ public interface HarnessProcess extends AutoCloseable
 	 * Sends one turn and forwards each native event before returning its terminal result.
 	 *
 	 * @param request the framed turn request
+	 *
 	 * @param listener receives raw native event lines
+	 *
 	 * @return the terminal result for the turn
+	 *
 	 * @throws IOException if the process cannot accept or complete the turn, or event forwarding fails
 	 */
 	default HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
@@ -40,6 +46,7 @@ public interface HarnessProcess extends AutoCloseable
 	 * Sends additional user direction to the active turn without starting another turn.
 	 *
 	 * @param request the non-blank additional user direction
+	 *
 	 * @throws IOException if the harness cannot accept the direction
 	 */
 	default void steer(String request) throws IOException

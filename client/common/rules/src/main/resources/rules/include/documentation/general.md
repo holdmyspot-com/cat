@@ -2,15 +2,32 @@
 
 ## Design Goals
 
-- Explain each maintained callable's observable behavior, constraints, and consequences clearly enough for its
-  intended reader to act correctly, without burdening that reader with non-actionable authoring or presentation history.
+- Explain each maintained product, legal, workflow, configuration, or callable interface's observable behavior,
+  constraints, rights, obligations, and consequences clearly enough for its intended reader to act correctly.
+- Keep replaceable implementation choices outside the documented interface unless they change a decision the intended
+  reader must make, so an internal choice does not become a contract that later implementations must preserve.
+
+## Contract Boundary
+
+Before drafting, identify the explicit product, legal, API, or workflow contract. When a supplied fact describes how
+the current implementation works, determine whether the contract makes that fact part of the reader-visible interface.
+A task mentioning an implementation detail does not make that detail part of the interface.
+
+Omit an implementation detail when readers do not need it to understand or use the explicit contract. Do not introduce
+that detail merely to state that it is not guaranteed, is not promised, or may change. Silence leaves the implementation
+choice unspecified without making it part of the interface. State a negative boundary when it defines an observable
+rejection or failure, a reader's right or obligation, a compatibility boundary, or a security or lifecycle guarantee
+needed to use the interface correctly.
+
+This boundary does not exclude purpose, context, definitions, rationale, or examples that help the intended reader
+understand the documented contract without exposing replaceable implementation choices.
 
 ## Guidance
 
 Write each document section for its intended reader and the decision, right, obligation, or action that section must
-support. Include information only when it changes that reader's understanding or action. Keep authoring, release,
-revision, packaging, and other document-management rationale out of reader-facing text unless it directly affects the
-reader's rights, obligations, or use of the documented product.
+support. Include information that helps the reader understand or use the supported contract. Keep authoring, release,
+revision, packaging, and other document-management rationale out of reader-facing text unless it affects the reader's
+rights, obligations, or use of the documented product.
 
 Apply the same boundary to overviews, release notes, and changelogs. Describe the current reader-visible change and its
 consequence; omit editing history, prior presentation, capture or rendering process, extraction provenance, and other
@@ -44,6 +61,10 @@ Describe a callable's meaningful input-to-output behavior, not incidental implem
 data sources, delegation, algorithms, and other replaceable details unless a reader needs them to choose an input,
 predict an output or failure, understand a security, lifecycle, or concurrency guarantee, or recover from a failure.
 Keep mechanism-specific rationale in implementation comments when maintainers need it but callers do not.
+
+Write a checkout location relative to the project root. Write a user-owned location with `~`, not an author-specific
+absolute home directory. Runtime code resolves the same user-owned location from `HOME`. Preserve an absolute path only
+when an intentional historical record needs the exact captured value as evidence.
 
 When maintained code deliberately differs from its normal peer, shared design, or platform-neutral approach because of
 an external boundary, document the decision beside that implementation. State the normal approach, the observed

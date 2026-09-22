@@ -1,16 +1,18 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Set;
+
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Set;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Copies an explicit allow-list of harness credentials into an isolated home.
@@ -21,8 +23,11 @@ public final class HarnessCredentials
 	 * Copies regular credential files without traversing symbolic links, replacing same-named files in the isolated home.
 	 *
 	 * @param source the host harness configuration directory
+	 *
 	 * @param destination the owned isolated harness home
+	 *
 	 * @param names the credential filenames to copy when present
+	 *
 	 * @throws IOException if a present credential is not a regular non-symbolic-link file or cannot be copied
 	 */
 	public static void copyAllowedFiles(Path source, Path destination, Set<String> names) throws IOException
@@ -57,6 +62,7 @@ public final class HarnessCredentials
 	 * Restricts a copied credential to its owner where POSIX permissions are available.
 	 *
 	 * @param file the copied credential file
+	 *
 	 * @throws IOException if permissions cannot be set on a POSIX filesystem
 	 */
 	private static void setOwnerOnlyPermissions(Path file) throws IOException

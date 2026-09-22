@@ -1,19 +1,21 @@
 package io.github.cowwoc.cat.common.runner;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
-
-import io.github.cowwoc.cat.common.PluginInfo;
-import io.github.cowwoc.cat.common.TemporaryDirectories;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
+
+import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
+
+import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 
 /**
  * Tests {@link HarnessArtifact}.
@@ -65,7 +67,9 @@ public final class HarnessArtifactTest
 	 * Creates a complete minimal harness artifact.
 	 *
 	 * @param cleanup the temporary-directory cleanup scope
+	 *
 	 * @return the unpacked plugin directory
+	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	private static Path createArtifact(TemporaryDirectories cleanup) throws IOException
