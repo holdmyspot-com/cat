@@ -30,7 +30,7 @@ public final class CodexConnectionConfigurationTest
 				default_permissions = "cat.client"
 				openai_base_url = "http://localhost:2455/backend-api/codex"
 				forced_login_method = "api"
-				model = "gpt-5.6-sol"
+				model = "gpt-6-sol"
 				model_reasoning_effort = "medium"
 				approval_policy = "never"
 

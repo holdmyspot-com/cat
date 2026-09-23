@@ -1,7 +1,7 @@
 name = "cat-architecture-high"
 nickname_candidates = ["architecture-high"]
 description = "High-tier CAT Architecture reviewer."
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = '''

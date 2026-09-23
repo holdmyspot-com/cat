@@ -1,7 +1,7 @@
 name = "cat-performance-low"
 nickname_candidates = ["performance-low"]
 description = "Low-tier CAT Performance reviewer."
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 developer_instructions = '''

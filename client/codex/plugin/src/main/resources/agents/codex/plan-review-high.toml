@@ -1,7 +1,7 @@
 name = "cat-plan-review-high"
 nickname_candidates = ["plan-review-high"]
 description = "High-tier CAT Plan Review reviewer."
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = '''
