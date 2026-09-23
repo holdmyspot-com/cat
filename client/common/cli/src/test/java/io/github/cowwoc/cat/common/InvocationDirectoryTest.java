@@ -104,7 +104,27 @@ public final class InvocationDirectoryTest
 	}
 
 	/**
-	 * Rejects a temporary root whose existing parent redirects through a symbolic link.
+	 * Allows a caller-visible project path to use a symbolic-link ancestor outside CAT's owned root.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void permitsSymbolicAncestorAboveProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path fixture = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
+			Path project = Files.createDirectory(fixture.resolve("project"));
+			Path alias = Files.createSymbolicLink(fixture.resolve("alias"), project);
+
+			Path temporaryRoot = InvocationDirectory.root(alias.resolve(".cat/work/temp"));
+
+			requireThat(temporaryRoot, "temporaryRoot").isDirectory();
+		}
+	}
+
+	/**
+	 * Rejects a temporary root when CAT's own directory redirects through a symbolic link.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -116,9 +136,9 @@ public final class InvocationDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path real = Files.createDirectory(project.resolve("real"));
-			Path link = Files.createSymbolicLink(project.resolve("linked"), real);
+			Path link = Files.createSymbolicLink(project.resolve(".cat"), real);
 
-			InvocationDirectory.root(link.resolve("temp"));
+			InvocationDirectory.root(link.resolve("work/temp"));
 		}
 	}
 }

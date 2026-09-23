@@ -67,9 +67,14 @@ public final class InvocationDirectory
 	static Path root(Path temporaryRoot) throws IOException
 	{
 		Path normalizedRoot = temporaryRoot.toAbsolutePath().normalize();
-		for (Path ancestor = normalizedRoot; ancestor != null; ancestor = ancestor.getParent())
-			if (Files.isSymbolicLink(ancestor))
-				throw new IllegalArgumentException("Temporary root traverses a symbolic link: " + ancestor);
+		// A caller's project path may use an alias (including macOS /var); CAT owns only the .cat/work/temp suffix.
+		Path component = normalizedRoot;
+		for (int depth = 0; depth < 3 && component != null; ++depth)
+		{
+			if (Files.isSymbolicLink(component))
+				throw new IllegalArgumentException("Temporary root traverses a symbolic link: " + component);
+			component = component.getParent();
+		}
 		Files.createDirectories(normalizedRoot);
 		return normalizedRoot;
 	}
