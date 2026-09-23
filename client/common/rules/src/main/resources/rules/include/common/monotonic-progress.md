@@ -15,10 +15,11 @@ depends-on:
 
 ## Guidance
 
-Before a workflow records progress for later use, define one authoritative durable transition record, its owner, storage
-location, consumers, terminal acceptance state, independently nameable work units, and permitted transitions. An actor
-must claim a work unit through that record or receive an equivalent serialized assignment before advancing it. Define
-the evidence and transition that invalidates or reassigns a claim when its responsible actor cannot complete it.
+Before a workflow records progress for later use, define one authoritative durable transition record, its responsible
+actor, storage location, consumers, terminal acceptance state, independently nameable work units, and permitted
+transitions. An actor must claim a work unit through that record or receive an equivalent serialized assignment before
+advancing it. Define the evidence and transition that invalidates or reassigns a claim when its responsible actor cannot
+complete it.
 At minimum, model each unit as unclaimed, claimed, verified, invalidated, or reassigned; the workflow is terminal only
 when its acceptance record verifies every required unit.
 

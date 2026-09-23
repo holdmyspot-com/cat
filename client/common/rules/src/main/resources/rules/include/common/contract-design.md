@@ -13,7 +13,7 @@
 - Ensure an artifact's Design Goals form one coherent contract: identify and repair duplicate, overlapping,
   contradictory, and prerequisite-dependent goals before relying on them to derive guidance or verification.
 - Place each new or changed normative prompt requirement in the authoritative prompt file for its reader decision and
-  trigger, creating a focused companion only when no existing owner covers that decision.
+  trigger, creating a focused companion only when no existing prompt file governs that decision.
 - Express guidance compactly without hiding an independently actionable obligation, its condition, its evidence, or
   rationale the intended reader needs to apply it.
 - Apply iterative generalization to compaction only when evidence proves a shared invariant preserves every existing
@@ -24,22 +24,22 @@
 Apply the foundational Backward Design rule injected by the default rule, including its terminal-outcome derivation and
 iterative generalization.
 
-Before choosing a normative edit or its owner, record a design checkpoint in the task evidence: the reported case, one
-meaningful analogous case, one relevant dissimilar case, the reader decision required in each case, and the invariant
-that survives the comparison. Use that checkpoint to identify the authoritative prompt file and the smallest wording
-change. Do not claim to have applied iterative generalization when this record is absent, or when it merely names cases
-without showing the decision each one requires. Revisit the checkpoint after drafting: the proposed wording must direct
-the original and analogous cases without imposing its action on the dissimilar case.
+Before choosing a normative edit or its governing prompt file, record a design checkpoint in the task evidence: the
+reported case, one meaningful analogous case, one relevant dissimilar case, the reader decision required in each case,
+and the invariant that survives the comparison. Use that checkpoint to identify the governing prompt file and the
+smallest wording change. Do not claim to have applied iterative generalization when this record is absent, or when it
+merely names cases without showing the decision each one requires. Revisit the checkpoint after drafting: the proposed
+wording must direct the original and analogous cases without imposing its action on the dissimilar case.
 
-Before adding or changing normative guidance, inventory its plausible prompt-file owners. Compare each candidate's
+Before adding or changing normative guidance, inventory its plausible governing prompt files. Compare each candidate's
 reader, observable trigger, required decision, Design Goals, evidence boundary, and the durable concept that makes the
-guidance necessary. Select the narrowest owner that remains correct for every current and reasonably foreseeable
-consumer of that concept, not the skill, wrapper, workflow phase, or failure example that happened to expose it. Amend
-an existing owner only when those factors are the same; otherwise create and route a focused companion. For example, a
-rule about a build plan's declared read inputs belongs with build-plan provenance even when a statistical evaluation
-first uses that plan; a rule about one harness's native environment remains with that harness. Record the owner
-comparison and rejected candidates in the design checkpoint. For a rule-file organization decision, also apply the more
-specific Rule Organization guidance.
+guidance necessary. Select the narrowest governing prompt file that remains correct for every current and reasonably
+foreseeable consumer of that concept, not the skill, wrapper, workflow phase, or failure example that happened to expose
+it. Amend an existing prompt file only when those factors are the same; otherwise create and route a focused companion.
+For example, a rule about a build plan's declared read inputs belongs with build-plan provenance even when a statistical
+evaluation first uses that plan; a rule about one harness's native environment remains with that harness. Record the
+governing prompt file comparison and rejected candidates in the design checkpoint. For a rule-file organization
+decision, also apply the more specific Rule Organization guidance.
 
 For a substantive prompt file, place a concise `## Design Goals` section immediately after its title and any
 frontmatter. Use one bullet for each durable, observable outcome it exists to achieve. Follow the list with `##
@@ -146,7 +146,7 @@ comment that merely names a mechanism: a reader deciding why an ordering matters
 action, and safe resulting state. Record these decision-level checks with the goal-to-guidance mapping.
 
 When a goal, contract, or guidance promises that coverage is complete, explicit, exhaustive, or mechanically auditable,
-identify the atomic item that must be covered, the record that names its decision and evidence, the owner that writes
+identify the atomic item that must be covered, the record that names its decision and evidence, the actor that writes
 the record, the validation boundary that reads it, and the error that rejects an omitted, duplicated, or unassigned
 item. A summary claim, a source-level classification, or a successful later operation is not that record. Test the
 validator with the smallest incomplete input that would otherwise reach the promised boundary, then verify that a

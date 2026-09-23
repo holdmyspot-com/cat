@@ -238,7 +238,7 @@ declared goals or contracts, lazy load `../include/common/contract-design.md` to
 its obligations.
 
 When adding, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or workflow, lazy
-load `../include/common/rule-organization.md` to select its authoritative owner and focused routing.
+load `../include/common/rule-organization.md` to select its governing prompt file and focused routing.
 
 When a project-owned CLI, API, validator, generator, or other callable tool must enforce a workflow requirement, lazy
 load `../include/common/rules-own-tool-requirements.md` to verify its reachable enforcement boundary.

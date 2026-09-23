@@ -25,7 +25,7 @@ Classify the attribution before changing guidance:
 - If no applicable rule directs the required decision, or its wording leaves a supported branch ambiguous, amend the
   owned authoritative rule or create a focused companion only when its trigger and reader decision differ.
 - If the failure belongs to an implementation, external dependency, or unsupported observation rather than user-owned
-  guidance, repair or report that owner without inventing a rule change.
+  guidance, repair or report the responsible component or dependency without inventing a rule change.
 
 For every correction to user-owned prompt, rule, or workflow guidance, add regression coverage before resuming
 dependent work. Add the reported case to the existing parameterized prompt, routing, or workflow suite that owns the
@@ -35,7 +35,7 @@ action, the reported failure now takes the required path, a meaningful analogous
 does not receive unrelated guidance.
 
 When a user asks for a current percentage, ETA, or completion estimate, Long-Running Progress Reporting is the
-authoritative owner. Its regression belongs with progress-claim routing: without an evidence-backed component inventory
+governing rule. Its regression belongs with progress-claim routing: without an evidence-backed component inventory
 the response reports uncertainty, while a complete inventory produces only the supported calculation. Do not create a
 second progress-estimation rule.
 

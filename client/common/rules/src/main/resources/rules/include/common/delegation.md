@@ -8,7 +8,7 @@
 - Isolate delegated writes and integrate them through one parent-owned boundary so concurrent verification cannot grant
   one delegate authority over another delegate's files.
 <!-- Parent launch and handoff failures were previously misreported as executor failure or unavailable external state,
-     causing recovery to stop at the wrong owner. -->
+     causing recovery to stop at the wrong responsible boundary. -->
 - Require a parent to classify an observed delegated outcome before selecting recovery, so an unreadable handoff or
   parent launch mistake cannot be reported as an executor failure or an unavailable external prerequisite.
 <!-- A parent repeatedly made placeholder tool calls while direct delegation was available, then treated the absence of
@@ -50,8 +50,8 @@ whose owning path is outside the allowlist is an out-of-scope dependency to repo
 When a high-judgment reviewer prepares a task for a mechanical executor, require its returned plan amendment to make
 the task decision-free: exact API/schema and failure semantics, factory and registration points, static-analysis-safe
 test names or one explicit narrow exception, literal verification commands and expected results, predecessor snapshot,
-and integration boundary. Reject a handoff that leaves an executor to choose a behavior, fixture, schema, owner, or
-verification interpretation. Advice or a list of alternatives is not an executable handoff.
+and integration boundary. Reject a handoff that leaves an executor to choose a behavior, fixture, schema, responsible
+component, or verification interpretation. Advice or a list of alternatives is not an executable handoff.
 
 Send the task contract as author-provided readable text. Do not copy an encrypted, encoded, captured, or otherwise
 opaque transport payload into a delegation. Before editing, the delegate must validate that it can identify the
@@ -66,10 +66,11 @@ delegate's terminal receipt, then classifies the observed result against the rec
 contract-defined plan-ambiguity result goes to the workflow's declared high-judgment plan authority, which must update
 the authoritative plan and its acceptance evidence before a fresh execution attempt. An unreadable contract, malformed
 delivery, absent launch invocation, or missing terminal receipt is a parent delivery failure: repair or resend the
-handoff and obtain a new receipt. A completed execution failure follows the failure owner named by its evidence. Do not
-present a parent delivery failure as executor, plan, or external-prerequisite evidence, and do not use it to justify a
-goal-level blocked state. A repeated external-prerequisite claim requires receipts that identify the same prerequisite,
-unavailable state, and restoring actor or action; different handoff or execution failures begin distinct recovery paths.
+handoff and obtain a new receipt. Handle a completed execution failure at the boundary its evidence identifies as
+responsible. Do not present a parent delivery failure as executor, plan, or external-prerequisite evidence, and do not
+use it to justify a goal-level blocked state. A repeated external-prerequisite claim requires receipts that identify the
+same prerequisite, unavailable state, and restoring actor or action; different handoff or execution failures begin
+distinct recovery paths.
 
 Before every delegation-related tool call, select the operation from the requested action. Establish its state from
 the current tool contract and, when waiting, that operation's successful creation receipt. Classify the selected
@@ -111,14 +112,14 @@ implementations or callers to change.
 Run concurrent write-capable delegates only in separate isolated worktrees created from an immutable shared snapshot.
 Include each worktree root and snapshot identity in its task contract. Build a scheduling conflict graph from both write
 sets and verification dependencies; file-disjoint tasks are not independent when either task's verification consumes
-the other's changing output. If an authoritative workspace owner cannot create and later integrate isolated results,
-use one exclusive writer in the shared worktree instead of improvising temporary indexes, worktrees, commits, or merge
-commands in prompt prose.
+the other's changing output. If the actor responsible for workspace integration cannot create and later integrate
+isolated results, use one exclusive writer in the shared worktree instead of improvising temporary indexes, worktrees,
+commits, or merge commands in prompt prose.
 
 Use one readiness review to map several upcoming clusters before serial implementation begins. Split every discovered
-missing prerequisite into its own verification-closed owner cluster, then run only graph-independent clusters in
-parallel. This reduces rediscovery and handoff latency without allowing a consumer to start before its producer's
-accepted snapshot exists.
+missing prerequisite into its own verification-closed cluster with a named responsible component, then run only
+graph-independent clusters in parallel. This reduces rediscovery and handoff latency without allowing a consumer to
+start before its producer's accepted snapshot exists.
 
 Maintain a rolling readiness window rather than reviewing one blocked cluster at a time. Before an accepted cluster
 unblocks a sequential successor, the parent maps the next eligible dependency frontier: each cluster's exact write set,

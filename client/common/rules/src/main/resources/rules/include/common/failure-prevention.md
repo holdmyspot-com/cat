@@ -26,7 +26,7 @@
 <!-- Earlier prevention attempted to forbid false conclusions without identifying the unsupported transition that
      produced them, leaving an agent no evidence-based recovery procedure to follow. -->
 - Locate the first unjustified decision in a failure's causal sequence by comparing actual actions and observations
-  with the governing contract, so prevention repairs that decision's owner.
+  with the governing contract, so prevention repairs the component or rule responsible for that decision.
 <!-- Telling an agent that a worker's local failure must not block its parent goal did not prevent it from inferring
      that the worker's report established global impossibility. A prevention must replace that unsupported inference
      with the evidence-based decision that selects its conclusion. -->
@@ -53,10 +53,11 @@ adequate existing requirement. Recommend the smallest correction for that cause.
 inventoried rules leave an observable requirement gap; repair the specific rule or route when they conflict or are
 ambiguous; improve application or coverage procedures when the requirement was already adequate.
 
-Before choosing the owner of a proposed preventive prompt or rule edit, lazy load `./contract-design.md`. Compare the
-plausible owners' readers, observable triggers, required decisions, evidence boundaries, and durable concepts; update
-an existing owner only when those factors match. This route is required even when the reported failure appears to name
-the likely file: its example may expose the mistake without defining every future trigger that needs the prevention.
+Before choosing the governing prompt file for a proposed preventive edit, lazy load `./contract-design.md`. Compare the
+candidate files' readers, observable triggers, required decisions, evidence boundaries, and durable concepts; update
+an existing prompt file only when those factors match. This route is required even when the reported failure appears to
+name the likely file: its example may expose the mistake without defining every future trigger that needs the
+prevention.
 
 Before accepting a prevention as sufficient, compare the first failed decision's shared authority with every local
 workflow or actor that can reinforce it. If the same trigger, decision, and evidence boundary govern an analogous
@@ -137,12 +138,12 @@ When work exposes an unexpected failure, discrepancy, or violated requirement, s
 the user to point it out. Pause only the dependent work: first state the action that was expected to succeed, the
 observed result, why it prevents the intended outcome, and the next discriminating check. Inspect the available record
 and classify whether the result is an expected negative test, a product behavior failure, an infrastructure failure, or
-an error in the workflow that produced the result. For a controllable workflow error, repair its earliest owning rule
+an error in the workflow that produced the result. For a controllable workflow error, repair its governing rule
 or tool and prove the repair before retrying, publishing, or continuing the dependent workflow. For a product behavior
-failure, use the established result to select the appropriate product or prompt owner; do not silently turn it into a
-workflow repair. An expected failing test that demonstrates its intended guard remains evidence, not an incident to
-repair. This does not authorize unrelated changes: report or request direction when the needed owner is outside the
-authorized scope.
+failure, use the established result to select the responsible product component or governing prompt file; do not
+silently turn it into a workflow repair. An expected failing test that demonstrates its intended guard remains evidence,
+not an incident to repair. This does not authorize unrelated changes: report or request direction when the responsible
+component or governing prompt file is outside the authorized scope.
 
 Once an investigation has a live evidence-gathering owner, do not interrupt, terminate, replace, or impose an arbitrary
 time, turn, token, or polling limit on it merely because no conclusion is available yet. Continue the same investigation
@@ -151,7 +152,7 @@ or the user explicitly stops, narrows, or replaces it. A waiting observation may
 classify through the investigation's recovery workflow; it is not authority to stop the investigation itself.
 
 Treat suppressing a warning, ignoring a result, disabling a check or feature, or hiding diagnostic output as containment,
-not a correction. Before using containment, trace whether the underlying behavior has an in-scope, controllable owner
+not a correction. Before using containment, trace whether an in-scope component can correct the underlying behavior
 and attempt the earliest source correction that preserves the supported behavior. Verify that correction at the affected
 boundary: it must prevent the unwanted result while the capability the containment would have removed still works. Use
 containment only when the source cannot safely be corrected with available authority or the user explicitly chooses that
@@ -175,9 +176,9 @@ When analyzing a failure involving operation selection, acceptance, recovery, a 
 consequential claim, lazy load `./check-assumptions.md`. Extend the attribution record with the required condition,
 governing contract, actual action, resulting evidence, and decision that consumed it. Identify the first transition
 the evidence did not justify, including any lost distinction in scope, identity, lifecycle stage, or authority.
-Correct that transition's owner and verify the reported failure, a meaningful analogous case, and the nearest case
-where the transition is justified. If an adequate requirement already governed the decision, investigate its delivery
-and application rather than adding another prohibition.
+Correct the component or rule responsible for that transition and verify the reported failure, a meaningful analogous
+case, and the nearest case where the transition is justified. If an adequate requirement already governed the decision,
+investigate its delivery and application rather than adding another prohibition.
 
 When a prevention must correct a consequential conclusion made under uncertainty, do not stop at an instruction to
 avoid that conclusion or produce its preferred opposite. Specify the replacement decision procedure: the condition to

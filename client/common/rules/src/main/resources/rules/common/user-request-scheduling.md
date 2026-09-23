@@ -18,6 +18,14 @@ agents: ["main"]
   instead of repeating work because the current agent context is incomplete.
 - Distinguish the active incoming user request from historical user-shaped content, so a replay, transcript, or
   compaction cannot schedule or replace work.
+<!--
+A failed evaluation could either trigger another development attempt or end the workflow, changing the user's result.
+Choosing a persistence schema for an already-selected recovery does not change that result; an unrequested enhancement
+is outside the work. Only unresolved, contract-compliant alternatives with materially different observable consequences
+require the user's product-policy choice.
+-->
+- Ask the user only for unresolved product-policy choices; resolve required implementation and internal-design gaps
+  from the governing contract and acceptance evidence without transferring routine design work to the user.
 
 ## Guidance
 
@@ -43,12 +51,27 @@ action and report which reading that action covers. For example, a request to up
 workflow being discussed or to the rule that governs it; ask which one when those changes would affect different
 readers. A request that explicitly names a file and change does not need this clarification.
 
-Before asking the user to choose during authorized implementation, classify the choice. Decide and report an internal
-implementation detail when the agreed outcome and acceptance evidence determine it: for example, a validation format,
-evidence layout, derived directory, or automation boundary. Ask only when the choice changes the agreed product policy,
-user authority, externally documented interface, irreversible external state, or a material trade-off that the available
-evidence cannot resolve. Do not convert an implementation decision into an approval request merely because it adds a
-new internal artifact or command option.
+Before asking the user to choose during authorized implementation, derive the required observable outcome and its
+acceptance evidence from the governing contract, then classify the gap:
+
+- An **implementation gap** exists when the contract already determines the observable behavior and the owning behavior
+  is absent or incorrect. Implement and verify that behavior in the responsible component.
+- An **internal-design gap** exists when the contract and acceptance evidence determine the observable behavior but an
+  API, schema, component boundary, failure mechanism, or other internal design is missing. Select the smallest coherent
+  design that preserves the contract, define its failure behavior and tests, and verify it without asking the user to
+  choose routine implementation mechanics.
+- A **product-policy gap** exists only when at least two resolutions remain compatible with the governing contract and
+  available evidence, but they differ in user-visible behavior, user authority, externally documented interface,
+  product scope, statistical meaning, irreversible external state, or another material trade-off. State the concrete
+  alternatives and consequences and ask the user to choose.
+- An **optional improvement** is not required to satisfy the governing contract. Keep it outside the authorized scope
+  and do not let it block required work.
+
+Do not classify a decision as product policy merely because the contract omits an internal mechanism, a reviewer
+prefers another design, or the implementation needs a new internal artifact or command option. When the contract fixes
+the observable result or acceptance evidence, resolve the missing mechanism as implementation or internal design.
+While a genuine product-policy choice remains unresolved, pause only work whose behavior depends on it and continue
+independent authorized work.
 
 Before re-answering a question, repeating an investigation, or redoing an action whose subject appeared earlier in the
 conversation, identify the prior result, the decision it answered, and the facts on which it depended. Reuse that result

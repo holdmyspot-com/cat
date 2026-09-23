@@ -29,7 +29,8 @@ when it currently has one use. That literal is an authoritative contract element
 or documentation; do not leave it inline merely because a second consumer has not been added yet. This does not apply
 to a one-off language- or library-required separator whose value is not part of a maintained contract.
 
-- Extract only values whose repeated use expresses one shared concept and whose owner has authority to define it.
+- Extract only values whose repeated use expresses one shared concept and whose responsible component has authority to
+  define it.
 - Name a value for its meaning, not its representation or one caller's use.
 - Keep a value in the smallest module, component, or harness that needs it. Promote it to a shared common layer only
   when both its value and meaning are harness-neutral.

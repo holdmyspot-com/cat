@@ -14,6 +14,14 @@
   external decision.
 - Prevent a forecast objective such as minimizing expected cost from being accepted as an executable stopping or
   strategy-selection policy without a defined predictor, uncertainty decision, and fallback.
+<!--
+Two instruction-loading probes showed that one host exposed file bytes only when a command explicitly read them, while
+another reported a selected instruction path without its bytes. Neither observation proved what the native loader
+consumed, so this goal requires checking the consumer-side evidence before a design claims content consumption.
+-->
+- Before building a feature that relies on another program's or service's records, check that those records show the
+  event or input the feature needs to prove. If they do not, identify what remains unproven instead of assuming the
+  record exists.
 
 ## Guidance
 
@@ -27,6 +35,16 @@ distinguish a correct result from a plausible one.
 Apply the **information-sufficiency test** to each decision. Construct two permitted contexts with the same inputs the
 feature may inspect. If the correct decision differs between those contexts, the feature cannot make that decision
 reliably under the stated constraints. This is a proof of a missing input, not a request to improve the inference.
+
+When required evidence comes from an independently owned host, process, or service, identify the event that proves the
+claimed fact reached its consumer. Before fixing a dependent API, schema, or acceptance gate, inspect an existing
+authoritative receipt or run the smallest supported, authentic boundary probe to establish that it exposes that fact
+at the needed identity, content, and time granularity. A producer's emitted context, request, path, or success status
+does not by itself prove consumption of particular bytes. An existing receipt that binds the consumer and consumed
+content suffices; directly observed bytes passed within one process do not require an artificial external probe. If
+the boundary cannot expose the required fact, leave that guarantee unresolved, identify the missing authority or
+observable input and its user-visible alternatives, and continue independent work without designing dependent code
+around a fabricated receipt.
 
 When a workflow chooses, stops, or changes strategy from a predicted cost, duration, probability, benefit, or other
 future outcome, do not treat the optimization objective as its decision procedure. Before calling the workflow

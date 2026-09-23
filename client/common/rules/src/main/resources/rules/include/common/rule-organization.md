@@ -4,25 +4,25 @@
 
 - Let readers find the guidance for one durable rule, prompt, skill, command, or workflow decision without unrelated
   topics obscuring it or forcing unnecessary routing layers.
-- Keep each rule or prompt requirement with its authoritative owner and make every route actionable from an observable
+- Keep each rule or prompt requirement in its governing prompt file and make every route actionable from an observable
   condition.
 - Keep rule and prompt changes focused, nonduplicative, and verifiable across their complete applicable corpus.
 
 ## Guidance
 
-Before adding a rule, prompt, skill, command, or workflow, or amending an existing one, inventory the available
-owners. Compare the proposed guidance's observable trigger, reader decision, Design Goal, and required evidence with
-each plausible owner; different names or examples do not make the guidance distinct. Amend an existing owner only when
-it protects the same reader decision. Otherwise create a focused companion and add a narrow route from the rule or index
-that detects its observable trigger. Do not turn a routing index into a policy rule, or broaden a focused policy merely
-because its readers also encounter the new concern. Verify that every resulting artifact has one coherent long-lived
-responsibility, and that a new artifact has its own title, Design Goal, trigger, acceptance evidence, and no duplicate
-route or contract.
+Before adding a rule, prompt, skill, command, or workflow, or amending an existing one, inventory the candidate
+governing prompt files. Compare the proposed guidance's observable trigger, reader decision, Design Goal, and required
+evidence with each candidate; different names or examples do not make the guidance distinct. Amend an existing prompt
+file only when it protects the same reader decision. Otherwise create a focused companion and add a narrow route from
+the rule or index that detects its observable trigger. Do not turn a routing index into a policy rule, or broaden a
+focused policy merely because its readers also encounter the new concern. Verify that every resulting artifact has one
+coherent long-lived responsibility, and that a new artifact has its own title, Design Goal, trigger, acceptance evidence,
+and no duplicate route or contract.
 
 When a failure suggests a rule or prompt amendment, identify the reader action that would have prevented the failure
-before using a downstream report, estimate, log, test result, or warning to choose its owner. Compare the amendment with
-the receiving artifact's existing Design Goals and reader decision. If it governs a distinct action, create or select
-the focused action artifact instead. Record this comparison in the design checkpoint before editing.
+before using a downstream report, estimate, log, test result, or warning to choose its governing prompt file. Compare
+the amendment with the receiving artifact's existing Design Goals and reader decision. If it governs a distinct action,
+create or select the focused action artifact instead. Record this comparison in the design checkpoint before editing.
 
 Do not place command-selection or command-scope guidance in a workflow-status or terminal-goal rule merely because the
 command supplies acceptance evidence. Compare a full-build verification case, where the reader must choose the complete
@@ -52,7 +52,7 @@ from the required outcome: state the outcome in the required action, outcome, or
 together when it has the same trigger, decision contract, and verification; do not create a companion merely to
 separate mechanical variants or short related details.
 
-When a focused companion has one authoritative parent rule or prompt, express that ownership in its path: place it in a
+When a focused companion has one governing parent rule or prompt, express that relationship in its path: place it in a
 directory named after the parent filename without `.md`, and name the companion for its distinct decision. For example,
 the companion for `write-clearly.md` belongs at `write-clearly/unexpected-result.md`, not beside its parent under a
 compound name such as `write-clearly-unexpected-result.md`. The directory lets a reader find the parent contract

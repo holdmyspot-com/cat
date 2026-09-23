@@ -32,8 +32,8 @@ Before accepting or prescribing a conclusion, recommendation, rule, plan, or pro
 it true or executable. Classify each premise as one of these:
 
 1. An observed fact: identify the authoritative evidence that establishes it and when that evidence was checked.
-2. A condition the workflow creates: identify its owner, creation step, storage location, lifetime, verification, and
-   the point at which the reader retrieves it.
+2. A condition the workflow creates: identify its responsible actor, creation step, storage location, lifetime,
+   verification, and the point at which the reader retrieves it.
 3. An external condition: identify the required authority, actor, dependency, or decision and do not imply that it is
    already available.
 
