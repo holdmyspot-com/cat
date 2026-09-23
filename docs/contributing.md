@@ -1,6 +1,6 @@
 # Build and Test CAT
 
-CAT requires JDK 26 and ShellCheck.
+CAT requires JDK 27 and ShellCheck.
 
 Run the complete Java, TestNG, and ShellCheck verification:
 
