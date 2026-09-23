@@ -193,11 +193,12 @@ public final class CodexConnectionConfigurationTest
 			Files.createDirectories(destination.getParent());
 			Files.writeString(destination, "[permissions.cat-runner]\nextends = \":workspace\"\n");
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
+			Path canonicalEvidence = evidence.toRealPath();
 			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
-				contains("extends = \"cat-runner\"").contains("\"" + evidence + "\" = \"read\"").
-				doesNotContain("\"" + evidence + "\" = \"write\"");
+				contains("extends = \"cat-runner\"").contains("\"" + canonicalEvidence + "\" = \"read\"").
+				doesNotContain("\"" + canonicalEvidence + "\" = \"write\"");
 		}
 	}
 

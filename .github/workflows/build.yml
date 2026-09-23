@@ -45,16 +45,16 @@ jobs:
         run: client/mvnw -f client/pom.xml verify
       - name: Verify bootstrap boundaries
         run: >-
-          bats client/distribution/src/test/bats/bootstrap-common.bats
-          client/distribution/src/test/bats/bootstrap-claude.bats
-          client/distribution/src/test/bats/bootstrap-codex.bats
+          bats client/common/distribution/src/test/bats/bootstrap-common.bats
+          client/common/distribution/src/test/bats/bootstrap-claude.bats
+          client/common/distribution/src/test/bats/bootstrap-codex.bats
       - name: Verify artifact-runner boundaries
-        run: bats client/distribution/src/test/bats/artifact-runners.bats
+        run: bats client/common/distribution/src/test/bats/artifact-runners.bats
       - name: Upload native distributions
         uses: actions/upload-artifact@v7
         with:
           name: cat-${{ matrix.platform }}
           if-no-files-found: error
           path: |
-            client/distribution/target/release/cat-*-*.tar.gz
-            client/distribution/target/release/SHA256SUMS.txt
+            client/common/distribution/target/release/cat-*-*.tar.gz
+            client/common/distribution/target/release/SHA256SUMS.txt
