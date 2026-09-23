@@ -10,6 +10,13 @@
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
+<!--
+An explanation for the next Guidance paragraph was placed after the last Design Goal, where it appeared to explain
+that goal instead. This made the comment's subject unclear, so the goal requires placing explanations with their
+actual subject.
+-->
+- Let readers identify which code or prose an explanatory comment describes without guessing whether it applies to
+  the preceding or following item.
 
 ## Guidance
 
@@ -51,6 +58,15 @@ then define any unfamiliar workflow term and the concrete problem it prevents. F
 is a required release check and that a fresh evidence directory prevents a rerun from replacing an earlier check's
 receipts. Do not present an internal mechanism as an unexplained approval question.
 
+Place a standalone explanatory comment immediately above the code or prose it describes, including any annotations
+belonging to a declaration. Do not separate it from that subject with an unrelated heading, declaration, or paragraph.
+Identify its subject before moving it: a syntax-controlled directive or a clear same-line comment stays where its
+syntax and meaning require. After editing, check that a reader encountering the comment can identify what it explains.
+When an explanatory comment justifies a Design Goal, place it immediately above that goal and state the concrete
+situation that prompted the addition and how the goal addresses it. Do not substitute a generic example, a restatement
+of the goal, or a fabricated incident for the known reason it was added. If that reason is unavailable, do not invent
+one; say what is known and leave the origin unclaimed.
+
 When a source comment explains a local representation of an external actor, resource, or boundary, name both the
 represented role and the concrete value or scope that models it. At a lifecycle transition, identify the actor, the
 resource, the statement or scope that performs the transition, and the resulting effect. For example, explain that the
@@ -71,6 +87,11 @@ Concision does not permit omitting a condition, uncertainty, consequence, recove
 changes the reader's decision. Before finalizing, remove repetition and optional elaboration, then confirm that the
 remaining response is readable and complete for the requested outcome. Do not remove a sentence merely because it is
 explanatory or does not itself prescribe an action.
+
+When discussing different scenarios, consider a compact visual before writing the comparison as prose. Use a table for
+repeated distinctions, a timeline for changing states, or a tree for branching choices when it makes a material
+relationship easier to understand. Prefer a short sentence when the contrast is already clear without a visual; do not
+repeat the same explanation in both forms.
 
 ## Explain Decisions From Observable Facts
 

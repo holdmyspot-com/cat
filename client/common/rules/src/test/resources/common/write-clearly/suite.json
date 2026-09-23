@@ -572,6 +572,78 @@
           "include/documentation/general.md"
         ]
       }
+    },
+    "standalone-comment-governs-following-rule": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "method-comment-governs-declaration": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "syntax-bound-marker-is-not-explanation": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "design-goal-comment-origin-unknown": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "multi-scenario-visual-comparison": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "simple-scenario-contrast": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
     }
   }
 }
