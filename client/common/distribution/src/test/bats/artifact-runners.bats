@@ -28,6 +28,33 @@ teardown()
 	fi
 }
 
+@test "packaged workflow-temp keeps directories visible between launcher invocations" {
+	launcher="${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp"
+	root="$("${launcher}" root)"
+	[ -d "${root}" ]
+	[[ "${TEST_ROOT}" == "${root}/"* ]]
+
+	created_record="$("${launcher}" create artifact-runners)"
+	created="${created_record#directory=}"
+	[ "${created_record}" != "${created}" ]
+	[ -d "${created}" ]
+	printf 'retained\n' > "${created}/evidence"
+	retained="${TEST_ROOT}/retained/evidence"
+	handoff_record="$("${launcher}" handoff "${created}" "${retained}")"
+	[ "${handoff_record}" = "directory=${retained}" ]
+	[ ! -e "${created}" ]
+	[ -f "${retained}/evidence" ]
+	"${launcher}" delete "${retained}"
+	[ ! -e "${retained}" ]
+
+	run "${launcher}" create Uppercase
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"Workflow name must match"* ]]
+	run "${launcher}" delete "${root}"
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"must be below"* ]]
+}
+
 # Creates a minimal packaged plugin artifact for one harness runner.
 #
 # Arguments:
@@ -105,10 +132,10 @@ printf 'serve:%s:%s:%s\n' "$PWD" "${CODEX_HOME:-}" "$*" >> "${log}"
 while IFS= read -r line; do
 	printf 'input:%s\n' "${line}" >> "${log}"
 	case "${line}" in
-		*'"id":1'*) printf '{"id":1,"result":{}}\n' ;;
-		*'"id":2'*) printf '{"id":2,"result":{}}\n' ;;
-		*'"method":"thread/start"'*) printf '{"id":3,"result":{"thread":{"id":"thread-1"}}}\n' ;;
+		*'"method":"thread/start"'*) printf '{"id":2,"result":{"thread":{"id":"thread-1"}}}\n' ;;
+		*'"method":"hooks/list"'*) printf '%s\n' '{"id":3,"result":{"data":[{"hooks":[{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"trusted"}]}]}}' ;;
 		*'"method":"turn/start"'*) printf '%s\n' '{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"{\"selected_rules\":[]}"}}}' '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"status":"completed"}}}' ;;
+		*'"id":1'*) printf '{"id":1,"result":{}}\n' ;;
 	esac
 done
 SCRIPT

@@ -116,7 +116,12 @@ public final class CodexRunnerCli
 		try (ToolScope scope = new ToolScope())
 		{
 			String agentName = agentName(args);
-			HarnessRunnerOptions options = HarnessRunnerOptions.parseServe(withoutAgent(args), "codex", scope.catTemp());
+			String[] runnerArgs = withoutAgent(args);
+			HarnessRunnerOptions options;
+			if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
+				options = HarnessRunnerOptions.parseServe(runnerArgs, "codex", scope.catTemp());
+			else
+				options = HarnessRunnerOptions.parse(runnerArgs, "codex", scope.catTemp());
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
