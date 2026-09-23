@@ -117,7 +117,7 @@
 		<!-- Allow deep nesting for structured hook logic -->
 		<exclude name="AvoidDeeplyNestedIfStmts"/>
 		<!-- Entry point classes have only static main -->
-		<exclude name="UseUtilityClass"/>
+		<exclude name="InstantiableUtilityClass"/>
 		<!-- Allow long methods in parser/renderer logic -->
 		<exclude name="NcssCount"/>
 	</rule>

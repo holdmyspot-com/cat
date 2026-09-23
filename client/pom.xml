@@ -20,6 +20,7 @@
 
 	<properties>
 		<build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
+		<cat.config.directory>${project.basedir}/config</cat.config.directory>
 		<checkstyle.version>13.9.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
@@ -35,7 +36,7 @@
 		<maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
 		<maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
 		<maven.version>3.9.16</maven.version>
-		<pmd.version>7.26.0</pmd.version>
+		<pmd.version>7.27.0</pmd.version>
 		<pouch.version>10.3</pouch.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -310,7 +311,13 @@
 						<rulesets>
 							<ruleset>${cat.config.directory}/pmd.xml</ruleset>
 						</rulesets>
-						<targetJdk>${maven.compiler.release}</targetJdk>
+						<!--
+							BUG: https://github.com/pmd/pmd/issues/7056
+							PMD 7.27 warns because maven-pmd-plugin 3.28 does not add the target JDK to its
+							analysis classpath. This single warning is intentionally accepted until the merged
+							plugin fix is released: https://github.com/apache/maven-pmd-plugin/pull/726
+						-->
+						<targetJdk>27</targetJdk>
 					</configuration>
 				</plugin>
 			</plugins>
