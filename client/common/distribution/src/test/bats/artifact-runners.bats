@@ -68,7 +68,7 @@ create_test_artifact()
 	artifact="${TEST_ROOT}/${harness}-artifact"
 	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/client/bin" "${artifact}/agents/${harness}"
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
-	printf '1.0\n' > "${artifact}/client/VERSION"
+	printf '1.1\n' > "${artifact}/client/VERSION"
 	printf '# test agent\n' > "${artifact}/agents/${harness}/fixture.toml"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/plugin-info"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/session-start"
