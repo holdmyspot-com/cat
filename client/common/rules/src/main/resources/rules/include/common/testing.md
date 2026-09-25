@@ -4,6 +4,9 @@
 
 - Test observable behavior with isolated, controlled inputs and state, ensuring each claim, exercised boundary, and
   assertion describe that same outcome rather than an implementation or artifact shape.
+<!-- A plan-review prompt scenario measured only application, so its passing result could not show that a normal task
+     selected the rule. Explicitly delivered application tests do not need that selection claim. -->
+- Keep prompt-test evidence for natural guidance selection separate from evidence that supplied guidance was applied.
 - Ensure an artifact-wide audit finds every executable verification artifact whose claimed outcome is not directly
   exercised and observed.
 - Make application behavior directly and safely testable in the same process by passing environmental dependencies
@@ -18,6 +21,12 @@
 Test observable behavior with controlled inputs rather than machine-specific configuration or implementation details.
 Each test owns its fixtures and mutable state. Avoid tests that primarily validate third-party tools; test the
 application's interpretation, command construction, error handling, and integration behavior instead.
+
+When a prompt, rule, or agent test claims that an ordinary task selects guidance, keep the task input free of an
+instruction to read that guidance. Check the normal routing or delivery boundary and its selected target before
+counting the behavior under that guidance as evidence. A test that supplies the target guidance directly can check its
+application, but must not claim natural selection from that result. Record which of those outcomes the test checks;
+do not use an application result alone as evidence that the guidance was selected.
 
 Choose the test language from the behavior being claimed, not from the fact that it uses a command, files, or another
 tool. Test behavior in the same process when its dependencies can be injected. Use the project's shell-test framework

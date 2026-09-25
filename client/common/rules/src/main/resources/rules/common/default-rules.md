@@ -227,8 +227,8 @@ When handling Java exceptions, lazy load `../include/java/exceptions.md` to choo
 When defining Java POSIX permission values, lazy load `../include/java/constants.md` to keep the readable
 permission value authoritative.
 
-When a task is expected to run for multiple minutes, lazy load `../include/common/progress-reporting.md` to report
-observable progress and calibrate estimates from current-task history.
+When a task is expected to run for multiple minutes, or the user asks how much of a plan is complete, lazy load
+`../include/common/progress-reporting.md` to report progress from observable evidence.
 
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md` to retain its terminal outcome.

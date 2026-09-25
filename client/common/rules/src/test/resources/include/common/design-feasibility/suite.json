@@ -44,6 +44,42 @@
           "include/common/design-feasibility.md"
         ]
       }
+    },
+    "native-consumption-unobserved": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/design-feasibility.md"
+        ]
+      }
+    },
+    "external-delivery-receipted": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/design-feasibility.md"
+        ]
+      }
+    },
+    "direct-byte-read": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/design-feasibility.md"
+        ]
+      }
     }
   }
 }

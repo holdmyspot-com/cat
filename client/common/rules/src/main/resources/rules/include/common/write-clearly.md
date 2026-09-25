@@ -7,6 +7,10 @@
   must still be able to audit the same guidance.
 - Use the shortest response that preserves the answer, required action, decision-relevant evidence, material conditions,
   and readability at the reader's requested level of detail.
+<!-- A C3 status question received a complete answer in commentary and then nearly the same answer in the immediately
+     following final reply. The reader saw two full answers although one self-contained final reply was enough. -->
+- Keep interim updates and terminal answers complementary so a reader receives timely progress without the same
+  completed answer twice.
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
@@ -87,6 +91,13 @@ Concision does not permit omitting a condition, uncertainty, consequence, recove
 changes the reader's decision. Before finalizing, remove repetition and optional elaboration, then confirm that the
 remaining response is readable and complete for the requested outcome. Do not remove a sentence merely because it is
 explanatory or does not itself prescribe an action.
+
+When a host offers interim updates and a terminal answer, decide what each message must deliver before sending either.
+If a discrete user question is already answerable and no more work is needed for that answer, give its complete answer
+in the terminal response; do not give that answer as an interim update and then repeat it immediately. During continuing
+work, use an interim update for a requested status, a new partial result, or the next active step. Keep the terminal
+answer self-contained by carrying forward the facts it needs, but do not repeat an earlier full progress explanation.
+Do not withhold a requested live update merely to reserve its facts for the terminal response.
 
 When discussing different scenarios, consider a compact visual before writing the comparison as prose. Use a table for
 repeated distinctions, a timeline for changing states, or a tree for branching choices when it makes a material

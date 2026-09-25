@@ -22,7 +22,7 @@ load bootstrap-helpers
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "harness=codex
-version=1.1
+version=1.2
 platform=${expected_platform}" ]
 }
 
@@ -54,7 +54,7 @@ platform=${expected_platform}" ]
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 	grep -F "codex plugin add cat@cat" "${COMMAND_LOG}"
 	grep -F "plugin-info" "${COMMAND_LOG}"
-	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.1" ]
+	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.2" ]
 }
 
 @test "Codex installs self-contained custom agents from an assembled artifact" {
@@ -91,7 +91,7 @@ SCRIPT
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
 	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
-	[ "$(cat "${data_directory}/migration-version")" = "1.1" ]
+	[ "$(cat "${data_directory}/migration-version")" = "1.2" ]
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
@@ -132,7 +132,7 @@ SCRIPT
 	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
 }
 
-@test "release bootstrap selects the v1.1 Linux x64 Codex archive" {
+@test "release bootstrap selects the v1.2 Linux x64 Codex archive" {
 	create_fake_engine_command codex
 	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
 #!/usr/bin/env sh
@@ -147,7 +147,7 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 case "${output}" in
-	*/SHA256SUMS.txt) printf 'ignored  cat-codex-v1.1-linux-x64.tar.gz\n' > "${output}" ;;
+	*/SHA256SUMS.txt) printf 'ignored  cat-codex-v1.2-linux-x64.tar.gz\n' > "${output}" ;;
 	*) : > "${output}" ;;
 esac
 SCRIPT
@@ -161,13 +161,13 @@ while [ "$#" -gt 0 ]; do
 	if [ "$1" = "-C" ]; then shift; destination="$1"; fi
 	shift
 done
-	root="${destination}/cat-codex-v1.1-linux-x64"
+	root="${destination}/cat-codex-v1.2-linux-x64"
 	mkdir -p "${root}/.codex-plugin" "${root}/client/bin" "${root}/install/migrations" \
 		"${root}/agents/codex" "${root}/agents/common"
 	printf '{}\n' > "${root}/.codex-plugin/plugin.json"
 	printf 'name = "cat-reviewer"\n<!-- cat:include ../common/reviewer.md -->\n' > "${root}/agents/codex/reviewer.toml"
 	printf 'review\n' > "${root}/agents/common/reviewer.md"
-printf '1.1\n' > "${root}/client/VERSION"
+printf '1.2\n' > "${root}/client/VERSION"
 printf '# target-version<TAB>script-relative-to-this-directory\n' > "${root}/install/migrations/registry.tsv"
 cat > "${root}/client/bin/plugin-info" <<'INNER'
 #!/usr/bin/env sh
@@ -178,12 +178,12 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl" "${FAKE_BIN}/sha256sum" "${FAKE_BIN}/tar"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.1
+		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.2
 
 	[ "${status}" -eq 0 ]
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.1/cat-codex-v1.1-linux-x64.tar.gz" \
+	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.2/cat-codex-v1.2-linux-x64.tar.gz" \
 		"${COMMAND_LOG}"
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.1/SHA256SUMS.txt" "${COMMAND_LOG}"
+	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.2/SHA256SUMS.txt" "${COMMAND_LOG}"
 }
 
 @test "bootstrap propagates a download failure" {
@@ -197,12 +197,12 @@ exit 23
 SCRIPT
 	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
 
-	run env PATH="${FAKE_BIN}:${PATH}" sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.1
+	run env PATH="${FAKE_BIN}:${PATH}" sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.2
 
 	[ "${status}" -eq 23 ]
 }
 
-@test "release bootstrap selects the v1.1 macOS ARM64 archive" {
+@test "release bootstrap selects the v1.2 macOS ARM64 archive" {
 	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
 #!/usr/bin/env sh
 if [ "${1:-}" = "-s" ]; then printf 'Darwin\n'; else printf 'arm64\n'; fi
@@ -215,11 +215,11 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" \
-		CAT_RELEASE_BASE_URL="https://example.invalid/releases/v1.1" sh \
-		"${INSTALL_DIRECTORY}/install-codex.sh" v1.1
+		CAT_RELEASE_BASE_URL="https://example.invalid/releases/v1.2" sh \
+		"${INSTALL_DIRECTORY}/install-codex.sh" v1.2
 
 	[ "${status}" -eq 23 ]
-	grep -F "https://example.invalid/releases/v1.1/cat-codex-v1.1-macos-arm64.tar.gz" "${COMMAND_LOG}"
+	grep -F "https://example.invalid/releases/v1.2/cat-codex-v1.2-macos-arm64.tar.gz" "${COMMAND_LOG}"
 }
 
 @test "generated launchers work when the runtime path contains spaces" {

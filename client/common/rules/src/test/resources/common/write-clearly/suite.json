@@ -355,6 +355,42 @@
         ]
       }
     },
+    "answer-once-across-channels": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "partial-update-before-final": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
+    "requested-live-progress": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/write-clearly.md"
+        ]
+      }
+    },
     "material-caveat-retained": {
       "measures": [
         "organic_selection",

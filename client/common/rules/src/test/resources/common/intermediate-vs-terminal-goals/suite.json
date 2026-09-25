@@ -23,8 +23,15 @@
     },
     "locally-creatable-prerequisite": {
       "measures": [
+        "organic_selection",
         "application"
-      ]
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "common/intermediate-vs-terminal-goals.md"
+        ]
+      }
     },
     "live-exec-receipt": {
       "measures": [

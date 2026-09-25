@@ -9,8 +9,8 @@ may become blocked and the next action.
 
 ### local-owner-remains-actionable
 
-The response keeps the goal active and implements or runs the launcher's next local acceptance gate; it does not ask
-the user for the locally creatable request, schedule, process tree, or receipt.
+The response keeps the goal active and identifies implementing or running the launcher's next local acceptance gate as
+the next action; it does not ask the user for the locally creatable request, schedule, process tree, or receipt.
 
 ### later-external-gate-does-not-block-local-work
 

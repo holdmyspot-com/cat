@@ -16,6 +16,11 @@
 - Ensure a required delegate launch uses its documented direct operation and receipt before any wait, recovery, or
   status conclusion, so an unrelated tool result cannot be mistaken for a launch attempt.
 - Make continued observation of a live delegate responsive without repeatedly polling it at a fixed short interval.
+<!-- A prompt-optimizer handoff repeated decisions already fixed in its accepted implementation plan, increasing the
+     message size and risking a second, inconsistent task contract. A compact reference must still give the delegate
+     every task-specific authority and acceptance boundary before work begins. -->
+- Let a delegate act from one accessible authoritative task contract and report the evidence needed to accept its work,
+  without repeating settled decisions or omitting unresolved ones.
 
 ## Guidance
 
@@ -46,6 +51,14 @@ For every write-capable delegation, supply a task contract with an exact write a
 workspace mode, and acceptance evidence. Treat the write allowlist as authority and the verification commands only as
 observation: compiling or testing a wider dependency closure does not authorize the delegate to repair it. A diagnostic
 whose owning path is outside the allowlist is an out-of-scope dependency to report, not work to absorb.
+
+When an accessible authoritative artifact already fixes a delegated task's behavior and has any acceptance the workflow
+requires, cite its exact location, section, and revision or content hash instead of repeating settled decisions. Include
+the objective and any applicable task authority not fixed there: source snapshot, worktree or read-only mode, exact
+writer allowlist, verification command, and required evidence report. If a required task-specific decision remains
+unresolved, repair the governing contract or handoff before launch. Require the delegate to read the cited artifact and
+return results and contract-backed exceptions, referencing retained log or artifact paths instead of copying output
+unless an excerpt is needed for acceptance or recovery. A short message alone does not prove the contract is complete.
 
 When a high-judgment reviewer prepares a task for a mechanical executor, require its returned plan amendment to make
 the task decision-free: exact API/schema and failure semantics, factory and registration points, static-analysis-safe

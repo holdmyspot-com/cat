@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-CAT_VERSION="1.1"
+CAT_VERSION="1.2"
 CAT_RELEASE_TAG="v${CAT_VERSION}"
 CAT_RELEASE_BASE_URL="${CAT_RELEASE_BASE_URL:-https://github.com/cowwoc/cat.client/releases/download/${CAT_RELEASE_TAG}}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"

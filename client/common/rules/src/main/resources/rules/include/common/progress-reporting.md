@@ -1,4 +1,4 @@
-# Long-Running Progress Reporting
+# Progress Reporting
 
 ## Design Goals
 
@@ -6,6 +6,10 @@
   opportunities and observed current-task evidence to improve estimates.
 - Avoid repetitive unchanged-state updates while keeping any observable long-running operation visible and promptly
   reporting a meaningful state change.
+<!-- A percentage-of-plan scenario expected the completed readiness packages to count, but supplied no plan inventory
+     and had no route for a completion question outside a long-running operation. -->
+- Let a user asking how much of a plan is complete distinguish verified work from terminal acceptance and receive an
+  overall percentage only when a complete, non-overlapping inventory supports it.
 
 ## Guidance
 

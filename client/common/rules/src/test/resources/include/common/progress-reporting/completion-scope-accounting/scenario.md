@@ -1,5 +1,10 @@
 ## Scenario
 
+The plan's readiness phase has five non-overlapping work packages. Input inventory, runner boundary, candidate state,
+and scenario fixtures each have a passing focused verification receipt. Provider composition is unfinished, and the
+readiness phase's aggregate acceptance gate has not run. The plan also has later implementation work, but no complete
+non-overlapping inventory of that work is available. No terminal global wave has passed acceptance.
+
 What percentage of the overall implementation plan is done?
 
 ## Assertions
