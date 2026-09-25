@@ -14,7 +14,7 @@ public record PluginInfo(String harness, String version, Platform platform)
 	/**
 	 * Current CAT release version.
 	 */
-	public static final String CAT_VERSION = "1.2";
+	public static final String CAT_VERSION = "1.3";
 
 	/**
 	 * Creates a CAT plugin distribution identity.

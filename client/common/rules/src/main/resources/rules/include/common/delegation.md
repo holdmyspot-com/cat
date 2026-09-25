@@ -2,9 +2,9 @@
 
 ## Design Goals
 
-- Allocate workflow work to the least costly authority that can verify or decide it: deterministic work to authoritative
-  automation, bounded review to independently checkable delegation, and high-judgment decisions to the authority able to
-  evaluate them.
+- Choose enough model capability and reasoning effort for each decision while accounting for failure risk, usage, and
+  coordination cost: deterministic work belongs in authoritative automation, bounded work can use a less costly capable
+  agent, and high-judgment decisions belong with an agent able to evaluate them.
 - Isolate delegated writes and integrate them through one parent-owned boundary so concurrent verification cannot grant
   one delegate authority over another delegate's files.
 <!-- Parent launch and handoff failures were previously misreported as executor failure or unavailable external state,
@@ -27,12 +27,20 @@
 When designing, updating, or executing a prompt-driven workflow, first classify every operation as deterministic,
 bounded-review, or high-judgment work.
 
+Before assigning agent work, state the selected model capability, reasoning effort, whether delegation helps, and why.
+Use a less costly capable model with low or medium reasoning for precise, routine work with predictable verification.
+Use a stronger model when judgment, ambiguity, architecture, coordination, or subtle failure risk matters; raise its
+reasoning effort for consequential review, complex implementation, debugging, security, migrations, or difficult
+rollback. Reserve the highest effort levels for exceptional work whose risk justifies the added usage. Keep tightly
+dependent or sequential decisions with one owner. Do not add subagents solely to reduce the apparent cost of a turn;
+their handoff, review, and integration costs must improve the expected result.
+
 Move deterministic operations into authoritative automation, normally a CLI. The automation owns authoritative-state
 capture, derived paths and arguments, validation, generated artifacts, recovery evidence, execution, and
 machine-readable diagnostics. Do not leave an agent or human to reproduce those operations.
 
-Delegate bounded-review work to a cheaper model only when its acceptance check is materially cheaper, narrower, or more
-reliable than independently performing the delegated work. Give it explicit inputs, a bounded deliverable, and
+Delegate bounded-review work to a less costly capable model when its acceptance check is materially cheaper, narrower,
+or more reliable than independently performing the delegated work. Give it explicit inputs, a bounded deliverable, and
 acceptance evidence. Treat its result as a candidate until the specified deterministic check or higher-authority review
 accepts it.
 
@@ -160,4 +168,5 @@ Keep high-judgment work with the higher-level model: semantic design, intent, to
 placement, conflict resolution, security-sensitive decisions, and any result whose verification would require redoing
 the same analysis. Do not delegate merely to create an appearance of independent review.
 
-When a cheaper agent is available and delegation satisfies these conditions, use it; otherwise continue directly.
+Delegate when the independent assignment and its acceptance check justify the coordination cost; otherwise continue
+directly.

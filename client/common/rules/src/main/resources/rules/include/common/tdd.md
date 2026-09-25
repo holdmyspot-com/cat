@@ -12,6 +12,8 @@ resumption-path change were made without failing tests that exercised those beha
 distinct testable outcome, including one discovered after implementation begins.
 -->
 - Keep each distinct testable behavior change tied to a failure observed at the boundary that the change claims to fix.
+- Ground test expectations in established behavior contracts so that test-first work does not entrench an unresolved
+  design premise.
 
 ## Guidance
 
@@ -27,13 +29,20 @@ an edit is a behavior-preserving refactoring or creates a test seam, first verif
 return to the red-test gate before changing behavior. When no focused automated check is practical, state the constraint
 and the alternate boundary evidence before editing production behavior.
 
+Before encoding expectations, establish the required behavior and claimed test boundary from authoritative contracts or
+accepted criteria. When an unresolved premise could change either, lazy load `monotonic-progress.md` and apply its
+premise-check requirements before dependent assertions or implementation. Keep independent ready behavior eligible for
+its red-test gate. A mock configured to assume an external guarantee cannot establish that guarantee; it may exercise
+local behavior under an already established contract.
+
 ## Red-Test Gate
 
 Before editing production behavior for a testable outcome, add or update only the focused behavioral test and run its
 narrowest command. Report the exact command and the observed behavior-specific failure before making the production
 edit. Keep the test-only and production-behavior edits distinct. If the test needs a new seam, first make that
 behavior-preserving refactoring separately and verify the existing tests; then create and run the behavioral test. A
-compilation, fixture, setup, or unrelated failure does not open the gate.
+compilation, fixture, setup, or unrelated failure does not open the gate. Compilation or setup failures establish only
+that the behavioral check is not yet runnable; resolve that prerequisite and obtain a behavior-specific failure.
 
 After the red-test gate opens, implement the smallest change that makes the focused test pass. The initial failure must
 demonstrate the intended behavior gap, not a fixture, setup, compilation, or unrelated failure. Do not weaken or rewrite
@@ -50,6 +59,8 @@ Start with the minimum observable behavior, then add the next meaningful boundar
 Generalize the test suite only from the invariant shared by those cases; do not add speculative cases unrelated to the
 behavioral contract.
 
-Before handoff, run the narrowest relevant verification and then the complete project verification. If a test cannot be
-written first because the behavior exists only at an external boundary, explain the constraint and add the smallest
-reliable boundary test after implementing the behavior.
+Before handoff, run the narrowest relevant verification and then the complete project verification. When established
+required behavior can be exercised only at an external boundary that needs enabling implementation, explain the missing
+test boundary before that work. Limit the enabling work to what makes the boundary check possible, then add and run the
+smallest reliable boundary test at that first opportunity. This exception does not establish an unresolved external
+contract or waive the red-test gate for independently testable behavior.

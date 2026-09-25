@@ -8,6 +8,9 @@
 
 ## Guidance
 
+When creating or revising an implementation plan for execution by AI agents, lazy load
+`rules/include/common/implementation-planning.md` relative to the active CAT plugin root.
+
 Review the declared change and its relevant context, then produce the smallest complete implementation plan that can
 achieve the requested outcome. Each step must name its observable result and the evidence that will verify it. Identify
 concrete dependencies, constraints, and decision points; do not invent requirements or prescribe edits beyond the

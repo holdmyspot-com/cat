@@ -161,6 +161,13 @@ result, or a workflow that chooses, stops, or changes strategy based on a predic
 benefit, or other future outcome, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs
 and authority can determine every required decision.
 
+When creating, reviewing, or revising an implementation plan for execution by AI agents, perform this rule read before
+inspecting the project or making planning decisions:
+
+```
+cat "$CAT_PLUGIN_ROOT/rules/include/common/implementation-planning.md"
+```
+
 Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
 work, lazy load `../include/common/delegation.md` to assign deterministic, bounded-review, and high-judgment work to the
 appropriate authority and isolate write-capable recipients.

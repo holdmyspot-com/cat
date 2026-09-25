@@ -22,7 +22,7 @@ load bootstrap-helpers
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "harness=claude
-version=1.2
+version=1.3
 platform=${expected_platform}" ]
 }
 
@@ -40,7 +40,7 @@ platform=${expected_platform}" ]
 	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json" ]
 	grep -F "claude plugin marketplace add ${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${COMMAND_LOG}"
 	grep -F "claude plugin install cat@cat" "${COMMAND_LOG}"
-	[ "$(cat "${CLAUDE_CONFIG_DIR}/plugins/data/cat-cat/migration-version")" = "1.2" ]
+	[ "$(cat "${CLAUDE_CONFIG_DIR}/plugins/data/cat-cat/migration-version")" = "1.3" ]
 }
 
 @test "Claude installation preserves the recorded version when a data migration fails" {

@@ -12,8 +12,27 @@ depends-on:
   replacement path; stale, duplicate, or conflicting work cannot replace verified progress.
 - Complete independent work units with the highest verified bounded concurrency that preserves their isolated state,
   evidence, and failure visibility rather than serializing them without a dependency.
+- Limit avoidable invalidation of completed work by settling unverified premises before dependent work expands, reusing
+  valid evidence, and allowing work that does not depend on those premises to advance.
 
 ## Guidance
+
+Before fixing a workflow's work units, order, or dependent interfaces, identify each unverified premise whose different
+result could invalidate work across a later boundary. For each premise, name a different outcome permitted by the known
+facts, the dependent decisions and work it would change, the evidence that would settle it, and the earliest authentic
+check available. Trace a shared premise through its dependent branches so that its check precedes expanding those
+branches, rather than leaving each branch to discover the same uncertainty after implementation.
+
+Reuse authoritative evidence that still establishes the premise under the current determining inputs and contract.
+Do not add another premise probe or defer otherwise-ready work when that evidence already settles the decision. This
+does not remove acceptance checks for newly implemented behavior.
+
+When execution is in scope, run an available authorized check before starting work that assumes its answer. A
+planning-only actor assigns the check and its dependent readiness condition to an authorized executor; the planned
+check leaves the premise unresolved. If the check needs unfinished implementation, identify the bounded work needed
+to make that boundary runnable and put the check there. Advance that enabling work and independent work while keeping
+other dependent decisions conditional until the evidence settles them. This limits avoidable rework; new evidence
+that changes the contract still requires the affected-state transitions below.
 
 Before a workflow records progress for later use, define one authoritative durable transition record, its responsible
 actor, storage location, consumers, terminal acceptance state, independently nameable work units, and permitted
