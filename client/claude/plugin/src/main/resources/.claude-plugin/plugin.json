@@ -1,7 +1,7 @@
 {
   "name": "cat",
   "description": "An agentic workflow with a focus on reliability and developer experience",
-  "version": "1.3",
+  "version": "1.4",
   "author": {
     "name": "cowwoc"
   },

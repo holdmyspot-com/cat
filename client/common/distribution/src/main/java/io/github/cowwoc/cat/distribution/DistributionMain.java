@@ -156,6 +156,14 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.common.history.SessionHistory"),
 				new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.codex.cli",
 					"io.github.cowwoc.cat.codex.CodexGetHistory"),
+				new JlinkImageBuilder.Launcher("account-select", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexAccountSelect"),
+				new JlinkImageBuilder.Launcher("login", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexLogin"),
+				new JlinkImageBuilder.Launcher("rule-load", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexRuleLoad"),
+				new JlinkImageBuilder.Launcher("usage-stop", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexStopHook"),
 				new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.codex.cli",
 					"io.github.cowwoc.cat.codex.CodexSessionStartHook"),
 				new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
@@ -234,7 +242,8 @@ public final class DistributionMain
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
-			new ArtifactLayer("codex-plugin", codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
+			new ArtifactLayer("codex-plugin", codexPlugin, Set.of(), Set.of("hooks/stop.sh")),
+			new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			codexLegalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
 		try (ToolScope scope = new ToolScope())
 		{

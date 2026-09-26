@@ -2,13 +2,18 @@ module io.github.cowwoc.cat.common.cli
 {
 	requires io.github.cowwoc.requirements13.java;
 	requires io.github.cowwoc.pouch10.core;
+	requires java.net.http;
+	requires static jdk.httpserver;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
 
 	exports io.github.cowwoc.cat.common;
+	exports io.github.cowwoc.cat.common.account;
+	exports io.github.cowwoc.cat.common.auth;
 	exports io.github.cowwoc.cat.common.history;
 	exports io.github.cowwoc.cat.common.runner;
+	exports io.github.cowwoc.cat.common.usage;
 
 	opens io.github.cowwoc.cat.common.git.replay to tools.jackson.databind;
 }

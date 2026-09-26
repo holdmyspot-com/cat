@@ -61,7 +61,7 @@ SCRIPT
 		printf 'Review evidence without editing.\n' > "${artifact}/agents/common/reviewer.md"
 	fi
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
-	printf '1.3\n' > "${artifact}/client/VERSION"
+	printf '1.4\n' > "${artifact}/client/VERSION"
 	printf '# target-version<TAB>script-relative-to-this-directory\n' > "${artifact}/install/migrations/registry.tsv"
 	cat > "${artifact}/client/bin/plugin-info" <<'SCRIPT'
 #!/usr/bin/env sh

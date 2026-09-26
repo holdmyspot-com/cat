@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 
-CAT_VERSION="1.3"
+CAT_VERSION="1.4"
 CAT_RELEASE_TAG="v${CAT_VERSION}"
-CAT_RELEASE_BASE_URL="${CAT_RELEASE_BASE_URL:-https://github.com/cowwoc/cat.client/releases/download/${CAT_RELEASE_TAG}}"
+CAT_RELEASE_BASE_URL="${CAT_RELEASE_BASE_URL:-https://github.com/holdmyspot-com/cat-client/releases/download/${CAT_RELEASE_TAG}}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 CAT_DOWNLOAD_TEMP_DIRECTORY=""
 

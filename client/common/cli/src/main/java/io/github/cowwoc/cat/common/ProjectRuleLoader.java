@@ -26,7 +26,30 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class ProjectRuleLoader
 {
+	/**
+	 * Rule context and packaged rule IDs whose content was supplied to the agent.
+	 *
+	 * @param context native agent context
+	 * @param deliveredPluginRuleIds paths relative to the installed {@code rules/} directory
+	 */
+	public record LoadedRules(String context, List<String> deliveredPluginRuleIds)
+	{
+		/**
+		 * Snapshots the content identities returned with one completed load.
+		 *
+		 * @param context native agent context
+		 * @param deliveredPluginRuleIds packaged rules whose content was supplied
+		 */
+		public LoadedRules
+		{
+			requireThat(context, "context").isNotNull();
+			requireThat(deliveredPluginRuleIds, "deliveredPluginRuleIds").isNotNull();
+			deliveredPluginRuleIds = List.copyOf(deliveredPluginRuleIds);
+		}
+	}
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
+	private static final Set<String> GENERATED_ROUTING_INDEXES = Set.of(
+		"common/.cat-lazy-rule-dependencies.md", "common/.cat-path-scoped-rules.md");
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
 
@@ -57,7 +80,7 @@ public final class ProjectRuleLoader
 	 */
 	public String loadForMainAgent(Path pluginRoot, Path projectRoot, String harness) throws IOException
 	{
-		return load(pluginRoot, null, projectRoot, harness, RuleAudience.primary());
+		return load(pluginRoot, null, projectRoot, harness, RuleAudience.primary()).context();
 	}
 
 	/**
@@ -75,7 +98,41 @@ public final class ProjectRuleLoader
 	public String loadForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
 		throws IOException
 	{
+		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.primary()).context();
+	}
+
+	/**
+	 * Loads primary-agent rules and identifies packaged content delivered in the result.
+	 *
+	 * @param pluginRoot CAT installation directory
+	 * @param userRulesRoot optional user rule directory
+	 * @param projectRoot project directory
+	 * @param harness lowercase harness identifier
+	 * @return context and delivered packaged rule IDs
+	 * @throws IOException if a rule cannot be loaded
+	 */
+	public LoadedRules loadForMainAgentWithDelivery(Path pluginRoot, Path userRulesRoot, Path projectRoot,
+		String harness) throws IOException
+	{
 		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.primary());
+	}
+
+	/**
+	 * Loads subagent rules and identifies packaged content delivered in the result.
+	 *
+	 * @param pluginRoot CAT installation directory
+	 * @param userRulesRoot optional user rule directory
+	 * @param projectRoot project directory
+	 * @param harness lowercase harness identifier
+	 * @param agentType host subagent type
+	 * @return context and delivered packaged rule IDs
+	 * @throws IOException if a rule cannot be loaded
+	 */
+	public LoadedRules loadForSubagentWithDelivery(Path pluginRoot, Path userRulesRoot, Path projectRoot,
+		String harness, String agentType) throws IOException
+	{
+		requireThat(agentType, "agentType").isNotNull();
+		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.subagent(agentType));
 	}
 
 	/**
@@ -94,7 +151,7 @@ public final class ProjectRuleLoader
 	public String loadForSubagent(Path pluginRoot, Path projectRoot, String harness, String agentType) throws IOException
 	{
 		requireThat(agentType, "agentType").isNotNull();
-		return load(pluginRoot, null, projectRoot, harness, RuleAudience.subagent(agentType));
+		return load(pluginRoot, null, projectRoot, harness, RuleAudience.subagent(agentType)).context();
 	}
 
 	/**
@@ -115,7 +172,7 @@ public final class ProjectRuleLoader
 		String agentType) throws IOException
 	{
 		requireThat(agentType, "agentType").isNotNull();
-		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.subagent(agentType));
+		return load(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.subagent(agentType)).context();
 	}
 
 	/**
@@ -129,7 +186,8 @@ public final class ProjectRuleLoader
 	 * @return the generated context
 	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
 	 */
-	private String load(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness, RuleAudience audience)
+	private LoadedRules load(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness,
+		RuleAudience audience)
 		throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
@@ -147,7 +205,11 @@ public final class ProjectRuleLoader
 		Path projectRules = projectRoot.resolve(".cat/rules");
 		loadDirectory(projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT, audience, rules);
 		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT, audience, rules);
-		List<String> context = new ArrayList<>(ordered(rules).stream().map(Rule::context).toList());
+		List<Rule> inOrder = ordered(rules);
+		List<String> context = new ArrayList<>(inOrder.stream().map(Rule::context).toList());
+		List<String> deliveredPluginRuleIds = new ArrayList<>();
+		for (Rule rule: inOrder)
+			deliveredPluginRuleIds.addAll(rule.deliveredPluginRuleIds());
 		if (userRulesRoot != null)
 		{
 			String userLazyDependencies = lazyDependencies(userRulesRoot, userRulesRoot, RuleRoot.USER, audience);
@@ -157,7 +219,7 @@ public final class ProjectRuleLoader
 		String lazyDependencies = lazyDependencies(projectRoot, projectRules, RuleRoot.PROJECT, audience);
 		if (!lazyDependencies.isBlank())
 			context.add(lazyDependencies);
-		return String.join("\n\n---\n", context);
+		return new LoadedRules(String.join("\n\n---\n", context), deliveredPluginRuleIds);
 	}
 
 	/**
@@ -301,8 +363,23 @@ public final class ProjectRuleLoader
 			String body = content;
 			if (frontmatter != null)
 				body = frontmatter.body();
+			List<Path> included = new ArrayList<>();
+			String expanded = expandDirectIncludes(body, file, ruleRoot, new HashSet<>(), included);
+			List<String> deliveredPluginRuleIds = new ArrayList<>();
+			if (root == RuleRoot.PLUGIN)
+			{
+				String ruleId = relative(ruleRoot, file);
+				if (!GENERATED_ROUTING_INDEXES.contains(ruleId))
+					deliveredPluginRuleIds.add(ruleId);
+				for (Path include: included)
+				{
+					String includeId = relative(ruleRoot, include);
+					if (!GENERATED_ROUTING_INDEXES.contains(includeId))
+						deliveredPluginRuleIds.add(includeId);
+				}
+			}
 			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
-				injectedBody(null, expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file, ruleRoot));
+				injectedBody(null, expanded, file, ruleRoot), List.copyOf(deliveredPluginRuleIds));
 		}
 		if (!paths.isArray())
 			throw new IOException("Invalid paths frontmatter: " + path);
@@ -317,7 +394,7 @@ public final class ProjectRuleLoader
 		}
 		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), "Load `" +
 			displayPath(ownerRoot, root, file) +
-			"` only when an accessed file matches " + globs + ".");
+			"` only when an accessed file matches " + globs + ".", List.of());
 	}
 
 	/**
@@ -504,10 +581,12 @@ public final class ProjectRuleLoader
 	 * @param file the file that contains {@code content}
 	 * @param ruleRoot the source-root boundary for included files
 	 * @param expanding files in the active include chain
+	 * @param deliveredIncludes files whose bodies are inserted into the direct rule
 	 * @return the expanded rule body
 	 * @throws IOException if an include is ambiguous, unsafe, cyclic, or unreadable
 	 */
-	private String expandDirectIncludes(String content, Path file, Path ruleRoot, Set<Path> expanding) throws IOException
+	private String expandDirectIncludes(String content, Path file, Path ruleRoot, Set<Path> expanding,
+		List<Path> deliveredIncludes) throws IOException
 	{
 		Path normalized = file.normalize();
 		if (!expanding.add(normalized))
@@ -517,6 +596,7 @@ public final class ProjectRuleLoader
 		while (matcher.find())
 		{
 			Path included = MarkdownIncludes.resolve(file, matcher.group(1), "Direct rule include", ruleRoot);
+			deliveredIncludes.add(included);
 			if (Files.size(included) > MAXIMUM_RULE_BYTES)
 				throw new IOException("Direct rule include is too large: " + included);
 			String includedContent = Files.readString(included, UTF_8);
@@ -526,7 +606,7 @@ public final class ProjectRuleLoader
 				throw new IOException("Direct rule include must name source-only Markdown without frontmatter: " +
 					included);
 			}
-			String expanded = expandDirectIncludes(includedContent, included, ruleRoot, expanding);
+			String expanded = expandDirectIncludes(includedContent, included, ruleRoot, expanding, deliveredIncludes);
 			expanded = injectedBody(null, expanded, included, ruleRoot);
 			matcher.appendReplacement(result, Matcher.quoteReplacement(expanded));
 		}
@@ -718,7 +798,7 @@ public final class ProjectRuleLoader
 	}
 
 	private record Rule(RuleRoot root, String path, String displayPath, boolean direct, List<String> dependencies,
-		String context)
+		String context, List<String> deliveredPluginRuleIds)
 	{
 	}
 }

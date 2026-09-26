@@ -22,6 +22,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${PLUGIN_ROOT}/hooks/stop.sh",
+            "timeout": 120
+          }
+        ]
+      }
     ]
   }
 }

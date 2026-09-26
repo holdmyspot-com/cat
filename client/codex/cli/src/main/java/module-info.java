@@ -1,6 +1,8 @@
 module io.github.cowwoc.cat.codex.cli
 {
 	requires io.github.cowwoc.cat.common.cli;
+	requires java.net.http;
+	requires static jdk.httpserver;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;

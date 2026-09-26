@@ -3,17 +3,31 @@ package io.github.cowwoc.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.sun.net.httpserver.HttpServer;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.auth.WorkOsDeviceAuthClient;
+import io.github.cowwoc.cat.common.auth.WorkOsSessionStore;
+import io.github.cowwoc.cat.common.usage.UsageReportOutbox;
+import io.github.cowwoc.cat.codex.CodexMeteringVersion;
 import io.github.cowwoc.cat.codex.CodexSessionStartHook;
+import io.github.cowwoc.cat.codex.CodexUsageReportEncoder;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalLong;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -22,6 +36,209 @@ import tools.jackson.databind.JsonNode;
  */
 public final class CodexSessionStartHookTest
 {
+	/**
+	 * Retries pending usage when an online account check restores connectivity.
+	 *
+	 * @throws IOException if the test-owned login, outbox, or hook response cannot be used
+	 */
+	@Test
+	public void flushesPendingUsageAfterReconnect() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-reconnect-project-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-reconnect-plugin-"));
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-reconnect-home-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"),
+				"account-only rule");
+			Path data = Files.createDirectories(codexHome.resolve("plugins/data/cat-cat"));
+			UsageReportOutbox outbox = new UsageReportOutbox(data.resolve("outbox"));
+			UUID turnId = UUID.randomUUID();
+			CodexUsageReportEncoder encoder = new CodexUsageReportEncoder();
+			UsageReportOutbox.PendingReport pending = outbox.enqueue("workos:user_test", 17,
+				"codex:" + turnId + ":42", 42, eventId -> encoder.encode(new CodexUsageReportEncoder.Report(
+					turnId, eventId, 42, CodexMeteringVersion.V_0_155_0)));
+			AtomicInteger sent = new AtomicInteger();
+			AtomicInteger featureInvocations = new AtomicInteger();
+			AtomicReference<String> featureBody = new AtomicReference<>();
+			HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+			server.createContext("/cat/v1/accounts", exchange ->
+			{
+				byte[] body = "{\"accounts\":[{\"id\":17,\"email\":\"user@example.com\",\"verified\":true}]}".
+					getBytes(UTF_8);
+				exchange.sendResponseHeaders(200, body.length);
+				try (OutputStream response = exchange.getResponseBody())
+				{
+					response.write(body);
+				}
+			});
+			server.createContext("/cat/v1/verified-usage-reports", exchange ->
+			{
+				requireThat(exchange.getRequestHeaders().getFirst("X-HoldMySpot-Account-ID"), "accountHeader").
+					isEqualTo("17");
+				int request = sent.incrementAndGet();
+				byte[] body;
+				int status;
+				if (request == 1)
+				{
+					body = ("{\"event_id\":\"" + pending.eventId() +
+						"\",\"accounted_output_tokens\":42}").getBytes(UTF_8);
+					status = 200;
+				}
+				else
+				{
+					body = "unavailable".getBytes(UTF_8);
+					status = 503;
+				}
+				exchange.sendResponseHeaders(status, body.length);
+				try (OutputStream response = exchange.getResponseBody())
+				{
+					response.write(body);
+				}
+			});
+			server.createContext("/cat/v1/feature-invocations", exchange ->
+			{
+				requireThat(exchange.getRequestHeaders().getFirst("X-HoldMySpot-Account-ID"),
+					"featureAccountHeader").isEqualTo("17");
+				featureBody.set(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
+				featureInvocations.incrementAndGet();
+				exchange.sendResponseHeaders(204, -1);
+				exchange.close();
+			});
+			try
+			{
+				server.start();
+				URI base = URI.create("http://localhost:" + server.getAddress().getPort() + "/cat/");
+				new WorkOsSessionStore(data.resolve("auth")).save(new WorkOsSessionStore.Session(base,
+					"client_test", new WorkOsDeviceAuthClient.Tokens("user_test", "access", "refresh"),
+					OptionalLong.of(17)));
+
+				HookResult result = invokeRaw("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT",
+					plugin.toString(), "CODEX_HOME", codexHome.toString()), project);
+
+				requireThat(context(result), "context").contains("account-only rule");
+				requireThat(sent.get(), "sentReports").isEqualTo(1);
+				requireThat(featureInvocations.get(), "featureInvocations").isEqualTo(1);
+				requireThat(featureBody.get(), "featureBody").contains("\"feature_id\":\"common/rule.md\"");
+				requireThat(Files.exists(data.resolve("outbox").resolve(pending.eventId() + ".json")),
+					"pendingReport").isFalse();
+				UsageReportOutbox.PendingReport unsent = outbox.enqueue("workos:user_test", 17,
+					"codex:" + turnId + ":43", 43, eventId -> encoder.encode(new CodexUsageReportEncoder.Report(
+						turnId, eventId, 43, CodexMeteringVersion.V_0_155_0)));
+				HookResult failedDelivery = invokeRaw("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT",
+					plugin.toString(), "CODEX_HOME", codexHome.toString()), project);
+				requireThat(context(failedDelivery), "contextAfterFailedDelivery").contains("account-only rule");
+				requireThat(sent.get(), "attemptedReports").isEqualTo(2);
+				requireThat(Files.exists(data.resolve("outbox").resolve(unsent.eventId() + ".json")),
+					"retainedReport").isTrue();
+			}
+			finally
+			{
+				server.stop(0);
+			}
+		}
+	}
+	/**
+	 * Withholds direct rules when no authenticated HoldMySpot account is available.
+	 */
+	@Test
+	public void withholdsRulesWithoutAccount() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-no-account-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"),
+				"account-only rule");
+
+			HookResult result = invokeRaw("{\"cwd\":\"" + project + "\"}",
+				Map.of("PLUGIN_ROOT", plugin.toString()), project);
+
+			requireThat(context(result), "context").doesNotContain("account-only rule");
+			requireThat(readResponse(result).path("systemMessage").asString(), "recoveryMessage").
+				contains("client/bin/login");
+			requireThat(readResponse(result).has("continue"), "stoppedAgent").isFalse();
+		}
+	}
+
+	/**
+	 * A damaged saved login withholds rules and explains recovery without stopping the agent.
+	 *
+	 * @throws IOException if the test-owned login or hook response cannot be used
+	 */
+	@Test
+	public void withholdsRulesForInvalidLogin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-invalid-login-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-home-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"),
+				"account-only rule");
+			Path auth = Files.createDirectories(codexHome.resolve("plugins/data/cat-cat/auth"));
+			Files.setPosixFilePermissions(auth, PosixFilePermissions.fromString("rwx------"));
+			Path session = Files.writeString(auth.resolve("session.json"), "not-json");
+			Files.setPosixFilePermissions(session, PosixFilePermissions.fromString("rw-------"));
+
+			HookResult result = invokeRaw("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT",
+				plugin.toString(), "CODEX_HOME", codexHome.toString()), project);
+			requireThat(context(result), "context").doesNotContain("account-only rule");
+			requireThat(readResponse(result).has("continue"), "stoppedAgent").isFalse();
+			requireThat(readResponse(result).path("systemMessage").asString(), "recoveryMessage").
+				contains("client/bin/login");
+		}
+	}
+
+	/**
+	 * Withholds rules when the server no longer links the saved account to the current login.
+	 */
+	@Test
+	public void withholdsRulesAfterAccountUnlink() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-unlinked-account-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userHome = cleanup.add(Files.createTempDirectory("cat-user-home-"));
+			Path codexHome = Files.createDirectory(userHome.resolve(".codex"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"),
+				"account-only rule");
+			HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+			server.createContext("/cat/v1/accounts", exchange ->
+			{
+				byte[] body = "{\"accounts\":[{\"id\":18,\"email\":\"other@example.com\",\"verified\":true}]}".
+					getBytes(UTF_8);
+				exchange.sendResponseHeaders(200, body.length);
+				try (OutputStream response = exchange.getResponseBody())
+				{
+					response.write(body);
+				}
+			});
+			try
+			{
+				server.start();
+				URI base = URI.create("http://localhost:" + server.getAddress().getPort() + "/cat/");
+				WorkOsDeviceAuthClient.Tokens tokens = new WorkOsDeviceAuthClient.Tokens("user_test", "access",
+					"refresh");
+				Files.createDirectories(codexHome.resolve("plugins/data/cat-cat"));
+				new WorkOsSessionStore(codexHome.resolve("plugins/data/cat-cat/auth")).save(
+					new WorkOsSessionStore.Session(base, "client_test", tokens, OptionalLong.of(17)));
+
+				HookResult result = invokeRaw("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT",
+					plugin.toString(), "HOME", userHome.toString(), "CODEX_HOME", codexHome.toString()), project);
+
+				requireThat(context(result), "context").doesNotContain("account-only rule");
+				requireThat(readResponse(result).path("systemMessage").asString(), "recoveryMessage").
+					contains("no longer linked");
+			}
+			finally
+			{
+				server.stop(0);
+			}
+		}
+	}
+
 	/**
 	 * Verifies unconditional rules are injected while path-scoped rules remain lazy.
 	 */
@@ -142,8 +359,7 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies Codex receives installed paths for bundled lazy rules instead of references relative to removed rule
-	 * sources.
+	 * Verifies Codex receives a rule-load command for bundled lazy rules.
 	 */
 	@Test
 	public void resolvesBundledLazyRuleReferences() throws IOException
@@ -161,7 +377,8 @@ public final class CodexSessionStartHookTest
 			String context = context(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
 
-			requireThat(context, "context").contains("`" + lazyRule + "`").
+			requireThat(context, "context").contains("`\"$CAT_PLUGIN_ROOT/client/bin/rule-load\" " +
+				"include/java/javadoc.md`").doesNotContain("`" + lazyRule + "`").
 				doesNotContain("`../include/java/javadoc.md`");
 		}
 	}
@@ -291,14 +508,65 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Runs the SessionStart hook with supplied input and process state, then captures its standard streams.
+	 * Runs the SessionStart hook with a saved login authorized by a local account server.
 	 *
 	 * @param input the hook input
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
 	 * @return the captured standard streams
+	 * @throws IOException if the test-owned login or local account server cannot be prepared
 	 */
 	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory)
+		throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-authorized-codex-home-"));
+			HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+			server.createContext("/cat/v1/accounts", exchange ->
+			{
+				byte[] body = "{\"accounts\":[{\"id\":17,\"email\":\"user@example.com\",\"verified\":true}]}".
+					getBytes(UTF_8);
+				exchange.sendResponseHeaders(200, body.length);
+				try (OutputStream response = exchange.getResponseBody())
+				{
+					response.write(body);
+				}
+			});
+			server.createContext("/cat/v1/feature-invocations", exchange ->
+			{
+				exchange.getRequestBody().readAllBytes();
+				exchange.sendResponseHeaders(204, -1);
+				exchange.close();
+			});
+			try
+			{
+				server.start();
+				URI base = URI.create("http://localhost:" + server.getAddress().getPort() + "/cat/");
+				Files.createDirectories(codexHome.resolve("plugins/data/cat-cat"));
+				new WorkOsSessionStore(codexHome.resolve("plugins/data/cat-cat/auth")).save(
+					new WorkOsSessionStore.Session(base, "client_test",
+						new WorkOsDeviceAuthClient.Tokens("user_test", "access", "refresh"), OptionalLong.of(17)));
+				Map<String, String> authorizedEnvironment = new HashMap<>(environment);
+				authorizedEnvironment.put("CODEX_HOME", codexHome.toString());
+				return invokeRaw(input, authorizedEnvironment, workingDirectory);
+			}
+			finally
+			{
+				server.stop(0);
+			}
+		}
+	}
+
+	/**
+	 * Runs the native SessionStart hook with the exact supplied login state.
+	 *
+	 * @param input native hook input
+	 * @param environment process environment, including any saved login location
+	 * @param workingDirectory hook process directory
+	 * @return captured hook output and diagnostics
+	 */
+	private static HookResult invokeRaw(String input, Map<String, String> environment, Path workingDirectory)
 	{
 		assert input != null;
 		assert environment != null;

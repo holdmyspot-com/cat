@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -17,6 +18,37 @@ public final class ProjectRuleLoaderTest
 	 */
 	public ProjectRuleLoaderTest()
 	{
+	}
+
+	/**
+	 * Identifies packaged direct and included content, excluding routes and user or project rules.
+	 *
+	 * @throws IOException if test-owned rules cannot be loaded
+	 */
+	@Test
+	public void identifiesDeliveredPluginRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-delivery-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-delivery-"));
+			write(plugin, "rules/common/direct.md", "Direct <!-- cat:include ../include/common/body.md -->");
+			write(plugin, "rules/include/common/body.md", "Included content");
+			write(plugin, "rules/common/lazy.md", "---\npaths: [\"*.java\"]\n---\nLazy content");
+			write(plugin, "rules/common/.cat-lazy-rule-dependencies.md", "Generated dependency routes");
+			write(plugin, "rules/common/.cat-path-scoped-rules.md", "Generated path routes");
+			write(project, ".cat/rules/common/project.md", "Project content");
+
+			ProjectRuleLoader.LoadedRules loaded = new ProjectRuleLoader(scope.yaml()).
+				loadForMainAgentWithDelivery(plugin, null, project, "codex");
+
+			requireThat(loaded.context(), "context").contains("Direct Included content").
+				contains("Load `rules/common/lazy.md`").contains("Project content").
+				contains("Generated dependency routes").contains("Generated path routes").
+				doesNotContain("Lazy content");
+			requireThat(loaded.deliveredPluginRuleIds(), "deliveredRules").isEqualTo(
+				List.of("common/direct.md", "include/common/body.md"));
+		}
 	}
 
 	/**
