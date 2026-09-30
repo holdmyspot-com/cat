@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.state;
 
+import java.io.IOException;
 import java.nio.file.Path;
 
 /** Child-JVM exact-invocation stop submitter for the process-independent owner-lock test. */
@@ -19,6 +20,10 @@ public final class CampaignStopProbe
 	public static void main(String[] args) throws Exception
 	{
 		CampaignStore store = CampaignStore.open(Path.of(args[0]));
+		System.out.println("ready");
+		System.out.flush();
+		if (System.in.read() != '\n')
+			throw new IOException("Parent did not authorize stop submission");
 		StopRequest stop = new CampaignLocator(store.directory().getParent()).openStopInbox(store.binding()).
 			submit(store.binding(), args[1], "child-process");
 		System.out.println(stop.stopRef().evidenceId());

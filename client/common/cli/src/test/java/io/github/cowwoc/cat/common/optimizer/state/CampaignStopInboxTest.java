@@ -4,7 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.api.EvidenceRef;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -199,23 +201,38 @@ public final class CampaignStopInboxTest
 			inbox.publishHostObservation(binding, "invocation", registration,
 				JsonMapper.builder().build().writeValueAsBytes(new Observation(1, "3".repeat(64),
 					"session-3", "turn-3")));
-			try (SchedulerLease owner = ProspectiveCampaignState.lease(store).acquire(binding, "invocation"))
+			ProcessBuilder builder = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin",
+				"java").toString(), "--module-path", System.getProperty("jdk.module.path"), "--patch-module",
+				"io.github.cowwoc.cat.common.cli=" + Path.of("target/test-classes").toAbsolutePath().normalize(),
+				"--module", "io.github.cowwoc.cat.common.cli/" + CampaignStopProbe.class.getName(),
+				store.directory().toString(), "invocation").redirectErrorStream(true);
+			try (ExecutorService reader = Executors.newSingleThreadExecutor();
+				Process child = builder.start();
+				BufferedReader output = new BufferedReader(new InputStreamReader(child.getInputStream(),
+					StandardCharsets.UTF_8)))
 			{
-				ProcessBuilder builder = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin",
-					"java").toString(), "--module-path", System.getProperty("jdk.module.path"), "--patch-module",
-					"io.github.cowwoc.cat.common.cli=" + Path.of("target/test-classes").toAbsolutePath().normalize(),
-					"--module", "io.github.cowwoc.cat.common.cli/" + CampaignStopProbe.class.getName(),
-					store.directory().toString(), "invocation").redirectErrorStream(true);
-				try (Process child = builder.start())
+				try
 				{
-					if (!child.waitFor(5, TimeUnit.SECONDS))
-						throw new AssertionError("Child stop waited on the scheduler owner lock");
-					String output = new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-					if (child.exitValue() != 0)
-						throw new AssertionError("Child stop failed: " + output);
-					requireThat(output.trim(), "childStopRef").
-						isEqualTo(store.load().scheduler().stops().getFirst().stopRef().evidenceId());
-					requireThat(owner.fence(), "stillLiveOwner").isEqualTo(1L);
+					Future<String> ready = reader.submit(output::readLine);
+					requireThat(ready.get(30, TimeUnit.SECONDS), "childReadiness").isEqualTo("ready");
+
+					try (SchedulerLease owner = ProspectiveCampaignState.lease(store).acquire(binding, "invocation"))
+					{
+						child.getOutputStream().write('\n');
+						child.getOutputStream().flush();
+						if (!child.waitFor(5, TimeUnit.SECONDS))
+							throw new AssertionError("Child stop did not finish while the scheduler owner lock was held");
+						String stopReference = output.readLine();
+						if (child.exitValue() != 0)
+							throw new AssertionError("Child stop failed: " + stopReference);
+						requireThat(stopReference, "childStopRef").
+							isEqualTo(store.load().scheduler().stops().getFirst().stopRef().evidenceId());
+						requireThat(owner.fence(), "stillLiveOwner").isEqualTo(1L);
+					}
+				}
+				finally
+				{
+					child.destroyForcibly();
 				}
 			}
 		}
