@@ -20,6 +20,18 @@ CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 CAT_DATA_DIR="${CAT_CODEX_DATA_DIR:-${CODEX_HOME}/plugins/data/cat-cat}"
 MARKETPLACE_ROOT="${CAT_CODEX_MARKETPLACE_ROOT:-${CODEX_HOME}/plugins/cat-marketplace}"
 cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CODEX_MARKETPLACE_ROOT"
+
+# Native plugin replacement deletes cache roots still used by hooks in an already running tool session.
+if [ -n "${CODEX_THREAD_ID:-}${CODEX_SESSION_ID:-}" ]; then
+	for cat_cached_root in "${CODEX_HOME}/plugins/cache/cat/cat/"*; do
+		if [ -d "${cat_cached_root}" ] || [ -L "${cat_cached_root}" ]; then
+			echo "CAT cannot replace its installed cache from an active Codex session." >&2
+			echo "Run the installer from a terminal after closing sessions that use CAT." >&2
+			exit 1
+		fi
+	done
+fi
+
 cat_migrate_data "${CAT_DATA_DIR}" "${CAT_ARTIFACT_DIRECTORY}/install/migrations"
 cat_install_codex_agents "${CAT_ARTIFACT_DIRECTORY}" "${CODEX_HOME}" "${CAT_DATA_DIR}"
 codex plugin remove cat@cat >/dev/null 2>&1 || true

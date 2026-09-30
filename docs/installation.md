@@ -11,6 +11,10 @@ Each bootstrap command installs the latest release by default. Append a release 
 select a specific version. Re-run the same command to upgrade CAT to the latest release, or append a release tag to
 install that specific version.
 
+Before upgrading, close coding-harness sessions that use CAT, then run the installer from a terminal. Active sessions
+retain hook commands from their installed plugin cache; replacing that cache can remove commands they still need.
+The Codex installer refuses an upgrade invoked from a Codex tool session before changing installation state.
+
 ### 2. Choose a coding harness
 
 <details>

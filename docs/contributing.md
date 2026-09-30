@@ -19,6 +19,10 @@ client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml package
 This developer workflow installs the artifact built in this checkout; end users should use the release bootstrap in
 the [installation guide](installation.md).
 
+Before replacing an installed artifact, close coding-harness sessions that use CAT and run the installer from a
+terminal. The Codex installer refuses to replace an existing cache from a Codex tool session because that session's
+hooks still use the cached commands.
+
 ### Choose a coding harness
 
 #### Claude Code

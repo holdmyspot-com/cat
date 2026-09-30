@@ -41,6 +41,7 @@ platform=${expected_platform}" ]
 	artifact="$(create_test_artifact codex)"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		CODEX_THREAD_ID="first-install-session" \
 		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
 
 	[ "${status}" -eq 0 ]
@@ -55,6 +56,30 @@ platform=${expected_platform}" ]
 	grep -F "codex plugin add cat@cat" "${COMMAND_LOG}"
 	grep -F "plugin-info" "${COMMAND_LOG}"
 	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.1" ]
+}
+
+@test "Codex refuses cache replacement inside a tool session before changing installation state" {
+	create_fake_engine_command codex
+	artifact="$(create_test_artifact codex)"
+	cache="${CODEX_HOME}/plugins/cache/cat/cat/1.1"
+	data="${CODEX_HOME}/plugins/data/cat-cat"
+	mkdir -p "${cache}" "${data}"
+	printf 'retained hook\n' > "${cache}/hook"
+	printf '1.0\n' > "${data}/migration-version"
+
+	for session_variable in CODEX_THREAD_ID CODEX_SESSION_ID; do
+		run env PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID= CODEX_SESSION_ID= \
+			"${session_variable}=active-session" sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
+
+		[ "${status}" -eq 1 ]
+		[[ "${output}" == *"active Codex session"* ]]
+		[[ "${output}" == *"closing sessions"* ]]
+		[ "$(cat "${cache}/hook")" = "retained hook" ]
+		[ "$(cat "${data}/migration-version")" = "1.0" ]
+		[ ! -e "${CODEX_HOME}/agents" ]
+		[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+		[ ! -s "${COMMAND_LOG}" ]
+	done
 }
 
 @test "Codex installs self-contained custom agents from an assembled artifact" {
