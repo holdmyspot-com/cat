@@ -139,6 +139,38 @@ public final class CodexOptimizerPreToolHookTest
 	}
 
 	/**
+	 * Missing native authority denies the inspection without rewriting its input.
+	 *
+	 * @throws IOException if controlled hook JSON cannot be read or written
+	 */
+	@Test
+	public void deniesMissingHostAuthority() throws IOException
+	{
+		ObjectNode event = event("'/opt/cat/client/bin/optimizer-inspect'");
+		event.remove("model");
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+		CodexOptimizerPreToolHook.run(new ByteArrayInputStream(json.writeValueAsBytes(event)), output);
+
+		JsonNode result = json.readTree(output.toByteArray()).path("hookSpecificOutput");
+		requireThat(result.path("permissionDecision").asString(), "decision").isEqualTo("deny");
+		requireThat(result.path("permissionDecisionReason").asString(), "reason").contains("model");
+		requireThat(result.path("updatedInput").isMissingNode(), "noRewrite").isTrue();
+	}
+
+	/**
+	 * Malformed native JSON reports an I/O failure that the main hook can block.
+	 *
+	 * @throws IOException if the native event is malformed
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void rejectsMalformedNativeEvent() throws IOException
+	{
+		CodexOptimizerPreToolHook.run(new ByteArrayInputStream("{".getBytes(StandardCharsets.UTF_8)),
+			new ByteArrayOutputStream());
+	}
+
+	/**
 	 * Creates one controlled shell tool event.
 	 *
 	 * @param command pending shell command

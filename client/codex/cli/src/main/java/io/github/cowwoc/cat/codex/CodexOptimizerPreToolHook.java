@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
 import java.util.Objects;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -21,13 +22,20 @@ public final class CodexOptimizerPreToolHook
 	 * Handles one Codex pre-tool hook event.
 	 *
 	 * @param args empty hook arguments
-	 * @throws IOException if event reading or output fails
 	 */
-	public static void main(String[] args) throws IOException
+	public static void main(String[] args)
 	{
-		if (args.length != 0)
-			throw new IllegalArgumentException("Optimizer pre-tool hook takes no arguments");
-		run(System.in, System.out);
+		try
+		{
+			if (args.length != 0)
+				throw new IllegalArgumentException("Optimizer pre-tool hook takes no arguments");
+			run(System.in, System.out);
+		}
+		catch (IOException | IllegalArgumentException failure)
+		{
+			System.err.println("CAT optimizer pre-tool hook: " + failure.getMessage());
+			System.exit(2);
+		}
 	}
 
 	/**
@@ -41,7 +49,15 @@ public final class CodexOptimizerPreToolHook
 	{
 		Objects.requireNonNull(input, "input");
 		Objects.requireNonNull(output, "output");
-		JsonNode event = JSON.readTree(input);
+		JsonNode event;
+		try
+		{
+			event = JSON.readTree(input);
+		}
+		catch (JacksonException failure)
+		{
+			throw new IOException("Optimizer pre-tool event is malformed", failure);
+		}
 		if (event == null || !event.isObject())
 			throw new IOException("Optimizer pre-tool hook requires an object event");
 		if (!"PreToolUse".equals(event.path("hook_event_name").asString()) ||
@@ -55,12 +71,26 @@ public final class CodexOptimizerPreToolHook
 		OptimizerToolCommand inspectionCall = OptimizerToolCommand.findInspectionCall(command).orElse(null);
 		if (inspectionCall == null)
 			return;
-		String session = requiredText(event, "session_id");
-		String turn = requiredText(event, "turn_id");
-		String toolUse = requiredText(event, "tool_use_id");
-		String model = requiredText(event, "model");
-		ObjectNode updated = (ObjectNode) JSON.readTree(JSON.writeValueAsBytes(inputNode));
-		updated.put("command", inspectionCall.bindHostIdentity(session, turn, toolUse, model));
+
+		ObjectNode updated;
+		try
+		{
+			String session = requiredText(event, "session_id");
+			String turn = requiredText(event, "turn_id");
+			String toolUse = requiredText(event, "tool_use_id");
+			String model = requiredText(event, "model");
+			updated = (ObjectNode) JSON.readTree(JSON.writeValueAsBytes(inputNode));
+			updated.put("command", inspectionCall.bindHostIdentity(session, turn, toolUse, model));
+		}
+		catch (IOException | IllegalArgumentException failure)
+		{
+			output.write(JSON.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of(
+				"hookEventName", "PreToolUse", "permissionDecision", "deny",
+				"permissionDecisionReason", "CAT could not bind this inspection command to its Codex tool call: " +
+					failure.getMessage()))));
+			return;
+		}
+
 		output.write(JSON.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of(
 			"hookEventName", "PreToolUse", "permissionDecision", "allow", "updatedInput", updated))));
 	}

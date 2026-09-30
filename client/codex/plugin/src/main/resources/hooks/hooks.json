@@ -1,5 +1,27 @@
 {
   "hooks": {
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/client/bin/optimizer-host-hook\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/client/bin/optimizer-pre-tool\""
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "^(startup|resume|clear|compact)$",

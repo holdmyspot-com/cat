@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.codex;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.api.EvidenceRef;
@@ -14,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.state.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.state.SchedulerLease;
 import io.github.cowwoc.cat.common.optimizer.state.StopRequest;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,7 +32,9 @@ public final class CodexOptimizerHostHookTest
 {
 	private final JsonMapper json = JsonMapper.builder().build();
 
-	/** Creates an isolated host hook check. */
+	/**
+	 * Creates an isolated host hook check.
+	 */
 	public CodexOptimizerHostHookTest()
 	{
 	}
@@ -101,6 +105,37 @@ public final class CodexOptimizerHostHookTest
 				requireThat(expected.getMessage(), "wrongEvent").contains("Interrupt");
 			}
 		}
+	}
+
+	/**
+	 * A malformed native event produces a warning instead of escaping the interrupt handler.
+	 *
+	 * @throws IOException if warning output fails
+	 */
+	@Test
+	public void warnsForMalformedNativeEvent() throws IOException
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		CodexOptimizerHostHook.run(new ByteArrayInputStream("{".getBytes(UTF_8)), Path.of("unused"), output);
+
+		requireThat(json.readTree(output.toByteArray()).path("systemMessage").asString(), "warning").
+			contains("malformed");
+	}
+
+	/**
+	 * An unsupported native event reports its rejected event requirement as a warning.
+	 *
+	 * @throws IOException if warning output fails
+	 */
+	@Test
+	public void warnsForUnsupportedNativeEvent() throws IOException
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		CodexOptimizerHostHook.run(event("Stop", "session", "turn", Path.of("unused")), Path.of("unused"),
+			output);
+
+		requireThat(json.readTree(output.toByteArray()).path("systemMessage").asString(), "warning").
+			contains("requires an Interrupt event");
 	}
 
 	/**

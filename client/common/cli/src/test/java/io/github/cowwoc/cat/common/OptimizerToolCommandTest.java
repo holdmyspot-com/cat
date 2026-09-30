@@ -33,6 +33,36 @@ public final class OptimizerToolCommandTest
 	}
 
 	/**
+	 * Binding a literal absolute launcher preserves its arguments and inserts the host identities.
+	 */
+	@Test
+	public void bindsUnquotedInspectionLauncher()
+	{
+		String command = "/project-v1.0/client/bin/optimizer-inspect --target prompt.md";
+		String bound = OptimizerToolCommand.findInspectionCall(command).orElseThrow().
+			bindHostIdentity("session", "turn", "tool", "model");
+
+		requireThat(bound, "boundCommand").isEqualTo("/project-v1.0/client/bin/optimizer-inspect" +
+			" --host-session-id 'session' --host-turn-id 'turn' --host-tool-use-id 'tool'" +
+			" --host-model-id 'model' --target prompt.md");
+	}
+
+	/**
+	 * Binding a wrapped literal launcher preserves the host identities as nested shell arguments.
+	 */
+	@Test
+	public void bindsWrappedUnquotedInspectionLauncher()
+	{
+		String command = "/bin/bash -lc '/project/client/bin/optimizer-inspect --target prompt.md'";
+		String bound = OptimizerToolCommand.findInspectionCall(command).orElseThrow().
+			bindHostIdentity("session", "turn", "tool", "model");
+
+		requireThat(bound, "boundCommand").isEqualTo("/bin/bash -lc '/project/client/bin/optimizer-inspect" +
+			" --host-session-id '\"'\"'session'\"'\"' --host-turn-id '\"'\"'turn'\"'\"'" +
+			" --host-tool-use-id '\"'\"'tool'\"'\"' --host-model-id '\"'\"'model'\"'\"' --target prompt.md'");
+	}
+
+	/**
 	 * Binding a single-quoted launcher preserves apostrophes as POSIX shell argument text.
 	 */
 	@Test
@@ -73,8 +103,12 @@ public final class OptimizerToolCommandTest
 			isEqualTo(Optional.empty());
 		requireThat(OptimizerToolCommand.findInspectionCall("/bin/bash -lc 'echo unrelated'"), "wrappedOtherCommand").
 			isEqualTo(Optional.empty());
-		requireThat(OptimizerToolCommand.findInspectionCall("/project/client/bin/optimizer-inspect"),
-			"unquotedLauncher").isEqualTo(Optional.empty());
+		requireThat(OptimizerToolCommand.findInspectionCall("echo /project/client/bin/optimizer-inspect"),
+			"launcherArgument").isEqualTo(Optional.empty());
+		requireThat(OptimizerToolCommand.findInspectionCall("/$HOME/client/bin/optimizer-inspect"),
+			"expandedLauncher").isEqualTo(Optional.empty());
+		requireThat(OptimizerToolCommand.findInspectionCall("/project/client/bin/optimizer-inspect-other"),
+			"differentLauncher").isEqualTo(Optional.empty());
 	}
 
 	/**

@@ -93,6 +93,8 @@ no established order; never use it alone to reorder an established group.
 - Use `StringJoiner` for delimiter-separated output instead of manually injecting delimiters.
 - Use `equals()` for case-sensitive string comparisons and `equalsIgnoreCase()` only when the domain is intentionally
   case-insensitive.
+- When comparing a string variable that may be null with a literal, prefer `Objects.equals(variable, "literal")` to
+  `"literal".equals(variable)`. When the variable is known to be non-null, use `variable.equals("literal")`.
 - When every component of a filesystem path is fixed text, pass one slash-delimited path to `Path.of()`. For example,
   use `Path.of("a/b")`, not `Path.of("a", "b")`. Keep a derived filename in that expression when its parent directories
   are also fixed. Use separate arguments only for independently supplied components whose boundaries matter to the

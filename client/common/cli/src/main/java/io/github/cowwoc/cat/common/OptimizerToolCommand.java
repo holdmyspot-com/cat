@@ -12,13 +12,18 @@ import java.util.regex.Pattern;
  */
 public final class OptimizerToolCommand
 {
+	private static final String UNQUOTED_INSPECTION_LAUNCHER =
+		"/(?:[A-Za-z0-9._+-]+/)*client/bin/optimizer-inspect";
 	private static final Pattern INSPECTION_COMMAND = Pattern.compile(
-		"^\\s*(\"[^\"\\r\\n]*/client/bin/optimizer-inspect\"|'[^'\\r\\n]*/client/bin/optimizer-inspect')(?=\\s|$)");
+		"^\\s*(\"[^\"\\r\\n]*/client/bin/optimizer-inspect\"|'[^'\\r\\n]*/client/bin/optimizer-inspect'|" +
+			UNQUOTED_INSPECTION_LAUNCHER + ")(?=\\s|$)");
 	private static final Pattern WRAPPED_INSPECTION_COMMAND = Pattern.compile(
-		"^\\s*/bin/bash\\s+-lc\\s+'(?<launcher>\"[^\"\\r\\n]*/client/bin/optimizer-inspect\")" +
+		"^\\s*/bin/bash\\s+-lc\\s+'(?<launcher>\"[^\"\\r\\n]*/client/bin/optimizer-inspect\"|" +
+			UNQUOTED_INSPECTION_LAUNCHER + ")" +
 			"(?=\\s|')[^']*'\\s*$");
+
 	/**
-	 * Finds a directly quoted inspection launcher or the supported Bash wrapped launcher.
+	 * Finds a quoted or literal absolute inspection launcher, directly or in the supported Bash wrapper.
 	 *
 	 * @param command complete host command to inspect
 	 * @return the recognized command and insertion point, or empty when its shape is unsupported

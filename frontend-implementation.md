@@ -35,7 +35,7 @@ change; preserve unaffected verified work. Historical receipts do not set curren
 
 | Component | Current closure state | Restored-tree audit and next evidence |
 |---|---|---|
-| W0 — integration capabilities | **Open.** | Shared adapter/source lifecycles, both retained readers, native answer agreement, and both adapters pass local focused/full checks. Both inspection launchers pass generated-artifact checks. Authentic host handoffs and installed native flows remain unverified. Complete P2, P4, P5, and P6 remain open for their assigned combined gates. |
+| W0 — integration capabilities | **Open.** | Shared adapter/source lifecycles, both retained readers, native answer agreement, and both adapters pass local focused/full checks. Both inspection launchers pass generated-artifact checks. Native pre-tool identity binding passes in both harnesses; installed Codex Interrupt dispatch and exact stop delivery pass. Complete inspection, recovery, adoption and P2/P4/P5/P6 combined gates remain open. |
 | W1 — campaign execution | **Open; prior local closures reopened.** | Source and tests for the fork, inspection, observation, and recovery slices are present. Their current focused Maven `verify` subset passes; the real I1 and H9 checks, scheduling-bypass audit, and remaining component gates stay open. |
 | W2 — contract preparation | **Open; prior local closures reopened.** | Current contract, evidence, policy, and category-assignment tests pass in the unrestricted reactor build, including the reduced source-backed review test and direct checkpoint policy tests. Complete derivation, H2, and the W2/W4 handoff remain open. |
 | W3 — trials and evidence | **Open; prior local closures reopened.** | Current focused transport, admission, evaluator-request, sterile-workspace, and initial-trial dispatch tests pass. Other local slices still need their current checks. The last installed Codex evaluator probe failed input access, so it cannot establish H6 semantic judgment. |
@@ -64,14 +64,75 @@ result dispositions. These are local availability and fixture checks, not instal
 The current W0 implementation frontier is the host-observation handoff:
 
 1. Shared inspection-command recognition and quoting are implemented; retain the accepted producer below.
-2. Implement Claude's current-tool model lookup and native hook consumer from that accepted snapshot. Match the exact
-   parent session and tool identity; handle asynchronous incomplete records with a bounded waiting/failure contract.
-   Do not substitute the configured model alias or invent effective effort.
-3. Register and exercise authentic hooks in both installed harnesses. Verify invocation identity, matching interruption,
-   restart, native disposition, adoption, and closure before passing their behavior gates.
+2. Claude's current-tool model lookup and hook consumer pass local verification. A generated-artifact native probe
+   confirms identity binding for quoted and unquoted launcher paths; complete inspection and installed-cache acceptance
+   remain open. Retain exact parent session/tool correlation and the bounded asynchronous-record waiting contract.
+3. Retain native pre-tool identity binding in both harnesses and installed Codex interruption dispatch/stop delivery.
+   Complete inspection, restart, native disposition, stop adoption, and closure before passing their remaining gates.
 4. Continue the combined P2/P4/P5/P6 checks with their named W3/W4/W5 producers. Availability does not pass those gates.
 
 ### Native evidence retained for the current frontier
+
+The native Claude pre-tool probe first missed an unquoted absolute launcher, leaving required host options absent.
+OptimizerToolCommand now recognizes literal absolute paths in direct and supported Bash-wrapped commands while still
+rejecting unrelated commands, variable-expanded paths, and different launcher suffixes. Its 15 direct tests pass in
+0.067 seconds (slowest method 0.037 seconds); the unrestricted reactor and both packaged pre-tool checks pass.
+The rebuilt Claude artifact's native probe binds session, promptId, tool-use ID, and observed model to their matching
+native records, preserves other tool-input fields, and reaches the expected missing-target failure. The probe also
+read CAT's session context before inspection; it does not establish a single-tool invocation claim. Complete inspection,
+interruption, recovery, adoption, and installed-cache acceptance remain open. The receipt and cleanup owner are under
+`.cat/work/temp/native-pre-tool-13506195617448031836/literal-launcher-correction.json`.
+
+The isolated Codex installation initially skipped its untrusted pre-tool hook. After review of its exact native hash,
+the runner still needed to copy that existing approval into later isolated homes: its previous policy copied only the
+two context-hook approvals. The corrected copy policy passes eight configuration checks in 0.055 seconds, the full
+reactor, and both packaged pre-tool checks. The rebuilt runner's native probe now delivers the installed pre-tool hook,
+binds the session/turn/tool identities to native execution records and the model to its persisted turn context, and
+executes the launcher through the expected missing-target failure. The hook took 314 milliseconds and launcher took
+205 milliseconds. The raw code-mode call supplied no host identity options. Parent-user trust settings were unchanged.
+Direct CLI probes separately failed shell launch at an app-server socket-directory check; the supported app-server
+runner succeeds without granting outer socket access. Full inspection, recovery, adoption and parent-cache
+acceptance remain open. The receipt and cleanup owner are under
+`.cat/work/temp/codex-native-pre-tool-973762364498623407/trust-copy-correction.json`.
+
+The rebuilt Codex artifact passes authentic installed Interrupt dispatch through the runner's supported interrupt
+operation. Codex reports successful synchronous hook completion in 547 milliseconds. The campaign contains one pending
+HOST_INTERRUPTION stop bound to the observed native session/turn, exact invocation and scheduler fence. Installed
+manifest, launcher and runtime hashes match the verified generated artifact. The exact hook hash was reviewed and
+approved only in the disposable probe home; parent-user trust settings were unchanged. This closes native Codex
+interruption dispatch and durable stop delivery only; complete inspection recovery, stop adoption and parent-cache
+acceptance remain open. Evidence and cleanup ownership are under
+`.cat/work/temp/interrupt-hook-11996907463510516054/native-interrupt-receipt.json`.
+
+The full installed Codex inspection probe binds all native identities, then fails before nested inspection dispatch:
+the shell's workspace-write policy makes the copied project's `.git` metadata read-only, so VerifiedCleanFork cannot
+create the optimization worktree. The runner configures cat-runner permissions but its thread/start request overrides
+them with the legacy sandbox field. Native inventory accepts the existing named profile; a diagnostic Git command
+under it instead fails at the isolated app-server socket-directory owner/mode check, before Git executes. No permission
+grant or production selection policy has changed. Trace that isolated failure before selecting a repair; full inspection,
+adoption and recovery remain unverified. Evidence and cleanup ownership are under
+`.cat/work/temp/native-inspection-4406671281556781440/ownership.json`.
+
+Current unit-runtime investigation: the isolated JFR run of stopsNewDrawsInWeakFollowupBatch passed and measured
+11.879688455 seconds, including 561 CampaignStore.load calls. Its two countBatchOutcomes calls took 0.065354786 and
+0.002782884 seconds; constructing the fixed-size coverage batch is not the main cost. Recorded file-read/write events
+total about 0.009 seconds, while load repeatedly validates the campaign and its evidence. This does not establish the
+cost of unrecorded I/O or permit removing any enforcement/recovery assertion. Retained evidence and cleanup ownership
+are under `.cat/work/temp/weak-followup-profile-13843061462079604690/ownership.json`.
+
+The first production optimization reuses the parsed campaign tree for typed conversion instead of parsing its text
+again. CampaignStoreTest and the unchanged weak-follow-up test passed focused verify. Matching isolated JFR runs
+measured 11.879688455 seconds before and 12.50333251 seconds after; this pair establishes no timing reduction and the
+test remains above one second. The final unrestricted reactor for this source change passed, followed by both
+packaged pre-tool checks against the rebuilt artifacts.
+The public evidence reader still
+revalidates binding on each read. Any operation-scoped reuse must preserve fresh state across separate operations and
+all foreign, corrupt, stale and direct-commit rejection boundaries.
+CampaignStoreTest.evidenceReaderRechecksCampaignIdentity explicitly changes the campaign identity between two reads;
+a retained reader must reject the second read. CandidateEvidenceRepository delegates every read and publication
+verification to that reader. The existing readCallSlotClaim operation demonstrates validation reuse within one defined
+locked read, but does not authorize reusing a snapshot across independent repository calls. The next performance design
+must establish an explicit operation boundary and preserve the existing reader's freshness test.
 
 | Evidence | Established observation | Remaining boundary |
 |---|---|---|
@@ -116,17 +177,23 @@ stay in their required verification gates.
 
 ### Shared inspection-command producer
 
-Status: accepted local implementation. OptimizerToolCommand owns both existing recognized launcher shapes and exact
+Status: accepted local implementation. OptimizerToolCommand owns direct and Bash-wrapped launcher recognition and exact
 POSIX quoting. CodexOptimizerPreToolHook delegates to it while retaining native identity validation and output behavior.
-The helper's 13 direct tests and the Codex hook's four consumer tests pass; the measured focused methods are below
-0.13 seconds. The unrestricted Maven verify returned exit 0. After declaration-order correction, the focused verify
-passed again. PMD reports existing analyzer crashes in Campaign.java; complete quality coverage remains open and this
+The helper's 15 direct tests pass in 0.067 seconds, including literal unquoted paths. Codex and Claude consumer checks,
+the unrestricted Maven verify, and both packaged pre-tool checks pass. PMD reports existing analyzer crashes in
+Campaign.java; complete quality coverage remains open and this
 producer does not close W0 or W8. Accepted helper SHA-256:
-`b5403f4fa604ef480d7fb5c07067a1159a12970219b0bd768408ad4311cb9af1`.
+`ac0203b202695f40bba28d37acbd7c88f54c53341631b0cd1beaad65e0e4152b`.
 
 ### Next implementation cluster: Claude current-tool host identity
 
-Status: designed, not launched. Native model aliases are insufficient: the retained probe demonstrates that the actual
+Status: the four consumer files are integrated after parent review and producer repairs. The repaired delegate's
+focused verification passed (0.128 seconds combined, every method below one second); the combined focused Claude/Codex
+verify and unrestricted reactor also passed in the parent. All eight default artifact Bats checks passed, including
+both pre-tool entry points. Authentic installed native gates remain pending.
+Each attempt now streams one captured byte extent from the same open channel, avoiding misclassification of
+concurrently appended partial records. Owned fixtures are cleaned up and tests cover the additional input boundaries.
+Native model aliases are insufficient: the retained probe demonstrates that the actual
 assistant model can differ. Read only the native transcript supplied by the current PreToolUse event and correlate its
 explicit parent session and exact tool-use identity before binding the shared inspection command. An unrelated Bash
 command needs neither host identity nor transcript access. A subagent or another session must never supply the model.
@@ -177,6 +244,42 @@ Before acceptance run disabled-cache Maven verify with -pl claude/cli -am,
 -Dtest=HostToolModelTest,ClaudeOptimizerPreToolHookTest and -Dsurefire.failIfNoSpecifiedTests=false, require exit 0,
 record method XML timings and changed paths, then git diff --check. Parent reviews all four paths and runs the combined
 reactor before accepting this consumer; installed/native gates remain separate.
+
+### Registration readiness after consumer acceptance
+
+Registration source adds both native pre-tool launchers and manifests. The unrestricted reactor passed, followed by
+both packaged Bats checks and the complete default artifact-runner checks; the new checks first failed against the
+predecessor artifacts with absent registration. These establish packaged availability and responses, not native dispatch.
+The Claude registration uses the existing distribution launcher mechanism and Claude's `hooks/hooks.json`.
+Its exact write set is DistributionMain.java, the Claude hook manifest, and
+artifact-runners.bats. Add `optimizer-pre-tool` in the Claude launcher list, targeting ClaudeOptimizerPreToolHook;
+register a synchronous PreToolUse command for Bash through the quoted native CLAUDE_PLUGIN_ROOT launcher path.
+Its ten-second timeout exceeds the consumer's five-second lookup deadline. Packaged Bats checks invoke the manifest's
+actual command, prove updatedInput preserves unrelated members and binds the exact native identities/model, and prove
+missing authority denies the inspection. Use a tiny owned transcript fixture, not a nested harness or campaign.
+Run the complete disabled-cache reactor verify and the packaged checks before this availability cluster is accepted.
+Authentic installed Claude tool execution remains a separate behavioral gate.
+
+Codex's source failure-semantics repair now returns a structured denial for missing inspection authority and reports
+malformed-event failures through blocking exit 2. The new direct denial test first failed with the missing-model
+IOException, then all five Codex hook tests passed disabled-cache focused Maven verify (0.146 seconds combined;
+slowest method 0.138 seconds). A separate red test established that malformed JSON escaped as an unchecked Jackson
+failure; the public hook now translates that precise failure to IOException, and combined focused verify passed.
+The packaged exit boundary and combined reactor passed. Both harnesses now have native pre-tool identity-binding
+evidence from missing-target probes; full inspection and installed parent-cache acceptance remain pending.
+Preserve Codex's required allow-plus-updatedInput success response. Codex and Claude registration both consume
+DistributionMain.java, so they require
+sequential integration. The Interrupt hook has a separate three-second native execution bound; its campaign lookup
+passes the packaged entry-boundary measurement: unrelated, matching and duplicate delivery took 0.549, 0.827 and
+0.709 seconds. The matching event delivers the exact invocation/fence stop, the unrelated event leaves the campaign
+unchanged, and duplicate delivery preserves the same stop. Malformed events produce a supported systemMessage warning.
+Codex's manifest now registers Interrupt with a three-second timeout, and the runner copies only an existing approval
+for its exact hook key. Focused verify passes all four interruption and eight configuration checks; the unrestricted
+reactor passes. All nine default packaged artifact checks pass, including Interrupt's silent no-campaign response and
+malformed-event warning within three seconds; the authenticated evaluation smoke check is unrun. Authentic native
+Interrupt dispatch and exact durable stop delivery also pass the installed Codex probe above; inspection recovery and
+stop adoption remain separate acceptance gates.
+Retained receipts and cleanup ownership are under `.cat/work/temp/interrupt-hook-11996907463510516054/ownership.json`.
 
 ## Confirmed scope decisions
 

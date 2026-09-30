@@ -71,6 +71,71 @@ teardown()
 	done
 }
 
+# The manifest supplies each harness's command; this checks its packaged entry point without a native harness.
+@test "packaged pre-tool hooks bind native identities and preserve other input" {
+	transcript="${TEST_ROOT}/transcript.jsonl"
+	printf '%s\n' '{"type":"assistant","sessionId":"session","isSidechain":false,"message":{"model":"observed-model","content":[{"type":"tool_use","id":"tool"}]}}' > "${transcript}"
+	event="${TEST_ROOT}/event.json"
+	jq -n --arg transcript "${transcript}" '{
+		hook_event_name:"PreToolUse", tool_name:"Bash",
+		session_id:"session", prompt_id:"turn", turn_id:"turn", tool_use_id:"tool",
+		model:"observed-model", transcript_path:$transcript,
+		tool_input:{command:"\"/opt/cat/client/bin/optimizer-inspect\" --target prompt.md",timeout:5}
+	}' > "${event}"
+
+	for harness in claude codex; do
+		artifact="${GENERATED_RUNTIME_DIRECTORY}/${harness}"
+		command="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "${artifact}/hooks/hooks.json")"
+		run env CLAUDE_PLUGIN_ROOT="${artifact}" PLUGIN_ROOT="${artifact}" bash -c "${command}" < "${event}"
+		[ "${status}" -eq 0 ]
+		printf '%s\n' "${output}" | jq -e '.hookSpecificOutput.updatedInput |
+			.timeout == 5 and (.command |
+			contains("--host-session-id '\''session'\''") and
+			contains("--host-turn-id '\''turn'\''") and
+			contains("--host-tool-use-id '\''tool'\''") and
+			contains("--host-model-id '\''observed-model'\''"))'
+	done
+}
+
+@test "packaged pre-tool hooks deny missing authority and block malformed events" {
+	event="${TEST_ROOT}/missing-authority.json"
+	printf '%s\n' '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"\"/opt/cat/client/bin/optimizer-inspect\""}}' > "${event}"
+	malformed="${TEST_ROOT}/malformed.json"
+	printf '{' > "${malformed}"
+
+	for harness in claude codex; do
+		artifact="${GENERATED_RUNTIME_DIRECTORY}/${harness}"
+		command="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "${artifact}/hooks/hooks.json")"
+		run env CLAUDE_PLUGIN_ROOT="${artifact}" PLUGIN_ROOT="${artifact}" bash -c "${command}" < "${event}"
+		[ "${status}" -eq 0 ]
+		printf '%s\n' "${output}" | jq -e '.hookSpecificOutput | .permissionDecision == "deny" and (.permissionDecisionReason | length > 0) and (has("updatedInput") | not)'
+
+		run env CLAUDE_PLUGIN_ROOT="${artifact}" PLUGIN_ROOT="${artifact}" bash -c "${command}" < "${malformed}"
+		[ "${status}" -eq 2 ]
+		[[ "${output}" == *"CAT optimizer pre-tool hook:"* ]]
+	done
+}
+
+@test "packaged Codex interrupt hook returns bounded no-campaign and warning responses" {
+	artifact="${GENERATED_RUNTIME_DIRECTORY}/codex"
+	command="$(jq -er '.hooks.Interrupt[0].hooks[0].command' "${artifact}/hooks/hooks.json")"
+	project="${TEST_ROOT}/interrupt-project"
+	mkdir -p "${project}/.cat"
+	event="${TEST_ROOT}/interrupt.json"
+	jq -n --arg cwd "${project}" '{hook_event_name:"Interrupt",session_id:"session",turn_id:"turn",cwd:$cwd}' > "${event}"
+	cd "${project}" || return 1
+
+	run timeout 3s env PLUGIN_ROOT="${artifact}" bash -c "${command}" < "${event}"
+	[ "${status}" -eq 0 ]
+	[ -z "${output}" ]
+
+	malformed="${TEST_ROOT}/malformed-interrupt.json"
+	printf '{' > "${malformed}"
+	run timeout 3s env PLUGIN_ROOT="${artifact}" bash -c "${command}" < "${malformed}"
+	[ "${status}" -eq 0 ]
+	printf '%s\n' "${output}" | jq -e '.systemMessage | contains("malformed")'
+}
+
 # Creates a minimal packaged plugin artifact for one harness runner.
 #
 # Arguments:

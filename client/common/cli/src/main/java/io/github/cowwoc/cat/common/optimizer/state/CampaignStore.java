@@ -979,7 +979,7 @@ public final class CampaignStore
 			{
 				throw new IOException("Campaign state is malformed: required field is missing or null");
 			}
-			Campaign campaign = JSON.readValue(serialized, Campaign.class);
+			Campaign campaign = JSON.treeToValue(document, Campaign.class);
 			if (campaign == null)
 				throw new IOException("Campaign state is malformed: empty document");
 			CampaignBinding binding = new CampaignBinding(campaign.campaignId(), directory);

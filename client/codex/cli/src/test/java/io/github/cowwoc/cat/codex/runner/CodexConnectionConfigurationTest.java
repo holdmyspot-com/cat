@@ -203,7 +203,7 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies only CAT's approved context-hook hashes are copied into an isolated configuration.
+	 * Copies existing approvals for CAT hooks without approving unrelated hooks or copying enablement settings.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -216,6 +216,12 @@ public final class CodexConnectionConfigurationTest
 			Path source = root.resolve("host.toml");
 			Path destination = root.resolve("isolated/config.toml");
 			Files.writeString(source, """
+				[hooks.state."cat@cat:hooks/hooks.json:interrupt:0:0"]
+				trusted_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+				[hooks.state."cat@cat:hooks/hooks.json:pre_tool_use:0:0"]
+				trusted_hash = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
 				[hooks.state."cat@cat:hooks/hooks.json:session_start:0:0"]
 				trusted_hash = "sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
 				enabled = true
@@ -231,6 +237,12 @@ public final class CodexConnectionConfigurationTest
 
 			String configuration = Files.readString(destination);
 			requireThat(configuration, "configuration").contains(
+				"[hooks.state.\"cat@cat:hooks/hooks.json:interrupt:0:0\"]").contains(
+					"trusted_hash = \"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"").
+				contains(
+				"[hooks.state.\"cat@cat:hooks/hooks.json:pre_tool_use:0:0\"]").contains(
+					"trusted_hash = \"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"").
+				contains(
 				"[hooks.state.\"cat@cat:hooks/hooks.json:session_start:0:0\"]").contains(
 					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				contains("[hooks.state.\"cat@cat:hooks/hooks.json:subagent_start:0:0\"]").contains(
