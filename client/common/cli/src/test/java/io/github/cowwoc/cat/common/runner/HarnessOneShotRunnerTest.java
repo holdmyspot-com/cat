@@ -22,7 +22,7 @@ public final class HarnessOneShotRunnerTest
 	}
 
 	/**
-	 * Verifies terminal output is persisted before the successful run is removed.
+	 * Reserves the native turn, then persists terminal output before removing the successful run.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -46,10 +46,21 @@ public final class HarnessOneShotRunnerTest
 
 	private static final class Process implements HarnessProcess
 	{
+		private boolean reserved;
+
 		@Override
-		public HarnessProcessResult sendTurn(String request)
+		public void reserveTurn()
+		{
+			reserved = true;
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
 		{
 			assert request != null;
+			if (!reserved)
+				throw new IOException("Turn was not reserved before dispatch");
+			reserved = false;
 			return new HarnessProcessResult(0, "result", "");
 		}
 

@@ -14,6 +14,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -22,7 +23,6 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
@@ -66,7 +67,7 @@ public final class HarnessRunManager
 		  "turnNumber": (?<turnNumber>[0-9]+),
 		  "exitCode": (?<exitCode>null|-?[0-9]+),
 		  "finishedAt": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
-		  "diagnostic": "(?:[^"\\\\]|\\\\.)*"
+		  "diagnostic": "(?<diagnostic>(?:[^"\\\\]|\\\\.)*)"
 		}\\n\\z""");
 	private final Path root;
 	private final Clock clock;
@@ -115,24 +116,81 @@ public final class HarnessRunManager
 	 */
 	public HarnessRun create(String harness) throws IOException
 	{
+		return create(harness, generateRunId());
+	}
+
+	/**
+	 * Generates a run identity that a caller can retain before allowing native start.
+	 *
+	 * @return a runner-format run identity
+	 */
+	public String generateRunId()
+	{
+		return Long.toUnsignedString(clock.millis(), 36) + "-" + Long.toUnsignedString(System.nanoTime(), 36);
+	}
+
+	/**
+	 * Creates one owned run under an identity retained before native start.
+	 *
+	 * @param harness the harness name
+	 * @param id the preallocated run identity
+	 * @return the exclusively created run
+	 * @throws IOException if the run already exists or its directory cannot be created
+	 */
+	public HarnessRun create(String harness, String id) throws IOException
+	{
 		requireThat(harness, "harness").isNotBlank();
-		String id = Long.toUnsignedString(clock.millis(), 36) + "-" + Long.toUnsignedString(System.nanoTime(), 36);
+		requireThat(id, "id").isNotBlank();
 		Path directory = root.resolve(harness).resolve(id).normalize();
+		HarnessRun run = new HarnessRun(harness, id, directory);
 		if (!directory.startsWith(root))
 			throw new IOException("Run directory escapes the configured root");
-		Files.createDirectories(directory);
+		Files.createDirectories(directory.getParent());
+		Files.createDirectory(directory);
 		setOwnerOnlyDirectoryPermissions(directory);
 		Files.createDirectories(directory.resolve("project"));
 		Files.createDirectories(directory.resolve("home"));
 		Files.createDirectories(directory.resolve("artifacts"));
 		Files.createFile(directory.resolve(".lock"));
-		HarnessRun run = new HarnessRun(harness, id, directory);
 		ProcessHandle owner = ProcessHandle.current();
 		Instant ownerStartedAt = owner.info().startInstant().orElse(clock.instant());
 		writeManifest(new Manifest(harness, id, "running", "initializing", owner.pid(), ownerStartedAt, null, null,
 			clock.instant(),
 			"", "", "", "", null, 0, null, null, ""), directory);
 		return run;
+	}
+
+	/**
+	 * Reads one exact owned run without changing its lifecycle or deciding whether its native turn is safe to retry.
+	 *
+	 * @param harness the native harness identifier
+	 * @param id the preallocated run identifier
+	 * @return the validated retained run, or empty when no owned directory is presently available; empty alone does not
+	 *     prove that no run was ever created
+	 * @throws IOException if a present run has an unsafe path or unreadable or inconsistent manifest
+	 */
+	public Optional<HarnessRunObservation> observe(String harness, String id) throws IOException
+	{
+		Path harnessDirectory = root.resolve(harness);
+		HarnessRun run = new HarnessRun(harness, id, harnessDirectory.resolve(id).normalize());
+		if (Files.isSymbolicLink(root) || Files.isSymbolicLink(harnessDirectory) ||
+			Files.isSymbolicLink(run.directory()))
+			throw new IOException("Runner observation crosses a symbolic link: " + run.directory());
+		if (Files.exists(root, NOFOLLOW_LINKS) && !Files.isDirectory(root, NOFOLLOW_LINKS) ||
+			Files.exists(harnessDirectory, NOFOLLOW_LINKS) && !Files.isDirectory(harnessDirectory, NOFOLLOW_LINKS))
+			throw new IOException("Runner observation root is not a directory: " + harnessDirectory);
+		if (Files.notExists(run.directory(), NOFOLLOW_LINKS))
+			return Optional.empty();
+		if (!Files.isDirectory(run.directory(), NOFOLLOW_LINKS) ||
+			Files.isSymbolicLink(run.directory().resolve("run.json")))
+			throw new IOException("Runner observation is not an owned directory and manifest: " + run.directory());
+		Manifest manifest = readManifest(run);
+		return Optional.of(new HarnessRunObservation(run,
+			HarnessRunObservation.State.valueOf(manifest.state().toUpperCase(Locale.ROOT)),
+			HarnessRunObservation.Phase.valueOf(manifest.phase().toUpperCase(Locale.ROOT)),
+			Optional.ofNullable(manifest.nativePid()), Optional.ofNullable(manifest.nativeStartedAt()),
+			manifest.turnNumber(), Optional.ofNullable(manifest.exitCode()), Optional.ofNullable(manifest.finishedAt()),
+			isOwnerAlive(manifest), isNativeProcessAlive(manifest), manifest.diagnostic()));
 	}
 
 	/**
@@ -336,11 +394,13 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies a project into an owned Git repository with a clean baseline and without source Git metadata or symlinks.
+	 * Copies a project into an owned Git repository with a clean baseline and without source Git metadata. Links to
+	 * project content remain links to the copied content; links outside the project are rejected before native launch.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
-	 * @throws IOException if the source is not a real directory, contains symbolic links, or copying fails
+	 * @throws IOException if the source is not a real directory, contains an external or excluded symbolic-link target,
+	 *   or copying fails
 	 */
 	public void copyProject(Path source, HarnessRun run) throws IOException
 	{
@@ -349,8 +409,10 @@ public final class HarnessRunManager
 		Path normalized = source.toAbsolutePath().normalize();
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
 			throw new IOException("Project source is not a real directory");
+		Path sourceReal = normalized.toRealPath();
 		Path destination = run.directory().resolve("project");
-		boolean rootIsNested = root.startsWith(normalized);
+		Path excludedRoot = root.toRealPath();
+		boolean rootIsNested = excludedRoot.startsWith(sourceReal);
 		Files.walkFileTree(normalized, new SimpleFileVisitor<>()
 		{
 			@Override
@@ -372,11 +434,25 @@ public final class HarnessRunManager
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
 				throws IOException
 			{
-				if (Files.isSymbolicLink(file))
-					throw new IOException("Project contains a symbolic-link file");
 				Path relative = normalized.relativize(file);
-				if (!relative.startsWith(".git"))
-					Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
+				if (relative.startsWith(".git"))
+					return CONTINUE;
+				if (Files.isSymbolicLink(file))
+				{
+					Path target = file.toRealPath();
+					if (!target.startsWith(sourceReal))
+						throw new IOException("Project symbolic link target is outside the project: " + relative);
+					Path targetRelative = sourceReal.relativize(target);
+					if (targetRelative.startsWith(".git") || rootIsNested && target.startsWith(excludedRoot))
+						throw new IOException("Project symbolic link target is excluded from the copy: " + relative);
+					Path copiedLink = destination.resolve(relative);
+					Path linkText = Files.readSymbolicLink(file);
+					if (linkText.isAbsolute())
+						linkText = copiedLink.getParent().relativize(destination.resolve(targetRelative));
+					Files.createSymbolicLink(copiedLink, linkText);
+					return CONTINUE;
+				}
+				Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
 				return CONTINUE;
 			}
 		});
@@ -464,7 +540,7 @@ public final class HarnessRunManager
 		{
 			if (!lock.isHeld())
 				throw new IOException("Unable to acquire run lock");
-			delete(directory);
+			TemporaryDirectories.deleteRecursively(directory);
 		}
 		deleteIfEmpty(harnessDirectory);
 		deleteIfEmpty(root);
@@ -486,7 +562,7 @@ public final class HarnessRunManager
 		{
 			Path candidate = run.directory().resolve(directory);
 			if (Files.exists(candidate))
-				delete(candidate);
+				TemporaryDirectories.deleteRecursively(candidate);
 		}
 	}
 
@@ -610,7 +686,7 @@ public final class HarnessRunManager
 						try (HarnessRunLock lock = acquireLock(ownedRun))
 						{
 							if (lock.isHeld())
-								delete(run);
+								TemporaryDirectories.deleteRecursively(run);
 						}
 						catch (IOException e)
 						{
@@ -820,7 +896,7 @@ public final class HarnessRunManager
 				ownerStartedAt, nativePid, nativeStartedAt, createdAt, unescape(matcher.group("artifactPath")),
 				unescape(matcher.group("projectPath")), unescape(matcher.group("transport")),
 				unescape(matcher.group("nativeCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
-				exitCode, finishedAt, "");
+				exitCode, finishedAt, unescape(matcher.group("diagnostic")));
 		}
 		catch (DateTimeParseException e)
 		{
@@ -998,49 +1074,6 @@ public final class HarnessRunManager
 				normalized.contains("password");
 		}
 		return result.toString();
-	}
-
-	/**
-	 * Deletes a run directory after its output has been persisted.
-	 *
-	 * @param directory the directory to delete
-	 * @throws IOException if deletion fails
-	 */
-	private static void delete(Path directory) throws IOException
-	{
-		try
-		{
-			Files.walkFileTree(directory, new SimpleFileVisitor<>()
-			{
-				@Override
-				public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
-				{
-					Files.deleteIfExists(file);
-					return CONTINUE;
-				}
-
-				@Override
-				public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
-				{
-					if (failure instanceof NoSuchFileException)
-						return CONTINUE;
-					throw failure;
-				}
-
-				@Override
-				public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException
-				{
-					if (failure != null && !(failure instanceof NoSuchFileException))
-						throw failure;
-					Files.deleteIfExists(directory);
-					return CONTINUE;
-				}
-			});
-		}
-		catch (NoSuchFileException _)
-		{
-			// A concurrent terminal cleanup already removed this owned disposable directory.
-		}
 	}
 
 	/**

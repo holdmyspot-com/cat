@@ -91,6 +91,15 @@ public final class DistributionMain
 		Path slf4j = findDependencyJar(moduleDirectory, "slf4j-api");
 		Path slf4jNop = findDependencyJar(moduleDirectory, "slf4j-nop");
 		Path javaDiff = findDependencyJar(moduleDirectory, "java-diff-utils");
+		Path statisticsInterval = findDependencyJar(moduleDirectory, "commons-statistics-interval");
+		Path statisticsDistribution = findDependencyJar(moduleDirectory, "commons-statistics-distribution");
+		Path numbersCombinatorics = findDependencyJar(moduleDirectory, "commons-numbers-combinatorics");
+		Path numbersCore = findDependencyJar(moduleDirectory, "commons-numbers-core");
+		Path numbersFraction = findDependencyJar(moduleDirectory, "commons-numbers-fraction");
+		Path numbersGamma = findDependencyJar(moduleDirectory, "commons-numbers-gamma");
+		Path numbersRootfinder = findDependencyJar(moduleDirectory, "commons-numbers-rootfinder");
+		Path rngClientApi = findDependencyJar(moduleDirectory, "commons-rng-client-api");
+		Path rngSampling = findDependencyJar(moduleDirectory, "commons-rng-sampling");
 		Path commonAgents = findDependencyJar(moduleDirectory, "client-common-agents");
 		Path commonPlugin = findDependencyJar(moduleDirectory, "client-common-plugin");
 		Path commonSkills = findDependencyJar(moduleDirectory, "client-common-skills");
@@ -107,10 +116,16 @@ public final class DistributionMain
 		Path jacksonYaml = findDependencyJar(moduleDirectory, "jackson-dataformat-yaml");
 		Path snakeyaml = findDependencyJar(moduleDirectory, "snakeyaml-engine");
 
-		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
+		List<Path> statisticsRuntimeModules = List.of(copyModule(statisticsInterval, jlinkModules),
+			copyModule(statisticsDistribution, jlinkModules), copyModule(numbersCombinatorics, jlinkModules),
+			copyModule(numbersCore, jlinkModules), copyModule(numbersFraction, jlinkModules),
+			copyModule(numbersGamma, jlinkModules), copyModule(numbersRootfinder, jlinkModules),
+			copyModule(rngClientApi, jlinkModules), copyModule(rngSampling, jlinkModules));
+		List<Path> baseRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
 			copyModule(requirements, jlinkModules), copyModule(requirementsAnnotation, jlinkModules),
 			copyModule(pouch, jlinkModules), copyModule(slf4j, jlinkModules), copyModule(slf4jNop, jlinkModules),
 			modularizeJavaDiff(javaDiff, jlinkModules));
+		List<Path> sharedRuntimeModules = append(baseRuntimeModules, statisticsRuntimeModules);
 		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore, jlinkModules), copyModule(jacksonAnnotations,
@@ -126,6 +141,8 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.claude.ClaudePluginInfo"),
 				new JlinkImageBuilder.Launcher("claude-runner", "io.github.cowwoc.cat.claude.cli",
 					"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
+				new JlinkImageBuilder.Launcher("optimizer-inspect", "io.github.cowwoc.cat.claude.cli",
+					"io.github.cowwoc.cat.claude.ClaudeOptimizerInspectCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
@@ -148,6 +165,8 @@ public final class DistributionMain
 					"io.github.cowwoc.cat.codex.CodexPluginInfo"),
 				new JlinkImageBuilder.Launcher("codex-runner", "io.github.cowwoc.cat.codex.cli",
 					"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
+				new JlinkImageBuilder.Launcher("optimizer-inspect", "io.github.cowwoc.cat.codex.cli",
+					"io.github.cowwoc.cat.codex.CodexOptimizerInspectCli"),
 				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
 				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
@@ -187,7 +206,27 @@ public final class DistributionMain
 			new ThirdPartyComponent("SLF4J API", "org.slf4j:slf4j-api:2.0.17", "MIT.txt", slf4j,
 				List.of("META-INF/LICENSE.txt")),
 			new ThirdPartyComponent("SLF4J NOP Provider", "org.slf4j:slf4j-nop:2.0.17", "MIT.txt", slf4jNop,
-				List.of("META-INF/LICENSE.txt")));
+				List.of("META-INF/LICENSE.txt")),
+			new ThirdPartyComponent("Commons Statistics Interval", "org.apache.commons:commons-statistics-interval:1.3",
+				"Apache-2.0.txt", statisticsInterval, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Statistics Distribution",
+				"org.apache.commons:commons-statistics-distribution:1.3", "Apache-2.0.txt",
+				statisticsDistribution, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Numbers Combinatorics",
+				"org.apache.commons:commons-numbers-combinatorics:1.3", "Apache-2.0.txt", numbersCombinatorics,
+				List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Numbers Core", "org.apache.commons:commons-numbers-core:1.3",
+				"Apache-2.0.txt", numbersCore, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Numbers Fraction", "org.apache.commons:commons-numbers-fraction:1.3",
+				"Apache-2.0.txt", numbersFraction, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Numbers Gamma", "org.apache.commons:commons-numbers-gamma:1.3",
+				"Apache-2.0.txt", numbersGamma, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons Numbers Rootfinder", "org.apache.commons:commons-numbers-rootfinder:1.3",
+				"Apache-2.0.txt", numbersRootfinder, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons RNG Client API", "org.apache.commons:commons-rng-client-api:1.6",
+				"Apache-2.0.txt", rngClientApi, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Commons RNG Sampling", "org.apache.commons:commons-rng-sampling:1.6",
+				"Apache-2.0.txt", rngSampling, List.of("META-INF/NOTICE")));
 		List<ThirdPartyComponent> jsonLegalComponents = List.of(
 			new ThirdPartyComponent("Jackson Annotations", "com.fasterxml.jackson.core:jackson-annotations:2.21",
 				"Apache-2.0.txt", jacksonAnnotations, List.of("META-INF/NOTICE")),

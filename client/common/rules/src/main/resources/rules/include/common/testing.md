@@ -15,6 +15,9 @@
 
 ## Guidance
 
+When measuring or reducing a unit test's runtime, or deciding whether a costly test fixture is needed, lazy load
+`testing/unit-runtime.md` before choosing which test work to keep.
+
 Test observable behavior with controlled inputs rather than machine-specific configuration or implementation details.
 Each test owns its fixtures and mutable state. Avoid tests that primarily validate third-party tools; test the
 application's interpretation, command construction, error handling, and integration behavior instead.

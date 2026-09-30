@@ -5,8 +5,26 @@
 	<parent>
 		<groupId>io.github.cowwoc.cat</groupId>
 		<artifactId>client-codex</artifactId>
-		<version>1.1</version>
+		<version>1.0</version>
 	</parent>
 	<artifactId>client-codex-plugin</artifactId>
 	<name>Codex Plugin Resources</name>
+
+	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<excludes>
+					<exclude>.codex-plugin/plugin.json</exclude>
+				</excludes>
+			</resource>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>.codex-plugin/plugin.json</include>
+				</includes>
+			</resource>
+		</resources>
+	</build>
 </project>

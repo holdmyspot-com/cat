@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.distribution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -82,6 +83,55 @@ public final class PluginArtifactBuilderTest
 				isEqualTo("claude uninstaller");
 			requireThat(Files.readString(output.resolve("install/uninstall-codex.sh")), "codexUninstaller").
 				isEqualTo("codex uninstaller");
+		}
+	}
+
+	/**
+	 * Verifies generated links to Java legal files become regular files in the assembled runtime.
+	 */
+	@Test
+	public void materializesGeneratedLegalLinks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-runtime-links-"));
+			Path runtime = Files.createDirectories(temporary.resolve("runtime/legal/java.xml")).getParent().getParent();
+			Path base = Files.createDirectories(runtime.resolve("legal/java.base"));
+			Files.writeString(base.resolve("LICENSE"), "Java license");
+			Files.createSymbolicLink(runtime.resolve("legal/java.xml/LICENSE"), Path.of("../java.base/LICENSE"));
+			Path output = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(List.of(), runtime,
+				legalMaterials(temporary), List.of(Files.createDirectories(temporary.resolve("installers"))),
+				temporary.resolve("output"));
+			Path license = output.resolve("client/legal/java.xml/LICENSE");
+
+			requireThat(Files.isRegularFile(license, NOFOLLOW_LINKS), "installedJavaLicense").isTrue();
+			requireThat(Files.readString(license), "licenseText").isEqualTo("Java license");
+		}
+	}
+
+	/**
+	 * Verifies a runtime link cannot read a file outside the runtime input tree.
+	 */
+	@Test
+	public void rejectsRuntimeLinkOutsideTree() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-runtime-escape-"));
+			Path runtime = Files.createDirectories(temporary.resolve("runtime"));
+			Files.writeString(temporary.resolve("outside.txt"), "outside");
+			Files.createSymbolicLink(runtime.resolve("escape.txt"), Path.of("../outside.txt"));
+			try
+			{
+				new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(List.of(), runtime,
+					legalMaterials(temporary), List.of(Files.createDirectories(temporary.resolve("installers"))),
+					temporary.resolve("output"));
+				throw new AssertionError("Expected an escaping runtime link to be rejected");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").contains("outside the runtime");
+			}
 		}
 	}
 

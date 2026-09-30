@@ -90,4 +90,29 @@ public final class ClaudeRunnerTest
 			requireThat(Files.isSameFile(alias, canonical), "aliasTarget").isTrue();
 		}
 	}
+
+	/**
+	 * Private authoring resolves spilled context through its actual worktree path.
+	 *
+	 * @throws IOException if the test-owned directories or spill-context alias cannot be created
+	 */
+	@Test
+	public void resolvesPrivateWorktreeSpillContext() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("claude-private-context-"));
+			Path directory = Files.createDirectories(root.resolve("runs/claude/abc123-def456"));
+			HarnessRun run = new HarnessRun("claude", "abc123-def456", directory);
+			Path worktree = Files.createDirectory(root.resolve("private-attempt")).toRealPath();
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run, worktree);
+			Path canonical = hookResults.resolve(worktree.toString().replaceAll("[^A-Za-z0-9_-]", "-"));
+			String parentName = root.resolve("runs").toAbsolutePath().normalize().toString().replaceAll(
+				"[^A-Za-z0-9_-]", "-");
+			Path alias = hookResults.resolve(parentName).resolve("claude/abc123-def456-project");
+
+			requireThat(canonical, "privateWorktreeContext").isDirectory();
+			requireThat(Files.isSameFile(alias, canonical), "aliasTarget").isTrue();
+		}
+	}
 }

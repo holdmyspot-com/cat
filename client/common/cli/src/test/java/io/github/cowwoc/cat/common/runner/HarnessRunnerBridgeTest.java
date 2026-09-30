@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.common.runner;
 
 import java.io.IOException;
+import java.io.PipedReader;
+import java.io.PipedWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -9,6 +11,13 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
@@ -364,6 +373,145 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies a live client can interrupt a native turn while its request stream remains open.
+	 *
+	 * @throws IOException if the bridge or pipe fails
+	 * @throws InterruptedException if the test is interrupted while waiting for the turn
+	 * @throws ExecutionException if the bridge fails in its worker thread
+	 * @throws TimeoutException if the bridge does not finish promptly
+	 */
+	@Test
+	public void interruptsLiveTurnBeforeInputEof() throws IOException, InterruptedException, ExecutionException,
+		TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			InterruptibleProcess process = new InterruptibleProcess();
+			PipedWriter client = new PipedWriter();
+			PipedReader input = new PipedReader(client);
+			ExecutorService executor = Executors.newSingleThreadExecutor())
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+			Future<HarnessRun> served = executor.submit(() -> HarnessRunnerBridge.serve(() ->
+				new HarnessRunSession(run, process, new HarnessRunnerScope()), input, output));
+			client.write("{\"type\":\"turn\",\"prompt\":\"task\"}\n");
+			client.flush();
+			requireThat(process.started.await(5, TimeUnit.SECONDS), "turnStarted").isTrue();
+			client.write("{\"type\":\"interrupt\"}\n{\"type\":\"complete\"}\n");
+			client.flush();
+
+			requireThat(served.get(5, TimeUnit.SECONDS), "run").isEqualTo(run);
+			requireThat(output.toString(), "output").contains("\"type\":\"interrupted\"").
+				contains("\"type\":\"turn-interrupted\"").contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
+	 * Verifies serving a complete request does not close the caller-owned input reader.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void leavesClientInputOpen() throws IOException
+	{
+		AtomicBoolean closed = new AtomicBoolean();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess();
+			StringReader input = new StringReader("{\"type\":\"complete\"}\n")
+			{
+				@Override
+				public void close()
+				{
+					closed.set(true);
+					super.close();
+				}
+			})
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+				new StringWriter());
+			requireThat(closed.get(), "clientInputClosed").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies native acknowledgment of an interruption is retained as an interrupted bridge turn.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void recordsNativeTurnInterruption() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, new HarnessProcess()
+			{
+				@Override
+				public HarnessProcessResult sendTurn(String request)
+				{
+					return new HarnessProcessResult(130, "", "", HarnessProcessResult.Outcome.INTERRUPTED, "");
+				}
+
+				@Override
+				public boolean isAlive()
+				{
+					return true;
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			}, new HarnessRunnerScope()), input, output);
+
+			requireThat(output.toString(), "output").contains("\"type\":\"turn-interrupted\"").
+				doesNotContain("\"type\":\"turn-completed\"");
+		}
+	}
+
+	/**
+	 * Verifies a stop requested after the native turn finishes preserves its completed result.
+	 *
+	 * @throws IOException if the bridge or pipe fails
+	 * @throws InterruptedException if the test is interrupted while waiting for the turn
+	 * @throws ExecutionException if the bridge fails in its worker thread
+	 * @throws TimeoutException if the bridge does not finish promptly
+	 */
+	@Test
+	public void keepsCompletionAfterLateInterrupt() throws IOException, InterruptedException, ExecutionException,
+		TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess();
+			PipedWriter client = new PipedWriter();
+			PipedReader input = new PipedReader(client);
+			ExecutorService executor = Executors.newSingleThreadExecutor())
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+			CountDownLatch turnFinished = new CountDownLatch(1);
+			Future<HarnessRun> served = executor.submit(() -> HarnessRunnerBridge.serve(() ->
+				new HarnessRunSession(run, process, new HarnessRunnerScope()), null, true, input, output,
+				ignored ->
+				{
+				}, ignored -> turnFinished.countDown()));
+			client.write("{\"type\":\"turn\",\"prompt\":\"task\"}\n");
+			client.flush();
+			requireThat(turnFinished.await(5, TimeUnit.SECONDS), "turnFinished").isTrue();
+			client.write("{\"type\":\"interrupt\"}\n{\"type\":\"complete\"}\n");
+			client.flush();
+
+			requireThat(served.get(5, TimeUnit.SECONDS), "run").isEqualTo(run);
+			requireThat(output.toString(), "output").contains("\"type\":\"turn-completed\"").
+				contains("\"type\":\"interrupt-raced-completion\"").contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
 	 * A deterministic persistent harness process.
 	 */
 	private static final class FakeProcess implements HarnessProcess
@@ -523,6 +671,49 @@ public final class HarnessRunnerBridgeTest
 		public void close()
 		{
 			closed = true;
+			interrupted.countDown();
+		}
+	}
+
+	/**
+	 * A native turn represented by a latch that ends only after the bridge forwards interruption.
+	 */
+	private static final class InterruptibleProcess implements HarnessProcess
+	{
+		private final CountDownLatch started = new CountDownLatch(1);
+		private final CountDownLatch interrupted = new CountDownLatch(1);
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
+		{
+			started.countDown();
+			try
+			{
+				interrupted.await();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for bridge stop", e);
+			}
+			return new HarnessProcessResult(130, "", "", HarnessProcessResult.Outcome.INTERRUPTED, "");
+		}
+
+		@Override
+		public void interrupt()
+		{
+			interrupted.countDown();
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return true;
+		}
+
+		@Override
+		public void close()
+		{
 			interrupted.countDown();
 		}
 	}

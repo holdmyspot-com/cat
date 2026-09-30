@@ -83,6 +83,28 @@ public final class HarnessRunSession implements AutoCloseable
 	}
 
 	/**
+	 * Prepares the first bridge request while leaving the caller's remaining input open for live controls.
+	 *
+	 * @param firstLine the first request, or null at end of input
+	 * @return prepared requests and the remaining-input decision
+	 * @throws IOException if the first request or its declared route is invalid
+	 */
+	RoutePreparationInput.PreparedPrefix prepareFirstLine(String firstLine) throws IOException
+	{
+		return RoutePreparationInput.prepareFirstLine(firstLine, routeRuleRoot, scope);
+	}
+
+	/**
+	 * Reserves the next native turn before the bridge accepts a stop request for it.
+	 *
+	 * @throws IOException if the process cannot reserve the turn
+	 */
+	public void reserveTurn() throws IOException
+	{
+		process.reserveTurn();
+	}
+
+	/**
 	 * Sends one turn to the already-running harness process.
 	 *
 	 * @param request the framed turn request

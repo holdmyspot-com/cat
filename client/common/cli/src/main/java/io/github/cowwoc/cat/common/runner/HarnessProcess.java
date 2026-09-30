@@ -11,6 +11,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public interface HarnessProcess extends AutoCloseable
 {
 	/**
+	 * Reserves the next native turn before the bridge makes its start visible to interruption.
+	 *
+	 * @throws IOException if the process cannot reserve another turn
+	 */
+	default void reserveTurn() throws IOException
+	{
+	}
+
+	/**
 	 * Sends one turn without restarting the native harness.
 	 *
 	 * @param request the framed turn request

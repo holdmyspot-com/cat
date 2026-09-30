@@ -8,6 +8,7 @@
 #   Sets test-scoped environment variables and creates their directories under CAT work.
 setup()
 {
+	export TEST_WORKING_DIRECTORY="${PWD}"
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
 	test_root_record="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create artifact-runners)"
 	export TEST_ROOT="${test_root_record#directory=}"
@@ -23,6 +24,7 @@ setup()
 #   Deletes the temporary directory created by setup.
 teardown()
 {
+	cd "${TEST_WORKING_DIRECTORY}"
 	if [ -n "${TEST_ROOT:-}" ]; then
 		"${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" delete "${TEST_ROOT}"
 	fi
@@ -55,6 +57,20 @@ teardown()
 	[[ "${output}" == *"must be below"* ]]
 }
 
+# Both packaged inspection launchers reach shared option validation from an owned project without starting a native harness.
+@test "packaged inspection launchers reject missing host identity" {
+	project="${TEST_ROOT}/inspection-project"
+	mkdir -p "${project}/.cat"
+	cd "${project}"
+
+	for harness in claude codex; do
+		launcher="${GENERATED_RUNTIME_DIRECTORY}/${harness}/client/bin/optimizer-inspect"
+		run "${launcher}"
+		[ "${status}" -ne 0 ]
+		[[ "${output}" == *"Missing inspection option: --host-session-id"* ]]
+	done
+}
+
 # Creates a minimal packaged plugin artifact for one harness runner.
 #
 # Arguments:
@@ -68,7 +84,7 @@ create_test_artifact()
 	artifact="${TEST_ROOT}/${harness}-artifact"
 	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/client/bin" "${artifact}/agents/${harness}"
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
-	printf '1.1\n' > "${artifact}/client/VERSION"
+	printf '1.0\n' > "${artifact}/client/VERSION"
 	printf '# test agent\n' > "${artifact}/agents/${harness}/fixture.toml"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/plugin-info"
 	printf '#!/bin/sh\nexit 0\n' > "${artifact}/client/bin/session-start"
@@ -106,9 +122,9 @@ turn=0
 while IFS= read -r line; do
 	turn=$((turn + 1))
 	if [ "${turn}" -eq 1 ]; then
-		printf '%s\n' '{"type":"result","result":"{\"selected_rules\":[]}"}'
+		printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"{\"selected_rules\":[]}"}'
 	else
-		printf '%s\n' '{"type":"result","result":"completed"}'
+		printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"completed"}'
 	fi
 done
 SCRIPT

@@ -9,6 +9,8 @@ import io.github.cowwoc.cat.common.runner.HarnessDependencyCache;
 import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
 import io.github.cowwoc.cat.common.runner.HarnessProcessStarter;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunWorkspace;
+import io.github.cowwoc.cat.common.optimizer.runner.PrivateGenerationContext;
 import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
@@ -115,6 +117,34 @@ public final class ClaudeRunner
 		ClaudeAgentDefinition agent,
 		List<Path> readOnlyEvidence) throws IOException
 	{
+		return start(artifact, project, manager, executable, environment, model, effort, installCat, includeUserRules,
+			agent, readOnlyEvidence, null, null);
+	}
+
+	/**
+	 * Starts a copied project or a prepared private generation worktree under an isolated runner home.
+	 *
+	 * @param artifact the complete Claude artifact
+	 * @param project the source project, or the exact private worktree when generation is supplied
+	 * @param manager the owner of retained run evidence
+	 * @param executable the Claude executable
+	 * @param environment the parent environment to scrub
+	 * @param model the requested model
+	 * @param effort the requested reasoning effort
+	 * @param installCat whether CAT is installed
+	 * @param includeUserRules whether parent user rules are copied into the isolated home
+	 * @param agent the optional CAT agent selected for the session
+	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param runId the retained native identity, or null for a new identity
+	 * @param generation verified private-worktree authority, or null to copy the project
+	 * @return the live session executing in the selected project
+	 * @throws IOException if the private project differs, its binding cannot be sealed, or startup fails
+	 */
+	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
+		Map<String, String> environment, String model, String effort, boolean installCat, boolean includeUserRules,
+		ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, String runId,
+		PrivateGenerationContext generation) throws IOException
+	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(manager, "manager").isNotNull();
@@ -124,14 +154,30 @@ public final class ClaudeRunner
 		requireThat(effort, "effort").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
+		if (generation != null && !generation.privateProject().equals(project))
+			throw new IOException("Private Claude project differs from generation authority");
 		HarnessArtifact.validate(artifact, Path.of(".claude-plugin/plugin.json"));
-		HarnessRun run = manager.create("claude");
+		HarnessRun run;
+		if (runId == null)
+			run = manager.create("claude");
+		else
+			run = manager.create("claude", runId);
 		HarnessRunLock lock = null;
 		HarnessRunnerScope scope = new HarnessRunnerScope();
 		try
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
-			manager.copyProject(project, run);
+			Path worktree;
+			if (generation == null)
+			{
+				manager.copyProject(project, run);
+				worktree = run.directory().resolve("project");
+			}
+			else
+			{
+				worktree = generation.privateProject();
+				new HarnessRunWorkspace(run.id(), generation, worktree).seal(run);
+			}
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
@@ -163,7 +209,6 @@ public final class ClaudeRunner
 			Path marketplace = null;
 			if (installCat)
 				marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
-			Path worktree = run.directory().resolve("project");
 			// copyProject() creates the owned baseline after excluding the caller's Git metadata. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
@@ -174,7 +219,7 @@ public final class ClaudeRunner
 				HarnessCommand.execute(List.of(executable, "plugin", "install", "cat@cat"), worktree,
 					isolatedEnvironment, manager, run, "plugin-install");
 			}
-			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
+			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run, worktree);
 			String selectedModel = model;
 			String selectedEffort = effort;
 			String selectedAgent = "";
@@ -235,10 +280,25 @@ public final class ClaudeRunner
 	 */
 	static Path createHookResultsDirectory(Path isolatedHome, HarnessRun run) throws IOException
 	{
+		return createHookResultsDirectory(isolatedHome, run, run.directory().resolve("project"));
+	}
+
+	/**
+	 * Creates spill-context paths for the project actually used by the native process.
+	 *
+	 * @param isolatedHome the isolated Claude configuration directory
+	 * @param run the owner of the spill-context directory
+	 * @param executionProject the native process working directory
+	 * @return the directory containing spilled hook context
+	 * @throws IOException if the directory or path alias cannot be created
+	 */
+	static Path createHookResultsDirectory(Path isolatedHome, HarnessRun run, Path executionProject)
+		throws IOException
+	{
 		assert isolatedHome != null;
 		assert run != null;
 		Path hookResults = Files.createDirectories(isolatedHome.resolve("projects"));
-		Path worktree = run.directory().resolve("project").toAbsolutePath().normalize();
+		Path worktree = executionProject.toAbsolutePath().normalize();
 		Path canonicalProjectDirectory = Files.createDirectories(hookResults.resolve(claudeProjectDirectory(worktree)));
 		Path harnessDirectory = run.directory().toAbsolutePath().normalize().getParent();
 		Path runRoot = harnessDirectory.getParent();

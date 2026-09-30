@@ -333,10 +333,10 @@ public final class CodexAppServerProtocol
 	 *
 	 * @param requestId the positive JSON-RPC request identifier
 	 * @param threadId the non-blank app-server thread identifier
-	 * @param prompt the non-blank user prompt
+	 * @param prompt the user prompt, which may be empty
 	 * @return the JSON-RPC request line
 	 * @throws NullPointerException if {@code threadId} or {@code prompt} are null
-	 * @throws IllegalArgumentException if {@code requestId} is not positive or a string is blank
+	 * @throws IllegalArgumentException if {@code requestId} is not positive or {@code threadId} is blank
 	 */
 	public static String turnStart(long requestId, String threadId, String prompt)
 	{
@@ -348,7 +348,7 @@ public final class CodexAppServerProtocol
 	 *
 	 * @param requestId the positive JSON-RPC request identifier
 	 * @param threadId the non-blank app-server thread identifier
-	 * @param prompt the non-blank user prompt
+	 * @param prompt the user prompt, which may be empty
 	 * @param effort the optional reasoning effort
 	 * @return the JSON-RPC request line
 	 */
@@ -356,7 +356,7 @@ public final class CodexAppServerProtocol
 	{
 		requireThat(requestId, "requestId").isPositive();
 		requireThat(threadId, "threadId").isNotBlank();
-		requireThat(prompt, "prompt").isNotBlank();
+		requireThat(prompt, "prompt").isNotNull();
 		requireThat(effort, "effort").isNotNull();
 		String effortParameter = "";
 		if (!effort.isBlank())

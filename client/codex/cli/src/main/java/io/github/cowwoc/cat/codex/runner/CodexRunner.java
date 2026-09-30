@@ -9,10 +9,12 @@ import io.github.cowwoc.cat.common.runner.HarnessDependencyCache;
 import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
 import io.github.cowwoc.cat.common.runner.HarnessProcessStarter;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunWorkspace;
 import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+import io.github.cowwoc.cat.common.optimizer.runner.PrivateGenerationContext;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -112,28 +114,94 @@ public final class CodexRunner
 		Map<String, String> environment, String model, boolean installCat, CodexAgentDefinition agent,
 		List<Path> readOnlyEvidence) throws IOException
 	{
+		return start(artifact, project, manager, executable, environment, model, "", installCat, agent,
+			readOnlyEvidence, null);
+	}
+
+	/**
+	 * Starts an isolated run using the native identity and reasoning profile retained by a caller.
+	 *
+	 * @param artifact the complete Codex artifact
+	 * @param project the project copied into the isolated run
+	 * @param manager the run manager
+	 * @param executable the Codex executable
+	 * @param environment the parent environment to scrub
+	 * @param model the requested model
+	 * @param reasoningProfile the requested reasoning effort
+	 * @param installCat whether to install CAT in the isolated home
+	 * @param agent an optional direct CAT agent definition
+	 * @param readOnlyEvidence completed evidence visible to a validator
+	 * @param runId the retained native run identity, or null for a new identity
+	 * @return the live run session
+	 * @throws IOException if setup or process start fails
+	 */
+	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
+		Map<String, String> environment, String model, String reasoningProfile, boolean installCat,
+		CodexAgentDefinition agent, List<Path> readOnlyEvidence, String runId) throws IOException
+	{
+		return start(artifact, project, manager, executable, environment, model, reasoningProfile, installCat,
+			agent, readOnlyEvidence, runId, null);
+	}
+
+	/**
+	 * Starts a copied project or an already prepared private generation worktree under an isolated runner home.
+	 *
+	 * @param artifact complete Codex artifact
+	 * @param project source project, or the exact private worktree when {@code generation} is supplied
+	 * @param manager owner of retained run evidence
+	 * @param executable Codex executable
+	 * @param environment parent environment to scrub
+	 * @param model requested model
+	 * @param reasoningProfile requested reasoning effort
+	 * @param installCat whether to install CAT in the isolated home
+	 * @param agent optional direct CAT agent definition
+	 * @param readOnlyEvidence completed evidence visible to a validator
+	 * @param runId retained native identity, or null for a new identity
+	 * @param generation verified private-worktree authority, or null to copy the supplied project
+	 * @return live run session executing in the selected project
+	 * @throws IOException if the private worktree differs, is unavailable, or native setup fails
+	 */
+	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
+		Map<String, String> environment, String model, String reasoningProfile, boolean installCat,
+		CodexAgentDefinition agent, List<Path> readOnlyEvidence, String runId,
+		PrivateGenerationContext generation) throws IOException
+	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(manager, "manager").isNotNull();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(model, "model").isNotNull();
+		requireThat(reasoningProfile, "reasoningProfile").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
+		if (generation != null && !generation.privateProject().equals(project))
+			throw new IOException("Private Codex project differs from generation authority");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
-		HarnessRun run = manager.create("codex");
+		HarnessRun run;
+		if (runId == null)
+			run = manager.create("codex");
+		else
+			run = manager.create("codex", runId);
 		HarnessRunLock lock = null;
 		try
 		{
-			manager.copyProject(project, run);
+			if (generation == null)
+				manager.copyProject(project, run);
+			else
+				new HarnessRunWorkspace(run.id(), generation, generation.privateProject()).seal(run);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
+			CodexConnectionConfiguration.PermissionInheritance inheritance =
+				CodexConnectionConfiguration.PermissionInheritance.HOST;
+			if (generation != null)
+				inheritance = CodexConnectionConfiguration.PermissionInheritance.WORKSPACE;
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
-				temporaryDirectory);
+				temporaryDirectory, inheritance);
 			if (!readOnlyEvidence.isEmpty())
 				CodexConnectionConfiguration.addValidatorProfile(isolatedConfiguration, readOnlyEvidence);
 			if (installCat)
@@ -152,6 +220,8 @@ public final class CodexRunner
 			isolatedEnvironment.put("CODEX_HOME", isolatedHome.toString());
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			Path worktree = run.directory().resolve("project");
+			if (generation != null)
+				worktree = generation.privateProject();
 			if (installCat)
 			{
 				CodexCuratedPluginCache.seed(hostHome, isolatedHome, isolatedEnvironment);
@@ -179,7 +249,7 @@ public final class CodexRunner
 				manager.recordNativeProcess(run, process.pid(), process.startedAt());
 				String selectedModel = model;
 				String developerInstructions = "";
-				String effort = "";
+				String effort = reasoningProfile;
 				if (agent != null)
 				{
 					selectedModel = agent.model();

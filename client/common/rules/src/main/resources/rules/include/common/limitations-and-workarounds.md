@@ -7,8 +7,23 @@
   removal where applicable.
 - Distinguish an external blocker from unfinished, difficult, or high-volume authorized work, so a workflow does not
   stop while its next supported action remains available.
+<!-- A nested CLI rejected a protected parent socket directory, and the explanation treated access to that resource
+     as necessary without establishing why independent execution needed it. -->
+- Preserve applicable boundaries when an attempted path is refused; distinguish a necessary authorized prerequisite
+  from an unnecessary dependency or an intended restriction before choosing a repair.
 
 ## Guidance
+
+When a restriction, refusal, or failed precondition stops an attempted path, first establish whether the requested
+outcome requires the refused operation or only the capability that path was intended to provide. Identify the actor,
+operation, affected resource or state, its owner, and the governing boundary; an error establishes what failed, not
+that the operation is necessary, the boundary is defective, or relaxing it is authorized. State when the boundary's
+purpose is unknown. Compare supported paths that preserve it, including using independently owned resources or removing
+an unnecessary dependency, before proposing broader access or weaker validation. Do not transfer a prerequisite of
+one actor, resource, or execution context to another without evidence that it applies there. Change the restriction
+only when evidence establishes that the operation is necessary for the authorized outcome, the change is authorized,
+and applicable guarantees remain satisfied; otherwise retain it and correct the attempted path or report the precise
+unmet prerequisite. Verify both the required outcome and the boundary the selected path must preserve.
 
 When a required condition appears absent, do not infer that it is permanently unavailable from its current absence.
 Before describing a limitation, moving to a workaround, or asking the user to accept a degraded outcome, work backward

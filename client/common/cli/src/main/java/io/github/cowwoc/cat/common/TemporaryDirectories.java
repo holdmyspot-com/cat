@@ -2,7 +2,9 @@ package io.github.cowwoc.cat.common;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -59,25 +61,48 @@ public final class TemporaryDirectories implements AutoCloseable
 	public static void deleteRecursively(Path directory) throws IOException
 	{
 		assert directory != null;
-		if (Files.notExists(directory))
-			return;
-		Files.walkFileTree(directory, new SimpleFileVisitor<>()
+		try
+		{
+			Files.walkFileTree(directory, deletionVisitor());
+		}
+		catch (NoSuchFileException _)
+		{
+			// The root may disappear between lookup and traversal.
+		}
+	}
+
+	/**
+	 * Deletes entries that still exist while preserving unrelated traversal failures.
+	 *
+	 * @return a visitor for one recursive deletion
+	 */
+	static FileVisitor<Path> deletionVisitor()
+	{
+		return new SimpleFileVisitor<>()
 		{
 			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 			{
-				Files.delete(file);
+				Files.deleteIfExists(file);
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
+			{
+				if (!(failure instanceof NoSuchFileException))
+					throw failure;
 				return FileVisitResult.CONTINUE;
 			}
 
 			@Override
 			public FileVisitResult postVisitDirectory(Path visitedDirectory, IOException failure) throws IOException
 			{
-				if (failure != null)
+				if (failure != null && !(failure instanceof NoSuchFileException))
 					throw failure;
-				Files.delete(visitedDirectory);
+				Files.deleteIfExists(visitedDirectory);
 				return FileVisitResult.CONTINUE;
 			}
-		});
+		};
 	}
 }

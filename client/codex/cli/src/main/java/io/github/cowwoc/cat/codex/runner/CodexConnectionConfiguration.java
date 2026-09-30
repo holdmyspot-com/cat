@@ -61,7 +61,24 @@ final class CodexConnectionConfiguration
 	 */
 	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
 	{
+		copy(source, destination, npmCache, temporaryDirectory, PermissionInheritance.HOST);
+	}
+
+	/**
+	 * Copies connection and runtime settings under the filesystem inheritance selected for the native call.
+	 *
+	 * @param source host configuration file
+	 * @param destination isolated configuration file
+	 * @param npmCache verified writable npm cache, or null when no cache is needed
+	 * @param temporaryDirectory temporary directory owned by the runner
+	 * @param inheritance whether host CAT permissions participate or only workspace permissions apply
+	 * @throws IOException if configuration I/O fails
+	 */
+	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory,
+		PermissionInheritance inheritance) throws IOException
+	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(inheritance, "inheritance").isNotNull();
 		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
 			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
 			append(System.lineSeparator());
@@ -83,7 +100,8 @@ final class CodexConnectionConfiguration
 			}
 
 			networkAccess = workspaceWriteNetworkAccess(configuration);
-			copyCatPermissions(configuration, copied);
+			if (inheritance == PermissionInheritance.HOST)
+				copyCatPermissions(configuration, copied);
 		}
 		if (networkAccess != null || npmCache != null)
 		{
@@ -104,6 +122,21 @@ final class CodexConnectionConfiguration
 		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
+	}
+
+	/**
+	 * Selects the existing filesystem policy that a native call may inherit.
+	 */
+	enum PermissionInheritance
+	{
+		/**
+		 * Ordinary host-tool trials retain the user's CAT permission policy.
+		 */
+		HOST,
+		/**
+		 * Private authoring starts from workspace permissions and explicit runner-owned runtime grants.
+		 */
+		WORKSPACE
 	}
 
 	/**

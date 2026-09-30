@@ -34,7 +34,20 @@ public record HarnessRun(String harness, String id, Path directory)
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(id, "id").isNotBlank();
 		requireThat(directory, "directory").isNotNull();
-		if (!harness.matches("[a-z0-9]+") || !id.matches("[a-z0-9]+-[a-z0-9]+"))
-			throw new IllegalArgumentException("harness and id must be generated runner identifiers");
+		if (!harness.matches("[a-z0-9]+"))
+			throw new IllegalArgumentException("Harness name must be a generated runner identifier");
+		requireValidId(id);
+	}
+
+	/**
+	 * Validates the run identifier before an untyped CLI argument becomes runner authority.
+	 *
+	 * @param id the proposed runner identifier
+	 */
+	public static void requireValidId(String id)
+	{
+		requireThat(id, "id").isNotBlank();
+		if (!id.matches("[a-z0-9]+-[a-z0-9]+"))
+			throw new IllegalArgumentException("Run id must be a generated runner identifier");
 	}
 }

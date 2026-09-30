@@ -110,6 +110,16 @@ public final class RoutePreparationInput
 	}
 
 	/**
+	 * Holds the prepared first request and whether later client requests are intentionally excluded.
+	 *
+	 * @param input the first request and any preparatory requests
+	 * @param suppressRemainder whether the bridge must stop after those requests
+	 */
+	record PreparedPrefix(PreparedInput input, boolean suppressRemainder)
+	{
+	}
+
+	/**
 	 * Constructs any needed CAT pre-task turn before the input reaches a harness transport.
 	 *
 	 * @param input the caller's complete JSONL bridge input
@@ -127,30 +137,53 @@ public final class RoutePreparationInput
 		String firstLine = source;
 		if (lineEnd != -1)
 			firstLine = source.substring(0, lineEnd);
+		PreparedPrefix prefix = prepareFirstLine(firstLine, ruleRoot, scope);
+		if (prefix.suppressRemainder() || lineEnd == -1)
+			return prefix.input();
+		PreparedInput prepared = prefix.input();
+		return new PreparedInput(prepared.jsonl() + source.substring(lineEnd), prepared.deliveredRules(),
+			prepared.deliveryTurn());
+	}
+
+	/**
+	 * Prepares one request without waiting for a live client's later requests.
+	 *
+	 * @param firstLine the first JSONL request, or null at end of input
+	 * @param ruleRoot the installed rules root, or null when preparation is unavailable
+	 * @param scope services shared for the runner process lifetime
+	 * @return prepared requests and whether later input should be suppressed
+	 * @throws IOException if the request or a declared route is invalid
+	 */
+	static PreparedPrefix prepareFirstLine(String firstLine, Path ruleRoot, HarnessRunnerScope scope)
+		throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		if (firstLine == null)
+			return new PreparedPrefix(new PreparedInput("", List.of(), 0), false);
 		if (firstLine.isBlank())
-			return new PreparedInput(source, List.of(), 0);
+			return new PreparedPrefix(new PreparedInput(firstLine, List.of(), 0), false);
 		ObjectNode first = object(firstLine, scope);
 		if (!first.path("type").asString().equals("turn"))
-			return new PreparedInput(source, List.of(), 0);
+			return new PreparedPrefix(new PreparedInput(firstLine, List.of(), 0), false);
 		JsonNode prompt = first.path("prompt");
 		if (!prompt.isString() || prompt.asString().isBlank())
-			return new PreparedInput(source, List.of(), 0);
+			return new PreparedPrefix(new PreparedInput(firstLine, List.of(), 0), false);
 		boolean routingOnly = routingOnly(first);
 		if (routingOnly && ruleRoot == null)
 			throw new IOException("routing_only requires installed CAT route preparation");
 		if (ruleRoot == null)
-			return new PreparedInput(source, List.of(), 0);
+			return new PreparedPrefix(new PreparedInput(firstLine, List.of(), 0), false);
 		if (routingOnly && first.has(ROUTE_PREPARATION))
 			throw new IOException("routing_only cannot declare a direct route");
 		if (first.has(ROUTE_PREPARATION))
-			return prepareDeclaredRoute(source, lineEnd, first, ruleRoot, scope);
+			return new PreparedPrefix(prepareDeclaredRoute(first, ruleRoot, scope), false);
 		ObjectNode preparation = scope.json().createObjectNode();
 		preparation.put("type", ROUTE_SELECTION);
 		preparation.put("prompt", renderTemplate(PREPARATION_TEMPLATE, TASK_PROMPT_MARKER, prompt.asString()));
 		if (routingOnly)
-			return routingOnlyInput(preparation, scope);
-		String prepared = jsonl(scope, preparation) + System.lineSeparator() + source;
-		return new PreparedInput(prepared, List.of(), 0);
+			return new PreparedPrefix(routingOnlyInput(preparation, scope), true);
+		String prepared = jsonl(scope, preparation) + System.lineSeparator() + firstLine;
+		return new PreparedPrefix(new PreparedInput(prepared, List.of(), 0), false);
 	}
 
 	/**
@@ -269,16 +302,14 @@ public final class RoutePreparationInput
 	/**
 	 * Constructs a direct route turn from declared paths before the original task.
 	 *
-	 * @param source complete bridge input
-	 * @param lineEnd the index immediately following the first request, or {@code -1} when it is the only request
 	 * @param first parsed initial task request
 	 * @param ruleRoot installed root that owns the declared paths
 	 * @param scope services shared for the runner process lifetime
 	 * @return prepared input with its direct-delivery receipt
 	 * @throws IOException if the route is malformed or unavailable
 	 */
-	private static PreparedInput prepareDeclaredRoute(String source, int lineEnd, ObjectNode first, Path ruleRoot,
-		HarnessRunnerScope scope) throws IOException
+	private static PreparedInput prepareDeclaredRoute(ObjectNode first, Path ruleRoot, HarnessRunnerScope scope)
+		throws IOException
 	{
 		JsonNode declared = first.remove(ROUTE_PREPARATION);
 		if (!declared.isArray() || declared.isEmpty())
@@ -294,10 +325,7 @@ public final class RoutePreparationInput
 		ObjectNode route = scope.json().createObjectNode();
 		route.put("type", "turn");
 		route.put("prompt", deliveryPrompt(rules));
-		String result = jsonl(scope, route) + System.lineSeparator() +
-			jsonl(scope, first);
-		if (lineEnd != -1)
-			result += source.substring(lineEnd);
+		String result = jsonl(scope, route) + System.lineSeparator() + jsonl(scope, first);
 		return new PreparedInput(result, rules.deliveredRules(), 1);
 	}
 

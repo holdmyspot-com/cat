@@ -51,6 +51,7 @@ public final class HarnessOneShotRunner
 				run = session.run();
 				HarnessRun sessionRun = run;
 				manager.markIdle(sessionRun);
+				session.reserveTurn();
 				manager.markWorking(sessionRun);
 				result = session.sendTurn(prompt, event -> manager.appendTurnEvent(sessionRun, 1, event));
 				manager.writeTurnOutput(sessionRun, 1, result);

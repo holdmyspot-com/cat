@@ -44,10 +44,10 @@ public final class ReleasePackagerTest
 			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("codex", Platform.LINUX_X64,
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
-			requireThat(archive.getFileName().toString(), "archiveName").isEqualTo("cat-codex-v1.1-linux-x64.tar.gz");
+			requireThat(archive.getFileName().toString(), "archiveName").isEqualTo("cat-codex-v1.0-linux-x64.tar.gz");
 			List<TarArchiveEntry> entries = readEntries(archive);
 			requireThat(entries, "entries").isNotEmpty();
-			requireThat(entries.stream().allMatch(entry -> entry.getName().startsWith("cat-codex-v1.1-linux-x64/")),
+			requireThat(entries.stream().allMatch(entry -> entry.getName().startsWith("cat-codex-v1.0-linux-x64/")),
 				"entryNames").isTrue();
 			requireThat(entries.stream().allMatch(entry -> entry.getModTime().toInstant().toEpochMilli() == 0),
 				"entryTimestamps").isTrue();

@@ -1,0 +1,4 @@
+{"method":"thread/started","params":{"thread":{"id":"thread-1","model":"model-a","reasoningEffort":"high","modelProvider":"provider-a","cliVersion":"version-a"}}}
+{"method":"thread/settings/updated","params":{"threadId":"thread-1","threadSettings":{"model":"model-a","effort":"low","modelProvider":"provider-a"}}}
+{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}
+{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}

@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -21,7 +22,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class RuleArtifactRouter
 {
-	private static final int MAXIMUM_RULE_INPUT_BYTES = 1_048_576;
+	static final int MAXIMUM_RULE_INPUT_BYTES = 1_048_576;
 	private static final String ROUTE_INDEX = ".cat-path-scoped-rules.md";
 	private static final String LAZY_DEPENDENCY_INDEX = ".cat-lazy-rule-dependencies.md";
 
@@ -47,11 +48,13 @@ public final class RuleArtifactRouter
 		Path rules = artifact.resolve("rules");
 		if (!Files.isDirectory(rules, NOFOLLOW_LINKS))
 			return;
+		Map<Path, Path> relocations = new HashMap<>();
 		try (Stream<Path> directories = Files.list(rules))
 		{
 			for (Path directory : directories.filter(path -> Files.isDirectory(path, NOFOLLOW_LINKS)).toList())
-				routeDirectory(artifact, directory, yamlMapper);
+				routeDirectory(artifact, directory, yamlMapper, relocations);
 		}
+		RuleReferences.relocate(rules, relocations);
 		routeLazyDependencies(artifact, yamlMapper);
 	}
 
@@ -111,9 +114,11 @@ public final class RuleArtifactRouter
 	 * @param artifact the assembled plugin artifact
 	 * @param directory one direct common or harness rule directory
 	 * @param yamlMapper the YAML parser
+	 * @param relocations the rule paths already moved
 	 * @throws IOException if a rule cannot be routed
 	 */
-	private static void routeDirectory(Path artifact, Path directory, YAMLMapper yamlMapper) throws IOException
+	private static void routeDirectory(Path artifact, Path directory, YAMLMapper yamlMapper,
+		Map<Path, Path> relocations) throws IOException
 	{
 		List<Route> routes = new ArrayList<>();
 		try (Stream<Path> files = Files.list(directory))
@@ -129,6 +134,7 @@ public final class RuleArtifactRouter
 				Files.createDirectories(target.getParent());
 				Files.writeString(target, rule.body(), UTF_8);
 				Files.delete(file);
+				relocations.put(file.toAbsolutePath().normalize(), target.toAbsolutePath().normalize());
 				routes.add(new Route(artifact.relativize(target).toString().replace('\\', '/'), rule.paths()));
 			}
 		}

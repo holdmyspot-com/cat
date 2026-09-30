@@ -51,6 +51,17 @@ A design must:
 - Provide tests that establish each required observable outcome and meaningful failure path. When designing or reviewing
   those tests, first lazy load `common/testing.md` for the canonical test-boundary, isolation, and artifact guidance.
 
+Before accepting a costly guarantee or its enforcement, distinguish the user-requested outcome from any stronger
+promise introduced by the design. Trace the stronger promise to explicit user authority or a necessary consequence of
+the retained contract; wording in an implementation plan alone does not establish that authority. Compare the least
+costly approaches that satisfy the requested outcome using their implementation and verification cost, evidence about
+failure likelihood, impact, detectability, and recovery. State when likelihood is unknown. Prefer the simplest approach
+that satisfies the retained contract; do not silently strengthen it or weaken a confirmed guarantee. When a stronger
+promise materially changes what the user receives, present its benefit and extra cost for a scope decision before
+implementing its enforcement. Instructions, measured compliance, detection, and prevention establish different claims;
+do not treat them as equivalent. Establish the actual recovery boundary rather than assuming that a diff or undo covers
+every affected resource.
+
 Before accepting a design or implementation plan with multiple components, map each required outcome and acceptance gate
 to its responsible component and observable evidence. Give each required cross-component handoff one authoritative
 declaration of its produced result, readiness point, consuming decision, identity and authority, lifecycle and failure

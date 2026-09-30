@@ -80,8 +80,7 @@ public final class EditorInventoryTest
 			Path workingDirectory = cleanup.add(Files.createTempDirectory("cat-command-runner-"));
 			AtomicInteger heartbeatCount = new AtomicInteger();
 
-			new CommandRunner(workingDirectory).run(List.of("/bin/sh", "-c",
-				"index=0; while [ \"$index\" -lt 1000000 ]; do index=$((index + 1)); done"),
+			new CommandRunner(workingDirectory).run(List.of("/bin/sleep", "0.2"),
 				workingDirectory.resolve("command.log"), Duration.ofMillis(1), heartbeatCount::incrementAndGet);
 
 			requireThat(heartbeatCount.get(), "heartbeatCount").isGreaterThan(0);

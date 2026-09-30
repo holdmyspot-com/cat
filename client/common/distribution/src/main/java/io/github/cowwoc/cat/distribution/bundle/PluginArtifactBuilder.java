@@ -38,6 +38,15 @@ public final class PluginArtifactBuilder
 	private final String version;
 
 	/**
+	 * Selects whether source-tree links retain their identity or become regular files in the artifact.
+	 */
+	private enum LinkTreatment
+	{
+		PRESERVE,
+		MATERIALIZE_IN_TREE
+	}
+
+	/**
 	 * Creates an artifact builder.
 	 *
 	 * @param version the CAT version
@@ -85,12 +94,12 @@ public final class PluginArtifactBuilder
 			extractLayer(layer, artifactDirectory, owners);
 		resolveSkillIncludes(artifactDirectory);
 		resolveAgentIncludes(artifactDirectory);
-		copyTree(runtimeDirectory, artifactDirectory.resolve("client"));
+		copyTree(runtimeDirectory, artifactDirectory.resolve("client"), LinkTreatment.MATERIALIZE_IN_TREE);
 		Files.writeString(artifactDirectory.resolve("client/VERSION"), version + "\n");
-		copyTree(legalMaterialsDirectory, artifactDirectory);
+		copyTree(legalMaterialsDirectory, artifactDirectory, LinkTreatment.PRESERVE);
 		Path installDirectory = artifactDirectory.resolve("install");
 		for (Path installerDirectory : installerDirectories)
-			copyTree(installerDirectory, installDirectory);
+			copyTree(installerDirectory, installDirectory, LinkTreatment.PRESERVE);
 		RunnerRuntimeManifest.write(artifactDirectory);
 		return artifactDirectory;
 	}
@@ -342,16 +351,18 @@ public final class PluginArtifactBuilder
 	}
 
 	/**
-	 * Copies a directory tree without following symbolic links.
+	 * Copies a directory tree while applying its declared symbolic-link treatment.
 	 *
 	 * @param source the source directory
 	 * @param destination the destination directory
+	 * @param linkTreatment whether in-tree links become regular files or retain their link identity
 	 * @throws IOException if the tree cannot be copied
 	 */
-	private static void copyTree(Path source, Path destination) throws IOException
+	private static void copyTree(Path source, Path destination, LinkTreatment linkTreatment) throws IOException
 	{
 		if (!Files.isDirectory(source, NOFOLLOW_LINKS))
 			throw new IOException("Source directory is not a directory: " + source);
+		Path sourceRoot = source.toRealPath();
 		try (Stream<Path> paths = Files.walk(source))
 		{
 			for (Path path : paths.sorted().toList())
@@ -360,7 +371,18 @@ public final class PluginArtifactBuilder
 				if (Files.isSymbolicLink(path))
 				{
 					Files.createDirectories(target.getParent());
-					Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+					if (linkTreatment == LinkTreatment.PRESERVE)
+						Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+					else
+					{
+						Path resolved = path.toRealPath();
+						if (!resolved.startsWith(sourceRoot))
+							throw new IOException("Symbolic link points outside the runtime: " + path);
+						if (!Files.isRegularFile(resolved, NOFOLLOW_LINKS))
+							throw new IOException("Runtime symbolic link does not resolve to a regular file: " + path);
+						Files.copy(resolved, target, COPY_ATTRIBUTES);
+						copyExecutablePermissions(resolved, target);
+					}
 				}
 				else if (Files.isDirectory(path, NOFOLLOW_LINKS))
 					Files.createDirectories(target);

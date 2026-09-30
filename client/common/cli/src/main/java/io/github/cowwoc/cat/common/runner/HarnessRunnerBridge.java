@@ -1,18 +1,26 @@
 package io.github.cowwoc.cat.common.runner;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntConsumer;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -21,9 +29,6 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import java.io.StringReader;
-
-
 /**
  * Forwards line-delimited JSON requests to one persistent harness process and writes each response.
  */
@@ -83,30 +88,77 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
 	 */
-	@SuppressWarnings("PMD.CloseResource")
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output) throws IOException
+	{
+		return serve(starter, manager, keepRun, input, output, run ->
+		{
+		});
+	}
+
+	/**
+	 * Serves a managed bridge and finalizes its native artifacts before recording terminal run state.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output JSONL client output
+	 * @param finalizer retains native artifacts after the session closes
+	 * @return the completed run
+	 * @throws IOException if transport, protocol, or finalization fails
+	 */
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Writer output, HarnessRunFinalizer finalizer) throws IOException
+	{
+		return serve(starter, manager, keepRun, input, output, finalizer, ignored ->
+		{
+		});
+	}
+
+	/**
+	 * Serves a managed bridge and reports each terminal turn to its input producer.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output JSONL client output
+	 * @param finalizer retains native artifacts after the session closes
+	 * @param turnFinished receives the number of each terminal native turn
+	 * @return the completed run
+	 * @throws IOException if transport, protocol, or finalization fails
+	 */
+	@SuppressWarnings("PMD.CloseResource")
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Writer output, HarnessRunFinalizer finalizer, IntConsumer turnFinished) throws IOException
 	{
 		requireThat(starter, "starter").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
+		requireThat(finalizer, "finalizer").isNotNull();
+		requireThat(turnFinished, "turnFinished").isNotNull();
+		BufferedReader lines = new BufferedReader(input);
 		HarnessRun run = null;
+		boolean finalized = false;
 		boolean completed = false;
 		int turnNumber = 0;
 		Future<?> activeTurn = null;
 		CountDownLatch activeTurnStarted = null;
+		AtomicBoolean activeNativeTurnFinished = null;
 		ExecutorService turnExecutor = Executors.newSingleThreadExecutor();
 		try
 		{
 			try (HarnessRunSession session = starter.start())
 			{
-				RoutePreparationInput.PreparedInput preparedInput = session.prepareInput(input);
 				run = session.run();
+				RoutePreparationInput.PreparedPrefix prefix = session.prepareFirstLine(lines.readLine());
+				RoutePreparationInput.PreparedInput preparedInput = prefix.input();
 				if (manager != null)
 					manager.markIdle(run);
 				write(session.scope(), output, event(session.scope(), "started").put("runId", session.run().id()));
-				BufferedReader lines = new BufferedReader(new StringReader(preparedInput.jsonl()));
-				String line = lines.readLine();
+				Iterator<String> preparedLines = preparedInput.jsonl().lines().iterator();
+				String line = nextLine(preparedLines, lines, prefix.suppressRemainder());
 				while (line != null)
 				{
 					JsonNode request = read(session.scope(), line);
@@ -118,16 +170,21 @@ public final class HarnessRunnerBridge
 							turnNumber);
 						activeTurn = null;
 						activeTurnStarted = null;
+						activeNativeTurnFinished = null;
 					}
 					else if (type.equals("turn"))
 					{
 						awaitActiveTurn(activeTurn);
-						String prompt = requiredText(request, "prompt");
+						String prompt = requiredTurnPrompt(request);
+						session.reserveTurn();
 						int currentTurn = turnNumber + 1;
 						CountDownLatch turnStarted = new CountDownLatch(1);
+						AtomicBoolean nativeTurnFinished = new AtomicBoolean();
 						activeTurn = turnExecutor.submit(() ->
 						{
 							turnStarted.countDown();
+							try
+							{
 							if (manager != null)
 								manager.markWorking(session.run());
 							HarnessProcessResult result = session.sendTurn(prompt, nativeEvent ->
@@ -136,8 +193,19 @@ public final class HarnessRunnerBridge
 									manager.appendTurnEvent(session.run(), currentTurn, nativeEvent);
 								forwardNativeEvent(session, output, nativeEvent);
 							});
+							nativeTurnFinished.set(true);
 							if (manager != null)
 								manager.writeTurnOutput(session.run(), currentTurn, result);
+							if (result.outcome() == HarnessProcessResult.Outcome.INTERRUPTED)
+							{
+								if (manager != null)
+									manager.markIdle(session.run());
+								ObjectNode response = event(session.scope(), "turn-interrupted");
+								response.put("runId", session.run().id());
+								response.put("exitCode", result.exitCode());
+								write(session.scope(), output, response);
+								return null;
+							}
 							if (!result.completed())
 								throw nativeTurnFailure(result);
 							if (manager != null)
@@ -150,13 +218,19 @@ public final class HarnessRunnerBridge
 							response.put("assistant_response", result.assistantResponse());
 							write(session.scope(), output, response);
 							return null;
+							}
+							finally
+							{
+								turnFinished.accept(currentTurn);
+							}
 						});
 						activeTurnStarted = turnStarted;
+						activeNativeTurnFinished = nativeTurnFinished;
 						turnNumber = currentTurn;
 					}
 					else if (type.equals("steer"))
 					{
-						if (activeTurn == null || activeTurn.isDone())
+						if (activeTurn == null || activeTurn.isDone() || activeNativeTurnFinished.get())
 							throw new IOException("Bridge has no active turn to steer");
 						awaitRequestedTurnStart(request, activeTurnStarted);
 						session.steer(requiredText(request, "prompt"));
@@ -165,12 +239,21 @@ public final class HarnessRunnerBridge
 					}
 					else if (type.equals("interrupt"))
 					{
-						if (activeTurn == null || activeTurn.isDone())
+						if (activeTurn == null)
 							throw new IOException("Bridge has no active turn to interrupt");
-						awaitRequestedTurnStart(request, activeTurnStarted);
-						session.interrupt();
-						write(session.scope(), output, event(session.scope(), "interrupted").put("runId", session.run().
-				id()));
+						if (activeTurn.isDone() || activeNativeTurnFinished.get())
+						{
+							awaitActiveTurn(activeTurn);
+							write(session.scope(), output, event(session.scope(), "interrupt-raced-completion").
+								put("runId", session.run().id()));
+						}
+						else
+						{
+							awaitRequestedTurnStart(request, activeTurnStarted);
+							session.interrupt();
+							write(session.scope(), output, event(session.scope(), "interrupted").
+								put("runId", session.run().id()));
+						}
 					}
 					else if (type.equals("complete"))
 					{
@@ -182,7 +265,7 @@ public final class HarnessRunnerBridge
 					}
 					else
 						throw new IOException("Unsupported bridge message type: " + type);
-					line = lines.readLine();
+					line = nextLine(preparedLines, lines, prefix.suppressRemainder());
 				}
 				if (!completed)
 				{
@@ -190,6 +273,8 @@ public final class HarnessRunnerBridge
 					throw new IOException("Bridge input ended without a complete message");
 				}
 			}
+			finalized = true;
+			finalizer.finish(run);
 			if (manager != null)
 			{
 				manager.markCompleted(run);
@@ -200,6 +285,17 @@ public final class HarnessRunnerBridge
 		}
 		catch (IOException e)
 		{
+			if (run != null && !finalized)
+			{
+				try
+				{
+					finalizer.finish(run);
+				}
+				catch (IOException finalizationFailure)
+				{
+					e.addSuppressed(finalizationFailure);
+				}
+			}
 			if (manager != null && run != null)
 			{
 				String diagnostic = e.getMessage();
@@ -211,8 +307,29 @@ public final class HarnessRunnerBridge
 		}
 		finally
 		{
+			if (activeTurn != null)
+				activeTurn.cancel(true);
 			turnExecutor.shutdownNow();
 		}
+	}
+
+	/**
+	 * Returns the next prepared request, then reads later requests from the live client stream.
+	 *
+	 * @param preparedLines requests created from the first client line
+	 * @param lines live client input
+	 * @param suppressRemainder whether to ignore later client requests
+	 * @return the next request, or null at the end of allowed input
+	 * @throws IOException if client input fails
+	 */
+	private static String nextLine(Iterator<String> preparedLines, BufferedReader lines, boolean suppressRemainder)
+		throws IOException
+	{
+		if (preparedLines.hasNext())
+			return preparedLines.next();
+		if (suppressRemainder)
+			return null;
+		return lines.readLine();
 	}
 
 	/**
@@ -457,14 +574,114 @@ public final class HarnessRunnerBridge
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Path output) throws IOException
 	{
+		return serve(starter, manager, keepRun, input, output, run ->
+		{
+		});
+	}
+
+	/**
+	 * Serves a managed bridge and durably finalizes its transcript before terminal run state.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output retained transcript path
+	 * @param finalizer retains native artifacts after transcript synchronization
+	 * @return the completed run
+	 * @throws IOException if transport, transcript, or finalization fails
+	 */
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Path output, HarnessRunFinalizer finalizer) throws IOException
+	{
+		return serveTranscript(starter, manager, keepRun, input, output, finalizer, ignored ->
+		{
+		}, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+	}
+
+	/**
+	 * Exclusively creates a retained transcript for a preallocated native call.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output new transcript path
+	 * @param finalizer retains native artifacts after transcript synchronization
+	 * @return the completed run
+	 * @throws IOException if the transcript exists or the call fails
+	 */
+	public static HarnessRun serveNewTranscript(HarnessRunStarter starter, HarnessRunManager manager,
+		boolean keepRun, Reader input, Path output, HarnessRunFinalizer finalizer) throws IOException
+	{
+		return serveTranscript(starter, manager, keepRun, input, output, finalizer, ignored ->
+		{
+		}, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+	}
+
+	/**
+	 * Exclusively creates a transcript and reports terminal turns to the live input producer.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output new transcript path
+	 * @param finalizer retains native artifacts after transcript synchronization
+	 * @param turnFinished receives each terminal turn number
+	 * @return the completed run
+	 * @throws IOException if the transcript exists or the call fails
+	 */
+	public static HarnessRun serveNewTranscript(HarnessRunStarter starter, HarnessRunManager manager,
+		boolean keepRun, Reader input, Path output, HarnessRunFinalizer finalizer, IntConsumer turnFinished)
+		throws IOException
+	{
+		return serveTranscript(starter, manager, keepRun, input, output, finalizer, turnFinished,
+			StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+	}
+
+	/**
+	 * Owns transcript creation and its durable finalization before changing run state.
+	 *
+	 * @param starter starts the isolated session
+	 * @param manager owns run transitions, or null when the caller owns them
+	 * @param keepRun whether to retain a completed run
+	 * @param input live JSONL client input
+	 * @param output retained transcript path
+	 * @param finalizer retains native artifacts after transcript synchronization
+	 * @param turnFinished receives each terminal turn number
+	 * @param options transcript creation options
+	 * @return the completed run
+	 * @throws IOException if transcript or native execution fails
+	 */
+	private static HarnessRun serveTranscript(HarnessRunStarter starter, HarnessRunManager manager,
+		boolean keepRun, Reader input, Path output, HarnessRunFinalizer finalizer, IntConsumer turnFinished,
+		OpenOption... options) throws IOException
+	{
 		requireThat(output, "output").isNotNull();
+		requireThat(finalizer, "finalizer").isNotNull();
+		requireThat(turnFinished, "turnFinished").isNotNull();
 		Path parent = output.toAbsolutePath().normalize().getParent();
 		if (parent == null)
 			throw new IOException("Bridge transcript has no parent directory: " + output);
 		Files.createDirectories(parent);
-		try (Writer transcript = Files.newBufferedWriter(output, StandardCharsets.UTF_8))
+		try (FileChannel channel = FileChannel.open(output, options);
+			BufferedWriter transcript = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8)))
 		{
-			return serve(starter, manager, keepRun, input, transcript);
+			HarnessRunFinalizer durableFinalizer = run ->
+			{
+				synchronized (transcript)
+				{
+					transcript.flush();
+					channel.force(true);
+				}
+				try (FileChannel directory = FileChannel.open(parent, StandardOpenOption.READ))
+				{
+					directory.force(true);
+				}
+				finalizer.finish(run);
+			};
+			return serve(starter, manager, keepRun, input, transcript, durableFinalizer, turnFinished);
 		}
 	}
 
@@ -538,6 +755,21 @@ public final class HarnessRunnerBridge
 		JsonNode value = object.path(name);
 		if (!value.isString() || value.stringValue().isBlank())
 			throw new IOException("Bridge message requires a non-blank " + name);
+		return value.stringValue();
+	}
+
+	/**
+	 * Reads a turn prompt, including an empty prompt when the native harness accepts one.
+	 *
+	 * @param request the parsed bridge request
+	 * @return the prompt text
+	 * @throws IOException if the prompt is absent or not a string
+	 */
+	private static String requiredTurnPrompt(JsonNode request) throws IOException
+	{
+		JsonNode value = request.path("prompt");
+		if (!value.isString())
+			throw new IOException("Bridge turn requires a string prompt");
 		return value.stringValue();
 	}
 

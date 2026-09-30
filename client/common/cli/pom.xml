@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>io.github.cowwoc.cat</groupId>
 		<artifactId>client-common</artifactId>
-		<version>1.1</version>
+		<version>1.0</version>
 	</parent>
 
 	<artifactId>client-common-cli</artifactId>
@@ -17,6 +17,10 @@
 	</properties>
 
 	<dependencies>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-statistics-interval</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>io.github.cowwoc.pouch</groupId>
 			<artifactId>pouch-core</artifactId>
@@ -45,6 +49,21 @@
 	</dependencies>
 
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<excludes>
+					<exclude>io/github/cowwoc/cat/common/version.properties</exclude>
+				</excludes>
+			</resource>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>io/github/cowwoc/cat/common/version.properties</include>
+				</includes>
+			</resource>
+		</resources>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

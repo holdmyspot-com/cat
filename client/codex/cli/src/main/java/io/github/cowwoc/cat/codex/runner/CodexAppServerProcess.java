@@ -16,6 +16,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.time.Instant;
 import java.nio.file.Path;
+import java.util.List;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -35,6 +36,12 @@ public final class CodexAppServerProcess implements HarnessProcess
 	private long nextRequestId = 3;
 	private String threadId;
 	private String effort = "";
+	private boolean reservedTurn;
+	private boolean turnInFlight;
+	private boolean stopRequested;
+	private boolean nativeTurnStarted;
+	private boolean nativeTurnFinished;
+	private String activeTurnId;
 
 	/**
 	 * Wraps a started Codex app-server process.
@@ -96,6 +103,24 @@ public final class CodexAppServerProcess implements HarnessProcess
 	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
 		String permissionProfile) throws IOException
 	{
+		initialize(workingDirectory, model, developerInstructions, effort, permissionProfile,
+			List.of(workingDirectory));
+	}
+
+	/**
+	 * Starts a thread with the exact project and evidence roots allowed by its named permission profile.
+	 *
+	 * @param workingDirectory the copied project directory
+	 * @param model the optional model name
+	 * @param developerInstructions optional direct agent instructions
+	 * @param effort optional reasoning effort
+	 * @param permissionProfile the named permission profile
+	 * @param runtimeWorkspaceRoots paths the thread may access through that profile
+	 * @throws IOException if startup fails or no thread ID is returned
+	 */
+	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
+		String permissionProfile, List<Path> runtimeWorkspaceRoots) throws IOException
+	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
 		requireThat(developerInstructions, "developerInstructions").isNotNull();
@@ -106,8 +131,8 @@ public final class CodexAppServerProcess implements HarnessProcess
 			readResponse(1, CodexAppServerProtocol.initialize());
 			input.write(CodexAppServerProtocol.initialized());
 			input.flush();
-			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
-				developerInstructions, permissionProfile)));
+			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(2, workingDirectory, model,
+				developerInstructions, permissionProfile, runtimeWorkspaceRoots)));
 			if (verifyCatHookDelivery)
 			{
 				long requestId = nextRequestId;
@@ -136,31 +161,154 @@ public final class CodexAppServerProcess implements HarnessProcess
 	@Override
 	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
 	{
-		requireThat(request, "request").isNotBlank();
+		requireThat(request, "request").isNotNull();
 		requireThat(listener, "listener").isNotNull();
 		if (threadId == null)
 			throw new IOException("Codex app-server was not initialized");
 		synchronized (input)
 		{
+			if (!reservedTurn)
+				throw new IOException("Codex turn was not reserved before dispatch");
+			reservedTurn = false;
+			turnInFlight = true;
+			nativeTurnStarted = false;
+			nativeTurnFinished = false;
+			activeTurnId = null;
 			input.write(CodexAppServerProtocol.turnStart(nextRequestId, threadId, request, effort));
 			nextRequestId += 1;
 			input.flush();
-			StringBuilder events = new StringBuilder(startupEvents);
-			startupEvents.setLength(0);
-			String line = output.readLine();
-			while (line != null)
+		}
+		StringBuilder events = new StringBuilder(startupEvents);
+		startupEvents.setLength(0);
+		String line = output.readLine();
+		while (line != null)
+		{
+			events.append(line).append('\n');
+			observeTurnControl(line);
+			if (turnCompletedFor(line, threadId))
 			{
-				events.append(line).append('\n');
+				synchronized (input)
+				{
+					nativeTurnFinished = true;
+					turnInFlight = false;
+					activeTurnId = null;
+				}
 				listener.accept(line);
-				if (turnCompletedFor(line, threadId))
-					return completedTurn(events.toString(), line);
-				line = output.readLine();
+				return completedTurn(events.toString(), line);
 			}
-			String diagnostic = "Codex app-server ended before turn completion";
-			String error = standardError.await();
-			if (!error.isBlank())
-				diagnostic += ": " + error;
-			return new HarnessProcessResult(process.exitValue(), events.toString(), diagnostic);
+			listener.accept(line);
+			line = output.readLine();
+		}
+		String diagnostic = "Codex app-server ended before turn completion";
+		String error = standardError.await();
+		if (!error.isBlank())
+			diagnostic += ": " + error;
+		return new HarnessProcessResult(process.exitValue(), events.toString(), diagnostic);
+	}
+
+	/**
+	 * Reserves a native start so an immediate stop can be retained before the turn ID exists.
+	 */
+	@Override
+	public void reserveTurn()
+	{
+		synchronized (input)
+		{
+			reservedTurn = true;
+			stopRequested = false;
+		}
+	}
+
+	/**
+	 * Records the native turn ID and sends a queued stop only after Codex announces turn start.
+	 *
+	 * @param line one native protocol response or notification
+	 * @throws IOException if a turn ID is malformed or a queued stop cannot be sent
+	 */
+	private void observeTurnControl(String line) throws IOException
+	{
+		if (!line.contains("\"turn\""))
+			return;
+		try
+		{
+			JsonNode message = scope.json().readTree(line);
+			JsonNode turnId = message.path("result").path("turn").path("id");
+			if (turnId.isString() && !turnId.stringValue().isBlank())
+			{
+				synchronized (input)
+				{
+					activeTurnId = turnId.stringValue();
+				}
+			}
+			if (!"turn/started".equals(message.path("method").asString()))
+				return;
+			String startedId = message.path("params").path("turn").path("id").stringValue();
+			if (startedId == null || startedId.isBlank())
+				throw new IOException("Codex turn/start notification has no turn identifier");
+			synchronized (input)
+			{
+				activeTurnId = startedId;
+				nativeTurnStarted = true;
+				if (stopRequested)
+					sendInterrupt();
+			}
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Invalid Codex turn control event", e);
+		}
+	}
+
+	/**
+	 * Sends one interruption request after native turn start has been observed.
+	 *
+	 * @throws IOException if the native input rejects the request
+	 */
+	private void sendInterrupt() throws IOException
+	{
+		assert Thread.holdsLock(input);
+		input.write(CodexAppServerProtocol.turnInterrupt(nextRequestId, threadId, activeTurnId));
+		nextRequestId += 1;
+		input.flush();
+	}
+
+	/**
+	 * Stops the reserved or active turn, waiting for native start before sending its turn ID.
+	 *
+	 * @throws IOException if the process cannot accept the stop
+	 */
+	@Override
+	public void interrupt() throws IOException
+	{
+		synchronized (input)
+		{
+			if (nativeTurnFinished || stopRequested)
+				return;
+			if (!reservedTurn && !turnInFlight)
+				throw new IOException("Codex has no reserved or active turn to interrupt");
+			stopRequested = true;
+			if (nativeTurnStarted)
+				sendInterrupt();
+		}
+	}
+
+	/**
+	 * Sends new user direction to a started native turn.
+	 *
+	 * @param request the nonblank steering text
+	 * @throws IOException if no native turn is available
+	 */
+	@Override
+	public void steer(String request) throws IOException
+	{
+		requireThat(request, "request").isNotBlank();
+		synchronized (input)
+		{
+			if (!nativeTurnStarted || nativeTurnFinished)
+				throw new IOException("Codex has no active turn to steer");
+			input.write(CodexAppServerProtocol.turnSteer(nextRequestId, threadId, activeTurnId, request));
+			nextRequestId += 1;
+			input.flush();
 		}
 	}
 
@@ -265,8 +413,11 @@ public final class CodexAppServerProcess implements HarnessProcess
 			{
 				if (verifyCatHookDelivery)
 					CodexHookDelivery.verifySubagentDelivery(events, scope.json());
-				return new HarnessProcessResult(0, events, "");
+				String response = CodexTurnResponse.read(turn);
+				return new HarnessProcessResult(0, events, "", HarnessProcessResult.Outcome.COMPLETED, response);
 			}
+			if ("interrupted".equals(status))
+				return new HarnessProcessResult(130, events, "", HarnessProcessResult.Outcome.INTERRUPTED, "");
 			String diagnostic = "Codex turn finished with status " + status;
 			JsonNode error = turn.path("error").path("message");
 			if (error.isString() && !error.stringValue().isBlank())

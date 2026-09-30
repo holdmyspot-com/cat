@@ -30,6 +30,12 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	private final OutputStreamWriter input;
 	private final BufferedReader output;
 	private final HarnessStandardError standardError;
+	private final Object turnLock = new Object();
+	private boolean reserved;
+	private boolean dispatched;
+	private boolean stopRequested;
+	private boolean signalDelivered;
+	private boolean terminal;
 
 	/**
 	 * Wraps a started Claude process configured for stream-json input and output.
@@ -69,26 +75,117 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	{
 		requireThat(request, "request").isNotBlank();
 		requireThat(listener, "listener").isNotNull();
+		synchronized (turnLock)
+		{
+			if (!reserved)
+				resetTurn();
+		}
 		synchronized (input)
 		{
 			input.write(ClaudeStreamingProtocol.userTurn(request));
 			input.flush();
+		}
+		synchronized (turnLock)
+		{
+			dispatched = true;
+			if (stopRequested)
+				signalTurn();
 		}
 		StringBuilder events = new StringBuilder();
 		String line = output.readLine();
 		while (line != null)
 		{
 			events.append(line).append('\n');
+			JsonNode result = terminalResult(line);
+			if (result != null)
+			{
+				ClaudeResultDisposition disposition = ClaudeResultDisposition.read(result);
+				boolean interrupted;
+				synchronized (turnLock)
+				{
+					terminal = true;
+					interrupted = signalDelivered && disposition == ClaudeResultDisposition.ABORTED_STREAMING;
+				}
+				listener.accept(line);
+				String response = assistantResponse(events.toString());
+				if (interrupted)
+					return new HarnessProcessResult(130, events.toString(), "",
+						HarnessProcessResult.Outcome.INTERRUPTED, response);
+				if (disposition == ClaudeResultDisposition.COMPLETED)
+					return new HarnessProcessResult(0, events.toString(), "",
+						HarnessProcessResult.Outcome.COMPLETED, response);
+				return new HarnessProcessResult(1, events.toString(),
+					"Claude terminal result: " + result.path("terminal_reason").asString(),
+					HarnessProcessResult.Outcome.FAILED, response);
+			}
 			listener.accept(line);
-			if (line.contains("\"type\":\"result\""))
-				return new HarnessProcessResult(0, events.toString(), "", true, assistantResponse(events.toString()));
 			line = output.readLine();
+		}
+		int exitCode;
+		try
+		{
+			exitCode = process.waitFor();
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for Claude process exit", e);
 		}
 		String error = standardError.await();
 		String diagnostic = "Claude process ended before result";
 		if (!error.isBlank())
 			diagnostic += ": " + error;
-		return new HarnessProcessResult(process.exitValue(), events.toString(), diagnostic);
+		synchronized (turnLock)
+		{
+			terminal = true;
+			if (signalDelivered && exitCode == 130)
+				return new HarnessProcessResult(exitCode, events.toString(), "",
+					HarnessProcessResult.Outcome.INTERRUPTED, assistantResponse(events.toString()));
+		}
+		return new HarnessProcessResult(exitCode, events.toString(), diagnostic,
+			HarnessProcessResult.Outcome.FAILED, assistantResponse(events.toString()));
+	}
+
+	@Override
+	public void reserveTurn()
+	{
+		synchronized (turnLock)
+		{
+			resetTurn();
+		}
+	}
+
+	/**
+	 * Clears the preceding turn's terminal and stop state while the turn lock is held.
+	 */
+	private void resetTurn()
+	{
+		reserved = true;
+		dispatched = false;
+		stopRequested = false;
+		signalDelivered = false;
+		terminal = false;
+	}
+
+	/**
+	 * Reads a native result event from one protocol line.
+	 *
+	 * @param line one line from Claude's standard output
+	 * @return the result event, or null when the line does not contain one
+	 */
+	private JsonNode terminalResult(String line)
+	{
+		try
+		{
+			JsonNode event = scope.json().readTree(line);
+			if (event.path("type").asString().equals("result"))
+				return event;
+		}
+		catch (JacksonException _)
+		{
+			// Retain unrelated diagnostic lines as native events.
+		}
+		return null;
 	}
 
 	/**
@@ -146,14 +243,34 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	@Override
 	public void interrupt() throws IOException
 	{
+		synchronized (turnLock)
+		{
+			if (terminal || signalDelivered)
+				return;
+			if (!reserved)
+				throw new IOException("Claude has no reserved turn to interrupt");
+			stopRequested = true;
+			if (dispatched)
+				signalTurn();
+		}
+	}
+
+	/**
+	 * Signals the active native turn while the turn lock is held.
+	 *
+	 * @throws IOException if the operating system rejects the signal
+	 */
+	private void signalTurn() throws IOException
+	{
 		if (!process.isAlive())
-			throw new IOException("Claude process is no longer alive");
+			return;
 		// Claude stream-json provides user messages but no corresponding interrupt request. Send SIGINT rather than
 		// terminating the process so Claude can end the active turn without necessarily discarding the session.
 		try (Process signal = new ProcessBuilder("kill", "-INT", Long.toString(process.pid())).start())
 		{
 			if (signal.waitFor() != 0)
 				throw new IOException("Unable to interrupt the active Claude turn");
+			signalDelivered = true;
 		}
 		catch (InterruptedException e)
 		{
