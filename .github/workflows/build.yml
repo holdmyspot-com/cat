@@ -40,7 +40,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
       - name: Install test tools on macOS
         if: runner.os == 'macOS'
-        run: brew install bats-core shellcheck
+        run: |
+          brew install bats-core shellcheck coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - name: Verify
         run: client/mvnw -f client/pom.xml verify
       - name: Verify bootstrap boundaries
