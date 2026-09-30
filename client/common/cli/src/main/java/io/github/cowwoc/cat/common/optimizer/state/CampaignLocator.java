@@ -172,7 +172,7 @@ public final class CampaignLocator
 			recoverConfirmationIntent();
 			CampaignLookupKey key = keyForBinding(request.binding());
 			recoverKeyTransitionIntent(key);
-			CampaignStore store = CampaignStore.open(request.binding().realDirectory());
+			CampaignStore store = new CampaignStore(request.binding().realDirectory());
 			Campaign campaign = store.load();
 			CampaignTransitions transitions = new CampaignTransitions(store);
 			if (campaign.transitionCounter() > request.expectedCounter())
@@ -225,7 +225,7 @@ public final class CampaignLocator
 			recoverCreationIntent();
 			CampaignLookupKey key = keyForBinding(request.binding());
 			recoverKeyTransitionIntent(key);
-			CampaignStore store = CampaignStore.open(request.binding().realDirectory());
+			CampaignStore store = new CampaignStore(request.binding().realDirectory());
 			Campaign campaign = store.load();
 			CampaignTransitions transitions = new CampaignTransitions(store);
 			if (campaign.transitionCounter() > request.expectedCounter())
@@ -333,7 +333,7 @@ public final class CampaignLocator
 			recoverCreationIntent();
 			recoverConfirmationIntent();
 			CampaignLookupKey key = keyForBinding(request.binding());
-			CampaignStore store = CampaignStore.open(request.binding().realDirectory());
+			CampaignStore store = new CampaignStore(request.binding().realDirectory());
 			Campaign current = store.load();
 			if (!request.producerRecordRef().collection().equals("contracts"))
 				throw new IOException("Confirmation requires a contracts producer record");
@@ -497,7 +497,7 @@ public final class CampaignLocator
 			throw new IOException("Confirmation intent has a non-confirmation transition kind");
 		if (!keyForBinding(binding).equals(key))
 			throw new IOException("Confirmation intent has a foreign campaign key");
-		Campaign campaign = CampaignStore.open(request.binding().realDirectory()).load();
+		Campaign campaign = new CampaignStore(request.binding().realDirectory()).load();
 		if (campaign.transitionCounter() == request.expectedCounter())
 		{
 			Files.delete(confirmationIntentFile);
@@ -712,7 +712,7 @@ public final class CampaignLocator
 		KeyTransitionIntent intent = KeyTransitionIntent.decode(Files.readAllBytes(file));
 		if (!intent.key().equals(key) || !keyForBinding(intent.binding()).equals(key))
 			throw new IOException("Campaign key transition intent has a foreign registration: " + file);
-		CampaignStore store = CampaignStore.open(intent.binding().realDirectory());
+		CampaignStore store = new CampaignStore(intent.binding().realDirectory());
 		store.verifyBinding(intent.binding());
 		store.readImmutableJson(intent.producerRecordRef());
 		LatestConfirmedClaim retainedClaim = readClaim(key);
@@ -1064,7 +1064,7 @@ public final class CampaignLocator
 				Files.delete(forkIntentFile);
 			return;
 		}
-		Campaign campaign = CampaignStore.open(directory).load();
+		Campaign campaign = new CampaignStore(directory).load();
 		if (!campaign.campaignId().equals(intent.campaignId()) ||
 			!intent.optimizationProfile().equals(campaign.optimizationProfile()))
 			throw new IOException("Campaign creation intent disagrees with committed campaign: " + directory);
@@ -1243,8 +1243,8 @@ public final class CampaignLocator
 	{
 		Path directory = Path.of(entry.campaignDirectory()).toAbsolutePath().normalize();
 		verifyCampaignDirectory(directory, entry.campaignId());
-		CampaignStore store = CampaignStore.open(directory);
-		Campaign campaign = store.lockedSnapshot(store.binding());
+		CampaignStore store = new CampaignStore(directory);
+		Campaign campaign = store.lockedSnapshot(new CampaignBinding(entry.campaignId(), directory));
 		if (!campaign.campaignId().equals(entry.campaignId()) ||
 			!indexReachesPredecessor(campaign, entry.transitionCounter(), campaign.transitionCounter()))
 			throw new IOException("Campaign index entry is stale: " + entry.campaignId());

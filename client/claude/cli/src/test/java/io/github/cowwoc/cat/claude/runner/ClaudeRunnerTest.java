@@ -41,8 +41,7 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies an isolated one-shot session cannot retain or resume host conversation state or override its generated
-	 * sandbox policy.
+	 * A launch without CAT disables native session persistence and omits a settings override.
 	 */
 	@Test
 	public void disablesSessionPersistence()
@@ -52,6 +51,19 @@ public final class ClaudeRunnerTest
 
 		requireThat(command, "command").contains("--no-session-persistence");
 		requireThat(command, "command").doesNotContain("--settings");
+	}
+
+	/**
+	 * The CAT launch command allows the native transcript required by pre-tool identity hooks.
+	 */
+	@Test
+	public void allowsTranscriptForCatHooks()
+	{
+		List<String> command = ClaudeRunner.command("claude", "sonnet", Path.of("marketplace"), true,
+			Path.of("hook-results"));
+
+		requireThat(command, "command").doesNotContain("--no-session-persistence");
+		requireThat(command, "command").doesNotContain("--resume").doesNotContain("--continue");
 	}
 
 	/**

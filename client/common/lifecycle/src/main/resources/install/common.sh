@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 
 CAT_VERSION="1.0"
+# Persistent data compatibility is independent of the release and plugin manifest versions.
+CAT_DATA_VERSION="1.1"
 CAT_RELEASE_TAG="v${CAT_VERSION}"
 CAT_RELEASE_BASE_URL="${CAT_RELEASE_BASE_URL:-https://github.com/cowwoc/cat.client/releases/download/${CAT_RELEASE_TAG}}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
@@ -54,15 +56,15 @@ cat_is_dotted_numeric_version()
 	[ "${cat_version_status}" -eq 1 ]
 }
 
-# Migrates one harness's persistent CAT data to the artifact's current version.
+# Migrates one harness's persistent CAT data to the supported data version.
 #
 # Arguments:
 #   $1 - Writable CAT data directory for the harness being installed.
 #   $2 - Directory containing this artifact's ordered migration registry and scripts.
 #
 # Side effects:
-#   Runs each registry script for versions after the recorded migration version through CAT_VERSION, then records
-#   CAT_VERSION only after every required script succeeds.
+#   Runs each registry script for versions after the recorded migration version through CAT_DATA_VERSION, then records
+#   CAT_DATA_VERSION only after every required script succeeds.
 cat_migrate_data()
 {
 	cat_data_directory="$1"
@@ -75,7 +77,7 @@ cat_migrate_data()
 		exit 1
 	}
 	if [ ! -f "${cat_migration_version_file}" ]; then
-		cat_previous_version="${CAT_VERSION}"
+		cat_previous_version="${CAT_DATA_VERSION}"
 		cat_first_install=true
 	else
 		cat_previous_version="$(tr -d '\r\n' < "${cat_migration_version_file}")"
@@ -89,9 +91,9 @@ cat_migrate_data()
 		echo "CAT migration version must be dotted numeric text: ${cat_migration_version_file}" >&2
 		exit 1
 	}
-	if cat_version_precedes "${CAT_VERSION}" "${cat_previous_version}"; then
-		echo "CAT data was created by a newer version (${cat_previous_version}); install CAT ${cat_previous_version}" \
-			"or newer." >&2
+	if cat_version_precedes "${CAT_DATA_VERSION}" "${cat_previous_version}"; then
+		echo "CAT data version ${cat_previous_version} is unsupported; this installer supports data through" \
+			"version ${CAT_DATA_VERSION}. Install a release that supports the recorded data version." >&2
 		exit 1
 	fi
 	cat_registry_previous_version=""
@@ -121,12 +123,12 @@ cat_migrate_data()
 		}
 		if [ "${cat_first_install}" = false ] && \
 			cat_version_precedes "${cat_previous_version}" "${cat_target_version}" && \
-			! cat_version_precedes "${CAT_VERSION}" "${cat_target_version}"; then
+			! cat_version_precedes "${CAT_DATA_VERSION}" "${cat_target_version}"; then
 			CAT_MIGRATION_DATA_DIR="${cat_data_directory}" CAT_MIGRATION_FROM_VERSION="${cat_previous_version}" \
 				CAT_MIGRATION_TO_VERSION="${cat_target_version}" sh "${cat_migrations_directory}/${cat_script}"
 		fi
 	done < "${cat_migration_registry}"
-	printf '%s\n' "${CAT_VERSION}" > "${cat_migration_version_file}"
+	printf '%s\n' "${CAT_DATA_VERSION}" > "${cat_migration_version_file}"
 }
 
 # Deletes the temporary directory created while downloading an artifact, if any.

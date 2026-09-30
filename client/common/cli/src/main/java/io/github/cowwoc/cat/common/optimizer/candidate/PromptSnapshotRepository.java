@@ -33,7 +33,7 @@ public final class PromptSnapshotRepository
 	}
 
 	/**
-	 * Stores blobs before publishing the immutable manifest.
+	 * Stores blobs before publishing a new immutable manifest or validating the existing manifest for this candidate.
 	 *
 	 * @param snapshot immutable snapshot
 	 * @return persisted candidate identity
@@ -47,6 +47,21 @@ public final class PromptSnapshotRepository
 			byte[] content = snapshot.blob(entry.contentSha256()).orElseThrow();
 			writeOnce(contentPath(entry.contentSha256()), content);
 		}
+
+		Path manifestFile = manifestPath(snapshot.id());
+		if (Files.exists(manifestFile, LinkOption.NOFOLLOW_LINKS))
+		{
+			try
+			{
+				load(snapshot.id());
+			}
+			catch (IOException failure)
+			{
+				throw new IOException("Immutable snapshot collision at " + manifestFile, failure);
+			}
+			return snapshot.id();
+		}
+
 		byte[] manifest = json.writeValueAsBytes(snapshot.manifest());
 		writeOnce(manifestPath(snapshot.id()), manifest);
 		return snapshot.id();

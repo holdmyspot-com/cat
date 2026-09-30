@@ -6,6 +6,8 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.testng.annotations.Test;
 
@@ -15,6 +17,63 @@ public final class PromptSnapshotRepositoryTest
 	/** Creates the test fixture. */
 	public PromptSnapshotRepositoryTest()
 	{
+	}
+
+	/**
+	 * Capturing files publishes manifest entries in project-relative path order.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void ordersCapturedManifestPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("snapshot-entry-order-"));
+			List<Path> paths = List.of(Path.of("a.md"), Path.of("b.md"), Path.of("c.md"), Path.of("d.md"),
+				Path.of("e.md"), Path.of("f.md"), Path.of("g.md"), Path.of("h.md"));
+			for (Path path : paths)
+				Files.writeString(root.resolve(path), path.toString());
+
+			PromptSnapshot snapshot = PromptSnapshot.capture(root, paths);
+			requireThat(snapshot.manifest().entries().stream().map(SnapshotEntry::relativePath).toList(),
+				"manifestPaths").isEqualTo(paths);
+		}
+	}
+
+	/**
+	 * Restoring or republishing the same snapshot preserves a valid retained manifest's entry order and immutable bytes.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void preservesRetainedManifestOrder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("snapshot-retained-order-"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Files.writeString(project.resolve("a.md"), "first");
+			Files.writeString(project.resolve("b.md"), "second");
+			PromptSnapshot captured = PromptSnapshot.capture(project, List.of(Path.of("a.md"), Path.of("b.md")));
+			Path campaign = root.resolve("campaign");
+			PromptSnapshotRepository repository = new PromptSnapshotRepository(campaign);
+			repository.save(captured);
+			List<SnapshotEntry> retainedEntries = new ArrayList<>(captured.manifest().entries());
+			Collections.reverse(retainedEntries);
+			SnapshotManifest retained = new SnapshotManifest(SnapshotManifest.SCHEMA_VERSION, captured.id(),
+				retainedEntries);
+			byte[] retainedBytes = SnapshotJson.mapper().writeValueAsBytes(retained);
+			Path manifestFile = campaign.resolve("snapshots").resolve(captured.id() + ".json");
+			// A prior producer may publish a valid different entry order under the same independently derived identity.
+			Files.write(manifestFile, retainedBytes);
+
+			PromptSnapshot restored = new PromptSnapshotRepository(campaign).load(captured.id());
+			repository.save(restored);
+			repository.save(captured);
+			requireThat(Files.readAllBytes(manifestFile), "retainedManifestBytes").isEqualTo(retainedBytes);
+			requireThat(restored.manifest().entries(), "retainedManifestEntries").isEqualTo(retainedEntries);
+		}
 	}
 
 	/** Manifest entry paths must not gain a different identity through normalization. */

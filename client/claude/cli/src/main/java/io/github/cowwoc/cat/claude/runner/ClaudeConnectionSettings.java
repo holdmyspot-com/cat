@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.claude.runner;
 
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
@@ -14,13 +15,24 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Supplies the allow-listed Claude connection settings that a host configuration exposes through its environment.
+ * Supplies allow-listed Claude connection variables from the parent process and its settings file.
  */
 final class ClaudeConnectionSettings
 {
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
+
+	/**
+	 * Copies approved connection variables from the parent process into an isolated environment.
+	 *
+	 * @param source the parent process environment
+	 * @param destination the mutable isolated process environment
+	 */
+	static void copyProcessEnvironment(Map<String, String> source, Map<String, String> destination)
+	{
+		HarnessEnvironment.copyAllowed(source, destination, CONNECTION_VARIABLES);
+	}
 
 	/**
 	 * Copies absent connection variables from a host Claude settings file into an isolated process environment.

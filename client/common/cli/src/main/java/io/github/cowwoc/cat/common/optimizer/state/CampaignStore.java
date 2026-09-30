@@ -986,9 +986,9 @@ public final class CampaignStore
 			for (CallSlot slot : campaign.scheduler().slots())
 				verifySlotClaim(binding, campaign, slot);
 			verifyInterruptionReceipts(binding, campaign);
-			verifyConfirmationReceipts(binding, campaign);
+			Map<String, ConfirmedContract> contracts = verifyConfirmationReceipts(binding, campaign);
 			verifyInitialCandidateReceipts(binding, campaign);
-			Map<EvidenceRef, TrialAssignment> assignments = verifyTrialAssignmentReceipts(binding, campaign);
+			Map<EvidenceRef, TrialAssignment> assignments = verifyTrialAssignmentReceipts(binding, campaign, contracts);
 			Map<EvidenceRef, TrialOutcomeRecord> outcomes = verifySemanticOutcomeReceipts(binding, campaign,
 				assignments, retention);
 			verifyMeasurementReceipts(binding, campaign);
@@ -1080,10 +1080,13 @@ public final class CampaignStore
 	 *
 	 * @param binding pinned campaign identity
 	 * @param campaign decoded campaign
+	 * @return contracts validated during this campaign read, keyed by their immutable identities
 	 * @throws IOException if a confirmed contract or lineage is missing or foreign
 	 */
-	private void verifyConfirmationReceipts(CampaignBinding binding, Campaign campaign) throws IOException
+	private Map<String, ConfirmedContract> verifyConfirmationReceipts(CampaignBinding binding, Campaign campaign)
+		throws IOException
 	{
+		Map<String, ConfirmedContract> contracts = new HashMap<>();
 		for (TransitionReceipt receipt : campaign.transitionReceipts())
 		{
 			if (receipt.kind() != TransitionKind.CONFIRMED_CONTRACT)
@@ -1114,7 +1117,9 @@ public final class CampaignStore
 						source.loadingEvidenceId())))
 					throw new IOException("Active confirmation has a foreign measurement epoch");
 			}
+			contracts.put(contract.contractId(), contract);
 		}
+		return contracts;
 	}
 
 	/**
@@ -1175,13 +1180,13 @@ public final class CampaignStore
 	 *
 	 * @param binding pinned campaign identity
 	 * @param campaign decoded campaign
+	 * @param contracts validated contracts from this read, extended when an assignment names another contract
 	 * @return assignments checked against their retained trials, keyed by their producer references
 	 * @throws IOException if a selection has a foreign producer or no retained trial
 	 */
 	private Map<EvidenceRef, TrialAssignment> verifyTrialAssignmentReceipts(CampaignBinding binding,
-		Campaign campaign) throws IOException
+		Campaign campaign, Map<String, ConfirmedContract> contracts) throws IOException
 	{
-		Map<String, ConfirmedContract> contracts = new HashMap<>();
 		Map<String, TrialState> retainedTrials = new HashMap<>();
 		Map<EvidenceRef, TrialAssignment> assignments = new HashMap<>();
 		Map<String, EvidenceRef> confirmedLoadingRefs = new HashMap<>();
@@ -1510,7 +1515,7 @@ public final class CampaignStore
 	 * @param campaign verified campaign containing the draw
 	 * @throws IOException if the choice or its index is invalid
 	 */
-	private void requireIndexedCategoryDecision(TrialAssignment assignment, Campaign campaign) throws IOException
+	void requireIndexedCategoryDecision(TrialAssignment assignment, Campaign campaign) throws IOException
 	{
 		if (assignment.categoryDecisionRef().collection().equals("development-category-decisions"))
 		{

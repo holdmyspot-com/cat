@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -27,6 +28,7 @@ public final class PromptSnapshot
 	private final String id;
 	private final Map<Path, Entry> entries;
 	private final Map<String, byte[]> blobs;
+	private final SnapshotManifest manifest;
 
 	/**
 	 * Creates a snapshot from validated entries.
@@ -35,12 +37,26 @@ public final class PromptSnapshot
 	 */
 	private PromptSnapshot(Map<Path, Entry> entries)
 	{
+		this(entries, entries.entrySet().stream().
+			sorted(Map.Entry.comparingByKey(Comparator.comparing(PromptSnapshot::portablePath))).
+			map(entry -> new SnapshotEntry(entry.getKey(), entry.getValue().kind(), entry.getValue().hash())).toList());
+	}
+
+	/**
+	 * Creates a snapshot while preserving the validated durable manifest's entry order.
+	 *
+	 * @param entries normalized entries
+	 * @param manifestEntries the corresponding durable entries
+	 */
+	private PromptSnapshot(Map<Path, Entry> entries, List<SnapshotEntry> manifestEntries)
+	{
 		this.entries = Map.copyOf(entries);
 		Map<String, byte[]> capturedBlobs = new TreeMap<>();
 		for (Entry entry: entries.values())
 			capturedBlobs.put(entry.hash(), entry.bytes());
 		blobs = Map.copyOf(capturedBlobs);
 		id = manifestHash(entries);
+		manifest = new SnapshotManifest(SnapshotManifest.SCHEMA_VERSION, id, manifestEntries);
 	}
 
 	/**
@@ -89,7 +105,7 @@ public final class PromptSnapshot
 				throw new IOException("Snapshot blob does not match its content identity: " + entry.contentSha256());
 			restored.put(relative, new Entry(entry.kind(), entry.contentSha256(), bytes));
 		}
-		PromptSnapshot snapshot = new PromptSnapshot(restored);
+		PromptSnapshot snapshot = new PromptSnapshot(restored, manifest.entries());
 		if (!snapshot.id().equals(manifest.candidateId()))
 			throw new IOException("Snapshot candidate id does not match manifest entries");
 		return snapshot;
@@ -155,14 +171,13 @@ public final class PromptSnapshot
 	}
 
 	/**
-	 * Creates this snapshot's durable manifest.
+	 * Returns this snapshot's durable manifest, preserving retained order or ordering newly captured paths portably.
 	 *
 	 * @return immutable manifest
 	 */
 	public SnapshotManifest manifest()
 	{
-		return new SnapshotManifest(SnapshotManifest.SCHEMA_VERSION, id, entries.entrySet().stream().
-			map(entry -> new SnapshotEntry(entry.getKey(), entry.getValue().kind(), entry.getValue().hash())).toList());
+		return manifest;
 	}
 
 	/**

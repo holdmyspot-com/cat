@@ -299,12 +299,6 @@
 						<includes>
 							<include>**/*Test.java</include>
 						</includes>
-						<properties>
-							<property>
-								<name>usedefaultlisteners</name>
-								<value>false</value>
-							</property>
-						</properties>
 					</configuration>
 				</plugin>
 				<plugin>

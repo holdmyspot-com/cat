@@ -54,7 +54,7 @@ platform=${expected_platform}" ]
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 	grep -F "codex plugin add cat@cat" "${COMMAND_LOG}"
 	grep -F "plugin-info" "${COMMAND_LOG}"
-	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.0" ]
+	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.1" ]
 }
 
 @test "Codex installs self-contained custom agents from an assembled artifact" {
@@ -91,7 +91,7 @@ SCRIPT
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
 	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
-	[ "$(cat "${data_directory}/migration-version")" = "1.0" ]
+	[ "$(cat "${data_directory}/migration-version")" = "1.1" ]
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 

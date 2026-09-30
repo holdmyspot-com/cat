@@ -18,6 +18,36 @@ import tools.jackson.databind.JsonNode;
 public final class ClaudeConnectionSettingsTest
 {
 	/**
+	 * Preserves the process connection endpoint over settings without copying unrelated host configuration.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void preservesProcessConnectionEndpoint() throws IOException
+	{
+		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path settings = cleanup.add(Files.createTempFile("cat-claude-process-endpoint-", ".json"));
+			Files.writeString(settings, """
+				{"env":{"ANTHROPIC_BASE_URL":"https://settings.example"}}
+				""");
+			Map<String, String> environment = new HashMap<>();
+			ClaudeConnectionSettings.copyProcessEnvironment(Map.of(
+				"ANTHROPIC_BASE_URL", "https://process.example",
+				"ANTHROPIC_AUTH_TOKEN", "process-token",
+				"CLAUDE_CONFIG_DIR", "/host/configuration"), environment);
+			ClaudeConnectionSettings.copy(scope, settings, environment);
+
+			requireThat(environment.get("ANTHROPIC_BASE_URL"), "processEndpoint").
+				isEqualTo("https://process.example");
+			requireThat(environment.get("ANTHROPIC_AUTH_TOKEN"), "processAuthentication").
+				isEqualTo("process-token");
+			requireThat(environment.containsKey("CLAUDE_CONFIG_DIR"), "hostConfiguration").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies host settings add only missing allow-listed connection variables.
 	 *
 	 * @throws IOException if fixture I/O fails

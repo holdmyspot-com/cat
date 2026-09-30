@@ -71,7 +71,7 @@ public final class InitialTrialRequestService
 				trial.logicalTrialId().equals(assignment.logicalTrialId()) &&
 				trial.selectionEvidence().equals(assignmentRef) && trial.status() == TrialStatus.ASSIGNED))
 			throw new IOException("Trial assignment is not current and admitted for initial dispatch");
-		store.requireIndexedCategoryDecision(assignment);
+		store.requireIndexedCategoryDecision(assignment, campaign);
 		requireMatchingPause(campaign, assignment);
 		InitialCandidate candidate = new InitialCandidateService(locator, store).load();
 		if (!candidate.lineageId().equals(assignment.lineage().lineageId()) ||

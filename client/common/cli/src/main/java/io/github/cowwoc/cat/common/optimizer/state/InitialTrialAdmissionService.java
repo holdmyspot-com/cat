@@ -72,7 +72,7 @@ public final class InitialTrialAdmissionService
 		DevelopmentEvidenceService.Snapshot evidence = new DevelopmentEvidenceService(store).readCurrent();
 		DevelopmentWeaknessGuard.requireNoClearlyWeakCategory(evidence, contract);
 		new DevelopmentReviewService(store).retainDueAndRequireEligible(evidence, contract);
-		MeasurementConditions conditions = conditions(assignment, request, artifact);
+		MeasurementConditions conditions = conditions(assignment, request, artifact, contract);
 		MeasurementObservationDecision observation = locator.openMeasurementObserver(lease.binding()).
 			beforeCall(lease, request.logicalCallId(), conditions);
 		if (observation.status() == MeasurementObservationDecision.Status.PAUSED)
@@ -97,6 +97,22 @@ public final class InitialTrialAdmissionService
 	{
 		ConfirmedContract contract = new ContractService(store).loadConfirmedContract(
 			assignment.lineage().contractId());
+		return conditions(assignment, request, artifact, contract);
+	}
+
+	/**
+	 * Captures conditions using the contract validated during this admission operation.
+	 *
+	 * @param assignment retained current trial assignment
+	 * @param request validated native request
+	 * @param artifact selected packaged runner artifact
+	 * @param contract confirmed contract validated for this assignment's lineage
+	 * @return complete known-or-limited material conditions
+	 * @throws IOException if candidate or runner evidence is invalid
+	 */
+	private MeasurementConditions conditions(TrialAssignment assignment, InitialTrialRunRequest request,
+		Path artifact, ConfirmedContract contract) throws IOException
+	{
 		PromptSnapshot candidate = new PromptSnapshotRepository(store.directory()).load(
 			assignment.candidateId());
 		EvidenceRef candidateRef = store.appendImmutableJson("project-snapshot-manifests",

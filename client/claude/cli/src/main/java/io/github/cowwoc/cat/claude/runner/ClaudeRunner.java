@@ -189,7 +189,7 @@ public final class ClaudeRunner
 				UserRuleTree.copy(userRulesRoot(environment), isolatedProcessHome.resolve(".cat/rules"));
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
-			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
+			ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared npm cache so
 			// independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCache.configureNpm(environment, isolatedEnvironment);
@@ -451,7 +451,11 @@ public final class ClaudeRunner
 			requireThat(marketplace, "marketplace").isNotNull();
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits", "--verbose",
-			"--include-partial-messages", "--no-session-persistence"));
+			"--include-partial-messages"));
+		// Disabling persistence removes the transcript CAT's pre-tool hooks use to identify the current model. CAT runs
+		// write it beneath their owned isolated home; runs without CAT do not need it.
+		if (!installCat)
+			command.add("--no-session-persistence");
 		if (installCat)
 		{
 			command.add("--add-dir");
