@@ -1,0 +1,24 @@
+package io.github.cowwoc.cat.common.optimizer.port;
+
+/**
+ * The kind of work that a nested session performs.
+ */
+public enum SessionRole
+{
+	/**
+	 * Runs one logical trial's turn sequence against a staged candidate.
+	 */
+	TRIAL,
+	/**
+	 * Judges one trial's evidence against the frozen rubric.
+	 */
+	JUDGE,
+	/**
+	 * Edits a copy of the working candidate in response to failure evidence.
+	 */
+	AUTHOR,
+	/**
+	 * Inspects the prompt system and proposes a contract.
+	 */
+	DERIVER
+}
