@@ -100,7 +100,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-5 | `optimize-medium` | A focused API replacement with a known retirement procedure. |
 | WI-6 | `optimize-high` | Edit authority and three-way delivery conflicts. |
 | WI-7 | `optimize-medium` | Git and file operations through existing APIs. |
-| WI-8 | `optimize-medium` | Adapters over the existing runners, with event parsing tested on recorded samples. |
+| WI-8 | `optimize-medium`; its runner fixes go to `optimize-high` | Adapters over the existing runners, with event parsing tested on recorded samples. The runner fixes change turn-boundary and interrupt paths whose failure handling must be exact. |
 | WI-9 | `optimize-xhigh` | Adoption order, concurrency, reconciliation and interrupts. |
 | WI-10 | `optimize-xhigh` | The deriver, judge and author prompts determine what the product measures. |
 | WI-11 | `optimize-high` | Journaled writes that must resume without duplicating or overwriting a change. |
@@ -167,6 +167,7 @@ overkill.
 | WI-6 | Done (commit `5a5499b75`); full build passed on the integrated tree. `DeliveryPlan` treats any change to an overlay target on the base side as a conflict, including an identical change, per design §4.7. Its change list gives WI-11 each change's preimage and postimage for at-most-once resume. |
 | WI-1 | Done (commit `269c29413`); full build passed on the integrated tree. `CapCalibration.calibrate` throws the checked `CapCalibrationException` when no cap up to 10,000 reaches 90% power; WI-3 blocks admission on it. `ErrorBudget` leaves certification-index assignment to WI-3 and WI-4. `TestabilityAuditTest` reads the source root from the surefire property `cat.client.directory` and scans `optimizer` packages in all three CLI modules plus `common/runner/HarnessCapacity*.java`; `Pause.java`, which holds the only `Thread.sleep`, is outside its scope. The test JAR of `client/common/cli` is published. |
 | WI-3 | In progress: delegated to `optimize-xhigh` in worktree `worktrees/v1.0-wi3` (branch `v1.0-wi3`), uncommitted. |
+| WI-8 runner fixes | In progress: delegated to `optimize-high` in worktree `worktrees/v1.0-wi8r` (branch `v1.0-wi8r`), uncommitted. |
 | WI-4, WI-7 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
@@ -175,6 +176,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §11: added H11–H13 (premises P1–P3).
 - §1.1 assignments for WI-0 and WI-15: at the user's direction (2026-10-01), the orchestrator sends ESC through a terminal multiplexer, and the user presses ESC only if that fails.
 - `design.md` §11: added H14–H23 (premises P4–P11). §12: added a result column. §3.1: judge and deriver output may be one JSON object alone in a Markdown code fence (H23). §3.2: a Claude turn includes its background children's completion; Codex trials cannot create child worktrees (H17, H18). §3.8: the Codex runner interrupts with `turn/interrupt`; reconciliation terminates the processes recorded in leftover run manifests (H19, H20). §5: loading observation names what each harness exposes (H21).
+- §6 and §1.1: WI-8's runner fixes need only WI-0, run before the rest of WI-8, and go to `optimize-high`.
 - `design.md` §3.3 and D8: the risk ceiling first permits 2, 4 and 8 trials at `n` = 11, 23 and 47 (D8 said 48); R-E4's proof now tests each threshold on both sides. D3: a committed 97% candidate certifies about 17%, matching §2.7 (it said 15%). WI-1 found both.
 - §4: added the gate results. WI-8: added the runner fixes for H17 and H19 and their allowlist. WI-9: reconciliation terminates recorded processes. WI-10: loading split and the output extraction rule.
 
@@ -613,7 +615,7 @@ blocks only the part of a work item that it names.
 | WI-3 | WI-1, WI-2. Its `Throttle` also needs P4 and P5. |
 | WI-4 | WI-3 |
 | WI-7 | WI-3, WI-6 |
-| WI-8 | WI-0, WI-3, WI-5 |
+| WI-8 | WI-0, WI-3, WI-5. Its runner fixes need only WI-0 and are delegated and integrated on their own first. |
 | WI-11 | WI-4, WI-6 |
 | WI-9 | WI-3, WI-4, WI-11. It drives fakes and does not wait for WI-7 or WI-8. |
 | WI-12 | WI-3 |
