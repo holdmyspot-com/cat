@@ -10,7 +10,7 @@ import io.github.cowwoc.cat.common.runner.HarnessDependencyCache;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import io.github.cowwoc.cat.common.runner.HarnessRunReceipt;
 import io.github.cowwoc.cat.common.runner.HarnessRunStarter;
-import io.github.cowwoc.cat.common.runner.HarnessConcurrencyLimit;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenanceOptions;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Runs the Claude JSONL bridge or maintains isolated execution directories.
@@ -61,8 +62,13 @@ public final class ClaudeRunnerCli
 			executeMaintenance(args);
 			return;
 		}
+		Map<String, String> environment = System.getenv();
+		String home = environment.get("HOME");
+		if (home == null || home.isBlank())
+			throw new IOException("HOME is not set");
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-			new OutputStreamWriter(System.out, UTF_8), System.getenv());
+			new OutputStreamWriter(System.out, UTF_8), environment,
+			maximum -> HarnessCapacity.forHome(Path.of(home), "claude", maximum));
 	}
 
 	/**
@@ -98,15 +104,18 @@ public final class ClaudeRunnerCli
 	 * @param input the bridge input
 	 * @param output the bridge output
 	 * @param environment the host environment
+	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
+	 *   command selected
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment)
-		throws IOException
+	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment,
+		IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(withoutClaudeOptions(args), "claude",
@@ -115,7 +124,8 @@ public final class ClaudeRunnerCli
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
-			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json());
+			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json(),
+				capacityForMaximum.apply(options.maximumConcurrency()));
 		}
 	}
 
@@ -130,12 +140,14 @@ public final class ClaudeRunnerCli
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
 	 * @param json the operation-owned receipt mapper
+	 * @param capacity the shared harness capacity
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(HarnessRunnerOptions options, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence,
 		HarnessRunManager manager,
 		Reader input, Writer output,
-		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json) throws IOException
+		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json, HarnessCapacity capacity)
+		throws IOException
 	{
 		assert options != null;
 		assert manager != null;
@@ -143,9 +155,9 @@ public final class ClaudeRunnerCli
 		assert output != null;
 		assert environment != null;
 		assert json != null;
-		try (HarnessConcurrencyLimit capacity = HarnessConcurrencyLimit.acquire(options.maximumConcurrency()))
+		assert capacity != null;
+		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
-			capacity.verifyHeld();
 			HarnessRunStarter starter = () -> new ClaudeRunner().start(
 				options.artifact(), options.project(), manager, options.executable(), environment, options.model(),
 				options.effort(), options.installCat(), options.includeUserRules(), agent, readOnlyEvidence);

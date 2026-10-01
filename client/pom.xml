@@ -21,6 +21,13 @@
 	<properties>
 		<build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
 		<cat.config.directory>${project.basedir}/config</cat.config.directory>
+		<!-- Native tier: the group tests run (all when empty) and the group they skip -->
+		<cat.test.groups></cat.test.groups>
+		<cat.test.excludedGroups>native</cat.test.excludedGroups>
+		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
+		<cat.native.harness></cat.native.harness>
+		<!-- The CAT work temp root, where fixtures that a runner consumes live -->
+		<cat.work.temp>${maven.multiModuleProjectDirectory}/../.cat/work/temp</cat.work.temp>
 		<checkstyle.version>14.1.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
@@ -263,6 +270,10 @@
 						</classpathDependencyExcludes>
 						<parallel>methods</parallel>
 						<threadCount>${test.thread.count}</threadCount>
+						<systemPropertyVariables>
+							<cat.native.harness>${cat.native.harness}</cat.native.harness>
+							<cat.work.temp>${cat.work.temp}</cat.work.temp>
+						</systemPropertyVariables>
 						<includes>
 							<include>**/*Test.java</include>
 						</includes>
@@ -270,6 +281,15 @@
 							<property>
 								<name>usedefaultlisteners</name>
 								<value>false</value>
+							</property>
+							<!-- TestNG properties rather than surefire groups, which fail in modules without TestNG -->
+							<property>
+								<name>groups</name>
+								<value>${cat.test.groups}</value>
+							</property>
+							<property>
+								<name>excludegroups</name>
+								<value>${cat.test.excludedGroups}</value>
 							</property>
 						</properties>
 					</configuration>
@@ -352,4 +372,18 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<profile>
+			<!--
+				Runs only the tests in TestNG group "native", which start real nested harness sessions.
+				Usage: mvnw -Pnative -Dcat.native.harness=claude|codex verify
+			-->
+			<id>native</id>
+			<properties>
+				<cat.test.groups>native</cat.test.groups>
+				<cat.test.excludedGroups></cat.test.excludedGroups>
+			</properties>
+		</profile>
+	</profiles>
 </project>

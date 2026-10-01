@@ -106,4 +106,55 @@ public final class HarnessRunnerOptionsTest
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--exclude-user-rules"}, "harness",
 			Path.of("/caller-temp"));
 	}
+
+	/**
+	 * Verifies the shared capacity ceiling is the default.
+	 */
+	@Test
+	public void defaultsToCapacityCeiling()
+	{
+		// Requirement: R-E8
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
+			"harness", Path.of("/caller-temp"));
+
+		requireThat(result.maximumConcurrency(), "maximumConcurrency").isEqualTo(16);
+	}
+
+	/**
+	 * Verifies both ends of the accepted {@code --max-concurrency} range.
+	 */
+	@Test
+	public void acceptsMaximumConcurrencyRange()
+	{
+		// Requirement: R-E8
+		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
+			"--max-concurrency", "1"}, "harness", Path.of("/caller-temp"));
+		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
+			"--max-concurrency", "16"}, "harness", Path.of("/caller-temp"));
+
+		requireThat(lowest.maximumConcurrency(), "lowest").isEqualTo(1);
+		requireThat(highest.maximumConcurrency(), "highest").isEqualTo(16);
+	}
+
+	/**
+	 * Verifies zero is outside the accepted {@code --max-concurrency} range.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void rejectsMaximumConcurrencyBelowRange()
+	{
+		// Requirement: R-E8
+		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "0"}, "harness",
+			Path.of("/caller-temp"));
+	}
+
+	/**
+	 * Verifies 17 is outside the accepted {@code --max-concurrency} range.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void rejectsMaximumConcurrencyAboveRange()
+	{
+		// Requirement: R-E8
+		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "17"}, "harness",
+			Path.of("/caller-temp"));
+	}
 }

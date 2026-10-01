@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.ToolScope;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessOneShotOptions;
 import io.github.cowwoc.cat.common.runner.HarnessOneShotRunner;
@@ -22,6 +23,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Parses Codex runner commands to serve JSON requests, run one prompt, or maintain isolated execution directories.
@@ -42,13 +44,18 @@ public final class CodexRunnerCli
 			executeMaintenance(args);
 			return;
 		}
+		Map<String, String> environment = System.getenv();
+		String home = environment.get("HOME");
+		if (home == null || home.isBlank())
+			throw new IOException("HOME is not set");
 		if (isOneShotCommand(args))
 		{
-			run(args, System.getenv());
+			run(args, environment, HarnessCapacity.forHome(Path.of(home), "codex", HarnessCapacity.MAXIMUM_CONCURRENCY));
 			return;
 		}
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-			new OutputStreamWriter(System.out, UTF_8), System.getenv());
+			new OutputStreamWriter(System.out, UTF_8), environment,
+			maximum -> HarnessCapacity.forHome(Path.of(home), "codex", maximum));
 	}
 
 	/**
@@ -56,12 +63,15 @@ public final class CodexRunnerCli
 	 *
 	 * @param args the {@code run} command and its options
 	 * @param environment the host environment
+	 * @param capacity the shared harness capacity. The prompt waits for a permit before it starts Codex.
 	 * @throws IOException if the prompt, harness, output, or cleanup I/O fails
 	 */
-	public static void run(String[] args, Map<String, String> environment) throws IOException
+	public static void run(String[] args, Map<String, String> environment, HarnessCapacity capacity)
+		throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(capacity, "capacity").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
 			String agentName = agentName(args);
@@ -69,9 +79,12 @@ public final class CodexRunnerCli
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			String prompt = options.prompt();
-			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
-				options.executable(), environment, options.model(), options.installCat(), agent), manager, prompt,
-				options.output(), options.keepRun());
+			try (HarnessCapacity.Permit _ = capacity.acquire())
+			{
+				HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
+					options.executable(), environment, options.model(), options.installCat(), agent), manager, prompt,
+					options.output(), options.keepRun());
+			}
 		}
 	}
 
@@ -104,15 +117,18 @@ public final class CodexRunnerCli
 	 * @param input the bridge input
 	 * @param output the bridge output
 	 * @param environment the host environment
+	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
+	 *   command selected. The bridge waits for a permit before it starts Codex.
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment)
-		throws IOException
+	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment,
+		IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
 			String agentName = agentName(args);
@@ -124,9 +140,12 @@ public final class CodexRunnerCli
 				options = HarnessRunnerOptions.parse(runnerArgs, "codex", scope.catTemp());
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
-			HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
-				options.executable(), environment, options.model(), options.installCat(), agent), manager, options.keepRun(),
-				input, output);
+			try (HarnessCapacity.Permit _ = capacityForMaximum.apply(options.maximumConcurrency()).acquire())
+			{
+				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
+					options.executable(), environment, options.model(), options.installCat(), agent), manager,
+					options.keepRun(), input, output);
+			}
 		}
 	}
 

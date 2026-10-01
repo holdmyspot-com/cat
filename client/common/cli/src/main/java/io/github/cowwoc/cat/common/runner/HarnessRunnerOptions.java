@@ -94,9 +94,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 					throw new IllegalArgumentException("Missing value for --max-concurrency");
 				options.maximumConcurrency = Integer.parseInt(args[index + 1]);
 				if (options.maximumConcurrency < 1 ||
-					options.maximumConcurrency > HarnessConcurrencyLimit.DEFAULT_MAXIMUM_CONCURRENCY)
+					options.maximumConcurrency > HarnessCapacity.MAXIMUM_CONCURRENCY)
 					throw new IllegalArgumentException("--max-concurrency must be between 1 and " +
-						HarnessConcurrencyLimit.DEFAULT_MAXIMUM_CONCURRENCY);
+						HarnessCapacity.MAXIMUM_CONCURRENCY);
 				index += 2;
 				continue;
 			}
@@ -180,7 +180,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path artifact;
 		private Path output;
 		private Path receipt;
-		private int maximumConcurrency = HarnessConcurrencyLimit.DEFAULT_MAXIMUM_CONCURRENCY;
+		private int maximumConcurrency = HarnessCapacity.MAXIMUM_CONCURRENCY;
 		private boolean keepRun;
 		private boolean installCat;
 		private boolean includeUserRules = true;
