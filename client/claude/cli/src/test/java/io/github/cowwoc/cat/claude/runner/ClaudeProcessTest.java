@@ -440,6 +440,44 @@ public final class ClaudeProcessTest
 	}
 
 	/**
+	 * Verifies that an interrupt of an active turn goes through the process's interrupt sender to the in-memory
+	 * Claude, and that the turn then ends as the lines Claude prints after the interrupt dictate. Claude is idle after
+	 * the root reply while a background child is still listed, so the turn waits; after the interrupt it reports that
+	 * no task is listed and that it is idle again, which ends the turn.
+	 *
+	 * @throws IOException if the turn or the interrupt fails
+	 */
+	@Test(timeOut = 10_000)
+	public void deliversInterruptThroughSender() throws IOException
+	{
+		// Requirement: R-E15
+		List<String> beforeInterrupt = List.of(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING,
+			CHILD_STARTED, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+		List<String> afterInterrupt = List.of(SHELL_STOPPED, CHILDREN_FINISHED, STATE_IDLE);
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		}, afterInterrupt);
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude, claude::interrupt))
+		{
+			claude.emit(beforeInterrupt.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.", line ->
+			{
+				relayed.add(line);
+				if (relayed.size() == beforeInterrupt.size())
+					process.interrupt();
+			});
+
+			List<String> expected = new ArrayList<>(beforeInterrupt);
+			expected.addAll(afterInterrupt);
+			requireThat(relayed, "relayed").isEqualTo(expected);
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
+		}
+	}
+
+	/**
 	 * Verifies that a turn which ends because Claude closed its output waits for the operating system to report the
 	 * exit, instead of reading an exit status that does not exist yet.
 	 *

@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,7 +69,10 @@ public final class EditorInventoryTest
 	}
 
 	/**
-	 * Verifies a silent external command reports periodic progress while it runs.
+	 * Verifies a silent external command reports periodic progress while it runs. The command prints nothing and
+	 * keeps running until the first heartbeat creates a marker file in its working directory, so it exits
+	 * successfully only if a heartbeat arrived while it was still running. A bounded loop makes the command fail,
+	 * instead of waiting forever, if no heartbeat arrives.
 	 *
 	 * @throws IOException if the command cannot run
 	 */
@@ -78,12 +82,28 @@ public final class EditorInventoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path workingDirectory = cleanup.add(Files.createTempDirectory("cat-command-runner-"));
+			Path marker = workingDirectory.resolve("heartbeat");
 			AtomicInteger heartbeatCount = new AtomicInteger();
+			Runnable heartbeat = () ->
+			{
+				if (heartbeatCount.incrementAndGet() != 1)
+					return;
+				try
+				{
+					Files.createFile(marker);
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			};
 
-			new CommandRunner(workingDirectory).run(List.of("/bin/sh", "-c",
-				"index=0; while [ \"$index\" -lt 1000000 ]; do index=$((index + 1)); done"),
-				workingDirectory.resolve("command.log"), Duration.ofMillis(1), heartbeatCount::incrementAndGet);
+			int exitCode = new CommandRunner(workingDirectory).run(List.of("/bin/sh", "-c",
+				"index=0; while [ ! -e heartbeat ] && [ \"$index\" -lt 1000000 ]; do index=$((index + 1)); done; " +
+					"test -e heartbeat"),
+				workingDirectory.resolve("command.log"), Duration.ofMillis(1), heartbeat);
 
+			requireThat(exitCode, "exitCode").isEqualTo(0);
 			requireThat(heartbeatCount.get(), "heartbeatCount").isGreaterThan(0);
 		}
 	}
