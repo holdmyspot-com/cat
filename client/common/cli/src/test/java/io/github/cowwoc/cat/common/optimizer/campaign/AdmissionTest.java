@@ -79,7 +79,8 @@ public final class AdmissionTest
 			if (admission.purpose() == Purpose.BASELINE)
 				baseline.add(admission);
 		}
-		Admission arm = new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "safety", null);
+		Admission arm = new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "safety", null,
+			new Allocation(AllocationRule.BASELINE_ARM, 0, NOW));
 		requireThat(baseline, "baseline").isEqualTo(List.of(arm, arm, arm));
 		requireThat(plan.size(), "size").isEqualTo(4);
 	}

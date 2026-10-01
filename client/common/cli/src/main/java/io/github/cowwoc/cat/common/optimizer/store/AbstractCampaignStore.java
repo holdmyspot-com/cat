@@ -45,7 +45,10 @@ abstract class AbstractCampaignStore implements CampaignStore
 			throw new IllegalStateException("Trial " + trial.key() + " already has an outcome: " +
 				existing.get().outcome());
 		}
-		writeRecord(campaignId, new TrialRecord(trial.key(), trial.instance(), trial.identity(), null));
+		// A trial that returns to ASSIGNED after a run without an outcome is written again before its next session,
+		// which adds that run's infrastructure attempt to the record
+		writeRecord(campaignId, new TrialRecord(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
+			trial.infrastructureAttempts(), null));
 	}
 
 	@Override

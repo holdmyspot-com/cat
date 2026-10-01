@@ -66,7 +66,7 @@ final class TrialAdoption
 
 	/**
 	 * Discards stale trials that are not running and adopts every judged trial whose turn has come, until nothing
-	 * changes.
+	 * changes. Each adoption advances the campaign's evidence revision.
 	 *
 	 * @param draft the state
 	 */
@@ -82,6 +82,7 @@ final class TrialAdoption
 				LogicalTrial trial = next.get();
 				draft.trials.remove(trial);
 				adopt(draft, trial);
+				++draft.evidenceRevision;
 				changed = true;
 			}
 		}

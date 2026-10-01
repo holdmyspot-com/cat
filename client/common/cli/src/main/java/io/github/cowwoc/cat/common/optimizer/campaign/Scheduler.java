@@ -38,9 +38,12 @@ public final class Scheduler
 	/**
 	 * Plans admissions: reruns of assigned trials, then targeted work, then the active candidate's development or
 	 * formal trials within its concurrency window, then the incumbent's baseline arm on the remaining capacity.
+	 * <p>
+	 * Each new assignment carries its {@link Allocation}: the allocation rule that chose it, the campaign's
+	 * {@link Campaign#evidenceRevision() evidence revision}, and {@code now} as its assignment time.
 	 *
 	 * @param campaign the campaign
-	 * @param now the current time
+	 * @param now the current time, which becomes the assignment time of each new assignment
 	 * @param freeCapacity the number of nested sessions that may start now
 	 * @return the admissions, in priority order; empty if the campaign is not active, waits for a decision or a
 	 *   confirmation, or is throttled
@@ -61,15 +64,16 @@ public final class Scheduler
 			if (trial.state() == TrialState.ASSIGNED)
 				plan.add(new Admission.Rerun(trial.key()));
 		}
-		planTargeted(campaign, plan);
+		Allocations allocations = new Allocations(campaign.evidenceRevision(), now);
+		planTargeted(campaign, plan, allocations);
 		Optional<CertificationAttempt> running = campaign.runningAttempt();
 		if (running.isPresent())
-			planFormal(campaign, running.get(), plan, freeCapacity);
+			planFormal(campaign, running.get(), plan, freeCapacity, allocations);
 		else
 		{
 			if (!campaign.development().isPaused())
-				planDevelopment(campaign, plan, freeCapacity);
-			planBaseline(campaign, plan, freeCapacity);
+				planDevelopment(campaign, plan, freeCapacity, allocations);
+			planBaseline(campaign, plan, freeCapacity, allocations);
 		}
 		if (plan.size() > freeCapacity)
 			return plan.subList(0, freeCapacity);
@@ -81,8 +85,9 @@ public final class Scheduler
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
+	 * @param allocations the allocation decisions of this plan
 	 */
-	private static void planTargeted(Campaign campaign, List<Admission> plan)
+	private static void planTargeted(Campaign campaign, List<Admission> plan, Allocations allocations)
 	{
 		Development development = campaign.development();
 		Sha256 working = development.working().snapshot();
@@ -91,7 +96,7 @@ public final class Scheduler
 		{
 			TrialInstance instance = diagnosis.pending().getFirst();
 			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, instance.categoryId(),
-				instance));
+				instance, allocations.of(AllocationRule.TARGETED)));
 		}
 		AuthorAttempt author = development.author();
 		if (author == null)
@@ -101,7 +106,7 @@ public final class Scheduler
 			if (run.trial() != null)
 				continue;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, author.number(), Promotion.snapshot(author, run, working),
-				run.instance().categoryId(), run.instance()));
+				run.instance().categoryId(), run.instance(), allocations.of(AllocationRule.TARGETED)));
 		}
 	}
 
@@ -147,9 +152,10 @@ public final class Scheduler
 	 * @param attempt the running attempt
 	 * @param plan the admissions planned so far
 	 * @param freeCapacity the number of sessions that may start now
+	 * @param allocations the allocation decisions of this plan
 	 */
 	private static void planFormal(Campaign campaign, CertificationAttempt attempt, List<Admission> plan,
-		int freeCapacity)
+		int freeCapacity, Allocations allocations)
 	{
 		Map<String, Integer> inFlight = inFlight(campaign, Purpose.FORMAL, attempt.index());
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
@@ -172,7 +178,7 @@ public final class Scheduler
 			if (best == null)
 				return;
 			plan.add(new Admission.Assign(Purpose.FORMAL, attempt.index(), attempt.candidate().snapshot(), best,
-				null));
+				null, allocations.of(AllocationRule.FORMAL)));
 			inFlight.merge(best, 1, Integer::sum);
 			--slots;
 		}
@@ -208,13 +214,17 @@ public final class Scheduler
 	 * Plans the working candidate's representative development trials: among the categories that are neither ready
 	 * nor at their review point, and that lead the least-sampled such category by fewer than
 	 * {@value #COVERAGE_LEAD} assignments, the lowest 95% Wilson lower bound first, ties to fewer outcomes, then
-	 * higher risk, then category order.
+	 * higher risk, then category order. The allocation rule is {@link AllocationRule#COVERAGE_FLOOR} when the floor
+	 * excluded the category that the bound alone would choose, otherwise
+	 * {@link AllocationRule#LOWEST_EXPLORATORY_BOUND}.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
 	 * @param freeCapacity the number of sessions that may start now
+	 * @param allocations the allocation decisions of this plan
 	 */
-	private static void planDevelopment(Campaign campaign, List<Admission> plan, int freeCapacity)
+	private static void planDevelopment(Campaign campaign, List<Admission> plan, int freeCapacity,
+		Allocations allocations)
 	{
 		Development development = campaign.development();
 		Map<String, Integer> inFlight = inFlight(campaign, Purpose.DEVELOPMENT, development.series());
@@ -232,15 +242,23 @@ public final class Scheduler
 			for (Category category : eligible)
 				leastAssigned = Math.min(leastAssigned, assigned(development, inFlight, category.id()));
 			Category best = null;
+			Category weakest = null;
 			for (Category category : eligible)
 			{
+				if (weakest == null || isWeaker(development, category, weakest))
+					weakest = category;
 				if (assigned(development, inFlight, category.id()) >= leastAssigned + COVERAGE_LEAD)
 					continue;
 				if (best == null || isWeaker(development, category, best))
 					best = category;
 			}
+			AllocationRule rule;
+			if (best.equals(weakest))
+				rule = AllocationRule.LOWEST_EXPLORATORY_BOUND;
+			else
+				rule = AllocationRule.COVERAGE_FLOOR;
 			plan.add(new Admission.Assign(Purpose.DEVELOPMENT, development.series(),
-				development.working().snapshot(), best.id(), null));
+				development.working().snapshot(), best.id(), null, allocations.of(rule)));
 			inFlight.merge(best.id(), 1, Integer::sum);
 			--slots;
 		}
@@ -287,8 +305,10 @@ public final class Scheduler
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
 	 * @param freeCapacity the number of sessions that may start now
+	 * @param allocations the allocation decisions of this plan
 	 */
-	private static void planBaseline(Campaign campaign, List<Admission> plan, int freeCapacity)
+	private static void planBaseline(Campaign campaign, List<Admission> plan, int freeCapacity,
+		Allocations allocations)
 	{
 		if (campaign.development().working().isIncumbent())
 			return;
@@ -312,10 +332,30 @@ public final class Scheduler
 				if (need <= 0 || plan.size() >= freeCapacity)
 					continue;
 				plan.add(new Admission.Assign(Purpose.BASELINE, baseline.index(), campaign.incumbent().snapshot(),
-					category.id(), null));
+					category.id(), null, allocations.of(AllocationRule.BASELINE_ARM)));
 				needed.put(category.id(), need - 1);
 				added = true;
 			}
+		}
+	}
+
+	/**
+	 * The evidence revision and time that every allocation decision of one plan shares.
+	 *
+	 * @param evidenceRevision the campaign's evidence revision
+	 * @param now the assignment time
+	 */
+	private record Allocations(long evidenceRevision, Instant now)
+	{
+		/**
+		 * Returns the allocation decision of a rule.
+		 *
+		 * @param rule the allocation rule that chose a trial
+		 * @return the allocation decision
+		 */
+		Allocation of(AllocationRule rule)
+		{
+			return new Allocation(rule, evidenceRevision, now);
 		}
 	}
 }

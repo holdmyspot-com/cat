@@ -120,32 +120,37 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A run of a logical trial ended without an outcome.
+	 * A run of a logical trial ended without an outcome. The trial records it as an infrastructure attempt.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param key the trial
 	 * @param failure why the run ended
+	 * @param detail what the harness or CAT reported about the failure
 	 * @param at when the run ended
 	 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say or the run was not
 	 *   rate-limited
 	 */
-	record Fail(TrialKey key, RunFailure failure, Instant at, Instant resetsAt) implements CampaignEvent
+	record Fail(TrialKey key, RunFailure failure, String detail, Instant at, Instant resetsAt)
+		implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param key the trial
 		 * @param failure why the run ended
+		 * @param detail what the harness or CAT reported about the failure
 		 * @param at when the run ended
 		 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say or the run was
 		 *   not rate-limited
-		 * @throws NullPointerException if {@code key}, {@code failure} or {@code at} are null
+		 * @throws NullPointerException if {@code key}, {@code failure}, {@code detail} or {@code at} are null
+		 * @throws IllegalArgumentException if {@code detail} is blank
 		 */
 		public Fail
 		{
 			requireThat(key, "key").isNotNull();
 			requireThat(failure, "failure").isNotNull();
+			requireThat(detail, "detail").isNotBlank();
 			requireThat(at, "at").isNotNull();
 		}
 	}

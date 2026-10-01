@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
+import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
@@ -12,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
+import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lineage;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -22,6 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -94,14 +98,15 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * A campaign with every persisted state distinction populated survives a reload unchanged.
+	 * A campaign with every persisted state distinction populated, including each trial's allocation decision and
+	 * infrastructure attempts and the campaign's evidence revision, survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
 	 */
 	@Test
 	public void populatedCampaignSurvivesReload() throws IOException
 	{
-		// Requirement: R-L5
+		// Requirement: R-L5, R-E1
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = populated("campaign-full");
@@ -280,6 +285,39 @@ public abstract class CampaignStoreContract
 			Campaign loaded = reopened.load("campaign-1").orElseThrow();
 			requireThat(reopened.listUnadoptedOutcomes(loaded), "outcomes").
 				isEqualTo(List.of(assignedOutcome, runningOutcome));
+		}
+	}
+
+	/**
+	 * A trial record holds the assignment with its allocation decision, every infrastructure attempt that a later
+	 * assignment write adds, and the outcome, and survives a reload unchanged.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void trialRecordSurvivesReload() throws IOException
+	{
+		// Requirement: R-E1
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			LogicalTrial assigned = trial(7, TrialState.ASSIGNED);
+			store.writeAssignment("campaign-1", assigned);
+			List<InfrastructureAttempt> attempts = List.of(
+				new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), RunFailure.INFRASTRUCTURE,
+					"provider returned \"overloaded\"\nretry later"),
+				new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.25Z"), RunFailure.RATE_LIMITED,
+					"rate limit reached"));
+			LogicalTrial retried = new LogicalTrial(assigned.key(), assigned.instance(), assigned.identity(),
+				assigned.allocation(), TrialState.ASSIGNED, null, 1, attempts, 0);
+			store.writeAssignment("campaign-1", retried);
+			CampaignEvent.Complete outcome = complete(assigned.key(), Verdict.PASS);
+			store.writeOutcome("campaign-1", outcome);
+
+			AbstractCampaignStore reopened = (AbstractCampaignStore) fixture.reopen();
+			requireThat(reopened.readRecord("campaign-1", assigned.key()), "record").isEqualTo(Optional.of(
+				new TrialRecord(assigned.key(), assigned.instance(), assigned.identity(), assigned.allocation(),
+					attempts, outcome)));
 		}
 	}
 
@@ -472,7 +510,8 @@ public abstract class CampaignStoreContract
 		if (state == TrialState.JUDGED)
 			verdict = Verdict.PASS;
 		return new LogicalTrial(key, instance("safety", "test-" + sequence, sequence, false),
-			CampaignBuilder.confirmedIdentity("model-a"), state, verdict, 0, 0);
+			CampaignBuilder.confirmedIdentity("model-a"), allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, sequence),
+			state, verdict, 0, List.of(), 0);
 	}
 
 	/**
@@ -483,7 +522,20 @@ public abstract class CampaignStoreContract
 	 */
 	static LogicalTrial asAssigned(LogicalTrial trial)
 	{
-		return LogicalTrial.assigned(trial.key(), trial.instance(), trial.identity());
+		return LogicalTrial.assigned(trial.key(), trial.instance(), trial.identity(), trial.allocation());
+	}
+
+	/**
+	 * Returns an allocation decision.
+	 *
+	 * @param rule the allocation rule
+	 * @param evidenceRevision the evidence revision that the decision used
+	 * @return the allocation decision
+	 */
+	static Allocation allocation(AllocationRule rule, long evidenceRevision)
+	{
+		return new Allocation(rule, evidenceRevision, Instant.parse("2026-10-01T09:15:30.123456789Z").
+			plusSeconds(evidenceRevision));
 	}
 
 	/**
@@ -562,11 +614,28 @@ public abstract class CampaignStoreContract
 			regression(instance("safety", "deletion", 9, false), null).
 			unavailable(Outcome.UNSUPPORTED_OUTPUT).
 			unavailable(Outcome.INELIGIBLE_TRIAL_EFFECT).
-			trial(LogicalTrial.assigned(developmentKey, instance("safety", "deletion", 10, false), identity)).
+			trial(LogicalTrial.assigned(developmentKey, instance("safety", "deletion", 10, false), identity,
+				allocation(AllocationRule.COVERAGE_FLOOR, 41))).
 			trial(new LogicalTrial(baselineKey, instance("formatting", "tone", 11, false), identity,
-				TrialState.RUNNING, null, 2, 1)).
-			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity, TrialState.JUDGED,
-				Verdict.FAIL, 1, 0)).
+				allocation(AllocationRule.BASELINE_ARM, 39), TrialState.RUNNING, null, 2, List.of(
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), RunFailure.INFRASTRUCTURE,
+						"provider returned \"overloaded\"\nretry later"),
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.5Z"), RunFailure.RATE_LIMITED,
+						"rate limit reached"),
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:02:00Z"), RunFailure.INTERRUPTED,
+						"slice ended"),
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:03:00Z"), RunFailure.INFRASTRUCTURE,
+						"runner crashed")), 1)).
+			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity,
+				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, 1, List.of(
+					new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
+						"invalid judge result")), 0)).
+			trial(new LogicalTrial(diagnostic, instance("safety", "deletion", 4, true), identity,
+				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, 0, List.of(), 0)).
+			trial(new LogicalTrial(new TrialKey(Purpose.DEVELOPMENT, 4, CampaignBuilder.snapshot("candidate-3"),
+				"formatting", 3), instance("formatting", "tone", 14, false), identity,
+				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, 0, List.of(), 0)).
+			evidenceRevision(41).
 			slowStart(new SlowStart(4, 3)).
 			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3)).
 			pending(new PendingDecision.MeasurementChanged(new MeasurementIdentity(otherModel),
@@ -615,7 +684,7 @@ public abstract class CampaignStoreContract
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
 			built.candidates(), built.authorAttempts(), built.development(), built.baseline(), attempts, built.trials(),
-			built.sequences(), built.slowStart(), built.throttle(), built.pendingDecisions(), built.revisionRequested(),
-			built.outcome(), built.delivery());
+			built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(), built.pendingDecisions(),
+			built.revisionRequested(), built.outcome(), built.delivery());
 	}
 }

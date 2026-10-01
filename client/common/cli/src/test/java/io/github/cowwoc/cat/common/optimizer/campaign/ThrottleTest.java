@@ -125,8 +125,8 @@ public final class ThrottleTest
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 		Instant reset = NOW.plusSeconds(60);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED, NOW,
-			reset));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED,
+			"rate limit reached", NOW, reset));
 
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.state(), "state").isEqualTo(TrialState.ASSIGNED);

@@ -118,6 +118,10 @@ final class CampaignDraft
 	 */
 	private final Map<SequenceGroup, Long> sequences;
 	/**
+	 * The number of outcomes the campaign has adopted.
+	 */
+	long evidenceRevision;
+	/**
 	 * The slow-start limit.
 	 */
 	SlowStart slowStart;
@@ -176,6 +180,7 @@ final class CampaignDraft
 		attempts = new ArrayList<>(campaign.attempts());
 		trials = new ArrayList<>(campaign.trials());
 		sequences = new HashMap<>(campaign.sequences());
+		evidenceRevision = campaign.evidenceRevision();
 		slowStart = campaign.slowStart();
 		throttle = campaign.throttle();
 		pendingDecisions = new ArrayList<>(campaign.pendingDecisions());
@@ -438,7 +443,7 @@ final class CampaignDraft
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
 			diagnosis, round, author, reviewPoints);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
-			development, baseline, attempts, trials, sequences, slowStart, throttle, pendingDecisions, revisionRequested,
-			outcome, delivery);
+			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle, pendingDecisions,
+			revisionRequested, outcome, delivery);
 	}
 }

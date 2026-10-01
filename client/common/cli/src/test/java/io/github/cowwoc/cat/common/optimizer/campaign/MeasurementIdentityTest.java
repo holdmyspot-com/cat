@@ -109,7 +109,8 @@ public final class MeasurementIdentityTest
 		MeasurementIdentity partial = identity(MeasurementCondition.MODEL, "model-a");
 		Campaign campaign = new CampaignBuilder().confirmed().identity(partial).build();
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
-			Purpose.DEVELOPMENT, 1, CampaignBuilder.INCUMBENT, "safety", null)));
+			Purpose.DEVELOPMENT, 1, CampaignBuilder.INCUMBENT, "safety", null,
+			TransitionSteps.allocation(campaign, Purpose.DEVELOPMENT))));
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.identity(), "assigned.identity()").isEqualTo(partial);
 

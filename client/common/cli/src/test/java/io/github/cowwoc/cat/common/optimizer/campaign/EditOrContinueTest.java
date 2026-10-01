@@ -94,7 +94,8 @@ public final class EditOrContinueTest
 		TrialInstance failed = campaign.development().failures().getFirst();
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
 		requireThat(plan, "plan").containsExactly(List.of(new Admission.Assign(Purpose.DIAGNOSTIC,
-			campaign.development().series(), campaign.development().working().snapshot(), "safety", failed)));
+			campaign.development().series(), campaign.development().working().snapshot(), "safety", failed,
+			new Allocation(AllocationRule.TARGETED, campaign.evidenceRevision(), NOW))));
 
 		campaign = TransitionSteps.complete(campaign, inFlight, Verdict.PASS);
 		requireThat(campaign.development().count("formatting").passes(), "inFlightAdopted").isEqualTo(61);

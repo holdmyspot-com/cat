@@ -261,7 +261,7 @@ public final class CampaignTransitionsTest
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1; ++failure)
 		{
 			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-				NOW, null));
+				"provider error", NOW, null));
 			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 		}
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
@@ -397,12 +397,125 @@ public final class CampaignTransitionsTest
 			requireThat(campaign.pending(), "pending[" + failure + "]").isNull();
 			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-				NOW, null));
+				"provider error", NOW, null));
 		}
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
 		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
 		requireThat(campaign.pending(), "retried").isNull();
 		requireThat(campaign.trials().getFirst().infrastructureFailures(), "reset").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that an assignment records the allocation decision that the scheduler planned it with.
+	 */
+	@Test
+	public void assignmentRecordsAllocation()
+	{
+		// Requirement: R-E1
+		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
+		Admission.Assign admission = (Admission.Assign) Scheduler.plan(campaign, NOW, 1).getFirst();
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(admission));
+
+		requireThat(campaign.trials().getFirst().allocation(), "allocation").
+			isEqualTo(new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 5, NOW));
+	}
+
+	/**
+	 * Verifies that an assignment that claims evidence the campaign has not adopted yet is rejected.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*evidence revision 6.*adopted 5.*")
+	public void rejectsUnadoptedEvidenceRevision()
+	{
+		// Requirement: R-E1
+		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
+		CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT, 1,
+			CampaignBuilder.INCUMBENT, "safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 6,
+			NOW))));
+	}
+
+	/**
+	 * Verifies that an assignment whose allocation rule cannot choose its purpose is rejected.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*allocation\\.rule\\(\\)\\.assigns\\(purpose\\).*")
+	public void allocationRuleMustAssignPurpose()
+	{
+		// Requirement: R-E1
+		new Admission.Assign(Purpose.DEVELOPMENT, 1, CampaignBuilder.INCUMBENT, "safety", null,
+			new Allocation(AllocationRule.BASELINE_ARM, 0, NOW));
+	}
+
+	/**
+	 * Verifies that a trial cannot count more infrastructure failures toward the limit than the infrastructure
+	 * attempts it records.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*infrastructureFailures.*")
+	public void failureCountNeedsRecordedAttempts()
+	{
+		// Requirement: R-E1
+		Campaign campaign = TransitionSteps.assign(new CampaignBuilder().confirmed().build(), Purpose.DEVELOPMENT,
+			"safety");
+		LogicalTrial trial = campaign.trials().getFirst();
+		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, RunFailure.RATE_LIMITED,
+			"The provider returned HTTP 429"));
+		new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(), TrialState.ASSIGNED,
+			null, 1, attempts, 0);
+	}
+
+	/**
+	 * Verifies that the evidence revision counts adopted outcomes: a judged outcome that waits for an earlier trial
+	 * does not advance it, and adopting both advances it by 2.
+	 */
+	@Test
+	public void adoptionAdvancesEvidenceRevision()
+	{
+		// Requirement: R-E1
+		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey first = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey second = TransitionSteps.last(campaign);
+
+		campaign = TransitionSteps.run(campaign, second, Verdict.PASS);
+		requireThat(campaign.evidenceRevision(), "waiting").isEqualTo(5L);
+		campaign = TransitionSteps.run(campaign, first, Verdict.PASS);
+		requireThat(campaign.evidenceRevision(), "adopted").isEqualTo(7L);
+	}
+
+	/**
+	 * Verifies that every run that ends without an outcome is recorded on the trial with its time, classification
+	 * and detail, and that a retry resets only the count toward the limit.
+	 */
+	@Test
+	public void failedRunsAreInfrastructureAttempts()
+	{
+		// Requirement: R-E1
+		Campaign campaign = new CampaignBuilder().confirmed().build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		List<InfrastructureAttempt> expected = List.of(
+			new InfrastructureAttempt(NOW, RunFailure.INFRASTRUCTURE, "provider returned HTTP 500"),
+			new InfrastructureAttempt(NOW.plusSeconds(10), RunFailure.RATE_LIMITED, "rate limit reached"),
+			new InfrastructureAttempt(NOW.plusSeconds(20), RunFailure.INTERRUPTED, "slice ended"),
+			new InfrastructureAttempt(NOW.plusSeconds(30), RunFailure.INFRASTRUCTURE, "runner crashed"),
+			new InfrastructureAttempt(NOW.plusSeconds(40), RunFailure.INFRASTRUCTURE, "invalid judge result"));
+		for (InfrastructureAttempt attempt : expected)
+		{
+			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, attempt.failure(),
+				attempt.detail(), attempt.endedAt(), null));
+		}
+		LogicalTrial trial = campaign.trials().getFirst();
+		requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEqualTo(expected);
+		requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(3);
+		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
+
+		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		trial = campaign.trials().getFirst();
+		requireThat(trial.infrastructureFailures(), "retried").isEqualTo(0);
+		requireThat(trial.infrastructureAttempts(), "kept").isEqualTo(expected);
 	}
 
 	/**

@@ -80,9 +80,10 @@ public sealed interface Admission
 	 * @param snapshot the snapshot that the trial runs
 	 * @param category the trial's category
 	 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
+	 * @param allocation the allocation decision that chose the trial
 	 */
-	record Assign(Purpose purpose, int series, Sha256 snapshot, String category, TrialInstance instance)
-		implements Admission
+	record Assign(Purpose purpose, int series, Sha256 snapshot, String category, TrialInstance instance,
+		Allocation allocation) implements Admission
 	{
 		/**
 		 * Creates the admission.
@@ -92,9 +93,12 @@ public sealed interface Admission
 		 * @param snapshot the snapshot that the trial runs
 		 * @param category the trial's category
 		 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
-		 * @throws NullPointerException if {@code purpose}, {@code snapshot} or {@code category} are null
-		 * @throws IllegalArgumentException if {@code series} is negative, {@code category} is blank, or
-		 *   {@code instance} is null exactly when the purpose is targeted, or belongs to another category
+		 * @param allocation the allocation decision that chose the trial
+		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code category} or {@code allocation}
+		 *   are null
+		 * @throws IllegalArgumentException if {@code series} is negative, {@code category} is blank,
+		 *   {@code instance} is null exactly when the purpose is targeted, or belongs to another category, or the
+		 *   allocation rule does not assign the purpose
 		 */
 		public Assign
 		{
@@ -102,6 +106,8 @@ public sealed interface Admission
 			requireThat(series, "series").isNotNegative();
 			requireThat(snapshot, "snapshot").isNotNull();
 			requireThat(category, "category").isNotBlank();
+			requireThat(allocation, "allocation").isNotNull();
+			requireThat(allocation.rule().assigns(purpose), "allocation.rule().assigns(purpose)").isTrue();
 			boolean targeted = instance != null;
 			requireThat(targeted, "targeted").isNotEqualTo(purpose.isRepresentative(), "purpose.isRepresentative()");
 			if (instance != null)

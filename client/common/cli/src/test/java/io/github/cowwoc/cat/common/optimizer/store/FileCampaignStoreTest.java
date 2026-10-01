@@ -5,6 +5,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
+import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
+import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -19,6 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -353,7 +356,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	{
 		Campaign assigned = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
 			Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
-			"safety", null)));
+			"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
+			Instant.parse("2026-10-01T12:00:00Z")))));
 		LogicalTrial trial = assigned.trials().getLast();
 		store.writeAssignment(ID, trial);
 		store.replaceSnapshot(assigned);

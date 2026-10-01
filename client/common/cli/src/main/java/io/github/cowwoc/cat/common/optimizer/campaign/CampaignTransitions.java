@@ -172,11 +172,12 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Assigns a logical trial.
+	 * Assigns a logical trial, which keeps the admission's allocation decision.
 	 *
 	 * @param draft the state
 	 * @param admission the admission
-	 * @throws IllegalArgumentException if the state does not offer the admission
+	 * @throws IllegalArgumentException if the state does not offer the admission, or the allocation decision used
+	 *   an evidence revision that the campaign has not reached
 	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or waits for a
 	 *   revision
 	 */
@@ -185,6 +186,12 @@ public final class CampaignTransitions
 		requireConfirmed(draft);
 		if (draft.revisionRequested)
 			throw new IllegalStateException("The campaign waits for a contract revision");
+		long evidenceRevision = admission.allocation().evidenceRevision();
+		if (evidenceRevision > draft.evidenceRevision)
+		{
+			throw new IllegalArgumentException("The allocation decision used evidence revision " + evidenceRevision +
+				", but the campaign has adopted " + draft.evidenceRevision + " outcomes: " + admission);
+		}
 		Contract contract = draft.contract();
 		String category = admission.category();
 		if (contract.findCategory(category).isEmpty())
@@ -213,7 +220,7 @@ public final class CampaignTransitions
 			case DIAGNOSTIC -> assignDiagnostic(draft, admission, key);
 			case PROMOTION -> assignPromotion(draft, admission, key);
 		};
-		draft.trials.add(LogicalTrial.assigned(key, instance, draft.identity));
+		draft.trials.add(LogicalTrial.assigned(key, instance, draft.identity, admission.allocation()));
 	}
 
 	/**
@@ -362,14 +369,16 @@ public final class CampaignTransitions
 		if (!differences.isEmpty())
 		{
 			draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-				TrialState.ASSIGNED, null, trial.infrastructureFailures(), trial.observations() + 1));
+				trial.allocation(), TrialState.ASSIGNED, null, trial.infrastructureFailures(),
+				trial.infrastructureAttempts(), trial.observations() + 1));
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity().extendWith(observed),
-			TrialState.JUDGED, complete.verdict(), trial.infrastructureFailures(), trial.observations()));
+			trial.allocation(), TrialState.JUDGED, complete.verdict(), trial.infrastructureFailures(),
+			trial.infrastructureAttempts(), trial.observations()));
 	}
 
 	/**
@@ -392,7 +401,7 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Records a session that ended without an outcome. The trial returns to the queue.
+	 * Records a session that ended without an outcome as an infrastructure attempt. The trial returns to the queue.
 	 *
 	 * @param draft the state
 	 * @param fail the event
@@ -426,8 +435,10 @@ public final class CampaignTransitions
 				// The trial reruns unchanged
 			}
 		}
-		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-			TrialState.ASSIGNED, null, infrastructureFailures, trial.observations()));
+		List<InfrastructureAttempt> attempts = new ArrayList<>(trial.infrastructureAttempts());
+		attempts.add(new InfrastructureAttempt(fail.at(), fail.failure(), fail.detail()));
+		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
+			TrialState.ASSIGNED, null, infrastructureFailures, attempts, trial.observations()));
 	}
 
 	/**

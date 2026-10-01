@@ -104,11 +104,11 @@ public final class PlateauTest
 		AuthorAttempt assigned = campaign.development().author();
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE, NOW,
-			null));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			"provider error", NOW, null));
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, NOW,
-			null));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED,
+			"slice ended", NOW, null));
 
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.pending(), "pending").isNull();

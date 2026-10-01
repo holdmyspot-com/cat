@@ -71,6 +71,7 @@ public final class CampaignBuilder
 	private Outcome outcome;
 	private DeliveryRequest delivery;
 	private final Map<SequenceGroup, Long> sequences = new HashMap<>();
+	private long evidenceRevision;
 
 	/**
 	 * Creates a builder for an active campaign that has no confirmed contract.
@@ -469,6 +470,18 @@ public final class CampaignBuilder
 	}
 
 	/**
+	 * Sets the number of outcomes the campaign has adopted.
+	 *
+	 * @param value the evidence revision
+	 * @return this builder
+	 */
+	public CampaignBuilder evidenceRevision(long value)
+	{
+		this.evidenceRevision = value;
+		return this;
+	}
+
+	/**
 	 * Sets the slow-start state.
 	 *
 	 * @param value the state
@@ -605,8 +618,8 @@ public final class CampaignBuilder
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
-			authorAttempts, state, incumbentBaseline, built, trials, sequences, slowStart, throttle, pendingDecisions,
-			revisionRequested, outcome, delivery);
+			authorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart, throttle,
+			pendingDecisions, revisionRequested, outcome, delivery);
 	}
 
 	/**

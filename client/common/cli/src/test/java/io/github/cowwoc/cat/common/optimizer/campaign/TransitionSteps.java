@@ -3,16 +3,43 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
+import java.time.Instant;
+
 /**
  * Applies the event sequences that tests repeat.
  */
 final class TransitionSteps
 {
 	/**
+	 * The time at which the steps assign trials.
+	 */
+	static final Instant ASSIGNED_AT = Instant.parse("2026-10-01T11:00:00Z");
+
+	/**
 	 * Prevents instantiation.
 	 */
 	private TransitionSteps()
 	{
+	}
+
+	/**
+	 * Returns the allocation decision that the scheduler would record for a trial of a purpose now, choosing rule 3
+	 * for development trials.
+	 *
+	 * @param campaign the campaign
+	 * @param purpose the trial's purpose
+	 * @return the allocation decision
+	 */
+	static Allocation allocation(Campaign campaign, Purpose purpose)
+	{
+		AllocationRule rule = switch (purpose)
+		{
+			case DEVELOPMENT -> AllocationRule.LOWEST_EXPLORATORY_BOUND;
+			case BASELINE -> AllocationRule.BASELINE_ARM;
+			case FORMAL -> AllocationRule.FORMAL;
+			case DIAGNOSTIC, PROMOTION -> AllocationRule.TARGETED;
+		};
+		return new Allocation(rule, campaign.evidenceRevision(), ASSIGNED_AT);
 	}
 
 	/**
@@ -25,16 +52,18 @@ final class TransitionSteps
 	 */
 	static Admission.Assign admission(Campaign campaign, Purpose purpose, String category)
 	{
+		Allocation allocation = allocation(campaign, purpose);
 		return switch (purpose)
 		{
 			case DEVELOPMENT -> new Admission.Assign(purpose, campaign.development().series(),
-				campaign.development().working().snapshot(), category, null);
+				campaign.development().working().snapshot(), category, null, allocation);
 			case BASELINE -> new Admission.Assign(purpose, campaign.baseline().index(),
-				campaign.incumbent().snapshot(), category, null);
+				campaign.incumbent().snapshot(), category, null, allocation);
 			case FORMAL ->
 			{
 				CertificationAttempt attempt = campaign.runningAttempt().orElseThrow();
-				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), category, null);
+				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), category, null,
+					allocation);
 			}
 			case DIAGNOSTIC, PROMOTION -> throw new IllegalArgumentException("Targeted purpose: " + purpose);
 		};
@@ -66,7 +95,7 @@ final class TransitionSteps
 	static Campaign assign(Campaign campaign, Purpose purpose, int series, Sha256 snapshot, TrialInstance instance)
 	{
 		return CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(purpose, series,
-			snapshot, instance.categoryId(), instance)));
+			snapshot, instance.categoryId(), instance, allocation(campaign, purpose))));
 	}
 
 	/**

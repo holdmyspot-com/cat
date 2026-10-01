@@ -107,7 +107,8 @@ public final class CommitTest
 		// Requirement: R-F1
 		Campaign campaign = ready().build();
 		CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.FORMAL, 1,
-			campaign.development().working().snapshot(), "safety", null)));
+			campaign.development().working().snapshot(), "safety", null,
+			TransitionSteps.allocation(campaign, Purpose.FORMAL))));
 	}
 
 	/**

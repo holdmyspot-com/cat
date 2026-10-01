@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
+import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -15,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
+import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lineage;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -26,6 +29,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.RegressionInstance;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SequenceGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
@@ -149,6 +153,7 @@ final class CampaignJson
 			node.put("snapshot", entry.getKey().snapshot().hex());
 			node.put("last_sequence", entry.getValue());
 		}
+		root.put("evidence_revision", campaign.evidenceRevision());
 		ObjectNode slowStart = root.putObject("slow_start");
 		slowStart.put("size", campaign.slowStart().size());
 		slowStart.put("passes", campaign.slowStart().passes());
@@ -226,7 +231,7 @@ final class CampaignJson
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
-			new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
+			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
 			pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class), delivery);
@@ -260,6 +265,8 @@ final class CampaignJson
 		root.set("key", writeKey(record.key()));
 		root.set("instance", writeInstance(record.instance()));
 		root.set("identity", writeIdentity(record.identity()));
+		root.set("allocation", writeAllocation(record.allocation()));
+		root.set("infrastructure_attempts", writeInfrastructureAttempts(record.infrastructureAttempts()));
 		CampaignEvent.Complete outcome = record.outcome();
 		if (outcome == null)
 			root.putNull("outcome");
@@ -293,7 +300,7 @@ final class CampaignJson
 				readIdentity(field(outcomeNode, "observed")));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
-			outcome);
+			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome);
 	}
 
 	/**
@@ -608,9 +615,11 @@ final class CampaignJson
 		node.set("key", writeKey(trial.key()));
 		node.set("instance", writeInstance(trial.instance()));
 		node.set("identity", writeIdentity(trial.identity()));
+		node.set("allocation", writeAllocation(trial.allocation()));
 		node.put("state", trial.state().name());
 		putConstant(node, "verdict", trial.verdict());
 		node.put("infrastructure_failures", trial.infrastructureFailures());
+		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
 		node.put("observations", trial.observations());
 		return node;
 	}
@@ -624,9 +633,72 @@ final class CampaignJson
 	private static LogicalTrial readTrial(JsonNode node)
 	{
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
-			readIdentity(field(node, "identity")), constant(node, "state", TrialState.class),
-			nullableConstant(node, "verdict", Verdict.class), integer(node, "infrastructure_failures"),
-			integer(node, "observations"));
+			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
+			constant(node, "state", TrialState.class), nullableConstant(node, "verdict", Verdict.class),
+			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"));
+	}
+
+	/**
+	 * Converts an allocation decision to a document.
+	 *
+	 * @param allocation the allocation decision
+	 * @return the document
+	 */
+	private ObjectNode writeAllocation(Allocation allocation)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("rule", allocation.rule().name());
+		node.put("evidence_revision", allocation.evidenceRevision());
+		node.put("assigned_at", allocation.assignedAt().toString());
+		return node;
+	}
+
+	/**
+	 * Converts a document to an allocation decision.
+	 *
+	 * @param node the document
+	 * @return the allocation decision
+	 */
+	private static Allocation readAllocation(JsonNode node)
+	{
+		return new Allocation(constant(node, "rule", AllocationRule.class), longInteger(node, "evidence_revision"),
+			instant(node, "assigned_at"));
+	}
+
+	/**
+	 * Converts infrastructure attempts to a document.
+	 *
+	 * @param attempts the attempts
+	 * @return the document
+	 */
+	private ArrayNode writeInfrastructureAttempts(List<InfrastructureAttempt> attempts)
+	{
+		ArrayNode array = json.createArrayNode();
+		for (InfrastructureAttempt attempt : attempts)
+		{
+			ObjectNode node = array.addObject();
+			node.put("ended_at", attempt.endedAt().toString());
+			node.put("failure", attempt.failure().name());
+			node.put("detail", attempt.detail());
+		}
+		return array;
+	}
+
+	/**
+	 * Reads the {@code infrastructure_attempts} field of a trial or trial record.
+	 *
+	 * @param node the object that holds the field
+	 * @return the attempts
+	 */
+	private static List<InfrastructureAttempt> readInfrastructureAttempts(JsonNode node)
+	{
+		List<InfrastructureAttempt> attempts = new ArrayList<>();
+		for (JsonNode element : elements(node, "infrastructure_attempts"))
+		{
+			attempts.add(new InfrastructureAttempt(instant(element, "ended_at"),
+				constant(element, "failure", RunFailure.class), text(element, "detail")));
+		}
+		return attempts;
 	}
 
 	/**

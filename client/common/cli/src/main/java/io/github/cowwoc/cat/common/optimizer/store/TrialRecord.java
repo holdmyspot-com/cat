@@ -2,21 +2,28 @@ package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
+import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
+import java.util.List;
+
 /**
- * The persisted record of one logical trial: its assignment and, once judged, its outcome.
+ * The persisted record of one logical trial: its assignment, every infrastructure attempt and, once judged, its
+ * outcome.
  *
  * @param key the trial's identity
  * @param instance the assigned instance
  * @param identity the measurement conditions at assignment
+ * @param allocation the allocation decision that assigned the trial
+ * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
  * @param outcome the judged outcome, or null if the trial has none yet
  */
-record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity identity,
-	CampaignEvent.Complete outcome)
+record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
+	List<InfrastructureAttempt> infrastructureAttempts, CampaignEvent.Complete outcome)
 {
 	/**
 	 * Creates a record.
@@ -24,8 +31,10 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 	 * @param key the trial's identity
 	 * @param instance the assigned instance
 	 * @param identity the measurement conditions at assignment
+	 * @param allocation the allocation decision that assigned the trial
+	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
 	 * @param outcome the judged outcome, or null if the trial has none yet
-	 * @throws NullPointerException if {@code key}, {@code instance} or {@code identity} is null
+	 * @throws NullPointerException if any argument other than {@code outcome} is null
 	 * @throws IllegalArgumentException if {@code outcome} belongs to a different trial
 	 */
 	TrialRecord
@@ -33,8 +42,11 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 		requireThat(key, "key").isNotNull();
 		requireThat(instance, "instance").isNotNull();
 		requireThat(identity, "identity").isNotNull();
+		requireThat(allocation, "allocation").isNotNull();
+		requireThat(infrastructureAttempts, "infrastructureAttempts").isNotNull();
 		if (outcome != null)
 			requireThat(outcome.key(), "outcome.key()").isEqualTo(key, "key");
+		infrastructureAttempts = List.copyOf(infrastructureAttempts);
 	}
 
 	/**
@@ -48,6 +60,6 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 	TrialRecord withOutcome(CampaignEvent.Complete judged)
 	{
 		requireThat(judged, "judged").isNotNull();
-		return new TrialRecord(key, instance, identity, judged);
+		return new TrialRecord(key, instance, identity, allocation, infrastructureAttempts, judged);
 	}
 }

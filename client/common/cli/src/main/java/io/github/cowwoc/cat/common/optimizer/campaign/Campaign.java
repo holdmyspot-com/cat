@@ -27,6 +27,8 @@ import java.util.Optional;
  * @param attempts every certification attempt, in index order
  * @param trials the logical trials that are not adopted, in assignment order
  * @param sequences the last sequence number assigned in each sequence group
+ * @param evidenceRevision the number of outcomes the campaign has adopted, so that each {@link Allocation} identifies
+ *   the evidence its decision used
  * @param slowStart the slow-start limit on the active candidate's concurrency
  * @param throttle the rate-limit response
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
@@ -38,8 +40,8 @@ import java.util.Optional;
 public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int authorAttempts, Development development, IncumbentBaseline baseline,
 	List<CertificationAttempt> attempts, List<LogicalTrial> trials, Map<SequenceGroup, Long> sequences,
-	SlowStart slowStart, Throttle throttle, List<PendingDecision> pendingDecisions, boolean revisionRequested,
-	Outcome outcome, DeliveryRequest delivery)
+	long evidenceRevision, SlowStart slowStart, Throttle throttle, List<PendingDecision> pendingDecisions,
+	boolean revisionRequested, Outcome outcome, DeliveryRequest delivery)
 {
 	/**
 	 * The default campaign ceiling.
@@ -70,6 +72,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param attempts every certification attempt, in index order
 	 * @param trials the logical trials that are not adopted, in assignment order
 	 * @param sequences the last sequence number assigned in each sequence group
+	 * @param evidenceRevision the number of outcomes the campaign has adopted
 	 * @param slowStart the slow-start limit on the active candidate's concurrency
 	 * @param throttle the rate-limit response
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
@@ -109,6 +112,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(running, "runningAttempts").isLessThanOrEqualTo(1);
 		requireThat(trials, "trials").isNotNull();
 		requireThat(sequences, "sequences").isNotNull();
+		requireThat(evidenceRevision, "evidenceRevision").isNotNegative();
 		for (Map.Entry<SequenceGroup, Long> entry : sequences.entrySet())
 			requireThat(entry.getValue(), "lastSequence").withContext(entry.getKey(), "group").isPositive();
 		for (LogicalTrial trial : trials)
@@ -145,7 +149,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
-			null, List.of(), List.of(), Map.of(), SlowStart.INITIAL, Throttle.NONE, List.of(), false, null,
+			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null,
 			null);
 	}
 

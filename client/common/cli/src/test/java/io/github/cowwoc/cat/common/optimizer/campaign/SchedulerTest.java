@@ -31,14 +31,38 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Returns a development admission for working candidate 1 in series 1.
+	 * Returns the allocation decision of a rule that used no adopted outcomes, made at {@link #NOW}.
+	 *
+	 * @param rule the allocation rule
+	 * @return the allocation decision
+	 */
+	private static Allocation allocation(AllocationRule rule)
+	{
+		return new Allocation(rule, 0, NOW);
+	}
+
+	/**
+	 * Returns a development admission for working candidate 1 in series 1, chosen by the lowest exploratory lower
+	 * bound.
 	 *
 	 * @param category the category
 	 * @return the admission
 	 */
 	private static Admission development(String category)
 	{
-		return new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, category, null);
+		return development(category, AllocationRule.LOWEST_EXPLORATORY_BOUND);
+	}
+
+	/**
+	 * Returns a development admission for working candidate 1 in series 1.
+	 *
+	 * @param category the category
+	 * @param rule the allocation rule that chose the category
+	 * @return the admission
+	 */
+	private static Admission development(String category, AllocationRule rule)
+	{
+		return new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, category, null, allocation(rule));
 	}
 
 	/**
@@ -49,7 +73,7 @@ public final class SchedulerTest
 	 */
 	private static Admission formal(String category)
 	{
-		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, category, null);
+		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, category, null, allocation(AllocationRule.FORMAL));
 	}
 
 	/**
@@ -91,7 +115,7 @@ public final class SchedulerTest
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey assigned = TransitionSteps.last(campaign);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(new Admission.Rerun(assigned),
-			new Admission.Assign(Purpose.DIAGNOSTIC, 1, WORKING, "safety", logs)));
+			new Admission.Assign(Purpose.DIAGNOSTIC, 1, WORKING, "safety", logs, allocation(AllocationRule.TARGETED))));
 		requireThat(Scheduler.plan(campaign, NOW, 1), "capacityOne").isEqualTo(List.of(
 			new Admission.Rerun(assigned)));
 	}
@@ -109,18 +133,19 @@ public final class SchedulerTest
 		Campaign campaign = working().failure(logs).regression(formal, null).
 			round(new Round(Map.of("safety", 0))).build();
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", attempt));
+		Allocation targeted = allocation(AllocationRule.TARGETED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal),
-			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal)));
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, targeted),
+			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, targeted)));
 
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, 1, attempt, logs);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "afterAssign").isEqualTo(List.of(
 			new Admission.Rerun(TransitionSteps.last(campaign)),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal),
-			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal)));
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, targeted),
+			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, targeted)));
 	}
 
 	/**
@@ -134,11 +159,33 @@ public final class SchedulerTest
 		// safety has the lower Wilson bound, but is 50 assignments ahead of formatting
 		Campaign ahead = working().development("formatting", 40, 0).development("safety", 85, 5).
 			slowStart(new SlowStart(1, 0)).build();
-		requireThat(Scheduler.plan(ahead, NOW, 8), "atLead").isEqualTo(List.of(development("formatting")));
+		requireThat(Scheduler.plan(ahead, NOW, 8), "atLead").isEqualTo(List.of(development("formatting",
+			AllocationRule.COVERAGE_FLOOR)));
 
 		Campaign within = working().development("formatting", 41, 0).development("safety", 85, 5).
 			slowStart(new SlowStart(1, 0)).build();
 		requireThat(Scheduler.plan(within, NOW, 8), "withinLead").isEqualTo(List.of(development("safety")));
+	}
+
+	/**
+	 * Verifies that each new assignment records the rule that chose it, the evidence revision of the state it was
+	 * planned from, and the planning time.
+	 */
+	@Test
+	public void assignmentsRecordAllocationDecision()
+	{
+		// Requirement: R-E3, R-E1
+		Instant later = NOW.plusSeconds(90);
+		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 60, 0).
+			development("safety", 60, 1).evidenceRevision(173).build();
+		List<Admission> expected = List.of(
+			new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, "safety", null,
+				new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 173, later)),
+			new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "formatting", null,
+				new Allocation(AllocationRule.BASELINE_ARM, 173, later)),
+			new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "safety", null,
+				new Allocation(AllocationRule.BASELINE_ARM, 173, later)));
+		requireThat(Scheduler.plan(campaign, later, 3), "plan").isEqualTo(expected);
 	}
 
 	/**
