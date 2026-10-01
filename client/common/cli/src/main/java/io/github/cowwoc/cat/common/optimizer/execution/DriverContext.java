@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
+import io.github.cowwoc.cat.common.optimizer.port.CandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;

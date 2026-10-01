@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.common.optimizer.execution;
+package io.github.cowwoc.cat.common.optimizer.port;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.util.Optional;
 
 /**
- * Holds the overlay of every candidate that the {@link Driver} stages, materializes or delivers.
+ * Holds the overlay of every candidate that the slice driver stages, materializes or delivers.
  * <p>
  * A campaign records each candidate only by its snapshot, the overlay's identity. The driver needs the overlay
  * itself to stage a trial's source, to prepare an author's copy, to materialize the working candidate and to deliver

@@ -21,6 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.store.InMemoryCampaignStore;
+import io.github.cowwoc.cat.common.optimizer.store.InMemoryOverlays;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;

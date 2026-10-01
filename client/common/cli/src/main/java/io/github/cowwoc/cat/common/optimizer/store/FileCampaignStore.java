@@ -2,12 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static java.nio.file.StandardOpenOption.CREATE;
-import static java.nio.file.StandardOpenOption.READ;
-import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
-import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
@@ -15,8 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -46,7 +38,6 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
-	private static final String TEMPORARY_SUFFIX = ".tmp";
 	private final Path root;
 	private final JsonMapper json;
 	private final CampaignJson codec;
@@ -112,7 +103,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	void writeSnapshot(Campaign campaign) throws IOException
 	{
 		Path directory = root.resolve(campaign.header().id());
-		createDirectories(directory);
+		AtomicFiles.createDirectories(directory);
 		replace(directory.resolve(SNAPSHOT), codec.writeCampaign(campaign));
 	}
 
@@ -145,7 +136,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	void writeRecord(String campaignId, TrialRecord record) throws IOException
 	{
 		Path file = recordFile(campaignId, record.key());
-		createDirectories(file.getParent());
+		AtomicFiles.createDirectories(file.getParent());
 		replace(file, codec.writeRecord(record));
 	}
 
@@ -202,7 +193,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
 	{
 		Path directory = root.resolve(campaignId);
-		createDirectories(directory);
+		AtomicFiles.createDirectories(directory);
 		replace(directory.resolve(JOURNAL), journalCodec.write(journal));
 	}
 
@@ -271,36 +262,6 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Creates a directory and its missing ancestors, forcing each new entry to the storage device.
-	 *
-	 * @param directory the directory
-	 * @throws IOException if a directory cannot be created or forced
-	 */
-	private static void createDirectories(Path directory) throws IOException
-	{
-		if (Files.isDirectory(directory))
-			return;
-		Path parent = directory.getParent();
-		createDirectories(parent);
-		Files.createDirectory(directory);
-		force(parent);
-	}
-
-	/**
-	 * Forces a directory's entries to the storage device.
-	 *
-	 * @param directory the directory
-	 * @throws IOException if the directory cannot be forced
-	 */
-	private static void force(Path directory) throws IOException
-	{
-		try (FileChannel channel = FileChannel.open(directory, READ))
-		{
-			channel.force(true);
-		}
-	}
-
-	/**
 	 * Atomically replaces a file with a document.
 	 *
 	 * @param target the file
@@ -310,34 +271,6 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private void replace(Path target, JsonNode document) throws IOException
 	{
 		byte[] content = json.writerWithDefaultPrettyPrinter().writeValueAsBytes(document);
-		Path temporary = target.resolveSibling(target.getFileName() + TEMPORARY_SUFFIX);
-		try
-		{
-			try (FileChannel channel = FileChannel.open(temporary, CREATE, TRUNCATE_EXISTING, WRITE))
-			{
-				ByteBuffer buffer = ByteBuffer.wrap(content);
-				while (buffer.hasRemaining())
-					channel.write(buffer);
-				afterStep.accept(WriteStep.WRITE_TEMPORARY);
-				channel.force(true);
-				afterStep.accept(WriteStep.SYNC_TEMPORARY);
-			}
-			Files.move(temporary, target, ATOMIC_MOVE, REPLACE_EXISTING);
-		}
-		catch (IOException e)
-		{
-			try
-			{
-				Files.deleteIfExists(temporary);
-			}
-			catch (IOException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			throw e;
-		}
-		afterStep.accept(WriteStep.RENAME);
-		force(target.getParent());
-		afterStep.accept(WriteStep.SYNC_DIRECTORY);
+		AtomicFiles.replace(target, content, afterStep);
 	}
 }

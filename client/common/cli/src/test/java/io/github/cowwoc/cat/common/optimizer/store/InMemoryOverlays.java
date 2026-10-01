@@ -1,9 +1,10 @@
-package io.github.cowwoc.cat.common.optimizer.execution;
+package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.CandidateOverlays;
 
 import java.util.HashMap;
 import java.util.Map;
