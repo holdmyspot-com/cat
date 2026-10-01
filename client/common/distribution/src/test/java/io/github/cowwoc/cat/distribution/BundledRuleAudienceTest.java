@@ -51,6 +51,7 @@ public final class BundledRuleAudienceTest
 				String subagent = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
 				requireThat(subagent, harness + "Subagent").contains("# Default Rule Routing").
 					contains("# Design Quality").contains("lazy load `").contains("# Request Execution").
+					contains("A subagent does not load this rule").
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
 
 				String main = loader.loadForMainAgent(plugin, project, harness);
