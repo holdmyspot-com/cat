@@ -71,6 +71,7 @@ A campaign ends with exactly one of these outcomes, each with its evidence and a
 | `not certified: inconclusive` | A category reached its trial cap undecided. |
 | `not certified: plateau` | A full development round produced no stronger candidate. |
 | `not certified: stopped for contract revision` | The user stopped a certification attempt to revise the contract. |
+| `not certified: stopped for measurement change` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
 | `certification unavailable: unsupported instruction source` | A remote or MCP response supplies governing instructions. |
 | `certification unavailable: ineligible trial effect` | A required trial path writes persistent state outside the trial copy, or lacks read-only credentials or a disposable fixture. |
 | `certification unavailable: unsupported output` | A material requirement produces image, audio or video output. |
@@ -129,8 +130,8 @@ not claims about actual requirement compliance, judge calibration or unrepresent
 - **Improvement claim (b):** In every category with a deficiency claim, `pC(k) − pI(k) > 0`.
 - **Proven improvement:** In category `k`, `pC(k) > pI(k)` is proven when one certification attempt's evidence puts
   the candidate's lower confidence bound, at the attempt's per-category improvement level `β_i / K`, above `UI(k)`,
-  whether or not (a) holds. `UI(k)` is the incumbent's upper confidence bound at its per-category level `γ_ℓ / K`
-  ([§2.2](#22-joint-error-budget)). This claim supports the keep-improvement option
+  whether or not (a) holds. `UI(k)` is the incumbent's upper confidence bound at its baseline's per-category level
+  `γ_b / K` ([§2.2](#22-joint-error-budget)). This claim supports the keep-improvement option
   ([§2.10](#210-keeping-a-proven-improvement)).
 - **Worse finding:** `pC(k) − pI(k) < 0` is proven at the same per-category level. This finding is not a guarantee; it
   blocks default delivery.
@@ -152,8 +153,10 @@ number of terms. A campaign can therefore commit any number of attempts, for any
 - **Improvement budget, 0.005:** Certification attempt `i` also receives `β_i = 0.005 / (i·(i + 1))` for the
   improvement claims made from its trials. It is split equally across the attempt's `K` categories, so each
   category's proven-better decision uses `β_i / K`.
-- **Incumbent budget, 0.005:** Contract lineage `ℓ` receives `γ_ℓ = 0.005 / (ℓ·(ℓ + 1))`. It is split equally across
-  that lineage's `K` categories, so each category's incumbent bounds `UI(k)` and `LI(k)` use `γ_ℓ / K`. Both the
+- **Incumbent budget, 0.005:** Incumbent baseline `b`, numbered from 1 across the whole campaign, receives
+  `γ_b = 0.005 / (b·(b + 1))`. A campaign starts a new baseline whenever it measures the incumbent again: for a new
+  contract lineage or a new measurement identity ([§2.5](#25-incumbent-baseline)). The share is split equally across
+  the contract's `K` categories, so each category's incumbent bounds `UI(k)` and `LI(k)` use `γ_b / K`. Both the
   deficiency claim and the improvement claim rely on `UI(k)`.
 
 An attempt receives its certification index when it is committed and keeps it permanently. Only a commit to a
@@ -164,7 +167,7 @@ Claim (a) needs no division of `α_i` among categories. It is a conjunction: it 
 rate is at most 95%, and a false certification then requires that one category's level-`α_i` test to pass
 incorrectly. Per-category claims are different. "Proven better in categories B and D" is false if either part is
 false, and each category's test can fail independently, so the improvement budget and the incumbent budget are divided
-by `K`. A union bound across attempts, lineages and the three budgets gives a joint error of at most 0.05. This
+by `K`. A union bound across attempts, baselines and the three budgets gives a joint error of at most 0.05. This
 guarantee requires every attempt to remain valid given the history that selected it
 ([§2.6](#26-validity-conditions-and-assumption-review)).
 
@@ -202,13 +205,13 @@ Decisions:
 
 - A category **certifies** in certification attempt `i` when `E↑ > 1/α_i`.
 - A category is **clearly below** in certification attempt `i` when `E↓ > 1/α_i`.
-- An incumbent category is **proven deficient** when `E↓ > K/γ_ℓ`, using its lineage's per-category level `γ_ℓ / K`
+- An incumbent category is **proven deficient** when `E↓ > K/γ_b`, using its baseline's per-category level `γ_b / K`
   from [§2.2](#22-joint-error-budget).
 - A candidate category is **proven better** in certification attempt `i` when `E↑`, with the null rate `UI(k)` in place
   of 0.95, exceeds `K/β_i`. `UI(k)` is rounded up to 4 decimal places and frozen when the attempt is committed. The
   incumbent's baseline is complete by then.
 - A candidate category is **proven worse** in certification attempt `i` when `E↓`, with the null rate `LI(k)` in place
-  of 0.95, exceeds `K/β_i`. `LI(k)` is the incumbent's lower bound at `γ_ℓ / K`, rounded down to 4 decimal places and
+  of 0.95, exceeds `K/β_i`. `LI(k)` is the incumbent's lower bound at `γ_b / K`, rounded down to 4 decimal places and
   frozen at commit. Using the proven-better level makes "proven better" and "proven worse" equally strong statements.
 - Equality never decides. Every decision compares exact rationals. An implementation may decide from floating-point
   logarithms only when the margin exceeds a tolerance proven safe, and must use exact arithmetic otherwise.
@@ -254,9 +257,11 @@ these targets:
 - 50 more trials in a category whose observed incumbent rate is below 95% but not yet proven deficient, ending at 100.
 
 A commit requires these targets to be met. The baseline is reused across candidates while measurement identities stay
-comparable ([§5](#5-measurement-identity-and-applicability)); otherwise it is measured again.
+comparable ([§5](#5-measurement-identity-and-applicability)). Otherwise the incumbent is measured again as a new
+baseline with its own share of the incumbent budget ([§2.2](#22-joint-error-budget)). A new baseline never reuses an
+earlier baseline's share, because both could then make a false claim.
 
-For 1 to 8 categories in the first lineage, 50 trials prove deficiency at 10–12 failures (80% observed or lower), and
+For 1 to 8 categories in the first baseline, 50 trials prove deficiency at 10–12 failures (80% observed or lower), and
 100 trials prove it at 16–17 failures (84% observed or lower). An incumbent category near 90% therefore usually remains
 "deficiency unproven". In that case (b) is not required for that category, and the report shows the descriptive
 difference interval instead.
@@ -315,7 +320,9 @@ diagnoses and the contract. CAT validates the attempt's file inventory, then run
 instances twice each and on the lineage's regression set once each. The regression set is every instance that failed
 representatively for any earlier candidate. These runs are targeted and never counted. CAT **promotes** the attempt to
 working candidate when every triggering-instance run passes and it fails no regression instance that the current
-working candidate passes. A promoted working candidate then receives representative trials from zero.
+working candidate passes. The working candidate's result on an instance is its latest outcome there. An instance that
+failed only in the incumbent's baseline arm may have none; the promotion runs then also run the working candidate on
+it once. A promoted working candidate then receives representative trials from zero.
 
 **Review checkpoint.** At 200 representative trials in a category for an unchanged candidate with that category still
 unresolved, CAT stops scheduling that category. It shows the evidence and offers more evidence, targeted optimization,
@@ -343,8 +350,8 @@ Formal decisions, per certification attempt:
 
 When a certification attempt ends `not certified` and its evidence meets the keep-improvement conditions
 ([§2.10](#210-keeping-a-proven-improvement)), CAT pauses instead of returning to development automatically. It offers
-`keep improvement`, which delivers the best proven candidate so far and ends optimization, `optimize further` or `stop`,
-so the user decides whether more optimization is worth its cost.
+`keep improvement`, which delivers a proven candidate ([§2.10](#210-keeping-a-proven-improvement)) and ends
+optimization, `optimize further` or `stop`, so the user decides whether more optimization is worth its cost.
 
 The user can stop at any point. At a plateau, a stop or another uncertified outcome, CAT offers `keep improvement` when
 any attempt has met those conditions, and may offer `accept without certification`. Each is a separate explicit choice
@@ -388,21 +395,28 @@ early, has not had that check. Attempts under an earlier contract are historical
 and do not qualify.
 
 **Best candidate so far.** CAT retains every qualifying attempt, so a proven candidate stays available after the user
-chooses `optimize further`, in case later candidates fail. When several attempts qualify, CAT offers the candidate of
-the best one: the attempt whose weakest category has the highest 95% Wilson lower bound on its formal pass rate. Ties
-go to more categories proven better, then to the more recent attempt. The ranking is descriptive and does not prove the
-offered candidate better than the other qualifying ones. Every qualifying candidate's own improvement claim remains
-valid, because the joint budget covers the claims of all attempts at once ([§2.2](#22-joint-error-budget)).
+chooses `optimize further`, in case later candidates fail. CAT ranks qualifying attempts only against attempts under the
+same measurement identity ([§5](#5-measurement-identity-and-applicability)). Within one identity, the best attempt is
+the one whose weakest category has the highest 95% Wilson lower bound on its formal pass rate. Ties go to more
+categories proven better, then to the more recent attempt. The ranking is descriptive and does not prove the offered
+candidate better than the other qualifying ones. Every qualifying candidate's own improvement claim remains valid,
+because the joint budget covers the claims of all attempts at once ([§2.2](#22-joint-error-budget)).
+
+**Earlier measurement identities.** An attempt under an earlier measurement identity of the current contract still
+qualifies, but its claim describes the conditions it was measured under, so its result is historical. Results under
+different identities are not comparable, so CAT never ranks them against each other or calls one better. CAT offers
+the best attempt of each identity as its own choice: the current identity first, then each earlier one, labelled
+historical and naming each condition that differs from the current identity.
 
 **When CAT offers it.** When a certification attempt ends without certification and its evidence meets the conditions,
 CAT pauses and offers `keep improvement` ([§2.8](#28-decision-table)). At a later review checkpoint, plateau or stop,
-CAT offers `keep improvement` again whenever any attempt qualifies. `keep improvement` always delivers the best
-candidate so far and ends optimization.
+CAT offers `keep improvement` again whenever any attempt qualifies. `keep improvement` delivers the candidate the
+user chose from those offers and ends optimization.
 
 **Report.** Each category shows its difference interval. A category that is not proven better might still be slightly
 worse within that interval, and the report says so. Keeping an improvement is always an explicit user choice. It never
 happens automatically and never produces a `certified` label. Delivery follows [§4.7](#47-delivery) for the frozen
-snapshot of the offered attempt.
+snapshot of the chosen attempt.
 
 ## 3. Execution
 
@@ -725,6 +739,19 @@ continue, the user restores the condition, starts a new measurement identity, or
 configuration cannot start a new measurement identity within the campaign: the user either restores it or keeps it and
 starts a new campaign.
 
+A run whose observed conditions differ from its trial's measurement identity yields no outcome under that identity. CAT
+keeps its record as an observation under the changed conditions. It is neither a compliance outcome nor an
+infrastructure failure, so it does not count toward the infrastructure-failure limit ([§3.2](#32-logical-trials)). If
+the user restores the condition, the same logical trial runs again with the same instance. Whether a run is excluded
+depends only on its conditions, never on its outcome, so the exclusion cannot favour the candidate.
+
+Starting a new measurement identity during a certification attempt ends that attempt
+`not certified: stopped for measurement change`. The attempt can never resume, its `α_i` and `β_i` stay spent, and
+the next attempt takes the next certification index. The working candidate returns to development under the new
+identity, and the incumbent is measured again as a new baseline ([§2.5](#25-incumbent-baseline)). Outcomes under the
+old and new identities cannot be combined, and counting only the new outcomes under the same `α_i` would let the
+attempt test the same claim twice. Restoring the condition instead lets the attempt continue.
+
 Candidate and incumbent observations are **comparable** only when every required condition other than snapshot identity
 and time is exactly equal. Missing data makes comparability `INDETERMINATE` and the comparison unavailable. CAT names
 each differing condition instead of reducing the check to one opaque hash.
@@ -808,11 +835,14 @@ matching `certification unavailable` outcome. Restart preserves that disposition
   changes no state.
 - **Lineage:** the evidence history under one confirmed contract. A confirmed material revision starts a new lineage.
   Earlier evidence stays historical, the certification index continues, and the incumbent is measured
-  again under the new contract with that lineage's share of the incumbent budget.
+  again under the new contract as a new baseline ([§2.5](#25-incumbent-baseline)).
 - **Revision during formal testing:** a revision starts only at a safe checkpoint. Either the attempt has ended, or the
   user stopped it, in which case it ends `not certified: stopped for contract revision` and can never resume. Every
   in-flight session, assignment, promotion and delivery must also be reconciled. An unknown disposition delays the
   revision.
+- **Measurement change during formal testing:** starting a new measurement identity ends the running attempt
+  `not certified: stopped for measurement change` ([§5](#5-measurement-identity-and-applicability)). In-flight work is
+  reconciled as for a contract revision.
 - **Cancel and resume:** cancelling schedules no further calls and keeps all history and the spent allowance. Resuming
   continues from the retained state. Only an explicit new campaign gets a fresh budget.
 - **State distinctions:** the persisted state always distinguishes:
@@ -820,7 +850,8 @@ matching `certification unavailable` outcome. Restart preserves that disposition
   - development from formal evidence;
   - assigned, running, judged, adopted and post-decision trials;
   - infrastructure failures from compliance outcomes;
-  - campaign, lineage, candidate and attempt identities, and the certification index;
+  - campaign, lineage, candidate, attempt and measurement identities, the certification index and the incumbent
+    baseline number;
   - the starting harness;
   - pending user decisions and recorded overrides;
   - unowned-change and measurement-change pauses;
@@ -966,7 +997,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 
 | ID | Decision | Alternatives and why not | Cost of the chosen option |
 |---|---|---|---|
-| D1 | Split the joint 5% into 0.04 for certification, 0.005 for improvement claims and 0.005 for the incumbent's bounds. Divide the improvement and incumbent parts by the category count. | Giving certification only 0.025 raises the first cap from 262 to 311 and the all-pass minimum from 93 to 103. The incumbent's part buys little: halving it from 0.01 to 0.005 adds at most one failure to a deficiency proof. Letting each category's proven-better decision use the full `α_i` would make the joint error grow with the category count. An unsplit 5% gives no joint guarantee. | Compared with an unsplit 5%, the first certification attempt's all-pass minimum rises from 88 to 93 and its cap from 255 to 262. Proving improvement over `UI = 0.90` with 3 categories takes 79 all-pass trials instead of 45. |
+| D1 | Split the joint 5% into 0.04 for certification, 0.005 for improvement claims and 0.005 for the incumbent's bounds. Divide the improvement and incumbent parts by the category count. | Giving certification only 0.025 raises the first cap from 262 to 311 and the all-pass minimum from 93 to 103. The incumbent's part buys little: halving it from 0.01 to 0.005 adds at most one failure to a deficiency proof. Letting each category's proven-better decision use the full `α_i` would make the joint error grow with the category count. An unsplit 5% gives no joint guarantee. | Compared with an unsplit 5%, the first certification attempt's all-pass minimum rises from 88 to 93 and its cap from 255 to 262. Proving improvement over `UI = 0.90` with 3 categories takes 79 all-pass trials, against 45 if each category used the full `α_1 = 2%`. |
 | D2 | Bet on a mixture weighted toward 99% (`0.1/0.2/0.5/0.2` on 97/98/99/100%). | At `α = 2%`: a single 99% bet has cap 255, an all-pass minimum of 95, and probability 0.775 of certifying a 98% candidate within 600 trials. An equal-weight mixture has cap 301, minimum 95 and probability 0.868. | Cap 262, all-pass minimum 93, and probability 0.854. That is close to the single bet's cap with most of the equal mixture's robustness. |
 | D3 | Keep the readiness gate of 100 trials at 99% and two batches at 98%. | A 10-consecutive-pass gate commits a true 97% candidate about 74% of the time, which then certifies only about 15% of the time. Every failed commit permanently spends allowance and raises later caps. | At least 100 development trials per category, which also feed concurrency and diagnosis. |
 | D4 | Edit-or-continue with 3 reproduction reruns. | Editing on every failure resets counts on noise: a 99% candidate fails at least once in 100 trials 63% of the time. Never editing mid-batch wastes trials on reproducible defects. | Up to 3 targeted trials per failure. A defect that fails half the time is caught with probability 0.875, and a random 1% failure is treated as a defect only about 3% of the time. |
@@ -985,6 +1016,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D17 | Store campaigns under `.cat/work/optimizer/`, adding a local exclude when needed. | Storage under `HOME` loses project-local discovery and complicates worktree handling. | One line in the clone's `info/exclude`, which CAT reports. |
 | D18 | Let the user keep the best candidate so far that is proven better than the incumbent in at least one category, proven worse in none, and checked for regression in every other category, using one certification attempt's evidence. | Offering only the latest proven candidate would discard an earlier improvement whenever later candidates fail. Testing development results after selecting the candidate overstates it. A separate improvement attempt, committed without the readiness gate, could prove a candidate that never reaches readiness, but it spends allowance outside certification and at least 100 new trials per category. Giving every promoted candidate an improvement share at promotion would let its development trials count, but proofs grow costlier as promotions accumulate: with 3 categories and an incumbent at 90%, a 97% candidate needs 469 trials for a 90% chance of proof at the 10th promotion and 631 at the 100th. Requiring improvement in every deficient category would discard real gains in other categories. Accepting a category with only a few outcomes would call a candidate improved without checking it for regression. Certifying on improvement alone would weaken what `certified` means. | No extra trials, and no allowance spent outside certification. A candidate that never passes the readiness gate cannot be proven better; the user can still accept it as `not certified`. A category that is not proven better may hide a small regression within its interval, and the report says so. |
 | D19 | Spend each budget part by the series `x / (n·(n + 1))`, so early attempts receive most of it. | A flatter series, `0.4 / ((i + 9)·(i + 10))`, lowers attempt 100's cap from 712 to 619, but raises attempt 1's cap from 262 to 382 and its all-pass minimum from 93 to 130. An equal split over a fixed maximum of 100 attempts gives every attempt a cap of 478 and an all-pass minimum of 177, and leaves nothing for attempt 101. The readiness gate admits only candidates with strong development results, so a campaign is expected to commit few certification attempts; this expectation is unmeasured. | Late attempts cost more: attempt 100 has an all-pass minimum of 271 and a cap of 712. |
+| D20 | A new measurement identity ends a running certification attempt, and qualifying attempts are ranked only within their own identity. | Counting the old and new outcomes together supports only the claim that some condition exceeds 95%, which nobody needs. Counting only the new outcomes under the same `α_i` tests the same claim twice and can double its error. Pausing until the condition is restored blocks a user who cannot restore it, so it remains one choice rather than the rule. Dropping earlier-identity attempts would discard valid claims whose allowance is already spent. Re-certifying an earlier candidate under the new identity needs a way to make it the working candidate again, plus a readiness gate and a full attempt; the user can still optimize further. | The stopped attempt's allowance is lost. The user may have to choose between candidates whose results cannot be compared. |
 
 ## 14. Acceptance evidence
 
@@ -998,7 +1030,7 @@ a named native or end-to-end boundary.
 | G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing runs before confirmation; feedback produces a complete new proposal. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (external structural edits, link and mode changes, loader configuration). **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark and the conditions. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. |
-| G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a missing comparability field makes the comparison `INDETERMINATE`. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. |
+| G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a missing comparability field makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: stopped for measurement change`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. |
 | G6 | **Native in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
 | G7 | **Native in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
 | G8 | **Unit:** allocation picks the riskiest category first; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the category limit and the ceilings. **Throttling:** it responds to utilization and rejections. **Volume warning:** the authentication warning appears for a subscription login. |

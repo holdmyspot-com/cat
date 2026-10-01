@@ -29,8 +29,8 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Reuse:** `Git` (`common.git`), the runner API (`common.runner`), the project's Jackson 3 `JsonMapper`
   conventions, `requirements-java` validation and `TemporaryDirectories`. Do not reimplement a runner, a Git client or a
   JSON codec.
-- **Rules:** Follow the CAT rules the session routes for Java, Javadoc, testing, error handling and TDD. Write a failing
-  test before each behaviour change.
+- **Rules:** Follow the CAT rules the session routes for Java, Javadoc, testing, error handling and TDD. Subagents
+  receive the same routing. Write a failing test before each behaviour change.
 - **Requirement tags:** Every test method that proves a requirement carries a comment `// Requirement: R-…` naming each
   requirement ID it proves. The final gate counts these tags.
 - **Test tiers:**
@@ -71,16 +71,22 @@ subagent's model and reasoning effort come from its agent definition, not from t
 **Setup, before WI-0:** the orchestrator adds the tier agents beside CAT's other agents, in the same layout:
 
 - one harness-neutral body, `client/common/agents/src/main/resources/agents/common/optimize.md`, stating the
-  task-contract obligations below. Update that directory's `README.md`, which says every shared body is read-only.
+  task-contract obligations and the decision rule below. CAT's rules reach the subagent through its start hook, so the
+  body does not repeat them. Update the directory's `README.md`, which says every shared body is read-only.
 - Claude wrappers `client/claude/plugin/src/main/resources/agents/claude/optimize-<tier>.md`, with the model and
   effort above, the tools `Read, Edit, Write, Bash, Grep, Glob` and an include of the shared body.
 - Codex wrappers `client/codex/plugin/src/main/resources/agents/codex/optimize-<tier>.toml`, named
   `cat-optimize-<tier>`, with the model and effort above, `sandbox_mode = "workspace-write"` and the same include.
 
 It then runs `./mvnw verify`, installs the built plugin through its documented lifecycle, and starts a new session to
-execute the plan. Before the first delegation, it confirms that the harness offers all four agents:
-`cat:claude:optimize-<tier>` in Claude Code, or `cat-optimize-<tier>` in Codex. The agents ship in the plugin
-like CAT's reviewer agents.
+execute the plan. The agents ship in the plugin like CAT's reviewer agents. Before the first delegation, it verifies
+each agent by starting it once with a trivial task:
+
+- the harness offers it: `cat:claude:optimize-<tier>` in Claude Code, or `cat-optimize-<tier>` in Codex;
+- the model recorded in its transcript matches its definition. Effort may not be observable; record whether it is;
+- its injected context includes CAT's Default Rule Routing and Request Execution rules, and its body's decision rule.
+
+A mismatch is fixed in the agent definition before any delegation.
 
 **Assignments:**
 
@@ -101,7 +107,7 @@ like CAT's reviewer agents.
 | WI-12 | `optimize-low` | Rendering from builder states. |
 | WI-13 | `optimize-low` | Command parsing and wiring. |
 | WI-14 | `optimize-high` | Rule and skill edits under CAT's prompt rules and contract retirement. |
-| WI-15 | Orchestrator. `optimize-low` may run the native and end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. |
+| WI-15 | Orchestrator, with the user pressing ESC for E2 and the native ESC tests. `optimize-low` may run the other native and end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
 
@@ -122,7 +128,24 @@ like CAT's reviewer agents.
 - the exit check as its acceptance evidence.
 
 The subagent never changes `design.md`, this plan or a path outside its allowlist, and never integrates its own
-result. When it finds a contradiction, a missing decision or a failure outside its allowlist, it stops and reports it.
+result. When it finds a contradiction, a decision it may not make, or a failure outside its allowlist, it stops and
+reports it.
+
+**Decision rule:** a decision that `design.md` and this plan leave open is classified before anyone acts on it.
+
+- **Already determined:** the documents fix the observable behaviour. Implement it.
+- **Internal:** an API, type, data layout, helper structure or test arrangement that changes nothing a user, a
+  statistical claim or a documented interface can observe. The subagent decides. It picks the simplest design that
+  meets every requirement already in `design.md` without later rework, adds no extension point or configuration for a
+  variation no requirement names, and reports the choice and its reason with its result.
+- **External:** the choice changes what the user sees, a statistical claim or its error budget, a documented interface,
+  persisted data, or delivery to the base worktree. The subagent stops and reports it with the alternatives it found.
+  The orchestrator decides when the documents' goals and decision records settle it, asks the user when they don't,
+  and records a lasting choice in `design.md` §13.
+
+"Long-term" means the lifetime cost of the requirements that already exist, including their maintenance, not of
+speculative ones. An option whose cost buys protection against no failure that a requirement names is rejected as
+overkill.
 
 **Acceptance and escalation:**
 
@@ -151,15 +174,15 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
-| R-S1 | Joint budget: certification `α_i = 0.04/(i(i+1))` per certification index; improvement `β_i = 0.005/(i(i+1))` per certification index, divided by `K`; incumbent `γ_ℓ = 0.005/(ℓ(ℓ+1))` per lineage, divided by `K`. Development candidates that are never committed spend nothing. | §2.2 | WI-1 | U: `ErrorBudgetTest` |
+| R-S1 | Joint budget: certification `α_i = 0.04/(i(i+1))` per certification index; improvement `β_i = 0.005/(i(i+1))` per certification index, divided by `K`; incumbent `γ_b = 0.005/(b(b+1))` per incumbent baseline, divided by `K`; a new lineage or measurement identity starts the next baseline. Development candidates that are never committed spend nothing. | §2.2 | WI-1 | U: `ErrorBudgetTest` |
 | R-S2 | Certification e-value with the four bets and weights. Exact rational decision; equality never certifies. Floating-point shortcuts only outside a proven-safe margin. | §2.3 | WI-1 | U: `BettingProcessTest` (boundary pairs `(S, F)` either side of `1/α_i` for `i = 1..5`) |
 | R-S3 | Below-minimum e-value and the clearly-below decision. | §2.3 | WI-1 | U: `BettingProcessTest` |
-| R-S4 | Incumbent deficiency decision at `K/γ_ℓ`. For `ℓ = 1`, the fewest failures that prove deficiency are 10, 11, 11 and 12 of 50, and 16, 16, 17 and 17 of 100, for `K` = 1, 2, 3 and 5. | §2.3, §2.5 | WI-1 | U: `BettingProcessTest` |
+| R-S4 | Incumbent deficiency decision at `K/γ_b`. For `b = 1`, the fewest failures that prove deficiency are 10, 11, 11, 12 and 12 of 50, and 16, 16, 17, 17 and 17 of 100, for `K` = 1, 2, 3, 5 and 8. | §2.3, §2.5 | WI-1 | U: `BettingProcessTest` |
 | R-S5 | Display bounds that invert both tests at any null `t`, labelled with their level. | §2.3, §2.9 | WI-1 | U: `ConfidenceBoundsTest` |
 | R-S6 | Cap calibration matching every row of the §2.4 table (`i` = 1–5, 10, 50 and 100). Calibration failure blocks admission. | §2.4 | WI-1 | U: `CapCalibrationTest` (the only test that runs calibration); `AdmissionTest` |
 | R-S7 | Comparison decisions: proven better when `E↑` at null `UI(k)` exceeds `K/β_i`, and proven worse when `E↓` at null `LI(k)` exceeds `K/β_i`. `UI` is rounded up and `LI` down to 4 decimal places. The displayed difference bound `LC − UI` is positive when certified and deficient. | §2.1, §2.3 | WI-1 | U: `ComparisonTest` (both sides of each threshold; rounding direction) |
 | R-S8 | Wilson exploratory interval and one-sided Clopper–Pearson upper bound. | §2.7, §3.3 | WI-1 | U: `ExploratoryBoundsTest` |
-| R-S9 | The certification index is assigned at commit and is permanent. Only a commit spends allowance. Edits, failed attempts, revisions, restarts and cancel-then-resume never reset the index; only a new campaign does. | §2.2, §7 | WI-3 | U: `CampaignTransitionsTest`, `FileCampaignStoreTest` |
+| R-S9 | The certification index is assigned at commit and is permanent. Only a commit spends allowance. Edits, failed attempts, revisions, restarts and cancel-then-resume never reset the index; only a new campaign does. | §2.2, §7 | WI-3, WI-4 | U: `CampaignTransitionsTest`, `FileCampaignStoreTest` |
 
 ### 3.2 Development
 
@@ -172,19 +195,19 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-D4 | A new candidate starts new counts; earlier outcomes are retained for diagnosis. | §2.7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-D5 | Review checkpoint at 200 unresolved trials: stop the category, offer choices, record the next review point. | §2.7 | WI-3 | U: `ReviewCheckpointTest` |
 | R-D6 | Rounds and plateau: a round gives each failing category a diagnosis and up to 2 author attempts. A plateau requires a complete round without promotion. Interruption, infrastructure failure or time never cause a plateau. | §2.7 | WI-3 | U: `PlateauTest` |
-| R-D7 | Incumbent baseline arm: 50 per category, plus 50 conditional. A commit requires the baseline. The baseline is reused while measurement identities stay comparable and measured again otherwise. | §2.5 | WI-3 | U: `BaselineTest`, `AdmissionTest` |
+| R-D7 | Incumbent baseline arm: 50 per category, plus 50 conditional. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3 | U: `BaselineTest`, `AdmissionTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 
 ### 3.3 Formal certification
 
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
-| R-F1 | A commit freezes the candidate, `α_i`, bets, cap and allocation policy before the first formal draw. The formal stream starts only after the freeze. | §2.4, §6.3 | WI-3 | U: `CommitTest` |
+| R-F1 | A commit freezes the candidate, `α_i`, `β_i`, `UI(k)`, `LI(k)`, bets, cap and allocation policy before the first formal draw. The formal stream starts only after the freeze. | §2.4, §6.3 | WI-3 | U: `CommitTest` |
 | R-F2 | Per-category certified, clearly-below and cap decisions map to attempt outcomes and to the actions in §2.8. A frozen cap is never raised and an ended attempt never reopens. | §2.4, §2.8 | WI-3 | U: `DecisionTableTest` (every row) |
-| R-F3 | Certified and not worse leads to automatic delivery. Worse needs an explicit trade-off. Uncertified acceptance is explicit and labelled. | §2.8 | WI-3, WI-11 | U: `DecisionTableTest`; E: G1 scenario |
+| R-F3 | Certified and not worse leads to automatic delivery. Worse needs an explicit trade-off. Uncertified acceptance is explicit and labelled. | §2.8 | WI-3, WI-11 | U: `DecisionTableTest`; E: E1, E3 |
 | R-F4 | Formal outcomes never revise the same candidate. An edit needs a new attempt. | §2.6 | WI-3 | U: `CommitTest` |
 | R-F5 | An unavailable condition discovered after a commit ends the attempt, keeps outcomes and allowance, and survives restart. | §6.5 | WI-3 | U: `CampaignTransitionsTest` |
-| R-F6 | Keep improvement: one certification attempt under the current contract shows at least one category proven better, none proven worse, and every other category certified or with at least 100 adopted outcomes. A not-certified certification attempt that meets this pauses with `keep improvement`, `optimize further` and `stop`. Qualifying attempts stay available after `optimize further` and at a later review checkpoint, plateau or stop. When several qualify, CAT offers the candidate of the attempt whose weakest category has the highest 95% Wilson lower bound, with ties going to more categories proven better and then to the more recent attempt. Keeping is always explicit, ends optimization, is labelled `improved, not certified` and delivers the offered attempt's frozen snapshot. | §2.8, §2.10 | WI-3, WI-11, WI-12 | U: `KeepImprovementTest` (each condition on both sides; the ranking and each tie-break; an earlier-contract attempt excluded), `DecisionTableTest`, `StatusReportTest`; E: E3 |
+| R-F6 | Keep improvement: one certification attempt under the current contract shows at least one category proven better, none proven worse, and every other category certified or with at least 100 adopted outcomes. A not-certified certification attempt that meets this pauses with `keep improvement`, `optimize further` and `stop`. Qualifying attempts stay available after `optimize further` and at a later review checkpoint, plateau or stop. CAT ranks qualifying attempts only within one measurement identity: the best has the highest 95% Wilson lower bound on its weakest category, with ties going to more categories proven better and then to the more recent attempt. It offers the best attempt of each identity as its own choice, the current identity first and each earlier one labelled historical with its differing conditions named, and never ranks attempts across identities. Keeping is always explicit, ends optimization, is labelled `improved, not certified` and delivers the chosen attempt's frozen snapshot. | §2.8, §2.10 | WI-3, WI-9, WI-11, WI-12 | U: `KeepImprovementTest` (each condition on both sides; the ranking and each tie-break; an earlier-contract attempt excluded; attempts under two measurement identities offered separately and never ranked together), `DecisionTableTest`, `DriverTest` (traces 12–14), `DeliveryTest`, `StatusReportTest` |
 
 ### 3.4 Execution
 
@@ -228,6 +251,7 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-M2 | Each listed material change makes a certification historical without deleting it. | §5 | WI-3 | U: `ApplicabilityTest` (one case per change kind) |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality; missing data gives `INDETERMINATE` and an unavailable comparison; each differing condition is named. | §5 | WI-3 | U: `ComparabilityTest` |
+| R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: stopped for measurement change`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
 | R-C1 | The proposal lists every §6.1 item, without aggregate summaries. | §6.1 | WI-2, WI-10 | U: `ProposalTest`; N: deriver per harness |
 | R-C2 | Feedback regenerates a complete proposal; nothing runs before confirmation. | §6.1 | WI-9, WI-10 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Categories and a balanced benchmark, frozen at confirmation; allocation never changes weights. | §6.2 | WI-2 | U: `DistributionTest` |
@@ -236,7 +260,7 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | N: per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
-| R-L2 | Revision creates a new lineage; the incumbent is re-baselined; allowance continues. | §7 | WI-3 | U: `CampaignTransitionsTest` |
+| R-L2 | Revision creates a new lineage; the incumbent is measured again as a new baseline; allowance continues. | §7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-L3 | Revision during formal testing waits for a safe checkpoint; a stopped attempt never resumes. | §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` |
 | R-L4 | Cancel and resume semantics; a new campaign gets a fresh budget. | §7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-L5 | Every listed state distinction is persisted and survives reload. | §7 | WI-4 | U: `FileCampaignStoreTest` |
@@ -292,7 +316,7 @@ The riskiest pure code, built first.
 - **`BettingProcess`:** an immutable value for one side (`ABOVE` or `BELOW`) with its bets and weights. It provides
   exact `exceeds(S, F, threshold)` using `BigInteger` rationals, with a log-domain shortcut whose safety margin is
   proven in its Javadoc, and `logValue(S, F)` for display.
-- **`DecisionTable`:** precomputes, for each `F` up to the cap, the minimum certifying `S` and the maximum
+- **`DecisionBoundaries`:** precomputes, for each `F` up to the cap, the minimum certifying `S` and the maximum
   clearly-below `S` at `α_i`, and for each category the minimum proven-better `S` and the maximum proven-worse `S` at
   `K/β_i` against that category's frozen `UI(k)` and `LI(k)`. It is computed once per attempt at commit and persisted
   with the attempt, so later decisions are lookups.
@@ -300,10 +324,12 @@ The riskiest pure code, built first.
   90% power. It is pure, and its result is persisted.
 - **Other contents:** `ErrorBudget`, `ConfidenceBounds` (inversion by bisection), `ExploratoryBounds` (Wilson,
   Clopper–Pearson) and `Comparison` (difference bounds).
+- **Build:** configure `client/common/cli` to publish its test JAR, which later work items' test builders and fakes
+  use.
 - **Closes:** R-S1–R-S8, R-T1 and R-T2. `TestabilityAuditTest` is created here and scans every optimizer package
   as later work items add them; every work item's exit runs it.
 - **Tests:** `CapCalibrationTest` checks the §2.4 table and is the only test
-  that runs calibration. Every other test injects a small handwritten `DecisionTable`, or uses the `i = 1` table
+  that runs calibration. Every other test injects small handwritten `DecisionBoundaries`, or uses the `i = 1` table
   through a test fixture that builds it lazily once per JVM in an immutable holder. That holder is safe under parallel
   methods: it is computed once and never mutated.
 - **Exit:** the focused tests pass. Each test's Javadoc tabulates the `design.md` §2.4, §2.5 and §13 numbers that it
@@ -329,21 +355,23 @@ The riskiest pure code, built first.
 ### WI-3 — Campaign model and policies (`optimizer.campaign`)
 
 - **Contents:**
-  - immutable `Campaign`, `Lineage`, `Candidate`, `FormalAttempt`, `CategoryCounts (S, F, batches)`, `LogicalTrial`
-    and `PendingDecision`;
+  - immutable `Campaign`, `Lineage`, `Candidate`, `CertificationAttempt`, `CategoryCounts (S, F, batches)`,
+    `LogicalTrial` and `PendingDecision`;
   - `CampaignTransitions`, a pure function `(state, event) → state`, with events for confirmation, assignment,
     outcome, promotion, commit, decision, user choice (including keep improvement),
     revision, cancellation, measurement change and unowned change;
   - `ReadinessGate`, `EditOrContinue`, `Promotion`, `Plateau`, `ReviewCheckpoint`, `Baseline`, `DecisionTable`
-    actions, `KeepImprovement`, `Applicability` and `Comparability`;
+    (the §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
   - `Scheduler`, a pure admission plan: given the state, the clock reading, the throttle state and free capacity, it
     returns the next admissions, each with a category, purpose and snapshot;
   - `ConcurrencyPolicy`, `Throttle` and the dependence check (`AssumptionCheck`);
-  - `CampaignRegistry`, which decides campaign uniqueness and harness binding over a list of campaign headers.
+  - `CampaignRegistry`, which decides campaign uniqueness and harness binding over a list of campaign headers;
+  - the port interfaces `SessionPort`, `WorkspacePort` and `HostInterruptSignal` (`design.md` §9), with their fakes in
+    test sources. WI-7 and WI-8 implement them, and WI-9 drives the fakes.
 - **Test support** (test sources): `CampaignBuilder`, so a test can write, for example,
   `certificationAttempt(i).category("k", S, F)`.
 - **Closes:** R-S9, R-D1–R-D7, R-F1, R-F2, R-F4, R-F5, the policy side of R-F3 and R-F6, R-E3–R-E6, R-M1, R-M2,
-  R-M4, R-C6, R-L1–R-L4 and part of R-P2.
+  R-M4, the policy side of R-M5, R-C6, R-L1–R-L4 and part of R-P2.
 - **Tests:** the U proofs named in §3. Each covers both sides of every boundary, with builders only and no I/O.
 - **Exit:** the focused tests pass in under one second each.
 
@@ -354,7 +382,7 @@ The riskiest pure code, built first.
   atomically (temporary file, `fsync`, rename) and exposes an injected `WriteStep` hook for fault injection.
 - **Contents in test sources:** `InMemoryCampaignStore`, and the abstract `CampaignStoreContract` that both
   implementations extend.
-- **Closes:** R-E1 (persistence), R-W1 (layout and snapshot-only loading), R-L5.
+- **Closes:** R-E1 (persistence), R-W1 (layout and snapshot-only loading), R-L5, and the persistence side of R-S9.
 - **Tests:** `FileCampaignStoreTest` covers a fault after every write step, a reload after each fault, and the
   invariant that no outcome is duplicated or lost. It also checks that loading reads only `campaign.json`, by
   replacing the trial records with unreadable files and still loading.
@@ -398,7 +426,7 @@ The riskiest pure code, built first.
     `.cat/work/`;
   - `AuthoringCopies`: prepare the author's source and capture its delta through `InventoryScanner`;
   - `LinkReport`.
-  The real implementations together implement `WorkspacePort`; its fake lives in test sources.
+  Together they implement WI-3's `WorkspacePort`.
 - **Closes:** R-W1 (exclude), R-W2, R-W5, R-W6.
 - **Tests:** `ForkTest` runs each Git operation once in a test-owned repository: a dirty-base refusal for each change
   kind, the exclude added only when needed, and the worktree at `HEAD`. `StagedSourceTest` covers dereferencing,
@@ -435,8 +463,8 @@ The riskiest pure code, built first.
 - **Also:** reconciliation, the campaign write lock (an injected path; a second driver gets `busy`), the slice cutoff
   and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
   safe-checkpoint handling for revision.
-- **Closes:** R-D2, R-D3 (driver side), R-D9, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3, R-C2, R-L3, R-W7
-  (checkpoints).
+- **Closes:** R-D2, R-D3 (driver side), R-D9, the driver side of R-F6, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3,
+  the driver side of R-M5, R-C2, R-L3 and R-W7 (checkpoints).
 - **Tests:**
   - `DriverTest` uses `InMemoryCampaignStore`, a fake `SessionPort` whose completions the test releases in any order,
     a fake `WorkspacePort` and a manual clock. Its scenarios are listed in [§7](#7-handoffs-and-use-case-traces).
@@ -539,18 +567,25 @@ The riskiest pure code, built first.
 
 ## 6. Dependency order
 
-```
-WI-0 ──► WI-8 ──────────────┐
-WI-1 ──► WI-3 ──► WI-4 ──┐  │
-WI-2 ──┘                 ├► WI-9 ──► WI-10 ──► WI-13 ──► WI-14 ──► WI-15
-WI-5 ──► WI-8            │   ▲         │
-WI-6 ──► WI-7 ───────────┘   │         └► WI-12
-WI-6 ──► WI-11 ──────────────┘
-```
+A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
+blocks only the part of a work item that it names.
 
-WI-0, WI-1, WI-2, WI-5 and WI-6 can start in parallel. Do WI-0 and WI-1 first when capacity is limited: they carry
-the highest risk of changing other work. WI-9 starts with fakes as soon as WI-3 and WI-4 are done; it does not wait
-for WI-8.
+| Work item | Needs |
+|---|---|
+| WI-0, WI-1, WI-2, WI-5, WI-6 | Nothing |
+| WI-3 | WI-1, WI-2. Its `Throttle` also needs P4 and P5. |
+| WI-4 | WI-3 |
+| WI-7 | WI-3, WI-6 |
+| WI-8 | WI-0, WI-3, WI-5 |
+| WI-11 | WI-4, WI-6 |
+| WI-9 | WI-3, WI-4, WI-11. It drives fakes and does not wait for WI-7 or WI-8. |
+| WI-12 | WI-3 |
+| WI-10 | WI-0 (P9, P11), WI-2, WI-9 |
+| WI-13 | WI-0 (P10), WI-5, WI-7, WI-8, WI-9, WI-10, WI-11, WI-12 |
+| WI-14 | WI-13 |
+| WI-15 | WI-14 |
+
+Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
 ## 7. Handoffs and use-case traces
 
@@ -563,7 +598,7 @@ Each cross-component handoff is declared once here. Other sections refer to thes
 | H-3 Trial result → judge | WI-8 → WI-9 → WI-8 (judge) | Session completed and children reconciled | Logical trial identity. The judge receives read-only evidence. | Interruption or infrastructure failure means rerun the trial. An invalid judge result means rerun the judge with the same evidence. | `DriverTest`, `JudgeVerdictTest` |
 | H-4 Outcome → adoption | WI-9 → WI-3 | Outcome durable, and every earlier sequence number adopted | Sequence order per category and purpose | A crash between write and adoption is adopted during reconciliation. | `AdoptionTest`, `ReconciliationTest` |
 | H-5 Author delta → candidate | WI-7 → WI-6 → WI-3 → WI-7 | Delta captured and validated, promotion runs passed | Overlay hash. Authority comes from the contract. | A rejected attempt is retained with no candidate. The author reruns as a new attempt. | `InventoryDiffTest`, `PromotionTest`, `DriverTest` |
-| H-6 Commit | WI-3 → WI-1 → WI-4 | Readiness and baseline met | Certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionTable` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest` |
+| H-6 Commit | WI-3 → WI-1 → WI-4 | Readiness and baseline met | Certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionBoundaries` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest` |
 | H-7 Decision → delivery or user | WI-3 → WI-11 or WI-12 → skill | Attempt terminal and in-flight trials drained | Attempt and candidate identity. A keep-improvement choice names the qualifying attempt. | A pending choice, including the keep-improvement pause, survives restart. Delivery resumes from the journal. | `DecisionTableTest`, `KeepImprovementTest`, `DeliveryTest` |
 | H-8 Status → skill → choice | WI-12 → WI-14 → WI-13 | `run` returned | Campaign identity and choice identifier. Only listed choices are accepted. | An unknown or stale choice is rejected with no change. | `CommandsTest`, E-scenarios |
 | H-9 Capacity permit | WI-5 → WI-8 | `tryAcquire` succeeded | One permit per nested session | Process death releases the file lock. | `HarnessCapacityTest` |
@@ -593,6 +628,11 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
 13. **Best candidate so far:** an attempt qualifies, the user chooses `optimize further`, a later candidate's
     attempt also qualifies with a lower weakest-category bound, and a third attempt fails. At the stop, CAT offers
     `keep improvement` for the first candidate, and keeping it materializes that candidate before delivery.
+14. **Measurement change during formal:** mid-attempt, a run reports a different model. Its record holds no outcome
+    and CAT pauses with `MEASUREMENT_CHANGED`. Restoring reruns the same instance and the attempt continues. A second
+    change followed by a new measurement identity ends the attempt `not certified: stopped for measurement change`,
+    returns to development and starts a new incumbent baseline. A qualifying attempt from before the change is offered
+    separately, labelled historical.
 
 ## 8. Test-suite rules
 
