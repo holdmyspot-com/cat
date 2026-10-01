@@ -108,6 +108,9 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-12 | `optimize-low` | Rendering from builder states. |
 | WI-13 | `optimize-low` | Command parsing and wiring. |
 | WI-14 | `optimize-high` | Rule and skill edits under CAT's prompt rules and contract retirement. |
+| WI-16 | `optimize-xhigh` | Cells change every statistical rule's unit, and runner profile selection must reach both harnesses exactly. |
+| WI-17 | `optimize-xhigh` | Check kinds, controls and the judge's narrower role decide what the product measures. |
+| WI-18 | `optimize-xhigh` | Manifest validation, the minimality search and the author prompt decide which edits ship. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -186,7 +189,11 @@ overkill.
 | `workflow-temp` output (user request, outside the WIs) | Done (commit `ebc375ded`; `InvocationDirectoryTest` 11/11, full build passed, the five bats files 33/33). `create` and `handoff` print the bare absolute path, `delete` prints nothing, `--help` states each command's output, and a usage error prints the help to standard error. `workflow-temporary-resources.md`, `failure-prevention.md` and both `skill-env.md` files state each command's output and name `.cat/work/temp` instead of the retired `.cat/temp`. WI-14 merged onto it cleanly; the new skill does not describe `workflow-temp`. |
 | WI-14 | Done (integrated; full build 1193 tests, 0 failures; bats 32/32), except the session contract tests and the rest of the native-tier removal, which moved to WI-15. The user chose D13 over goal.md's "via `cat:prompt-optimizer`" wording and approved the rule diff (2026-10-01). Skill replaced with the §8 loop; D13 applied to both rules with the subagent reporting clause kept; new rule scenario `failure-regression-promotion/correct-without-campaign` (main-agent and subagent sides); old-skill citations updated; `StagedSourceNativeTest` became `StagedSourceRunnerCopyTest` (unit, both harnesses); `ClaudeRunnerCliNativeTest` and `CodexRunnerCliNativeTest` deleted (assertions covered by E8 and `HarnessCapacityTest`); the opt-in `prompt-evaluation` bats test removed, since that launcher and contract are retired; `TestabilityAuditTest` scans once per class (slowest 0.54 s). Reference audit: no `prompt-evaluation` hit; every `prompt-optimizer` hit names the new skill or launcher, or is a historical capture. Still present until WI-15's contract tests: `ClaudeSessionsNativeTest`, `CodexSessionsNativeTest`, the `native` profile and its properties (§9 gate 3 open). Pre-existing tests over 1 s: `FinalizationTest.rejectsUnresolvedChallengesBeforeReplay` 2.2 s, `EditorInventoryTest.reportsHeartbeatForSilentCommand` 1.6 s. |
 | Runtime and interrupt-seam follow-up (WI-15 prerequisites) | Done (full build 1185 tests, 0 failures; bats 32/32; `FinalizationTest` closed in commit `0d68e24f3`, below). `ClaudeProcess` takes an `InterruptSender` (production sends SIGINT as before); `FakeHarnessCli(handler, afterInterrupt)` accepts an interrupt and replays the given lines (`ClaudeProcessTest.deliversInterruptThroughSender`, R-E15; its after-interrupt segment is synthetic until WI-15 recordings replace it). `EditorInventoryTest.reportsHeartbeatForSilentCommand` 1.4 s to 0.01 s. `FinalizationTest.rejectsUnresolvedChallengesBeforeReplay` (commit `0d68e24f3`): the replay classes remember reconstructions, path states and chains keyed on immutable object IDs, and read each commit range once, so the test starts 227 git processes instead of 471. It runs 0.77–0.87 s warm and 1.02 s in the full build (1196 reports, 9 of them stale; 0 failures), and its Javadoc records why it needs the real chain (`design.md` §10 T7). Other test at or over 1 s in that build: `ClaudeSessionsTest.givesUpOnARunnerThatIgnoresAnInterrupt` 1.30 s (varies 0.5–2.5 s between runs, like its Codex twin), left to WI-15's contract-test rewrite. Correction: WI-14's "1193 tests" counted 9 stale reports from removed modules; the true count was 1184. |
-| WI-15 | Not started. Codex first, then Claude (user ruling, 2026-10-01). The Codex build of `6c90bad8d` is installed (`install-codex.sh`, exit 0; the installed `workflow-temp --help` shows the new output lines); install the Claude build only when Claude starts. Fixture pilot: a motto defined only in a handbook was not deficient (12/12 compliant); contradictory instructions ("close with the motto" beside "no slogans or sign-offs") were deficient (Claude 4/6, Codex 0/6 compliant); the author-style fix ("apart from the motto, no other slogans...") reached Codex 6/6 with correct answers. This contradiction fixture is the E1 deficient fixture. Fixtures `deficient`, `easy`, `link` and four `unsupported` variants are under `optimizer/e2e/` (README lists each one's use). E1 Codex, dirty-base refusal: passed through the installed skill (`start AGENTS.md` refused on the uncommitted `docs/handbook.md`; no campaign created). Evidence in `.cat/work/temp/e1-codex-15400782742439386847/receipts/`, kept until the WI-15 receipts are recorded. In that run, and in every later Codex run, the agent first ran `"${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer"` literally (exit 127, the variable is unset) and then found the installed path itself; `skill-env.md` is in the session's context but was not applied. The fix is a rule change, awaiting the user (asked 2026-10-01). E4 Codex: passed. Each of the four `unsupported` fixtures produced a proposal naming its outcome (unsupported instruction source R2–R3; unsupported output R3–R4; unsupported test interaction R4–R5; ineligible trial effect R3–R4); `confirm` recorded that outcome with `stop` as the only choice and dispatched no trial; `stop` cancelled each campaign; every base stayed clean and `~/acme-support` was never created. Evidence in `.cat/work/temp/e4-codex-11033726973909551249/*/receipts/` (events, final message, confirm and stop JSON, Codex 0.159.1). Minor findings, open: the summary's "Waiting for" line repeats "certification is unavailable: certification unavailable: …"; after `stop` the status is `awaiting-user` with only `resume`. E7 Codex, first run: `start` refused the link fixture with "missing target" although the external target existed, because the fork recorded external link targets only after the deriver named them (commit `97b9c226b` fixes it: creating or extending the fork records the existing outside targets of recorded links, transitively; full build 1201 tests, 0 failures; Codex build reinstalled). E7 rerun in progress. E6 needs both harnesses and moves to the Claude phase. Blocked: the certification run waits for the user's choice of trial model and effort, which neither document fixes (asked 2026-10-01). |
+| WI-15 | In progress. Codex first, then Claude (user ruling, 2026-10-01). The Codex build of `6c90bad8d` is installed (`install-codex.sh`, exit 0; the installed `workflow-temp --help` shows the new output lines); install the Claude build only when Claude starts. Fixture pilot: a motto defined only in a handbook was not deficient (12/12 compliant); contradictory instructions ("close with the motto" beside "no slogans or sign-offs") were deficient (Claude 4/6, Codex 0/6 compliant); the author-style fix ("apart from the motto, no other slogans...") reached Codex 6/6 with correct answers. This contradiction fixture is the E1 deficient fixture. Fixtures `deficient`, `easy`, `link` and four `unsupported` variants are under `optimizer/e2e/` (README lists each one's use). E1 Codex, dirty-base refusal: passed through the installed skill (`start AGENTS.md` refused on the uncommitted `docs/handbook.md`; no campaign created). Evidence in `.cat/work/temp/e1-codex-15400782742439386847/receipts/`, kept until the WI-15 receipts are recorded. In that run, and in every later Codex run, the agent first ran `"${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer"` literally (exit 127, the variable is unset) and then found the installed path itself; `skill-env.md` is in the session's context but was not applied. The fix is a rule change, awaiting the user (asked 2026-10-01). E4 Codex: passed. Each of the four `unsupported` fixtures produced a proposal naming its outcome (unsupported instruction source R2–R3; unsupported output R3–R4; unsupported test interaction R4–R5; ineligible trial effect R3–R4); `confirm` recorded that outcome with `stop` as the only choice and dispatched no trial; `stop` cancelled each campaign; every base stayed clean and `~/acme-support` was never created. Evidence in `.cat/work/temp/e4-codex-11033726973909551249/*/receipts/` (events, final message, confirm and stop JSON, Codex 0.159.1). Minor findings, open: the summary's "Waiting for" line repeats "certification is unavailable: certification unavailable: …"; after `stop` the status is `awaiting-user` with only `resume`. E7 Codex, first run: `start` refused the link fixture with "missing target" although the external target existed, because the fork recorded external link targets only after the deriver named them (commit `97b9c226b` fixes it: creating or extending the fork records the existing outside targets of recorded links, transitively; full build 1201 tests, 0 failures; Codex build reinstalled). E7 Codex link report: passed on the rerun; the proposal lists `docs/handbook.md -> shared/handbook.md` (inside the project, outside prompt sources) and `docs/reply-rules.md` -> its external target (external, read only) and states the staging consequence. Evidence in `.cat/work/temp/e7-codex-4281424245095601688/receipts/`. Minor, accepted: on the intentionally contradictory fixture, the "Certifiable scope" line and a limitation disagree on whether certification is unavailable. E7's authorized external edit is still to run. E6 needs both harnesses and moves to the Claude phase. The trial model and effort question became trial profiles (user ruling, 2026-10-01): the certification-dependent scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) wait for WI-16–WI-18, then the Codex build is reinstalled. The exit-127 cause was found: Codex tool shells define neither `CODEX_HOME` nor `CAT_PLUGIN_ROOT` (probe: only `CODEX_CI`, `CODEX_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_VERSION`, `HOME`), so `skill-env.md`'s derivation could not work; fixed by the plugin-root follow-up below. |
+| Plugin root and harness home (WI-15 finding, R-I5) | In progress (delegated to `optimize-high`, worktree `v1.0-pluginroot`). Per the user's ruling (2026-10-01: Codex sets no custom environment variables; derive values in Java or state them through the environment rule), the session hooks render `<!-- cat:plugin-root -->` in plugin rules into the absolute plugin root, both `skill-env.md` files tell the agent to write that directory wherever a skill writes `${CAT_PLUGIN_ROOT}`, and `CodexGetHistory`/`ClaudeGetHistory` default to `HOME/.codex` and `HOME/.claude`. |
+| WI-16 | Not started. |
+| WI-17 | Not started. |
+| WI-18 | Not started. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -211,6 +218,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §10 T4 and R-T1: a harness's production scope may read the process environment, like `main`; test scopes supply their own values (found in the pouch-scope integration).
 - WI-14 and WI-15: the session contract tests and the remaining native-tier removal moved to WI-15, because the existing recordings cannot satisfy every `SessionPortContract` check; WI-15 records untrimmed streams and an interrupted turn per harness. WI-15 runs Codex first and starts Claude only after Codex passes (user ruling, 2026-10-01).
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
+- `design.md` §1.2, §2.1, §3.1, §3.9, §5, §6.1, §6.4, new §6.6, §9, §12 (P12, P13), §13 (D11, D15, D22–D26) and §14 (G1, G2, G5, G7): trial profiles and cells as the statistical unit; deterministic checks with controls beside semantic judgment under a frozen role profile; a core-task requirement in every test; author failure classification and a per-hunk citation manifest; a minimality pass; candidate-versus-incumbent prompt size and input tokens (user rulings, 2026-10-01). Plan: R-C5 rewritten; R-C8–R-C11, R-D10, R-D11, R-E17, R-E18 and R-I5 added; WI-16–WI-18 added with §1.1 assignments, §6 dependencies and `DriverTest` traces 15–18; WI-15's trial-based scenarios now wait for WI-16–WI-18.
+- §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -248,6 +257,8 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-D6 | Rounds and plateau: a round gives each failing category a diagnosis and up to 2 author attempts. A plateau requires a complete round without promotion. Interruption, infrastructure failure or time never cause a plateau. | §2.7 | WI-3 | U: `PlateauTest` |
 | R-D7 | Incumbent baseline arm: 50 per category, plus 50 conditional. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3 | U: `BaselineTest`, `AdmissionTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
+| R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
+| R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction judged by the promotion runs and rule, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
 
 ### 3.3 Formal certification
 
@@ -276,10 +287,12 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree. | §3.8 | WI-9 | U: `ReconciliationTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases; token statistics; no totals or time estimates. | §3.9 | WI-12 | U: `RemainingWorkTest` |
+| R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
 | R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, author and deriver sessions per harness |
 | R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
 | R-E16 | The observed model comes from native events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
+| R-E17 | A trial session starts under its cell's profile and the deriver, judge and author sessions under the role profile (the `optimize-xhigh` binding); each runner passes the model and effort to its harness; the observed profile is recorded per cell and decides comparability. | §3.1, §5, §6.6 | WI-16 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (requested profile reaches the harness arguments), `MeasurementIdentityTest`; E: E1 per harness |
 
 ### 3.5 Workspace
 
@@ -307,7 +320,11 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-C2 | Feedback regenerates a complete proposal; nothing runs before confirmation. | §6.1 | WI-9, WI-10 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Categories and a balanced benchmark, frozen at confirmation; allocation never changes weights. | §6.2 | WI-2 | U: `DistributionTest` |
 | R-C4 | Generator validation; separate durable seeded streams; targeted work marked before execution; formal draws after the freeze; repeated instances allowed. | §6.3 | WI-2 | U: `GeneratorTest`, `DrawStreamTest` |
-| R-C5 | A frozen judge profile; semantic judgment; assertions only as inputs. | §6.4 | WI-2, WI-10 | U: `JudgeVerdictTest`; E: E1 judge per harness |
+| R-C5 | A frozen judge profile under the role profile; the judge decides only semantic requirements and sees deterministic results as evidence it cannot override. | §6.4, §3.1 | WI-2, WI-10, WI-17 | U: `JudgeVerdictTest`; E: E1 judge per harness |
+| R-C8 | Every test checks the core-task requirement, which CAT adds with CAT as its source. | §6.1, D24 | WI-17 | U: `ProposalTest` |
+| R-C9 | Deterministic checks: a closed set of kinds with parameters that may name variation values; each check is validated against its known-good and known-bad controls at confirmation and at load; a failing check is discarded and its requirement judged semantically, with the reason in the proposal. A trial passes when every check passes and the judge passes every semantic requirement; no judge session runs when a check failed or no semantic requirement remains; a failed check's record reaches the author. | §6.1, §6.4, D23 | WI-17 | U: `DeterministicCheckTest` (each kind, each control on both sides), `DriverTest`; E: E7 |
+| R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per category and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
+| R-C11 | Cells are the statistical unit: every §2 and §3 rule that names a category applies per cell, and `K` counts cells. | §2.1 | WI-16 | U: `SchedulerTest`, `ReadinessGateTest`, `CommitTest` (a two-profile category gives two cells with separate counts, gates and decisions) |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -328,6 +345,7 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-I2 | Launcher commands and the JSON status object. | §8 | WI-13 | U: `CommandsTest` |
 | R-I3 | The old skill is retired; `failure-regression-promotion.md` follows D13; `default-rules.md` routing and test resources are updated. | §8, §13 | WI-14 | U: rule tests; reference audit |
 | R-I4 | `prompt-optimizer` launchers are registered for both harnesses in `DistributionMain`. | §8 | WI-13 | U: distribution tests; E: installed launcher runs |
+| R-I5 | Agents locate CAT's installed files without shell variables the harness does not define: the session hooks render the plugin root into the injected skill-environment rule, and Java derives the harness home from `CODEX_HOME` or `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`. | §8 | WI-15 finding | U: session-start hook tests, `CodexGetHistoryTest`, `ClaudeGetHistoryTest`; E: every E-scenario's events show no exit-127 launcher call |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -621,6 +639,70 @@ The riskiest pure code, built first.
   new skill.
 - **Exit:** the audit is clean, no Java test starts a runner, a harness process or a model, and the build passes.
 
+### WI-16 — Trial profiles and cells (user ruling, 2026-10-01)
+
+- **Contract:** `optimizer.contract` gains the profile inventory with its source, bindings (file, model, effort, each
+  optional) and each category's profile set; cells are (category, profile). `ProposalSchema` and the contract hash
+  include them.
+- **Inventory:** a `ProfileInventory` port. Codex reads `codex debug models` and keeps the models with visibility
+  `list` and their efforts; Claude reads a plugin resource listing documented aliases and efforts (P12). Each is
+  tested over recorded output.
+- **Bindings:** read only from Claude skill and subagent frontmatter (`model`, `effort`) and Codex agent TOML
+  (`model`, `model_reasoning_effort`). `inherit` binds nothing; a partial binding fixes one dimension. The
+  core-task requirement is excluded from the profile-set computation.
+- **Statistics:** every rule in `optimizer.campaign` and `optimizer.statistics` that is per category becomes per cell;
+  `K` counts cells. Readiness, baseline, commit, error budget, decisions, keep-improvement, the scheduler and the
+  report are keyed by cell.
+- **Sessions:** `SessionPort` takes the profile. `ClaudeSessions` passes `--model` and `--effort`; `CodexSessions`
+  passes the model and reasoning effort to the bridge. The deriver, judge and author run under the role profile
+  (the `optimize-xhigh` binding per harness); `OptimizerCommandScope.JUDGE_MODEL = "harness-default"` is replaced.
+  The observed profile is recorded per trial and compared per cell (R-E16, D21).
+- **User control:** a revision may restrict the profile set; the proposal shows inventory, bindings, cells and the
+  minimum session count.
+- **Closes:** R-C10, R-C11, R-E17.
+- **Tests:** `ProfileSetTest` (bound, partially bound and unbound files; `inherit`; a restriction), `ProposalTest`,
+  `SchedulerTest`, `ReadinessGateTest`, `CommitTest`, `DecisionTableTest` and `StatusReportTest` with a two-cell
+  category, both `*SessionsTest` classes for profile arguments, `MeasurementIdentityTest`. `DriverTest` trace 15.
+- **Exit:** unit tests pass; the full build passes.
+
+### WI-17 — Deterministic checks and the core-task requirement (user ruling, 2026-10-01)
+
+- **Contract:** each requirement is deterministic or semantic. A deterministic check has a kind from a closed set,
+  belongs to one test and one requirement, takes parameters that may name variation values, and carries a known-good
+  and a known-bad control. CAT adds the core-task requirement (source CAT) to every test; it is semantic unless the
+  test's expected result is mechanical.
+- **Controls:** validated at confirmation and when the contract is loaded. A check that fails a control is discarded,
+  its requirement becomes semantic, and the proposal says why.
+- **Trial outcome:** checks run first on the trial evidence. A trial fails if any check fails; otherwise the judge
+  decides the semantic requirements alone, under the role profile, and cannot override a check. No judge session runs
+  when a check failed or no semantic requirement remains. A failed check's record reaches the author brief.
+- **Prompts:** the deriver prompt marks each requirement and proposes checks with controls; the judge prompt receives
+  only semantic requirements and the deterministic results as evidence.
+- **Closes:** R-C5, R-C8, R-C9.
+- **Tests:** `DeterministicCheckTest` (each kind; each control on both sides; variation values), `ProposalTest`
+  (core-task requirement added; a check with a failing control discarded), `JudgeVerdictTest`, `DriverTest` trace 16.
+- **Exit:** unit tests pass; the full build passes.
+
+### WI-18 — Author manifest, minimality pass and size report (user ruling, 2026-10-01)
+
+- **Author prompt:** classify each failure as routing, guidance or not guidance; make the smallest evidence-backed
+  correction at the owning boundary, preferring to remove a contradiction over adding emphasis; generalize against
+  analogous and dissimilar cases; emit the manifest.
+- **Manifest:** extends the author report (`optimizer/author/report.schema.json`) with each failure's classification
+  and, per changed hunk, the cited failing instances and the analogous and dissimilar cases. CAT rejects an attempt
+  whose manifest omits a hunk or cites an unknown instance; the attempt is retained like an inventory violation. An
+  attempt that edits nothing produces no candidate; its classifications go to the round's diagnosis and to the
+  review-checkpoint or plateau report.
+- **Minimality pass:** after the promotion runs pass, delta debugging over the attempt's hunks: start with two groups,
+  revert one group, rerun the same promotion runs under the same rule, keep the reduction if it passes, otherwise
+  split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
+  report names the removed hunks.
+- **Size report:** the status shows the working candidate's and the incumbent's prompt size (bytes and words) and the
+  median input tokens per trial in each cell where both have outcomes.
+- **Closes:** R-D10, R-D11, R-E18.
+- **Tests:** `AuthorManifestTest`, `MinimalityTest`, `StatusReportTest`, `DriverTest` traces 17 and 18.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -678,7 +760,10 @@ blocks only the part of a work item that it names.
 | WI-10 | WI-0 (P9, P11), WI-2, WI-9 |
 | WI-13 | WI-0 (P10), WI-5, WI-7, WI-8, WI-9, WI-10, WI-11, WI-12 |
 | WI-14 | WI-13 |
-| WI-15 | WI-14 |
+| WI-16 | WI-14 |
+| WI-17 | WI-16 |
+| WI-18 | WI-17 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17 and WI-18. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
@@ -728,6 +813,14 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
     change followed by a new measurement identity ends the attempt `not certified: testing environment changed`,
     returns to development and starts a new incumbent baseline. A qualifying attempt from before the change is offered
     separately, labelled historical.
+15. **Cells:** a category whose file is unbound runs under two profiles; each cell has its own counts, readiness,
+    commit and decision, and a trial runs under its cell's profile while the judge runs under the role profile.
+16. **Deterministic failure:** a trial fails a deterministic check, no judge session runs, and the failed check's
+    record reaches the author brief.
+17. **Manifest rejection:** an author attempt with an uncited hunk is retained with no candidate, and the next attempt
+    runs.
+18. **Minimality:** a promoted attempt with one unneeded hunk is reduced to the needed hunks, the reduction's runs are
+    not counted, and the report names the removed hunk.
 
 ## 8. Test-suite rules
 
