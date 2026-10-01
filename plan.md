@@ -111,6 +111,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-16 | `optimize-xhigh` | Cells change every statistical rule's unit, and runner profile selection must reach both harnesses exactly. |
 | WI-17 | `optimize-xhigh` | Check kinds, controls and the judge's narrower role decide what the product measures. |
 | WI-18 | `optimize-xhigh` | Manifest validation, the minimality search and the author prompt decide which edits ship. |
+| WI-19 | `optimize-xhigh` | Allocation policy that interacts with readiness, the coverage floor and edits. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -195,6 +196,7 @@ overkill.
 | WI-16 | In progress (delegated to `optimize-xhigh`, worktree `v1.0-wi16`). |
 | WI-17 | Not started. |
 | WI-18 | Not started. |
+| WI-19 | Not started. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -220,6 +222,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - WI-14 and WI-15: the session contract tests and the remaining native-tier removal moved to WI-15, because the existing recordings cannot satisfy every `SessionPortContract` check; WI-15 records untrimmed streams and an interrupted turn per harness. WI-15 runs Codex first and starts Claude only after Codex passes (user ruling, 2026-10-01).
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 - `design.md` §1.2, §2.1, §3.1, §3.9, §5, §6.1, §6.4, new §6.6, §9, §12 (P12, P13), §13 (D11, D15, D22–D26) and §14 (G1, G2, G5, G7): trial profiles and cells as the statistical unit; deterministic checks with controls beside semantic judgment under a frozen role profile; a core-task requirement in every test; author failure classification and a per-hunk citation manifest; a minimality pass; candidate-versus-incumbent prompt size and input tokens (user rulings, 2026-10-01). Plan: R-C5 rewritten; R-C8–R-C11, R-D10, R-D11, R-E17, R-E18 and R-I5 added; WI-16–WI-18 added with §1.1 assignments, §6 dependencies and `DriverTest` traces 15–18; WI-15's trial-based scenarios now wait for WI-16–WI-18.
+- `design.md` §3.3 rule 2, §6.6 and D27: development cell tiering; plan R-E3 reworded, R-E19 and WI-19 added with §1.1, §6 and trace 19 (user ruling, 2026-10-01). `design.md` P14 and plan §4: the effort probe tests a pre-stated null hypothesis with the 2×4 exact test, and a non-rejection does not justify dropping efforts.
 - `design.md` §12: added P14 (does reasoning effort change compliance?); plan §4 adds its probe and §2 its row (user request, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 
@@ -279,7 +282,7 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 |---|---|---|---|---|
 | R-E1 | Logical-trial lifecycle with write-ahead ordering: assignment persisted before the session starts, outcome before adoption. | §3.2, §3.8 | WI-4, WI-9 | U: `FileCampaignStoreTest` (fault after every step); U: `DriverTest` |
 | R-E2 | Infrastructure failures rerun the same logical trial; 3 failures pause the campaign; rate-limit rejections are excluded; a timeout is behaviour, not a retry. | §3.2, §2.6 | WI-9 | U: `DriverTest` |
-| R-E3 | Allocation order: targeted work, development coverage floor, Wilson lower bound, formal rule (the category furthest from certifying), baseline arm, with the stated tie-breaks. | §3.3 | WI-3 | U: `SchedulerTest` |
+| R-E3 | Allocation order: targeted work, development cell tier and coverage floor among active cells, Wilson lower bound, formal rule (the category furthest from certifying), baseline arm, with the stated tie-breaks. | §3.3 | WI-3 | U: `SchedulerTest` |
 | R-E4 | Concurrency: risk ceiling, slow start, category limit from the passes still required to certify, campaign ceiling (default 8, range 1–16), baseline arm on the remaining ceiling. | §3.3 | WI-3 | U: `ConcurrencyPolicyTest` (no failures: 1 at n=10 and 2 at n=11, 3 at n=22 and 4 at n=23, 7 at n=46 and 8 at n=47; 10 at 1 of 100; reset after a failure) |
 | R-E5 | Adoption in assignment order; post-decision outcomes never change a decision. | §3.4 | WI-3, WI-9 | U: `AdoptionTest`; U: `DriverTest` (completions out of order) |
 | R-E6 | Throttling at 80% and 95% utilization, rejection backoff of 1, 2, 4 … up to 30 minutes, per-trial records, no evasion features. | §3.5 | WI-3, WI-8 | U: `ThrottleTest`; E: rate-limit state in the per-trial records of E1 per harness |
@@ -289,6 +292,7 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree. | §3.8 | WI-9 | U: `ReconciliationTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases; token statistics; no totals or time estimates. | §3.9 | WI-12 | U: `RemainingWorkTest` |
+| R-E19 | Development cell tiering: a 3-trial screen of every cell; active cells (a bound cell, each model's lowest and highest effort, any cell with a failure); widening to every cell once every active cell meets the readiness count conditions; a failure in a newly sampled cell makes it active; a new candidate restarts in the active cells. | §3.3, §6.6, D27 | WI-19 | U: `SchedulerTest` (screen, active set, widening, a new failure activating a cell, restart after an edit), `DriverTest` trace 19 |
 | R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
 | R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, author and deriver sessions per harness |
 | R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
@@ -370,7 +374,7 @@ update §3.7 or §3.8 as needed.
 | P9 | Search the native events for prompt-source loading records in each harness. | WI-10 loading |
 | P10 | A Codex host command runs past 10 minutes; record the timeout behaviour. | WI-13 slice default for Codex |
 | P11 | Run 20 judge sessions per harness on fixed evidence; record the rate of schema-valid output. | WI-10 judge profile |
-| P14 | Run the E1 deficient fixture (`optimizer/e2e/deficient`) through plain `codex exec` on one Codex model, `gpt-6.1-sol`, at efforts `low`, `medium`, `high` and `xhigh`, 20 trials each (80 trials, about 7M tokens, under 1% of a week). Score each reply against the fixture's motto requirement and its question. Compare the four compliance rates with Fisher's exact test (lowest against highest rate, two-sided, α = 0.05); with 20 trials per effort, only large differences are detectable. If the rates differ, effort stays in the tests. If they are the same, that is evidence, for this kind of rule only, that testing the endpoints is enough. If every effort is at 0% or 100%, the result is inconclusive (floor or ceiling), not "the same": rerun on the pilot's fixed variant before concluding (user request, 2026-10-01). | The profile-set default of `design.md` §6.6 |
+| P14 | Run the E1 deficient fixture (`optimizer/e2e/deficient`) through plain `codex exec` on one Codex model, `gpt-6.1-sol`, at efforts `low`, `medium`, `high` and `xhigh`, 20 trials each (80 trials, about 7M tokens, under 1% of a week). Score each reply against the fixture's motto requirement and its question. H0: the four efforts have the same compliance rate. Test it with the 2×4 Fisher–Freeman–Halton exact test, two-sided, α = 0.05, fixed before the run (not lowest against highest observed, which picks the comparison after seeing the data). With 20 trials per effort only differences of roughly 40 percentage points or more are reliably detectable. If H0 is rejected, effort stays in the tests. A non-rejection is not evidence that the rates are equal; supporting fewer efforts would need an equivalence test with a stated margin and far more trials. If every effort is at 0% or 100%, the result is inconclusive (floor or ceiling), not "the same": rerun on the pilot's fixed variant before concluding (user request, 2026-10-01). | The profile-set default of `design.md` §6.6 |
 
 Exit check: every gate has a recorded result (pass, or the fallback applied) and `design.md` §11 and §12 are updated.
 
@@ -706,6 +710,15 @@ The riskiest pure code, built first.
 - **Tests:** `AuthorManifestTest`, `MinimalityTest`, `StatusReportTest`, `DriverTest` traces 17 and 18.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-19 — Development cell tiering (user ruling, 2026-10-01)
+
+- **Scheduler:** the §3.3 rule 2 cell tier and the §6.6 screen, active set and widening, in `optimizer.campaign`. The
+  active set is persisted with the campaign and survives restart.
+- **Report:** the status shows each category's active cells and whether development has widened.
+- **Closes:** R-E19 and the tier part of R-E3.
+- **Tests:** `SchedulerTest`, `StatusReportTest`, `DriverTest` trace 19.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -766,7 +779,8 @@ blocks only the part of a work item that it names.
 | WI-16 | WI-14 |
 | WI-17 | WI-16 |
 | WI-18 | WI-17 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17 and WI-18. |
+| WI-19 | WI-16 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18 and WI-19. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
@@ -824,6 +838,9 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
     runs.
 18. **Minimality:** a promoted attempt with one unneeded hunk is reduced to the needed hunks, the reduction's runs are
     not counted, and the report names the removed hunk.
+19. **Cell tiering:** after the screen, development samples only active cells; once they meet the readiness count
+    conditions it widens, a failure in a newly sampled cell activates it, and the next candidate restarts in the
+    enlarged active set.
 
 ## 8. Test-suite rules
 

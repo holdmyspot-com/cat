@@ -546,8 +546,9 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 priority first:
 
 1. pending targeted work, which is reruns, promotion runs and regression runs;
-2. development only: the coverage floor, under which no category may be more than 50 representative assignments ahead
-   of the least-sampled eligible category;
+2. development only: the cell tier of [§6.6](#66-trial-profiles). Representative assignments go only to active
+   cells, and among them the coverage floor applies: no cell may be more than 50 representative assignments ahead of
+   the least-sampled eligible active cell;
 3. development: the lowest exploratory Wilson 95% lower bound for the current candidate. An empty category counts as 0.
    Ties are broken by fewer outcomes, then the contract's risk rank, then category order;
 4. formal: one trial per category first, then the category furthest from certifying: the lowest current lower bound
@@ -991,6 +992,23 @@ core-task requirement, which comes from CAT and not from a file:
 
 A trial session starts under its cell's profile. The harness then applies any binding of the files it runs.
 
+**Tiering in development (user ruling, 2026-10-01).** Development tests each candidate first in a few cells and widens
+to every cell only once those are ready. Readiness, baseline and certification still cover every cell, so tiering
+changes only the cost of development, never the claim:
+
+- **Screen.** When development starts, every cell receives 3 representative trials of the first working candidate.
+- **Active cells.** A cell is active when it binds its category's only profile; when it is the lowest or the highest
+  effort that its model has in the profile set; or when any candidate of the campaign has failed in it. A cell stays
+  active for the rest of the campaign.
+- **Widening.** Once every active cell of the current candidate passes the readiness gate's count conditions
+  ([§2.7](#27-development-readiness-and-edit-or-continue)), every cell becomes eligible for representative trials.
+  The usual allocation then fills the rest, and empty cells count as 0. A failure in a newly sampled cell makes it
+  active and is handled like any other development failure.
+- **Edits.** A new working candidate starts again in the active cells only, with counts at zero as usual.
+
+With the Codex inventory of 2026-10-01, the active set starts at 16 of 44 cells per unbound category (the lowest and
+highest effort of each of 8 models), plus every cell where the screen found a failure.
+
 **User control.** The proposal shows each category's cells and the minimum session count they imply. In revision
 feedback, the user may restrict the profile set to a subset of the inventory. The claim then names only the confirmed
 profiles.
@@ -1190,7 +1208,7 @@ records with the evidence.
 | P11 | Judge sessions read the evidence read-only and return schema-valid results reliably in both harnesses. | Measure the invalid-output rate. Retries of the same logical trial cover the rate if it is low; otherwise the judge profile cannot be confirmed. | Passed with the §3.1 extraction rule (H23). |
 | P12 | Claude Code's documentation names the model aliases a user can select and the reasoning efforts each one accepts. | Ship the aliases with every documented effort level, and record as a limitation that an unsupported combination fails its first trial as an infrastructure failure. | Open. |
 | P13 | Each runner can start a session under a requested model and effort, and the harness events report the model and effort that ran. | A runner that cannot select a profile tests only its default profile, and the proposal says so. | Open. Codex `codex debug models` lists each model's supported reasoning levels (0.159.1, 2026-10-01). |
-| P14 | Reasoning effort changes compliance with the same prompt on the same model, so effort must stay a dimension of the profile set (§6.6). | If compliance does not differ, testing the lowest and highest effort in use is supported, but only for the kind of rule tested. | Open. |
+| P14 | Reasoning effort changes compliance with the same prompt on the same model, so effort must stay a dimension of the profile set (§6.6). | If no difference is detected, effort stays in the profile set: a test that fails to reject equal rates does not show that they are equal. Only an equivalence test with a stated margin could support testing fewer efforts, and only for the kind of rule tested. | Open. |
 
 ## 13. Decision records
 
@@ -1224,6 +1242,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D24 | Add the core-task requirement to every contract (user ruling, 2026-10-01). | Contracts derived only from the prompt's text can certify a candidate that obeys every rule but does the user's task worse. | The judge also decides task correctness. That can expose failures that the prompt's own rules would not. |
 | D25 | Require authors to classify failures, make the smallest owning-boundary correction, generalize against analogous and dissimilar cases, and cite the failing instances for each hunk. CAT checks the citations (user ruling, 2026-10-01). | Unconstrained authors add emphasis and special cases that pass the triggering instances and grow the prompt. Judging the quality of each edit with a model would add an unvalidated decision. | Authors write a manifest. CAT can check only that the citations exist, not that they are apt. |
 | D26 | Reduce each promoted attempt by delta debugging before it becomes the working candidate (user ruling, 2026-10-01). | Keeping every added hunk lets prompts grow with unneeded text. Removing hunks after representative sampling would discard counts. | Extra targeted runs per promotion, growing at most with the square of the hunk count. A needed hunk can be removed by chance; representative trials then catch the weaker candidate. |
+| D27 | Develop each candidate in its active cells first and widen to every cell once they are ready (user ruling, 2026-10-01). | Sampling every cell during development spends most trials on cells whose counts the next edit resets. Readiness and certification still cover every cell, so the claim is unchanged; the risk is finding a failure in a rarely sampled cell late, which widening catches before commit. |
 
 ## 14. Acceptance evidence
 
