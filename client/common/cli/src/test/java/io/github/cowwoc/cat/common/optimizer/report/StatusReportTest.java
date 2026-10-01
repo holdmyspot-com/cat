@@ -517,6 +517,22 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that an unavailable certification is reported by its outcome label alone, without repeating the
+	 * wording that the label already carries.
+	 */
+	@Test
+	public void unavailableCertificationShowsLabel()
+	{
+		// Requirement: R-P1
+		Campaign campaign = confirmed().
+			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_OUTPUT)).build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.pending(), "pending").isEqualTo("certification unavailable: unsupported output");
+	}
+
+	/**
 	 * Verifies that a pending authority warning shows its requirement, link path, resolved target, limit and choices,
 	 * in the JSON and in a summary line.
 	 */

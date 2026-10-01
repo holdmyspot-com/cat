@@ -368,8 +368,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.RegressionTradeOff tradeOff ->
 				"attempt " + tradeOff.attempt() + " certified but is proven worse in a category";
 			case PendingDecision.PlateauReached _ -> "a full development round produced no stronger candidate";
-			case PendingDecision.CertificationUnavailable unavailable ->
-				"certification is unavailable: " + unavailable.outcome().label();
+			case PendingDecision.CertificationUnavailable unavailable -> unavailable.outcome().label();
 			case PendingDecision.AuthorityWarnings warnings ->
 			{
 				List<String> edits = new ArrayList<>();
