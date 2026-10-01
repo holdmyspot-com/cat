@@ -743,6 +743,9 @@ deleting or rewriting it, when it observes a change to any of these:
 - the runner model or reasoning profile;
 - a provider, harness, source or host tool capable of affecting outcomes.
 
+A runner or CAT version change counts as a harness change, because the runner ships with CAT and a runner change
+has altered trial outcomes (H17).
+
 If a material condition changes between trials, CAT pauses as `MEASUREMENT_CHANGED` before the next model call. To
 continue, the user restores the condition, starts a new measurement identity, or cancels. A change to the loader
 configuration cannot start a new measurement identity within the campaign: the user either restores it or keeps it and
