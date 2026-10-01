@@ -4,9 +4,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -129,6 +131,10 @@ final class CampaignDraft
 	 */
 	Throttle throttle;
 	/**
+	 * The external targets whose content the user authorized author attempts to edit.
+	 */
+	final Set<Path> authorizedTargets;
+	/**
 	 * The decisions that the campaign waits for, in the order they arose.
 	 */
 	final List<PendingDecision> pendingDecisions;
@@ -182,6 +188,7 @@ final class CampaignDraft
 		evidenceRevision = campaign.evidenceRevision();
 		slowStart = campaign.slowStart();
 		throttle = campaign.throttle();
+		authorizedTargets = new HashSet<>(campaign.authorizedTargets());
 		pendingDecisions = new ArrayList<>(campaign.pendingDecisions());
 		revisionRequested = campaign.revisionRequested();
 		outcome = campaign.outcome();
@@ -442,7 +449,7 @@ final class CampaignDraft
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
 			diagnosis, round, author, reviewPoints);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
-			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle, pendingDecisions,
-			revisionRequested, outcome, delivery);
+			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
 	}
 }

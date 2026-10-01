@@ -19,6 +19,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -59,6 +60,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param deliveryAttempt the certification index of the delivered snapshot, or 0 if none or uncertified
  * @param pending a description of the decision that the campaign waits for, or {@code null} if none
  * @param choices the answers that the user may give now
+ * @param authorityWarnings the warnings of a pending authority decision, empty if none is asked now
  * @param categories the four outputs of each category
  * @param allocation the adopted outcomes of each category in the reported phase; allocation is not a benchmark
  *   weight
@@ -76,7 +78,8 @@ import tools.jackson.databind.node.ObjectNode;
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
 	String delivery, int deliveryAttempt, String pending,
-	List<ChoiceItem> choices, List<CategoryReport> categories, Map<String, Integer> allocation,
+	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CategoryReport> categories,
+	Map<String, Integer> allocation,
 	Benchmark benchmark, RemainingWork remaining, TokenStatistics tokens, Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions)
@@ -135,6 +138,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param deliveryAttempt the certification index of the delivered snapshot, or 0 if none or uncertified
 	 * @param pending a description of the decision that the campaign waits for, or {@code null} if none
 	 * @param choices the answers that the user may give now
+	 * @param authorityWarnings the warnings of a pending authority decision, empty if none is asked now
 	 * @param categories the four outputs of each category
 	 * @param allocation the adopted outcomes of each category in the reported phase
 	 * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
@@ -163,6 +167,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		requireThat(snapshot, "snapshot").isNotBlank();
 		requireThat(deliveryAttempt, "deliveryAttempt").isNotNegative();
 		requireThat(choices, "choices").isNotNull();
+		requireThat(authorityWarnings, "authorityWarnings").isNotNull();
 		requireThat(categories, "categories").isNotNull();
 		requireThat(allocation, "allocation").isNotNull();
 		requireThat(remaining, "remaining").isNotNull();
@@ -174,6 +179,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		requireThat(limitations, "limitations").isNotNull();
 		requireThat(conditions, "conditions").isNotNull();
 		choices = List.copyOf(choices);
+		authorityWarnings = List.copyOf(authorityWarnings);
 		categories = List.copyOf(categories);
 		allocation = Map.copyOf(allocation);
 		attempts = List.copyOf(attempts);
@@ -296,8 +302,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		return new StatusReport(status(campaign), campaign.header().id(), campaign.lifecycle(),
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
-			describe(campaign.pending()), choices(campaign), categories, allocation, benchmark,
-			RemainingWork.of(campaign), TokenStatistics.of(evidence.tokenUsage()), concurrency(campaign),
+			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), categories, allocation,
+			benchmark, RemainingWork.of(campaign), TokenStatistics.of(evidence.tokenUsage()), concurrency(campaign),
 			assumptions, attempts, keepOffers, claim, limitations, conditions);
 	}
 
@@ -364,7 +370,30 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.PlateauReached _ -> "a full development round produced no stronger candidate";
 			case PendingDecision.CertificationUnavailable unavailable ->
 				"certification is unavailable: " + unavailable.outcome().label();
+			case PendingDecision.AuthorityWarnings warnings ->
+			{
+				List<String> edits = new ArrayList<>();
+				for (AuthorityWarning warning : warnings.warnings())
+					edits.add("requirement " + warning.requirement() + " at " + warning.path());
+				yield "an author needs edits outside the edit authority: " + String.join("; ", edits);
+			}
 		};
+	}
+
+	/**
+	 * Returns the warnings of the authority decision that a campaign asks for now.
+	 *
+	 * @param campaign the campaign
+	 * @return the warnings, empty if the campaign asks for no authority decision now
+	 */
+	private static List<AuthorityWarning> authorityWarnings(Campaign campaign)
+	{
+		if (campaign.lifecycle() == Lifecycle.ACTIVE &&
+			campaign.pending() instanceof PendingDecision.AuthorityWarnings warnings)
+		{
+			return warnings.warnings();
+		}
+		return List.of();
 	}
 
 	/**

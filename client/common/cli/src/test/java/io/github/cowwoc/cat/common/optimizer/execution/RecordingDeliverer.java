@@ -50,7 +50,7 @@ public final class RecordingDeliverer implements Deliverer
 	{
 		synchronized (lock)
 		{
-			calls.add(new Call(request, selected, working));
+			calls.add(new Call(request, selected, working, promptSources));
 			DeliveryResult result = scripted.poll();
 			if (result != null)
 				return result;
@@ -78,8 +78,9 @@ public final class RecordingDeliverer implements Deliverer
 	 * @param request the delivery request
 	 * @param selected the selected candidate's overlay
 	 * @param working the working candidate's overlay
+	 * @param promptSources the prompt sources and authorized targets that the delivery checks applicability against
 	 */
-	public record Call(DeliveryRequest request, Overlay selected, Overlay working)
+	public record Call(DeliveryRequest request, Overlay selected, Overlay working, Set<Path> promptSources)
 	{
 	}
 }

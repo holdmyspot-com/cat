@@ -30,11 +30,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
+import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
@@ -54,11 +57,14 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1010,6 +1016,168 @@ public final class DriverTest
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains("forbidden");
 				requireThat(harness.workspace().authoringCopies(), "authoringCopies").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns a builder for a confirmed campaign whose working candidate 1 failed a {@code safety} instance and whose
+	 * round offers a {@code safety} author attempt.
+	 *
+	 * @return the builder
+	 */
+	private static CampaignBuilder authoring()
+	{
+		return developing().development("safety", 50, 1).failure(CampaignBuilder.instance("safety", "logs")).
+			round(new Round(Map.of("safety", 0)));
+	}
+
+	/**
+	 * Trace: an author reports that requirement {@code r2} needs a content edit through a link to an external target.
+	 * The warning becomes an {@code awaiting-user} decision that survives a restart; the user authorizes the target; a
+	 * later author attempt receives the target and edits it; the attempt is promoted, certified and delivered with the
+	 * external edit.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void authorityWarningTrace() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("driver")).toRealPath();
+			Path target = Files.createDirectories(directory.resolve("external")).resolve("shared.md");
+			Path link = Path.of("shared.md");
+			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
+				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
+				link, new FileEntry.SymbolicLink(target),
+				target, new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions)));
+			DriverHarness harness = new DriverHarness(directory, authoring().build(), fork);
+			// Only the first author attempt, which edits the prompt instead of the external target, fails safety
+			Sha256 firstEdit = Sha256.of("author-1".getBytes(UTF_8));
+			harness.trials(request ->
+			{
+				FileEntry prompt;
+				try
+				{
+					prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
+						entry(DriverHarness.PROMPT).orElseThrow();
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+				if (DriverHarness.category(request).equals("safety") &&
+					((RegularFile) prompt).contentHash().equals(firstEdit))
+				{
+					return harness.failed();
+				}
+				return harness.passed();
+			});
+			harness.authors(request ->
+			{
+				if (harness.author().briefs().getLast().authorizedTargets().contains(target))
+					return harness.edit(request, target);
+				return harness.edit(request, DriverHarness.PROMPT);
+			});
+			harness.author().reports(_ ->
+			{
+				if (harness.author().briefs().getLast().authorizedTargets().isEmpty())
+					return Optional.of(List.of(new NeededEdit("r2", link, Operation.EDIT_CONTENT, target)));
+				return Optional.of(List.of());
+			});
+			PendingDecision.AuthorityWarnings warnings = new PendingDecision.AuthorityWarnings(List.of(
+				new AuthorityWarning("r2", link, target, Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
+					AuthorityWarning.Choice.AUTHORIZE_TARGET, AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+					AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN))));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.status().status(), "status").
+					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
+				requireThat(harness.campaign().pending(), "pending").isEqualTo(warnings);
+				requireThat(result.status().authorityWarnings(), "reported").isEqualTo(warnings.warnings());
+			}
+			// A restart between the warning and the choice keeps the decision and starts nothing
+			int sessions = harness.sessions().sessions().size();
+			try (Driver driver = harness.open())
+			{
+				requireThat(harness.campaign().pending(), "pendingAfterRestart").isEqualTo(warnings);
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.status().status(), "statusAfterRestart").
+					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
+				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(sessions);
+			}
+			try (Driver driver = harness.open())
+			{
+				driver.apply(CampaignEvent.Choose.authorize(target));
+				requireThat(harness.campaign().authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(target));
+				requireThat(harness.campaign().pending(), "answered").isNull();
+				harness.runSlice(driver);
+			}
+			Campaign campaign = harness.campaign();
+			requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
+			requireThat(harness.author().briefs().getLast().authorizedTargets(), "briefTargets").
+				isEqualTo(Set.of(target));
+			RecordingDeliverer.Call delivery = harness.deliverer().calls().getLast();
+			requireThat(delivery.selected().snapshot().entry(target), "deliveredTarget").isEqualTo(Optional.of(
+				new RegularFile(Sha256.of("author-2".getBytes(UTF_8)), permissions)));
+			requireThat(delivery.promptSources(), "promptSources").contains(target);
+		}
+	}
+
+	/**
+	 * Verifies that a malformed report of needed edits counts as an author infrastructure failure: the attempt is not
+	 * submitted, and repeated failures stop the slice.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void malformedAuthorReport() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				authoring().build());
+			harness.author().reports(_ -> Optional.empty());
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(Driver.AUTHOR_FAILURE_LIMIT);
+				requireThat(campaign.authorAttempts(), "authorAttempts").isEqualTo(0);
+				requireThat(campaign.pending(), "pending").isNull();
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains("malformed");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a reported edit that the authority in fact permits raises no warning: the attempt is submitted and
+	 * nothing waits for the user.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void permittedNeededEditChangesNothing() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				authoring().build());
+			harness.author().reports(_ -> Optional.of(List.of(
+				new NeededEdit("r2", DriverHarness.PROMPT, Operation.EDIT_CONTENT, null))));
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> state.authorAttempts() == 1);
+				requireThat(campaign.pendingDecisions(), "pendingDecisions").isEmpty();
+				requireThat(campaign.authorizedTargets(), "authorizedTargets").isEmpty();
+				requireThat(campaign.development().author(), "author").isNotNull();
 			}
 		}
 	}

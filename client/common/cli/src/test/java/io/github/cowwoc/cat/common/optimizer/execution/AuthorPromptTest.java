@@ -15,14 +15,18 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.AuthorPrompt;
+import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -66,11 +70,12 @@ public final class AuthorPromptTest
 		// Requirement: R-E13
 		Contract contract = ContractFixtures.contract();
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"), Path.of("rules")),
-			Set.of(Path.of(".claude/settings.json")), Set.of(Path.of("/shared/rules.md")));
+			Set.of(Path.of(".claude/settings.json")));
 		AuthorBrief brief = new AuthorBrief("safety", contract, List.of(failure()),
 			Map.of("safety", new CategoryCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CategoryCounts(30, 1, List.of(1))),
-				List.of(failure()))));
+				List.of(failure()))), Set.of(Path.of("/shared/rules.md")),
+			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")));
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -82,11 +87,13 @@ public final class AuthorPromptTest
 		requireThat(turn, "turn").contains("- CLAUDE.md\n- rules\n").
 			contains("- .claude/settings.json\n").
 			contains("- /shared/rules.md\n").
+			contains("- rules/shared.md -> /shared/rules.md\n").
 			contains("The category to improve:\n\nsafety\n").
 			contains(schema.toJson(contract)).
 			contains("\"cache\"").
 			contains(Outcome.INCONCLUSIVE.label()).
-			doesNotContain("{{contract}}").doesNotContain("{{ended_attempts}}");
+			contains("\"needed_edits\"").
+			doesNotContain("{{contract}}").doesNotContain("{{ended_attempts}}").doesNotContain("{{report_schema}}");
 		JsonNode counts = json.readTree(section(turn, "per category, as JSON:", "\n\nThe formal outcomes"));
 		requireThat(counts.get("safety").get("failures").asInt(), "failures").isEqualTo(2);
 	}
@@ -98,13 +105,15 @@ public final class AuthorPromptTest
 	public void statesAnEmptyAuthorityListAsNone()
 	{
 		// Requirement: R-E13
-		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of(), Set.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of());
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Set.of(), Map.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		requireThat(turn, "turn").contains("which prompt files load, may change:\n\n- none\n").
-			contains("never create, rename, delete or change the mode of one:\n\n- none\n");
+			contains("never create, rename, delete or change the mode of one:\n\n- none\n").
+			contains("resolve to these targets:\n\n- none\n");
 	}
 
 	/**
@@ -115,14 +124,14 @@ public final class AuthorPromptTest
 	public void briefGivesRationalesAndDiagnoses()
 	{
 		// Requirement: R-D3
-		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of(), Set.of());
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		Failure development = new Failure(failure().instance(), "The reply deleted the cache directory unasked.",
 			List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
 				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the cache directory again.")));
 		Failure formal = new Failure(failure().instance(), "The formal reply deleted the cache directory.",
 			List.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(development), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))));
+			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))), Set.of(), Map.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -137,6 +146,87 @@ public final class AuthorPromptTest
 			"\n\n### How to edit"));
 		requireThat(ended.get(0).get("failures").get(0).get("judge_rationale").asString(), "ended.judge_rationale").
 			isEqualTo("The formal reply deleted the cache directory.");
+	}
+
+	/**
+	 * Returns the result of an author session whose final response is the given text.
+	 *
+	 * @param response the final response
+	 * @return the result
+	 */
+	private static SessionResult.Completed completed(String response)
+	{
+		return new SessionResult.Completed(Path.of("/runs/author-3/artifacts/transcript.jsonl"),
+			List.of("working", response), COPY, "author-model", null, null, List.of(), "none");
+	}
+
+	/**
+	 * Verifies that the author's report of needed edits is read from one JSON object, bare or alone in a Markdown code
+	 * fence, with the resolved target only where the path is a link.
+	 */
+	@Test
+	public void readsTheNeededEdits()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+
+		requireThat(prompt.neededEdits(completed("{\"needed_edits\": []}")), "none").
+			isEqualTo(Optional.of(List.of()));
+		Optional<List<NeededEdit>> edits = prompt.neededEdits(completed("""
+			```json
+			{"needed_edits": [
+			  {"requirement": "R1", "path": "rules/shared.md", "operation": "edit_content",
+			   "target": "/external/shared.md"},
+			  {"requirement": "R2", "path": "rules/new.md", "operation": "create"}
+			]}
+			```"""));
+		requireThat(edits, "edits").isEqualTo(Optional.of(List.of(
+			new NeededEdit("R1", Path.of("rules/shared.md"), Operation.EDIT_CONTENT, Path.of("/external/shared.md")),
+			new NeededEdit("R2", Path.of("rules/new.md"), Operation.CREATE, null))));
+	}
+
+	/**
+	 * Returns malformed reports of needed edits.
+	 *
+	 * @return each final response
+	 */
+	@DataProvider
+	public Object[][] malformedReports()
+	{
+		return new Object[][]
+			{
+				{"I changed CLAUDE.md to ask before deleting."},
+				{"{}"},
+				{"{\"needed_edits\": [], \"notes\": \"none\"}"},
+				{"{\"needed_edits\": {}}"},
+				{"{\"needed_edits\": [\"rules/shared.md\"]}"},
+				{"{\"needed_edits\": [{\"path\": \"a.md\", \"operation\": \"create\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \" \", \"path\": \"a.md\", \"operation\": \"create\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"a.md\", \"operation\": \"rename\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"a.md\", \"operation\": \"CREATE\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"../a.md\", \"operation\": \"create\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"a/../b.md\", \"operation\": \"create\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"\", \"operation\": \"create\"}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"a.md\", \"operation\": \"create\", " +
+					"\"target\": 3}]}"},
+				{"{\"needed_edits\": [{\"requirement\": \"R1\", \"path\": \"a.md\", \"operation\": \"create\", " +
+					"\"extra\": true}]}"},
+				{"{\"needed_edits\": []} {\"needed_edits\": []}"}
+			};
+	}
+
+	/**
+	 * Verifies that a report that is not exactly the schema's object is rejected as malformed.
+	 *
+	 * @param response the final response
+	 */
+	@Test(dataProvider = "malformedReports")
+	public void rejectsMalformedReports(String response)
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+
+		requireThat(prompt.neededEdits(completed(response)), "edits").isEmpty();
 	}
 
 	/**

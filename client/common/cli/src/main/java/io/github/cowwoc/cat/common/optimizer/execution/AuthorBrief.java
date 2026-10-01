@@ -9,10 +9,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * What an author session may see: the contract, the working candidate's development instances and outcomes, and the
@@ -25,9 +30,14 @@ import java.util.Map;
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param developmentCounts the working candidate's development outcomes per category
  * @param endedAttempts the certification attempts that have ended, in index order
+ * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
+ *   to edit
+ * @param links the resolved target of each symbolic link recorded at the fork, keyed by the link's path; a link whose
+ *   links form a cycle is absent
  */
 public record AuthorBrief(String category, Contract contract, List<Failure> developmentFailures,
-	Map<String, CategoryCounts> developmentCounts, List<EndedAttempt> endedAttempts)
+	Map<String, CategoryCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
+	Map<Path, Path> links)
 {
 	/**
 	 * Creates a brief.
@@ -37,7 +47,11 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param developmentCounts the working candidate's development outcomes per category
 	 * @param endedAttempts the certification attempts that have ended, in index order
-	 * @throws NullPointerException if any of the arguments are null
+	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
+	 *   attempts to edit
+	 * @param links the resolved target of each symbolic link recorded at the fork, keyed by the link's path; a link
+	 *   whose links form a cycle is absent
+	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code category} is blank
 	 */
 	public AuthorBrief
@@ -50,6 +64,8 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 		developmentFailures = List.copyOf(developmentFailures);
 		developmentCounts = Map.copyOf(developmentCounts);
 		endedAttempts = List.copyOf(endedAttempts);
+		authorizedTargets = Set.copyOf(authorizedTargets);
+		links = Map.copyOf(links);
 	}
 
 	/**
@@ -57,9 +73,10 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 *
 	 * @param campaign a campaign with a confirmed contract
 	 * @param category the category that the author attempt targets
+	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
 	 * @return the brief
 	 */
-	static AuthorBrief of(Campaign campaign, String category)
+	static AuthorBrief of(Campaign campaign, String category, FileInventory fork)
 	{
 		Development development = campaign.development();
 		List<EndedAttempt> ended = new ArrayList<>();
@@ -71,7 +88,14 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 					attempt.failures()));
 			}
 		}
-		return new AuthorBrief(category, campaign.contract(), development.failures(), development.counts(), ended);
+		Map<Path, Path> links = new HashMap<>();
+		for (Map.Entry<Path, FileEntry> entry : fork.entries().entrySet())
+		{
+			if (entry.getValue() instanceof FileEntry.SymbolicLink)
+				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
+		}
+		return new AuthorBrief(category, campaign.contract(), development.failures(), development.counts(), ended,
+			campaign.authorizedTargets(), links);
 	}
 
 	/**

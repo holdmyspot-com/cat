@@ -225,4 +225,53 @@ public final class AuthorityTest
 
 		requireThat(warning, "warning").isEmpty();
 	}
+
+	/**
+	 * Verifies that authorizing an external target again, after the campaign already authorized it, permits its
+	 * content edits but never a structural edit or a mode change, and that diagnosing such an edit does not offer
+	 * authorization again.
+	 */
+	@Test
+	public void reauthorizingKeepsStructureFixed()
+	{
+		// Requirement: R-W4
+		Path target = Path.of("/external/shared.md");
+		FileInventory fork = inventory(Map.of(
+			"prompts/shared.md", link("/external/shared.md"),
+			"/external/shared.md", file("shared")));
+		Authority authorized = promptAuthority().withAuthorizedTargets(Set.of(target));
+		Authority reauthorized = authorized.withAuthorizedTargets(Set.of(target));
+
+		requireThat(reauthorized.limitOf(Operation.EDIT_CONTENT, target), "edit").isEmpty();
+		requireThat(reauthorized.limitOf(Operation.DELETE, target), "delete").
+			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
+		requireThat(reauthorized.limitOf(Operation.CREATE, target), "create").
+			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
+		requireThat(reauthorized.limitOf(Operation.CHANGE_MODE, target), "mode").
+			isEqualTo(Optional.of(Limit.MODE_FIXED));
+		requireThat(reauthorized.diagnose("R-6", Path.of("prompts/shared.md"), Operation.EDIT_CONTENT, fork),
+			"editWarning").isEmpty();
+		requireThat(reauthorized.diagnose("R-6", Path.of("prompts/shared.md"), Operation.DELETE, fork),
+			"deleteWarning").isEqualTo(Optional.of(new AuthorityWarning("R-6", Path.of("prompts/shared.md"), target,
+				Limit.EXTERNAL_STRUCTURE_FIXED,
+				List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN))));
+	}
+
+	/**
+	 * Verifies that replacing the authorized targets keeps the prompt sources and loader configuration.
+	 */
+	@Test
+	public void authorizedTargetsReplaceOnlyTargets()
+	{
+		// Requirement: R-W4
+		Path target = Path.of("/external/shared.md");
+		Authority authority = promptAuthority().withAuthorizedTargets(Set.of(target));
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("prompts/a.md")), "prompt").isEmpty();
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of(".claude/settings.json")), "loader").
+			isEqualTo(Optional.of(Limit.LOADER_CONFIGURATION_FIXED));
+		requireThat(promptAuthority().limitOf(Operation.EDIT_CONTENT, target), "before").
+			isEqualTo(Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY));
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, target), "after").isEmpty();
+	}
 }

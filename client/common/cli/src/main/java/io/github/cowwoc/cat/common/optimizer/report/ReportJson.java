@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
@@ -47,6 +48,7 @@ final class ReportJson
 		delivery.put("attempt", report.deliveryAttempt());
 		putText(root, "pending", report.pending());
 		choices(root.putArray("choices"), report);
+		authorityWarnings(root.putArray("authorityWarnings"), report);
 		ArrayNode categories = root.putArray("categories");
 		for (CategoryReport category : report.categories())
 			category(categories.addObject(), category);
@@ -104,6 +106,44 @@ final class ReportJson
 			if (choice.reviewPointAbove() > 0)
 				node.put("reviewPointAbove", choice.reviewPointAbove());
 		}
+	}
+
+	/**
+	 * Adds the warnings of a pending authority decision.
+	 *
+	 * @param array the array
+	 * @param report the report
+	 */
+	private static void authorityWarnings(ArrayNode array, StatusReport report)
+	{
+		for (AuthorityWarning warning : report.authorityWarnings())
+		{
+			ObjectNode node = array.addObject();
+			node.put("requirement", warning.requirement());
+			node.put("path", warning.path().toString());
+			node.put("target", warning.target().toString());
+			node.put("limit", warning.limit().name().toLowerCase(Locale.ROOT).replace('_', '-'));
+			ArrayNode choices = node.putArray("choices");
+			for (AuthorityWarning.Choice choice : warning.choices())
+				choices.add(command(choice));
+		}
+	}
+
+	/**
+	 * Returns the command that gives a choice of an authority warning.
+	 *
+	 * @param choice the choice
+	 * @return the {@code choose} identifier, or {@code revise} for a contract revision
+	 */
+	static String command(AuthorityWarning.Choice choice)
+	{
+		return switch (choice)
+		{
+			case AUTHORIZE_TARGET -> "authorize-target";
+			case USE_AUTHORIZED_SOURCE -> "use-authorized-source";
+			case STOP_CAMPAIGN -> "stop";
+			case REVISE_CAMPAIGN -> "revise";
+		};
 	}
 
 	/**

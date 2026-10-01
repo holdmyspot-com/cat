@@ -13,12 +13,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.annotations.Test;
@@ -233,7 +236,8 @@ public final class StatusReportTest
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
 			new IncumbentBaseline(2, frozen.baseline().counts()), frozen.attempts(), frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
-			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(), frozen.delivery());
+			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
+			frozen.delivery());
 		CategoryReport.Improvement improvement = category(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();
@@ -510,5 +514,42 @@ public final class StatusReportTest
 		String text = json.toString().toLowerCase(java.util.Locale.ROOT);
 		requireThat(text, "text").doesNotContain("tokentotal").doesNotContain("timeestimate").
 			doesNotContain("completionprobability").doesNotContain("remainingtime");
+	}
+
+	/**
+	 * Verifies that a pending authority warning shows its requirement, link path, resolved target, limit and choices,
+	 * in the JSON and in a summary line.
+	 */
+	@Test
+	public void authorityWarningIsShown()
+	{
+		// Requirement: R-W4
+		AuthorityWarning warning = new AuthorityWarning("R1", Path.of("rules/shared.md"),
+			Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
+				AuthorityWarning.Choice.AUTHORIZE_TARGET, AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
+		Campaign campaign = confirmed().pending(new PendingDecision.AuthorityWarnings(List.of(warning))).build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.status().label(), "status").isEqualTo("awaiting-user");
+		requireThat(report.pending(), "pending").isNotNull().contains("R1");
+		requireThat(report.authorityWarnings(), "authorityWarnings").isEqualTo(List.of(warning));
+		requireThat(report.choices().stream().map(ChoiceItem::id).toList(), "choices").
+			isEqualTo(List.of("authorize-target", "use-authorized-source", "stop"));
+		ObjectNode json = report.toJson(JsonMapper.builder().build());
+		JsonNode shown = json.path("authorityWarnings").get(0);
+		requireThat(shown.path("requirement").asString(), "requirement").isEqualTo("R1");
+		requireThat(shown.path("path").asString(), "path").isEqualTo("rules/shared.md");
+		requireThat(shown.path("target").asString(), "target").isEqualTo("/external/shared.md");
+		requireThat(shown.path("limit").asString(), "limit").isEqualTo("external-target-read-only");
+		List<String> choices = new ArrayList<>();
+		for (JsonNode choice : shown.path("choices"))
+			choices.add(choice.asString());
+		requireThat(choices, "warningChoices").
+			isEqualTo(List.of("authorize-target", "use-authorized-source", "stop", "revise"));
+		requireThat(report.summary(), "summary").contains("Authority warning: requirement R1 needs an edit at " +
+			"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
+			"choices: authorize target (--target /external/shared.md), use authorized source, stop, revise");
 	}
 }

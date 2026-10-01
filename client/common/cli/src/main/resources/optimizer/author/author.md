@@ -6,8 +6,8 @@
   requirements hold more reliably across that category's uses, without weakening any other requirement.
 - Keep every change inside the confirmed edit authority below. CAT rejects the whole attempt when any change falls
   outside it.
-- End with a final response that names each changed file and the reason for the change. CAT reads the edits from the
-  copy and measures the result itself.
+- End with a final response that reports each edit a requirement needs but that you did not make because it lies
+  outside your authority. CAT reads your edits from the copy and measures the result itself.
 
 ## Guidance
 
@@ -32,10 +32,15 @@
 
 {{authorized_targets}}
 
+- These project paths are symbolic links that resolve to these targets:
+
+{{links}}
+
 - An edit made at a link path applies to the link's resolved target. Never change one target differently through two
   paths.
-- When a requirement needs an edit outside this authority, do not make it. Name the requirement, the path, the
-  resolved target and the limit in your final response.
+- When a requirement needs an edit outside this authority, do not make it. Report the requirement, the path, the
+  operation and, where the path is a link, its resolved target in your final response. CAT asks the user how to
+  continue.
 
 ### Evidence
 
@@ -74,4 +79,10 @@ rationale in `judge_rationale`:
 
 ### Output
 
-The final response is plain text that names each changed file and the reason for the change.
+The final response is one JSON object, bare or alone in one Markdown code fence, and nothing else. It satisfies this
+schema:
+
+{{report_schema}}
+
+Report an empty `needed_edits` array when every edit you needed lies inside your authority. CAT treats any other final
+response as a failed attempt.

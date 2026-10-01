@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+
 import java.util.List;
 
 /**
@@ -209,6 +211,44 @@ public sealed interface PendingDecision
 		{
 			requireThat(outcome, "outcome").isNotNull();
 			requireThat(outcome.isUnavailable(), "outcome.isUnavailable()").isTrue();
+		}
+	}
+
+	/**
+	 * An author reported edits that its requirements need but that lie outside the edit authority.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param warnings the warnings, in report order
+	 */
+	record AuthorityWarnings(List<AuthorityWarning> warnings) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param warnings the warnings, in report order
+		 * @throws NullPointerException if {@code warnings} is null or contains null
+		 * @throws IllegalArgumentException if {@code warnings} is empty
+		 */
+		public AuthorityWarnings
+		{
+			requireThat(warnings, "warnings").isNotEmpty();
+			warnings = List.copyOf(warnings);
+		}
+
+		/**
+		 * Indicates whether authorizing a target would permit some warned edit.
+		 *
+		 * @return {@code true} if a warning offers {@link AuthorityWarning.Choice#AUTHORIZE_TARGET}
+		 */
+		public boolean offersAuthorization()
+		{
+			for (AuthorityWarning warning : warnings)
+			{
+				if (warning.choices().contains(AuthorityWarning.Choice.AUTHORIZE_TARGET))
+					return true;
+			}
+			return false;
 		}
 	}
 }

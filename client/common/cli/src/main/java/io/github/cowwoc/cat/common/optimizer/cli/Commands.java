@@ -34,7 +34,7 @@ public final class Commands
 		  status <campaign>
 		  confirm <campaign>
 		  revise <campaign> <feedback>
-		  choose <campaign> <choice> [--attempt N | --review-point N]
+		  choose <campaign> <choice> [--attempt N | --review-point N | --target <path>]
 		  cancel <campaign>""";
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
@@ -120,21 +120,25 @@ public final class Commands
 	private static Command choose(List<String> rest)
 	{
 		if (rest.size() < 2)
-			throw new InvalidCommandException("choose: expected <campaign> <choice> [--attempt N | --review-point N]");
+		{
+			throw new InvalidCommandException("choose: expected <campaign> <choice> " +
+				"[--attempt N | --review-point N | --target <path>]");
+		}
 		String campaign = campaign(rest.getFirst());
 		Choice choice = choice(rest.get(1));
 		int attempt = 0;
 		int reviewPoint = 0;
+		Path target = null;
 		List<String> options = rest.subList(2, rest.size());
 		if (!options.isEmpty())
 		{
 			if (options.size() != 2)
 				throw new InvalidCommandException("choose: expected one option with one value, got " + options);
-			int value = positive(options.get(0), options.get(1));
 			switch (options.get(0))
 			{
-				case "--attempt" -> attempt = value;
-				case "--review-point" -> reviewPoint = value;
+				case "--attempt" -> attempt = positive(options.get(0), options.get(1));
+				case "--review-point" -> reviewPoint = positive(options.get(0), options.get(1));
+				case "--target" -> target = authorizedTarget(options.get(1));
 				default -> throw new InvalidCommandException("choose: unknown option " + options.get(0));
 			}
 		}
@@ -146,7 +150,37 @@ public final class Commands
 			throw new InvalidCommandException("choose more-evidence requires --review-point N.");
 		if (choice != Choice.MORE_EVIDENCE && reviewPoint != 0)
 			throw new InvalidCommandException("--review-point is valid only for more-evidence.");
-		return new Command.Choose(campaign, choice, attempt, reviewPoint);
+		if (choice == Choice.AUTHORIZE_TARGET && target == null)
+			throw new InvalidCommandException("choose authorize-target requires --target <path>.");
+		if (choice != Choice.AUTHORIZE_TARGET && target != null)
+			throw new InvalidCommandException("--target is valid only for authorize-target.");
+		return new Command.Choose(campaign, choice, attempt, reviewPoint, target);
+	}
+
+	/**
+	 * Validates the external target that an {@code authorize-target} choice names.
+	 *
+	 * @param value the argument
+	 * @return the target
+	 * @throws InvalidCommandException if the argument is not a normalized absolute path
+	 */
+	private static Path authorizedTarget(String value)
+	{
+		Path target;
+		try
+		{
+			target = Path.of(value);
+		}
+		catch (InvalidPathException e)
+		{
+			throw new InvalidCommandException("--target: not a path: " + e.getMessage());
+		}
+		if (!target.isAbsolute() || !target.equals(target.normalize()))
+		{
+			throw new InvalidCommandException("--target: expected the absolute, normalized path of the warned " +
+				"target, got '" + value + "'");
+		}
+		return target;
 	}
 
 	/**
@@ -302,7 +336,7 @@ public final class Commands
 			case Command.Confirm confirm -> core.confirm(confirm.campaign());
 			case Command.Revise revise -> core.revise(revise.campaign(), revise.feedback());
 			case Command.Choose choose ->
-				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint());
+				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint(), choose.target());
 			case Command.Cancel cancel -> core.cancel(cancel.campaign());
 		};
 	}

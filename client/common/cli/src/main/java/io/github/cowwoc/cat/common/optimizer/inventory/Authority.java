@@ -65,6 +65,19 @@ public final class Authority
 	}
 
 	/**
+	 * Returns an authority with the same prompt sources and loader configuration and other authorized targets.
+	 *
+	 * @param targets the absolute paths of the external files whose content the user authorized CAT to edit
+	 * @return the authority
+	 * @throws NullPointerException if {@code targets} is null or contains null
+	 * @throws IllegalArgumentException if a target is empty, not normalized or relative
+	 */
+	public Authority withAuthorizedTargets(Set<Path> targets)
+	{
+		return new Authority(promptSources, loaderConfiguration, targets);
+	}
+
+	/**
 	 * Returns the limit that forbids an operation on a resolved target.
 	 *
 	 * @param operation the operation

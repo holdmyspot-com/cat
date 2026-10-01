@@ -33,7 +33,8 @@ import java.util.random.RandomGenerator;
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator terminates processes that an earlier driver left running
  * @param leftoverRuns finds the runner runs of this campaign that are still recorded as running
- * @param authority the campaign's edit authority, which validates author attempts
+ * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's to
+ *   validate author attempts and diagnose the edits that authors report needing
  * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
  *   external targets
  * @param environment the measurement conditions that the driver observes outside trials; it records no
@@ -64,7 +65,8 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator terminates processes that an earlier driver left running
 	 * @param leftoverRuns finds the runner runs of this campaign that are still recorded as running
-	 * @param authority the campaign's edit authority, which validates author attempts
+	 * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's
+	 *   to validate author attempts and diagnose the edits that authors report needing
 	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
 	 *   external targets
 	 * @param environment the measurement conditions that the driver observes outside trials

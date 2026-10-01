@@ -104,10 +104,13 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+		public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
 			throws CommandRefusedException, IOException
 		{
-			return answer("choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
+			String call = "choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint;
+			if (target != null)
+				call += " " + target;
+			return answer(call);
 		}
 
 		@Override
@@ -168,6 +171,25 @@ public final class CommandsTest
 			"choose c1 MORE_EVIDENCE 0 3",
 			"choose c1 STOP 0 0",
 			"cancel c1"));
+	}
+
+	/**
+	 * Verifies that the authority-warning choices reach the core, the authorize-target choice with its target.
+	 */
+	@Test
+	public void dispatchesAuthorityWarningChoices()
+	{
+		// Requirement: R-W4
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		List<List<String>> commands = List.of(
+			List.of("choose", "c1", "authorize-target", "--target", "/external/shared.md"),
+			List.of("choose", "c1", "use-authorized-source"));
+		for (List<String> command : commands)
+			requireThat(run(core, command, output), "exit").isEqualTo(0);
+		requireThat(core.calls, "calls").isEqualTo(List.of(
+			"choose c1 AUTHORIZE_TARGET 0 0 /external/shared.md",
+			"choose c1 USE_AUTHORIZED_SOURCE 0 0"));
 	}
 
 	/**
@@ -278,7 +300,15 @@ public final class CommandsTest
 				{List.of("choose", "c1", "more-evidence")},
 				{List.of("choose", "c1", "stop", "--review-point", "1")},
 				{List.of("choose", "c1", "stop", "--bogus", "1")},
-				{List.of("choose", "c1", "stop", "--attempt")}
+				{List.of("choose", "c1", "stop", "--attempt")},
+				{List.of("choose", "c1", "authorize-target")},
+				{List.of("choose", "c1", "authorize-target", "--target")},
+				{List.of("choose", "c1", "authorize-target", "--target", "shared.md")},
+				{List.of("choose", "c1", "authorize-target", "--target", "/external/../shared.md")},
+				{List.of("choose", "c1", "authorize-target", "--target", " ")},
+				{List.of("choose", "c1", "authorize-target", "--attempt", "1")},
+				{List.of("choose", "c1", "use-authorized-source", "--target", "/external/shared.md")},
+				{List.of("choose", "c1", "stop", "--target", "/external/shared.md")}
 			};
 	}
 

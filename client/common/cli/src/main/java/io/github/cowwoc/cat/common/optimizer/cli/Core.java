@@ -77,12 +77,13 @@ public interface Core
 	 * @param choice the choice
 	 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
 	 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
+	 * @param target the external target that {@link Choice#AUTHORIZE_TARGET} names, otherwise {@code null}
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or the choice is
-	 *   not one that the campaign offers now
+	 *   not one that the campaign offers now, such as authorizing a target that no pending warning names
 	 * @throws IOException if the store or the workspace fails
 	 */
-	CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+	CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
 		throws CommandRefusedException, IOException;
 
 	/**

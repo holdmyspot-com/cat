@@ -357,12 +357,12 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
 		throws CommandRefusedException, IOException
 	{
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
-		return apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
+		return apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint, target)));
 	}
 
 	@Override
@@ -623,7 +623,7 @@ public final class OptimizerCore implements Core
 		Set<Path> promptSources = promptSources(root, campaign);
 		JudgePrompt judge = new JudgePrompt(scope.json(), judgeDirectory);
 		AuthorPrompt author = new AuthorPrompt(scope.json(), schema, promptSources,
-			Set.copyOf(scope.loaderConfiguration()), Set.of());
+			Set.copyOf(scope.loaderConfiguration()));
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
 			new FileCandidateOverlays(directory, inventory, scope.json()), judge, author,
 			new Delivery(store, fork.workspace())::deliver, scope.calibrator(),
@@ -633,7 +633,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the edit authority of a campaign.
+	 * Returns the edit authority of a campaign, with the external targets that the user authorized.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -641,7 +641,8 @@ public final class OptimizerCore implements Core
 	 */
 	private Authority authority(Path root, Campaign campaign) throws IOException
 	{
-		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()), Set.of());
+		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()),
+			campaign.authorizedTargets());
 	}
 
 	/**

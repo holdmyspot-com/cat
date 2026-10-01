@@ -41,9 +41,10 @@ final class SliceReports
 	{
 		return new StatusReport(status, report.campaignId(), report.lifecycle(), report.phase(), report.attempt(),
 			report.candidate(), report.snapshot(), report.outcome(), report.outcomeDetail(), report.delivery(),
-			report.deliveryAttempt(), pending, report.choices(), report.categories(), report.allocation(),
-			report.benchmark(), report.remaining(), report.tokens(), report.concurrency(), report.assumptions(),
-			report.attempts(), report.keepOffers(), report.claim(), report.limitations(), report.conditions());
+			report.deliveryAttempt(), pending, report.choices(), report.authorityWarnings(), report.categories(),
+			report.allocation(), report.benchmark(), report.remaining(), report.tokens(), report.concurrency(),
+			report.assumptions(), report.attempts(), report.keepOffers(), report.claim(), report.limitations(),
+			report.conditions());
 	}
 
 	/**

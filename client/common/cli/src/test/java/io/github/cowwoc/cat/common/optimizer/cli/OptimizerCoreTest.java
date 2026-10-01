@@ -5,11 +5,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.execution.ManualClock;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -168,7 +172,7 @@ public final class OptimizerCoreTest
 					() -> core.run(id),
 					() -> core.confirm(id),
 					() -> core.revise(id, "more"),
-					() -> core.choose(id, Choice.STOP, 0, 0),
+					() -> core.choose(id, Choice.STOP, 0, 0, null),
 					() -> core.cancel(id),
 					() -> core.start(project.target()));
 				for (ThrowingCall call : calls)
@@ -450,8 +454,10 @@ public final class OptimizerCoreTest
 						derivers.getAndIncrement())), effects, "model", null, null, List.of(), "hook: none");
 					case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
 						map(_ -> "answer").toList(), effects, "model", null, null, List.of(), "CLAUDE.md");
-					case JUDGE, AUTHOR -> new SessionResult.Completed(transcript, List.of(
+					case JUDGE -> new SessionResult.Completed(transcript, List.of(
 						"{\"verdict\": \"pass\", \"rationale\": \"The answer follows the rubric.\"}"), effects,
+						"model", null, null, List.of(), "CLAUDE.md");
+					case AUTHOR -> new SessionResult.Completed(transcript, List.of("{\"needed_edits\": []}"), effects,
 						"model", null, null, List.of(), "CLAUDE.md");
 				};
 			}
@@ -679,7 +685,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				repository.core().choose(id, Choice.STOP, 0, 0);
+				repository.core().choose(id, Choice.STOP, 0, 0, null);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -687,6 +693,57 @@ public final class OptimizerCoreTest
 			}
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").contains("does not accept this command now");
+		}
+	}
+
+	/**
+	 * Verifies that {@code choose authorize-target} records the target that a pending authority warning names, and
+	 * that a target no warning names is refused without a change.
+	 */
+	@Test
+	public void authorizeTargetRecordsTheWarnedTarget() throws Exception
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id);
+			Path target = Path.of("/external/shared.md");
+			AuthorityWarning warning = new AuthorityWarning("R1", Path.of("shared.md"), target,
+				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
+				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+				AuthorityWarning.Choice.REVISE_CAMPAIGN));
+			// The scripted deriver yields no supported output, so drop that unrelated decision first.
+			Campaign c = repository.load(id);
+			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
+				c.candidates(), c.authorAttempts(), c.development(), c.baseline(), c.attempts(), c.trials(),
+				c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(), c.authorizedTargets(), List.of(),
+				c.revisionRequested(), c.outcome(), c.delivery());
+			Campaign warned = CampaignTransitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
+			repository.scope().store().replaceSnapshot(warned);
+			String before = Files.readString(repository.directory(id).resolve("campaign.json"));
+
+			CommandRefusedException refusal = null;
+			try
+			{
+				repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, Path.of("/external/other.md"));
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e;
+			}
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(Files.readString(repository.directory(id).resolve("campaign.json")), "unchanged").
+				isEqualTo(before);
+
+			CommandResult result = repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, target);
+			requireThat(result.status().authorityWarnings(), "warnings").isEmpty();
+			Campaign stored = repository.load(id);
+			requireThat(stored.authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(target));
+			requireThat(stored.pending(), "pending").isNull();
 		}
 	}
 }

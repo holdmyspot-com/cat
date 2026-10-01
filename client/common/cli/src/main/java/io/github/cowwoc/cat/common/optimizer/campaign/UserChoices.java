@@ -1,7 +1,9 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,8 +25,8 @@ final class UserChoices
 	 * @param draft the state
 	 * @param campaign the state before the choice
 	 * @param choose the event
-	 * @throws IllegalArgumentException if the campaign does not offer the choice, or the choice names an attempt
-	 *   or review point that the state does not offer
+	 * @throws IllegalArgumentException if the campaign does not offer the choice, or the choice names an attempt,
+	 *   review point or target that the state does not offer
 	 */
 	static void apply(CampaignDraft draft, Campaign campaign, CampaignEvent.Choose choose)
 	{
@@ -78,7 +80,44 @@ final class UserChoices
 				draft.outcome = Outcome.NOT_CERTIFIED;
 				finish(draft, new DeliveryRequest(draft.working, 0, Outcome.NOT_CERTIFIED));
 			}
+			case AUTHORIZE_TARGET -> authorize(draft, (PendingDecision.AuthorityWarnings) pending, choose.target());
+			case USE_AUTHORIZED_SOURCE -> draft.resolve();
 		}
+	}
+
+	/**
+	 * Authorizes the external target that pending warnings name. The warnings about the target are answered; the
+	 * decision stays pending while warnings about other edits remain.
+	 *
+	 * @param draft the state
+	 * @param warnings the pending decision
+	 * @param target the target to authorize
+	 * @throws IllegalArgumentException if no pending warning offers authorizing {@code target}
+	 */
+	private static void authorize(CampaignDraft draft, PendingDecision.AuthorityWarnings warnings, Path target)
+	{
+		List<AuthorityWarning> remaining = new ArrayList<>();
+		boolean offered = false;
+		for (AuthorityWarning warning : warnings.warnings())
+		{
+			if (warning.target().equals(target))
+			{
+				if (!warning.choices().contains(AuthorityWarning.Choice.AUTHORIZE_TARGET))
+				{
+					throw new IllegalArgumentException("Authorizing " + target + " cannot permit the " +
+						warning.limit() + " edit that requirement " + warning.requirement() + " needs");
+				}
+				offered = true;
+			}
+			else
+				remaining.add(warning);
+		}
+		if (!offered)
+			throw new IllegalArgumentException("No pending authority warning names the target " + target);
+		draft.authorizedTargets.add(target);
+		draft.resolve();
+		if (!remaining.isEmpty())
+			draft.pendingDecisions.addFirst(new PendingDecision.AuthorityWarnings(remaining));
 	}
 
 	/**

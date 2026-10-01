@@ -190,6 +190,7 @@
     "window_cap" : 0,
     "backoffs" : 0
   },
+  "authorized_targets" : [ ],
   "pending_decisions" : [ ],
   "revision_requested" : false,
   "outcome" : null,

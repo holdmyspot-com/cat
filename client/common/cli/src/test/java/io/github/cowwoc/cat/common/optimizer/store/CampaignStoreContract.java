@@ -38,9 +38,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -109,14 +111,15 @@ public abstract class CampaignStoreContract
 	/**
 	 * A campaign with every persisted state distinction populated, including each trial's allocation decision and
 	 * infrastructure attempts, the judge's rationale for each judged trial and each failure, the diagnostic reruns of
-	 * each development failure and the campaign's evidence revision, survives a reload unchanged.
+	 * each development failure, the campaign's evidence revision, a pending authority warning and the authorized
+	 * external targets, survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
 	 */
 	@Test
 	public void populatedCampaignSurvivesReload() throws IOException
 	{
-		// Requirement: R-L5, R-E1, R-D2
+		// Requirement: R-L5, R-E1, R-D2, R-W4
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = populated("campaign-full");
@@ -780,6 +783,16 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.RegressionTradeOff(2)).
 			pending(new PendingDecision.PlateauReached()).
 			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION)).
+			pending(new PendingDecision.AuthorityWarnings(List.of(
+				new AuthorityWarning("R1", Path.of("rules/shared.md"), Path.of("/external/shared.md"),
+					Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
+						AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+						AuthorityWarning.Choice.REVISE_CAMPAIGN)),
+				new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,
+					List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+						AuthorityWarning.Choice.REVISE_CAMPAIGN))))).
+			authorizedTarget(Path.of("/external/authorized.md")).
+			authorizedTarget(Path.of("/external/also-authorized.md")).
 			revisionRequested().
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			delivery(new DeliveryRequest(new Candidate(3, CampaignBuilder.snapshot("candidate-3")), 1,
@@ -816,7 +829,7 @@ public abstract class CampaignStoreContract
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
 			built.candidates(), built.authorAttempts(), built.development(), built.baseline(), attempts, built.trials(),
-			built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(), built.pendingDecisions(),
-			built.revisionRequested(), built.outcome(), built.delivery());
+			built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(), built.authorizedTargets(),
+			built.pendingDecisions(), built.revisionRequested(), built.outcome(), built.delivery());
 	}
 }

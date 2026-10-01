@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
@@ -59,6 +60,8 @@ final class ReportSummary
 			}
 			lines.add("Choices: " + String.join("; ", labels));
 		}
+		for (AuthorityWarning warning : report.authorityWarnings())
+			lines.add(authorityWarning(warning));
 		for (CategoryReport category : report.categories())
 			category(lines, category);
 		if (!report.allocation().isEmpty())
@@ -118,6 +121,29 @@ final class ReportSummary
 		for (String limitation : report.limitations())
 			lines.add("  - " + limitation);
 		return String.join("\n", lines);
+	}
+
+	/**
+	 * Describes an authority warning and the commands that answer it.
+	 *
+	 * @param warning the warning
+	 * @return the line
+	 */
+	private static String authorityWarning(AuthorityWarning warning)
+	{
+		List<String> choices = new ArrayList<>();
+		for (AuthorityWarning.Choice choice : warning.choices())
+		{
+			String label = ReportJson.command(choice).replace('-', ' ');
+			if (choice == AuthorityWarning.Choice.AUTHORIZE_TARGET)
+				choices.add(label + " (--target " + warning.target() + ")");
+			else
+				choices.add(label);
+		}
+		return "Authority warning: requirement " + warning.requirement() + " needs an edit at " + warning.path() +
+			", which resolves to " + warning.target() + " (limit: " +
+			warning.limit().name().toLowerCase(Locale.ROOT).replace('_', ' ') + "); choices: " +
+			String.join(", ", choices);
 	}
 
 	/**

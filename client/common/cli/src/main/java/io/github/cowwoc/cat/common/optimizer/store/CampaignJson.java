@@ -44,6 +44,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
@@ -52,6 +54,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -60,12 +63,14 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -163,6 +168,9 @@ final class CampaignJson
 		throttle.put("hold_until", campaign.throttle().holdUntil().toString());
 		throttle.put("window_cap", campaign.throttle().windowCap());
 		throttle.put("backoffs", campaign.throttle().backoffs());
+		ArrayNode authorizedTargets = root.putArray("authorized_targets");
+		for (Path target : new TreeSet<>(campaign.authorizedTargets()))
+			authorizedTargets.add(target.toString());
 		ArrayNode pending = root.putArray("pending_decisions");
 		for (PendingDecision decision : campaign.pendingDecisions())
 			pending.add(writeDecision(decision));
@@ -219,6 +227,12 @@ final class CampaignJson
 		}
 		JsonNode slowStart = field(root, "slow_start");
 		JsonNode throttle = field(root, "throttle");
+		Set<Path> authorizedTargets = new HashSet<>();
+		for (JsonNode node : elements(root, "authorized_targets"))
+		{
+			if (!authorizedTargets.add(pathValue(node, "authorized_targets")))
+				throw new IllegalArgumentException("authorized_targets: duplicate target " + node.asString());
+		}
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
 			pending.add(readDecision(node));
@@ -236,7 +250,8 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
-			pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class), delivery);
+			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
+			delivery);
 	}
 
 	/**
@@ -763,6 +778,22 @@ final class CampaignJson
 				node.put("type", "CERTIFICATION_UNAVAILABLE");
 				node.put("outcome", unavailable.outcome().name());
 			}
+			case PendingDecision.AuthorityWarnings warnings ->
+			{
+				node.put("type", "AUTHORITY_WARNINGS");
+				ArrayNode array = node.putArray("warnings");
+				for (AuthorityWarning warning : warnings.warnings())
+				{
+					ObjectNode element = array.addObject();
+					element.put("requirement", warning.requirement());
+					element.put("path", warning.path().toString());
+					element.put("target", warning.target().toString());
+					element.put("limit", warning.limit().name());
+					ArrayNode choices = element.putArray("choices");
+					for (AuthorityWarning.Choice choice : warning.choices())
+						choices.add(choice.name());
+				}
+			}
 		}
 		return node;
 	}
@@ -795,6 +826,20 @@ final class CampaignJson
 			case "PLATEAU_REACHED" -> new PendingDecision.PlateauReached();
 			case "CERTIFICATION_UNAVAILABLE" ->
 				new PendingDecision.CertificationUnavailable(constant(node, "outcome", Outcome.class));
+			case "AUTHORITY_WARNINGS" ->
+			{
+				List<AuthorityWarning> warnings = new ArrayList<>();
+				for (JsonNode element : elements(node, "warnings"))
+				{
+					List<AuthorityWarning.Choice> choices = new ArrayList<>();
+					for (JsonNode choice : elements(element, "choices"))
+						choices.add(constantValue(choice, "choices", AuthorityWarning.Choice.class));
+					warnings.add(new AuthorityWarning(text(element, "requirement"), pathValue(field(element, "path"),
+						"path"), pathValue(field(element, "target"), "target"), constant(element, "limit", Limit.class),
+						choices));
+				}
+				yield new PendingDecision.AuthorityWarnings(warnings);
+			}
 			default -> throw new IllegalArgumentException("pending_decisions: unknown type " + type);
 		};
 	}
@@ -1293,6 +1338,27 @@ final class CampaignJson
 		if (value == null || !value.isString())
 			throw new IllegalArgumentException(name + ": must be a string");
 		return value.asString();
+	}
+
+	/**
+	 * Returns the path that a string value holds.
+	 *
+	 * @param value the value
+	 * @param name the value's name
+	 * @return the path
+	 * @throws IllegalArgumentException if the value is not a string or not a valid path
+	 */
+	private static Path pathValue(JsonNode value, String name)
+	{
+		String text = stringValue(value, name);
+		try
+		{
+			return Path.of(text);
+		}
+		catch (InvalidPathException e)
+		{
+			throw new IllegalArgumentException(name + ": " + text + " is not a path", e);
+		}
 	}
 
 	/**

@@ -3,10 +3,13 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 
@@ -263,8 +266,10 @@ public sealed interface CampaignEvent
 	 * @param attempt the certification index of the attempt to keep for {@link Choice#KEEP_IMPROVEMENT}, otherwise
 	 *   0
 	 * @param reviewPoint the next review point for {@link Choice#MORE_EVIDENCE}, otherwise 0
+	 * @param target the normalized absolute path of the external target to authorize for
+	 *   {@link Choice#AUTHORIZE_TARGET}, otherwise {@code null}
 	 */
-	record Choose(Choice choice, int attempt, int reviewPoint) implements CampaignEvent
+	record Choose(Choice choice, int attempt, int reviewPoint, Path target) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -273,10 +278,14 @@ public sealed interface CampaignEvent
 		 * @param attempt the certification index of the attempt to keep for {@link Choice#KEEP_IMPROVEMENT},
 		 *   otherwise 0
 		 * @param reviewPoint the next review point for {@link Choice#MORE_EVIDENCE}, otherwise 0
-		 * @throws NullPointerException if {@code choice} is null
+		 * @param target the normalized absolute path of the external target to authorize for
+		 *   {@link Choice#AUTHORIZE_TARGET}, otherwise {@code null}
+		 * @throws NullPointerException if {@code choice} is null, or {@code target} is null and the choice is
+		 *   {@link Choice#AUTHORIZE_TARGET}
 		 * @throws IllegalArgumentException if {@code attempt} is not positive exactly when the choice is
-		 *   {@link Choice#KEEP_IMPROVEMENT}, or {@code reviewPoint} is not positive exactly when the choice is
-		 *   {@link Choice#MORE_EVIDENCE}
+		 *   {@link Choice#KEEP_IMPROVEMENT}, {@code reviewPoint} is not positive exactly when the choice is
+		 *   {@link Choice#MORE_EVIDENCE}, or {@code target} is set for another choice or is not a normalized absolute
+		 *   path
 		 */
 		public Choose
 		{
@@ -289,6 +298,14 @@ public sealed interface CampaignEvent
 				requireThat(reviewPoint, "reviewPoint").isPositive();
 			else
 				requireThat(reviewPoint, "reviewPoint").isZero();
+			if (choice == Choice.AUTHORIZE_TARGET)
+			{
+				requireThat(target, "target").isNotNull();
+				FileInventory.requireInventoryPath(target, "target");
+				requireThat(target, "target").isAbsolute();
+			}
+			else
+				requireThat(target, "target").isNull();
 		}
 
 		/**
@@ -296,13 +313,13 @@ public sealed interface CampaignEvent
 		 *
 		 * @param choice the answer
 		 * @return the event
-		 * @throws NullPointerException if {@code choice} is null
+		 * @throws NullPointerException if {@code choice} is null, or is {@link Choice#AUTHORIZE_TARGET}
 		 * @throws IllegalArgumentException if the choice is {@link Choice#KEEP_IMPROVEMENT} or
 		 *   {@link Choice#MORE_EVIDENCE}
 		 */
 		public static Choose of(Choice choice)
 		{
-			return new Choose(choice, 0, 0);
+			return new Choose(choice, 0, 0, null);
 		}
 
 		/**
@@ -314,7 +331,7 @@ public sealed interface CampaignEvent
 		 */
 		public static Choose keep(int attempt)
 		{
-			return new Choose(Choice.KEEP_IMPROVEMENT, attempt, 0);
+			return new Choose(Choice.KEEP_IMPROVEMENT, attempt, 0, null);
 		}
 
 		/**
@@ -326,7 +343,44 @@ public sealed interface CampaignEvent
 		 */
 		public static Choose moreEvidence(int reviewPoint)
 		{
-			return new Choose(Choice.MORE_EVIDENCE, 0, reviewPoint);
+			return new Choose(Choice.MORE_EVIDENCE, 0, reviewPoint, null);
+		}
+
+		/**
+		 * Returns a {@link Choice#AUTHORIZE_TARGET} choice.
+		 *
+		 * @param target the normalized absolute path of the external target that a pending warning names
+		 * @return the event
+		 * @throws NullPointerException if {@code target} is null
+		 * @throws IllegalArgumentException if {@code target} is not a normalized absolute path
+		 */
+		public static Choose authorize(Path target)
+		{
+			return new Choose(Choice.AUTHORIZE_TARGET, 0, 0, target);
+		}
+	}
+
+	/**
+	 * An author reported edits that its requirements need but that lie outside the edit authority, which asks the
+	 * user how to continue. Only the driver applies it.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param warnings the warnings, in report order
+	 */
+	record WarnAuthority(List<AuthorityWarning> warnings) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param warnings the warnings, in report order
+		 * @throws NullPointerException if {@code warnings} is null or contains null
+		 * @throws IllegalArgumentException if {@code warnings} is empty
+		 */
+		public WarnAuthority
+		{
+			requireThat(warnings, "warnings").isNotEmpty();
+			warnings = List.copyOf(warnings);
 		}
 	}
 

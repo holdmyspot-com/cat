@@ -3,12 +3,15 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The persisted state of one campaign. {@link CampaignTransitions} derives each next state.
@@ -31,6 +34,8 @@ import java.util.Optional;
  *   the evidence its decision used
  * @param slowStart the slow-start limit on the active candidate's concurrency
  * @param throttle the rate-limit response
+ * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
+ *   to edit
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
  *   asked now
  * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
@@ -40,8 +45,8 @@ import java.util.Optional;
 public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int authorAttempts, Development development, IncumbentBaseline baseline,
 	List<CertificationAttempt> attempts, List<LogicalTrial> trials, Map<SequenceGroup, Long> sequences,
-	long evidenceRevision, SlowStart slowStart, Throttle throttle, List<PendingDecision> pendingDecisions,
-	boolean revisionRequested, Outcome outcome, DeliveryRequest delivery)
+	long evidenceRevision, SlowStart slowStart, Throttle throttle, Set<Path> authorizedTargets,
+	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome, DeliveryRequest delivery)
 {
 	/**
 	 * The default campaign ceiling.
@@ -75,6 +80,8 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
 	 * @param slowStart the slow-start limit on the active candidate's concurrency
 	 * @param throttle the rate-limit response
+	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
+	 *   attempts to edit
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
 	 *   asked now
 	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
@@ -84,8 +91,8 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 *   {@code delivery} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value #MAXIMUM_CEILING}], a count is
 	 *   negative, the incumbent is not candidate 0, the baseline is missing after a confirmation, attempts are not
-	 *   numbered 1, 2, …, more than one attempt is running, a group's last sequence number is not positive, or a
-	 *   trial's sequence number exceeds its group's
+	 *   numbered 1, 2, …, more than one attempt is running, a group's last sequence number is not positive, a
+	 *   trial's sequence number exceeds its group's, or an authorized target is not a normalized absolute path
 	 */
 	public Campaign
 	{
@@ -124,6 +131,13 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(pendingDecisions, "pendingDecisions").isNotNull();
 		requireThat(slowStart, "slowStart").isNotNull();
 		requireThat(throttle, "throttle").isNotNull();
+		requireThat(authorizedTargets, "authorizedTargets").isNotNull();
+		for (Path target : authorizedTargets)
+		{
+			FileInventory.requireInventoryPath(target, "authorizedTarget");
+			requireThat(target, "authorizedTarget").isAbsolute();
+		}
+		authorizedTargets = Set.copyOf(authorizedTargets);
 		lineages = List.copyOf(lineages);
 		attempts = List.copyOf(attempts);
 		trials = List.copyOf(trials);
@@ -149,8 +163,8 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
-			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null,
-			null);
+			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, Set.of(), List.of(), false,
+			null, null);
 	}
 
 	/**
@@ -302,6 +316,12 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 					choices.add(Choice.KEEP_IMPROVEMENT);
 				if (acceptable)
 					choices.add(Choice.ACCEPT_WITHOUT_CERTIFICATION);
+			}
+			case PendingDecision.AuthorityWarnings warnings ->
+			{
+				if (warnings.offersAuthorization())
+					choices.add(Choice.AUTHORIZE_TARGET);
+				choices.add(Choice.USE_AUTHORIZED_SOURCE);
 			}
 		}
 		choices.add(Choice.STOP);

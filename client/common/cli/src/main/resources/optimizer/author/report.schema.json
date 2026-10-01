@@ -1,0 +1,24 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Author report",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["needed_edits"],
+	"properties": {
+		"needed_edits": {
+			"description": "Each edit that a requirement needs but that you did not make because it lies outside your authority. Empty if there is none.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["requirement", "path", "operation"],
+				"properties": {
+					"requirement": {"description": "The contract's identifier of the requirement that needs the edit.", "type": "string", "pattern": "\\S"},
+					"path": {"description": "The project-relative path, or the absolute path, at which the edit is needed.", "type": "string", "minLength": 1},
+					"operation": {"enum": ["edit_content", "create", "delete", "change_mode", "change_link"]},
+					"target": {"description": "The link's resolved target, only where the path is a symbolic link.", "type": "string", "minLength": 1}
+				}
+			}
+		}
+	}
+}

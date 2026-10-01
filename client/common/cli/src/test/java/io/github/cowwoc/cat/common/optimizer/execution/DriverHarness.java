@@ -113,9 +113,22 @@ public final class DriverHarness
 	 */
 	public DriverHarness(Path directory, Campaign campaign) throws IOException
 	{
+		this(directory, campaign, new FileInventory(Path.of("/project"), Map.of(PROMPT, new RegularFile(
+			Sha256.of("fork".getBytes(UTF_8)), PERMISSIONS))));
+	}
+
+	/**
+	 * Creates the ports of a test on a fork and persists a campaign.
+	 *
+	 * @param directory a directory that the test owns
+	 * @param campaign the campaign, whose working candidate is in the optimization worktree
+	 * @param fork the files recorded at the fork, which hold {@link #PROMPT}
+	 * @throws IOException if the campaign cannot be persisted
+	 */
+	public DriverHarness(Path directory, Campaign campaign, FileInventory fork) throws IOException
+	{
 		this.directory = directory;
-		this.fork = new FileInventory(Path.of("/project"), Map.of(PROMPT, new RegularFile(
-			Sha256.of("fork".getBytes(UTF_8)), PERMISSIONS)));
+		this.fork = fork;
 		overlays.put(CampaignBuilder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
 			overlays.put(CampaignBuilder.snapshot("candidate-" + number), candidate("candidate-" + number));

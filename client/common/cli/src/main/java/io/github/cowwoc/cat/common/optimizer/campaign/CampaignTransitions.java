@@ -91,6 +91,13 @@ public final class CampaignTransitions
 				draft.raise(new PendingDecision.UnownedChange(change.description()));
 			}
 			case CampaignEvent.ReportUnavailable report -> reportUnavailable(draft, report.outcome());
+			case CampaignEvent.WarnAuthority warn ->
+			{
+				requireConfirmed(draft);
+				if (draft.revisionRequested)
+					throw new IllegalStateException("The campaign waits for a contract revision");
+				draft.raise(new PendingDecision.AuthorityWarnings(warn.warnings()));
+			}
 		}
 		TrialAdoption.settle(draft);
 		TrialAdoption.checkReviewPoints(draft);

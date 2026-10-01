@@ -23,12 +23,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
 import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.SessionEvent;
 import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
+import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -684,7 +687,8 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
-			SessionRequest request = context.author().request(AuthorBrief.of(campaign, category.get()), copy);
+			SessionRequest request = context.author().request(AuthorBrief.of(campaign, category.get(), overlay.fork()),
+				copy);
 			SessionHandle handle = context.sessions().start(request);
 			register(new InFlight.Author(category.get(), working, overlay, copy, before, handle));
 		}
@@ -746,8 +750,10 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Validates a completed author attempt against its starting snapshot and submits its candidate. An attempt with a
-	 * forbidden operation contributes no candidate and counts as an infrastructure failure (design §4.6).
+	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
+	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
+	 * malformed report contributes no candidate and counts as an infrastructure failure (design §4.3, §4.6). A needed
+	 * edit outside the authority raises an {@code awaiting-user} decision that holds the warnings.
 	 *
 	 * @param author the session
 	 * @param completed the session's result
@@ -755,10 +761,21 @@ public final class Driver implements AutoCloseable
 	 */
 	private void submit(InFlight.Author author, SessionResult.Completed completed) throws IOException
 	{
+		Optional<List<NeededEdit>> neededEdits = context.author().neededEdits(completed);
+		if (neededEdits.isEmpty() || !namesContractRequirements(neededEdits.get()))
+		{
+			authorFailed("The author's report of needed edits is malformed");
+			return;
+		}
+		Authority authority = authority();
+		FileInventory fork = author.overlay().fork();
+		List<AuthorityWarning> warnings = new ArrayList<>();
+		for (NeededEdit edit : neededEdits.get())
+			authority.diagnose(edit.requirement(), edit.path(), edit.operation(), fork).ifPresent(warnings::add);
+
 		// The session edits the runner's copy of the authoring copy, so its edits are in the effects directory
 		FileInventory after = context.workspace().scanAuthorEffects(author.copy(), completed.effects());
-		AttemptReview review = InventoryDiff.between(author.before(), after).
-			review(author.overlay().fork(), context.authority());
+		AttemptReview review = InventoryDiff.between(author.before(), after).review(fork, authority);
 		if (!review.isPermitted())
 		{
 			authorFailed("The author attempt made forbidden changes: " + review.forbidden());
@@ -770,15 +787,50 @@ public final class Driver implements AutoCloseable
 			authorFailed("A file in the author's copy changed while CAT read it");
 			return;
 		}
-		if (!offersAuthorAttempt(author))
-			return;
-		Sha256 snapshot = author.working().snapshot();
-		if (!candidate.get().identity().equals(author.overlay().identity()))
+		if (offersAuthorAttempt(author))
 		{
-			context.overlays().save(candidate.get());
-			snapshot = candidate.get().identity();
+			Sha256 snapshot = author.working().snapshot();
+			if (!candidate.get().identity().equals(author.overlay().identity()))
+			{
+				context.overlays().save(candidate.get());
+				snapshot = candidate.get().identity();
+			}
+			record(new CampaignEvent.SubmitAuthorAttempt(author.category(), snapshot));
 		}
-		record(new CampaignEvent.SubmitAuthorAttempt(author.category(), snapshot));
+		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
+			!campaign.revisionRequested())
+		{
+			record(new CampaignEvent.WarnAuthority(warnings));
+		}
+	}
+
+	/**
+	 * Indicates whether each needed edit names a requirement of the confirmed contract.
+	 *
+	 * @param neededEdits the needed edits
+	 * @return {@code true} if every requirement exists
+	 */
+	private boolean namesContractRequirements(List<NeededEdit> neededEdits)
+	{
+		Set<String> requirements = new HashSet<>();
+		for (Requirement requirement : campaign.contract().requirements())
+			requirements.add(requirement.id());
+		for (NeededEdit edit : neededEdits)
+		{
+			if (!requirements.contains(edit.requirement()))
+				return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Returns the campaign's edit authority: the confirmed authority with the targets that the user authorized.
+	 *
+	 * @return the authority
+	 */
+	private Authority authority()
+	{
+		return context.authority().withAuthorizedTargets(campaign.authorizedTargets());
 	}
 
 	/**
@@ -931,8 +983,10 @@ public final class Driver implements AutoCloseable
 			return false;
 		Overlay selected = context.overlays().require(request.candidate().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
-		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working,
-			context.promptSources());
+		// An authorized external target participates like a prompt source, so its applicability is checked too
+		Set<Path> promptSources = new HashSet<>(context.promptSources());
+		promptSources.addAll(campaign.authorizedTargets());
+		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working, promptSources);
 		Applicability applicability = null;
 		if (result instanceof DeliveryResult.Delivered delivered)
 		{
@@ -1035,7 +1089,7 @@ public final class Driver implements AutoCloseable
 	private SliceResult result() throws IOException
 	{
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
-		boolean symbolicLinks = !LinkReport.of(working.fork(), context.authority()).entries().isEmpty();
+		boolean symbolicLinks = !LinkReport.of(working.fork(), authority()).entries().isEmpty();
 		StatusReport report = StatusReport.of(campaign,
 			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure));
 		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);

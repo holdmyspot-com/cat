@@ -68,7 +68,7 @@ public final class FileInventory
 	 * @throws NullPointerException if {@code path} is null
 	 * @throws IllegalArgumentException if {@code path} is empty, not normalized or starts with {@code ..}
 	 */
-	static void requireInventoryPath(Path path, String name)
+	public static void requireInventoryPath(Path path, String name)
 	{
 		requireThat(path, name).isEqualTo(path.normalize(), "normalized");
 		requireThat(path.toString(), name).isNotEmpty();
