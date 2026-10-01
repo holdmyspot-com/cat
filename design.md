@@ -621,7 +621,7 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
 
 - `campaign.json`: a compact snapshot holding identities, the frozen contract and procedure, `(S, F)` per candidate and
   category, allocation positions, and pending decisions;
-- the current proposal, until confirmation freezes it into `campaign.json`;
+- the latest proposal, including its derived prompt sources;
 - one record file per logical trial;
 - candidate overlays, and staged sources, which are caches: CAT deletes a staged source once its snapshot is no longer
   scheduled and rebuilds it from the overlay when needed;
@@ -643,7 +643,8 @@ bytes, modes and symbolic links. It copies participating files that are ignored 
 project, into campaign storage. It then adds a detached optimization worktree at the base `HEAD`, which always holds
 the current working candidate for the user to inspect.
 Confirmation records the confirmed contract's trial fixtures, and the derived prompt sources that the fork does not yet
-hold, the same way before anything runs, so trials never read a live fixture or source.
+hold, the same way before anything runs, so trials never read a live fixture or source. A revision after
+confirmation that needs a file the fork does not hold is refused, and the user starts a new campaign.
 
 Base-worktree edits after the fork do not invalidate the campaign; delivery handles them ([§4.7](#47-delivery)).
 
