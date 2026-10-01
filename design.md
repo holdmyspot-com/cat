@@ -465,10 +465,11 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   root replies, yet the CLI still starts a follow-up. Claude reports when its main loop has nothing left to do, and that
   report already accounts for completion notices the root has not read (H25). So a Claude turn ends when Claude reports
   itself idle while its latest task list is empty. Neither a root reply nor a task-list change ends a turn by itself:
-  Claude can be idle while a child's own background command runs, and a finished child can restart to handle it. A
-  Claude that does not report its state falls back to the stream: the turn ends at a root reply when the task list is
-  empty and every completion notice for a task the root sees arrived before the root's latest model call started
-  (H24). Either way, a turn that stays quiet for 30 seconds once Claude is idle with an empty task list ends.
+  Claude can be idle while a child's own background command runs, and a finished child can restart to handle it. The
+  runner sets no time limit of its own on that wait; the test's time limit or an interrupt bounds it. A Claude that
+  does not report its state fails the turn at its first `init`, naming its version, because the stream alone cannot
+  tell when a completion notice reaches the root (H24). While a turn produces no output, the runner tells its caller
+  every 30 seconds that the turn is still running.
 - A run that ends without a compliance outcome (provider error, rate-limit rejection, interruption, crash) is an
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
