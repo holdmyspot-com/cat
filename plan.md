@@ -251,7 +251,7 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-M2 | Each listed material change makes a certification historical without deleting it. | §5 | WI-3 | U: `ApplicabilityTest` (one case per change kind) |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality; missing data gives `INDETERMINATE` and an unavailable comparison; each differing condition is named. | §5 | WI-3 | U: `ComparabilityTest` |
-| R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: stopped for measurement change`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
+| R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
 | R-C1 | The proposal lists every §6.1 item, without aggregate summaries. | §6.1 | WI-2, WI-10 | U: `ProposalTest`; N: deriver per harness |
 | R-C2 | Feedback regenerates a complete proposal; nothing runs before confirmation. | §6.1 | WI-9, WI-10 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Categories and a balanced benchmark, frozen at confirmation; allocation never changes weights. | §6.2 | WI-2 | U: `DistributionTest` |
@@ -531,8 +531,9 @@ The riskiest pure code, built first.
 
 - **Skill:** replace the `skills/prompt-optimizer/first-use.md` body with the §8 loop, and update both `SKILL.md`
   wrappers, including their descriptions and allowed tools.
-- **Rules:** apply D13 to `failure-regression-promotion.md` and `default-rules.md`. Update the test resources that
-  cite the old skill (`check-assumptions/existing-route-before-new-wrapper/scenario.md`,
+- **Rules:** apply D13 to `failure-regression-promotion.md` and `default-rules.md`, keeping the route's rule that a
+  subagent reports a confirmed failure to the agent that delegated its work instead of correcting the guidance.
+  Update the test resources that cite the old skill (`check-assumptions/existing-route-before-new-wrapper/scenario.md`,
   `limitations-and-workarounds/verification.md`) and `InvocationDirectoryTest`'s directory label if it no longer
   describes a real consumer. Follow `contract-retirement.md`.
 - **Closes:** R-I1 (content), R-I3.
@@ -630,7 +631,7 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
     `keep improvement` for the first candidate, and keeping it materializes that candidate before delivery.
 14. **Measurement change during formal:** mid-attempt, a run reports a different model. Its record holds no outcome
     and CAT pauses with `MEASUREMENT_CHANGED`. Restoring reruns the same instance and the attempt continues. A second
-    change followed by a new measurement identity ends the attempt `not certified: stopped for measurement change`,
+    change followed by a new measurement identity ends the attempt `not certified: testing environment changed`,
     returns to development and starts a new incumbent baseline. A qualifying attempt from before the change is offered
     separately, labelled historical.
 

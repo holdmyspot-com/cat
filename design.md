@@ -71,7 +71,7 @@ A campaign ends with exactly one of these outcomes, each with its evidence and a
 | `not certified: inconclusive` | A category reached its trial cap undecided. |
 | `not certified: plateau` | A full development round produced no stronger candidate. |
 | `not certified: stopped for contract revision` | The user stopped a certification attempt to revise the contract. |
-| `not certified: stopped for measurement change` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
+| `not certified: testing environment changed` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
 | `certification unavailable: unsupported instruction source` | A remote or MCP response supplies governing instructions. |
 | `certification unavailable: ineligible trial effect` | A required trial path writes persistent state outside the trial copy, or lacks read-only credentials or a disposable fixture. |
 | `certification unavailable: unsupported output` | A material requirement produces image, audio or video output. |
@@ -746,7 +746,7 @@ the user restores the condition, the same logical trial runs again with the same
 depends only on its conditions, never on its outcome, so the exclusion cannot favour the candidate.
 
 Starting a new measurement identity during a certification attempt ends that attempt
-`not certified: stopped for measurement change`. The attempt can never resume, its `α_i` and `β_i` stay spent, and
+`not certified: testing environment changed`. The attempt can never resume, its `α_i` and `β_i` stay spent, and
 the next attempt takes the next certification index. The working candidate returns to development under the new
 identity, and the incumbent is measured again as a new baseline ([§2.5](#25-incumbent-baseline)). Outcomes under the
 old and new identities cannot be combined, and counting only the new outcomes under the same `α_i` would let the
@@ -841,7 +841,7 @@ matching `certification unavailable` outcome. Restart preserves that disposition
   in-flight session, assignment, promotion and delivery must also be reconciled. An unknown disposition delays the
   revision.
 - **Measurement change during formal testing:** starting a new measurement identity ends the running attempt
-  `not certified: stopped for measurement change` ([§5](#5-measurement-identity-and-applicability)). In-flight work is
+  `not certified: testing environment changed` ([§5](#5-measurement-identity-and-applicability)). In-flight work is
   reconciled as for a contract revision.
 - **Cancel and resume:** cancelling schedules no further calls and keeps all history and the spent allowance. Resuming
   continues from the retained state. Only an explicit new campaign gets a fresh budget.
@@ -1030,7 +1030,7 @@ a named native or end-to-end boundary.
 | G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing runs before confirmation; feedback produces a complete new proposal. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (external structural edits, link and mode changes, loader configuration). **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark and the conditions. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. |
-| G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a missing comparability field makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: stopped for measurement change`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. |
+| G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a missing comparability field makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. |
 | G6 | **Native in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
 | G7 | **Native in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
 | G8 | **Unit:** allocation picks the riskiest category first; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the category limit and the ceilings. **Throttling:** it responds to utilization and rejections. **Volume warning:** the authentication warning appears for a subscription login. |
