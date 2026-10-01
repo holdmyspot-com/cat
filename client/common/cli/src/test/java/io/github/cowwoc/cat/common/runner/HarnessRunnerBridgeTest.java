@@ -10,7 +10,11 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
@@ -221,6 +225,58 @@ public final class HarnessRunnerBridgeTest
 
 			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
 				contains("\"state\": \"failed\"");
+		}
+	}
+
+	/**
+	 * Verifies that a failure of the bridge's input while a turn is still running stops that turn and closes the
+	 * session, instead of waiting for a turn that may never end. The bridge runs on its own thread so that a bridge
+	 * that waits forever fails the test instead of hanging it.
+	 *
+	 * @throws IOException if filesystem setup fails
+	 * @throws InterruptedException if the test is interrupted while it waits
+	 */
+	@Test(timeOut = 30_000)
+	public void stopsRunningTurnWhenInputFails() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			HangingProcess process = new HangingProcess();
+			FailingReader input = new FailingReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", process.started))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
+			Thread.ofPlatform().daemon().name("bridge-under-test").start(() ->
+			{
+				try
+				{
+					serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+						new HarnessRunnerScope()), input, new StringWriter()));
+				}
+				catch (IOException | RuntimeException e)
+				{
+					serving.completeExceptionally(e);
+				}
+			});
+			try
+			{
+				serving.get(5, TimeUnit.SECONDS);
+				throw new AssertionError("Expected the input failure");
+			}
+			catch (ExecutionException e)
+			{
+				requireThat(e.getCause(), "cause").isInstanceOf(IOException.class);
+				requireThat(e.getCause().getMessage(), "message").contains("input failed");
+			}
+			catch (TimeoutException e)
+			{
+				throw new AssertionError("The bridge did not stop the running turn after its input failed", e);
+			}
+			finally
+			{
+				process.release();
+			}
+
+			requireThat(process.closed, "closed").isTrue();
 		}
 	}
 
@@ -561,6 +617,98 @@ public final class HarnessRunnerBridgeTest
 		{
 			closed = true;
 			interrupted.countDown();
+		}
+	}
+
+	/**
+	 * A process whose turn does not end until the thread that runs it is interrupted.
+	 */
+	private static final class HangingProcess implements HarnessProcess
+	{
+		private final CountDownLatch started = new CountDownLatch(1);
+		private final CountDownLatch released = new CountDownLatch(1);
+		private volatile boolean closed;
+
+		/**
+		 * Lets the turn end, so that a test that failed does not leave a thread waiting.
+		 */
+		private void release()
+		{
+			released.countDown();
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
+		{
+			assert request != null;
+			started.countDown();
+			try
+			{
+				released.await();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while the turn was running", e);
+			}
+			return new HarnessProcessResult(0, "", "");
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return !closed;
+		}
+
+		@Override
+		public void close()
+		{
+			closed = true;
+		}
+	}
+
+	/**
+	 * Input that supplies one request and then fails once a turn has started.
+	 */
+	private static final class FailingReader extends Reader
+	{
+		private final StringReader request;
+		private final CountDownLatch turnStarted;
+
+		/**
+		 * Creates the input.
+		 *
+		 * @param request the request text to supply first
+		 * @param turnStarted opened when the turn that the request starts is running
+		 */
+		private FailingReader(String request, CountDownLatch turnStarted)
+		{
+			this.request = new StringReader(request);
+			this.turnStarted = turnStarted;
+		}
+
+		@Override
+		public int read(char[] buffer, int offset, int length) throws IOException
+		{
+			int count = request.read(buffer, offset, length);
+			if (count >= 0)
+				return count;
+			try
+			{
+				turnStarted.await();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for the turn to start", e);
+			}
+			throw new IOException("input failed");
+		}
+
+		@Override
+		public void close()
+		{
+			request.close();
 		}
 	}
 }

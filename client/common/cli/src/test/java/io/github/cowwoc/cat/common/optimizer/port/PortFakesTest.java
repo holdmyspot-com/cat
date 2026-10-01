@@ -126,4 +126,24 @@ public final class PortFakesTest
 		requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(incumbent));
 		requireThat(workspace.scanWorktree(), "worktree").isEqualTo(incumbent.snapshot());
 	}
+
+	/**
+	 * Verifies that the fake reports the login it was given, and that a fake without a login reports none.
+	 */
+	@Test
+	public void reportsTheConfiguredHostLogin()
+	{
+		requireThat(new FakeSessionPort(HostLogin.API_KEY).hostLogin(), "configured").isEqualTo(HostLogin.API_KEY);
+		requireThat(new FakeSessionPort().hostLogin(), "default").isEqualTo(HostLogin.UNKNOWN);
+	}
+
+	/**
+	 * Verifies that a completed result must carry the observed prompt sources.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void completedRequiresPromptSources()
+	{
+		new SessionResult.Completed(Path.of("transcript.jsonl"), List.of("ok"), Path.of("effects"), "model", null,
+			null, List.of(), " ");
+	}
 }

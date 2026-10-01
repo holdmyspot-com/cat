@@ -14,8 +14,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.time.Duration;
 import java.time.Instant;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -25,6 +27,10 @@ import tools.jackson.databind.JsonNode;
  */
 public final class CodexAppServerProcess implements HarnessProcess
 {
+	/**
+	 * How long to wait for the operating system to report Codex's exit once its output has ended.
+	 */
+	private static final Duration EXIT_TIMEOUT = Duration.ofSeconds(10);
 	private final Process process;
 	private final HarnessRunnerScope scope;
 	private final OutputStreamWriter input;
@@ -212,7 +218,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 			String error = standardError.await();
 			if (!error.isBlank())
 				diagnostic += ": " + error;
-			return new HarnessProcessResult(process.exitValue(), events.toString(), diagnostic);
+			return new HarnessProcessResult(exitStatus(), events.toString(), diagnostic);
 		}
 		finally
 		{
@@ -222,6 +228,29 @@ public final class CodexAppServerProcess implements HarnessProcess
 				turnId = null;
 			}
 		}
+	}
+
+	/**
+	 * Returns Codex's exit status once its output has ended. Codex closes its output before the operating system
+	 * reports that it exited, so the status is not available at once.
+	 *
+	 * @return the exit status
+	 * @throws IOException if Codex does not exit in time or the wait is interrupted
+	 */
+	private int exitStatus() throws IOException
+	{
+		try
+		{
+			if (!process.waitFor(EXIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
+				throw new IOException("Codex closed its output but did not exit within " + EXIT_TIMEOUT.toSeconds() +
+					" seconds");
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for Codex to exit", e);
+		}
+		return process.exitValue();
 	}
 
 	/**

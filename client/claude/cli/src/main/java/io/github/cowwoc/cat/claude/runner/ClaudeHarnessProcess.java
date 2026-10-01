@@ -34,6 +34,10 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	 * has finished, before the turn ends without a follow-up reply.
 	 */
 	private static final Duration FOLLOW_UP_START_TIMEOUT = Duration.ofSeconds(30);
+	/**
+	 * How long to wait for the operating system to report Claude's exit once its output has ended.
+	 */
+	private static final Duration EXIT_TIMEOUT = Duration.ofSeconds(10);
 	private final HarnessRunnerScope scope;
 	private final Process process;
 	private final OutputStreamWriter input;
@@ -178,7 +182,7 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 			String diagnostic = "Claude process ended before result";
 			if (!error.isBlank())
 				diagnostic += ": " + error;
-			return new HarnessProcessResult(process.exitValue(), events.toString(), diagnostic);
+			return new HarnessProcessResult(exitStatus(), events.toString(), diagnostic);
 		}
 		finally
 		{
@@ -271,6 +275,29 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 			input.write(ClaudeStreamingProtocol.userTurn(request));
 			input.flush();
 		}
+	}
+
+	/**
+	 * Returns Claude's exit status once its output has ended. Claude closes its output before the operating system
+	 * reports that it exited, so the status is not available at once.
+	 *
+	 * @return the exit status
+	 * @throws IOException if Claude does not exit in time or the wait is interrupted
+	 */
+	private int exitStatus() throws IOException
+	{
+		try
+		{
+			if (!process.waitFor(EXIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
+				throw new IOException("Claude closed its output but did not exit within " + EXIT_TIMEOUT.toSeconds() +
+					" seconds");
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for Claude to exit", e);
+		}
+		return process.exitValue();
 	}
 
 	/**

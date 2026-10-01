@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.claude.runner;
+package io.github.cowwoc.cat.common.runner.fakes;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -25,7 +25,7 @@ import java.util.stream.Stream;
  * input ends the child. The child has no operating-system process, so {@link #pid()} fails, which makes any attempt
  * to signal it fail the test.
  */
-final class FakeNativeProcess extends Process
+public final class FakeNativeProcess extends Process
 {
 	/**
 	 * Chunks of the child's standard output; an empty chunk marks the end of the stream.
@@ -34,6 +34,7 @@ final class FakeNativeProcess extends Process
 	private final List<String> requests = new ArrayList<>();
 	private final Consumer<String> requestHandler;
 	private final CountDownLatch exited = new CountDownLatch(1);
+	private volatile boolean exitsWhenAwaited;
 	private final OutputStream standardInput = new ChildInput();
 	private final InputStream outputStream = new ChildOutput();
 
@@ -43,7 +44,7 @@ final class FakeNativeProcess extends Process
 	 * @param requestHandler receives each line, without its line terminator, that the runner writes to the child's
 	 *   standard input; it may call {@link #emit(String...)} to answer
 	 */
-	FakeNativeProcess(Consumer<String> requestHandler)
+	public FakeNativeProcess(Consumer<String> requestHandler)
 	{
 		this.requestHandler = requestHandler;
 	}
@@ -53,7 +54,7 @@ final class FakeNativeProcess extends Process
 	 *
 	 * @param lines the lines, without line terminators
 	 */
-	void emit(String... lines)
+	public void emit(String... lines)
 	{
 		for (String line : lines)
 			standardOutput.add((line + "\n").getBytes(UTF_8));
@@ -62,10 +63,21 @@ final class FakeNativeProcess extends Process
 	/**
 	 * Ends the child: closes its standard output and marks it as exited with status 0.
 	 */
-	void exit()
+	public void exit()
 	{
 		standardOutput.add(new byte[0]);
 		exited.countDown();
+	}
+
+	/**
+	 * Closes the child's standard output without marking the child as exited. The child is marked as exited, with
+	 * status 0, only when a caller waits for it, as an operating system reports an exit some time after the child
+	 * closed its output. A caller that reads the exit status without waiting fails.
+	 */
+	public void closeOutputThenExitWhenAwaited()
+	{
+		exitsWhenAwaited = true;
+		standardOutput.add(new byte[0]);
 	}
 
 	/**
@@ -73,7 +85,7 @@ final class FakeNativeProcess extends Process
 	 *
 	 * @return a snapshot of the request lines in write order
 	 */
-	List<String> requests()
+	public List<String> requests()
 	{
 		synchronized (requests)
 		{
@@ -102,6 +114,7 @@ final class FakeNativeProcess extends Process
 	@Override
 	public int waitFor() throws InterruptedException
 	{
+		exitIfAwaited();
 		exited.await();
 		return 0;
 	}
@@ -109,7 +122,17 @@ final class FakeNativeProcess extends Process
 	@Override
 	public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
 	{
+		exitIfAwaited();
 		return exited.await(timeout, unit);
+	}
+
+	/**
+	 * Marks the child as exited if it was set to exit when awaited.
+	 */
+	private void exitIfAwaited()
+	{
+		if (exitsWhenAwaited)
+			exited.countDown();
 	}
 
 	@Override

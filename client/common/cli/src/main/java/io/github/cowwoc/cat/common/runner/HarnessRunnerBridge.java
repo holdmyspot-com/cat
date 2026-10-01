@@ -97,87 +97,97 @@ public final class HarnessRunnerBridge
 		{
 			try (HarnessRunSession session = starter.start())
 			{
-				run = session.run();
-				if (manager != null)
-					manager.markIdle(run);
-				write(session.scope(), output, event(session.scope(), "started").put("runId", session.run().id()));
-				BufferedReader lines = new BufferedReader(input);
-				String line = lines.readLine();
-				while (line != null)
+				try
 				{
-					JsonNode request = read(session.scope(), line);
-					String type = requiredText(request, "type");
-					if (type.equals("turn"))
+					run = session.run();
+					if (manager != null)
+						manager.markIdle(run);
+					write(session.scope(), output, event(session.scope(), "started").put("runId", session.run().id()));
+					BufferedReader lines = new BufferedReader(input);
+					String line = lines.readLine();
+					while (line != null)
 					{
-						awaitActiveTurn(activeTurn);
-						String prompt = requiredText(request, "prompt");
-						int currentTurn = turnNumber + 1;
-						CountDownLatch turnStarted = new CountDownLatch(1);
-						activeTurn = turnExecutor.submit(() ->
+						JsonNode request = read(session.scope(), line);
+						String type = requiredText(request, "type");
+						if (type.equals("turn"))
 						{
-							turnStarted.countDown();
-							if (manager != null)
-								manager.markWorking(session.run());
-							HarnessProcessResult result = session.sendTurn(prompt, nativeEvent ->
+							awaitActiveTurn(activeTurn);
+							String prompt = requiredText(request, "prompt");
+							int currentTurn = turnNumber + 1;
+							CountDownLatch turnStarted = new CountDownLatch(1);
+							activeTurn = turnExecutor.submit(() ->
 							{
+								turnStarted.countDown();
 								if (manager != null)
-									manager.appendTurnEvent(session.run(), currentTurn, nativeEvent);
-								forwardNativeEvent(session, output, nativeEvent);
+									manager.markWorking(session.run());
+								HarnessProcessResult result = session.sendTurn(prompt, nativeEvent ->
+								{
+									if (manager != null)
+										manager.appendTurnEvent(session.run(), currentTurn, nativeEvent);
+									forwardNativeEvent(session, output, nativeEvent);
+								});
+								if (manager != null)
+									manager.writeTurnOutput(session.run(), currentTurn, result);
+								if (!result.completed())
+									throw nativeTurnFailure(result);
+								if (manager != null)
+									manager.markIdle(session.run());
+								ObjectNode response = event(session.scope(), "turn-completed");
+								response.put("runId", session.run().id());
+								response.put("exitCode", result.exitCode());
+								response.put("error", result.standardError());
+								response.put("assistant_response", result.assistantResponse());
+								write(session.scope(), output, response);
+								return null;
 							});
-							if (manager != null)
-								manager.writeTurnOutput(session.run(), currentTurn, result);
-							if (!result.completed())
-								throw nativeTurnFailure(result);
-							if (manager != null)
-								manager.markIdle(session.run());
-							ObjectNode response = event(session.scope(), "turn-completed");
-							response.put("runId", session.run().id());
-							response.put("exitCode", result.exitCode());
-							response.put("error", result.standardError());
-							response.put("assistant_response", result.assistantResponse());
-							write(session.scope(), output, response);
-							return null;
-						});
-						activeTurnStarted = turnStarted;
-						turnNumber = currentTurn;
-					}
-					else if (type.equals("steer"))
-					{
-						if (activeTurn == null || activeTurn.isDone())
-							throw new IOException("Bridge has no active turn to steer");
-						awaitRequestedTurnStart(request, activeTurnStarted);
-						session.steer(requiredText(request, "prompt"));
-						write(session.scope(), output, event(session.scope(), "steered").put("runId", session.run().
-				id()));
-					}
-					else if (type.equals("interrupt"))
-					{
-						// A client cannot know whether its interrupt reaches the bridge before or after the turn ends. Once the
-						// turn has ended there is nothing to stop, so the request is ignored and the session keeps serving.
-						if (activeTurn != null && !activeTurn.isDone())
-						{
-							awaitRequestedTurnStart(request, activeTurnStarted);
-							session.interrupt();
-							write(session.scope(), output, event(session.scope(), "interrupted").put("runId",
-								session.run().id()));
+							activeTurnStarted = turnStarted;
+							turnNumber = currentTurn;
 						}
+						else if (type.equals("steer"))
+						{
+							if (activeTurn == null || activeTurn.isDone())
+								throw new IOException("Bridge has no active turn to steer");
+							awaitRequestedTurnStart(request, activeTurnStarted);
+							session.steer(requiredText(request, "prompt"));
+							write(session.scope(), output, event(session.scope(), "steered").put("runId", session.run().
+					id()));
+						}
+						else if (type.equals("interrupt"))
+						{
+							// A client cannot know whether its interrupt reaches the bridge before or after the turn ends. Once the
+							// turn has ended there is nothing to stop, so the request is ignored and the session keeps serving.
+							if (activeTurn != null && !activeTurn.isDone())
+							{
+								awaitRequestedTurnStart(request, activeTurnStarted);
+								session.interrupt();
+								write(session.scope(), output, event(session.scope(), "interrupted").put("runId",
+									session.run().id()));
+							}
+						}
+						else if (type.equals("complete"))
+						{
+							awaitActiveTurn(activeTurn);
+							write(session.scope(), output, event(session.scope(), "completed").put("runId", session.run().
+					id()));
+							completed = true;
+							break;
+						}
+						else
+							throw new IOException("Unsupported bridge message type: " + type);
+						line = lines.readLine();
 					}
-					else if (type.equals("complete"))
+					if (!completed)
 					{
 						awaitActiveTurn(activeTurn);
-						write(session.scope(), output, event(session.scope(), "completed").put("runId", session.run().
-				id()));
-						completed = true;
-						break;
+						throw new IOException("Bridge input ended without a complete message");
 					}
-					else
-						throw new IOException("Unsupported bridge message type: " + type);
-					line = lines.readLine();
 				}
-				if (!completed)
+				catch (IOException | RuntimeException e)
 				{
-					awaitActiveTurn(activeTurn);
-					throw new IOException("Bridge input ended without a complete message");
+					// A running turn holds the session's monitor, so closing the session would wait for it. Interrupt the turn
+					// first so that a failure of the bridge itself does not wait for a turn that may never end.
+					turnExecutor.shutdownNow();
+					throw e;
 				}
 			}
 			if (manager != null)

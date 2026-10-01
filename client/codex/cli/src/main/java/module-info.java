@@ -7,4 +7,5 @@ module io.github.cowwoc.cat.codex.cli
 	requires tools.jackson.dataformat.yaml;
 
 	exports io.github.cowwoc.cat.codex;
+	exports io.github.cowwoc.cat.codex.optimizer;
 }

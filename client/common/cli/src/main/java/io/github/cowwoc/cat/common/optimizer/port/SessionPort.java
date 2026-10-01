@@ -8,7 +8,6 @@ import java.io.IOException;
  * Each session runs in a fresh, isolated run directory. Implementations hold one shared-capacity permit for the
  * session's lifetime.
  */
-@FunctionalInterface
 public interface SessionPort
 {
 	/**
@@ -20,4 +19,16 @@ public interface SessionPort
 	 * @throws IOException if the session cannot be started
 	 */
 	SessionHandle start(SessionRequest request) throws IOException;
+
+	/**
+	 * Classifies the host's login for this harness, so that the confirmation step can warn about a subscription before
+	 * any session starts.
+	 * <p>
+	 * The classification uses the names and types of credential fields only, and never reads or returns a secret
+	 * value.
+	 *
+	 * @return the login, or {@link HostLogin#UNKNOWN} if the credentials do not identify one
+	 * @throws IOException if the credential file exists but cannot be read
+	 */
+	HostLogin hostLogin() throws IOException;
 }

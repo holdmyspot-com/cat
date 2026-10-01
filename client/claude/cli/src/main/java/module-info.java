@@ -4,4 +4,6 @@ module io.github.cowwoc.cat.claude.cli
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
+
+	exports io.github.cowwoc.cat.claude.optimizer;
 }

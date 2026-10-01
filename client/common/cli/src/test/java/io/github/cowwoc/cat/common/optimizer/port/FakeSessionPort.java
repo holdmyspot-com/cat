@@ -16,12 +16,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class FakeSessionPort implements SessionPort
 {
 	private final List<FakeSession> sessions = new ArrayList<>();
+	private final HostLogin login;
 
 	/**
-	 * Creates a port that has started no sessions.
+	 * Creates a port that has started no sessions and whose host login is not identified.
 	 */
 	public FakeSessionPort()
 	{
+		this(HostLogin.UNKNOWN);
+	}
+
+	/**
+	 * Creates a port that has started no sessions.
+	 *
+	 * @param login the login that {@link #hostLogin()} reports
+	 * @throws NullPointerException if {@code login} is null
+	 */
+	public FakeSessionPort(HostLogin login)
+	{
+		requireThat(login, "login").isNotNull();
+		this.login = login;
+	}
+
+	@Override
+	public HostLogin hostLogin()
+	{
+		return login;
 	}
 
 	@Override

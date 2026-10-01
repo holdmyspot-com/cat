@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.runner.fakes.FakeNativeProcess;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
@@ -165,6 +166,26 @@ public final class CodexAppServerProcessTest
 	}
 
 	/**
+	 * Verifies that a turn which ends because Codex closed its output waits for the operating system to report the
+	 * exit, instead of reading an exit status that does not exist yet.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void waitsForExitAfterOutputEnds() throws IOException
+	{
+		// Requirement: R-E13
+		AppServer server = new AppServer(id -> List.of(turnStarted(id)), NO_ANSWER).closingOutputAfterTurnStart();
+		try (CodexAppServerProcess process = server.start())
+		{
+			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
+
+			requireThat(result.completed(), "completed").isFalse();
+			requireThat(result.standardError(), "standardError").contains("ended before turn completion");
+		}
+	}
+
+	/**
 	 * Returns Codex's answer to a {@code turn/start} request followed by the root turn's start notification.
 	 *
 	 * @param requestId the {@code turn/start} request's identifier
@@ -228,6 +249,7 @@ public final class CodexAppServerProcessTest
 		private final FakeNativeProcess process = new FakeNativeProcess(this::answer);
 		private final CountDownLatch turnRequested = new CountDownLatch(1);
 		private volatile long turnRequestId;
+		private volatile boolean closesOutputAfterTurnStart;
 
 		/**
 		 * Creates an app-server that has not started.
@@ -240,6 +262,18 @@ public final class CodexAppServerProcessTest
 		{
 			this.onTurnStart = onTurnStart;
 			this.onTurnInterrupt = onTurnInterrupt;
+		}
+
+		/**
+		 * Makes the app-server close its output right after it answers {@code turn/start}, without reporting that it
+		 * exited until a caller waits for it.
+		 *
+		 * @return this app-server
+		 */
+		private AppServer closingOutputAfterTurnStart()
+		{
+			closesOutputAfterTurnStart = true;
+			return this;
 		}
 
 		/**
@@ -300,6 +334,8 @@ public final class CodexAppServerProcessTest
 					turnRequestId = id;
 					turnRequested.countDown();
 					process.emit(onTurnStart.apply(id).toArray(String[]::new));
+					if (closesOutputAfterTurnStart)
+						process.closeOutputThenExitWhenAwaited();
 				}
 				case "turn/interrupt" -> process.emit(onTurnInterrupt.apply(id).toArray(String[]::new));
 				default ->
