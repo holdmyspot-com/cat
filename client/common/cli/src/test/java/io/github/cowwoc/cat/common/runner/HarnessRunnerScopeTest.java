@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -23,7 +24,7 @@ public final class HarnessRunnerScopeTest
 	@Test
 	public void returnsSharedJsonMapper()
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope())
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope())
 		{
 			requireThat(scope.json() == scope.json(), "sameMapper").isTrue();
 			requireThat(scope.json().writeValueAsString(scope.json().createObjectNode().put("name", "CAT")), "json").
@@ -47,7 +48,7 @@ public final class HarnessRunnerScopeTest
 	 */
 	private static HarnessRunnerScope closedScope()
 	{
-		HarnessRunnerScope scope = new HarnessRunnerScope();
+		HarnessRunnerScope scope = new TestHarnessRunnerScope();
 		try (scope)
 		{
 		}

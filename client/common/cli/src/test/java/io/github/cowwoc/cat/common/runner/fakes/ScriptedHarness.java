@@ -9,7 +9,6 @@ import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
-import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -57,7 +56,7 @@ public final class ScriptedHarness
 		{
 			HarnessRun run = manager.create(harness);
 			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
-			return new HarnessRunSession(run, new ScriptedProcess(run, script), new HarnessRunnerScope());
+			return new HarnessRunSession(run, new ScriptedProcess(run, script), new TestHarnessRunnerScope());
 		}, manager, true, input, output);
 	}
 

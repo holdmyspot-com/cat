@@ -23,18 +23,18 @@ public final class PromptOptimizerCli
 	/**
 	 * Runs one command.
 	 *
-	 * @param host what the harness's {@code main} resolved
+	 * @param scope the command's scope
 	 * @param args the launcher's arguments
 	 * @param out where the JSON goes
 	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(Host host, List<String> args, PrintStream out)
+	public static int run(OptimizerCommandScope scope, List<String> args, PrintStream out)
 	{
-		requireThat(host, "host").isNotNull();
+		requireThat(scope, "scope").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(out, "out").isNotNull();
-		return new Commands(new OptimizerCore(host), host.json()).execute(args, out);
+		return new Commands(new OptimizerCore(scope), scope.json()).execute(args, out);
 	}
 
 	/**

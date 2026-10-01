@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -33,7 +34,7 @@ public final class HarnessRunSessionsTest
 			HarnessRunSessions sessions = new HarnessRunSessions())
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			sessions.add(new HarnessRunSession(run, process, new HarnessRunnerScope()));
+			sessions.add(new HarnessRunSession(run, process, new TestHarnessRunnerScope()));
 			sessions.sendTurn("run-1", "first");
 			sessions.sendTurn("run-1", "second");
 			sessions.complete("run-1");
@@ -56,10 +57,10 @@ public final class HarnessRunSessionsTest
 		{
 			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-1",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
-				new FailingProcess("first"), new HarnessRunnerScope()));
+				new FailingProcess("first"), new TestHarnessRunnerScope()));
 			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-2",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
-				new FailingProcess("second"), new HarnessRunnerScope()));
+				new FailingProcess("second"), new TestHarnessRunnerScope()));
 		}
 		catch (IOException e)
 		{

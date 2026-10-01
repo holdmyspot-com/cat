@@ -7,8 +7,8 @@ import io.github.cowwoc.cat.claude.runner.ClaudeProcess.LineEffect;
 import io.github.cowwoc.cat.claude.runner.ClaudeProcess.TurnBoundary;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
-import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -163,7 +163,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(lines.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -273,7 +273,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(beforeMessage.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -311,7 +311,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -371,7 +371,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(lines.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -399,7 +399,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -425,7 +425,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -452,7 +452,7 @@ public final class ClaudeProcessTest
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT);
 			claude.closeOutputThenExitWhenAwaited();
@@ -500,7 +500,7 @@ public final class ClaudeProcessTest
 			builder.redirectError(ProcessBuilder.Redirect.DISCARD);
 			Process shell = builder.start();
 			CountDownLatch rootIdle = new CountDownLatch(1);
-			try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), shell))
+			try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), shell))
 			{
 				Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Launch a background child.",
 					line ->

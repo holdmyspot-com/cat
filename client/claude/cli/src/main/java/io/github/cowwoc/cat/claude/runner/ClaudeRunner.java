@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.UserRuleTree;
 
 import java.io.IOException;
@@ -127,7 +128,7 @@ public final class ClaudeRunner
 		HarnessArtifact.validate(artifact, Path.of(".claude-plugin/plugin.json"));
 		HarnessRun run = manager.create("claude");
 		HarnessRunLock lock = null;
-		HarnessRunnerScope scope = new HarnessRunnerScope();
+		HarnessRunnerScope scope = new MainHarnessRunnerScope();
 		try
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());

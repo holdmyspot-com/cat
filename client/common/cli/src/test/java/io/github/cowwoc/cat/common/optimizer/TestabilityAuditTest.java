@@ -31,8 +31,8 @@ import java.util.stream.Stream;
  *   <li>T4: no static field is non-final;</li>
  *   <li>T4: a test class has only final fields;</li>
  *   <li>T5: no code sleeps;</li>
- *   <li>T4: only a class that declares {@code main} reads {@code HOME}, {@code user.home} or the process
- *   environment;</li>
+ *   <li>T4: only a class that declares {@code main}, or a harness adapter's production scope, reads {@code HOME},
+ *   {@code user.home} or the process environment;</li>
  *   <li>&sect;9: the harness-neutral core references no Claude or Codex package;</li>
  *   <li>&sect;9: production sources reference no type from a test source tree.</li>
  * </ul>
@@ -153,7 +153,8 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Verifies that only {@code main} classes read the home directory or the process environment.
+	 * Verifies that only {@code main} classes and harness production scopes read the home directory or the process
+	 * environment.
 	 *
 	 * @throws IOException if a source cannot be read
 	 */
@@ -310,7 +311,8 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Verifies that the environment check reports reads outside {@code main} classes only.
+	 * Verifies that the environment check reports reads outside {@code main} classes and harness production scopes
+	 * only.
 	 */
 	@Test
 	public void reportsEnvironmentReadsOutsideMain()
@@ -334,6 +336,21 @@ public final class TestabilityAuditTest
 			"Sample.java:5: reads the process environment"));
 		String main = library.replace("String read()", "public static void main(String[] args)");
 		requireThat(findEnvironmentReads(sample(true, false, main), true), "mainViolations").isEmpty();
+
+		String scope = library.replace("class Sample", "class SampleScope");
+		Path scopePath = Path.of("SampleScope.java");
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, false, JavaSource.parse(scope)), true),
+			"harnessScopeViolations").isEmpty();
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, true, JavaSource.parse(scope)), true),
+			"coreScopeViolations").isEqualTo(List.of(
+				"SampleScope.java:5: reads the process environment",
+				"SampleScope.java:6: names the home directory: user.home",
+				"SampleScope.java:7: names the home directory: HOME"));
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, false, false, JavaSource.parse(scope)), true),
+			"testScopeViolations").isEqualTo(List.of(
+				"SampleScope.java:5: reads the process environment",
+				"SampleScope.java:6: names the home directory: user.home",
+				"SampleScope.java:7: names the home directory: HOME"));
 	}
 
 	/**
@@ -553,12 +570,13 @@ public final class TestabilityAuditTest
 	 *
 	 * @param file          the file
 	 * @param checkLiterals {@code true} to report literals that name the home directory
-	 * @return a description of each violation, or an empty list if the file declares {@code main}
+	 * @return a description of each violation, or an empty list if the file declares {@code main} or is a harness
+	 *   adapter's production scope
 	 */
 	private static List<String> findEnvironmentReads(SourceFile file, boolean checkLiterals)
 	{
 		String code = file.source().code();
-		if (MAIN.matcher(code).find())
+		if (MAIN.matcher(code).find() || isHarnessProductionScope(file))
 			return List.of();
 		List<Violation> violations = new ArrayList<>();
 		Matcher matcher = GETENV.matcher(code);
@@ -574,6 +592,18 @@ public final class TestabilityAuditTest
 		}
 		violations.sort(Comparator.comparingInt(Violation::offset));
 		return violations.stream().map(violation -> file.describe(violation.offset(), violation.message())).toList();
+	}
+
+	/**
+	 * Indicates whether a file is the production scope of a harness adapter: the composition boundary that resolves
+	 * the process environment and hands the resolved values to the core.
+	 *
+	 * @param file the file
+	 * @return {@code true} if the file is a production source outside the core whose name ends with {@code Scope}
+	 */
+	private static boolean isHarnessProductionScope(SourceFile file)
+	{
+		return file.isProduction() && !file.isCore() && file.path().getFileName().toString().endsWith("Scope.java");
 	}
 
 	/**

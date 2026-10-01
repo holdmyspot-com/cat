@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -170,7 +171,7 @@ public final class CodexRunner
 			else
 				command.addAll(List.of("--disable", "plugins"));
 			manager.initialize(run, artifact, project, "codex-app-server", command);
-			HarnessRunnerScope scope = new HarnessRunnerScope();
+			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
 			CodexProcess process = new CodexProcess(HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment), scope, installCat);

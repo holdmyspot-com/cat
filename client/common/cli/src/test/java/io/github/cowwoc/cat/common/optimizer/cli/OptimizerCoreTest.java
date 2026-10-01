@@ -9,11 +9,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
-import io.github.cowwoc.cat.common.optimizer.execution.FixedCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.ManualClock;
-import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
-import io.github.cowwoc.cat.common.optimizer.port.FakeHostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -21,7 +18,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import org.testng.annotations.Test;
@@ -39,13 +35,11 @@ import tools.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.random.RandomGenerator;
 import java.util.stream.Stream;
 
 /**
@@ -54,7 +48,6 @@ import java.util.stream.Stream;
 public final class OptimizerCoreTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private static final FixedCalibrator CALIBRATOR = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 
 	/**
 	 * Creates the test.
@@ -68,29 +61,19 @@ public final class OptimizerCoreTest
 	 *
 	 * @param root the project root
 	 * @param target the campaign's target
-	 * @param sessions the sessions that the harness started
-	 * @param versionReads counts how often the harness version was read
 	 * @param campaign the campaign's identifier
 	 */
-	private record Project(Path root, Path target, FakeSessionPort sessions, AtomicInteger versionReads,
-		String campaign)
+	private record Project(Path root, Path target, String campaign)
 	{
 		/**
-		 * Returns the core of a harness.
+		 * Returns the scope of a command that a harness runs in this project.
 		 *
 		 * @param harness the harness that runs the launcher
-		 * @return the core
+		 * @return the scope
 		 */
-		OptimizerCore core(Harness harness)
+		TestOptimizerCommandScope<FakeSessionPort> scope(Harness harness)
 		{
-			Host host = new Host(harness, sessions, new FakeHostInterruptSignal(),
-				new ManualClock(Instant.parse("2026-10-01T00:00:00Z")), RandomGenerator.getDefault(), JSON, root,
-				() ->
-				{
-					versionReads.incrementAndGet();
-					return "1.0";
-				}, "harness-default", List.of(Path.of(".claude/settings.json")), SliceSettings.DEFAULT, 8);
-			return new OptimizerCore(host, new InMemoryForks(root, Set.of()), CALIBRATOR);
+			return TestOptimizerCommandScope.of(harness, root);
 		}
 	}
 
@@ -101,8 +84,10 @@ public final class OptimizerCoreTest
 	 * @param owner the harness that started the campaign
 	 * @return the project
 	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project is not a Git repository
 	 */
-	private static Project project(TemporaryDirectories scope, Harness owner) throws IOException
+	private static Project project(TemporaryDirectories scope, Harness owner)
+		throws IOException, CommandRefusedException
 	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-core")).toRealPath();
 		Files.createDirectory(root.resolve(".git"));
@@ -110,8 +95,11 @@ public final class OptimizerCoreTest
 		Files.writeString(target, "Be brief.\n");
 		CampaignHeader header = new CampaignHeader("campaign-1", root, target, owner, Lifecycle.ACTIVE);
 		Campaign campaign = new CampaignBuilder().header(header).confirmed().build();
-		new FileCampaignStore(root, JSON).replaceSnapshot(campaign);
-		return new Project(root, target, new FakeSessionPort(), new AtomicInteger(), "campaign-1");
+		try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(owner, root))
+		{
+			command.store().replaceSnapshot(campaign);
+		}
+		return new Project(root, target, "campaign-1");
 	}
 
 	/**
@@ -148,11 +136,14 @@ public final class OptimizerCoreTest
 		{
 			Project project = project(scope, Harness.CLAUDE);
 			Map<String, String> before = contents(project.root());
-			CommandResult result = project.core(Harness.CODEX).status(project.campaign());
-			requireThat(result.status().campaignId(), "campaignId").isEqualTo("campaign-1");
-			requireThat(result.harness(), "harness").isEqualTo(Harness.CLAUDE);
-			requireThat(project.sessions().sessions(), "sessions").isEmpty();
-			requireThat(project.versionReads().get(), "versionReads").isEqualTo(0);
+			try (TestOptimizerCommandScope<FakeSessionPort> command = project.scope(Harness.CODEX))
+			{
+				CommandResult result = new OptimizerCore(command).status(project.campaign());
+				requireThat(result.status().campaignId(), "campaignId").isEqualTo("campaign-1");
+				requireThat(result.harness(), "harness").isEqualTo(Harness.CLAUDE);
+				requireThat(command.sessions().sessions(), "sessions").isEmpty();
+				requireThat(command.versionReads(), "versionReads").isEqualTo(0);
+			}
 			requireThat(contents(project.root()), "contents").isEqualTo(before);
 		}
 	}
@@ -169,31 +160,34 @@ public final class OptimizerCoreTest
 		{
 			Project project = project(scope, Harness.CLAUDE);
 			Map<String, String> before = contents(project.root());
-			OptimizerCore core = project.core(Harness.CODEX);
-			String id = project.campaign();
-			List<ThrowingCall> calls = List.of(
-				() -> core.run(id),
-				() -> core.confirm(id),
-				() -> core.revise(id, "more"),
-				() -> core.choose(id, Choice.STOP, 0, 0),
-				() -> core.cancel(id),
-				() -> core.start(project.target()));
-			for (ThrowingCall call : calls)
+			try (TestOptimizerCommandScope<FakeSessionPort> command = project.scope(Harness.CODEX))
 			{
-				CommandRefusedException refusal = null;
-				try
+				OptimizerCore core = new OptimizerCore(command);
+				String id = project.campaign();
+				List<ThrowingCall> calls = List.of(
+					() -> core.run(id),
+					() -> core.confirm(id),
+					() -> core.revise(id, "more"),
+					() -> core.choose(id, Choice.STOP, 0, 0),
+					() -> core.cancel(id),
+					() -> core.start(project.target()));
+				for (ThrowingCall call : calls)
 				{
-					call.run();
+					CommandRefusedException refusal = null;
+					try
+					{
+						call.run();
+					}
+					catch (CommandRefusedException e)
+					{
+						refusal = e;
+					}
+					requireThat(refusal, "refusal").isNotNull();
+					requireThat(refusal.getMessage(), "message").contains("claude").contains(id);
 				}
-				catch (CommandRefusedException e)
-				{
-					refusal = e;
-				}
-				requireThat(refusal, "refusal").isNotNull();
-				requireThat(refusal.getMessage(), "message").contains("claude").contains(id);
+				requireThat(command.sessions().sessions(), "sessions").isEmpty();
+				requireThat(command.versionReads(), "versionReads").isEqualTo(0);
 			}
-			requireThat(project.sessions().sessions(), "sessions").isEmpty();
-			requireThat(project.versionReads().get(), "versionReads").isEqualTo(0);
 			requireThat(contents(project.root()), "contents").isEqualTo(before);
 		}
 	}
@@ -223,7 +217,7 @@ public final class OptimizerCoreTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Project project = project(scope, Harness.CLAUDE);
-			OptimizerCore core = project.core(Harness.CLAUDE);
+			OptimizerCore core = new OptimizerCore(project.scope(Harness.CLAUDE));
 			CommandRefusedException refusal = null;
 			try
 			{
@@ -251,7 +245,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				project.core(Harness.CLAUDE).status("missing");
+				new OptimizerCore(project.scope(Harness.CLAUDE)).status("missing");
 			}
 			catch (CommandRefusedException e)
 			{
@@ -278,7 +272,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				project.core(Harness.CLAUDE).start(outside);
+				new OptimizerCore(project.scope(Harness.CLAUDE)).start(outside);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -355,12 +349,31 @@ public final class OptimizerCoreTest
 	 * runs on it.
 	 *
 	 * @param root the project directory
-	 * @param sessions the scripted sessions
-	 * @param forks the in-memory forks
+	 * @param scope the command's scope
 	 * @param core the core
 	 */
-	private record Repository(Path root, ScriptedSessions sessions, InMemoryForks forks, OptimizerCore core)
+	private record Repository(Path root, TestOptimizerCommandScope<ScriptedSessions> scope, OptimizerCore core)
 	{
+		/**
+		 * Returns the scripted sessions.
+		 *
+		 * @return the sessions
+		 */
+		ScriptedSessions sessions()
+		{
+			return scope.sessions();
+		}
+
+		/**
+		 * Returns the in-memory forks.
+		 *
+		 * @return the forks
+		 */
+		InMemoryForks forks()
+		{
+			return scope.forks();
+		}
+
 		/**
 		 * Returns the campaign directory.
 		 *
@@ -378,10 +391,11 @@ public final class OptimizerCoreTest
 		 * @param id the campaign's identifier
 		 * @return the campaign
 		 * @throws IOException if the store cannot be read
+		 * @throws CommandRefusedException if the project is not a Git repository
 		 */
-		Campaign load(String id) throws IOException
+		Campaign load(String id) throws IOException, CommandRefusedException
 		{
-			return new FileCampaignStore(root, JSON).load(id).orElseThrow();
+			return scope.store().load(id).orElseThrow();
 		}
 	}
 
@@ -423,9 +437,8 @@ public final class OptimizerCoreTest
 		Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
-		ManualClock clock = new ManualClock(Instant.parse("2026-10-01T00:00:00Z"));
 		AtomicInteger derivers = new AtomicInteger();
-		ScriptedSessions sessions = new ScriptedSessions(clock, request ->
+		Function<SessionRequest, SessionResult> script = request ->
 		{
 			try
 			{
@@ -446,12 +459,10 @@ public final class OptimizerCoreTest
 			{
 				throw new java.io.UncheckedIOException(e);
 			}
-		});
-		Host host = new Host(Harness.CLAUDE, sessions, new FakeHostInterruptSignal(), clock,
-			new java.util.Random(7), JSON, root, () -> "1.0", "harness-default",
-			List.of(Path.of(".claude/settings.json")), SliceSettings.DEFAULT, 8);
-		InMemoryForks forks = new InMemoryForks(root, Set.of(Path.of("CLAUDE.md")));
-		return new Repository(root, sessions, forks, new OptimizerCore(host, forks, CALIBRATOR));
+		};
+		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
+			Set.of(Path.of("CLAUDE.md")), clock -> new ScriptedSessions(clock, script));
+		return new Repository(root, command, new OptimizerCore(command));
 	}
 
 	/**
@@ -501,7 +512,7 @@ public final class OptimizerCoreTest
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").contains("changes");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
-			requireThat(new FileCampaignStore(repository.root(), JSON).listHeaders(), "headers").isEmpty();
+			requireThat(repository.scope().store().listHeaders(), "headers").isEmpty();
 		}
 	}
 
@@ -550,8 +561,8 @@ public final class OptimizerCoreTest
 			requireThat(campaign.isConfirmed(), "confirmed").isTrue();
 			requireThat(campaign.contract().fixtures().ignoredPaths(), "fixtures").isEqualTo(List.of(".env.example"));
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
-			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(), JSON).
-				require(campaign.incumbent().snapshot());
+			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
+				repository.scope().json()).require(campaign.incumbent().snapshot());
 			fork.workspace().stage(incumbent);
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of(".env.example")).
 				contains(Path.of("CLAUDE.md"));
@@ -586,8 +597,8 @@ public final class OptimizerCoreTest
 			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md")).
 				contains(outside).contains(Path.of(".env.example"));
 			Campaign campaign = repository.load(id);
-			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(), JSON).
-				require(campaign.incumbent().snapshot());
+			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
+				repository.scope().json()).require(campaign.incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("extra.local.md")).
 				contains(outside);
 		}

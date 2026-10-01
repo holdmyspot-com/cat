@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
-import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -284,7 +284,7 @@ public final class CodexProcessTest
 		 */
 		private CodexProcess start() throws IOException
 		{
-			CodexProcess result = new CodexProcess(process, new HarnessRunnerScope(), false);
+			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false);
 			result.initialize(PROJECT, "");
 			return result;
 		}

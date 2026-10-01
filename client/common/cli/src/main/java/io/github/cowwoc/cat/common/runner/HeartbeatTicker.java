@@ -8,15 +8,16 @@ import java.util.concurrent.TimeUnit;
 /**
  * Runs an action at a steady pace, so the bridge can tell its caller that a quiet turn is still running.
  * <p>
- * Unit tests supply their own ticker and run the action themselves.
+ * A {@link HarnessRunnerScope} supplies the bridge's ticker. A test's scope supplies a ticker whose action the test
+ * runs itself.
  */
 @FunctionalInterface
-interface HeartbeatTicker
+public interface HeartbeatTicker
 {
 	/**
 	 * Returns a ticker that runs its action once a second on a background thread.
 	 * <p>
-	 * Only the bridge's public entry points create this ticker. Unit tests supply their own.
+	 * Only {@link MainHarnessRunnerScope} creates this ticker.
 	 *
 	 * @return the ticker
 	 */

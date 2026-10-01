@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +37,7 @@ public final class HarnessOneShotRunnerTest
 			HarnessRun run = manager.create("harness");
 			Path output = root.resolve("result.json");
 
-			HarnessOneShotRunner.run(() -> new HarnessRunSession(run, new Process(), new HarnessRunnerScope()), manager,
+			HarnessOneShotRunner.run(() -> new HarnessRunSession(run, new Process(), new TestHarnessRunnerScope()), manager,
 				"prompt", output);
 
 			requireThat(Files.readString(output), "output").isEqualTo("result");

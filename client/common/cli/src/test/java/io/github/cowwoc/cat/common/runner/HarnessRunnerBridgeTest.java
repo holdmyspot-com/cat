@@ -7,10 +7,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.Closeable;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -18,10 +16,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
+import io.github.cowwoc.cat.common.runner.fakes.ManualTicker;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -58,7 +57,7 @@ public final class HarnessRunnerBridgeTest
 			StringWriter output = new StringWriter();
 
 			HarnessRun result = HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
-				new HarnessRunnerScope()), input, output);
+				new TestHarnessRunnerScope()), input, output);
 
 			requireThat(process.turns, "turns").isEqualTo(2);
 			requireThat(process.closed, "closed").isTrue();
@@ -87,7 +86,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(output.toString(), "output").contains(
@@ -110,7 +109,7 @@ public final class HarnessRunnerBridgeTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 				false,
 				input, new StringWriter());
 
@@ -134,7 +133,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			Path transcript = cleanup.add(Files.createTempFile("cat-bridge-", ".jsonl"));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				transcript);
 
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
@@ -158,7 +157,7 @@ public final class HarnessRunnerBridgeTest
 			try (FakeProcess process = new FakeProcess();
 				StringReader input = new StringReader("{\"type\":\"unknown\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 				false,
 					input, new StringWriter());
 				throw new AssertionError("Expected the bridge protocol failure");
@@ -190,7 +189,7 @@ public final class HarnessRunnerBridgeTest
 			try (FailedProcess process = new FailedProcess();
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 					true, input, new StringWriter());
 				throw new AssertionError("Expected the harness process failure");
 			}
@@ -221,7 +220,7 @@ public final class HarnessRunnerBridgeTest
 			try (CleanExitProcess process = new CleanExitProcess();
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 					true, input, new StringWriter());
 				throw new AssertionError("Expected the incomplete harness turn to fail");
 			}
@@ -257,7 +256,7 @@ public final class HarnessRunnerBridgeTest
 				try
 				{
 					serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
-						new HarnessRunnerScope()), input, new StringWriter()));
+						new TestHarnessRunnerScope()), input, new StringWriter()));
 				}
 				catch (IOException | RuntimeException e)
 				{
@@ -304,7 +303,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(process.steers, "steers").isEqualTo(1);
@@ -337,7 +336,7 @@ public final class HarnessRunnerBridgeTest
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(process.interrupts, "interrupts").isEqualTo(0);
@@ -359,8 +358,22 @@ public final class HarnessRunnerBridgeTest
 	public void reportsQuietTurnEveryThirtySeconds() throws IOException
 	{
 		// Requirement: R-E14
-		ManualClock clock = new ManualClock(Instant.parse("2026-10-01T00:00:00Z"));
-		ManualTicker ticker = new ManualTicker();
+		try (TestHarnessRunnerScope scope = new TestHarnessRunnerScope())
+		{
+			verifyQuietTurnReports(scope);
+		}
+	}
+
+	/**
+	 * Runs a quiet turn whose clock and heartbeat the scope supplies, and verifies the bridge's records.
+	 *
+	 * @param scope the scope of the run's process, whose clock and heartbeat the test moves
+	 * @throws IOException if the bridge fails
+	 */
+	private static void verifyQuietTurnReports(TestHarnessRunnerScope scope) throws IOException
+	{
+		ManualClock clock = scope.clock();
+		ManualTicker ticker = scope.heartbeatTicker();
 		CountDownLatch turnCompleted = new CountDownLatch(1);
 		Runnable quietBetweenTurns = () ->
 		{
@@ -376,8 +389,7 @@ public final class HarnessRunnerBridgeTest
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), null, true,
-				input, output, clock, ticker);
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, scope), null, true, input, output);
 
 			JsonMapper json = JsonMapper.builder().build();
 			List<String> records = new ArrayList<>();
@@ -395,31 +407,6 @@ public final class HarnessRunnerBridgeTest
 			}
 			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "harness-event",
 				"waiting 30", "turn-completed", "completed"));
-		}
-	}
-
-	/**
-	 * A heartbeat that runs only when a test runs it.
-	 */
-	private static final class ManualTicker implements HeartbeatTicker
-	{
-		private final AtomicReference<Runnable> tick = new AtomicReference<>();
-
-		@Override
-		public Closeable start(Runnable tick)
-		{
-			this.tick.set(tick);
-			return () -> this.tick.set(null);
-		}
-
-		/**
-		 * Runs the bridge's heartbeat once.
-		 */
-		private void tick()
-		{
-			Runnable current = tick.get();
-			requireThat(current, "tick").isNotNull();
-			current.run();
 		}
 	}
 

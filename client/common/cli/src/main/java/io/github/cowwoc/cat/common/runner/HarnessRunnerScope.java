@@ -5,11 +5,14 @@ import io.github.cowwoc.pouch10.core.Reference;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 
 /**
  * Owns the mapper and services shared while one runner process serves requests for a harness execution.
+ * <p>
+ * {@link MainHarnessRunnerScope} supplies the production clock and heartbeat; tests supply their own scope.
  */
-public final class HarnessRunnerScope implements AutoCloseable
+public abstract class HarnessRunnerScope implements AutoCloseable
 {
 	private boolean closed;
 	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().
@@ -18,7 +21,7 @@ public final class HarnessRunnerScope implements AutoCloseable
 	/**
 	 * Creates an open harness-run scope.
 	 */
-	public HarnessRunnerScope()
+	protected HarnessRunnerScope()
 	{
 	}
 
@@ -29,18 +32,36 @@ public final class HarnessRunnerScope implements AutoCloseable
 	 *
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	public JsonMapper json()
+	public final JsonMapper json()
 	{
 		ensureOpen();
 		return json.getValue();
 	}
 
 	/**
+	 * Returns the clock that measures how long a bridge turn has been quiet.
+	 *
+	 * @return the clock
+	 *
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Clock clock();
+
+	/**
+	 * Returns the heartbeat that runs the bridge's check for a quiet turn.
+	 *
+	 * @return the heartbeat
+	 *
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract HeartbeatTicker heartbeatTicker();
+
+	/**
 	 * Returns whether this scope is closed.
 	 *
 	 * @return true if this scope is closed
 	 */
-	public boolean isClosed()
+	public final boolean isClosed()
 	{
 		return closed;
 	}
@@ -49,7 +70,7 @@ public final class HarnessRunnerScope implements AutoCloseable
 	 * Prevents further service access.
 	 */
 	@Override
-	public void close()
+	public final void close()
 	{
 		if (closed)
 			return;
@@ -61,7 +82,7 @@ public final class HarnessRunnerScope implements AutoCloseable
 	 *
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	private void ensureOpen()
+	protected final void ensureOpen()
 	{
 		if (closed)
 			throw new IllegalStateException("Scope is closed");

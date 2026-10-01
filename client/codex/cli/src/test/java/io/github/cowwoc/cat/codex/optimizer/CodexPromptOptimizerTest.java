@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.cli.PromptOptimizerCli;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -18,10 +19,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.random.RandomGenerator;
 
 /**
- * Tests {@link CodexPromptOptimizer}'s resolution of the environment, without starting a harness.
+ * Tests {@link CodexOptimizerCommandScope}'s resolution of the environment, through the commands that the
+ * {@link CodexPromptOptimizer} launcher runs, without starting a harness.
  */
 public final class CodexPromptOptimizerTest
 {
@@ -78,8 +79,11 @@ public final class CodexPromptOptimizerTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = CodexPromptOptimizer.run(args, environment, setup.home(), setup.root(), setup.home().resolve("artifact"),
-				Clock.systemUTC(), RandomGenerator.getDefault(), out);
+			try (CodexOptimizerCommandScope scope = new CodexOptimizerCommandScope(environment, setup.home(), setup.root(),
+				setup.home().resolve("artifact")))
+			{
+				exit = PromptOptimizerCli.run(scope, args, out);
+			}
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
@@ -137,7 +141,7 @@ public final class CodexPromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path configuration = scope.add(Files.createTempDirectory("codex-optimizer-config"));
-			HostInterruptSignal signal = CodexPromptOptimizer.interrupts(
+			HostInterruptSignal signal = CodexOptimizerCommandScope.interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			IOException failure = null;
 			try
@@ -167,7 +171,7 @@ public final class CodexPromptOptimizerTest
 			Path configuration = scope.add(Files.createTempDirectory("codex-optimizer-config"));
 			Path sessions = Files.createDirectories(configuration.resolve("sessions").resolve("2026"));
 			Files.writeString(sessions.resolve("rollout-2026-10-01T00-00-00-session-1.jsonl"), "");
-			HostInterruptSignal signal = CodexPromptOptimizer.interrupts(
+			HostInterruptSignal signal = CodexOptimizerCommandScope.interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
 		}

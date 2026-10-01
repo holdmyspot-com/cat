@@ -71,7 +71,9 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
 	 * <p>
 	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the run's
-	 * {@code runId} and the turn's {@code quietSeconds}, and repeats it every 30 seconds while the turn stays quiet.
+	 * {@code runId} and the turn's {@code quietSeconds}, and repeats it every 30 seconds while the turn stays quiet. The
+	 * session's {@link HarnessRunnerScope} supplies the clock that times the quiet turn and the heartbeat that checks
+	 * it.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -82,47 +84,18 @@ public final class HarnessRunnerBridge
 	 * @param input the JSONL client input
 	 *
 	 * @param output the JSONL client output
-	 *
-	 * @return the run that completed the protocol
-	 *
-	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
-	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
-		Writer output) throws IOException
-	{
-		return serve(starter, manager, keepRun, input, output, Clock.systemUTC(), HeartbeatTicker.everySecond());
-	}
-
-	/**
-	 * Starts one session and serves JSONL messages, timing quiet turns with the given clock and heartbeat.
-	 *
-	 * @param starter starts the isolated persistent session
-	 *
-	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
-	 *
-	 * @param keepRun whether a completed run should be retained
-	 *
-	 * @param input the JSONL client input
-	 *
-	 * @param output the JSONL client output
-	 *
-	 * @param clock measures how long a turn has been quiet
-	 *
-	 * @param ticker runs the check for a quiet turn
 	 *
 	 * @return the run that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
-		Writer output, Clock clock, HeartbeatTicker ticker) throws IOException
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Writer output) throws IOException
 	{
 		requireThat(starter, "starter").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
-		requireThat(clock, "clock").isNotNull();
-		requireThat(ticker, "ticker").isNotNull();
 		HarnessRun run = null;
 		boolean completed = false;
 		int turnNumber = 0;
@@ -132,7 +105,7 @@ public final class HarnessRunnerBridge
 		try
 		{
 			try (HarnessRunSession session = starter.start();
-				ClientOutput client = ClientOutput.open(session, output, clock, ticker))
+				ClientOutput client = ClientOutput.open(session, output))
 			{
 				try
 				{
@@ -514,22 +487,20 @@ public final class HarnessRunnerBridge
 		}
 
 		/**
-		 * Creates the output of a session and starts its heartbeat.
+		 * Creates the output of a session and starts its heartbeat. The session's scope supplies the clock that
+		 * measures how long a turn has been quiet and the heartbeat that runs the check.
 		 *
 		 * @param session the live harness session
 		 * @param output  the JSONL client output
-		 * @param clock   measures how long a turn has been quiet
-		 * @param ticker  runs the check for a quiet turn
 		 * @return the output
 		 */
-		static ClientOutput open(HarnessRunSession session, Writer output, Clock clock, HeartbeatTicker ticker)
+		static ClientOutput open(HarnessRunSession session, Writer output)
 		{
 			assert session != null;
 			assert output != null;
-			assert clock != null;
-			assert ticker != null;
-			ClientOutput client = new ClientOutput(session.scope(), output, clock, session.run().id());
-			client.heartbeat = ticker.start(() ->
+			ClientOutput client = new ClientOutput(session.scope(), output, session.scope().clock(),
+				session.run().id());
+			client.heartbeat = session.scope().heartbeatTicker().start(() ->
 			{
 				try
 				{

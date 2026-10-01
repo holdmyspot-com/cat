@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +26,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void preservesProcessConnectionEndpoint() throws IOException
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path settings = cleanup.add(Files.createTempFile("cat-claude-process-endpoint-", ".json"));
@@ -55,7 +56,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void copiesOnlyMissingConnectionVariables() throws IOException
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path settings = cleanup.add(Files.createTempFile("cat-claude-settings-", ".json"));
@@ -87,7 +88,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void writesIsolatedSettings() throws IOException
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-network-policy-"));
@@ -156,7 +157,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void omitsUndeclaredSandboxNetworkPolicy() throws IOException
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-no-network-policy-"));
@@ -190,7 +191,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void permitsOnlyInvocationLocalHomeWrites() throws IOException
 	{
-		try (HarnessRunnerScope scope = new HarnessRunnerScope();
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-home-policy-"));

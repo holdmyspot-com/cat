@@ -15,7 +15,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
 import io.github.cowwoc.cat.common.optimizer.execution.Driver;
-import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.DriverContext;
 import io.github.cowwoc.cat.common.optimizer.execution.LeftoverRuns;
 import io.github.cowwoc.cat.common.optimizer.execution.ProcessHandleTerminator;
@@ -38,13 +37,9 @@ import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
-import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
-import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
-import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
-import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 
@@ -80,57 +75,38 @@ public final class OptimizerCore implements Core
 	private static final DateTimeFormatter ID_TIME = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss").
 		withZone(ZoneOffset.UTC);
 	private static final int RANDOM_ID_DIGITS = 6;
-	private final Host host;
-	private final Forks forks;
-	private final CapCalibrator calibrator;
+	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
 	private final DeriverProtocol deriver;
 
 	/**
 	 * Creates the core.
 	 *
-	 * @param host what the harness's {@code main} resolved
-	 * @throws NullPointerException if {@code host} is null
+	 * @param scope the command's scope
+	 * @throws NullPointerException if {@code scope} is null
 	 */
-	public OptimizerCore(Host host)
+	public OptimizerCore(OptimizerCommandScope scope)
 	{
-		this(host, new GitForks(), CapCalibration::calibrate);
-	}
-
-	/**
-	 * Creates the core with the forks and the calibration that it uses.
-	 *
-	 * @param host what the harness's {@code main} resolved
-	 * @param forks creates and opens the campaigns' forks
-	 * @param calibrator calibrates the caps of certification attempts
-	 * @throws NullPointerException if any argument is null
-	 */
-	OptimizerCore(Host host, Forks forks, CapCalibrator calibrator)
-	{
-		requireThat(host, "host").isNotNull();
-		requireThat(forks, "forks").isNotNull();
-		requireThat(calibrator, "calibrator").isNotNull();
-		this.host = host;
-		this.forks = forks;
-		this.calibrator = calibrator;
-		this.schema = new ProposalSchema(host.json());
-		this.deriver = new DeriverProtocol(host.json(), schema, new JudgeTemplate(host.json(), host.judgeModel()));
+		requireThat(scope, "scope").isNotNull();
+		this.scope = scope;
+		this.schema = new ProposalSchema(scope.json());
+		this.deriver = new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(), scope.judgeModel()));
 	}
 
 	@Override
 	public CommandResult start(Path target) throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(target, "target").isNotNull();
-		Path root = root();
-		Path absolute = host.directory().toRealPath().resolve(target).normalize();
+		Path root = scope.projectRoot();
+		Path absolute = scope.directory().toRealPath().resolve(target).normalize();
 		if (!Files.exists(absolute))
 			throw new CommandRefusedException("The target does not exist: " + absolute);
 		absolute = absolute.toRealPath();
 		if (!absolute.startsWith(root) || absolute.equals(root))
 			throw new CommandRefusedException("The target must be inside the project " + root + ": " + absolute);
-		CampaignStore store = store(root);
+		CampaignStore store = scope.store();
 		CampaignRegistry.Opening opening = CampaignRegistry.open(store.listHeaders(), root, absolute,
-			host.harness());
+			scope.harness());
 		return switch (opening)
 		{
 			case CampaignRegistry.Opening.Refuse refuse -> throw refused(refuse.owner());
@@ -191,14 +167,14 @@ public final class OptimizerCore implements Core
 	private CommandResult create(Path root, CampaignStore store, Path target)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
-		String id = ID_TIME.format(host.clock().instant()) + "-" +
-			HexFormat.of().toHexDigits(host.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
+		String id = ID_TIME.format(scope.clock().instant()) + "-" +
+			HexFormat.of().toHexDigits(scope.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
 		Path directory = directory(root, id);
 		Path relative = root.relativize(target);
 		ForkView fork;
 		try
 		{
-			fork = forks.create(root, directory, Set.of(relative));
+			fork = scope.forks().create(root, directory, Set.of(relative));
 		}
 		catch (WorkspaceException e)
 		{
@@ -206,9 +182,9 @@ public final class OptimizerCore implements Core
 		}
 		FileInventory inventory = fork.inventory();
 		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory, inventory, host.json()).save(incumbent);
-		CampaignHeader header = new CampaignHeader(id, root, target, host.harness(), Lifecycle.ACTIVE);
-		Campaign campaign = Campaign.start(header, host.ceiling(), incumbent.identity(), environment(inventory));
+		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
+		CampaignHeader header = new CampaignHeader(id, root, target, scope.harness(), Lifecycle.ACTIVE);
+		Campaign campaign = Campaign.start(header, scope.ceiling(), incumbent.identity(), environment(inventory));
 		store.replaceSnapshot(campaign);
 		return derive(root, campaign, fork, null, null);
 	}
@@ -216,24 +192,24 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
-		Path root = root();
-		Campaign loaded = require(store(root), campaign, true);
+		Path root = scope.projectRoot();
+		Campaign loaded = require(scope.store(), campaign, true);
 		SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
-		return new CommandResult(result.status(), host.harness(), null, result.delivery(), null);
+		return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
 	}
 
 	@Override
 	public CommandResult status(String campaign) throws CommandRefusedException, IOException
 	{
-		Path root = root();
-		return report(root, require(store(root), campaign, false), null, null);
+		Path root = scope.projectRoot();
+		return report(root, require(scope.store(), campaign, false), null, null);
 	}
 
 	@Override
 	public CommandResult confirm(String campaign) throws CommandRefusedException, IOException
 	{
-		Path root = root();
-		CampaignStore store = store(root);
+		Path root = scope.projectRoot();
+		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
 		ForkView fork = openFork(root, loaded);
 		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
@@ -247,7 +223,7 @@ public final class OptimizerCore implements Core
 				String.join(", ", blocking));
 		}
 		loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
-		return apply(root, loaded, proposal.confirmation(host.random().nextLong()));
+		return apply(root, loaded, proposal.confirmation(scope.random().nextLong()));
 	}
 
 	/**
@@ -309,7 +285,7 @@ public final class OptimizerCore implements Core
 		ForkView extended = fork.addParticipants(root, needed);
 		FileInventory inventory = extended.inventory();
 		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory(root, campaign.header().id()), inventory, host.json()).save(incumbent);
+		new FileCandidateOverlays(directory(root, campaign.header().id()), inventory, scope.json()).save(incumbent);
 		Campaign rebound = Campaign.start(campaign.header(), campaign.ceiling(), incumbent.identity(),
 			campaign.identity());
 		store.replaceSnapshot(rebound);
@@ -366,8 +342,8 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
-		Path root = root();
-		CampaignStore store = store(root);
+		Path root = scope.projectRoot();
+		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
 		ForkView fork = openFork(root, loaded);
 		DerivedProposal previous = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
@@ -384,16 +360,16 @@ public final class OptimizerCore implements Core
 	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
 		throws CommandRefusedException, IOException
 	{
-		Path root = root();
-		Campaign loaded = require(store(root), campaign, true);
+		Path root = scope.projectRoot();
+		Campaign loaded = require(scope.store(), campaign, true);
 		return apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
 	}
 
 	@Override
 	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 	{
-		Path root = root();
-		Campaign loaded = require(store(root), campaign, true);
+		Path root = scope.projectRoot();
+		Campaign loaded = require(scope.store(), campaign, true);
 		return apply(root, loaded, List.of(new CampaignEvent.Cancel()));
 	}
 
@@ -428,7 +404,7 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("Campaign " + id + " does not accept this command now: " +
 				e.getMessage(), e);
 		}
-		return report(root, require(store(root), id, true), null, null);
+		return report(root, require(scope.store(), id, true), null, null);
 	}
 
 	/**
@@ -447,7 +423,7 @@ public final class OptimizerCore implements Core
 		DerivedProposal previous, String feedback) throws IOException, InterruptedException
 	{
 		Path directory = directory(root, campaign.header().id());
-		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), host.json()).
+		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), scope.json()).
 			require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent);
 		DeriverProtocol protocol = deriver;
@@ -456,7 +432,7 @@ public final class OptimizerCore implements Core
 			request = protocol.request(staged);
 		else
 			request = protocol.request(staged, previous, feedback);
-		SessionResult result = await(host.sessions().start(request));
+		SessionResult result = await(scope.sessions().start(request));
 		if (!(result instanceof SessionResult.Completed completed))
 		{
 			return report(root, campaign, null, "The deriver session did not complete: " + result +
@@ -472,7 +448,7 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The deriver's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". Run `revise` with feedback, or `start`, to retry.");
 		}
-		new ProposalFile(directory, host.json()).write(derived);
+		new ProposalFile(directory, scope.json()).write(derived);
 		return present(root, campaign, fork, derived);
 	}
 
@@ -506,7 +482,7 @@ public final class OptimizerCore implements Core
 	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
 	{
 		LinkReport links = LinkReport.of(fork.inventory(), authority(root, campaign));
-		return Proposal.of(derived, campaign, links, host.sessions().hostLogin(), calibrator,
+		return Proposal.of(derived, campaign, links, scope.sessions().hostLogin(), scope.calibrator(),
 			schema);
 	}
 
@@ -521,7 +497,7 @@ public final class OptimizerCore implements Core
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
 		Optional<SessionResult.Completed> completed = new ProposalFile(directory(root, campaign.header().id()),
-			host.json()).read();
+			scope.json()).read();
 		if (completed.isEmpty())
 			return Optional.empty();
 		try
@@ -573,9 +549,9 @@ public final class OptimizerCore implements Core
 	{
 		boolean links = false;
 		Path directory = directory(root, campaign.header().id());
-		if (forks.exists(directory))
+		if (scope.forks().exists(directory))
 		{
-			ForkView fork = forks.open(root, directory);
+			ForkView fork = scope.forks().open(root, directory);
 			links = !LinkReport.of(fork.inventory(), authority(root, campaign)).entries().isEmpty();
 		}
 		ReportEvidence evidence = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), links, false, null);
@@ -599,7 +575,7 @@ public final class OptimizerCore implements Core
 		Optional<Campaign> campaign = store.load(id);
 		if (campaign.isEmpty())
 			throw new CommandRefusedException("No campaign has the identifier " + id + ".");
-		if (sameHarness && campaign.get().header().harness() != host.harness())
+		if (sameHarness && campaign.get().header().harness() != scope.harness())
 			throw refused(campaign.get().header());
 		return campaign.get();
 	}
@@ -617,7 +593,7 @@ public final class OptimizerCore implements Core
 	{
 		try
 		{
-			return forks.open(root, directory(root, campaign.header().id()));
+			return scope.forks().open(root, directory(root, campaign.header().id()));
 		}
 		catch (WorkspaceException e)
 		{
@@ -640,20 +616,20 @@ public final class OptimizerCore implements Core
 		Path directory = directory(root, campaign.header().id());
 		ForkView fork = openFork(root, campaign);
 		FileInventory inventory = fork.inventory();
-		CampaignStore store = store(root);
+		CampaignStore store = scope.store();
 		Authority authority = authority(root, campaign);
 		Path judgeDirectory = directory.resolve("judge");
 		Files.createDirectories(judgeDirectory);
 		Set<Path> promptSources = promptSources(root, campaign);
-		JudgePrompt judge = new JudgePrompt(host.json(), judgeDirectory);
-		AuthorPrompt author = new AuthorPrompt(host.json(), schema, promptSources,
-			Set.copyOf(host.loaderConfiguration()), Set.of());
-		return new DriverContext(store, host.sessions(), fork.workspace(), host.interrupts(), host.clock(),
-			new FileCandidateOverlays(directory, inventory, host.json()), judge, author,
-			new Delivery(store, fork.workspace())::deliver, calibrator,
-			new ProcessHandleTerminator(), new LeftoverRuns(directory.resolve("runs"), host.json()), authority,
-			promptSources, environment(inventory), directory.resolve("driver.lock"), host.random(),
-			host.settings());
+		JudgePrompt judge = new JudgePrompt(scope.json(), judgeDirectory);
+		AuthorPrompt author = new AuthorPrompt(scope.json(), schema, promptSources,
+			Set.copyOf(scope.loaderConfiguration()), Set.of());
+		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
+			new FileCandidateOverlays(directory, inventory, scope.json()), judge, author,
+			new Delivery(store, fork.workspace())::deliver, scope.calibrator(),
+			new ProcessHandleTerminator(), new LeftoverRuns(directory.resolve("runs"), scope.json()), authority,
+			promptSources, environment(inventory), directory.resolve("driver.lock"), scope.random(),
+			scope.sliceSettings());
 	}
 
 	/**
@@ -665,7 +641,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Authority authority(Path root, Campaign campaign) throws IOException
 	{
-		return new Authority(promptSources(root, campaign), Set.copyOf(host.loaderConfiguration()), Set.of());
+		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()), Set.of());
 	}
 
 	/**
@@ -718,8 +694,8 @@ public final class OptimizerCore implements Core
 	private MeasurementIdentity environment(FileInventory inventory)
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.put(MeasurementCondition.PROVIDER, host.harness().name().toLowerCase(java.util.Locale.ROOT));
-		String version = host.harnessVersion().get();
+		values.put(MeasurementCondition.PROVIDER, scope.harness().name().toLowerCase(java.util.Locale.ROOT));
+		String version = scope.harnessVersion();
 		if (version.isBlank())
 			version = "unknown";
 		values.put(MeasurementCondition.HARNESS_VERSION, version);
@@ -738,7 +714,7 @@ public final class OptimizerCore implements Core
 	private String loaderConfiguration(FileInventory inventory)
 	{
 		StringBuilder lines = new StringBuilder();
-		for (Path path : host.loaderConfiguration().stream().sorted().toList())
+		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
 		{
 			lines.append(path).append('=');
 			Optional<FileEntry> entry = inventory.entry(path);
@@ -756,35 +732,6 @@ public final class OptimizerCore implements Core
 			lines.append('\n');
 		}
 		return Sha256.of(lines.toString().getBytes(StandardCharsets.UTF_8)).hex();
-	}
-
-	/**
-	 * Returns the project root: the directory that holds {@code .git}, at or above the working directory.
-	 *
-	 * @return the root
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository
-	 * @throws IOException if the working directory cannot be resolved
-	 */
-	private Path root() throws CommandRefusedException, IOException
-	{
-		Path start = host.directory().toRealPath();
-		for (Path candidate = start; candidate != null; candidate = candidate.getParent())
-		{
-			if (Files.exists(candidate.resolve(".git")))
-				return candidate;
-		}
-		throw new CommandRefusedException(start + " is not inside a Git repository.");
-	}
-
-	/**
-	 * Returns the campaign store of a project.
-	 *
-	 * @param root the project root
-	 * @return the store
-	 */
-	private CampaignStore store(Path root)
-	{
-		return new FileCampaignStore(root, host.json());
 	}
 
 	/**

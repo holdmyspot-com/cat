@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.cli.PromptOptimizerCli;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -18,10 +19,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.random.RandomGenerator;
 
 /**
- * Tests {@link ClaudePromptOptimizer}'s resolution of the environment, without starting a harness.
+ * Tests {@link ClaudeOptimizerCommandScope}'s resolution of the environment, through the commands that the
+ * {@link ClaudePromptOptimizer} launcher runs, without starting a harness.
  */
 public final class ClaudePromptOptimizerTest
 {
@@ -78,8 +79,11 @@ public final class ClaudePromptOptimizerTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = ClaudePromptOptimizer.run(args, environment, setup.home(), setup.root(), setup.home().resolve("artifact"),
-				Clock.systemUTC(), RandomGenerator.getDefault(), out);
+			try (ClaudeOptimizerCommandScope scope = new ClaudeOptimizerCommandScope(environment, setup.home(), setup.root(),
+				setup.home().resolve("artifact")))
+			{
+				exit = PromptOptimizerCli.run(scope, args, out);
+			}
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
@@ -137,7 +141,7 @@ public final class ClaudePromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path configuration = scope.add(Files.createTempDirectory("claude-optimizer-config"));
-			HostInterruptSignal signal = ClaudePromptOptimizer.interrupts(
+			HostInterruptSignal signal = ClaudeOptimizerCommandScope.interrupts(
 				Map.of("CLAUDE_CODE_SESSION_ID", "session-1"), configuration, Clock.systemUTC());
 			IOException failure = null;
 			try
@@ -167,7 +171,7 @@ public final class ClaudePromptOptimizerTest
 			Path configuration = scope.add(Files.createTempDirectory("claude-optimizer-config"));
 			Path projects = Files.createDirectories(configuration.resolve("projects").resolve("p"));
 			Files.writeString(projects.resolve("session-1.jsonl"), "");
-			HostInterruptSignal signal = ClaudePromptOptimizer.interrupts(
+			HostInterruptSignal signal = ClaudeOptimizerCommandScope.interrupts(
 				Map.of("CLAUDE_CODE_SESSION_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
 		}
