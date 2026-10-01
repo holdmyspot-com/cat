@@ -119,6 +119,7 @@ public final class PortFakesTest
 		FileInventory edited = new FileInventory(Path.of("/edited"), Map.of());
 		workspace.editAuthoringCopy(copy, edited);
 		requireThat(workspace.scanAuthoringCopy(copy), "scan").isEqualTo(edited);
+		requireThat(workspace.scanAuthorEffects(copy, Path.of("/effects")), "effects").isEqualTo(edited);
 		workspace.deleteAuthoringCopy(copy);
 		requireThat(workspace.authoringCopies(), "authoringCopies").isEmpty();
 

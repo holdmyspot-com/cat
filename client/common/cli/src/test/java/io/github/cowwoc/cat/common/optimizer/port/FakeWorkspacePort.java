@@ -17,9 +17,9 @@ import java.util.Set;
 /**
  * A {@link WorkspacePort} that keeps every directory and inventory in memory.
  * <p>
- * Returned paths are names under a root that the fake never reads or writes. An authoring copy scans as the
- * working candidate's snapshot unless the test records an author's edits with
- * {@link #editAuthoringCopy(Path, FileInventory)}.
+ * Returned paths are names under a root that the fake never reads or writes. An authoring copy, and the effects of
+ * an author session that ran on it, scan as the working candidate's snapshot unless the test records an author's
+ * edits with {@link #editAuthoringCopy(Path, FileInventory)}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -97,7 +97,8 @@ public final class FakeWorkspacePort implements WorkspacePort
 	}
 
 	/**
-	 * Records what an author left in an authoring copy.
+	 * Records what an author left in an authoring copy, which both the copy and the effects of a session that ran on
+	 * it scan as.
 	 *
 	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned
 	 * @param edited the copy's inventory after the author's edits
@@ -123,6 +124,16 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(copy, "copy").isNotNull();
 			requireThat(authoringCopies.containsKey(copy), "authoringCopies.containsKey(copy)").isTrue();
 			return authoringCopies.get(copy);
+		}
+	}
+
+	@Override
+	public FileInventory scanAuthorEffects(Path copy, Path effects)
+	{
+		synchronized (lock)
+		{
+			requireThat(effects, "effects").isNotNull();
+			return scanAuthoringCopy(copy);
 		}
 	}
 

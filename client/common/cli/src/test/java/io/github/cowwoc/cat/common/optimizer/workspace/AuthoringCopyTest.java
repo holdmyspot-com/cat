@@ -21,9 +21,12 @@ import io.github.cowwoc.cat.common.optimizer.workspace.ProjectFixtures.LinkedPro
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 
@@ -104,6 +107,82 @@ public final class AuthoringCopyTest
 			requireThat(review.changes().stream().anyMatch(change ->
 				change instanceof TargetWrite write && write.target().equals(Path.of("rules/a.md")) &&
 					write.after().equals(file("author edit"))), "targetWritten").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that scanning the effects of an author session that ran on a copy captures the session's edit, creation
+	 * and deletion, and omits CAT's work directory and Git metadata as scanning the copy does.
+	 *
+	 * @throws IOException if the fixture cannot be created, prepared or scanned
+	 */
+	@Test
+	public void capturesEffectsOfAuthorSession() throws IOException
+	{
+		// Requirement: R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-authoring-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path copy = port.prepareAuthoringCopy(Overlay.of(project.tree().inventory()));
+			FileInventory before = port.scanAuthoringCopy(copy);
+			// The session's runner copies the project source into a run directory, whose state is the effects
+			Path effects = project.campaign().resolve("runs/run-1/project");
+			copyTree(copy, effects);
+
+			Files.writeString(effects.resolve("prompt.md"), "author edit", UTF_8);
+			writeFile(effects.resolve("rules/c.md"), "created", READ_WRITE);
+			Files.delete(effects.resolve("rules/b.md"));
+			writeFile(effects.resolve(".cat/work/session.json"), "{}", READ_WRITE);
+			writeFile(effects.resolve(".git/HEAD"), "ref: refs/heads/main", READ_WRITE);
+			FileInventory after = port.scanAuthorEffects(copy, effects);
+
+			requireThat(after.root(), "root").isEqualTo(effects);
+			requireThat(after.entries().get(Path.of("prompt.md")), "edited").isEqualTo(file("author edit"));
+			requireThat(after.entries().get(Path.of("rules/c.md")), "created").isEqualTo(file("created"));
+			requireThat(after.entries().containsKey(Path.of(".cat/work/session.json")), "workDirectory").isFalse();
+			requireThat(after.entries().containsKey(Path.of(".git/HEAD")), "gitMetadata").isFalse();
+			requireThat(InventoryDiff.between(before, after).changes().stream().map(PathChange::path).toList(),
+				"changedPaths").isEqualTo(List.of(Path.of("prompt.md"), Path.of("rules/b.md"), Path.of("rules/c.md")));
+		}
+	}
+
+	/**
+	 * Verifies that the effects of a session are scanned only for a copy that the workspace prepared.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*authoring.*")
+	public void rejectsEffectsOfForeignCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-authoring-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+
+			port.scanAuthorEffects(project.base(), project.base());
+		}
+	}
+
+	/**
+	 * Copies a directory tree, with each file's permissions, as a session's runner copies its project source.
+	 *
+	 * @param source the directory to copy
+	 * @param target the directory to create
+	 * @throws IOException if the tree cannot be copied
+	 */
+	private static void copyTree(Path source, Path target) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : paths.toList())
+			{
+				Path destination = target.resolve(source.relativize(path).toString());
+				if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+					Files.createDirectories(destination);
+				else
+					Files.copy(path, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
+			}
 		}
 	}
 

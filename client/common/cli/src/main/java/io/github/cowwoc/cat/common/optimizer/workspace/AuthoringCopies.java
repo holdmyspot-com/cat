@@ -17,7 +17,8 @@ import java.util.Set;
  * <p>
  * An authoring copy holds the working candidate as a staged source does, with every symbolic link replaced by a copy
  * of its target. Scanning the copy before and after the session yields two inventories whose difference is the
- * session's delta.
+ * session's delta. An author session that edits the runner's copy of the authoring copy leaves its edits in its
+ * effects directory instead, which is scanned under the same rules.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Each copy is a separate directory.
  */
@@ -90,6 +91,25 @@ public final class AuthoringCopies
 	public FileInventory scan(Path copy) throws IOException
 	{
 		return InventoryScanner.scan(requireCopy(copy), Set.of());
+	}
+
+	/**
+	 * Scans the effects of an author session that ran on an authoring copy, under the rules that
+	 * {@link #scan(Path)} applies to the copy.
+	 *
+	 * @param copy a directory that {@link #prepare(Overlay)} returned, which the session's project source was
+	 * @param effects the directory that holds the session's project effects
+	 * @return the effects' inventory, rooted at {@code effects}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code copy} is not a directory that this class prepared, or
+	 *   {@code effects} is not a directory
+	 * @throws IOException if the effects cannot be read
+	 */
+	public FileInventory scanEffects(Path copy, Path effects) throws IOException
+	{
+		requireCopy(copy);
+		requireThat(effects, "effects").isNotNull();
+		return InventoryScanner.scan(effects, Set.of());
 	}
 
 	/**

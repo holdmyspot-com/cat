@@ -52,6 +52,20 @@ public interface WorkspacePort
 	FileInventory scanAuthoringCopy(Path copy) throws IOException;
 
 	/**
+	 * Scans the effects of an author session that ran on an authoring copy, under the rules that
+	 * {@link #scanAuthoringCopy(Path)} applies to the copy. Comparing the copy's inventory with the effects' inventory
+	 * yields the author's delta.
+	 *
+	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned, which the session's project source
+	 *   was
+	 * @param effects the directory that holds the session's project effects
+	 * @return the effects' inventory
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the effects cannot be read
+	 */
+	FileInventory scanAuthorEffects(Path copy, Path effects) throws IOException;
+
+	/**
 	 * Deletes an authoring copy. Deleting a copy that does not exist does nothing.
 	 *
 	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned

@@ -16,12 +16,12 @@ import java.util.List;
  * A table certifies (or proves better) when {@code passes >= base + step·F}, capped at the unreachable value
  * {@code cap − F + 1}, and is clearly below (or proven worse) at any pass count once {@code F} reaches a threshold.
  */
-final class Boundaries
+public final class Boundaries
 {
 	/**
 	 * The cap of {@link #standard(int)}.
 	 */
-	static final int STANDARD_CAP = 300;
+	public static final int STANDARD_CAP = 300;
 
 	/**
 	 * Prevents instantiation.
@@ -40,7 +40,7 @@ final class Boundaries
 	 * @param categories the number of categories
 	 * @return the boundaries
 	 */
-	static DecisionBoundaries standard(int categories)
+	public static DecisionBoundaries standard(int categories)
 	{
 		List<ComparisonBoundaries> comparisons = new ArrayList<>();
 		for (int i = 0; i < categories; ++i)
@@ -58,7 +58,7 @@ final class Boundaries
 	 * @param comparisons the comparison boundaries, one per category
 	 * @return the boundaries
 	 */
-	static DecisionBoundaries decision(int cap, int base, int step, int belowFailures,
+	public static DecisionBoundaries decision(int cap, int base, int step, int belowFailures,
 		List<ComparisonBoundaries> comparisons)
 	{
 		List<Integer> minimums = minimums(cap, base, step);
@@ -75,7 +75,7 @@ final class Boundaries
 	 * @param worseFailures the failures at which a category is proven worse
 	 * @return the boundaries
 	 */
-	static ComparisonBoundaries comparison(int cap, int base, int step, int worseFailures)
+	public static ComparisonBoundaries comparison(int cap, int base, int step, int worseFailures)
 	{
 		List<Integer> minimums = minimums(cap, base, step);
 		Comparison comparison = new Comparison(new BigDecimal("0.9000"), new BigDecimal("0.8000"),

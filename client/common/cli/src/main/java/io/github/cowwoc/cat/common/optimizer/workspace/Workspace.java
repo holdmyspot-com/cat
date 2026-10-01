@@ -87,6 +87,12 @@ public final class Workspace implements WorkspacePort
 	}
 
 	@Override
+	public FileInventory scanAuthorEffects(Path copy, Path effects) throws IOException
+	{
+		return authoringCopies.scanEffects(copy, effects);
+	}
+
+	@Override
 	public void deleteAuthoringCopy(Path copy) throws IOException
 	{
 		authoringCopies.delete(copy);
