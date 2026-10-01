@@ -13,9 +13,10 @@ For an ordinary Claude Code agent tool shell, `CAT_PLUGIN_ROOT` means
 prompt needs a file shipped in CAT's installed plugin, including a launcher, rule, skill, or configuration file. Use
 paths below it as `${CAT_PLUGIN_ROOT}/…`.
 
-For an ordinary Claude Code agent tool shell, `CAT_TEMP` means the absolute `.cat/temp` directory below the current CAT
-project root. In the same shell action that needs it, derive it with `${CAT_PLUGIN_ROOT}/client/bin/workflow-temp root`.
-The command finds the project root and prints the resulting absolute path; do not reconstruct that path from the current
+For an ordinary Claude Code agent tool shell, `CAT_TEMP` means the absolute `.cat/work/temp` directory below the current
+CAT project root. In the same shell action that needs it, derive it with
+`${CAT_PLUGIN_ROOT}/client/bin/workflow-temp root`. The command finds the project root, creates the directory if it is
+missing, and prints its absolute path on one line with no prefix; do not reconstruct that path from the current
 directory.
 
 Do not rely on a prior command having exported either value. In the shell command that expands `CAT_PLUGIN_ROOT` or

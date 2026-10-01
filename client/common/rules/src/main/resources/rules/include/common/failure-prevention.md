@@ -75,8 +75,9 @@ scope evidence until the probe proves it. It snapshots the pre-operation bytes a
 reachable tracked, untracked, and ignored file through one uniform content-addressed manifest, records every pre-image
 hash, and retains that manifest outside the reachable tree. Create one invocation-owned transaction directory through
 the active harness's `workflow-temp create mutation-transaction` operation. Under the standard project work root, the
-launcher returns a unique `.cat/work/temp/mutation-transaction-<unique>/` directory; retain the snapshot below its
-`snapshot/` child and the manifest and terminal receipt in that returned transaction directory. Use the returned path
+launcher creates a unique `.cat/work/temp/mutation-transaction-<unique>/` directory and prints its absolute path on one
+line with no prefix; retain the snapshot below its
+`snapshot/` child and the manifest and terminal receipt in that transaction directory. Use the printed path
 rather than synthesizing its unique suffix or substituting `/tmp` or a repository path. It then runs the tool,
 inventories actual changed paths and post-image hashes, and accepts the result
 only when all changes are inside the declared allowlist and the required parse, compile, test, and scoped static checks

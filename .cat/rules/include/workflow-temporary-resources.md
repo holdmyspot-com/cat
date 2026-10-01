@@ -10,9 +10,9 @@
 ## Guidance
 
 For workflows, the owning pouch scope resolves the CAT temporary root once. Its built-in value is the gitignored
-`.cat/temp` directory in the current project; future configuration may override that value at the scope boundary. Create
-a unique child directory per invocation and pass it to every cooperating command. Do not read an environment variable to
-rediscover this value.
+`.cat/work/temp` directory in the current project; future configuration may override that value at the scope boundary.
+Create a unique child directory per invocation and pass it to every cooperating command. Do not read an environment
+variable to rediscover this value.
 
 Before creating a workflow artifact, classify its commit intent and last required consumer. Put an artifact intended for
 commit at its version-controlled repository path. Put every other artifact beneath the resolved CAT temporary root:
@@ -26,6 +26,10 @@ A live owner or a recorded recovery workflow may retain it only until its own te
 uncommitted evidence merely because the workflow finished, and do not delete it merely because one invocation finished.
 
 Use the selected harness's `workflow-temp create <workflow-name>` launcher to create a CLI-owned invocation directory.
-At the terminal boundary, invoke `workflow-temp delete <directory>` for work with no remaining consumer. To retain
-uncommitted evidence, invoke `workflow-temp handoff <directory> <retained-directory-under-cat-temp>` and record the
-returned location and cleanup owner. Do not delete or hand off a directory that a live process still owns.
+It prints the new directory's absolute path on one line with no prefix; use that output as the directory. At the
+terminal boundary, invoke `workflow-temp delete <directory>` for work with no remaining consumer; it prints nothing. To
+retain uncommitted evidence, invoke `workflow-temp handoff <directory> <retained-directory-under-cat-temp>`, which
+prints the retained directory's absolute path, and record that path and the cleanup owner. On failure, each command
+prints a diagnostic to standard error, prints nothing to standard output, and exits with status 1.
+`workflow-temp --help` lists every command and its output. Do not delete or hand off a directory that a live process
+still owns.

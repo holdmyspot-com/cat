@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -9,34 +10,78 @@ import java.nio.file.Path;
  */
 public final class InvocationDirectory
 {
-	private static final String USAGE =
-		"Usage: workflow-temp root | create <lowercase-workflow-name> | delete <directory> | " +
-			"handoff <directory> <retained-directory-under-cat-temp>";
+	private static final String USAGE = """
+		Usage: workflow-temp <command> [arguments]
+
+		Manages workflow directories beneath the CAT temporary root, .cat/work/temp in the enclosing CAT project.
+
+		Commands:
+		  root
+		      Creates the CAT temporary root if it is missing.
+		      Output: the root's absolute path, on one line.
+		  create <lowercase-workflow-name>
+		      Creates a uniquely named directory beneath the CAT temporary root.
+		      Output: the new directory's absolute path, on one line.
+		  delete <directory>
+		      Deletes a directory beneath the CAT temporary root, including its contents.
+		      Output: none.
+		  handoff <directory> <retained-directory-under-cat-temp>
+		      Moves <directory> to an unoccupied location beneath the CAT temporary root.
+		      Output: the retained directory's absolute path, on one line.
+		  --help
+		      Output: this help.
+
+		Each printed path has no prefix, so callers can use the output directly as a path. On failure, a command prints
+		a diagnostic to standard error, prints nothing to standard output, and exits with status 1.""";
 
 	/**
-	 * Runs one workflow temporary-directory operation and prints its machine-readable result.
+	 * Runs one workflow temporary-directory operation and prints its result.
 	 *
 	 * @param args the operation and its arguments
 	 */
 	public static void main(String[] args)
 	{
+		int status;
 		try (ToolScope scope = new ToolScope())
+		{
+			status = run(args, scope.catTemp(), System.out, System.err);
+		}
+		if (status != 0)
+			System.exit(status);
+	}
+
+	/**
+	 * Runs one workflow temporary-directory operation.
+	 *
+	 * @param args the operation and its arguments
+	 * @param temporaryRoot the CAT temporary root resolved by the invocation scope
+	 * @param out receives the operation's result
+	 * @param err receives diagnostics
+	 * @return the process exit status
+	 */
+	static int run(String[] args, Path temporaryRoot, PrintStream out, PrintStream err)
+	{
+		try
 		{
 			if (args.length == 0)
 				throw new IllegalArgumentException(USAGE);
+			if (args.length == 1 && args[0].equals("--help"))
+			{
+				out.println(USAGE);
+				return 0;
+			}
 			Command command = Command.parse(args[0]);
-			Path temporaryRoot = scope.catTemp();
 			switch (command)
 			{
 				case ROOT ->
 				{
 					requireArgumentCount(args, 1);
-					System.out.println(root(temporaryRoot));
+					out.println(root(temporaryRoot));
 				}
 				case CREATE ->
 				{
 					requireArgumentCount(args, 2);
-					System.out.println("directory=" + create(temporaryRoot, args[1]));
+					out.println(create(temporaryRoot, args[1]));
 				}
 				case DELETE ->
 				{
@@ -46,14 +91,15 @@ public final class InvocationDirectory
 				case HANDOFF ->
 				{
 					requireArgumentCount(args, 3);
-					System.out.println("directory=" + handoff(temporaryRoot, Path.of(args[1]), Path.of(args[2])));
+					out.println(handoff(temporaryRoot, Path.of(args[1]), Path.of(args[2])));
 				}
 			}
+			return 0;
 		}
 		catch (IllegalArgumentException | IOException e)
 		{
-			System.err.println(e.getMessage());
-			System.exit(1);
+			err.println(e.getMessage());
+			return 1;
 		}
 	}
 

@@ -9,8 +9,8 @@
 setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
-	test_root_record="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create prompt-optimizer)"
-	export TEST_ROOT="${test_root_record#directory=}"
+	TEST_ROOT="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create prompt-optimizer)"
+	export TEST_ROOT
 	export HOST_HOME="${TEST_ROOT}/host-home"
 	export PROJECT="${TEST_ROOT}/project"
 	fixture="${BATS_TEST_DIRNAME}/../../../../cli/src/test/resources/optimizer/cli/campaign.json"

@@ -9,8 +9,8 @@
 setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
-	test_root_record="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create artifact-runners)"
-	export TEST_ROOT="${test_root_record#directory=}"
+	TEST_ROOT="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create artifact-runners)"
+	export TEST_ROOT
 	export FAKE_BIN="${TEST_ROOT}/bin"
 	export HOST_HOME="${TEST_ROOT}/host-home"
 	export RUN_ROOT="${TEST_ROOT}/runs"
@@ -34,18 +34,21 @@ teardown()
 	[ -d "${root}" ]
 	[[ "${TEST_ROOT}" == "${root}/"* ]]
 
-	created_record="$("${launcher}" create artifact-runners)"
-	created="${created_record#directory=}"
-	[ "${created_record}" != "${created}" ]
+	created="$("${launcher}" create artifact-runners)"
+	[[ "${created}" == "${root}/artifact-runners-"* ]]
 	[ -d "${created}" ]
 	printf 'retained\n' > "${created}/evidence"
 	retained="${TEST_ROOT}/retained/evidence"
-	handoff_record="$("${launcher}" handoff "${created}" "${retained}")"
-	[ "${handoff_record}" = "directory=${retained}" ]
+	handed_off="$("${launcher}" handoff "${created}" "${retained}")"
+	[ "${handed_off}" = "${retained}" ]
 	[ ! -e "${created}" ]
 	[ -f "${retained}/evidence" ]
 	"${launcher}" delete "${retained}"
 	[ ! -e "${retained}" ]
+
+	run "${launcher}" --help
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *"Output: the new directory's absolute path, on one line."* ]]
 
 	run "${launcher}" create Uppercase
 	[ "${status}" -ne 0 ]
