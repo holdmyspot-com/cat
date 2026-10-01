@@ -162,7 +162,9 @@ overkill.
 |---|---|
 | Setup (§1.1) | Done (commit `bd37b5b3d`). Verified 2026-10-01 with one trivial task per agent. Claude offers `cat:claude:optimize-<tier>`; transcripts record `claude-opus-5-5` (xhigh, high) and `claude-sonnet-5-5` (medium, low), with effort observable and matching. Codex offers `cat-optimize-<tier>` (rollout `agent_role`); rollouts record `gpt-6.1-sol` high/medium and `gpt-6-luna` high/medium. Every agent's injected context contains Default Rule Routing, Request Execution and the body's decision rule; in Claude the rules arrive through the SubagentStart context file. |
 | WI-0 | In progress: `optimize-medium` writing the probe scripts in `.cat/work/temp/optimizer-probes-13495928275341475570`. The orchestrator then runs P1–P3 with ESC sent through `tmux`. |
-| WI-1, WI-2, WI-5, WI-6 | In progress: delegated from snapshot `c748be064`, each in worktree `worktrees/v1.0-wi<N>` (branch `v1.0-wi<N>`), uncommitted. |
+| WI-5 | Done (commit `b3abb8863`): `HarnessCapacity` replaces `HarnessConcurrencyLimit` (no references remain); both runner CLIs acquire it; `native` Maven profile added. Full build passed on the integrated tree; the native two-process test passed in both harnesses. The native test fails rather than skips when a real session holds the single slot. |
+| WI-2 | Integrated (commit after `b3abb8863`); full build on the integrated tree pending. Follow-ups: WI-10 injects the CAT-owned judge `model`, `prompt` and `result_schema` before validating deriver output, and renders the CAT-computed §6.1 items (procedure, link report, warnings, minimum session count) that the proposal schema does not hold; WI-3 or WI-4 hashes `ProposalSchema.toJson(Contract)` for H-1. The formal `DrawStream` starts closed and WI-3's commit opens it (R-F1). |
+| WI-1, WI-6 | In progress: delegated from snapshot `c748be064`, each in worktree `worktrees/v1.0-wi<N>` (branch `v1.0-wi<N>`), uncommitted. |
 | WI-3, WI-4, WI-7 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
