@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
