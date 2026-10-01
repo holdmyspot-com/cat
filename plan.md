@@ -198,6 +198,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.2 and §11 H24: a Claude turn ends at a root reply only when the task list is empty and no root completion notice is unseen by a later root model call. Found by the follow-up attribution probes.
 - `design.md` §3.2 and §11 H25: a Claude turn ends when Claude reports itself idle with an empty task list; this replaces the H24 stream rule. A Claude that does not report its state fails the turn at its first `init`. The runner has no turn time limit of its own and reports a waiting turn to its caller every 30 seconds (user rulings, 2026-10-01).
 - `design.md` §4.1, §4.2 and §4.3: the unconfirmed proposal is stored with the campaign; confirmation records trial fixtures and derived prompt sources into the fork; an authority warning is an `awaiting-user` decision fed by the author's report, and an authorized target is recorded in the campaign. §2: added the authority-warning follow-up. Found in the WI-13 review.
+- §8: the unit-test runtime limit is 1 second, matching `design.md` §10 T7 (it said 2), and each integration lists slower tests.
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
@@ -712,7 +713,8 @@ These rules restate `design.md` §10 as checks for reviewers:
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
   directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
-- A unit test that takes longer than 2 seconds records its reason in its Javadoc. Without one, it is a review defect.
+- A unit test that takes 1 second or longer records its reason in its Javadoc (`design.md` §10 T7). Without one, it is a
+  review defect. Every integration lists the tests at or over 1 second from the surefire reports.
 
 ## 9. Final gates
 
