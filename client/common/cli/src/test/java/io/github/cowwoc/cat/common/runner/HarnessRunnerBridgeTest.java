@@ -1,8 +1,10 @@
 package io.github.cowwoc.cat.common.runner;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -246,6 +248,155 @@ public final class HarnessRunnerBridgeTest
 			requireThat(process.interrupts, "interrupts").isEqualTo(1);
 			requireThat(output.toString(), "output").contains("\"type\":\"steered\"").
 				contains("\"type\":\"interrupted\"").contains("\"type\":\"turn-completed\"");
+		}
+	}
+
+	/**
+	 * Verifies an interrupt that reaches the bridge after its turn ended leaves the harness untouched and the bridge
+	 * keeps serving later requests.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void ignoresInterruptAfterTurnEnded() throws IOException
+	{
+		// Requirement: R-E10, R-E15
+		CountDownLatch firstTurnCompleted = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			CountingInterruptProcess process = new CountingInterruptProcess();
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", firstTurnCompleted,
+				"{\"type\":\"interrupt\"}\n{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
+			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", firstTurnCompleted))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), input,
+				output);
+
+			requireThat(process.interrupts, "interrupts").isEqualTo(0);
+			requireThat(process.turns, "turns").isEqualTo(2);
+			requireThat(output.toString(), "output").doesNotContain("\"type\":\"interrupted\"").
+				contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
+	 * Client input that withholds its later requests until an earlier bridge response has been written, so a test can
+	 * order a request after the turn that precedes it has ended.
+	 */
+	private static final class GatedReader extends Reader
+	{
+		private final StringReader first;
+		private final CountDownLatch gate;
+		private final StringReader second;
+		private boolean firstExhausted;
+
+		/**
+		 * Creates input that serves {@code first}, waits for {@code gate}, then serves {@code second}.
+		 *
+		 * @param first the requests available immediately
+		 * @param gate opens once the bridge has written the response that the later requests must follow
+		 * @param second the requests available after the gate opens
+		 */
+		private GatedReader(String first, CountDownLatch gate, String second)
+		{
+			this.first = new StringReader(first);
+			this.gate = gate;
+			this.second = new StringReader(second);
+		}
+
+		@Override
+		public int read(char[] buffer, int offset, int length) throws IOException
+		{
+			if (!firstExhausted)
+			{
+				int count = first.read(buffer, offset, length);
+				if (count != -1)
+					return count;
+				firstExhausted = true;
+			}
+			try
+			{
+				gate.await();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for the gated bridge input", e);
+			}
+			return second.read(buffer, offset, length);
+		}
+
+		@Override
+		public void close()
+		{
+			first.close();
+			second.close();
+		}
+	}
+
+	/**
+	 * Bridge output that opens a latch once a response containing a marker has been written.
+	 */
+	private static final class SignalingWriter extends StringWriter
+	{
+		private final String marker;
+		private final CountDownLatch written;
+
+		/**
+		 * Creates output that signals {@code written} after the first response containing {@code marker}.
+		 *
+		 * @param marker the text that identifies the awaited response
+		 * @param written opened when that response is flushed
+		 */
+		private SignalingWriter(String marker, CountDownLatch written)
+		{
+			this.marker = marker;
+			this.written = written;
+		}
+
+		@Override
+		public void flush()
+		{
+			super.flush();
+			if (toString().contains(marker))
+				written.countDown();
+		}
+	}
+
+	/**
+	 * A process that completes each turn immediately and counts interrupt requests.
+	 */
+	private static final class CountingInterruptProcess implements HarnessProcess
+	{
+		private boolean closed;
+		private int turns;
+		private int interrupts;
+
+		@Override
+		public HarnessProcessResult sendTurn(String request)
+		{
+			assert request != null;
+			turns += 1;
+			return new HarnessProcessResult(0, request + "\n", "");
+		}
+
+		@Override
+		public void interrupt()
+		{
+			interrupts += 1;
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return !closed;
+		}
+
+		@Override
+		public void close()
+		{
+			closed = true;
 		}
 	}
 

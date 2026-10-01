@@ -152,12 +152,15 @@ public final class HarnessRunnerBridge
 					}
 					else if (type.equals("interrupt"))
 					{
-						if (activeTurn == null || activeTurn.isDone())
-							throw new IOException("Bridge has no active turn to interrupt");
-						awaitRequestedTurnStart(request, activeTurnStarted);
-						session.interrupt();
-						write(session.scope(), output, event(session.scope(), "interrupted").put("runId", session.run().
-				id()));
+						// A client cannot know whether its interrupt reaches the bridge before or after the turn ends. Once the
+						// turn has ended there is nothing to stop, so the request is ignored and the session keeps serving.
+						if (activeTurn != null && !activeTurn.isDone())
+						{
+							awaitRequestedTurnStart(request, activeTurnStarted);
+							session.interrupt();
+							write(session.scope(), output, event(session.scope(), "interrupted").put("runId",
+								session.run().id()));
+						}
 					}
 					else if (type.equals("complete"))
 					{
