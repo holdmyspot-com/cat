@@ -199,6 +199,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.2 and §11 H25: a Claude turn ends when Claude reports itself idle with an empty task list; this replaces the H24 stream rule. A Claude that does not report its state fails the turn at its first `init`. The runner has no turn time limit of its own and reports a waiting turn to its caller every 30 seconds (user rulings, 2026-10-01).
 - `design.md` §4.1, §4.2 and §4.3: the unconfirmed proposal is stored with the campaign; confirmation records trial fixtures and derived prompt sources into the fork; an authority warning is an `awaiting-user` decision fed by the author's report, and an authorized target is recorded in the campaign. §2: added the authority-warning follow-up. Found in the WI-13 review.
 - §8: the unit-test runtime limit is 1 second, matching `design.md` §10 T7 (it said 2), and each integration lists slower tests.
+- WI-14: the session-port contract keeps running against the real adapters, over recorded events, once the native session tests are deleted.
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
@@ -599,7 +600,9 @@ The riskiest pure code, built first.
   (`ClaudeRunnerCliNativeTest`, `ClaudeSessionsNativeTest`, `CodexRunnerCliNativeTest`, `CodexSessionsNativeTest`);
   make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
   `cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
-  parsing tests. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
+  parsing tests. Before deleting the session tests, run `SessionPortContract` against the real `ClaudeSessions` and
+  `CodexSessions` over a fake native process replaying recorded events (`design.md` §10 T3), so the fake stays checked
+  against the real adapters. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
 - **Closes:** R-I1 (content), R-I3.
 - **Tests:** existing rule tests pass. A reference audit (`grep -rn "prompt-optimizer"`) shows only references to the
   new skill.
