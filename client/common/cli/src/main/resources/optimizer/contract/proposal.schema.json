@@ -1,0 +1,118 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Compliance contract proposal",
+	"description": "Every requirement, category, test definition, variation, judge profile field and fixture that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["requirements", "categories", "judge", "fixtures", "limitations"],
+	"properties": {
+		"requirements": {
+			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project.",
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "description", "source"],
+				"properties": {
+					"id": {"type": "string", "pattern": "\\S"},
+					"description": {"type": "string", "pattern": "\\S"},
+					"source": {"type": "string", "pattern": "\\S"}
+				}
+			}
+		},
+		"categories": {
+			"description": "Every category. A category groups the uses that need their own claim.",
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "rationale", "risk_rank", "tests"],
+				"properties": {
+					"id": {"type": "string", "pattern": "\\S"},
+					"rationale": {"description": "Why averaging this category with others could hide a weak area.", "type": "string", "pattern": "\\S"},
+					"risk_rank": {"description": "1 is the riskiest. Categories may share a rank.", "type": "integer", "minimum": 1},
+					"tests": {
+						"description": "Every test definition of the category. The benchmark gives each the same weight.",
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["id", "requirement_ids", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations"],
+							"properties": {
+								"id": {"type": "string", "pattern": "\\S"},
+								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
+								"applicability": {"description": "The conditions under which the checked requirements apply to a trial.", "type": "string", "pattern": "\\S"},
+								"turns": {
+									"description": "The complete prewritten user turns. {{dimension}} marks where a variation value is inserted.",
+									"type": "array",
+									"minItems": 1,
+									"items": {"type": "string", "pattern": "\\S"}
+								},
+								"time_limit_seconds": {"type": "integer", "minimum": 1},
+								"expected_behavior": {"description": "What a compliant response does.", "type": "string", "pattern": "\\S"},
+								"uncovered_interactions": {"description": "Material interactions that this test cannot cover. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
+								"variations": {
+									"description": "Every variation dimension. Empty if the test has none.",
+									"type": "array",
+									"items": {
+										"type": "object",
+										"additionalProperties": false,
+										"required": ["dimension", "values"],
+										"properties": {
+											"dimension": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"},
+											"values": {
+												"description": "The permitted values. Their probabilities sum to 1.",
+												"type": "array",
+												"minItems": 1,
+												"items": {
+													"type": "object",
+													"additionalProperties": false,
+													"required": ["label", "text", "probability"],
+													"properties": {
+														"label": {"type": "string", "pattern": "\\S"},
+														"text": {"type": "string"},
+														"probability": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"judge": {
+			"description": "The frozen judge profile.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["model", "prompt", "rubric", "decision_rule", "result_schema"],
+			"properties": {
+				"model": {"type": "string", "pattern": "\\S"},
+				"prompt": {"type": "string", "pattern": "\\S"},
+				"rubric": {"type": "string", "pattern": "\\S"},
+				"decision_rule": {"type": "string", "pattern": "\\S"},
+				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}
+			}
+		},
+		"fixtures": {
+			"description": "The ignored paths that trials need.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["ignored_paths"],
+			"properties": {
+				"ignored_paths": {"description": "Project-relative paths, using / as the separator. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}}
+			}
+		},
+		"limitations": {
+			"description": "Known limitations of the contract. Empty if none.",
+			"type": "array",
+			"items": {"type": "string", "pattern": "\\S"}
+		}
+	}
+}

@@ -8,6 +8,7 @@ module io.github.cowwoc.cat.common.cli
 
 	exports io.github.cowwoc.cat.common;
 	exports io.github.cowwoc.cat.common.history;
+	exports io.github.cowwoc.cat.common.optimizer.contract;
 	exports io.github.cowwoc.cat.common.runner;
 
 	opens io.github.cowwoc.cat.common.git.replay to tools.jackson.databind;

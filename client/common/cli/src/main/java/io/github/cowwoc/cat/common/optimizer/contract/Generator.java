@@ -1,0 +1,176 @@
+package io.github.cowwoc.cat.common.optimizer.contract;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Draws trial instances from a contract and rejects any instance that its test definition does not permit.
+ *
+ * <p>
+ * A draw picks one test of the chosen category with equal probability, then picks each variation value at its frozen
+ * probability. The draw depends only on the stream's position, never on candidate identity or outcomes.
+ * <p>
+ * <b>Thread Safety:</b> This class is thread-safe. Concurrent draws from one stream are serialized and use
+ * consecutive positions.
+ */
+public final class Generator
+{
+	/**
+	 * The identity that every instance records, which changes whenever a draw would select differently for the same
+	 * stream position.
+	 */
+	public static final String IDENTITY = "contract-generator/1";
+	private final Contract contract;
+
+	/**
+	 * Creates a generator.
+	 *
+	 * @param contract the confirmed contract
+	 * @throws NullPointerException if {@code contract} is null
+	 */
+	public Generator(Contract contract)
+	{
+		requireThat(contract, "contract").isNotNull();
+		this.contract = contract;
+	}
+
+	/**
+	 * Draws one representative instance of a category.
+	 *
+	 * @param categoryId the category, which the caller chose before the draw
+	 * @param stream the stream to draw from
+	 * @return the validated instance
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the contract has no such category
+	 * @throws IllegalStateException if {@code stream} is closed
+	 * @throws GeneratorValidationException if the drawn instance is not permitted by its test definition
+	 */
+	public TrialInstance draw(String categoryId, DrawStream stream)
+	{
+		requireThat(categoryId, "categoryId").isNotNull();
+		requireThat(stream, "stream").isNotNull();
+		Category category = contract.findCategory(categoryId).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no category '" + categoryId + "'"));
+
+		TrialInstance instance;
+		// A draw reads several values. Holding the stream's lock keeps another thread's draw from taking some of them.
+		synchronized (stream)
+		{
+			DrawStream.State start = stream.state();
+			List<TestDefinition> tests = category.tests();
+			TestDefinition test = tests.get((int) (stream.nextDouble() * tests.size()));
+			List<VariationChoice> choices = new ArrayList<>();
+			Map<String, String> textByDimension = new LinkedHashMap<>();
+			for (VariationRule rule : test.variations())
+			{
+				VariationValue value = select(rule, stream.nextDouble());
+				choices.add(new VariationChoice(rule.dimension(), value.label(), value.probability()));
+				textByDimension.put(rule.dimension(), value.text());
+			}
+			instance = new TrialInstance(category.id(), test.id(), choices, test.expandTurns(textByDimension),
+				test.expectedBehaviour(), IDENTITY, start.kind(), start.position(), false);
+		}
+		validate(instance);
+		return instance;
+	}
+
+	/**
+	 * Selects the value whose cumulative probability range contains a uniform draw.
+	 *
+	 * @param rule the dimension to sample
+	 * @param uniform a uniform value in [0, 1)
+	 * @return the selected value, which is the last one if rounding leaves the draw above the cumulative sum
+	 */
+	private static VariationValue select(VariationRule rule, double uniform)
+	{
+		List<VariationValue> values = rule.values();
+		double cumulative = 0;
+		for (VariationValue value : values)
+		{
+			cumulative += value.probability();
+			if (uniform < cumulative)
+				return value;
+		}
+		return values.get(values.size() - 1);
+	}
+
+	/**
+	 * Marks an instance as targeted work, without drawing.
+	 *
+	 * @param instance an instance that was drawn earlier
+	 * @return the same instance, marked targeted
+	 * @throws NullPointerException if {@code instance} is null
+	 * @throws GeneratorValidationException if the instance is not permitted by its test definition
+	 */
+	public TrialInstance markTargeted(TrialInstance instance)
+	{
+		validate(instance);
+		return new TrialInstance(instance.categoryId(), instance.testId(), instance.choices(), instance.turns(),
+			instance.expectedBehaviour(), instance.generator(), instance.streamKind(), instance.streamPosition(), true);
+	}
+
+	/**
+	 * Checks that an instance is one its test definition permits.
+	 *
+	 * @param instance the instance to check
+	 * @throws NullPointerException if {@code instance} is null
+	 * @throws GeneratorValidationException if the instance is outside its definition
+	 */
+	public void validate(TrialInstance instance)
+	{
+		requireThat(instance, "instance").isNotNull();
+		if (!instance.generator().equals(IDENTITY))
+		{
+			throw new GeneratorValidationException("The instance was drawn by '" + instance.generator() +
+				"', not by '" + IDENTITY + "'");
+		}
+		Category category = contract.findCategory(instance.categoryId()).orElseThrow(() ->
+			new GeneratorValidationException("The contract has no category '" + instance.categoryId() + "'"));
+		TestDefinition test = category.tests().stream().filter(candidate -> candidate.id().equals(instance.testId())).
+			findFirst().orElseThrow(() -> new GeneratorValidationException("The category '" + category.id() +
+				"' has no test '" + instance.testId() + "'"));
+
+		List<VariationRule> rules = test.variations();
+		List<VariationChoice> choices = instance.choices();
+		if (choices.size() != rules.size())
+		{
+			throw new GeneratorValidationException("The test '" + test.id() + "' has " + rules.size() +
+				" variation dimensions, but the instance has " + choices.size() + " choices");
+		}
+		Map<String, String> textByDimension = new LinkedHashMap<>();
+		for (int i = 0; i < rules.size(); ++i)
+		{
+			VariationRule rule = rules.get(i);
+			VariationChoice choice = choices.get(i);
+			if (!choice.dimension().equals(rule.dimension()))
+			{
+				throw new GeneratorValidationException("Choice " + i + " is for the dimension '" + choice.dimension() +
+					"', but the test's dimension " + i + " is '" + rule.dimension() + "'");
+			}
+			VariationValue value = rule.values().stream().filter(candidate -> candidate.label().equals(choice.label())).
+				findFirst().orElseThrow(() -> new GeneratorValidationException("The dimension '" + rule.dimension() +
+					"' does not permit the value '" + choice.label() + "'"));
+			if (Double.compare(choice.probability(), value.probability()) != 0)
+			{
+				throw new GeneratorValidationException("The value '" + value.label() + "' of dimension '" +
+					rule.dimension() + "' has the frozen probability " + value.probability() +
+					", but the instance records " + choice.probability());
+			}
+			textByDimension.put(rule.dimension(), value.text());
+		}
+		if (!instance.turns().equals(test.expandTurns(textByDimension)))
+		{
+			throw new GeneratorValidationException("The turns of the instance are not the test '" + test.id() +
+				"' turns with the chosen values inserted");
+		}
+		if (!instance.expectedBehaviour().equals(test.expectedBehaviour()))
+		{
+			throw new GeneratorValidationException("The instance's expected behaviour differs from the test '" +
+				test.id() + "' expected behaviour");
+		}
+	}
+}
