@@ -6,9 +6,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,11 +22,11 @@ import java.util.Map;
  *
  * @param category the category that the author attempt targets
  * @param contract the confirmed contract
- * @param developmentFailures the working candidate's failing development instances, in adoption order
+ * @param developmentFailures the working candidate's development failures, in adoption order
  * @param developmentCounts the working candidate's development outcomes per category
  * @param endedAttempts the certification attempts that have ended, in index order
  */
-public record AuthorBrief(String category, Contract contract, List<TrialInstance> developmentFailures,
+public record AuthorBrief(String category, Contract contract, List<Failure> developmentFailures,
 	Map<String, CategoryCounts> developmentCounts, List<EndedAttempt> endedAttempts)
 {
 	/**
@@ -34,7 +34,7 @@ public record AuthorBrief(String category, Contract contract, List<TrialInstance
 	 *
 	 * @param category the category that the author attempt targets
 	 * @param contract the confirmed contract
-	 * @param developmentFailures the working candidate's failing development instances, in adoption order
+	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param developmentCounts the working candidate's development outcomes per category
 	 * @param endedAttempts the certification attempts that have ended, in index order
 	 * @throws NullPointerException if any of the arguments are null
@@ -82,10 +82,10 @@ public record AuthorBrief(String category, Contract contract, List<TrialInstance
 	 * @param index the attempt's certification index
 	 * @param outcome the attempt's outcome
 	 * @param counts the attempt's adopted formal outcomes per category
-	 * @param failures the attempt's failing formal instances, in adoption order
+	 * @param failures the attempt's formal failures, in adoption order
 	 */
 	public record EndedAttempt(int index, Outcome outcome, Map<String, CategoryCounts> counts,
-		List<TrialInstance> failures)
+		List<Failure> failures)
 	{
 		/**
 		 * Creates the outcomes of an ended attempt.
@@ -93,7 +93,7 @@ public record AuthorBrief(String category, Contract contract, List<TrialInstance
 		 * @param index the attempt's certification index
 		 * @param outcome the attempt's outcome
 		 * @param counts the attempt's adopted formal outcomes per category
-		 * @param failures the attempt's failing formal instances, in adoption order
+		 * @param failures the attempt's formal failures, in adoption order
 		 * @throws NullPointerException if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code index} is not positive
 		 */

@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.util.List;
 import java.util.Map;
@@ -19,12 +18,12 @@ import java.util.Map;
  * @param identity the measurement conditions that the attempt was measured under
  * @param procedure the frozen procedure
  * @param counts the adopted formal outcomes per category
- * @param failures the failing formal instances, in adoption order
+ * @param failures the formal failures, in adoption order
  * @param formalStream the attempt's formal draw stream
  * @param outcome the attempt's outcome, or {@code null} while it runs
  */
 public record CertificationAttempt(int index, int lineage, Candidate candidate, MeasurementIdentity identity,
-	CertificationProcedure procedure, Map<String, CategoryCounts> counts, List<TrialInstance> failures,
+	CertificationProcedure procedure, Map<String, CategoryCounts> counts, List<Failure> failures,
 	DrawStream.State formalStream, Outcome outcome)
 {
 	/**
@@ -36,7 +35,7 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 * @param identity the measurement conditions that the attempt was measured under
 	 * @param procedure the frozen procedure
 	 * @param counts the adopted formal outcomes per category
-	 * @param failures the failing formal instances, in adoption order
+	 * @param failures the formal failures, in adoption order
 	 * @param formalStream the attempt's formal draw stream
 	 * @param outcome the attempt's outcome, or {@code null} while it runs
 	 * @throws NullPointerException if any argument other than {@code outcome} is null

@@ -1,0 +1,131 @@
+package io.github.cowwoc.cat.common.optimizer.execution.prompt;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.execution.JudgeProtocol;
+import io.github.cowwoc.cat.common.optimizer.execution.Judgment;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
+import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+/**
+ * The judge prompt: fills the contract's frozen judge profile with one trial's evidence, and reads the verdict from
+ * the judge's final response (design &sect;3.1, &sect;6.4).
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ */
+public final class JudgePrompt implements JudgeProtocol
+{
+	private static final Duration TIME_LIMIT = Duration.ofMinutes(10);
+	private final JsonMapper json;
+	private final Path judgeDirectory;
+	private final JsonResponse responses;
+
+	/**
+	 * Creates the judge prompt.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param judgeDirectory the directory that judge sessions work in. It holds no prompt files, so a judge session
+	 *   loads none of the candidate's instructions.
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public JudgePrompt(JsonMapper json, Path judgeDirectory)
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(judgeDirectory, "judgeDirectory").isNotNull();
+		this.json = json;
+		this.judgeDirectory = judgeDirectory;
+		this.responses = new JsonResponse(json);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The profile's prompt receives the rubric, the decision rule and the result schema, then the evidence as data: the
+	 * instance and the responses as JSON, and the paths of the effects directory and the transcript, which the
+	 * session may read but not change.
+	 *
+	 * @throws IllegalArgumentException if the profile's prompt lacks a placeholder of CAT's judge prompt
+	 */
+	@Override
+	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence)
+	{
+		requireThat(profile, "profile").isNotNull();
+		requireThat(instance, "instance").isNotNull();
+		requireThat(evidence, "evidence").isNotNull();
+		ArrayNode responseArray = json.createArrayNode();
+		evidence.responses().forEach(responseArray::add);
+		String turn = new PromptTemplate(profile.prompt()).fill(Map.of(
+			"rubric", profile.rubric(),
+			"decision_rule", profile.decisionRule(),
+			"instance", pretty(InstanceJson.of(json, instance)),
+			"responses", pretty(responseArray),
+			"effects", evidence.effects().toString(),
+			"transcript", evidence.transcript().toString(),
+			"result_schema", pretty(json.readTree(profile.resultSchema()))));
+
+		List<Path> readOnly = new ArrayList<>();
+		readOnly.add(evidence.effects());
+		Path transcriptDirectory = evidence.transcript().getParent();
+		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
+			readOnly.add(transcriptDirectory);
+		return new SessionRequest(SessionRole.JUDGE, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT);
+	}
+
+	/**
+	 * Returns JSON as indented text.
+	 *
+	 * @param node the JSON
+	 * @return the text
+	 */
+	private String pretty(JsonNode node)
+	{
+		return json.writerWithDefaultPrettyPrinter().writeValueAsString(node);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The output is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
+	 * fence, that holds exactly a {@code verdict} of {@code pass} or {@code fail} and a non-blank {@code rationale}, as
+	 * CAT's result schema requires. The judgment keeps the rationale as the judge wrote it.
+	 */
+	@Override
+	public Optional<Judgment> judgment(SessionResult.Completed result)
+	{
+		requireThat(result, "result").isNotNull();
+		Optional<ObjectNode> output = responses.parseFinalResponse(result);
+		if (output.isEmpty() || output.get().size() != 2)
+			return Optional.empty();
+		JsonNode verdict = output.get().get("verdict");
+		JsonNode rationale = output.get().get("rationale");
+		if (verdict == null || !verdict.isString() || rationale == null || !rationale.isString() ||
+			rationale.asString().isBlank())
+		{
+			return Optional.empty();
+		}
+		return switch (verdict.asString())
+		{
+			case "pass" -> Optional.of(new Judgment(Verdict.PASS, rationale.asString()));
+			case "fail" -> Optional.of(new Judgment(Verdict.FAIL, rationale.asString()));
+			default -> Optional.empty();
+		};
+	}
+}

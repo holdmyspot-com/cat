@@ -17,14 +17,15 @@ import java.util.List;
  * @param allocation the allocation decision that assigned the trial
  * @param state where the trial is in its life
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
+ * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
  * @param infrastructureFailures the runs that ended without an outcome and count toward
  *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}; a {@link Choice#RETRY} resets it to 0
  * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
  * @param observations the runs that ended under conditions that differ from the trial's identity
  */
 public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
-	TrialState state, Verdict verdict, int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts,
-	int observations)
+	TrialState state, Verdict verdict, String rationale, int infrastructureFailures,
+	List<InfrastructureAttempt> infrastructureAttempts, int observations)
 {
 	/**
 	 * Creates a trial.
@@ -35,6 +36,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param allocation the allocation decision that assigned the trial
 	 * @param state where the trial is in its life
 	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
+	 * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
 	 * @param infrastructureFailures the runs that ended without an outcome and count toward
 	 *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}
 	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
@@ -43,8 +45,8 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 *   {@code state} or {@code infrastructureAttempts} are null
 	 * @throws IllegalArgumentException if a count is negative, the instance's category differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, {@code verdict} is null exactly when {@code state} is
-	 *   {@link TrialState#JUDGED}, or {@code infrastructureFailures} exceeds the number of
-	 *   {@link RunFailure#INFRASTRUCTURE} attempts
+	 *   {@link TrialState#JUDGED}, {@code rationale} is null exactly when {@code verdict} is not, or
+	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
 	 */
 	public LogicalTrial
 	{
@@ -59,6 +61,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 		requireThat(instance.categoryId(), "instance.categoryId()").isEqualTo(key.category(), "key.category()");
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
+		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
 		long infrastructure = infrastructureAttempts.stream().
 			filter(attempt -> attempt.failure() == RunFailure.INFRASTRUCTURE).
@@ -82,7 +85,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	public static LogicalTrial assigned(TrialKey key, TrialInstance instance, MeasurementIdentity identity,
 		Allocation allocation)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, 0, List.of(), 0);
+		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, null, 0, List.of(), 0);
 	}
 
 	/**
@@ -93,7 +96,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 */
 	LogicalTrial withState(TrialState newState)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, newState, null, infrastructureFailures,
+		return new LogicalTrial(key, instance, identity, allocation, newState, null, null, infrastructureFailures,
 			infrastructureAttempts, observations);
 	}
 }

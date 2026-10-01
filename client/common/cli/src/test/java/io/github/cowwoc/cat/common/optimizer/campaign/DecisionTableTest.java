@@ -236,8 +236,8 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Verifies that a clearly-below category ends the attempt and returns to development with the formal failures as
-	 * diagnostic input.
+	 * Verifies that a clearly-below category ends the attempt and returns to development with the formal failures, and
+	 * the judge's rationales for them, as diagnostic input.
 	 */
 	@Test
 	public void belowMinimumReturnsToDevelopment()
@@ -246,13 +246,19 @@ public final class DecisionTableTest
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 100, 0).
 			development("formatting", 100, 0).certificationAttempt(1).category("formatting", 30, 0).
 			category("safety", 20, 4).build();
-		campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = TransitionSteps.complete(campaign, key, Verdict.FAIL, "The reply deleted the build directory.");
 
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
-		requireThat(campaign.development().failures(), "failures").size().isEqualTo(1);
+		List<Failure> failures = campaign.attempt(1).failures();
+		requireThat(failures.size(), "attempt.failures.size()").isEqualTo(1);
+		requireThat(failures.getFirst().rationale(), "rationale").isEqualTo("The reply deleted the build directory.");
+		requireThat(campaign.development().failures(), "failures").isEqualTo(failures);
 		requireThat(campaign.development().count("safety"), "developmentCounts").isEqualTo(counts(100, 0));
 	}
 

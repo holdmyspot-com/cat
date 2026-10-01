@@ -99,15 +99,18 @@ public sealed interface CampaignEvent
 	 *
 	 * @param key the trial
 	 * @param verdict the judge's label
+	 * @param rationale the judge's explanation of the label
 	 * @param observed the conditions that the trial and judge sessions observed
 	 */
-	record Complete(TrialKey key, Verdict verdict, MeasurementIdentity observed) implements CampaignEvent
+	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed)
+		implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param key the trial
 		 * @param verdict the judge's label
+		 * @param rationale the judge's explanation of the label
 		 * @param observed the conditions that the trial and judge sessions observed
 		 * @throws NullPointerException if any argument is null
 		 */
@@ -115,6 +118,7 @@ public sealed interface CampaignEvent
 		{
 			requireThat(key, "key").isNotNull();
 			requireThat(verdict, "verdict").isNotNull();
+			requireThat(rationale, "rationale").isNotNull();
 			requireThat(observed, "observed").isNotNull();
 		}
 	}

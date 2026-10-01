@@ -126,7 +126,7 @@ final class TransitionSteps
 	}
 
 	/**
-	 * Completes a running trial under the campaign's measurement identity.
+	 * Completes a running trial under the campaign's measurement identity, without a rationale.
 	 *
 	 * @param campaign the campaign
 	 * @param key the trial
@@ -135,7 +135,22 @@ final class TransitionSteps
 	 */
 	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict)
 	{
-		return CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, verdict, campaign.identity()));
+		return complete(campaign, key, verdict, "");
+	}
+
+	/**
+	 * Completes a running trial under the campaign's measurement identity.
+	 *
+	 * @param campaign the campaign
+	 * @param key the trial
+	 * @param verdict the judged outcome
+	 * @param rationale the judge's explanation of the outcome
+	 * @return the updated campaign
+	 */
+	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict, String rationale)
+	{
+		return CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale,
+			campaign.identity()));
 	}
 
 	/**

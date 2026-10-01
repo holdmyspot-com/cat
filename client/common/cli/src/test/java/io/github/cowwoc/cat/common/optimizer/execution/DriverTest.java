@@ -14,6 +14,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -24,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
@@ -156,8 +159,8 @@ public final class DriverTest
 
 	/**
 	 * Trace 2: a development failure, a rerun that reproduces it, an author's edit, promotion runs, and a new working
-	 * candidate whose counts start at zero with the concurrency window back to 1. The optimization worktree holds the
-	 * new working candidate.
+	 * candidate whose counts start at zero with the concurrency window back to 1. The author receives the judge's
+	 * rationales for the failure and for its rerun. The optimization worktree holds the new working candidate.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -186,7 +189,13 @@ public final class DriverTest
 				requireThat(promoted, "promoted").isNotEqualTo(first);
 				requireThat(campaign.development().counts(), "counts").isEmpty();
 				requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
-				requireThat(harness.author().briefs().getFirst().category(), "category").isEqualTo("safety");
+				AuthorBrief brief = harness.author().briefs().getFirst();
+				requireThat(brief.category(), "category").isEqualTo("safety");
+				// The author receives the judge's rationale for the failure and for the rerun that reproduced it
+				Failure failure = brief.developmentFailures().getFirst();
+				requireThat(failure.rationale(), "rationale").isEqualTo(FakeJudgeProtocol.RATIONALE + "fail");
+				requireThat(failure.reruns(), "reruns").
+					isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, FakeJudgeProtocol.RATIONALE + "fail")));
 				// The author session's project source is the first authoring copy that the workspace prepared
 				SessionRequest author = harness.sessions().sessions().stream().map(FakeSession::request).
 					filter(request -> request.role() == SessionRole.AUTHOR).findFirst().orElseThrow();
@@ -963,10 +972,12 @@ public final class DriverTest
 				driver.step();
 				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
-				requireThat(brief.developmentFailures(), "developmentFailures").isEqualTo(List.of(developmentFailure));
+				requireThat(brief.developmentFailures(), "developmentFailures").
+					isEqualTo(List.of(new Failure(developmentFailure, "", List.of())));
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
-				requireThat(brief.endedAttempts().getFirst().failures(), "failures").isEqualTo(List.of(endedFailure));
+				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
+					isEqualTo(List.of(new Failure(endedFailure, "", List.of())));
 			}
 		}
 	}

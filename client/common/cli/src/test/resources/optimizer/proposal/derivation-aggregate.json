@@ -1,0 +1,20 @@
+{
+	"requirements": {
+		"count": 2,
+		"summary": "Tone and deletion safety."
+	},
+	"categories": {
+		"count": 2,
+		"summary": "Formatting and safety, 3 tests in total."
+	},
+	"judge": {
+		"rubric": "The response follows the requirement.",
+		"decision_rule": "Pass only if every rubric item holds."
+	},
+	"fixtures": {
+		"ignored_paths": []
+	},
+	"limitations": [],
+	"derived_sources": [],
+	"scope_conditions": []
+}

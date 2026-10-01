@@ -12,6 +12,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -30,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -294,6 +297,99 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Returns the snapshot fields that a campaign with a judged trial and a diagnosed failure requires.
+	 *
+	 * @return the JSON pointer of each field's parent and the field's name
+	 */
+	@DataProvider(name = "requiredSnapshotFields")
+	public static Object[][] requiredSnapshotFields()
+	{
+		return new Object[][]
+			{
+				{"/trials/0", "rationale"},
+				{"/development/failures/0", "rationale"},
+				{"/development/failures/0", "reruns"},
+				{"/development/failures/0/reruns/0", "rationale"}
+			};
+	}
+
+	/**
+	 * A snapshot that lacks a judge's rationale or a failure's diagnostic reruns is malformed and fails to load with
+	 * an error that names the file and the field.
+	 *
+	 * @param parent the JSON pointer of the object that holds the field
+	 * @param name the field to remove
+	 * @throws IOException if the store fails
+	 */
+	@Test(dataProvider = "requiredSnapshotFields")
+	public void rejectsSnapshotWithoutJudgeEvidence(String parent, String name) throws IOException
+	{
+		// Requirement: R-E1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-rationale-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(new CampaignBuilder().header(header(ID)).confirmed().working(1).
+				trial(trial(2, TrialState.JUDGED)).
+				failure(new Failure(instance("safety", "deletion", 3, true),
+					"The reply deleted the directory unasked.",
+					List.of(new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")))).
+				build());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			((ObjectNode) root.at(parent)).remove(name);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			String message = null;
+			try
+			{
+				new FileCampaignStore(base, JSON).load(ID);
+			}
+			catch (IOException e)
+			{
+				message = e.getMessage();
+			}
+			requireThat(message, "message").isEqualTo("The file " + snapshot + " is malformed: " + name +
+				": is missing");
+		}
+	}
+
+	/**
+	 * A trial record whose outcome lacks the judge's rationale is malformed and fails to read with an error that names
+	 * the file and the field.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void rejectsOutcomeWithoutRationale() throws IOException
+	{
+		// Requirement: R-E1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-rationale-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment(ID, assigned);
+			store.writeOutcome(ID, complete(assigned.key(), Verdict.FAIL));
+			Path record = list(campaignDirectory(base).resolve("trials")).getFirst();
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
+			((ObjectNode) root.get("outcome")).remove("rationale");
+			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
+
+			String message = null;
+			try
+			{
+				new FileCampaignStore(base, JSON).readRecord(ID, assigned.key());
+			}
+			catch (IOException e)
+			{
+				message = e.getMessage();
+			}
+			requireThat(message, "message").isEqualTo("The file " + record + " is malformed: rationale: is missing");
+		}
+	}
+
+	/**
 	 * A snapshot that is not valid JSON fails to load with an error that names the file.
 	 *
 	 * @throws IOException if the store fails
@@ -425,7 +521,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	private static void finish(CampaignStore store, Campaign running, TrialKey key, Verdict verdict)
 		throws IOException
 	{
-		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, running.identity());
+		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", running.identity());
 		store.writeOutcome(ID, outcome);
 		store.replaceSnapshot(CampaignTransitions.apply(running, outcome));
 	}

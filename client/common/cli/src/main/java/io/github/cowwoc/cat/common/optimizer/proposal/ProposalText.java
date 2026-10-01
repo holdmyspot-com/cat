@@ -1,0 +1,397 @@
+package io.github.cowwoc.cat.common.optimizer.proposal;
+
+import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
+import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.report.RemainingWork;
+import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
+import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
+
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Writes a {@link Proposal} as Markdown, listing every item of design &sect;6.1 itself rather than a count of the
+ * items.
+ * <p>
+ * <b>Thread Safety:</b> This class is not thread-safe.
+ */
+final class ProposalText
+{
+	private static final MathContext PERCENT_DIGITS = new MathContext(3);
+	/**
+	 * The initial capacity of the text, which fits a proposal with a few categories without growing.
+	 */
+	private static final int INITIAL_CAPACITY = 16 * 1024;
+	private final DerivedProposal derived;
+	private final Contract contract;
+	private final LinkReport links;
+	private final HostLogin login;
+	private final Campaign confirmed;
+	private final RemainingWork remaining;
+	private final List<String> caps;
+	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
+
+	/**
+	 * Creates a writer.
+	 *
+	 * @param derived the deriver's proposal
+	 * @param contract the contract that confirmation freezes
+	 * @param links the symbolic links
+	 * @param login how the host's harness account is billed
+	 * @param confirmed the campaign as it would be after confirmation
+	 * @param caps the level and cap of each of the first attempts, as text
+	 */
+	ProposalText(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, Campaign confirmed,
+		List<String> caps)
+	{
+		this.derived = derived;
+		this.contract = contract;
+		this.links = links;
+		this.login = login;
+		this.confirmed = confirmed;
+		this.remaining = RemainingWork.of(confirmed);
+		this.caps = caps;
+	}
+
+	/**
+	 * Returns a certification level as a fraction and a percentage.
+	 *
+	 * @param level the level
+	 * @return text such as {@code 1/50 (2.00%)}
+	 */
+	static String level(SignificanceLevel level)
+	{
+		BigDecimal percent = BigDecimal.valueOf(100).divide(new BigDecimal(level.threshold()), PERCENT_DIGITS);
+		// Show three significant digits, keeping trailing zeros
+		percent = percent.setScale(Math.max(percent.scale(),
+			percent.scale() + PERCENT_DIGITS.getPrecision() - percent.precision()));
+		return "1/" + level.threshold() + " (" + percent.toPlainString() + "%)";
+	}
+
+	/**
+	 * Returns the proposal.
+	 *
+	 * @return the Markdown text
+	 */
+	String render()
+	{
+		text.append("# Contract proposal\n");
+		requirements();
+		loading();
+		categories();
+		judge();
+		fixtures();
+		procedure();
+		symbolicLinks();
+		authentication();
+		sessionCount();
+		scope();
+		limitations();
+		return text.toString();
+	}
+
+	/**
+	 * Lists every requirement and its source.
+	 */
+	private void requirements()
+	{
+		heading("Requirements");
+		for (Requirement requirement : contract.requirements())
+		{
+			text.append("- `").append(requirement.id()).append("`: ").append(requirement.description()).append('\n').
+				append("  Source: ").append(requirement.source()).append('\n');
+		}
+	}
+
+	/**
+	 * Lists the prompt loading that the deriver session observed and the loading that was derived.
+	 */
+	private void loading()
+	{
+		heading("Prompt loading");
+		text.append("Observed in the deriver session's native events:\n\n");
+		for (String line : derived.observedSources().lines().toList())
+			text.append("- ").append(line).append('\n');
+		text.append("\nDerived from documented loading rules:\n\n");
+		if (derived.derivedSources().isEmpty())
+			text.append("- none\n");
+		for (DerivedSource source : derived.derivedSources())
+			text.append("- ").append(source.path()).append(": ").append(source.rule()).append('\n');
+		text.append('\n').append(Proposal.DERIVED_LOADING_LIMIT).append('\n');
+	}
+
+	/**
+	 * Lists every category and test definition.
+	 */
+	private void categories()
+	{
+		heading("Categories and tests");
+		text.append("This is a balanced benchmark: every test in a category has equal weight, and the variation " +
+			"probabilities are chosen for coverage. They are testing assumptions, not usage frequencies; actual " +
+			"future usage frequencies are unknown.\n");
+		for (Category category : contract.categories())
+		{
+			text.append("\n### Category `").append(category.id()).append("`\n\n").
+				append("Risk rank: ").append(category.riskRank().position()).append(" (1 is the riskiest)\n").
+				append("Why it needs its own claim: ").append(category.rationale()).append('\n');
+			for (TestDefinition test : category.tests())
+				test(test, category.tests().size());
+		}
+	}
+
+	/**
+	 * Lists one test definition.
+	 *
+	 * @param test the test definition
+	 * @param tests the number of tests in its category
+	 */
+	private void test(TestDefinition test, int tests)
+	{
+		text.append("\n#### Test `").append(test.id()).append("`\n\n").
+			append("- Checks: ").append(String.join(", ", test.requirementIds())).append('\n').
+			append("- Applies when: ").append(test.applicability()).append('\n').
+			append("- Weight within the category: 1/").append(tests).append('\n').
+			append("- Time limit: ").append(test.timeLimit().toSeconds()).append(" seconds\n").
+			append("- Turns:\n");
+		for (int i = 0; i < test.turns().size(); ++i)
+			text.append("  ").append(i + 1).append(". ").append(test.turns().get(i)).append('\n');
+		text.append("- Expected behaviour: ").append(test.expectedBehaviour()).append('\n');
+		if (test.variations().isEmpty())
+			text.append("- Variations: none\n");
+		else
+		{
+			text.append("- Variations:\n");
+			for (VariationRule rule : test.variations())
+			{
+				text.append("  - `").append(rule.dimension()).append("`:\n");
+				for (VariationValue value : rule.values())
+				{
+					text.append("    - `").append(value.label()).append("`: \"").append(value.text()).
+						append("\", probability ").
+						append(BigDecimal.valueOf(value.probability()).stripTrailingZeros().toPlainString()).
+						append('\n');
+				}
+			}
+		}
+		if (test.uncoveredInteractions().isEmpty())
+			text.append("- Interactions this test cannot cover: none\n");
+		else
+		{
+			text.append("- Interactions this test cannot cover:\n");
+			for (String interaction : test.uncoveredInteractions())
+				text.append("  - ").append(interaction).append('\n');
+		}
+	}
+
+	/**
+	 * Shows the judge profile.
+	 */
+	private void judge()
+	{
+		heading("Judge");
+		JudgeProfile judge = contract.judge();
+		text.append("- Model: ").append(judge.model()).append('\n').
+			append("- Prompt: CAT's judge prompt, which states the judge's authority and output rules; the prompt " +
+				"system cannot change it\n").
+			append("- Rubric: ").append(judge.rubric()).append('\n').
+			append("- Decision rule: ").append(judge.decisionRule()).append('\n').
+			append("- Result schema: `").append(judge.resultSchema()).append("`\n");
+	}
+
+	/**
+	 * Lists the ignored paths that trials need.
+	 */
+	private void fixtures()
+	{
+		heading("Trial fixtures");
+		text.append("Ignored paths that are copied into every trial:\n\n");
+		if (contract.fixtures().ignoredPaths().isEmpty())
+			text.append("- none\n");
+		for (String path : contract.fixtures().ignoredPaths())
+			text.append("- ").append(path).append('\n');
+	}
+
+	/**
+	 * States the statistical procedure.
+	 */
+	private void procedure()
+	{
+		heading("Statistical procedure");
+		String requiredRate = BettingProcess.REQUIRED_PASS_RATE.movePointRight(2).stripTrailingZeros().
+			toPlainString() + "%";
+		text.append("- Joint error budget: 0.05, split into 0.04 for certification, 0.005 for improvement claims " +
+			"and 0.005 for the incumbent's bounds. Certification attempt i uses α_i = 0.04/(i(i + 1)).\n").
+			append("- Certification: every category must show a pass rate above ").append(requiredRate).
+			append(". Bets: ").append(CertificationProcedure.BETS).append(".\n").
+			append("- Caps of the first attempts, in formal trials per category:\n");
+		for (String cap : caps)
+			text.append("  - ").append(cap).append('\n');
+		text.append("- Readiness gate: a category is ready for a certification attempt after at least ").
+			append(ReadinessGate.MINIMUM_TRIALS).
+			append(" representative development trials with at least 99% observed passes, at most ").
+			append(ReadinessGate.BATCH_FAILURE_LIMIT).append(" failure in each of the latest two complete batches of ").
+			append(CategoryCounts.BATCH_SIZE).
+			append(" trials, and no unresolved reproducible defect or known regression.\n").
+			append("- Review checkpoint: at ").append(Development.DEFAULT_REVIEW_POINT).
+			append(" representative trials in a category for an unchanged candidate with the category still " +
+				"unresolved, CAT stops scheduling the category and asks you how to continue.\n").
+			append("- Baseline targets: the incumbent runs ").append(Baseline.TARGET).
+			append(" representative trials in every category, and ").
+			append(Baseline.EXTENDED_TARGET - Baseline.TARGET).
+			append(" more in a category whose observed rate is below 95% but not yet proven deficient, ending at ").
+			append(Baseline.EXTENDED_TARGET).append(". A commit requires these targets.\n");
+	}
+
+	/**
+	 * Lists every symbolic link.
+	 */
+	private void symbolicLinks()
+	{
+		heading("Symbolic links");
+		if (links.entries().isEmpty())
+		{
+			text.append("No symbolic link was found in the prompt system or the staged fixtures.\n");
+			return;
+		}
+		for (LinkReport.Entry entry : links.entries())
+		{
+			text.append("- `").append(entry.link()).append('`');
+			switch (entry.status())
+			{
+				case CYCLE -> text.append(": the links form a cycle; this blocks confirmation");
+				case MISSING_TARGET -> text.append(" -> `").append(entry.target().orElseThrow()).
+					append("`: the target is missing; this blocks confirmation");
+				case RESOLVED ->
+				{
+					text.append(" -> `").append(entry.target().orElseThrow()).append("`: ");
+					if (entry.isInsideProject())
+						text.append("inside the project; ");
+					else
+						text.append("outside the project; ");
+					if (entry.editLimit().isEmpty())
+						text.append("its content may be edited");
+					else
+						text.append(entry.editLimit().get().name().toLowerCase(Locale.ROOT).replace('_', ' '));
+				}
+			}
+			text.append('\n');
+		}
+		text.append("\nStaging consequence: ").append(LinkReport.STAGING_CONSEQUENCE).append('\n');
+	}
+
+	/**
+	 * Shows how the harness signs in and the volume safeguards.
+	 */
+	private void authentication()
+	{
+		heading("Authentication and volume");
+		int sessions = 2 * remaining.total();
+		switch (login)
+		{
+			case SUBSCRIPTION -> volumeWarning("the harness signs in with a subscription login rather than an API key.",
+				sessions);
+			case UNKNOWN -> volumeWarning("CAT could not tell whether the harness signs in with a subscription login " +
+				"or an API key.", sessions);
+			case API_KEY -> text.append("The harness signs in with an API key.\n");
+		}
+		text.append("\nAt most ").append(confirmed.ceiling()).append(" nested sessions run at once, including " +
+			"judges and authors, within the harness capacity that every CAT process shares. Concurrency starts at 1 " +
+			"and grows gradually.\n");
+	}
+
+	/**
+	 * Warns that the campaign's volume may be flagged on a consumer subscription (design &sect;3.5).
+	 *
+	 * @param reason why the warning applies, as a sentence
+	 * @param sessions the minimum number of nested sessions that the campaign needs
+	 */
+	private void volumeWarning(String reason, int sessions)
+	{
+		text.append("Warning: ").append(reason).append(" This campaign needs at least ").append(sessions).
+			append(" nested sessions, and a provider may flag automated volume on a consumer subscription. Use an " +
+				"API key for campaign-scale use.\n");
+	}
+
+	/**
+	 * States the minimum session count.
+	 */
+	private void sessionCount()
+	{
+		heading("Minimum session count");
+		int trials = remaining.total();
+		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
+			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
+				"reruns, author sessions and promotion runs.\n\n").
+			append("Minimum trials by category:\n\n");
+		for (Category category : contract.categories())
+		{
+			text.append("- `").append(category.id()).append("`: ");
+			List<String> parts = new ArrayList<>();
+			for (RemainingWork.Entry entry : remaining.entries())
+			{
+				if (entry.category().equals(category.id()))
+				{
+					parts.add(entry.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " +
+						entry.trials());
+				}
+			}
+			text.append(String.join(", ", parts)).append('\n');
+		}
+	}
+
+	/**
+	 * Lists every condition that makes certification unavailable.
+	 */
+	private void scope()
+	{
+		heading("Certifiable scope");
+		if (derived.scopeConditions().isEmpty())
+		{
+			text.append("The deriver found no condition that makes certification unavailable.\n");
+			return;
+		}
+		text.append("Confirming records these outcomes, and no certification attempt can commit while they hold:\n\n");
+		for (ScopeCondition condition : derived.scopeConditions())
+		{
+			text.append("- ").append(condition.outcome().label()).append(" (requirements ").
+				append(String.join(", ", condition.requirementIds())).append("): ").append(condition.evidence()).
+				append('\n');
+		}
+	}
+
+	/**
+	 * Lists every known limitation.
+	 */
+	private void limitations()
+	{
+		heading("Known limitations");
+		for (String limitation : contract.limitations())
+			text.append("- ").append(limitation).append('\n');
+	}
+
+	/**
+	 * Starts a section.
+	 *
+	 * @param title the section title
+	 */
+	private void heading(String title)
+	{
+		text.append("\n## ").append(title).append("\n\n");
+	}
+}

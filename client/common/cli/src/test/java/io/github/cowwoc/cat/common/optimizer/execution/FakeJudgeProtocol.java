@@ -24,6 +24,10 @@ public final class FakeJudgeProtocol implements JudgeProtocol
 	 * The prefix of the judge's only turn, followed by the trial's last response.
 	 */
 	public static final String PREFIX = "Judge: ";
+	/**
+	 * The start of every rationale, followed by the trial's last response.
+	 */
+	public static final String RATIONALE = "The trial agent answered: ";
 
 	/**
 	 * Creates a protocol.
@@ -40,12 +44,13 @@ public final class FakeJudgeProtocol implements JudgeProtocol
 	}
 
 	@Override
-	public Optional<Verdict> verdict(SessionResult.Completed result)
+	public Optional<Judgment> judgment(SessionResult.Completed result)
 	{
-		return switch (result.responses().getLast())
+		String response = result.responses().getLast();
+		return switch (response)
 		{
-			case "pass" -> Optional.of(Verdict.PASS);
-			case "fail" -> Optional.of(Verdict.FAIL);
+			case "pass" -> Optional.of(new Judgment(Verdict.PASS, RATIONALE + response));
+			case "fail" -> Optional.of(new Judgment(Verdict.FAIL, RATIONALE + response));
 			default -> Optional.empty();
 		};
 	}

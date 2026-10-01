@@ -99,7 +99,7 @@ public final class ReconciliationTest
 	 */
 	private static CampaignEvent.Complete passed(Campaign campaign, TrialKey key)
 	{
-		return new CampaignEvent.Complete(key, Verdict.PASS, campaign.identity());
+		return new CampaignEvent.Complete(key, Verdict.PASS, "", campaign.identity());
 	}
 
 	/**

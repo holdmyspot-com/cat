@@ -23,7 +23,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
-import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
@@ -545,10 +544,10 @@ public final class Driver implements AutoCloseable
 			case SessionResult.Completed completed ->
 			{
 				evidence.addUsage(SessionRole.JUDGE, completed.usage());
-				Optional<Verdict> verdict = context.judge().verdict(completed);
-				if (verdict.isPresent())
+				Optional<Judgment> judgment = context.judge().judgment(completed);
+				if (judgment.isPresent())
 				{
-					complete(judging, verdict.get(), completed);
+					complete(judging, judgment.get(), completed);
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -592,18 +591,19 @@ public final class Driver implements AutoCloseable
 	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
 	 *
 	 * @param judging the judged trial
-	 * @param verdict the judge's verdict
+	 * @param judgment the judge's verdict and rationale
 	 * @param judge the judge session's result
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void complete(Judging judging, Verdict verdict, SessionResult.Completed judge) throws IOException
+	private void complete(Judging judging, Judgment judgment, SessionResult.Completed judge) throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(judging.evidence(), judge);
-		CampaignEvent.Complete complete = new CampaignEvent.Complete(judging.key(), verdict, observed);
+		CampaignEvent.Complete complete = new CampaignEvent.Complete(judging.key(), judgment.verdict(),
+			judgment.rationale(), observed);
 		if (campaign.identity().differences(observed).isEmpty())
 		{
 			context.store().writeOutcome(campaignId, complete);
-			evidence.observe(new AssumptionCheck.Observation(judging.concurrency(), verdict));
+			evidence.observe(new AssumptionCheck.Observation(judging.concurrency(), judgment.verdict()));
 		}
 		Candidate previous = campaign.development().working();
 		Campaign next = CampaignTransitions.apply(campaign, complete);

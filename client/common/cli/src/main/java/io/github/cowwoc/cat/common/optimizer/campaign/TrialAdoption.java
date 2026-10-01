@@ -163,7 +163,7 @@ final class TrialAdoption
 		{
 			draft.slowStart = draft.slowStart.afterFailure();
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			draft.developmentFailures.add(targeted);
+			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), List.of()));
 			addRegression(draft, targeted, Verdict.FAIL);
 			if (draft.round == null && draft.author == null)
 			{
@@ -292,7 +292,8 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a diagnostic rerun outcome.
+	 * Adopts a diagnostic rerun outcome. The outcome joins the diagnosis of the development failure that it reran, which
+	 * the failure keeps whether the campaign edits or continues.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -300,6 +301,7 @@ final class TrialAdoption
 	private static void adoptDiagnostic(CampaignDraft draft, LogicalTrial trial)
 	{
 		Diagnosis diagnosis = draft.diagnosis;
+		recordRerun(draft, diagnosis.pending().getFirst(), new DiagnosticRerun(trial.verdict(), trial.rationale()));
 		if (trial.verdict() == Verdict.FAIL)
 			draft.diagnosis = new Diagnosis(diagnosis.pending(), diagnosis.passedReruns(), null, true);
 		else if (diagnosis.passedReruns() + 1 < Diagnosis.RERUNS)
@@ -313,6 +315,28 @@ final class TrialAdoption
 			draft.diagnosis = new Diagnosis(pending, 0, null, diagnosis.reproduced());
 		}
 		resolveDiagnosis(draft);
+	}
+
+	/**
+	 * Adds a diagnostic rerun to the development failure whose instance it reran.
+	 *
+	 * @param draft the state
+	 * @param instance the failing instance that the rerun ran
+	 * @param rerun the rerun's outcome
+	 * @throws IllegalStateException if no development failure has the instance
+	 */
+	private static void recordRerun(CampaignDraft draft, TrialInstance instance, DiagnosticRerun rerun)
+	{
+		for (int i = 0; i < draft.developmentFailures.size(); ++i)
+		{
+			Failure failure = draft.developmentFailures.get(i);
+			if (failure.instance().equals(instance))
+			{
+				draft.developmentFailures.set(i, failure.withRerun(rerun));
+				return;
+			}
+		}
+		throw new IllegalStateException("No development failure has the rerun's instance: " + instance);
 	}
 
 	/**
@@ -435,11 +459,11 @@ final class TrialAdoption
 		String category = trial.key().category();
 		Map<String, CategoryCounts> counts = new LinkedHashMap<>(attempt.counts());
 		counts.put(category, attempt.count(category).add(trial.verdict()));
-		List<TrialInstance> failures = new ArrayList<>(attempt.failures());
+		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)
 		{
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			failures.add(targeted);
+			failures.add(new Failure(targeted, trial.rationale(), List.of()));
 			Verdict working = null;
 			if (attempt.candidate().equals(draft.working))
 				working = Verdict.FAIL;
@@ -503,9 +527,11 @@ final class TrialAdoption
 	 */
 	static void returnToDevelopment(CampaignDraft draft, CertificationAttempt attempt)
 	{
-		for (TrialInstance failure : attempt.failures())
+		for (Failure failure : attempt.failures())
 		{
-			if (!Promotion.containsContent(draft.developmentFailures, failure))
+			List<TrialInstance> developmentInstances = draft.developmentFailures.stream().map(Failure::instance).
+				toList();
+			if (!Promotion.containsContent(developmentInstances, failure.instance()))
 				draft.developmentFailures.add(failure);
 		}
 		if (attempt.failures().isEmpty())

@@ -2,8 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-
 import java.util.List;
 import java.util.Map;
 
@@ -15,14 +13,14 @@ import java.util.Map;
  * @param working the working candidate
  * @param series the development series, which changes whenever the counts restart
  * @param counts the working candidate's representative outcomes per category in this series
- * @param failures the failing instances that an author attempt receives, in failure order
+ * @param failures the failures that an author attempt receives, in failure order
  * @param diagnosis the reruns in progress, or {@code null} if none are
  * @param round the development round in progress, or {@code null} if none is
  * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
  * @param reviewPoints the review point of each category that the user extended
  */
 public record Development(Candidate working, int series, Map<String, CategoryCounts> counts,
-	List<TrialInstance> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
+	List<Failure> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
 	Map<String, Integer> reviewPoints)
 {
 	/**
@@ -36,7 +34,7 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	 * @param working the working candidate
 	 * @param series the development series, which changes whenever the counts restart
 	 * @param counts the working candidate's representative outcomes per category in this series
-	 * @param failures the failing instances that an author attempt receives, in failure order
+	 * @param failures the failures that an author attempt receives, in failure order
 	 * @param diagnosis the reruns in progress, or {@code null} if none are
 	 * @param round the development round in progress, or {@code null} if none is
 	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is

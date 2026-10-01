@@ -53,7 +53,7 @@ public final class CampaignBuilder
 	private int authorAttempts;
 	private int series = 1;
 	private final Map<String, CategoryCounts> development = new LinkedHashMap<>();
-	private final List<TrialInstance> failures = new ArrayList<>();
+	private final List<Failure> failures = new ArrayList<>();
 	private Diagnosis diagnosis;
 	private Round round;
 	private AuthorAttempt author;
@@ -320,14 +320,25 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Adds a failing instance that an author attempt receives.
+	 * Adds a failure that an author attempt receives, without a rationale or diagnostic reruns.
 	 *
-	 * @param instance the instance
+	 * @param instance the instance that failed
 	 * @return this builder
 	 */
 	public CampaignBuilder failure(TrialInstance instance)
 	{
-		failures.add(instance);
+		return failure(new Failure(instance, "", List.of()));
+	}
+
+	/**
+	 * Adds a failure that an author attempt receives.
+	 *
+	 * @param failure the failure
+	 * @return this builder
+	 */
+	public CampaignBuilder failure(Failure failure)
+	{
+		failures.add(failure);
 		return this;
 	}
 
@@ -644,7 +655,7 @@ public final class CampaignBuilder
 	{
 		private final int index;
 		private final Map<String, CategoryCounts> counts = new LinkedHashMap<>();
-		private final List<TrialInstance> attemptFailures = new ArrayList<>();
+		private final List<Failure> attemptFailures = new ArrayList<>();
 		private Integer attemptLineage;
 		private Candidate candidate;
 		private MeasurementIdentity attemptIdentity;
@@ -676,14 +687,25 @@ public final class CampaignBuilder
 		}
 
 		/**
-		 * Adds a failing formal instance.
+		 * Adds a formal failure, without a rationale.
 		 *
-		 * @param instance the instance
+		 * @param instance the instance that failed
 		 * @return this builder
 		 */
 		public AttemptBuilder failure(TrialInstance instance)
 		{
-			attemptFailures.add(instance);
+			return failure(new Failure(instance, "", List.of()));
+		}
+
+		/**
+		 * Adds a formal failure.
+		 *
+		 * @param failure the failure
+		 * @return this builder
+		 */
+		public AttemptBuilder failure(Failure failure)
+		{
+			attemptFailures.add(failure);
 			return this;
 		}
 

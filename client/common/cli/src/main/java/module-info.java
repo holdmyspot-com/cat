@@ -9,7 +9,9 @@ module io.github.cowwoc.cat.common.cli
 	exports io.github.cowwoc.cat.common;
 	exports io.github.cowwoc.cat.common.history;
 	exports io.github.cowwoc.cat.common.optimizer.contract;
+	exports io.github.cowwoc.cat.common.optimizer.execution.prompt;
 	exports io.github.cowwoc.cat.common.optimizer.port;
+	exports io.github.cowwoc.cat.common.optimizer.proposal;
 	exports io.github.cowwoc.cat.common.optimizer.report;
 	exports io.github.cowwoc.cat.common.optimizer.workspace;
 	exports io.github.cowwoc.cat.common.runner;

@@ -15,6 +15,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
@@ -274,6 +276,7 @@ final class CampaignJson
 		{
 			ObjectNode node = root.putObject("outcome");
 			node.put("verdict", outcome.verdict().name());
+			node.put("rationale", outcome.rationale());
 			node.set("observed", writeIdentity(outcome.observed()));
 		}
 		return root;
@@ -297,7 +300,7 @@ final class CampaignJson
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				readIdentity(field(outcomeNode, "observed")));
+				text(outcomeNode, "rationale"), readIdentity(field(outcomeNode, "observed")));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome);
@@ -405,7 +408,7 @@ final class CampaignJson
 		node.set("working", writeCandidate(development.working()));
 		node.put("series", development.series());
 		node.set("counts", writeCounts(development.counts()));
-		node.set("failures", writeInstances(development.failures()));
+		node.set("failures", writeFailures(development.failures()));
 		Diagnosis diagnosis = development.diagnosis();
 		if (diagnosis == null)
 			node.putNull("diagnosis");
@@ -501,7 +504,7 @@ final class CampaignJson
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
-			readCounts(field(node, "counts")), readInstances(node, "failures"), diagnosis, round, author,
+			readCounts(field(node, "counts")), readFailures(node, "failures"), diagnosis, round, author,
 			reviewPoints);
 	}
 
@@ -529,7 +532,7 @@ final class CampaignJson
 		procedureNode.put("bets", procedure.bets());
 		procedureNode.put("allocation_policy", procedure.allocationPolicy());
 		node.set("counts", writeCounts(attempt.counts()));
-		node.set("failures", writeInstances(attempt.failures()));
+		node.set("failures", writeFailures(attempt.failures()));
 		node.set("formal_stream", writeStream(attempt.formalStream()));
 		putConstant(node, "outcome", attempt.outcome());
 		return node;
@@ -552,7 +555,7 @@ final class CampaignJson
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
-			readCounts(field(node, "counts")), readInstances(node, "failures"),
+			readCounts(field(node, "counts")), readFailures(node, "failures"),
 			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class));
 	}
 
@@ -618,6 +621,7 @@ final class CampaignJson
 		node.set("allocation", writeAllocation(trial.allocation()));
 		node.put("state", trial.state().name());
 		putConstant(node, "verdict", trial.verdict());
+		node.put("rationale", trial.rationale());
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
 		node.put("observations", trial.observations());
@@ -632,10 +636,12 @@ final class CampaignJson
 	 */
 	private static LogicalTrial readTrial(JsonNode node)
 	{
+		Verdict verdict = nullableConstant(node, "verdict", Verdict.class);
+		String rationale = nullableText(node, "rationale");
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), nullableConstant(node, "verdict", Verdict.class),
-			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"));
+			constant(node, "state", TrialState.class), verdict, rationale, integer(node, "infrastructure_failures"),
+			readInfrastructureAttempts(node), integer(node, "observations"));
 	}
 
 	/**
@@ -935,6 +941,52 @@ final class CampaignJson
 	}
 
 	/**
+	 * Converts failures to a document. Each failure is its instance's document with the judge's rationale and the
+	 * diagnostic reruns added.
+	 *
+	 * @param failures the failures
+	 * @return the document
+	 */
+	private ArrayNode writeFailures(List<Failure> failures)
+	{
+		ArrayNode node = json.createArrayNode();
+		for (Failure failure : failures)
+		{
+			ObjectNode element = writeInstance(failure.instance());
+			element.put("rationale", failure.rationale());
+			ArrayNode reruns = element.putArray("reruns");
+			for (DiagnosticRerun rerun : failure.reruns())
+			{
+				ObjectNode rerunNode = reruns.addObject();
+				rerunNode.put("verdict", rerun.verdict().name());
+				rerunNode.put("rationale", rerun.rationale());
+			}
+			node.add(element);
+		}
+		return node;
+	}
+
+	/**
+	 * Reads a list of failures.
+	 *
+	 * @param node the object that holds the field
+	 * @param name the field's name
+	 * @return the failures
+	 */
+	private static List<Failure> readFailures(JsonNode node, String name)
+	{
+		List<Failure> failures = new ArrayList<>();
+		for (JsonNode element : elements(node, name))
+		{
+			List<DiagnosticRerun> reruns = new ArrayList<>();
+			for (JsonNode rerun : elements(element, "reruns"))
+				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
+			failures.add(new Failure(readInstance(element), text(element, "rationale"), reruns));
+		}
+		return failures;
+	}
+
+	/**
 	 * Converts a draw stream's state to a document.
 	 *
 	 * @param state the state
@@ -1210,6 +1262,22 @@ final class CampaignJson
 	private static String text(JsonNode node, String name)
 	{
 		return stringValue(field(node, name), name);
+	}
+
+	/**
+	 * Returns a string field that must be present but may be null.
+	 *
+	 * @param node the object that holds the field
+	 * @param name the field's name
+	 * @return the string, or null if it is JSON {@code null}
+	 * @throws IllegalArgumentException if the field is missing or is neither a string nor null
+	 */
+	private static String nullableText(JsonNode node, String name)
+	{
+		JsonNode value = nullable(node, name);
+		if (value == null)
+			return null;
+		return stringValue(value, name);
 	}
 
 	/**

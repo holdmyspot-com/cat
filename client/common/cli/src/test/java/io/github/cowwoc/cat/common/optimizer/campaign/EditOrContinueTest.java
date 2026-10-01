@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -34,6 +35,17 @@ public final class EditOrContinueTest
 	{
 		return new CampaignBuilder().confirmed().development("safety", 60, safetyFailures).diagnosis(diagnosis).
 			build().development();
+	}
+
+	/**
+	 * Returns the instances of a development state's failures.
+	 *
+	 * @param development the state
+	 * @return the instances, in failure order
+	 */
+	private static List<TrialInstance> instances(Development development)
+	{
+		return development.failures().stream().map(Failure::instance).toList();
 	}
 
 	/**
@@ -91,7 +103,7 @@ public final class EditOrContinueTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 
 		requireThat(campaign.development().isPaused(), "isPaused").isTrue();
-		TrialInstance failed = campaign.development().failures().getFirst();
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
 		requireThat(plan, "plan").containsExactly(List.of(new Admission.Assign(Purpose.DIAGNOSTIC,
 			campaign.development().series(), campaign.development().working().snapshot(), "safety", failed,
@@ -111,7 +123,7 @@ public final class EditOrContinueTest
 		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).
 			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
-		TrialInstance failed = campaign.development().failures().getFirst();
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
 		Development development = campaign.development();
 		for (int rerun = 0; rerun < Diagnosis.RERUNS; ++rerun)
 		{
@@ -120,7 +132,7 @@ public final class EditOrContinueTest
 				development.working().snapshot(), failed, Verdict.PASS);
 		}
 		requireThat(campaign.development().isPaused(), "isPaused").isFalse();
-		requireThat(campaign.development().failures(), "failures").containsExactly(List.of(failed));
+		requireThat(instances(campaign.development()), "failures").containsExactly(List.of(failed));
 		requireThat(campaign.development().count("safety"), "counts").isEqualTo(
 			CampaignBuilder.counts(60, 0).add(Verdict.FAIL));
 		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
@@ -137,7 +149,7 @@ public final class EditOrContinueTest
 		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).
 			development("formatting", 60, 0).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
-		TrialInstance failed = campaign.development().failures().getFirst();
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
 		Development development = campaign.development();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, development.series(),
 			development.working().snapshot(), failed, Verdict.PASS);
@@ -146,9 +158,84 @@ public final class EditOrContinueTest
 
 		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
-		requireThat(campaign.development().failures(), "failures").containsExactly(List.of(failed));
+		requireThat(instances(campaign.development()), "failures").containsExactly(List.of(failed));
 		requireThat(campaign.development().count("safety"), "counts").isEqualTo(
 			CampaignBuilder.counts(60, 0).add(Verdict.FAIL));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
+	}
+
+	/**
+	 * Verifies that a failure keeps the judge's rationale and its diagnosis after 3 passing reruns resume sampling.
+	 */
+	@Test
+	public void continuedFailureKeepsItsDiagnosis()
+	{
+		// Requirement: R-D2
+		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).build();
+		campaign = judgeLast(TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety"), Verdict.FAIL,
+			"The reply deleted the logs directory without asking.");
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
+		List<DiagnosticRerun> reruns = new ArrayList<>();
+		for (int rerun = 1; rerun <= Diagnosis.RERUNS; ++rerun)
+		{
+			String rationale = "Rerun " + rerun + " asked before deleting.";
+			campaign = judgeLast(assignRerun(campaign, failed), Verdict.PASS, rationale);
+			reruns.add(new DiagnosticRerun(Verdict.PASS, rationale));
+		}
+
+		requireThat(campaign.development().isPaused(), "isPaused").isFalse();
+		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
+			"The reply deleted the logs directory without asking.", reruns)));
+	}
+
+	/**
+	 * Verifies that a failure keeps the judge's rationale and its diagnosis after a failing rerun starts a
+	 * development round.
+	 */
+	@Test
+	public void editedFailureKeepsItsDiagnosis()
+	{
+		// Requirement: R-D2
+		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).build();
+		campaign = judgeLast(TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety"), Verdict.FAIL,
+			"The reply deleted the logs directory without asking.");
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
+		campaign = judgeLast(assignRerun(campaign, failed), Verdict.PASS, "The rerun asked before deleting.");
+		campaign = judgeLast(assignRerun(campaign, failed), Verdict.FAIL, "The rerun deleted the directory too.");
+
+		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
+		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
+			"The reply deleted the logs directory without asking.", List.of(
+				new DiagnosticRerun(Verdict.PASS, "The rerun asked before deleting."),
+				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")))));
+	}
+
+	/**
+	 * Assigns the diagnostic rerun of the current failing instance.
+	 *
+	 * @param campaign the campaign, with a diagnosis in progress
+	 * @param failed the failing instance
+	 * @return the updated campaign
+	 */
+	private static Campaign assignRerun(Campaign campaign, TrialInstance failed)
+	{
+		Development development = campaign.development();
+		return TransitionSteps.assign(campaign, Purpose.DIAGNOSTIC, development.series(),
+			development.working().snapshot(), failed);
+	}
+
+	/**
+	 * Starts and judges the most recently assigned trial.
+	 *
+	 * @param campaign the campaign
+	 * @param verdict the judged outcome
+	 * @param rationale the judge's explanation of the outcome
+	 * @return the updated campaign
+	 */
+	private static Campaign judgeLast(Campaign campaign, Verdict verdict, String rationale)
+	{
+		TrialKey key = TransitionSteps.last(campaign);
+		Campaign started = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		return TransitionSteps.complete(started, key, verdict, rationale);
 	}
 }

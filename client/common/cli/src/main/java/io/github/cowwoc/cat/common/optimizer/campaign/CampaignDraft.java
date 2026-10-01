@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -78,9 +77,9 @@ final class CampaignDraft
 	 */
 	Map<String, CategoryCounts> developmentCounts;
 	/**
-	 * The failing instances that the next author attempt receives.
+	 * The failures that the next author attempt receives.
 	 */
-	List<TrialInstance> developmentFailures;
+	List<Failure> developmentFailures;
 	/**
 	 * The diagnosis in progress, or {@code null}.
 	 */

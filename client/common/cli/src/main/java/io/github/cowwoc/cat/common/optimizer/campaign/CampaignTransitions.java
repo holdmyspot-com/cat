@@ -369,7 +369,7 @@ public final class CampaignTransitions
 		if (!differences.isEmpty())
 		{
 			draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-				trial.allocation(), TrialState.ASSIGNED, null, trial.infrastructureFailures(),
+				trial.allocation(), TrialState.ASSIGNED, null, null, trial.infrastructureFailures(),
 				trial.infrastructureAttempts(), trial.observations() + 1));
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
@@ -377,8 +377,8 @@ public final class CampaignTransitions
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity().extendWith(observed),
-			trial.allocation(), TrialState.JUDGED, complete.verdict(), trial.infrastructureFailures(),
-			trial.infrastructureAttempts(), trial.observations()));
+			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(),
+			trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations()));
 	}
 
 	/**
@@ -438,7 +438,7 @@ public final class CampaignTransitions
 		List<InfrastructureAttempt> attempts = new ArrayList<>(trial.infrastructureAttempts());
 		attempts.add(new InfrastructureAttempt(fail.at(), fail.failure(), fail.detail()));
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
-			TrialState.ASSIGNED, null, infrastructureFailures, attempts, trial.observations()));
+			TrialState.ASSIGNED, null, null, infrastructureFailures, attempts, trial.observations()));
 	}
 
 	/**
@@ -465,8 +465,8 @@ public final class CampaignTransitions
 			return;
 		}
 		++draft.authorAttempts;
-		List<PromotionRun> runs = Promotion.plan(category, draft.developmentFailures, draft.regressionSet,
-			draft.generator());
+		List<TrialInstance> failures = draft.developmentFailures.stream().map(Failure::instance).toList();
+		List<PromotionRun> runs = Promotion.plan(category, failures, draft.regressionSet, draft.generator());
 		draft.author = new AuthorAttempt(draft.authorAttempts, category, submit.snapshot(), runs);
 		TrialAdoption.decidePromotion(draft);
 	}

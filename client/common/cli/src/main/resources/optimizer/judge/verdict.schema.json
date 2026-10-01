@@ -1,0 +1,11 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Judge verdict",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["verdict", "rationale"],
+	"properties": {
+		"verdict": {"enum": ["pass", "fail"]},
+		"rationale": {"description": "The evidence that decided the verdict.", "type": "string", "pattern": "\\S"}
+	}
+}
