@@ -120,4 +120,30 @@ public final class HistoryTest
 				isEqualTo(List.of("agent:reviewer", "skill:diagnose"));
 		}
 	}
+
+	/**
+	 * Verifies a path state read through a symbolic revision follows that revision after it moves, while a full object
+	 * ID keeps naming the content it named before.
+	 *
+	 * @throws IOException if the isolated repository cannot be created or Git cannot create its fixture commits
+	 */
+	@Test
+	public void rereadsSymbolicRevisionAfterItMoves() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
+			TopicReplayRepository.initializeRepository(repository);
+			Git git = new Git(repository);
+			String first = TopicReplayRepository.commit(git, repository, "rules/example.md", "first\n", "add rule");
+			History history = new History(repository, git);
+			PathState firstState = history.pathState(first, "rules/example.md");
+			requireThat(history.pathState("HEAD", "rules/example.md"), "headBeforeMove").isEqualTo(firstState);
+
+			TopicReplayRepository.commit(git, repository, "rules/example.md", "second\n", "revise rule");
+
+			requireThat(history.pathState("HEAD", "rules/example.md"), "headAfterMove").isNotEqualTo(firstState);
+			requireThat(history.pathState(first, "rules/example.md"), "firstAfterMove").isEqualTo(firstState);
+		}
+	}
 }

@@ -92,10 +92,11 @@ final class Finalization
 			return;
 		}
 		requirePerOutputGateEvidence(manifestFile, replay.outputs());
-		List<FinalizedOutput> outputs = finalizedOutputs(replay, replay.base(), rewrittenTip);
+		List<History.RangeCommit> chain = history.rangeWithParents(replay.base(), rewrittenTip);
+		List<FinalizedOutput> outputs = finalizedOutputs(replay, chain);
 		FinalizationReceipt receipt = new FinalizationReceipt(RECEIPT_VERSION, sha256(manifestFile), replay.base(),
 			replay.sourceTip(), replay.sourceTipTree(), replay.finalTree(), rewrittenTip, outputs,
-			replayIdentityDigest(replay.base(), rewrittenTip), finalizationEvidence(manifestFile, receiptFile));
+			replayIdentityDigest(chain), finalizationEvidence(manifestFile, receiptFile));
 		writeAtomically(receiptFile, receipt);
 		System.out.println("finalizationReceipt=" + receiptFile);
 	}
@@ -134,8 +135,9 @@ final class Finalization
 			throw new IOException("Topic-replay finalization receipt no longer matches captured source facts: " +
 				receiptFile);
 		}
-		if (!receipt.outputs().equals(finalizedOutputs(replay, rebaseBase, expectedRewrittenTip)) ||
-			!receipt.identityDigest().equals(replayIdentityDigest(rebaseBase, expectedRewrittenTip)))
+		List<History.RangeCommit> chain = history.rangeWithParents(rebaseBase, expectedRewrittenTip);
+		if (!receipt.outputs().equals(finalizedOutputs(replay, chain)) ||
+			!receipt.identityDigest().equals(replayIdentityDigest(chain)))
 		{
 			throw new IOException("Topic-replay finalization receipt does not match the ordered replacement chain: " +
 				receiptFile);
@@ -207,25 +209,22 @@ final class Finalization
 	 * Resolves the ordered replacement chain and binds each retained output to its witnessed tree transition.
 	 *
 	 * @param replay the sealed replay facts
-	 * @param base the replacement-chain base
-	 * @param rewrittenTip the replacement-chain tip
+	 * @param chain the ordered replacement commits with their parents
 	 * @return the receipt-ready ordered outputs
 	 * @throws IOException if the replacement chain is incomplete or a witness is absent
 	 */
-	private List<FinalizedOutput> finalizedOutputs(Replay replay, String base, String rewrittenTip) throws IOException
+	private List<FinalizedOutput> finalizedOutputs(Replay replay, List<History.RangeCommit> chain) throws IOException
 	{
 		List<Output> expected = replay.outputs().stream().filter(Output::retained).toList();
-		List<String> commits = history.range(base, rewrittenTip);
-		if (commits.size() != expected.size())
+		if (chain.size() != expected.size())
 			throw new IOException("Topic-replay finalization cannot bind an incomplete replacement chain");
 		List<FinalizedOutput> result = new ArrayList<>();
-		for (int index = 0; index < commits.size(); ++index)
+		for (int index = 0; index < chain.size(); ++index)
 		{
-			String commit = commits.get(index);
-			String parent = git.lines("show", "-s", "--format=%P", commit).getFirst();
+			History.RangeCommit commit = chain.get(index);
 			OutputWitness witness = replay.witnessFor(expected.get(index).id());
-			result.add(new FinalizedOutput(expected.get(index).id(), commit, parent, witness.beforeTree(),
-				witness.afterTree()));
+			result.add(new FinalizedOutput(expected.get(index).id(), commit.hash(), commit.parents(),
+				witness.beforeTree(), witness.afterTree()));
 		}
 		return result;
 	}
@@ -276,17 +275,16 @@ final class Finalization
 	/**
 	 * Computes the author and committer identity digest for one replacement chain.
 	 *
-	 * @param base the replacement-chain base
-	 * @param rewrittenTip the replacement-chain tip
+	 * @param chain the ordered replacement commits
 	 * @return the chain's identity digest
 	 * @throws IOException if Git cannot read the replacement commits
 	 */
-	private String replayIdentityDigest(String base, String rewrittenTip) throws IOException
+	private String replayIdentityDigest(List<History.RangeCommit> chain) throws IOException
 	{
-		List<String> commits = history.range(base, rewrittenTip);
 		List<String> arguments = new ArrayList<>(List.of("show", "-s",
 			"--format=%H%x00%an%x00%ae%x00%cn%x00%ce"));
-		arguments.addAll(commits);
+		for (History.RangeCommit commit : chain)
+			arguments.add(commit.hash());
 		return sha256(git.bytes(arguments.toArray(String[]::new)));
 	}
 

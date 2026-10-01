@@ -71,6 +71,12 @@ public final class FinalizationTest
 
 	/**
 	 * Verifies replay refuses unresolved adversarial review evidence before creating any replacement output.
+	 * <p>
+	 * This test takes about 0.8 seconds alone and can exceed 1 second under full-build load. Each later claim needs the
+	 * real Git chain before it, so splitting the test would repeat that chain. It starts 227 Git processes: about 0.23
+	 * seconds builds and seals a two-source, two-output manifest; about 0.19 seconds runs eight rejected replays and
+	 * three draft-acceptance worktrees; and about 0.35 seconds replays, gates each output in its own worktree, and
+	 * finalizes and verifies the result.
 	 *
 	 * @throws IOException if the fixture or replay operation cannot be created
 	 */
@@ -321,6 +327,16 @@ public final class FinalizationTest
 			catch (IOException e)
 			{
 				requireThat(e.getMessage(), "failureMessage").contains("evidence changed");
+			}
+			Files.writeString(featurePatch, Files.readString(featurePatch) + "\n");
+			try
+			{
+				editor.verifyFinalization(manifest, base, git.run("rev-parse", "HEAD").trim());
+				throw new AssertionError("Expected finalization verification to reject a changed source patch");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "failureMessage").contains("source-patch hash does not match");
 			}
 			requireThat(git.run("for-each-ref", "--format=%(refname:short)", "refs/heads/" + backup).trim(),
 				"deletedBackup").isEmpty();

@@ -143,10 +143,12 @@ final class OutputGates
 	 */
 	private String commitForTree(String tree) throws IOException
 	{
-		for (String commit : git.lines("rev-list", "--reverse", "HEAD"))
+		// rev-list prints a "commit <hash>" header line before each commit's formatted tree line
+		List<String> commitsAndTrees = git.lines("rev-list", "--reverse", "--format=%T", "HEAD");
+		for (int index = 0; index + 1 < commitsAndTrees.size(); index += 2)
 		{
-			if (git.lines("rev-parse", commit + "^{tree}").getFirst().equals(tree))
-				return commit;
+			if (commitsAndTrees.get(index + 1).equals(tree))
+				return commitsAndTrees.get(index).substring("commit ".length());
 		}
 		throw new IOException("Topic-replay output tree is not reachable from HEAD: " + tree);
 	}

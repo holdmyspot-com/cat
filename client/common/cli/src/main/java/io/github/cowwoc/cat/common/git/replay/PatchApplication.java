@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Applies and verifies manifest-local patches through isolated Git indexes.
@@ -17,6 +18,12 @@ final class PatchApplication
 	private final Git git;
 	private final ManifestStore<?> manifests;
 	private final PatchArtifacts patches;
+	/**
+	 * Source reconstructions whose declared patch already reproduced their declared tree in this process. Git trees and
+	 * the patch bytes that match a declared SHA-256 cannot change, so a repeated verification can only repeat the patch
+	 * hash check.
+	 */
+	private final Set<SourceReconstruction> verifiedSourceReconstructions = ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Creates an isolated patch-application boundary.
@@ -67,16 +74,17 @@ final class PatchApplication
 	 */
 	void verifySourceReconstruction(Path manifestFile, SourceReconstruction reconstruction) throws IOException
 	{
+		if (verifiedSourceReconstructions.contains(reconstruction))
+		{
+			resolveDeclaredSourcePatch(manifestFile, reconstruction);
+			return;
+		}
 		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
 		try
 		{
 			Files.deleteIfExists(index);
 			git.lines(index, "read-tree", reconstruction.beforeTree());
-			Path patchFile = patches.resolve(manifestFile, reconstruction.sourcePatch());
-			if (!reconstruction.sourcePatch().sha256().equals(patches.sha256(patchFile)))
-			{
-				throw new IOException("Topic-replay source-patch hash does not match its declared SHA-256: " + patchFile);
-			}
+			Path patchFile = resolveDeclaredSourcePatch(manifestFile, reconstruction);
 			git.lines(index, "apply", "--cached", patchFile.toAbsolutePath().normalize().toString());
 			String actualTree = git.lines(index, "write-tree").getFirst();
 			if (!actualTree.equals(reconstruction.afterTree()))
@@ -84,11 +92,28 @@ final class PatchApplication
 				throw new IOException("Source reconstruction for " + reconstruction.source() + " produced tree " + actualTree +
 					" instead of declared tree " + reconstruction.afterTree());
 			}
+			verifiedSourceReconstructions.add(reconstruction);
 		}
 		finally
 		{
 			Files.deleteIfExists(index);
 		}
+	}
+
+	/**
+	 * Resolves a source reconstruction's patch file after checking that its bytes match the declared SHA-256.
+	 *
+	 * @param manifestFile the manifest containing the patch
+	 * @param reconstruction the source reconstruction that declares the patch
+	 * @return the patch file
+	 * @throws IOException if the patch declaration is invalid, the file cannot be read, or its hash differs
+	 */
+	private Path resolveDeclaredSourcePatch(Path manifestFile, SourceReconstruction reconstruction) throws IOException
+	{
+		Path patchFile = patches.resolve(manifestFile, reconstruction.sourcePatch());
+		if (!reconstruction.sourcePatch().sha256().equals(patches.sha256(patchFile)))
+			throw new IOException("Topic-replay source-patch hash does not match its declared SHA-256: " + patchFile);
+		return patchFile;
 	}
 
 	/**

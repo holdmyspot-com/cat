@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -17,6 +18,12 @@ final class ReplayVerification
 	private final Git git;
 	private final History history;
 	private final ReplayPreflight replayPreflight;
+	/**
+	 * Replacement chains already verified against a manifest in this process. A full commit hash names immutable
+	 * history, so a repeated verification of the same chain against the same manifest can only repeat the source-patch
+	 * checks.
+	 */
+	private final Set<VerifiedChain> verifiedChains = ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Creates a replay-result verifier.
@@ -44,6 +51,24 @@ final class ReplayVerification
 	void verify(Path manifestFile, BatchManifest manifest, String rebaseBase, String rewrittenTip) throws IOException
 	{
 		replayPreflight.verifySourceReconstructions(manifestFile, manifest);
+		VerifiedChain chain = new VerifiedChain(manifest, rebaseBase, rewrittenTip);
+		if (verifiedChains.contains(chain))
+			return;
+		verifyChain(manifest, rebaseBase, rewrittenTip);
+		if (rewrittenTip.matches("[0-9a-f]{40}"))
+			verifiedChains.add(chain);
+	}
+
+	/**
+	 * Verifies that a rewritten range realizes the manifest's base, output order, and output trees.
+	 *
+	 * @param manifest the parsed and validated batch manifest
+	 * @param rebaseBase the commit immediately before the rewritten range
+	 * @param rewrittenTip the rewritten range's final commit
+	 * @throws IOException if the replay differs from the manifest's immutable facts
+	 */
+	private void verifyChain(BatchManifest manifest, String rebaseBase, String rewrittenTip) throws IOException
+	{
 		if (!manifest.base().equals(rebaseBase))
 		{
 			throw new IOException("Rebase base does not match manifest: expected " + manifest.base() + " but found " +
@@ -113,5 +138,16 @@ final class ReplayVerification
 	{
 		return manifest.outputWitnesses().stream().filter(witness -> witness.outputId().equals(outputId)).findFirst().
 			orElseThrow(() -> new IOException("Topic-replay manifest does not contain retained output: " + outputId));
+	}
+
+	/**
+	 * One replacement chain that satisfied a manifest's immutable facts.
+	 *
+	 * @param manifest the parsed batch manifest
+	 * @param rebaseBase the commit immediately before the rewritten range
+	 * @param rewrittenTip the full hash of the rewritten range's final commit
+	 */
+	private record VerifiedChain(BatchManifest manifest, String rebaseBase, String rewrittenTip)
+	{
 	}
 }
