@@ -90,6 +90,53 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * A crash after any write step of a delivery journal update leaves the earlier progress until the new journal is
+	 * renamed into place, and the new progress afterwards; the journal file carries the format version.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void journalWriteFaultKeepsOldOrNew() throws IOException
+	{
+		// Requirement: R-W8
+		for (WriteStep crashStep : WriteStep.values())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path base = cleanup.add(Files.createTempDirectory("cat-campaign-journal-"));
+				DeliveryJournal started = journal("candidate-2", 0);
+				new FileCampaignStore(base, JSON).writeJournal(ID, started);
+				FileCampaignStore crashing = new FileCampaignStore(base, JSON, step ->
+				{
+					if (step == crashStep)
+						throw new SimulatedCrash(step);
+				});
+				boolean crashed = false;
+				try
+				{
+					crashing.writeJournal(ID, started.withApplied(1));
+				}
+				catch (SimulatedCrash _)
+				{
+					crashed = true;
+				}
+				requireThat(crashed, "crashed").withContext(crashStep, "crashStep").isTrue();
+
+				DeliveryJournal expected;
+				if (crashStep.compareTo(WriteStep.RENAME) >= 0)
+					expected = started.withApplied(1);
+				else
+					expected = started;
+				requireThat(new FileCampaignStore(base, JSON).loadJournal(ID), "loaded").
+					withContext(crashStep, "crashStep").isEqualTo(Optional.of(expected));
+				JsonNode document = JSON.readTree(Files.readString(campaignDirectory(base).resolve("delivery.json"),
+					UTF_8));
+				requireThat(document.get("format_version").asInt(), "formatVersion").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
 	 * A crash after any write step of a trial's lifecycle, followed by a restart and reconciliation, leaves exactly one
 	 * adopted outcome: the recorded failure if its record was renamed into place, otherwise the rerun's pass.
 	 *

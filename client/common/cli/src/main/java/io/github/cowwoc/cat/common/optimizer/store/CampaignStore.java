@@ -87,4 +87,29 @@ public interface CampaignStore
 	 * @throws IOException if a snapshot cannot be read or is malformed
 	 */
 	List<CampaignHeader> listHeaders() throws IOException;
+
+	/**
+	 * Loads a campaign's delivery journal.
+	 *
+	 * @param campaignId the campaign's identity
+	 * @return the journal, or empty if the campaign has not started a delivery
+	 * @throws NullPointerException if {@code campaignId} is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException if the journal cannot be read or is malformed
+	 */
+	Optional<DeliveryJournal> loadJournal(String campaignId) throws IOException;
+
+	/**
+	 * Atomically replaces a campaign's delivery journal. A campaign has at most one delivery: once its journal exists,
+	 * only the progress of the same planned changes may be recorded.
+	 *
+	 * @param campaignId the campaign's identity
+	 * @param journal the delivery's current progress
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IllegalStateException if the campaign's journal records a different candidate or different changes, or
+	 *   more applied changes than {@code journal}
+	 * @throws IOException if the journal cannot be read or written
+	 */
+	void writeJournal(String campaignId, DeliveryJournal journal) throws IOException;
 }

@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * A {@link CampaignStore} that holds snapshots and trial records in memory.
+ * A {@link CampaignStore} that holds snapshots, trial records and delivery journals in memory.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
@@ -20,6 +20,7 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 {
 	private final Map<String, Campaign> snapshots = new TreeMap<>();
 	private final Map<String, Map<TrialKey, TrialRecord>> records = new HashMap<>();
+	private final Map<String, DeliveryJournal> journals = new HashMap<>();
 
 	/**
 	 * Creates an empty store.
@@ -62,5 +63,17 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 		for (Campaign campaign : snapshots.values())
 			headers.add(campaign.header());
 		return headers;
+	}
+
+	@Override
+	Optional<DeliveryJournal> readJournal(String campaignId)
+	{
+		return Optional.ofNullable(journals.get(campaignId));
+	}
+
+	@Override
+	void replaceJournal(String campaignId, DeliveryJournal journal)
+	{
+		journals.put(campaignId, journal);
 	}
 }

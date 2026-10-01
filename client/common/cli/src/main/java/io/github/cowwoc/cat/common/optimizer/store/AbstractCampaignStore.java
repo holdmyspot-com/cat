@@ -112,6 +112,37 @@ abstract class AbstractCampaignStore implements CampaignStore
 		return readHeaders();
 	}
 
+	@Override
+	public final Optional<DeliveryJournal> loadJournal(String campaignId) throws IOException
+	{
+		requireCampaignId(campaignId);
+		return readJournal(campaignId);
+	}
+
+	@Override
+	public final void writeJournal(String campaignId, DeliveryJournal journal) throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(journal, "journal").isNotNull();
+		Optional<DeliveryJournal> existing = readJournal(campaignId);
+		if (existing.isPresent())
+		{
+			DeliveryJournal recorded = existing.get();
+			if (!recorded.candidate().equals(journal.candidate()) || !recorded.changes().equals(journal.changes()))
+			{
+				throw new IllegalStateException("Campaign " + campaignId + " already journals a different delivery.\n" +
+					"Recorded: candidate " + recorded.candidate().hex() + ", changes " + recorded.changes() + "\n" +
+					"New     : candidate " + journal.candidate().hex() + ", changes " + journal.changes());
+			}
+			if (journal.applied() < recorded.applied())
+			{
+				throw new IllegalStateException("The delivery journal of campaign " + campaignId + " already records " +
+					recorded.applied() + " applied changes, but the new journal records " + journal.applied() + ".");
+			}
+		}
+		replaceJournal(campaignId, journal);
+	}
+
 	/**
 	 * Checks that a campaign identity can name a directory.
 	 *
@@ -169,4 +200,22 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @throws IOException if a snapshot cannot be read or is malformed
 	 */
 	abstract List<CampaignHeader> readHeaders() throws IOException;
+
+	/**
+	 * Reads a campaign's delivery journal.
+	 *
+	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @return the journal, or empty if the campaign has none
+	 * @throws IOException if the journal cannot be read or is malformed
+	 */
+	abstract Optional<DeliveryJournal> readJournal(String campaignId) throws IOException;
+
+	/**
+	 * Atomically replaces a campaign's delivery journal.
+	 *
+	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @param journal the journal
+	 * @throws IOException if the journal cannot be written
+	 */
+	abstract void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException;
 }

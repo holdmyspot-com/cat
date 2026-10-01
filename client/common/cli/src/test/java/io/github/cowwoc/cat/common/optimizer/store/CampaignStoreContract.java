@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
@@ -35,9 +36,14 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,6 +51,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.testng.annotations.Test;
 
@@ -481,6 +488,119 @@ public abstract class CampaignStoreContract
 			requireThat(fixture.reopen().listHeaders(), "headers").
 				isEqualTo(List.of(first.header(), second.header()));
 		}
+	}
+
+	/**
+	 * A delivery journal with each kind of change and partial progress survives a reload unchanged.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void deliveryJournalSurvivesReload() throws IOException
+	{
+		// Requirement: R-W8
+		try (StoreFixture fixture = open())
+		{
+			DeliveryJournal journal = journal("candidate-2", 1);
+			fixture.store().writeJournal("campaign-1", journal);
+
+			requireThat(fixture.reopen().loadJournal("campaign-1"), "loaded").isEqualTo(Optional.of(journal));
+		}
+	}
+
+	/**
+	 * A campaign that has not started a delivery has no journal.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void loadMissingJournal() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			fixture.store().replaceSnapshot(new CampaignBuilder().header(header("campaign-1")).build());
+
+			requireThat(fixture.store().loadJournal("campaign-1"), "loaded").isEmpty();
+		}
+	}
+
+	/**
+	 * Recording more applied changes of the same delivery replaces the journal.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void journalProgressAdvances() throws IOException
+	{
+		// Requirement: R-W8
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			DeliveryJournal started = journal("candidate-2", 0);
+			store.writeJournal("campaign-1", started);
+			store.writeJournal("campaign-1", started.withApplied(3));
+
+			requireThat(fixture.reopen().loadJournal("campaign-1"), "loaded").
+				isEqualTo(Optional.of(started.withApplied(3)));
+		}
+	}
+
+	/**
+	 * A campaign's journal cannot be replaced by the journal of another candidate's delivery.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IllegalStateException.class,
+		expectedExceptionsMessageRegExp = "(?s).*different delivery.*")
+	public void rejectsJournalOfAnotherDelivery() throws IOException
+	{
+		// Requirement: R-W8
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			store.writeJournal("campaign-1", journal("candidate-2", 0));
+			store.writeJournal("campaign-1", journal("candidate-3", 0));
+		}
+	}
+
+	/**
+	 * A journal's recorded progress never goes back, so an applied change is never applied again.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IllegalStateException.class,
+		expectedExceptionsMessageRegExp = "(?s).*already records 2 applied changes.*")
+	public void rejectsJournalProgressGoingBack() throws IOException
+	{
+		// Requirement: R-W8
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			store.writeJournal("campaign-1", journal("candidate-2", 2));
+			store.writeJournal("campaign-1", journal("candidate-2", 1));
+		}
+	}
+
+	/**
+	 * Returns a delivery journal that deletes, edits and creates one file each, including an external file.
+	 *
+	 * @param candidate the name whose digest identifies the delivered candidate
+	 * @param applied the number of leading changes known to be applied
+	 * @return the journal
+	 */
+	static DeliveryJournal journal(String candidate, int applied)
+	{
+		Set<PosixFilePermission> readWrite = PosixFilePermissions.fromString("rw-r--r--");
+		Set<PosixFilePermission> executable = PosixFilePermissions.fromString("rwxr-xr-x");
+		FileContent removed = new FileContent("removed\n".getBytes(UTF_8));
+		FileContent original = new FileContent("original\n".getBytes(UTF_8));
+		List<DeliveryChange> changes = List.of(
+			new DeliveryChange.Delete(0, Path.of("rules/old.md"), new RegularFile(removed.hash(), readWrite)),
+			new DeliveryChange.Edit(1, Path.of("/external/shared.md"), new RegularFile(original.hash(), readWrite),
+				new FileContent("edited\n".getBytes(UTF_8)), readWrite),
+			new DeliveryChange.Create(2, Path.of("rules/new.sh"), new FileContent(new byte[]{0, 1, 2, -1}),
+				executable));
+		return new DeliveryJournal(CampaignBuilder.snapshot(candidate), changes, applied);
 	}
 
 	/**

@@ -30,8 +30,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}: the snapshot in {@code campaign.json} and
- * one record per logical trial in {@code trials/<sha256 of the trial key>.json}.
+ * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}: the snapshot in {@code campaign.json},
+ * one record per logical trial in {@code trials/<sha256 of the trial key>.json}, and the delivery journal in
+ * {@code delivery.json}.
  * <p>
  * Every file is replaced atomically: the content is written to a temporary file next to the target, forced to the
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
@@ -43,11 +44,13 @@ public final class FileCampaignStore extends AbstractCampaignStore
 {
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
+	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
 	private static final String TEMPORARY_SUFFIX = ".tmp";
 	private final Path root;
 	private final JsonMapper json;
 	private final CampaignJson codec;
+	private final DeliveryJournalJson journalCodec;
 	private final Consumer<WriteStep> afterStep;
 
 	/**
@@ -81,6 +84,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		this.root = base.resolve(".cat").resolve("work").resolve("optimizer");
 		this.json = json;
 		this.codec = new CampaignJson(json);
+		this.journalCodec = new DeliveryJournalJson(json);
 		this.afterStep = afterStep;
 	}
 
@@ -175,6 +179,31 @@ public final class FileCampaignStore extends AbstractCampaignStore
 			headers.add(header);
 		}
 		return headers;
+	}
+
+	@Override
+	Optional<DeliveryJournal> readJournal(String campaignId) throws IOException
+	{
+		Path file = root.resolve(campaignId).resolve(JOURNAL);
+		if (Files.notExists(file))
+			return Optional.empty();
+		JsonNode tree = readTree(file);
+		try
+		{
+			return Optional.of(journalCodec.read(tree));
+		}
+		catch (IllegalArgumentException | NullPointerException e)
+		{
+			throw malformed(file, e);
+		}
+	}
+
+	@Override
+	void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
+	{
+		Path directory = root.resolve(campaignId);
+		createDirectories(directory);
+		replace(directory.resolve(JOURNAL), journalCodec.write(journal));
 	}
 
 	/**
