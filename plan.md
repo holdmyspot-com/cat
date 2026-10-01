@@ -112,6 +112,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-17 | `optimize-xhigh` | Check kinds, controls and the judge's narrower role decide what the product measures. |
 | WI-18 | `optimize-xhigh` | Manifest validation, the minimality search and the author prompt decide which edits ship. |
 | WI-19 | `optimize-xhigh` | Allocation policy that interacts with readiness, the coverage floor and edits. |
+| WI-20 | `optimize-xhigh` | Selection among concurrent attempts decides which edit ships and how rounds spend author sessions. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -197,6 +198,7 @@ overkill.
 | WI-17 | Not started. |
 | WI-18 | Not started. |
 | WI-19 | Not started. |
+| WI-20 | Not started. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -223,6 +225,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 - `design.md` §1.2, §2.1, §3.1, §3.9, §5, §6.1, §6.4, new §6.6, §9, §12 (P12, P13), §13 (D11, D15, D22–D26) and §14 (G1, G2, G5, G7): trial profiles and cells as the statistical unit; deterministic checks with controls beside semantic judgment under a frozen role profile; a core-task requirement in every test; author failure classification and a per-hunk citation manifest; a minimality pass; candidate-versus-incumbent prompt size and input tokens (user rulings, 2026-10-01). Plan: R-C5 rewritten; R-C8–R-C11, R-D10, R-D11, R-E17, R-E18 and R-I5 added; WI-16–WI-18 added with §1.1 assignments, §6 dependencies and `DriverTest` traces 15–18; WI-15's trial-based scenarios now wait for WI-16–WI-18.
 - `design.md` §3.3 rule 2, §6.6 and D27: development cell tiering; plan R-E3 reworded, R-E19 and WI-19 added with §1.1, §6 and trace 19 (user ruling, 2026-10-01). `design.md` P14 and plan §4: the effort probe tests a pre-stated null hypothesis with the 2×4 exact test, and a non-rejection does not justify dropping efforts.
+- `design.md` §2.7, §9, §14 G1 and D28: 3 concurrent author attempts while the working candidate is weak, best accepted attempt promoted; plan R-D12, WI-20 with §1.1, §6 and trace 20 (user ruling, 2026-10-01).
 - `design.md` §12: added P14 (does reasoning effort change compliance?); plan §4 adds its probe and §2 its row (user request, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 
@@ -264,6 +267,7 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
 | R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction judged by the promotion runs and rule, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
+| R-D12 | Concurrent attempts while weak: when any cell of a category the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts from the same brief; each runs the same promotion runs; the accepted attempt with the most passing promotion runs wins, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results. | §2.7, D28 | WI-20 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
 
 ### 3.3 Formal certification
 
@@ -719,6 +723,16 @@ The riskiest pure code, built first.
 - **Tests:** `SchedulerTest`, `StatusReportTest`, `DriverTest` trace 19.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-20 — Concurrent attempts while the candidate is weak (user ruling, 2026-10-01)
+
+- **Policy:** the §2.7 weak test, the 3 concurrent attempts, winner selection and its tie-breaks, in `optimizer.campaign`.
+  The driver starts the attempts concurrently within the shared harness capacity and runs each attempt's promotion runs;
+  only the winner enters the minimality pass. A round that is not weak keeps one attempt at a time.
+- **Report:** the status lists each attempt of a round with its promotion results and whether it won.
+- **Closes:** R-D12.
+- **Tests:** `AttemptSelectionTest`, `StatusReportTest`, `DriverTest` trace 20.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -780,7 +794,8 @@ blocks only the part of a work item that it names.
 | WI-17 | WI-16 |
 | WI-18 | WI-17 |
 | WI-19 | WI-16 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18 and WI-19. |
+| WI-20 | WI-18 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
@@ -841,6 +856,9 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
 19. **Cell tiering:** after the screen, development samples only active cells; once they meet the readiness count
     conditions it widens, a failure in a newly sampled cell activates it, and the next candidate restarts in the
     enlarged active set.
+20. **Concurrent attempts:** a weak working candidate's round starts 3 attempts; two pass the promotion rule and the one
+    with more passing promotion runs is minimized and promoted, while the others are retained; once the candidate is no
+    longer weak, the next round makes one attempt.
 
 ## 8. Test-suite rules
 
