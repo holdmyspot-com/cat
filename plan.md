@@ -180,6 +180,7 @@ overkill.
 | WI-10 | Done (commit `7e93ca239`); the full build passed on the integrated tree (common/cli 875, claude 79, codex 78, distribution 23; no failures). `optimizer.proposal` derives and validates the proposal (Claude on `haiku` needs a two-turn deriver: inspect, then a tool-free turn that sends only the proposal); `optimizer.execution.prompt` renders the judge and author prompts; the judge returns a `Judgment` (verdict and rationale). Judge rationales and each failure's diagnostic reruns persist with the campaign (`Failure`, `DiagnosticRerun`; required fields, no fallback) and reach the author brief (§2.7, §3.1). An UNKNOWN login shows the full authentication warning (P6 fallback). Its native prompt tests were deleted under the 2026-10-01 test ruling; their assertions moved to E1's receipt (WI-15). |
 | Claude follow-up attribution (WI-8 follow-up) | Done (commit `3b3b35b35`; full build passed with 1080 tests, 0 failures). Probes (Claude 2.1.286, haiku, six scenarios, `design.md` H24) reproduced the race: a child that finished during the root's last model call left an empty task list before the root `result`, and a follow-up `init`/`result` came within 0.1 seconds. Fix in `ClaudeHarnessProcess.TurnBoundary`, per `design.md` §3.2 and H25: the runner sets `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`, and a turn ends at a `session_state_changed` `idle` while the latest `background_tasks_changed` lists no task; neither a root `result` nor a task-list change ends it alone. A Claude that emits no state events fails the turn non-retryably at its first `init`, naming `claude_code_version` (user ruling, 2026-10-01). The runner sets no turn time limit of its own (user ruling, 2026-10-01: the 30-second guard is removed); while a turn writes no bridge record for 30 seconds, `HarnessRunnerBridge` writes a `waiting` record (`runId`, seconds since the last record) and repeats it every 30 seconds, in both harnesses. A follow-up `result` (`origin.kind` `task-notification`) that arrives after its turn ended is relayed with the next turn's events, never taken as its reply, and reported in that turn's `standardError`. The fix also orders the bridge so an interrupt sent after `turn-completed` is a no-op (`HarnessRunnerBridgeTest.ignoresInterruptAfterTurnEnded` was intermittent). |
 | WI-13 | Done (commit `9663297dd`; full build passed with 1139 tests, 0 failures; `prompt-optimizer.bats` 4/4 against both images; `prompt-optimizer status` printed the fixture campaign's status JSON from both jlink images). Launcher grammar: `start <target>`, `run|status|confirm|cancel <id>`, `revise <id> <feedback>`, `choose <id> <choice> [--attempt N \| --review-point N]`; statuses `refused`, `invalid-input`, `error` with exit codes 1, 2, 1. `optimizer.cli` is exported; execution, store and campaign stay internal. `confirm` records fixtures and derived sources through `Fork.addParticipants`, and a revision after confirmation that needs new participants is refused. `OptimizerCore` takes `Forks` and `CapCalibrator` seams, so its tests run no Git; `HarnessVersion` runs `<exe> --version` through an injected launcher. Loader configuration: Claude `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json`; Codex `.codex/config.toml`. |
+| Harness terminology (user ruling, 2026-10-01) | Not started; runs first, then authority warnings, then WI-14. Every name that uses "native" for the harness or its model process uses "harness" instead: classes and files (`FakeNativeProcess` → `FakeHarnessProcess`, `NativeEvents` → `HarnessEvents`, `NativeProcessLiveness` → `HarnessProcessLiveness`), methods, fields, variables, test names, Javadoc, comments, bats and docs. The shipped names change too, with no migration (user ruling): the bridge record `native-event` → `harness-event`, the receipt and manifest fields `nativePid` → `harnessPid` and `nativeStartedAt` → `harnessStartedAt`, and every consumer (both `EventSink` classes, the claude-runner skill, `artifact-runners.bats`, `docs/changelog/1.0/captures/*.mjs`). Native code senses (native platform bundles, a native dependency) keep the word. The `native` test group, profile and `*NativeTest` classes are left to WI-14, which deletes them. Assigned to `optimize-medium`. |
 | Authority warnings (WI-6/WI-9/WI-12/WI-13 follow-up) | Not started; after WI-13, before WI-14. `Authority.diagnose` exists (R-W4) but nothing calls it: the author names needed out-of-authority edits only in free text, the driver turns no warning into an `awaiting-user` decision, and no command records an authorized target. `design.md` §4.3 now states the flow. Needed for E7. Assigned to `optimize-high`. |
 | WI-14 to WI-15 | Not started |
 
@@ -201,6 +202,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - §8: the unit-test runtime limit is 1 second, matching `design.md` §10 T7 (it said 2), and each integration lists slower tests.
 - WI-14: the session-port contract keeps running against the real adapters, over recorded events, once the native session tests are deleted.
 - `design.md` §4.1 and §4.2: the stored proposal is the latest one with its derived sources, and a revision after confirmation that needs new fork participants is refused (found in the WI-13 amendment).
+- `design.md` throughout: "native" became "harness" where it meant the harness or its model process; §10 T3: fakes carry only contract-checked behaviour, recordings name their harness version, and end-to-end runs refresh them. Plan §2 harness terminology row, §8 fake rule, WI-14 and WI-15 recordings (user rulings, 2026-10-01).
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
@@ -602,8 +604,8 @@ The riskiest pure code, built first.
   make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
   `cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
   parsing tests. Before deleting the session tests, run `SessionPortContract` against the real `ClaudeSessions` and
-  `CodexSessions` over a fake native process replaying recorded events (`design.md` §10 T3), so the fake stays checked
-  against the real adapters. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
+  `CodexSessions` over a fake harness process replaying recorded events (`design.md` §10 T3), so the fake stays
+  checked against the real adapters. Each recording names the harness version that produced it. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
 - **Closes:** R-I1 (content), R-I3.
 - **Tests:** existing rule tests pass. A reference audit (`grep -rn "prompt-optimizer"`) shows only references to the
   new skill.
@@ -631,6 +633,8 @@ The riskiest pure code, built first.
   - **E7:** a project with in-project and external links shows the link report, and an authorized external edit is
     delivered.
   - **E8:** two concurrent CAT processes are bounded by the shared capacity.
+- **Recordings:** each run saves its harness event streams with the harness version. They replace the contract tests'
+  recordings, and the contract tests then pass on them (`design.md` §10 T3).
 - **Fixtures:** small prompt systems under `client/common/cli/src/test/resources/optimizer/e2e/`, with a deliberately
   deficient rule, a rule that is easy to satisfy, a link fixture and an unsupported-case fixture. Lower the cost
   through the contract's category count, not by weakening the statistics: use 1–2 categories.
@@ -717,6 +721,8 @@ These rules restate `design.md` §10 as checks for reviewers:
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
   directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
+- A fake has only behaviour its shared contract checks, and that contract also runs against the real adapter (`design.md` §10 T3).
+  Reviewers check this; there is no coverage tool (user ruling, 2026-10-01).
 - A unit test that takes 1 second or longer records its reason in its Javadoc (`design.md` §10 T7). Without one, it is a
   review defect. Every integration lists the tests at or over 1 second from the surefire reports.
 
