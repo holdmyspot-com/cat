@@ -978,7 +978,8 @@ Every implementation change must keep these properties; reviewers reject changes
 - **T4 — No shared resources:**
   - No static mutable state. Caches are instance-scoped and injected. Test classes have no mutable fields.
   - Every path is under a directory the test creates and deletes.
-  - Libraries never read `HOME`, `user.home` or other process environment; `main` resolves them and passes them in.
+  - Libraries never read `HOME`, `user.home` or other process environment. `main` or a harness's production scope
+    resolves them and passes them in; test scopes supply their own values.
   - Capacity pools and campaign locks are constructed per test, either unlimited or under the test's own directory.
   - Tests use no fixed network ports.
 - **T5 — Time:**
