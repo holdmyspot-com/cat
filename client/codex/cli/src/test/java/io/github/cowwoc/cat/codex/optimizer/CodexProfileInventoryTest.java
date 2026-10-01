@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,6 +175,34 @@ public final class CodexProfileInventoryTest
 			requireThat(actual, "inventory").isEqualTo(expected);
 			requireThat(inventory.source(), "source").isEqualTo("`codex debug models` of " + VERSION);
 			requireThat(commands, "commands").contains(List.of("codex", "debug", "models"));
+		}
+	}
+
+	/**
+	 * Verifies that the recorded inventory lists each model's efforts from the lowest to the highest, so that a
+	 * model's first and last listed effort are its lowest and highest effort in development cell tiering.
+	 *
+	 * @throws IOException if the inventory cannot be read
+	 */
+	@Test
+	public void listsEachModelsEffortsLowestFirst() throws IOException
+	{
+		// Requirement: R-E19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			ProfileCatalog inventory = new CodexProfileInventory(artifact, "codex",
+				launcher(recorded(), new CopyOnWriteArrayList<>())).inventory();
+			Map<String, Integer> previous = new HashMap<>();
+			for (TrialProfile profile : inventory.profiles())
+			{
+				int rank = ULTRA.indexOf(profile.effort());
+				requireThat(rank, profile.toString()).isNotNegative();
+				Integer lower = previous.put(profile.model(), rank);
+				if (lower != null)
+					requireThat(rank, profile.toString()).isGreaterThan(lower);
+			}
+			requireThat(previous.size(), "models").isEqualTo(8);
 		}
 	}
 

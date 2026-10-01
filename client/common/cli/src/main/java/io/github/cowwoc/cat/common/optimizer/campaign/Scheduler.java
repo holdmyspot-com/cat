@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Plans the next admissions from the persisted state, following the allocation order of {@code design.md} section
@@ -25,9 +26,13 @@ import java.util.Optional;
 public final class Scheduler
 {
 	/**
-	 * The most representative development assignments by which a category may lead the least-sampled eligible one.
+	 * The most representative development assignments by which a cell may lead the least-sampled eligible one.
 	 */
 	public static final int COVERAGE_LEAD = 50;
+	/**
+	 * The development series that the first contract confirmation starts, whose working candidate the screen covers.
+	 */
+	private static final int FIRST_SERIES = 1;
 
 	/**
 	 * Prevents instantiation.
@@ -212,11 +217,16 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the working candidate's representative development trials: among the cells that are neither ready nor at
-	 * their review point, and that lead the least-sampled such cell by fewer than {@value #COVERAGE_LEAD}
-	 * assignments, the lowest 95% Wilson lower bound first, ties to fewer outcomes, then the higher risk of the
-	 * cell's category, then cell order. The allocation rule is {@link AllocationRule#COVERAGE_FLOOR} when the floor
-	 * excluded the cell that the bound alone would choose, otherwise {@link AllocationRule#LOWEST_EXPLORATORY_BOUND}.
+	 * Plans the working candidate's representative development trials within the cell tier of {@link CellTier}.
+	 * <p>
+	 * The tier is, while the first working candidate of the campaign's first series has a cell with fewer than
+	 * {@value CellTier#SCREEN_TRIALS} assignments, those cells (the screen); once development has
+	 * {@link Development#widened() widened}, every cell; otherwise the active cells. Among the tier's cells that are
+	 * neither ready nor at their review point, and that lead the least-sampled such cell by fewer than
+	 * {@value #COVERAGE_LEAD} assignments, each model's lowest-effort cell comes first, then the lowest 95% Wilson
+	 * lower bound, ties to fewer outcomes, then the higher risk of the cell's category, then cell order. The
+	 * allocation rule is {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} when the chosen cell is the one that the
+	 * bound alone would choose among those cells, otherwise {@link AllocationRule#COVERAGE_FLOOR}.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -230,15 +240,18 @@ public final class Scheduler
 		Contract contract = campaign.contract();
 		Map<String, Integer> inFlight = inFlight(campaign, Purpose.DEVELOPMENT, development.series());
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
-		List<Cell> eligible = new ArrayList<>();
-		for (Cell cell : contract.cells())
+		Set<String> lowestEffort = CellTier.lowestEffortCells(contract);
+		while (slots > 0 && plan.size() < freeCapacity)
 		{
-			CategoryCounts counts = development.count(cell.id());
-			if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
-				eligible.add(cell);
-		}
-		while (slots > 0 && plan.size() < freeCapacity && !eligible.isEmpty())
-		{
+			List<Cell> eligible = new ArrayList<>();
+			for (Cell cell : tier(campaign, inFlight))
+			{
+				CategoryCounts counts = development.count(cell.id());
+				if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
+					eligible.add(cell);
+			}
+			if (eligible.isEmpty())
+				return;
 			int leastAssigned = Integer.MAX_VALUE;
 			for (Cell cell : eligible)
 				leastAssigned = Math.min(leastAssigned, assigned(development, inFlight, cell.id()));
@@ -250,7 +263,7 @@ public final class Scheduler
 					weakest = cell;
 				if (assigned(development, inFlight, cell.id()) >= leastAssigned + COVERAGE_LEAD)
 					continue;
-				if (best == null || isWeaker(contract, development, cell, best))
+				if (best == null || comesFirst(contract, development, lowestEffort, cell, best))
 					best = cell;
 			}
 			AllocationRule rule;
@@ -263,6 +276,56 @@ public final class Scheduler
 			inFlight.merge(best.id(), 1, Integer::sum);
 			--slots;
 		}
+	}
+
+	/**
+	 * Returns the cells that may receive the working candidate's next representative development trial: the cells
+	 * that the screen has yet to cover, every cell once development has widened, otherwise the active cells. The
+	 * screen runs once per campaign, in its first series.
+	 *
+	 * @param campaign the campaign
+	 * @param inFlight the unadopted development trials per cell
+	 * @return the cells, in contract order
+	 */
+	private static List<Cell> tier(Campaign campaign, Map<String, Integer> inFlight)
+	{
+		Development development = campaign.development();
+		Contract contract = campaign.contract();
+		// The first series of the campaign develops the incumbent, the first working candidate
+		if (development.series() == FIRST_SERIES && development.working().isIncumbent())
+		{
+			List<Cell> screen = new ArrayList<>();
+			for (Cell cell : contract.cells())
+			{
+				if (assigned(development, inFlight, cell.id()) < CellTier.SCREEN_TRIALS)
+					screen.add(cell);
+			}
+			if (!screen.isEmpty())
+				return screen;
+		}
+		if (development.widened())
+			return contract.cells();
+		return CellTier.activeCells(contract, campaign.failedCells());
+	}
+
+	/**
+	 * Indicates whether a cell within the coverage floor should receive the next development trial before another:
+	 * a model's lowest-effort cell first, then the weaker cell.
+	 *
+	 * @param contract the campaign's contract
+	 * @param development the development state
+	 * @param lowestEffort the identifiers of each model's lowest-effort cell
+	 * @param cell a cell that comes after {@code other} in cell order
+	 * @param other the best cell so far
+	 * @return {@code true} if {@code cell} comes first
+	 */
+	private static boolean comesFirst(Contract contract, Development development, Set<String> lowestEffort,
+		Cell cell, Cell other)
+	{
+		boolean lowest = lowestEffort.contains(cell.id());
+		if (lowest != lowestEffort.contains(other.id()))
+			return lowest;
+		return isWeaker(contract, development, cell, other);
 	}
 
 	/**

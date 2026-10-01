@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
@@ -34,8 +35,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
@@ -174,6 +178,34 @@ public abstract class CampaignStoreContract
 				"smallModel").isEqualTo("small-observed");
 			requireThat(loaded.development().count(ContractFixtures.SMALL_CELL).failures(), "smallFailures").
 				isEqualTo(2);
+		}
+	}
+
+	/**
+	 * The development cell tier survives a restart: the cells in which a candidate failed stay active, and whether
+	 * development has widened is kept.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void cellTierSurvivesReload() throws IOException
+	{
+		// Requirement: R-E19
+		try (StoreFixture fixture = open())
+		{
+			Contract contract = TierFixtures.tieredContract();
+			Campaign campaign = new CampaignBuilder().header(header("campaign-tier")).confirmed(contract, 1).
+				working(1).widened().failedCell(TierFixtures.BIG_MEDIUM).development(TierFixtures.BIG_LOW, 100, 0).
+				development(TierFixtures.BIG_MEDIUM, 4, 1).build();
+			fixture.store().replaceSnapshot(campaign);
+
+			Campaign loaded = fixture.reopen().load("campaign-tier").orElseThrow();
+			requireThat(loaded, "loaded").isEqualTo(campaign);
+			requireThat(loaded.development().widened(), "widened").isTrue();
+			requireThat(loaded.failedCells(), "failedCells").isEqualTo(Set.of(TierFixtures.BIG_MEDIUM));
+			requireThat(CellTier.activeCells(contract, loaded.failedCells()).stream().map(Cell::id).toList(),
+				"activeCells").isEqualTo(List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM, TierFixtures.BIG_XHIGH,
+				TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		}
 	}
 
@@ -872,8 +904,9 @@ public abstract class CampaignStoreContract
 					true), attempt.outcome()));
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
-			built.candidates(), built.authorAttempts(), built.development(), built.baseline(), attempts, built.trials(),
-			built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(), built.authorizedTargets(),
-			built.pendingDecisions(), built.revisionRequested(), built.outcome(), built.delivery());
+			built.candidates(), built.authorAttempts(), built.development(), built.failedCells(), built.baseline(),
+			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
+			built.authorizedTargets(), built.pendingDecisions(), built.revisionRequested(), built.outcome(),
+			built.delivery());
 	}
 }

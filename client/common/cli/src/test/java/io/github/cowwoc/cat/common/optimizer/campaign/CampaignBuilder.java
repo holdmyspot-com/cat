@@ -58,6 +58,8 @@ public final class CampaignBuilder
 	private Round round;
 	private AuthorAttempt author;
 	private final Map<String, Integer> reviewPoints = new LinkedHashMap<>();
+	private boolean widened;
+	private final Set<String> failedCells = new LinkedHashSet<>();
 	private int baselineIndex = 1;
 	private final Map<String, CategoryCounts> baseline = new LinkedHashMap<>();
 	private final List<AttemptBuilder> attempts = new ArrayList<>();
@@ -406,6 +408,29 @@ public final class CampaignBuilder
 	}
 
 	/**
+	 * Marks the development series as widened, so that every cell is eligible for representative trials.
+	 *
+	 * @return this builder
+	 */
+	public CampaignBuilder widened()
+	{
+		widened = true;
+		return this;
+	}
+
+	/**
+	 * Records that a candidate of the campaign has failed a trial in a cell, which makes the cell active.
+	 *
+	 * @param cell the cell's identifier
+	 * @return this builder
+	 */
+	public CampaignBuilder failedCell(String cell)
+	{
+		failedCells.add(cell);
+		return this;
+	}
+
+	/**
 	 * Sets the incumbent baseline's index.
 	 *
 	 * @param index the index
@@ -637,13 +662,13 @@ public final class CampaignBuilder
 			incumbentBaseline = new IncumbentBaseline(baselineIndex, baseline);
 		}
 		Development state = new Development(working, series, development, failures, diagnosis, round, author,
-			reviewPoints);
+			reviewPoints, widened);
 		List<CertificationAttempt> built = new ArrayList<>();
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
-			authorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart, throttle,
-			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
+			authorAttempts, state, failedCells, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
+			throttle, authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
 	}
 
 	/**

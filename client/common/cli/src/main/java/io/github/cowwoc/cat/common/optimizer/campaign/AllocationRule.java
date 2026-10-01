@@ -10,8 +10,10 @@ public enum AllocationRule
 	 */
 	TARGETED,
 	/**
-	 * Rule 2: the development coverage floor excluded the category with the lowest exploratory lower bound, because it
-	 * was {@value Scheduler#COVERAGE_LEAD} representative assignments ahead of the least-sampled eligible category.
+	 * Rule 2: the development cell tier ({@link CellTier}) chose a cell other than the one with the lowest exploratory
+	 * lower bound, either because the coverage floor excluded that cell, which was {@value Scheduler#COVERAGE_LEAD}
+	 * representative assignments ahead of the least-sampled eligible cell, or because a model's lowest-effort cell
+	 * comes first within the floor.
 	 */
 	COVERAGE_FLOOR,
 	/**

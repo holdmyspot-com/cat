@@ -43,9 +43,10 @@ import tools.jackson.databind.node.ObjectNode;
  * The status of a campaign: the JSON that the driver emits and the human summary that the user reads.
  * <p>
  * The report shows the four outputs of {@code design.md} section 2.9 for every cell, the trial profiles, the
- * outcome names, the claim and its limitations, the minimum remaining trials, token statistics, the descriptive check
- * by concurrency level and the choices that the user may give now, with the evidence of a keep-improvement choice. It
- * never shows a pooled pass fraction, a token total, a time estimate or a completion probability.
+ * development cell tier, the outcome names, the claim and its limitations, the minimum remaining trials, token
+ * statistics, the descriptive check by concurrency level and the choices that the user may give now, with the
+ * evidence of a keep-improvement choice. It never shows a pooled pass fraction, a token total, a time estimate or a
+ * completion probability.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -69,6 +70,8 @@ import tools.jackson.databind.node.ObjectNode;
  *   weight
  * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
  * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
+ * @param cellTier each category's active development cells and whether development has widened, or {@code null}
+ *   before a contract is confirmed
  * @param remaining the minimum remaining trials
  * @param tokens the token statistics
  * @param concurrency the concurrency state
@@ -84,7 +87,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	String delivery, int deliveryAttempt, String pending,
 	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CategoryReport> cells,
 	Map<String, Integer> allocation,
-	Benchmark benchmark, TrialProfiles trialProfiles, RemainingWork remaining, TokenStatistics tokens,
+	Benchmark benchmark, TrialProfiles trialProfiles, CellTierReport cellTier, RemainingWork remaining,
+	TokenStatistics tokens,
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions)
@@ -148,6 +152,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param allocation the adopted outcomes of each cell in the reported phase
 	 * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
 	 * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
+	 * @param cellTier each category's active development cells and whether development has widened, or
+	 *   {@code null} before a contract is confirmed
 	 * @param remaining the minimum remaining trials
 	 * @param tokens the token statistics
 	 * @param concurrency the concurrency state
@@ -159,7 +165,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param conditions the measurement conditions that the claim holds under
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
-	 *   {@code benchmark}, {@code trialProfiles} or {@code claim} is null
+	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
 	 * @throws IllegalArgumentException if {@code attempt}, {@code candidate} or {@code deliveryAttempt} are negative
 	 */
 	public StatusReport
@@ -309,7 +315,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
 			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), cells, allocation,
-			benchmark, trialProfiles, RemainingWork.of(campaign), TokenStatistics.of(evidence.tokenUsage()),
+			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
+			TokenStatistics.of(evidence.tokenUsage()),
 			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions);
 	}
 

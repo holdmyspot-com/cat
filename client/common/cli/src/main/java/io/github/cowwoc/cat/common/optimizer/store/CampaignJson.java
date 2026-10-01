@@ -83,10 +83,11 @@ import tools.jackson.databind.node.ObjectNode;
  * Every document starts with {@code format_version}. Keys are snake_case and constants are written by name. Maps are
  * written with sorted keys, except a {@link Round}, whose cell order is part of its state.
  * <p>
- * Version 2 keys counts, rounds, review points, trial keys, sequences and certification procedures by cell
- * (design &sect;2.1) and records the observed model and reasoning per cell. Version 1 keyed them by category; it is
- * refused rather than migrated. Big numbers and
- * instants are written as strings so that they round-trip exactly.
+ * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell
+ * (design &sect;2.1), and the observed model and reasoning are recorded per cell. Version 3 adds the development cell
+ * tier (design &sect;6.6): the cells in which a candidate failed ({@code failed_cells}) and whether development has
+ * widened ({@code development.widened}). Version 2 lacked the cell tier and version 1 keyed by category; both are
+ * refused rather than migrated. Big numbers and instants are written as strings so that they round-trip exactly.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -98,7 +99,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	static final int FORMAT_VERSION = 2;
+	static final int FORMAT_VERSION = 3;
 	private static final String VERSION = "format_version";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -138,6 +139,9 @@ final class CampaignJson
 		root.put("candidates", campaign.candidates());
 		root.put("author_attempts", campaign.authorAttempts());
 		root.set("development", writeDevelopment(campaign.development()));
+		ArrayNode failedCells = root.putArray("failed_cells");
+		for (String cell : new TreeSet<>(campaign.failedCells()))
+			failedCells.add(cell);
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline == null)
 			root.putNull("baseline");
@@ -229,6 +233,13 @@ final class CampaignJson
 			if (sequences.put(group, longInteger(node, "last_sequence")) != null)
 				throw new IllegalArgumentException("sequences: duplicate group " + group);
 		}
+		Set<String> failedCells = new HashSet<>();
+		for (JsonNode node : elements(root, "failed_cells"))
+		{
+			String cell = stringValue(node, "failed_cells");
+			if (!failedCells.add(cell))
+				throw new IllegalArgumentException("failed_cells: duplicate cell " + cell);
+		}
 		JsonNode slowStart = field(root, "slow_start");
 		JsonNode throttle = field(root, "throttle");
 		Set<Path> authorizedTargets = new HashSet<>();
@@ -250,7 +261,7 @@ final class CampaignJson
 		return new Campaign(readHeader(field(root, "header")), integer(root, "ceiling"), lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
-			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
+			readDevelopment(field(root, "development")), failedCells, baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
@@ -474,6 +485,7 @@ final class CampaignJson
 		ObjectNode reviewPoints = node.putObject("review_points");
 		for (Entry<String, Integer> entry : new TreeMap<>(development.reviewPoints()).entrySet())
 			reviewPoints.put(entry.getKey(), entry.getValue());
+		node.put("widened", development.widened());
 		return node;
 	}
 
@@ -524,7 +536,7 @@ final class CampaignJson
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
 			readCounts(field(node, "counts")), readFailures(node, "failures"), diagnosis, round, author,
-			reviewPoints);
+			reviewPoints, bool(node, "widened"));
 	}
 
 	/**

@@ -123,13 +123,16 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a judged trial.
+	 * Adopts a judged trial. A failure of a candidate makes its cell active for the rest of the campaign
+	 * ({@link CellTier}); a promotion run's failure does not, because an author attempt is not a candidate.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
 	 */
 	private static void adopt(CampaignDraft draft, LogicalTrial trial)
 	{
+		if (trial.verdict() == Verdict.FAIL && trial.key().purpose() != Purpose.PROMOTION)
+			draft.failedCells.add(trial.key().category());
 		switch (trial.key().purpose())
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
@@ -141,7 +144,8 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a development outcome.
+	 * Adopts a development outcome. Development widens to every cell once every active cell meets the readiness
+	 * gate's count conditions ({@link CellTier}).
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -151,6 +155,8 @@ final class TrialAdoption
 		String category = trial.key().category();
 		Verdict verdict = trial.verdict();
 		draft.developmentCounts.put(category, draft.developmentCount(category).add(verdict));
+		if (!draft.widened)
+			draft.widened = CellTier.isActiveSetReady(draft.contract(), draft.failedCells, draft.developmentCounts);
 		if (draft.working.isIncumbent())
 			addBaseline(draft, category, verdict);
 		recordWorkingVerdict(draft, trial.instance(), verdict);
@@ -253,7 +259,7 @@ final class TrialAdoption
 		if (draft.diagnosis == null)
 			return;
 		Development development = new Development(draft.working, draft.series, draft.developmentCounts,
-			draft.developmentFailures, draft.diagnosis, null, null, draft.reviewPoints);
+			draft.developmentFailures, draft.diagnosis, null, null, draft.reviewPoints, draft.widened);
 		switch (EditOrContinue.decide(development))
 		{
 			case RERUN ->
@@ -552,7 +558,7 @@ final class TrialAdoption
 			return;
 		}
 		Development development = new Development(draft.working, draft.series, draft.developmentCounts,
-			draft.developmentFailures, null, null, null, draft.reviewPoints);
+			draft.developmentFailures, null, null, null, draft.reviewPoints, draft.widened);
 		Optional<String> due = ReviewCheckpoint.due(development, draft.contract());
 		if (due.isPresent())
 		{

@@ -26,6 +26,8 @@ import java.util.Set;
  * @param candidates the number of candidates promoted so far
  * @param authorAttempts the number of author attempts validated so far
  * @param development the working candidate's development state
+ * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial; each stays
+ *   active in development for the rest of the campaign ({@link CellTier})
  * @param baseline the current incumbent baseline, or {@code null} before the first confirmation
  * @param attempts every certification attempt, in index order
  * @param trials the logical trials that are not adopted, in assignment order
@@ -43,10 +45,11 @@ import java.util.Set;
  * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
  */
 public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
-	Candidate incumbent, int candidates, int authorAttempts, Development development, IncumbentBaseline baseline,
-	List<CertificationAttempt> attempts, List<LogicalTrial> trials, Map<SequenceGroup, Long> sequences,
-	long evidenceRevision, SlowStart slowStart, Throttle throttle, Set<Path> authorizedTargets,
-	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome, DeliveryRequest delivery)
+	Candidate incumbent, int candidates, int authorAttempts, Development development, Set<String> failedCells,
+	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
+	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
+	Set<Path> authorizedTargets, List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
+	DeliveryRequest delivery)
 {
 	/**
 	 * The default campaign ceiling.
@@ -73,6 +76,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param candidates the number of candidates promoted so far
 	 * @param authorAttempts the number of author attempts validated so far
 	 * @param development the working candidate's development state
+	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial
 	 * @param baseline the current incumbent baseline, or {@code null} before the first confirmation
 	 * @param attempts every certification attempt, in index order
 	 * @param trials the logical trials that are not adopted, in assignment order
@@ -105,6 +109,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(candidates, "candidates").isNotNegative();
 		requireThat(authorAttempts, "authorAttempts").isNotNegative();
 		requireThat(development, "development").isNotNull();
+		requireThat(failedCells, "failedCells").isNotNull();
 		if (!lineages.isEmpty())
 			requireThat(baseline, "baseline").isNotNull();
 		requireThat(attempts, "attempts").isNotNull();
@@ -138,6 +143,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 			requireThat(target, "authorizedTarget").isAbsolute();
 		}
 		authorizedTargets = Set.copyOf(authorizedTargets);
+		failedCells = Set.copyOf(failedCells);
 		lineages = List.copyOf(lineages);
 		attempts = List.copyOf(attempts);
 		trials = List.copyOf(trials);
@@ -163,8 +169,8 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
-			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, Set.of(), List.of(), false,
-			null, null);
+			Set.of(), null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, Set.of(), List.of(),
+			false, null, null);
 	}
 
 	/**

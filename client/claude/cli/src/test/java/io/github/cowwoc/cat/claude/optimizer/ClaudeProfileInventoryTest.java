@@ -14,7 +14,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -125,6 +127,40 @@ public final class ClaudeProfileInventoryTest
 			requireThat(inventory.source(), "source").contains("claude --help").
 				contains("fable: `claude --help` names the alias").contains("claude-fable-5-1").
 				contains("haiku: the changelog names the haiku alias");
+		}
+	}
+
+	/**
+	 * Verifies that the shipped inventory lists each model's efforts from the lowest to the highest, so that a model's
+	 * first and last listed effort are its lowest and highest effort in development cell tiering. A model without an
+	 * effort dimension has one profile.
+	 *
+	 * @throws IOException if the inventory cannot be read
+	 */
+	@Test
+	public void listsEachModelsEffortsLowestFirst() throws IOException
+	{
+		// Requirement: R-E19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			ProfileCatalog inventory = new ClaudeProfileInventory(artifact).inventory();
+			List<String> ladder = List.of("low", "medium", "high", "xhigh", "max", "ultra");
+			Map<String, Integer> previous = new HashMap<>();
+			for (TrialProfile profile : inventory.profiles())
+			{
+				if (profile.effort().isEmpty())
+				{
+					requireThat(previous.put(profile.model(), -1), profile.toString()).isNull();
+					continue;
+				}
+				int rank = ladder.indexOf(profile.effort());
+				requireThat(rank, profile.toString()).isNotNegative();
+				Integer lower = previous.put(profile.model(), rank);
+				if (lower != null)
+					requireThat(rank, profile.toString()).isGreaterThan(lower);
+			}
+			requireThat(previous.size(), "models").isEqualTo(4);
 		}
 	}
 

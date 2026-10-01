@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -237,7 +238,8 @@ public final class StatusReportTest
 			category("formatting", 120, 0).category("safety", 120, 0).build();
 		Campaign campaign = new Campaign(frozen.header(), frozen.ceiling(), frozen.lineages(), frozen.identity(),
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
-			new IncumbentBaseline(2, frozen.baseline().counts()), frozen.attempts(), frozen.trials(),
+			frozen.failedCells(), new IncumbentBaseline(2, frozen.baseline().counts()), frozen.attempts(),
+			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
 			frozen.delivery());
@@ -671,6 +673,42 @@ public final class StatusReportTest
 		requireThat(values(profileCells, "id"), "trialProfiles.cells").isEqualTo(cells);
 		requireThat(values(profileCells, "category"), "trialProfiles.categories").
 			isEqualTo(List.of("formatting", "formatting", "safety"));
+	}
+
+	/**
+	 * Verifies that the text and JSON status show each category's active development cells, including a cell that
+	 * became active by failing, and whether development has widened.
+	 */
+	@Test
+	public void cellTierIsShown()
+	{
+		// Requirement: R-E19
+		CampaignBuilder builder = new CampaignBuilder().confirmed(TierFixtures.tieredContract(), 1).working(1).
+			readyBaseline().failedCell(TierFixtures.BIG_MEDIUM);
+		List<String> formatting = List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM, TierFixtures.BIG_XHIGH,
+			TierFixtures.SMALL_HIGH);
+		StatusReport report = StatusReport.of(builder.build(), ReportEvidence.NONE);
+		requireThat(report.summary(), "summary").
+			contains("Active development cells of category formatting: " + String.join(", ", formatting)).
+			contains("Active development cells of category safety: " + TierFixtures.SAFETY).
+			contains("Development widened to every cell: no");
+		JsonNode tier = report.toJson(JsonMapper.builder().build()).path("cellTier");
+		requireThat(tier.path("widened").asBoolean(), "widened").isFalse();
+		JsonNode active = tier.path("activeCells");
+		requireThat(values(active, "category"), "categories").isEqualTo(List.of("formatting", "safety"));
+		List<String> cells = new ArrayList<>();
+		for (JsonNode cell : active.get(0).path("cells"))
+			cells.add(cell.asString());
+		requireThat(cells, "formattingCells").isEqualTo(formatting);
+
+		StatusReport widened = StatusReport.of(builder.widened().build(), ReportEvidence.NONE);
+		requireThat(widened.summary(), "widenedSummary").contains("Development widened to every cell: yes");
+		requireThat(widened.toJson(JsonMapper.builder().build()).path("cellTier").path("widened").asBoolean(),
+			"widenedJson").isTrue();
+
+		StatusReport unconfirmed = StatusReport.of(new CampaignBuilder().build(), ReportEvidence.NONE);
+		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cellTier").isNull(), "unconfirmed").
+			isTrue();
 	}
 
 	/**

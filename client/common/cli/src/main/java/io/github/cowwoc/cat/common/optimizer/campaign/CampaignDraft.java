@@ -99,6 +99,14 @@ final class CampaignDraft
 	 */
 	Map<String, Integer> reviewPoints;
 	/**
+	 * {@code true} once every active cell met the readiness gate's count conditions in this series.
+	 */
+	boolean widened;
+	/**
+	 * The cells in which a candidate of the campaign has failed a trial.
+	 */
+	final Set<String> failedCells;
+	/**
 	 * The current incumbent baseline index, or 0 before the first confirmation.
 	 */
 	int baselineIndex;
@@ -176,6 +184,8 @@ final class CampaignDraft
 		round = development.round();
 		author = development.author();
 		reviewPoints = new LinkedHashMap<>(development.reviewPoints());
+		widened = development.widened();
+		failedCells = new HashSet<>(campaign.failedCells());
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline != null)
 		{
@@ -295,6 +305,7 @@ final class CampaignDraft
 		round = null;
 		author = null;
 		reviewPoints = new LinkedHashMap<>();
+		widened = false;
 	}
 
 	/**
@@ -447,9 +458,9 @@ final class CampaignDraft
 			baseline = new IncumbentBaseline(baselineIndex, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, author, reviewPoints);
+			diagnosis, round, author, reviewPoints, widened);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
-			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			development, failedCells, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
 			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
 	}
 }

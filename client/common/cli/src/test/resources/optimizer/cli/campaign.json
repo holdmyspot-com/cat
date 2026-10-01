@@ -1,5 +1,5 @@
 {
-  "format_version" : 2,
+  "format_version" : 3,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -195,8 +195,10 @@
     "diagnosis" : null,
     "round" : null,
     "author" : null,
-    "review_points" : { }
+    "review_points" : { },
+    "widened" : false
   },
+  "failed_cells" : [ ],
   "baseline" : {
     "index" : 1,
     "counts" : { }

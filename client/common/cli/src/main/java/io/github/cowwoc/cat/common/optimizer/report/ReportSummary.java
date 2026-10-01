@@ -85,6 +85,8 @@ final class ReportSummary
 		}
 		if (report.trialProfiles() != null)
 			trialProfiles(lines, report.trialProfiles());
+		if (report.cellTier() != null)
+			lines.addAll(report.cellTier().describe());
 		remaining(lines, report.remaining());
 		tokens(lines, report.tokens());
 		StatusReport.Concurrency concurrency = report.concurrency();

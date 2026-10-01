@@ -18,10 +18,12 @@ import java.util.Map;
  * @param round the development round in progress, or {@code null} if none is
  * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
  * @param reviewPoints the review point of each category that the user extended
+ * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series, which
+ *   makes every cell eligible for representative trials ({@link CellTier})
  */
 public record Development(Candidate working, int series, Map<String, CategoryCounts> counts,
 	List<Failure> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
-	Map<String, Integer> reviewPoints)
+	Map<String, Integer> reviewPoints, boolean widened)
 {
 	/**
 	 * The review point of a category that the user has not extended.
@@ -39,6 +41,7 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	 * @param round the development round in progress, or {@code null} if none is
 	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
 	 * @param reviewPoints the review point of each category that the user extended
+	 * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series
 	 * @throws NullPointerException if {@code working}, {@code counts}, {@code failures} or {@code reviewPoints} are
 	 *   null
 	 * @throws IllegalArgumentException if {@code series} is negative, or {@code author} exists without
@@ -63,13 +66,13 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	 *
 	 * @param working the working candidate
 	 * @param series the series number
-	 * @return the development state, with no outcomes
+	 * @return the development state, with no outcomes, that has not widened
 	 * @throws NullPointerException if {@code working} is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public static Development start(Candidate working, int series)
 	{
-		return new Development(working, series, Map.of(), List.of(), null, null, null, Map.of());
+		return new Development(working, series, Map.of(), List.of(), null, null, null, Map.of(), false);
 	}
 
 	/**

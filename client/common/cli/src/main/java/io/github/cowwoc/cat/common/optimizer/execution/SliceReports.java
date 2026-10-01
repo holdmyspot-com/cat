@@ -42,7 +42,8 @@ final class SliceReports
 		return new StatusReport(status, report.campaignId(), report.lifecycle(), report.phase(), report.attempt(),
 			report.candidate(), report.snapshot(), report.outcome(), report.outcomeDetail(), report.delivery(),
 			report.deliveryAttempt(), pending, report.choices(), report.authorityWarnings(), report.cells(),
-			report.allocation(), report.benchmark(), report.trialProfiles(), report.remaining(), report.tokens(),
+			report.allocation(), report.benchmark(), report.trialProfiles(), report.cellTier(), report.remaining(),
+			report.tokens(),
 			report.concurrency(), report.assumptions(), report.attempts(), report.keepOffers(), report.claim(),
 			report.limitations(), report.conditions());
 	}

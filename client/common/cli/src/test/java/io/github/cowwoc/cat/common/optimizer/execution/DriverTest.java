@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
@@ -31,8 +32,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
@@ -985,6 +988,65 @@ public final class DriverTest
 				isEqualTo("big");
 			requireThat(identity.cells().get(ContractFixtures.SMALL_CELL).get(MeasurementCondition.MODEL),
 				"smallModel").isEqualTo("small");
+		}
+	}
+
+	/**
+	 * Trace 19: after the screen, development samples only the active cells; once they meet the readiness count
+	 * conditions it widens to every cell, a failure in a newly sampled cell activates it, and the next candidate
+	 * restarts in the enlarged active set.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void cellTiering() throws IOException
+	{
+		// Requirement: R-E19
+		// Requirement: R-E3
+		Contract contract = TierFixtures.tieredContract();
+		// The screen ran the incumbent; candidate 1 has outcomes in the active cells only
+		CampaignBuilder builder = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline();
+		for (Cell cell : CellTier.activeCells(contract, Set.of()))
+			builder.development(cell.id(), 95, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				builder.build());
+			Sha256 first = CampaignBuilder.snapshot("candidate-1");
+			TrialProfile medium = new TrialProfile("big", "medium");
+			harness.trials(request ->
+			{
+				if (request.profile().equals(medium) && harness.snapshot(request).equals(first))
+					return harness.failed();
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign widened = harness.runUntil(driver, state -> state.development().widened());
+				requireThat(widened.development().count(TierFixtures.BIG_MEDIUM).outcomes(), "mediumBeforeWidening").
+					isEqualTo(0);
+				requireThat(widened.development().count(TierFixtures.BIG_HIGH).outcomes(), "highBeforeWidening").
+					isEqualTo(0);
+
+				Campaign activated = harness.runUntil(driver,
+					state -> state.failedCells().contains(TierFixtures.BIG_MEDIUM));
+				requireThat(activated.development().working().number(), "failingCandidate").isEqualTo(1);
+
+				Campaign restarted = harness.runUntil(driver, state -> state.development().working().number() == 2 &&
+					state.development().count(TierFixtures.BIG_MEDIUM).outcomes() > 0 &&
+					state.development().count(TierFixtures.BIG_XHIGH).outcomes() > 0);
+				requireThat(restarted.development().widened(), "restartedWidened").isFalse();
+				requireThat(CellTier.activeCells(contract, restarted.failedCells()).stream().map(Cell::id).toList(),
+					"activeCells").isEqualTo(List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM,
+					TierFixtures.BIG_XHIGH, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+				Sha256 second = restarted.development().working().snapshot();
+				TrialProfile high = new TrialProfile("big", "high");
+				long inactive = harness.sessions().sessions().stream().map(FakeSession::request).
+					filter(request -> request.role() == SessionRole.TRIAL && harness.snapshot(request).equals(second) &&
+						DriverHarness.category(request).equals("formatting") && request.profile().equals(high)).
+					count();
+				requireThat(inactive, "secondCandidateInactiveCellTrials").isEqualTo(0L);
+			}
 		}
 	}
 

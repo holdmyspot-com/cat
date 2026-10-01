@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import tools.jackson.databind.json.JsonMapper;
@@ -61,6 +62,7 @@ final class ReportJson
 			allocation.put(entry.getKey(), entry.getValue());
 		benchmark(root, report);
 		trialProfiles(root, report.trialProfiles());
+		cellTier(root, report.cellTier());
 		remaining(root.putObject("remaining"), report.remaining());
 		tokens(root.putObject("tokens"), report.tokens());
 		StatusReport.Concurrency concurrency = report.concurrency();
@@ -269,6 +271,32 @@ final class ReportJson
 			cellNode.put("id", cell.id());
 			cellNode.put("category", cell.categoryId());
 			profile(cellNode, cell.profile());
+		}
+	}
+
+	/**
+	 * Adds the development cell tier.
+	 *
+	 * @param root the root
+	 * @param tier the cell tier, or {@code null} before a contract is confirmed
+	 */
+	private static void cellTier(ObjectNode root, CellTierReport tier)
+	{
+		if (tier == null)
+		{
+			root.putNull("cellTier");
+			return;
+		}
+		ObjectNode node = root.putObject("cellTier");
+		node.put("widened", tier.widened());
+		ArrayNode active = node.putArray("activeCells");
+		for (Map.Entry<String, List<String>> entry : tier.activeCells().entrySet())
+		{
+			ObjectNode category = active.addObject();
+			category.put("category", entry.getKey());
+			ArrayNode cells = category.putArray("cells");
+			for (String cell : entry.getValue())
+				cells.add(cell);
 		}
 	}
 
