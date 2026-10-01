@@ -462,12 +462,13 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   ends when the root session has replied and none of its background child tasks is still running. In Claude, the reply
   to a turn can arrive before background children finish; their completion notices and the follow-up reply belong to
   the same turn (H17). A child can also finish during the root's last model call: the task list is then empty when the
-  root replies, yet the CLI still starts a follow-up. So a Claude turn ends at a root reply only when the latest task
-  list is empty and every completion notice for a task the root sees arrived before the event that triggered the
-  root's latest model call (the session start or a tool result). The stream shows a call only once its response
-  starts, after the request was sent, so a notice that arrives in between counts as unread (H24). A change to the task
-  list alone never ends a turn, because a finished child can restart to handle its own background command. Once the
-  root has replied and no task is listed, a follow-up that never starts ends the turn after 30 seconds.
+  root replies, yet the CLI still starts a follow-up. Claude reports when its main loop has nothing left to do, and that
+  report already accounts for completion notices the root has not read (H25). So a Claude turn ends when Claude reports
+  itself idle while its latest task list is empty. Neither a root reply nor a task-list change ends a turn by itself:
+  Claude can be idle while a child's own background command runs, and a finished child can restart to handle it. A
+  Claude that does not report its state falls back to the stream: the turn ends at a root reply when the task list is
+  empty and every completion notice for a task the root sees arrived before the root's latest model call started
+  (H24). Either way, a turn that stays quiet for 30 seconds once Claude is idle with an empty task list ends.
 - A run that ends without a compliance outcome (provider error, rate-limit rejection, interruption, crash) is an
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
@@ -1009,6 +1010,7 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H22 | A Codex host command that ran for 662 seconds completed with exit status 0. No timeout, yield or background transition was reported. | 2026-10-01 probe, `codex exec` 0.159.1+23. Premise P10 passes for the 8-minute slice. |
 | H23 | Over 20 judge sessions per harness on fixed evidence, every verdict was the expected `fail` and quoted the evidence's session ID, and the evidence was unchanged afterwards. Codex returned the bare JSON object 20 of 20 times. Claude (`haiku`) wrapped it in a Markdown code fence 20 of 20 times and never returned it bare. Claude's read-only evidence is advisory (an added directory under `acceptEdits`); the Codex runner has no read-only option, so only file permissions protected the evidence. | Same probe as H14. Premise P11 passes with the extraction rule in §3.1. |
 | H24 | A child that finished during the root's last model call emitted `task_notification` and an empty `background_tasks_changed` before the root's `result`; the CLI then started a follow-up (`init`, then `result`) within 0.1 seconds (2 of 3 runs, children of 3 and 6 seconds). Each follow-up `result` carries `origin.kind` `task-notification`; a reply to a user message has no `origin`. Every root notice not yet followed by a root `message_start` led to a follow-up, and none followed a notice that preceded one. No event marks when a request is sent; `message_start` marks the start of its response. Two children produced one follow-up per notice. A grandchild's `task_started` lacks `owned_by_subagent` and its notice reaches the root; a subagent's own command carries `owned_by_subagent: true`, and its notice restarted that subagent (a second `task_started` for the same `task_id`) instead of the root. `subagent_stats` lagged the notices and cannot decide the end of a turn. A user message sent while a child ran was answered at once, with no `origin`, and the child's follow-up came later. | 2026-10-01 probe, Claude 2.1.286 (`haiku`), runner flags with `--include-partial-messages`; six scenarios. Refines H17: the turn-end condition in §3.2. |
+| H25 | With the environment variable `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`, Claude emits `system/session_state_changed` with `state` `running` (before a turn's first `init`) and `idle` (about 0.01 seconds after the root's final `result`). In three runs where a child finished during the root's last model call, no `idle` followed the first `result`; the follow-up started at once and `idle` followed its `result`. No `idle` arrived while a child agent ran. `idle` did arrive while a child's own background command was still listed; when that command finished, the child restarted, the root ran a follow-up, and `idle` arrived again with an empty task list. The variable is undocumented; the CLI reads it in its session-state module. | 2026-10-01 probe, Claude 2.1.286 (`haiku`), six scenarios with the runner's flags. Resolves the H24 window in which a notice arrives after a request was sent but before its response starts. |
 
 ## 12. Premise gates
 
