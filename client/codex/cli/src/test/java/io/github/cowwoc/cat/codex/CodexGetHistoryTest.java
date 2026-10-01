@@ -28,6 +28,7 @@ public final class CodexGetHistoryTest
 	@Test
 	public void resolvesRequestedThreadTranscript() throws IOException
 	{
+		// Requirement: R-I5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
@@ -42,6 +43,40 @@ public final class CodexGetHistoryTest
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
 		}
+	}
+
+	/**
+	 * Verifies that without {@code CODEX_HOME} the rollout is read from {@code .codex} below {@code HOME}, the
+	 * environment of an ordinary Codex tool shell.
+	 */
+	@Test
+	public void readsRolloutBelowHomeWithoutCodexHome() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+			String threadId = UUID.randomUUID().toString();
+			Path transcript = Files.createDirectories(home.resolve(".codex/sessions/2026/08/14")).resolve(
+				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
+			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
+
+			String result = CodexGetHistory.execute(Map.of("HOME", home.toString()), new String[]{threadId, "analyze"});
+
+			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
+				contains("records=1");
+		}
+	}
+
+	/**
+	 * Verifies the command names both variables when neither {@code CODEX_HOME} nor {@code HOME} locates the Codex home.
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*CODEX_HOME.*HOME.*")
+	public void rejectsMissingCodexHomeAndHome() throws IOException
+	{
+		// Requirement: R-I5
+		CodexGetHistory.execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
 	}
 
 	/**

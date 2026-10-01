@@ -21,6 +21,7 @@ public final class ClaudeGetHistoryTest
 	@Test
 	public void resolvesRequestedMainTranscript() throws IOException
 	{
+		// Requirement: R-I5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-history-"));
@@ -60,6 +61,41 @@ public final class ClaudeGetHistoryTest
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
 		}
+	}
+
+	/**
+	 * Verifies that without {@code CLAUDE_CONFIG_DIR} the transcript is read from {@code .claude} below {@code HOME},
+	 * the environment of an ordinary Claude Code tool shell.
+	 */
+	@Test
+	public void readsTranscriptBelowHomeByDefault() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-history-"));
+			String sessionId = UUID.randomUUID().toString();
+			Path transcript = Files.createDirectories(home.resolve(".claude/projects/-workspace")).resolve(sessionId +
+				".jsonl");
+			Files.writeString(transcript, "{\"type\":\"user\"}\n");
+
+			String result = ClaudeGetHistory.execute(Map.of("HOME", home.toString()), new String[]{sessionId, "analyze"});
+
+			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
+				contains("records=1");
+		}
+	}
+
+	/**
+	 * Verifies the command names both variables when neither {@code CLAUDE_CONFIG_DIR} nor {@code HOME} locates the
+	 * Claude Code configuration directory.
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*CLAUDE_CONFIG_DIR.*HOME.*")
+	public void rejectsMissingConfigDirectoryAndHome() throws IOException
+	{
+		// Requirement: R-I5
+		ClaudeGetHistory.execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
 	}
 
 	/**

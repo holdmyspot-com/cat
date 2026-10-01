@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.claude;
 
+import io.github.cowwoc.cat.claude.optimizer.TranscriptInterruptSignal;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,7 +38,8 @@ public final class ClaudeGetHistory
 	/**
 	 * Runs the requested operation for an explicit Claude Code session or subagent.
 	 *
-	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects
+	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects, or
+	 *   {@code HOME}, whose {@code .claude} subdirectory is used when {@code CLAUDE_CONFIG_DIR} is unset or blank
 	 * @param args a UUID session identifier, optional agent identifier, and operation arguments
 	 * @return the selected transcript and operation result
 	 * @throws IllegalArgumentException if {@code args} does not start with a UUID session identifier and an operation
@@ -69,15 +71,15 @@ public final class ClaudeGetHistory
 	/**
 	 * Resolves the main transcript for a requested Claude Code session.
 	 *
-	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects
+	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects, or
+	 *   {@code HOME}, whose {@code .claude} subdirectory is used when {@code CLAUDE_CONFIG_DIR} is unset or blank
 	 * @param sessionId the requested Claude Code session identifier
 	 * @return the normalized transcript path
 	 * @throws IOException if the required Claude configuration directory or one unique transcript is unavailable
 	 */
 	static Path transcript(Map<String, String> environment, UUID sessionId) throws IOException
 	{
-		String configDirectory = required(environment, "CLAUDE_CONFIG_DIR");
-		Path projects = Path.of(configDirectory).toAbsolutePath().normalize().resolve("projects");
+		Path projects = configurationDirectory(environment).toAbsolutePath().normalize().resolve("projects");
 		if (!Files.isDirectory(projects))
 			throw new IOException("Claude transcript directory does not exist: " + projects);
 		List<Path> matches = new ArrayList<>();
@@ -95,7 +97,8 @@ public final class ClaudeGetHistory
 	/**
 	 * Resolves a requested Claude Code subagent transcript within a session.
 	 *
-	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects
+	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects, or
+	 *   {@code HOME}, whose {@code .claude} subdirectory is used when {@code CLAUDE_CONFIG_DIR} is unset or blank
 	 * @param sessionId the requested Claude Code session identifier
 	 * @param agentId the requested agent identifier
 	 * @return the normalized subagent transcript path
@@ -155,19 +158,25 @@ public final class ClaudeGetHistory
 	}
 
 	/**
-	 * Returns one required harness environment value.
+	 * Returns the Claude Code configuration directory that holds the transcripts.
 	 *
-	 * @param environment the Claude Code harness environment
-	 * @param name the value name
-	 * @return the non-blank value
-	 * @throws IOException if the value is absent
+	 * @param environment the caller's environment
+	 * @return {@code CLAUDE_CONFIG_DIR} when it is set and non-blank, otherwise {@code .claude} below {@code HOME}
+	 * @throws IOException if {@code CLAUDE_CONFIG_DIR} and {@code HOME} are both unset or blank
 	 */
-	private static String required(Map<String, String> environment, String name) throws IOException
+	private static Path configurationDirectory(Map<String, String> environment) throws IOException
 	{
-		String value = environment.get(name);
-		if (value == null || value.isBlank())
-			throw new IOException(name + " is required to locate the current Claude transcript");
-		return value.strip();
+		String configured = environment.get("CLAUDE_CONFIG_DIR");
+		String home = environment.get("HOME");
+		if (home != null && !home.isBlank())
+			return TranscriptInterruptSignal.configurationDirectory(Path.of(home.strip()), configured);
+		if (configured == null || configured.isBlank())
+		{
+			throw new IOException("Neither CLAUDE_CONFIG_DIR nor HOME is set, so the Claude Code configuration " +
+				"directory that holds the transcripts cannot be located. Set HOME, or set CLAUDE_CONFIG_DIR to the Claude " +
+				"Code configuration directory.");
+		}
+		return Path.of(configured.strip());
 	}
 
 	/**

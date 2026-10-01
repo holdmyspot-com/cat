@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.codex;
 
+import io.github.cowwoc.cat.codex.optimizer.RolloutInterruptSignal;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,7 +38,8 @@ public final class CodexGetHistory
 	/**
 	 * Runs the requested operation for an explicit Codex thread.
 	 *
-	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts
+	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or {@code HOME},
+	 *   whose {@code .codex} subdirectory is used when {@code CODEX_HOME} is unset or blank
 	 * @param args a UUID thread identifier followed by a session-history operation and its arguments
 	 * @return the selected transcript and operation result
 	 * @throws IllegalArgumentException if {@code args} does not start with a UUID thread identifier and an operation
@@ -58,15 +60,15 @@ public final class CodexGetHistory
 	/**
 	 * Resolves the one rollout transcript matching a requested Codex thread identifier.
 	 *
-	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts
+	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or {@code HOME},
+	 *   whose {@code .codex} subdirectory is used when {@code CODEX_HOME} is unset or blank
 	 * @param threadId the requested Codex thread identifier
 	 * @return the normalized transcript path
 	 * @throws IOException if the required Codex home or one unique transcript is unavailable
 	 */
 	static Path transcript(Map<String, String> environment, UUID threadId) throws IOException
 	{
-		String codexHome = required(environment, "CODEX_HOME");
-		Path sessions = Path.of(codexHome).toAbsolutePath().normalize().resolve("sessions");
+		Path sessions = codexHome(environment).toAbsolutePath().normalize().resolve("sessions");
 		if (!Files.isDirectory(sessions))
 			throw new IOException("Codex transcript directory does not exist: " + sessions);
 		List<Path> matches = new ArrayList<>();
@@ -101,19 +103,24 @@ public final class CodexGetHistory
 	}
 
 	/**
-	 * Returns one required harness environment value.
+	 * Returns the Codex home that holds the rollouts.
 	 *
-	 * @param environment the Codex harness environment
-	 * @param name the value name
-	 * @return the non-blank value
-	 * @throws IOException if the value is absent
+	 * @param environment the caller's environment
+	 * @return {@code CODEX_HOME} when it is set and non-blank, otherwise {@code .codex} below {@code HOME}
+	 * @throws IOException if {@code CODEX_HOME} and {@code HOME} are both unset or blank
 	 */
-	private static String required(Map<String, String> environment, String name) throws IOException
+	private static Path codexHome(Map<String, String> environment) throws IOException
 	{
-		String value = environment.get(name);
-		if (value == null || value.isBlank())
-			throw new IOException(name + " is required to locate the current Codex transcript");
-		return value.strip();
+		String configured = environment.get("CODEX_HOME");
+		String home = environment.get("HOME");
+		if (home != null && !home.isBlank())
+			return RolloutInterruptSignal.codexHome(Path.of(home.strip()), configured);
+		if (configured == null || configured.isBlank())
+		{
+			throw new IOException("Neither CODEX_HOME nor HOME is set, so the Codex home that holds the rollouts " +
+				"cannot be located. Set HOME, or set CODEX_HOME to the Codex home.");
+		}
+		return Path.of(configured.strip());
 	}
 
 	/**

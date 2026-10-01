@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.claude.ClaudeSessionEndHook;
@@ -272,6 +273,29 @@ public final class ClaudeSessionStartHookTest
 
 			requireThat(context, "context").contains("`" + lazyRule + "`").
 				doesNotContain("`../include/java/javadoc.md`");
+		}
+	}
+
+	/**
+	 * Verifies Claude receives the hook's plugin root wherever a bundled rule writes the plugin-root directive, while
+	 * the {@code ${CAT_PLUGIN_ROOT}} notation stays as written.
+	 */
+	@Test
+	public void statesPluginRootInBundledRules() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(plugin, "rules/claude/skill-env.md", "The plugin directory is `" +
+				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "`. Replace `${CAT_PLUGIN_ROOT}` with it.\n");
+
+			String context = completeContext(invoke("{\"cwd\":\"" + project + "\"}",
+				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
+
+			requireThat(context, "context").contains("The plugin directory is `" + plugin + "`.").
+				contains("`${CAT_PLUGIN_ROOT}`").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
 		}
 	}
 

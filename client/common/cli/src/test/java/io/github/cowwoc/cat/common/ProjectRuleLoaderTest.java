@@ -212,6 +212,53 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies a bundled rule states the plugin root in place of the plugin-root directive, including in source-only
+	 * Markdown that it includes.
+	 */
+	@Test
+	public void statesPluginRootInBundledRules() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/direct.md", "direct: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "\n" +
+				"<!-- cat:include ../include/common/body.md -->\n");
+			write(plugin, "rules/include/common/body.md", "included: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "\n");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin.resolve("rules/.."), project,
+				"harnessa");
+
+			requireThat(context, "context").contains("direct: " + plugin + "\n").contains("included: " + plugin).
+				doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+		}
+	}
+
+	/**
+	 * Verifies project and user rules receive the plugin-root directive unchanged, because the plugin root is not
+	 * theirs to state.
+	 */
+	@Test
+	public void keepsPluginRootDirectiveOutsidePlugin() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(userRules, "common/user.md", "user: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+			write(project, ".cat/rules/common/project.md", "project: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, userRules, project, "harnessa");
+
+			requireThat(context, "context").contains("user: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE).
+				contains("project: " + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE).doesNotContain(plugin.toString());
+		}
+	}
+
+	/**
 	 * Verifies the loader rejects a rule whose prerequisite is not selected for the current context.
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*dependency is not available.*")

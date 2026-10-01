@@ -23,9 +23,19 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * Loads CAT project rules for a harness, placing each declared prerequisite before the rule that needs it.
+ * <p>
+ * In the context of a bundled rule, each {@link #PLUGIN_ROOT_DIRECTIVE} becomes the absolute, normalized CAT
+ * installation directory that the caller supplied.
  */
 public final class ProjectRuleLoader
 {
+	/**
+	 * The directive that a bundled rule writes where the injected context must state CAT's installation directory.
+	 * <p>
+	 * The loader replaces it only in direct rules from the plugin's rule tree, including the source-only Markdown they
+	 * include. Project and user rules receive it unchanged.
+	 */
+	public static final String PLUGIN_ROOT_DIRECTIVE = "<!-- cat:plugin-root -->";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -264,7 +274,8 @@ public final class ProjectRuleLoader
 	/**
 	 * Renders one rule as immediate or lazy context.
 	 *
-	 * @param ownerRoot a non-null rule-source owner directory
+	 * @param ownerRoot a non-null rule-source owner directory. For a bundled rule, it is the CAT installation directory
+	 *   that replaces each {@link #PLUGIN_ROOT_DIRECTIVE} in the rule's context.
 	 * @param file a non-null rule file
 	 * @param ruleRoot the source root that bounds included rules
 	 * @param root the source kind that contains {@code file}
@@ -301,8 +312,12 @@ public final class ProjectRuleLoader
 			String body = content;
 			if (frontmatter != null)
 				body = frontmatter.body();
+			String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file,
+				ruleRoot);
+			if (root == RuleRoot.PLUGIN)
+				injected = injected.replace(PLUGIN_ROOT_DIRECTIVE, ownerRoot.toAbsolutePath().normalize().toString());
 			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
-				injectedBody(null, expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file, ruleRoot));
+				injected);
 		}
 		if (!paths.isArray())
 			throw new IOException("Invalid paths frontmatter: " + path);

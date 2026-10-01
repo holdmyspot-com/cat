@@ -2,27 +2,19 @@
 
 ## Design Goals
 
-- Let an ordinary Claude Code prompt locate CAT's installed files and its project-owned temporary root without relying
-  on hook-only environment variables or state left by an earlier shell command.
-- Keep both values derived from the native Claude Code environment and the CAT CLI that owns project-root discovery.
+- Let an ordinary Claude Code agent use a file shipped in CAT's installed plugin, such as a launcher, rule, or skill,
+  from the plugin directory that its session context states, because Claude Code tool shells define no variable that
+  names that directory.
+- Let the agent locate CAT's project-owned temporary directory through the CAT command that finds the project root, in
+  the same shell command that uses it, rather than reconstructing the path or relying on an earlier command's state.
 
 ## Guidance
 
-For an ordinary Claude Code agent tool shell, `CAT_PLUGIN_ROOT` means
-`${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat`. Derive that value from native `CLAUDE_CONFIG_DIR` whenever a
-prompt needs a file shipped in CAT's installed plugin, including a launcher, rule, skill, or configuration file. Use
-paths below it as `${CAT_PLUGIN_ROOT}/…`.
+In this session, CAT's installed plugin directory is `<!-- cat:plugin-root -->`. Claude Code tool shells do not define
+`CAT_PLUGIN_ROOT`. Wherever a skill or rule writes `${CAT_PLUGIN_ROOT}`, write that directory in its place in the
+shell command; never expand `${CAT_PLUGIN_ROOT}` from the environment.
 
-For an ordinary Claude Code agent tool shell, `CAT_TEMP` means the absolute `.cat/work/temp` directory below the current
-CAT project root. In the same shell action that needs it, derive it with
-`${CAT_PLUGIN_ROOT}/client/bin/workflow-temp root`. The command finds the project root, creates the directory if it is
-missing, and prints its absolute path on one line with no prefix; do not reconstruct that path from the current
-directory.
-
-Do not rely on a prior command having exported either value. In the shell command that expands `CAT_PLUGIN_ROOT` or
-`CAT_TEMP`, first derive `CAT_PLUGIN_ROOT` from `CLAUDE_CONFIG_DIR`, then derive `CAT_TEMP` with `workflow-temp root`,
-and then invoke the required launcher.
-
-Do not use `CLAUDE_PLUGIN_ROOT`: Claude Code defines it for hook invocations, not ordinary agent tool shells. Do not let
-a locally defined `CAT_PLUGIN_ROOT` override the derived value. If it is defined and differs, stop and report both
-values; if it matches, continue using the derived value.
+`CAT_TEMP` means the absolute `.cat/work/temp` directory below the current CAT project root. In the same shell
+command that needs it, derive it with `<plugin directory>/client/bin/workflow-temp root`, where `<plugin directory>`
+is the directory above. The command finds the project root, creates the directory if it is missing, and prints its
+absolute path on one line with no prefix; do not reconstruct that path from the current directory.

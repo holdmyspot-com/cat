@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.codex.CodexSessionStartHook;
@@ -164,6 +165,30 @@ public final class CodexSessionStartHookTest
 
 			requireThat(context, "context").contains("`" + lazyRule + "`").
 				doesNotContain("`../include/java/javadoc.md`");
+		}
+	}
+
+	/**
+	 * Verifies Codex receives the hook's plugin root wherever a bundled rule writes the plugin-root directive, while
+	 * the {@code ${CAT_PLUGIN_ROOT}} notation stays as written.
+	 */
+	@Test
+	public void statesPluginRootInBundledRules() throws IOException
+	{
+		// Requirement: R-I5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("skill-env.md"),
+				"The plugin directory is `" + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "`. Replace " +
+				"`${CAT_PLUGIN_ROOT}` with it.\n");
+
+			String context = context(invoke("{\"cwd\":\"" + project + "\"}",
+				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+
+			requireThat(context, "context").contains("The plugin directory is `" + plugin + "`.").
+				contains("`${CAT_PLUGIN_ROOT}`").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
 		}
 	}
 
