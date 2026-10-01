@@ -1,5 +1,5 @@
 ---
-agents: ["main"]
+agents: ["main", "subagents"]
 ---
 # Project Rule Routing
 

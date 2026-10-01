@@ -2,8 +2,7 @@
 depends-on:
   - ./design-quality.md
   - ./backward-design.md
-  - ./user-request-scheduling.md
-agents: ["main"]
+agents: ["main", "subagents"]
 ---
 # Default Rule Routing
 

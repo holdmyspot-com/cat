@@ -31,8 +31,9 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
-	 * Verifies a subagent receives CAT's default rule routing in both harnesses, so it can lazy load engineering rules
-	 * such as TDD and testing, while the rules about interacting with the user stay with the main agent.
+	 * Verifies a subagent receives CAT's default rule routing and request-execution rule in both harnesses, so it can
+	 * lazy load engineering rules such as TDD and testing and decide which gaps to escalate, while the rules about
+	 * interacting with the user stay with the main agent.
 	 */
 	@Test
 	public void subagentGetsRoutingNotUserRules() throws IOException, URISyntaxException
@@ -49,12 +50,12 @@ public final class BundledRuleAudienceTest
 			{
 				String subagent = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
 				requireThat(subagent, harness + "Subagent").contains("# Default Rule Routing").
-					contains("# Design Quality").contains("lazy load `").
+					contains("# Design Quality").contains("lazy load `").contains("# Request Execution").
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
 
 				String main = loader.loadForMainAgent(plugin, project, harness);
 				requireThat(main, harness + "Main").contains("# Default Rule Routing").
-					contains("# User Request Scheduling").contains("# File Links");
+					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links");
 			}
 		}
 	}
