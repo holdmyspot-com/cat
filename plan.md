@@ -172,7 +172,9 @@ overkill.
 | WI-7 | In progress: delegated to `optimize-medium` in `worktrees/v1.0-wi7` (branch `v1.0-wi7`, snapshot `5995438bf`), uncommitted. |
 | WI-8 (adapters, signals, native contract tests) | In progress: delegated to `optimize-medium` in `worktrees/v1.0-wi8` (branch `v1.0-wi8`, snapshot `5995438bf`), uncommitted. |
 | WI-12 | In progress: delegated to `optimize-low` in `worktrees/v1.0-wi12` (branch `v1.0-wi12`, snapshot `5995438bf`), uncommitted. |
-| WI-9 to WI-11, WI-13 to WI-15 | Not started |
+| WI-3/WI-4 assignment record | In progress: delegated to `optimize-high` in `worktrees/v1.0-wi34f` (snapshot `d1393de1e`): adds §3.2's allocation decision, evidence revision, assignment time and infrastructure attempts to the trial and its stored record. |
+| WI-11 | In progress: delegated to `optimize-high` in `worktrees/v1.0-wi11` (branch `v1.0-wi11`, snapshot `d1393de1e`), uncommitted. |
+| WI-9, WI-10, WI-13 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
