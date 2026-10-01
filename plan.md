@@ -161,7 +161,7 @@ overkill.
 | Work item | State |
 |---|---|
 | Setup (§1.1) | Done (commit `bd37b5b3d`). Verified 2026-10-01 with one trivial task per agent. Claude offers `cat:claude:optimize-<tier>`; transcripts record `claude-opus-5-5` (xhigh, high) and `claude-sonnet-5-5` (medium, low), with effort observable and matching. Codex offers `cat-optimize-<tier>` (rollout `agent_role`); rollouts record `gpt-6.1-sol` high/medium and `gpt-6-luna` high/medium. Every agent's injected context contains Default Rule Routing, Request Execution and the body's decision rule; in Claude the rules arrive through the SubagentStart context file. |
-| WI-0 | In progress. P1, P2 and P3 passed on 2026-10-01 (design §11 H11–H13; ESC sent through `tmux -L catprobe`, evidence in `.cat/work/temp/optimizer-probes-13495928275341475570/p1`, `p2`). P4–P11 not yet run; `optimize-medium` is finishing their scripts in that directory. |
+| WI-0 | Done 2026-10-01. Every gate has a result (§4); `design.md` §11 H11–H23 and §12 record them. ESC was sent through `tmux -L catprobe`. Evidence is in `.cat/work/temp/optimizer-probes-13495928275341475570` (one directory per probe and harness, each with `summary.md`). It stays until WI-8 has copied the recorded native lines it needs into test resources, then WI-8's integration deletes it with `workflow-temp delete`. |
 | WI-5 | Done (commit `b3abb8863`): `HarnessCapacity` replaces `HarnessConcurrencyLimit` (no references remain); both runner CLIs acquire it; `native` Maven profile added. Full build passed on the integrated tree; the native two-process test passed in both harnesses. The native test fails rather than skips when a real session holds the single slot. |
 | WI-2 | Done (commit `7c38706aa`); full build passed on the integrated tree. Follow-ups: WI-10 injects the CAT-owned judge `model`, `prompt` and `result_schema` before validating deriver output, and renders the CAT-computed §6.1 items (procedure, link report, warnings, minimum session count) that the proposal schema does not hold; WI-3 or WI-4 hashes `ProposalSchema.toJson(Contract)` for H-1. The formal `DrawStream` starts closed and WI-3's commit opens it (R-F1). |
 | WI-6 | Done (commit `5a5499b75`); full build passed on the integrated tree. `DeliveryPlan` treats any change to an overlay target on the base side as a conflict, including an identical change, per design §4.7. Its change list gives WI-11 each change's preimage and postimage for at-most-once resume. |
@@ -173,6 +173,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - R-S6: owner changed from WI-1 to WI-1, WI-3. Its proof `AdmissionTest` tests admission, which WI-3 builds.
 - `design.md` §11: added H11–H13 (premises P1–P3).
 - §1.1 assignments for WI-0 and WI-15: at the user's direction (2026-10-01), the orchestrator sends ESC through a terminal multiplexer, and the user presses ESC only if that fails.
+- `design.md` §11: added H14–H23 (premises P4–P11). §12: added a result column. §3.1: judge and deriver output may be one JSON object alone in a Markdown code fence (H23). §3.2: a Claude turn includes its background children's completion; Codex trials cannot create child worktrees (H17, H18). §3.8: the Codex runner interrupts with `turn/interrupt`; reconciliation terminates the processes recorded in leftover run manifests (H19, H20). §5: loading observation names what each harness exposes (H21).
+- §4: added the gate results. WI-8: added the runner fixes for H17 and H19 and their allowlist. WI-9: reconciliation terminates recorded processes. WI-10: loading split and the output extraction rule.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -313,6 +315,16 @@ update §3.7 or §3.8 as needed.
 | P11 | Run 20 judge sessions per harness on fixed evidence; record the rate of schema-valid output. | WI-10 judge profile |
 
 Exit check: every gate has a recorded result (pass, or the fallback applied) and `design.md` §11 and §12 are updated.
+
+Results (2026-10-01; facts in `design.md` §11 H11–H23, results in §12):
+
+- P1, P2, P3, P4, P5, P10: passed. P10 reached no limit in 662 seconds, so the over-limit behaviour is unobserved.
+- P6: passed on the documented credential fields; only Claude subscription and Codex API-key logins were available.
+- P7: partly passed. Completion and parallelism are observable once the runner fixes in WI-8 land; no Claude grandchild
+  was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in §3.2.
+- P8: passed for Claude; failed for Codex. Fallback applied: reconciliation terminates recorded processes (WI-9).
+- P9: failed for instruction files. Fallback applied: documented derivation (WI-10).
+- P11: passed with the extraction rule; Claude fenced every judge response, Codex returned bare JSON.
 Cleanup: the probes create their directories with `workflow-temp create` and delete them once their facts are
 recorded.
 
@@ -457,8 +469,16 @@ The riskiest pure code, built first.
   - `RolloutInterruptSignal` (Codex) and `TranscriptInterruptSignal` (Claude) implement `HostInterruptSignal` from an
     injected path and clock.
   - Shared `SessionPortContract` tests run against the fake always, and against each real adapter in the native tier.
+  - Runner fixes the adapters depend on (`design.md` §11 H17, H19):
+    - the Claude runner ends a turn only when the root reply has arrived and `background_tasks_changed` lists no task,
+      relaying `task_notification` records and the follow-up reply in the same turn;
+    - the Codex runner implements mid-turn interruption with `turn/interrupt`, and fills `assistant_response` from the
+      last completed `agentMessage` item;
+    - both runners treat an interrupt that arrives after the turn ended as a no-op instead of failing.
 - **Closes:** R-E6 (parsing), R-E7 (classification), R-E10 (signals), R-E13 (transport), R-E14, R-E15, R-E16, and part
   of R-M1.
+- **Allowlist note:** the runner fixes above write the runner sources under `client/claude/cli`, `client/codex/cli` and
+  `client/common/cli`.
 - **Tests:** event-parsing tests feed recorded native lines captured during WI-0 into the parser as in-memory input.
   Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. Native tests
   run the contract once per operation and harness.
@@ -472,7 +492,8 @@ The riskiest pure code, built first.
   `HostInterruptSignal` and the slice deadline.
 - **`SliceRunner`:** the only class that blocks on real time. It waits on the event queue until the next deadline and
   is covered by one focused threaded test.
-- **Also:** reconciliation, the campaign write lock (an injected path; a second driver gets `busy`), the slice cutoff
+- **Also:** reconciliation (including terminating the recorded `ownerPid` and `nativePid` of runs left by an earlier
+  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice cutoff
   and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
   safe-checkpoint handling for revision.
 - **Closes:** R-D2, R-D3 (driver side), R-D9, the driver side of R-F6, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3,
@@ -490,7 +511,8 @@ The riskiest pure code, built first.
 - **Prompts:** the deriver prompt, the judge prompt and the author prompt. Each states its role's authority limits
   from `design.md` §3.1 and §4.3 and its output schema.
 - **Driver handling:** proposal rendering, feedback regeneration and confirmation; loading observation or documented
-  derivation (P9); the authentication and link warnings in the proposal; and the judge profile freeze.
+  derivation (P9: hooks and Claude's skill inventory are observed, instruction files are derived, H21); the judge and
+  deriver output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the authentication and link warnings in the proposal; and the judge profile freeze.
 - **Closes:** R-C1, R-C2 (rendering), R-C5, R-C6 (detection in proposals), R-C7, R-E7 (warning), R-E13 (schemas).
 - **Tests:** `ProposalTest` uses fixture deriver outputs, valid and invalid, to check every required item and the
   rejection of aggregate-only summaries. Native: one deriver, judge and author session per harness on a small fixture

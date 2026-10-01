@@ -432,7 +432,9 @@ CAT runs four kinds of work in nested sessions, each started through the current
 | Judge | Frozen rubric, the instance, and that trial's evidence (read-only) | `pass` or `fail` with rationale, in a strict schema |
 | Author | Copy of the working candidate and the failure evidence | Edited prompt files in its copy |
 
-A judge or deriver output that does not match its schema is an infrastructure failure. Candidate and trial content
+A judge or deriver output that does not match its schema is an infrastructure failure. The output is the final
+response when that response is exactly one JSON object, either bare or alone inside one Markdown code fence; any other
+response is invalid (Claude fences its JSON, H23). Candidate and trial content
 cannot change the judge's rubric, schema or authority. Every nested session is counted against the campaign ceiling and
 the shared harness capacity ([§3.6](#36-shared-harness-capacity)).
 
@@ -456,14 +458,18 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   - the allocation decision with the evidence revision it used, and the assignment time.
   The judged outcome, the judge identity and every infrastructure attempt are added later. The record establishes
   ordering and guards against selecting favourable instances; it does not claim the execution is reproducible.
-- Each logical trial starts one fresh root session, and every turn of a multi-turn test runs in that session.
+- Each logical trial starts one fresh root session, and every turn of a multi-turn test runs in that session. A turn
+  ends when the root session has replied and none of its background child tasks is still running. In Claude, the reply
+  to a turn can arrive before background children finish; their completion notices and the follow-up reply belong to
+  the same turn (H17).
 - A run that ends without a compliance outcome (provider error, rate-limit rejection, interruption, crash) is an
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
   count toward that limit; they follow the backoff in [§3.5](#35-volume-safeguards).
 - A trial agent may use native subagents, recursive delegation and child Git worktrees. All of it belongs to one logical
   trial and yields one judged outcome. Child disposition and merges are reconciled before judging. If they cannot be
-  determined, the trial records an observation limit and receives no invented label.
+  determined, the trial records an observation limit and receives no invented label. Codex trials cannot create child
+  worktrees under the runner's sandbox (H18); the judge sees that failure as part of the evidence.
 - Exceeding the test definition's time limit is behaviour: CAT judges the trial on its evidence and does not retry it.
 
 ### 3.3 Allocation and concurrency
@@ -571,13 +577,16 @@ The driver therefore runs as a foreground command in time-bounded **slices**:
   user-interrupt record written after it started.
 - **Codex:** ESC leaves the command running (observed). The driver tails
   `$CODEX_HOME/sessions/**/rollout-*-$CODEX_THREAD_ID.jsonl` and, after a `turn_aborted` event later than its start,
-  stops admitting, interrupts in-flight sessions through the runner, persists, and exits within 15 seconds.
+  stops admitting, interrupts in-flight sessions through the runner, persists, and exits within 15 seconds. The Codex
+  runner interrupts a turn with the app-server's `turn/interrupt` request (H19).
 - **Write-ahead order:** CAT persists each assignment before starting its session and each outcome before adopting it.
   The campaign snapshot is replaced atomically after adoption. A crash at any point leaves either a logical trial to
   rerun or an outcome to adopt; it never leaves a duplicate outcome or a lost failure.
 - **Reconciliation** runs first in every `run`. It adopts recorded outcomes that are not yet in the snapshot, marks
   sessions that started without an outcome for rerun, and verifies the optimization worktree inventory
-  ([§4.6](#46-inventory-validation)). The runner's stale-run maintenance deletes orphaned run directories.
+  ([§4.6](#46-inventory-validation)). It also terminates the processes recorded in the run manifest (`ownerPid`,
+  `nativePid`) of every run left by an earlier driver, since Codex runner processes outlive a killed driver (H20). The
+  runner's stale-run maintenance deletes orphaned run directories.
 
 ### 3.9 Progress and remaining work
 
@@ -762,7 +771,8 @@ each differing condition instead of reducing the check to one opaque hash.
 
 A deriver session inspects the prompt system and proposes the complete contract. Loading follows production behaviour:
 CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's documented
-loading rules and CAT's rule loader, recording that limit. Aggregate counts never stand in for the items themselves. The
+loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude exposes its skill
+and command inventory; no harness names the instruction files it loaded, so those are derived (H21). Aggregate counts never stand in for the items themselves. The
 proposal lists:
 
 - every requirement and its source, including files reached through links and readable files outside the project;
@@ -974,25 +984,35 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H11 | In an interactive Codex host, ESC wrote `turn_aborted` to the host thread's rollout 19 ms after the key. A tool command polling that rollout read it 330 ms after the key. The command and its plain, `setsid` and `nohup` children received no signal and ran to completion 172 seconds later. The command's environment had `CODEX_THREAD_ID` and `CODEX_HOME`. | 2026-10-01 probe, interactive Codex 0.159.1+23 in `workspace-write`, ESC sent as a key through `tmux`. Premise P1 passes. |
 | H12 | In an interactive Claude host with the sandbox disabled, ESC sent SIGTERM to the command and to all three children, including the `setsid` and `nohup` ones, 84 ms after the key. All of them stopped. | 2026-10-01 probe, interactive Claude Code 2.1.286, sandbox disabled (the command shared the host's PID namespace), ESC sent as a key through `tmux`. Premise P2 passes. |
 | H13 | The host Claude transcript recorded a rejected tool result and `[Request interrupted by user]` about 100 ms after ESC. The command had `CLAUDE_CODE_SESSION_ID` but not `CLAUDE_CONFIG_DIR`; the transcript was `$HOME/.claude/projects/<project>/<session>.jsonl`. A watcher must default to `$HOME/.claude` when `CLAUDE_CONFIG_DIR` is unset and match the `[Request interrupted by user` prefix, since the text differs from H9's. | Same probe as H12. Premise P3 passes. |
+| H14 | Both runners' native events carry rate-limit state. Claude emits `rate_limit_event` with `unifiedWindows.five_hour` and `seven_day`, each with `utilization` (0–1) and `resetsAt` (epoch seconds). Codex emits `account/rateLimits/updated` with `primary` and `secondary` windows, each with `usedPercent`, `windowDurationMins` and `resetsAt`. | 2026-10-01 probe through the installed runners (Claude Code 2.1.286 with `haiku`, medium effort; codex-cli 0.159.1+23 with `gpt-6-luna`). Premise P4 passes. |
+| H15 | Both runners' native events carry token usage. Claude's `result` record holds the session's `usage` (input, output, cache-creation and cache-read tokens) and `total_cost_usd`. Codex's `thread/tokenUsage/updated` holds cumulative `total` and per-turn `last` counts (input, cached input, output and reasoning output). Claude's native events named the model `claude-haiku-4-5-20251001` for the `haiku` alias; Codex's `thread/started` named `model` and `reasoningEffort`. | Same probe. Premise P5 passes; H3's alias mapping did not recur. |
+| H16 | Claude's credential file `.credentials.json` holds a `claudeAiOauth` object with `subscriptionType` for a subscription login, and `claude auth status --json` reports `authMethod` and `apiProvider`. `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` in the environment selects an API key. Codex's `auth.json` holds `auth_mode` (`apikey` with an `OPENAI_API_KEY` string, or a ChatGPT mode with a `tokens` object), and `config.toml` may force a method with `forced_login_method`. Both runners copy the credential file byte for byte into the isolated home. | Same probe. Observed logins: Claude subscription, Codex API key; the other kind in each harness was not available. Premise P6 passes on the documented fields. |
+| H17 | Claude trial agents start child agents with `run_in_background`. The native CLI then emits `task_started` (`is_backgrounded`, `spawn_depth`), and the root turn's `result` arrives before the children finish. The CLI keeps the children running, emits `task_notification` with the child's status when one finishes, and starts a follow-up turn with its own `result`. The runner ends the turn at the first `result`, so the children's work and the follow-up were lost. Codex children appear as separate threads, and parallel children have overlapping activity. | Same probe, plus a direct stream-json run of the Claude CLI. Premise P7 partly passes: completion and parallelism are observable, but the runner must wait for them (§3.2). No grandchild was observed in Claude. |
+| H18 | Under the Codex runner's `workspace-write` sandbox, a trial's `.git` is read-only, so `git worktree add` and commits fail. Codex trials therefore cannot use child worktrees. | Same probe. Child worktree merges were not observable in Codex. |
+| H19 | A Claude runner interrupt during a turn produced an `interrupted` bridge record and then `turn-completed` with exit code 0 and the response `[Request interrupted by user]`; no native process remained. An interrupt that arrives after the turn has ended makes the runner fail with "Bridge has no active turn to interrupt". The Codex runner refuses an interrupt with "This harness does not support mid-turn interruption", and the turn ran to completion. Codex's `turn-completed` record carries an empty `assistant_response`; the reply is the last completed `agentMessage` item. | Same probe. H19 supersedes H10's exit status for this runner version. |
+| H20 | When the driver was killed with SIGKILL, every Claude runner process was gone within 2 seconds. Every Codex runner process survived the whole 60-second observation window: the runner JVM, `codex app-server` and the sandboxed command. The Codex run manifest records `ownerPid` and `nativePid`. | Same probe. Premise P8 passes for Claude and fails for Codex. |
+| H21 | Hook runs are observable in both harnesses: Claude emits `hook_started` and `hook_response`, and Codex emits `hook/started` and `hook/completed` with the hook's source path. Claude's `init` and `commands_changed` records list the loaded skills and commands. No native event in either harness names a loaded instruction file (`CLAUDE.md` or `AGENTS.md`), although the model saw each harness's file. | Same probe. Premise P9 fails for instruction files. |
+| H22 | A Codex host command that ran for 662 seconds completed with exit status 0. No timeout, yield or background transition was reported. | 2026-10-01 probe, `codex exec` 0.159.1+23. Premise P10 passes for the 8-minute slice. |
+| H23 | Over 20 judge sessions per harness on fixed evidence, every verdict was the expected `fail` and quoted the evidence's session ID, and the evidence was unchanged afterwards. Codex returned the bare JSON object 20 of 20 times. Claude (`haiku`) wrapped it in a Markdown code fence 20 of 20 times and never returned it bare. Claude's read-only evidence is advisory (an added directory under `acceptEdits`); the Codex runner has no read-only option, so only file permissions protected the evidence. | Same probe as H14. Premise P11 passes with the extraction rule in §3.1. |
 
 ## 12. Premise gates
 
 Each gate must pass before code that depends on it is accepted. A failed gate selects its fallback, which `plan.md`
 records with the evidence.
 
-| ID | Premise to establish | Fallback if it fails |
-|---|---|---|
-| P1 | When the driver runs as a Codex host command, ESC writes `turn_aborted` to the host thread's rollout within seconds, and the driver can read it. | Codex slices shrink to 2 minutes, so ESC stops admissions within one slice. The status documents the latency. |
-| P2 | Without the sandbox, Claude ESC still stops the command and its descendants. | Make P3's transcript watcher mandatory. |
-| P3 | The host Claude transcript receives an interrupt record promptly, and the driver can find it from `CLAUDE_CODE_SESSION_ID` and `CLAUDE_CONFIG_DIR`. | If P2 also fails, use 2-minute slices and document the latency. |
-| P4 | Both harnesses expose rate-limit utilization and reset times through the runner's native events. | React only to rate-limit rejections, and say so in the volume warning. |
-| P5 | Both harnesses expose per-session token usage. | Omit token statistics. |
-| P6 | CAT can tell a subscription login from an API key in each harness's credentials. | Show the authentication warning unconditionally. |
-| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. |
-| P8 | Runner native processes are descendants of the driver, so killing the driver leaves no live native session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordNativeProcess`. |
-| P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. |
-| P10 | Codex lets a command run for the slice budget, and reports what happens when a command exceeds its limit. | Shorten Codex slices to fit the observed limit. |
-| P11 | Judge sessions read the evidence read-only and return schema-valid results reliably in both harnesses. | Measure the invalid-output rate. Retries of the same logical trial cover the rate if it is low; otherwise the judge profile cannot be confirmed. |
+| ID | Premise to establish | Fallback if it fails | Result |
+|---|---|---|---|
+| P1 | When the driver runs as a Codex host command, ESC writes `turn_aborted` to the host thread's rollout within seconds, and the driver can read it. | Codex slices shrink to 2 minutes, so ESC stops admissions within one slice. The status documents the latency. | Passed 2026-10-01 (H11). |
+| P2 | Without the sandbox, Claude ESC still stops the command and its descendants. | Make P3's transcript watcher mandatory. | Passed 2026-10-01 (H12). |
+| P3 | The host Claude transcript receives an interrupt record promptly, and the driver can find it from `CLAUDE_CODE_SESSION_ID` and `CLAUDE_CONFIG_DIR`. | If P2 also fails, use 2-minute slices and document the latency. | Passed 2026-10-01 (H13). |
+| P4 | Both harnesses expose rate-limit utilization and reset times through the runner's native events. | React only to rate-limit rejections, and say so in the volume warning. | Passed (H14). |
+| P5 | Both harnesses expose per-session token usage. | Omit token statistics. | Passed (H15). |
+| P6 | CAT can tell a subscription login from an API key in each harness's credentials. | Show the authentication warning unconditionally. | Passed on the documented fields; one login kind per harness observed (H16). |
+| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19). Fallback applied to Codex child worktrees; §3.2 and §3.8 updated. |
+| P8 | Runner native processes are descendants of the driver, so killing the driver leaves no live native session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordNativeProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied; §3.8 updated. |
+| P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. | Failed for instruction files (H21). Fallback applied; §5 updated. |
+| P10 | Codex lets a command run for the slice budget, and reports what happens when a command exceeds its limit. | Shorten Codex slices to fit the observed limit. | Passed for the 8-minute slice; no limit was reached in 662 seconds, so the over-limit behaviour is unobserved (H22). |
+| P11 | Judge sessions read the evidence read-only and return schema-valid results reliably in both harnesses. | Measure the invalid-output rate. Retries of the same logical trial cover the rate if it is low; otherwise the judge profile cannot be confirmed. | Passed with the §3.1 extraction rule (H23). |
 
 ## 13. Decision records
 
