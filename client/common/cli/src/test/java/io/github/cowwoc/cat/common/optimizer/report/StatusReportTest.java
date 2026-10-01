@@ -232,8 +232,8 @@ public final class StatusReportTest
 		Campaign campaign = new Campaign(frozen.header(), frozen.ceiling(), frozen.lineages(), frozen.identity(),
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
 			new IncumbentBaseline(2, frozen.baseline().counts()), frozen.attempts(), frozen.trials(),
-			frozen.sequences(), frozen.slowStart(), frozen.throttle(), frozen.pendingDecisions(),
-			frozen.revisionRequested(), frozen.outcome(), frozen.delivery());
+			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
+			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(), frozen.delivery());
 		CategoryReport.Improvement improvement = category(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();
