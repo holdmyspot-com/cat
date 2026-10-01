@@ -160,7 +160,7 @@ overkill.
 
 | Work item | State |
 |---|---|
-| Setup (§1.1) | Tier agents added (shared body `optimize.md`, four Claude and four Codex wrappers, README updated), built with `./mvnw verify`, installed in both harnesses and committed. Next: in a new session, verify each agent with a trivial task against the §1.1 checklist, then start WI-0. |
+| Setup (§1.1) | Done (commit `bd37b5b3d`). Verified 2026-10-01 with one trivial task per agent. Claude offers `cat:claude:optimize-<tier>`; transcripts record `claude-opus-5-5` (xhigh, high) and `claude-sonnet-5-5` (medium, low), with effort observable and matching. Codex offers `cat-optimize-<tier>` (rollout `agent_role`); rollouts record `gpt-6.1-sol` high/medium and `gpt-6-luna` high/medium. Every agent's injected context contains Default Rule Routing, Request Execution and the body's decision rule; in Claude the rules arrive through the SubagentStart context file. |
 | WI-0 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation: none yet, apart from this section.
