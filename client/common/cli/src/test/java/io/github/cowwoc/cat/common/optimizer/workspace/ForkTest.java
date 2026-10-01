@@ -9,13 +9,21 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
+import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
+import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Entry;
+import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Status;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.testng.annotations.DataProvider;
@@ -464,6 +472,189 @@ public final class ForkTest
 			requireThat(Files.exists(campaign), "campaignExists").isFalse();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
 		}
+	}
+
+	/**
+	 * Verifies that a tracked link to an existing file outside the project and a tracked link to an existing directory
+	 * outside the project are staged with their targets' content after the fork is created, without the targets being
+	 * named as participants.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesTrackedLinksToExternalTargets() throws IOException
+	{
+		// Requirement: R-W2, R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
+			Path kit = root.resolve("outside/kit");
+			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
+			commitLinks(base, Map.of("docs/reply-rules.md", rules, "kit", kit));
+
+			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			Path staged = fork.workspace().stage(Overlay.of(fork.inventory()));
+
+			requireThat(Files.readString(staged.resolve("docs/reply-rules.md"), UTF_8), "fileLink").
+				isEqualTo("reply rules");
+			requireThat(Files.readString(staged.resolve("kit/guide.md"), UTF_8), "directoryLink").isEqualTo("guide");
+			requireThat(fork.inventory().entries().get(rules), "recordedFile").isEqualTo(file("reply rules"));
+		}
+	}
+
+	/**
+	 * Verifies that the fork follows links that leave the project through recorded external targets: an external
+	 * file that is itself an absolute link, and an external directory holding a relative link that leaves it.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesExternalTargetsReachedTransitively() throws IOException
+	{
+		// Requirement: R-W2, R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path outside = root.resolve("outside");
+			Path kit = outside.resolve("kit");
+			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
+			writeFile(outside.resolve("common/shared.md"), "shared", READ_WRITE);
+			Files.createSymbolicLink(kit.resolve("shared.md"), Path.of("../common/shared.md"));
+			Path last = writeFile(outside.resolve("final.md"), "final", READ_WRITE);
+			Path alias = Files.createSymbolicLink(outside.resolve("alias.md"), last);
+			commitLinks(base, Map.of("kit", kit, "chain.md", alias));
+
+			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			Path staged = fork.workspace().stage(Overlay.of(fork.inventory()));
+
+			requireThat(Files.readString(staged.resolve("kit/shared.md"), UTF_8), "relativeLinkLeavingTarget").
+				isEqualTo("shared");
+			requireThat(Files.readString(staged.resolve("chain.md"), UTF_8), "externalLinkChain").isEqualTo("final");
+		}
+	}
+
+	/**
+	 * Verifies that the link report of a newly created fork lists a tracked link to an external file with its
+	 * target, outside the project, resolved and read-only.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void reportsExternalLinkOfNewFork() throws IOException
+	{
+		// Requirement: R-W6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
+			commitLinks(base, Map.of("docs/reply-rules.md", rules));
+
+			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			LinkReport report = LinkReport.of(fork.inventory(),
+				new Authority(Set.of(Path.of("prompt.md")), Set.of(), Set.of()));
+
+			requireThat(report.entries(), "entries").contains(new Entry(Path.of("docs/reply-rules.md"),
+				Optional.of(rules), Status.RESOLVED, Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY)));
+			requireThat(report.blocking(), "blocking").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that links the fork cannot record still block staging as missing targets: a link to a file that does
+	 * not exist, a link to a directory that contains the project, and a link to an external directory that cannot be
+	 * read. The unreadable directory is empty so that the link is unstageable whether or not the process can read it.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unrecordableExternalTargetsStillBlock() throws IOException
+	{
+		// Requirement: R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path missing = root.resolve("outside/missing.md");
+			Path sealed = Files.createDirectories(root.resolve("outside/sealed"));
+			commitLinks(base, Map.of("missing.md", missing, "up", root, "sealed", sealed));
+			Files.setPosixFilePermissions(sealed, Set.of());
+			try
+			{
+				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+				try
+				{
+					fork.workspace().stage(Overlay.of(fork.inventory()));
+					throw new AssertionError("Links to unrecordable targets must block staging");
+				}
+				catch (WorkspaceException e)
+				{
+					requireThat(e.getMessage(), "message").
+						contains("missing.md -> " + missing + ": missing target").
+						contains("up -> " + root + ": missing target").
+						contains("sealed -> " + sealed + ": missing target");
+				}
+			}
+			finally
+			{
+				Files.setPosixFilePermissions(sealed, EXECUTABLE);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a link to an external directory that cannot be listed leaves an external participant below that
+	 * directory recorded. Without the permission to list it, the directory's own copy fails, while the participant is
+	 * still reachable by name.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unreadableTargetKeepsParticipantBelowIt() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path hidden = root.resolve("outside/hidden");
+			Path participant = writeFile(hidden.resolve("shared.md"), "shared", READ_WRITE);
+			commitLinks(base, Map.of("hidden", hidden));
+			Files.setPosixFilePermissions(hidden, PosixFilePermissions.fromString("--x--x--x"));
+			try
+			{
+				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(participant));
+
+				requireThat(fork.inventory().entries().get(participant), "participant").isEqualTo(file("shared"));
+			}
+			finally
+			{
+				Files.setPosixFilePermissions(hidden, EXECUTABLE);
+			}
+		}
+	}
+
+	/**
+	 * Commits absolute links in a repository.
+	 *
+	 * @param base the repository directory
+	 * @param links each link's path relative to {@code base}, and its absolute destination
+	 * @throws IOException if a link cannot be created or committed
+	 */
+	private static void commitLinks(Path base, Map<String, Path> links) throws IOException
+	{
+		for (Map.Entry<String, Path> link : links.entrySet())
+		{
+			Path location = base.resolve(link.getKey());
+			Files.createDirectories(location.getParent());
+			Files.createSymbolicLink(location, link.getValue());
+		}
+		Git git = new Git(base);
+		git.run("add", "--all");
+		git.run("commit", "--quiet", "-m", "link outside the project");
 	}
 
 	/**

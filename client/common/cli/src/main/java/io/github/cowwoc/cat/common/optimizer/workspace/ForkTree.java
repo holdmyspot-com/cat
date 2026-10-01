@@ -4,13 +4,22 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * The immutable copy of a fork's files in campaign storage.
@@ -48,7 +57,9 @@ public final class ForkTree
 	/**
 	 * Copies paths from a project into campaign storage and records them.
 	 * <p>
-	 * CAT's work directory and Git metadata are never copied. If the recording fails, no storage is left behind.
+	 * The existing targets outside the project that the recorded links reach are recorded too, and so are the targets
+	 * that their links reach in turn. CAT's work directory and Git metadata are never copied. If the recording fails,
+	 * no storage is left behind.
 	 *
 	 * @param base the project directory
 	 * @param campaign the campaign storage directory, which this method creates if needed
@@ -95,7 +106,8 @@ public final class ForkTree
 				}
 				FileTree.copy(source, FileTree.locate(empty.project, empty.external, path), omitted);
 			}
-			return new ForkTree(directory, FileTree.scan(normalizedBase, empty.project, empty.external));
+			ForkTree recorded = new ForkTree(directory, FileTree.scan(normalizedBase, empty.project, empty.external));
+			return recorded.recordLinkTargets(normalizedBase, absolutePaths(paths), Set.of(), omitted);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -112,8 +124,9 @@ public final class ForkTree
 	}
 
 	/**
-	 * Copies further paths into an existing tree. A path that the tree already holds, or that lies under a held
-	 * directory, is left alone.
+	 * Copies further paths into an existing tree, and the targets outside the project that their links reach, as
+	 * {@link #record(Path, Path, Set)} does. A path that the tree already holds, or that lies under a held directory,
+	 * is left alone.
 	 *
 	 * @param base the project directory that the tree was recorded from
 	 * @param paths the paths to record, named as in {@link #record(Path, Path, Set)}
@@ -148,7 +161,104 @@ public final class ForkTree
 			}
 			FileTree.copy(source, FileTree.locate(project, external, path), omitted);
 		}
-		return new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
+		ForkTree extended = new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
+		return extended.recordLinkTargets(normalizedBase, absolutePaths(paths), inventory.entries().keySet(), omitted);
+	}
+
+	/**
+	 * Returns the absolute paths among the paths to record, which name files and directories outside the project.
+	 *
+	 * @param paths the paths to record
+	 * @return the absolute paths
+	 */
+	private static Set<Path> absolutePaths(Set<Path> paths)
+	{
+		return paths.stream().filter(Path::isAbsolute).collect(Collectors.toSet());
+	}
+
+	/**
+	 * Copies the existing targets outside the project that the tree's links reach but the tree does not hold, then
+	 * repeats for the links that those targets hold or are, until no link reaches another such target. Without the
+	 * copies, staging would report a link that leaves the project as a link to a missing target, because staging reads
+	 * only the tree.
+	 * <p>
+	 * A link whose links form a cycle, whose target lies inside the project or does not exist, or whose target cannot
+	 * be read is left alone, so staging still reports it. A target that contains the project is left alone as well,
+	 * because copying it would copy the project into its own fork.
+	 *
+	 * @param base the normalized project directory
+	 * @param copied the absolute paths that this recording copied whole
+	 * @param previous the keys that the tree held before this recording; a target with a key at or below it is held
+	 * @param omitted absolute source paths whose subtrees are never copied
+	 * @return the tree, rescanned
+	 * @throws IOException if a target cannot be copied
+	 */
+	private ForkTree recordLinkTargets(Path base, Set<Path> copied, Set<Path> previous, Set<Path> omitted)
+		throws IOException
+	{
+		Set<Path> roots = new HashSet<>(copied);
+		Set<Path> unreadable = new HashSet<>();
+		ForkTree current = this;
+		while (true)
+		{
+			Set<Path> targets = current.unheldTargets(base, roots, previous, unreadable);
+			if (targets.isEmpty())
+				return current;
+			for (Path target : targets)
+			{
+				Path copy = FileTree.locate(project, external, target);
+				try
+				{
+					FileTree.copy(target, copy, omitted);
+					roots.add(target);
+				}
+				catch (AccessDeniedException _)
+				{
+					// An unreadable target stays unrecorded, so staging reports its link instead of the fork failing.
+					// Deleting the partial copy also deletes the paths below the target that were copied earlier, so copy
+					// those again.
+					TemporaryDirectories.deleteRecursively(copy);
+					for (Path root : roots)
+					{
+						if (root.startsWith(target))
+							FileTree.copy(root, FileTree.locate(project, external, root), omitted);
+					}
+					unreadable.add(target);
+				}
+			}
+			current = new ForkTree(directory, FileTree.scan(base, project, external));
+		}
+	}
+
+	/**
+	 * Returns the existing targets outside the project that this tree's links reach but the tree does not hold.
+	 *
+	 * @param base the normalized project directory
+	 * @param roots the absolute paths that the current recording copied whole
+	 * @param previous the keys that the tree held before the current recording
+	 * @param unreadable the targets that could not be read
+	 * @return the targets, in path order
+	 */
+	private SortedSet<Path> unheldTargets(Path base, Set<Path> roots, Set<Path> previous, Set<Path> unreadable)
+	{
+		SortedSet<Path> targets = new TreeSet<>();
+		for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
+		{
+			if (!(entry.getValue() instanceof SymbolicLink))
+				continue;
+			Optional<Path> resolved = inventory.resolve(entry.getKey());
+			if (resolved.isEmpty())
+				continue;
+			Path target = resolved.get();
+			if (!target.isAbsolute() || base.startsWith(target) || unreadable.contains(target) ||
+				roots.stream().anyMatch(target::startsWith) || previous.stream().anyMatch(key -> key.startsWith(target)))
+			{
+				continue;
+			}
+			if (Files.exists(target, NOFOLLOW_LINKS))
+				targets.add(target);
+		}
+		return targets;
 	}
 
 	/**
