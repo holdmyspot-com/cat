@@ -86,8 +86,34 @@
 			]
 		}
 	],
+	"trial_profiles": {
+		"inventory_source": "test inventory of one profile",
+		"inventory": [
+			{
+				"model": "test-model",
+				"effort": "high"
+			}
+		],
+		"bindings": [],
+		"restriction": [],
+		"cells": [
+			{
+				"id": "formatting",
+				"category": "formatting",
+				"model": "test-model",
+				"effort": "high"
+			},
+			{
+				"id": "safety",
+				"category": "safety",
+				"model": "test-model",
+				"effort": "high"
+			}
+		]
+	},
 	"judge": {
 		"model": "judge-model",
+		"effort": "high",
 		"prompt": "Judge the trial.",
 		"rubric": "The response follows the requirement.",
 		"decision_rule": "Pass only if every rubric item holds.",

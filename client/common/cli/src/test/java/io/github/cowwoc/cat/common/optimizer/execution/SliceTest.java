@@ -97,7 +97,8 @@ public final class SliceTest
 			}
 			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
 		}
-		return new Contract(contract.requirements(), categories, contract.judge(), contract.fixtures(),
+		return new Contract(contract.requirements(), categories,
+			ContractFixtures.profiles(contract.requirements(), categories), contract.judge(), contract.fixtures(),
 			contract.limitations());
 	}
 

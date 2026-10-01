@@ -72,7 +72,7 @@ public final class KeepImprovement
 	 * Returns the best qualifying attempt of each measurement identity.
 	 * <p>
 	 * Attempts are ranked only against attempts with an equal identity: the highest 95% Wilson lower bound on the
-	 * weakest category wins, then more categories proven better, then the more recent attempt.
+	 * weakest cell wins, then more categories proven better, then the more recent attempt.
 	 *
 	 * @param campaign the campaign
 	 * @return the offers: the current identity's first, then each earlier identity's, most recent first
@@ -111,7 +111,7 @@ public final class KeepImprovement
 	 *
 	 * @param first an attempt
 	 * @param second a later attempt
-	 * @return the attempt with the higher lower bound on its weakest category, then more categories proven better,
+	 * @return the attempt with the higher lower bound on its weakest cell, then more categories proven better,
 	 *   then {@code second}
 	 */
 	private static CertificationAttempt better(CertificationAttempt first, CertificationAttempt second)
@@ -129,7 +129,7 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Returns the 95% Wilson lower bound on an attempt's weakest category.
+	 * Returns the 95% Wilson lower bound on an attempt's weakest cell.
 	 *
 	 * @param attempt the attempt
 	 * @return the smallest lower bound across the attempt's categories

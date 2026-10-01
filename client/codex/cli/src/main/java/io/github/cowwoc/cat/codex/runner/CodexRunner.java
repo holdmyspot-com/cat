@@ -30,12 +30,45 @@ import java.util.Set;
 public final class CodexRunner
 {
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("CODEX_API_KEY", "OPENAI_API_KEY");
+	private final ProcessStarter processes;
+
+	/**
+	 * Starts the app-server process.
+	 */
+	@FunctionalInterface
+	interface ProcessStarter
+	{
+		/**
+		 * Starts a process.
+		 *
+		 * @param command the executable and its arguments
+		 * @param workingDirectory the process's working directory
+		 * @param environment the process's complete environment
+		 * @return the started process
+		 * @throws IOException if the process cannot start
+		 */
+		Process start(List<String> command, Path workingDirectory, Map<String, String> environment)
+			throws IOException;
+	}
 
 	/**
 	 * Creates a Codex artifact runner.
 	 */
 	public CodexRunner()
 	{
+		this(HarnessProcessStarter::start);
+	}
+
+	/**
+	 * Creates a Codex artifact runner that starts the app-server through {@code processes}.
+	 *
+	 * @param processes starts the app-server process
+	 * @throws NullPointerException if {@code processes} is null
+	 */
+	CodexRunner(ProcessStarter processes)
+	{
+		requireThat(processes, "processes").isNotNull();
+		this.processes = processes;
 	}
 
 	/**
@@ -71,7 +104,7 @@ public final class CodexRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, installCat, null, List.of());
+		return start(artifact, project, manager, executable, environment, model, "", installCat, null, List.of());
 	}
 
 	/**
@@ -83,15 +116,19 @@ public final class CodexRunner
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
 	 * @param model the optional Codex model name
+	 * @param effort the optional reasoning effort of each turn
 	 * @param installCat whether CAT is installed in the isolated home
-	 * @param agent the optional direct CAT agent definition
+	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
+	 *   {@code effort}
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, boolean installCat, CodexAgentDefinition agent) throws IOException
+		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent)
+		throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, installCat, agent, List.of());
+		return start(artifact, project, manager, executable, environment, model, effort, installCat, agent,
+			List.of());
 	}
 
 	/**
@@ -103,14 +140,16 @@ public final class CodexRunner
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
 	 * @param model the optional Codex model name
+	 * @param effort the optional reasoning effort of each turn
 	 * @param installCat whether CAT is installed in the isolated home
-	 * @param agent the optional direct CAT agent definition
+	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
+	 *   {@code effort}
 	 * @param readOnlyEvidence the optional completed evidence directory
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, boolean installCat, CodexAgentDefinition agent,
+		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent,
 		List<Path> readOnlyEvidence) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
@@ -119,6 +158,7 @@ public final class CodexRunner
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(model, "model").isNotNull();
+		requireThat(effort, "effort").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -173,24 +213,24 @@ public final class CodexRunner
 			manager.initialize(run, artifact, project, "codex-app-server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
-			CodexProcess process = new CodexProcess(HarnessProcessStarter.start(command, worktree,
-				isolatedEnvironment), scope, installCat);
+			CodexProcess process = new CodexProcess(processes.start(command, worktree, isolatedEnvironment), scope,
+				installCat);
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
 				String selectedModel = model;
 				String developerInstructions = "";
-				String effort = "";
+				String selectedEffort = effort;
 				if (agent != null)
 				{
 					selectedModel = agent.model();
 					developerInstructions = agent.developerInstructions();
-					effort = agent.effort();
+					selectedEffort = agent.effort();
 				}
 				String permissionProfile = "";
 				if (!readOnlyEvidence.isEmpty())
 					permissionProfile = "cat-validator";
-				process.initialize(worktree, selectedModel, developerInstructions, effort, permissionProfile);
+				process.initialize(worktree, selectedModel, developerInstructions, selectedEffort, permissionProfile);
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)

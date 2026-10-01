@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -38,6 +39,17 @@ final class ReportBoundaries
 	 */
 	static DecisionBoundaries boundaries()
 	{
+		return boundaries(2);
+	}
+
+	/**
+	 * Returns the boundaries of attempt 1 for a number of cells, each with the same comparison.
+	 *
+	 * @param cells the number of cells
+	 * @return the boundaries
+	 */
+	static DecisionBoundaries boundaries(int cells)
+	{
 		List<Integer> certify = minimums(100, 50);
 		List<Integer> below = new ArrayList<>();
 		for (int failures = 0; failures <= CAP; ++failures)
@@ -48,7 +60,7 @@ final class ReportBoundaries
 				below.add(-1);
 		}
 		Comparison frozen = new Comparison(new BigDecimal("0.9000"), new BigDecimal("0.8000"),
-			ErrorBudget.improvementLevel(1, 2));
+			ErrorBudget.improvementLevel(1, cells));
 		List<Integer> better = minimums(60, 40);
 		List<Integer> worse = new ArrayList<>();
 		for (int failures = 0; failures <= CAP; ++failures)
@@ -60,7 +72,7 @@ final class ReportBoundaries
 		}
 		ComparisonBoundaries comparison = new ComparisonBoundaries(frozen, better, worse);
 		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), CAP, certify, below,
-			List.of(comparison, comparison));
+			Collections.nCopies(cells, comparison));
 	}
 
 	/**

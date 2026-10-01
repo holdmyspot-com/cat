@@ -1,5 +1,5 @@
 {
-  "format_version" : 1,
+  "format_version" : 2,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -103,8 +103,29 @@
           } ]
         } ]
       } ],
+      "trial_profiles" : {
+        "inventory_source" : "test inventory of one profile",
+        "inventory" : [ {
+          "model" : "test-model",
+          "effort" : "high"
+        } ],
+        "bindings" : [ ],
+        "restriction" : [ ],
+        "cells" : [ {
+          "id" : "formatting",
+          "category" : "formatting",
+          "model" : "test-model",
+          "effort" : "high"
+        }, {
+          "id" : "safety",
+          "category" : "safety",
+          "model" : "test-model",
+          "effort" : "high"
+        } ]
+      },
       "judge" : {
         "model" : "judge-model",
+        "effort" : "high",
         "prompt" : "Judge the trial.",
         "rubric" : "The response follows the requirement.",
         "decision_rule" : "Pass only if every rubric item holds.",
@@ -140,19 +161,22 @@
     "unavailable" : [ ]
   } ],
   "identity" : {
-    "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
-    "GENERATOR" : "contract-generator/1",
-    "JUDGE" : "judge-1",
-    "MODEL" : "model-a",
-    "REASONING" : "reasoning-1",
-    "PROVIDER" : "provider-1",
-    "HARNESS_VERSION" : "harness_version-1",
-    "RUNNER_VERSION" : "runner_version-1",
-    "CAT_VERSION" : "cat_version-1",
-    "LOADER_CONFIGURATION" : "loader_configuration-1",
-    "PROMPT_SOURCES" : "prompt_sources-1",
-    "HOST_TOOLS" : "host_tools-1",
-    "EXTERNAL_SOURCES" : "external_sources-1"
+    "conditions" : {
+      "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "GENERATOR" : "contract-generator/1",
+      "JUDGE" : "judge-1",
+      "MODEL" : "model-a",
+      "REASONING" : "reasoning-1",
+      "PROVIDER" : "provider-1",
+      "HARNESS_VERSION" : "harness_version-1",
+      "RUNNER_VERSION" : "runner_version-1",
+      "CAT_VERSION" : "cat_version-1",
+      "LOADER_CONFIGURATION" : "loader_configuration-1",
+      "PROMPT_SOURCES" : "prompt_sources-1",
+      "HOST_TOOLS" : "host_tools-1",
+      "EXTERNAL_SOURCES" : "external_sources-1"
+    },
+    "cells" : { }
   },
   "incumbent" : {
     "number" : 0,

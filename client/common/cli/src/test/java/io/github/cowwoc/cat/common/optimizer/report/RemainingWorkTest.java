@@ -40,7 +40,7 @@ public final class RemainingWorkTest
 	{
 		for (Entry entry : work.entries())
 		{
-			if (entry.category().equals(category) && entry.kind() == kind)
+			if (entry.cell().equals(category) && entry.kind() == kind)
 			{
 				requireThat(entry.trials(), "entry.trials()").withContext(entry, "entry").isNotNull();
 				return entry.trials();
@@ -201,7 +201,7 @@ public final class RemainingWorkTest
 		Entry safety = null;
 		for (Entry entry : work.entries())
 		{
-			if (entry.category().equals("safety"))
+			if (entry.cell().equals("safety"))
 				safety = entry;
 		}
 		requireThat(safety, "safety").isNotNull();

@@ -103,8 +103,8 @@ public final class Proposal
 		limitations.add(DERIVED_LOADING_LIMIT);
 		if (!links.entries().isEmpty())
 			limitations.add(LinkReport.STAGING_CONSEQUENCE);
-		Contract contract = new Contract(proposed.requirements(), proposed.categories(), proposed.judge(),
-			proposed.fixtures(), limitations);
+		Contract contract = new Contract(proposed.requirements(), proposed.categories(), proposed.profiles(),
+			proposed.judge(), proposed.fixtures(), limitations);
 		Sha256 contractHash = ContractIdentity.of(schema, contract);
 		// The seed changes only the draw streams, which neither the remaining work nor the caps depend on
 		Campaign confirmed = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(contract, contractHash, 0));

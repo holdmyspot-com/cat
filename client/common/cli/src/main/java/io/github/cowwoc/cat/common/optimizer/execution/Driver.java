@@ -26,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
 import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.SessionEvent;
@@ -600,7 +601,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private void complete(Judging judging, Judgment judgment, SessionResult.Completed judge) throws IOException
 	{
-		MeasurementIdentity observed = observedIdentity(judging.evidence(), judge);
+		MeasurementIdentity observed = observedIdentity(judging, judge);
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(judging.key(), judgment.verdict(),
 			judgment.rationale(), observed);
 		if (campaign.identity().differences(observed).isEmpty())
@@ -618,24 +619,27 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's model, reasoning configuration and loaded prompt sources, and the judge session's model.
+	 * session's loaded prompt sources, the judge session's model, and the trial session's model and reasoning
+	 * configuration, which are recorded for the trial's cell.
 	 *
-	 * @param trial the trial session's result
+	 * @param judging the judged trial
 	 * @param judge the judge session's result
 	 * @return the conditions
 	 */
-	private MeasurementIdentity observedIdentity(SessionResult.Completed trial, SessionResult.Completed judge)
+	private MeasurementIdentity observedIdentity(Judging judging, SessionResult.Completed judge)
 	{
+		SessionResult.Completed trial = judging.evidence();
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(context.environment().values());
-		if (trial.model() != null)
-			values.put(MeasurementCondition.MODEL, trial.model());
-		if (trial.reasoning() != null)
-			values.put(MeasurementCondition.REASONING, trial.reasoning());
 		values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
 		if (judge.model() != null)
 			values.put(MeasurementCondition.JUDGE, judge.model());
-		return new MeasurementIdentity(values);
+		Map<MeasurementCondition, String> cell = new EnumMap<>(MeasurementCondition.class);
+		if (trial.model() != null)
+			cell.put(MeasurementCondition.MODEL, trial.model());
+		if (trial.reasoning() != null)
+			cell.put(MeasurementCondition.REASONING, trial.reasoning());
+		return new MeasurementIdentity(values, Map.of(judging.instance().cellId(), cell));
 	}
 
 	/**
@@ -939,8 +943,9 @@ public final class Driver implements AutoCloseable
 			Overlay candidate = context.overlays().require(key.snapshot());
 			Path source = context.workspace().stage(candidate);
 			staged.put(key.snapshot(), candidate.identity());
+			TrialProfile profile = campaign.contract().findCell(trial.instance().cellId()).orElseThrow().profile();
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, source, trial.instance().turns(),
-				List.of(), timeLimit(trial.instance())));
+				List.of(), timeLimit(trial.instance()), profile));
 		}
 		catch (IOException e)
 		{

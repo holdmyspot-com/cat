@@ -1,10 +1,10 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"title": "Compliance contract proposal",
-	"description": "Every requirement, category, test definition, variation, judge profile field and fixture that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
+	"description": "Every requirement, category, trial profile, cell, test definition, variation, judge profile field and fixture that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["requirements", "categories", "judge", "fixtures", "limitations"],
+	"required": ["requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations"],
 	"properties": {
 		"requirements": {
 			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project.",
@@ -87,13 +87,54 @@
 				}
 			}
 		},
+		"trial_profiles": {
+			"description": "The trial profiles that CAT computed: the harness's profile inventory and its source, each prompt file that binds a model or effort, the user's restriction and every cell. An empty model or effort is the harness's default.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["inventory_source", "inventory", "bindings", "restriction", "cells"],
+			"properties": {
+				"inventory_source": {"type": "string", "pattern": "\\S"},
+				"inventory": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["model", "effort"], "properties": {"model": {"type": "string", "pattern": "^[^\\s/]*$"}, "effort": {"type": "string", "pattern": "^[^\\s/]*$"}}}},
+				"bindings": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["file", "model", "effort"],
+						"properties": {
+							"file": {"type": "string", "pattern": "\\S"},
+							"model": {"type": "string", "pattern": "^[^\\s/]*$"},
+							"effort": {"type": "string", "pattern": "^[^\\s/]*$"}
+						}
+					}
+				},
+				"restriction": {"description": "The patterns that the user restricted the profile set to. Empty if none.", "type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["model", "effort"], "properties": {"model": {"type": "string", "pattern": "^[^\\s/]*$"}, "effort": {"type": "string", "pattern": "^[^\\s/]*$"}}}},
+				"cells": {
+					"description": "Every cell: one category under one trial profile.",
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["id", "category", "model", "effort"],
+						"properties": {
+							"id": {"type": "string", "pattern": "\\S"},
+							"category": {"type": "string", "pattern": "\\S"},
+							"model": {"type": "string", "pattern": "^[^\\s/]*$"},
+							"effort": {"type": "string", "pattern": "^[^\\s/]*$"}
+						}
+					}
+				}
+			}
+		},
 		"judge": {
 			"description": "The frozen judge profile.",
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["model", "prompt", "rubric", "decision_rule", "result_schema"],
+			"required": ["model", "effort", "prompt", "rubric", "decision_rule", "result_schema"],
 			"properties": {
-				"model": {"type": "string", "pattern": "\\S"},
+				"model": {"description": "The role profile's model.", "type": "string", "pattern": "^[^\\s/]*$"},
+				"effort": {"description": "The role profile's reasoning effort. Empty for the harness's default.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"prompt": {"type": "string", "pattern": "\\S"},
 				"rubric": {"type": "string", "pattern": "\\S"},
 				"decision_rule": {"type": "string", "pattern": "\\S"},

@@ -147,13 +147,14 @@ public final class AuthorPrompt implements AuthorProtocol
 			"loader_configuration", loaderConfiguration,
 			"authorized_targets", list(brief.authorizedTargets()),
 			"links", links(brief.links()),
-			"category", brief.category(),
+			"cell", brief.category(),
 			"contract", schema.toJson(brief.contract()),
 			"failures", pretty(failures),
 			"development_counts", pretty(counts(brief.developmentCounts())),
 			"ended_attempts", pretty(ended),
 			"report_schema", reportSchema));
-		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT);
+		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT,
+			brief.contract().judge().profile());
 	}
 
 	/**

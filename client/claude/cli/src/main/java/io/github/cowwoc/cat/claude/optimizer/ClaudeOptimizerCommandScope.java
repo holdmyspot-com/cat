@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 
@@ -17,7 +18,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production scope of one {@code prompt-optimizer} command in Claude Code. This class alone reads the process
- * environment and the home directory, and supplies the Claude sessions and the host interrupt signal.
+ * environment and the home directory, and supplies the Claude sessions, the host interrupt signal and the Claude
+ * profile inventory.
  */
 final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 {
@@ -27,6 +29,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		Path.of(".claude/settings.local.json"), Path.of(".mcp.json"));
 	private final SessionPort sessions;
 	private final HostInterruptSignal interrupts;
+	private final ProfileInventory profiles;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -59,6 +62,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 			environment.get("CLAUDE_CONFIG_DIR"));
 		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
+		this.profiles = new ClaudeProfileInventory(artifact);
 	}
 
 	/**
@@ -90,6 +94,13 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		return interrupts;
 	}
 
+	@Override
+	public ProfileInventory profiles()
+	{
+		ensureOpen();
+		return profiles;
+	}
+
 	/**
 	 * Creates the port that runs nested sessions through the Claude runner.
 	 *
@@ -106,7 +117,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		Path root = directory.toAbsolutePath().normalize();
 		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS);
-		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(artifact, runRoot, "", "", "", true,
+		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(artifact, runRoot, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new ClaudeSessions(settings);

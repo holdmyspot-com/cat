@@ -13,12 +13,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ImprovementOffer;
 import io.github.cowwoc.cat.common.optimizer.campaign.KeepImprovement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
@@ -39,10 +42,10 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The status of a campaign: the JSON that the driver emits and the human summary that the user reads.
  * <p>
- * The report shows the four outputs of {@code design.md} section 2.9 for every category, the outcome names, the claim
- * and its limitations, the minimum remaining trials, token statistics, the descriptive check by concurrency level and
- * the choices that the user may give now, with the evidence of a keep-improvement choice. It never shows a pooled
- * pass fraction, a token total, a time estimate or a completion probability.
+ * The report shows the four outputs of {@code design.md} section 2.9 for every cell, the trial profiles, the
+ * outcome names, the claim and its limitations, the minimum remaining trials, token statistics, the descriptive check
+ * by concurrency level and the choices that the user may give now, with the evidence of a keep-improvement choice. It
+ * never shows a pooled pass fraction, a token total, a time estimate or a completion probability.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -61,10 +64,11 @@ import tools.jackson.databind.node.ObjectNode;
  * @param pending a description of the decision that the campaign waits for, or {@code null} if none
  * @param choices the answers that the user may give now
  * @param authorityWarnings the warnings of a pending authority decision, empty if none is asked now
- * @param categories the four outputs of each category
- * @param allocation the adopted outcomes of each category in the reported phase; allocation is not a benchmark
+ * @param cells the four outputs of each cell
+ * @param allocation the adopted outcomes of each cell in the reported phase; allocation is not a benchmark
  *   weight
  * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
+ * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
  * @param remaining the minimum remaining trials
  * @param tokens the token statistics
  * @param concurrency the concurrency state
@@ -78,9 +82,10 @@ import tools.jackson.databind.node.ObjectNode;
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
 	String delivery, int deliveryAttempt, String pending,
-	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CategoryReport> categories,
+	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CategoryReport> cells,
 	Map<String, Integer> allocation,
-	Benchmark benchmark, RemainingWork remaining, TokenStatistics tokens, Concurrency concurrency,
+	Benchmark benchmark, TrialProfiles trialProfiles, RemainingWork remaining, TokenStatistics tokens,
+	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions)
 {
@@ -139,9 +144,10 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param pending a description of the decision that the campaign waits for, or {@code null} if none
 	 * @param choices the answers that the user may give now
 	 * @param authorityWarnings the warnings of a pending authority decision, empty if none is asked now
-	 * @param categories the four outputs of each category
-	 * @param allocation the adopted outcomes of each category in the reported phase
+	 * @param cells the four outputs of each cell
+	 * @param allocation the adopted outcomes of each cell in the reported phase
 	 * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
+	 * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
 	 * @param remaining the minimum remaining trials
 	 * @param tokens the token statistics
 	 * @param concurrency the concurrency state
@@ -153,7 +159,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param conditions the measurement conditions that the claim holds under
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
-	 *   {@code benchmark} or {@code claim} is null
+	 *   {@code benchmark}, {@code trialProfiles} or {@code claim} is null
 	 * @throws IllegalArgumentException if {@code attempt}, {@code candidate} or {@code deliveryAttempt} are negative
 	 */
 	public StatusReport
@@ -168,7 +174,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		requireThat(deliveryAttempt, "deliveryAttempt").isNotNegative();
 		requireThat(choices, "choices").isNotNull();
 		requireThat(authorityWarnings, "authorityWarnings").isNotNull();
-		requireThat(categories, "categories").isNotNull();
+		requireThat(cells, "cells").isNotNull();
 		requireThat(allocation, "allocation").isNotNull();
 		requireThat(remaining, "remaining").isNotNull();
 		requireThat(tokens, "tokens").isNotNull();
@@ -180,7 +186,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		requireThat(conditions, "conditions").isNotNull();
 		choices = List.copyOf(choices);
 		authorityWarnings = List.copyOf(authorityWarnings);
-		categories = List.copyOf(categories);
+		cells = List.copyOf(cells);
 		allocation = Map.copyOf(allocation);
 		attempts = List.copyOf(attempts);
 		keepOffers = List.copyOf(keepOffers);
@@ -275,19 +281,21 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			deliveryAttempt = campaign.delivery().attempt();
 		}
 
-		List<CategoryReport> categories = List.of();
+		List<CategoryReport> cells = List.of();
 		Map<String, Integer> allocation = new LinkedHashMap<>();
 		Benchmark benchmark = null;
+		TrialProfiles trialProfiles = null;
 		String claim = null;
 		List<AttemptSummary> attempts = new ArrayList<>();
 		List<KeepOffer> keepOffers = new ArrayList<>();
 		List<String> limitations = new ArrayList<>(FIXED_LIMITATIONS);
 		if (campaign.isConfirmed())
 		{
-			categories = CategoryReports.of(campaign, attempt);
-			for (CategoryReport category : categories)
-				allocation.put(category.category(), category.trials());
+			cells = CategoryReports.of(campaign, attempt);
+			for (CategoryReport cell : cells)
+				allocation.put(cell.cell(), cell.trials());
 			benchmark = benchmark(campaign.contract());
+			trialProfiles = campaign.contract().profiles();
 			claim = claim(campaign, candidate);
 			limitations.addAll(campaign.contract().limitations());
 			attempts = attempts(campaign);
@@ -295,16 +303,14 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		}
 		if (evidence.symbolicLinks())
 			limitations.add(SYMBOLIC_LINK_LIMITATION);
-		Map<String, String> conditions = new LinkedHashMap<>();
-		for (Map.Entry<MeasurementCondition, String> entry : campaign.identity().values().entrySet())
-			conditions.put(entry.getKey().name(), entry.getValue());
+		Map<String, String> conditions = conditions(campaign.identity());
 
 		return new StatusReport(status(campaign), campaign.header().id(), campaign.lifecycle(),
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
-			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), categories, allocation,
-			benchmark, RemainingWork.of(campaign), TokenStatistics.of(evidence.tokenUsage()), concurrency(campaign),
-			assumptions, attempts, keepOffers, claim, limitations, conditions);
+			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), cells, allocation,
+			benchmark, trialProfiles, RemainingWork.of(campaign), TokenStatistics.of(evidence.tokenUsage()),
+			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions);
 	}
 
 	/**
@@ -427,7 +433,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * Returns the benchmark weights of a contract.
+	 * Returns the benchmark weights of a contract: each cell weighs its category's tests.
 	 *
 	 * @param contract the contract
 	 * @return the benchmark
@@ -435,12 +441,33 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	private static Benchmark benchmark(Contract contract)
 	{
 		List<Benchmark.CategoryWeights> weights = new ArrayList<>();
-		for (Category category : contract.categories())
+		for (Cell cell : contract.cells())
 		{
-			weights.add(new Benchmark.CategoryWeights(category.id(), category.tests().size(),
+			Category category = contract.categoryOf(cell);
+			weights.add(new Benchmark.CategoryWeights(cell.id(), category.tests().size(),
 				category.testProbability()));
 		}
 		return new Benchmark(weights);
+	}
+
+	/**
+	 * Returns the measurement conditions by name. A condition of one cell is named
+	 * {@code CONDITION[cell]}.
+	 *
+	 * @param identity the measurement identity
+	 * @return the value of each recorded condition
+	 */
+	private static Map<String, String> conditions(MeasurementIdentity identity)
+	{
+		Map<String, String> conditions = new LinkedHashMap<>();
+		for (Map.Entry<MeasurementCondition, String> entry : identity.values().entrySet())
+			conditions.put(entry.getKey().name(), entry.getValue());
+		for (Map.Entry<String, Map<MeasurementCondition, String>> cell : identity.cells().entrySet())
+		{
+			for (Map.Entry<MeasurementCondition, String> entry : cell.getValue().entrySet())
+				conditions.put(entry.getKey().name() + "[" + cell.getKey() + "]", entry.getValue());
+		}
+		return conditions;
 	}
 
 	/**
@@ -454,11 +481,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	{
 		JudgeProfile judge = campaign.contract().judge();
 		List<String> values = new ArrayList<>();
-		for (Map.Entry<MeasurementCondition, String> entry : new TreeMap<>(campaign.identity().values()).entrySet())
-			values.add(entry.getKey().name() + "=" + entry.getValue());
-		return "The pass rates describe candidate " + candidate.number() + " under the frozen judge (model " +
-			judge.model() + "; decision rule: " + judge.decisionRule() + ") on the balanced benchmark of " +
-			campaign.contract().categories().size() + " categories, whose weights are testing assumptions, " +
+		for (Map.Entry<String, String> entry : new TreeMap<>(conditions(campaign.identity())).entrySet())
+			values.add(entry.getKey() + "=" + entry.getValue());
+		return "The pass rates describe candidate " + candidate.number() + " under the frozen judge (role profile " +
+			judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the balanced benchmark of " +
+			campaign.contract().cells().size() + " cells, whose weights are testing assumptions, " +
 			"not usage frequencies, under the measured conditions " + String.join(", ", values) + ".";
 	}
 
@@ -519,7 +546,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			CertificationAttempt attempt = campaign.attempt(offer.attempt());
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
 			double weakest = 1.0;
-			List<KeepOffer.Category> categories = new ArrayList<>();
+			List<KeepOffer.Category> cells = new ArrayList<>();
 			for (String category : attempt.procedure().categories())
 			{
 				CategoryCounts counts = attempt.count(category);
@@ -540,13 +567,13 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 					note = "Not proven better: the candidate might be slightly worse, because the lower end of the " +
 						"difference interval is below 0.";
 				}
-				categories.add(new KeepOffer.Category(category, counts.passes(), counts.outcomes(), state,
+				cells.add(new KeepOffer.Category(category, counts.passes(), counts.outcomes(), state,
 					frozen.incumbentUpper().doubleValue(), frozen.incumbentLower().doubleValue(), difference, note));
 			}
 			List<String> differing = new ArrayList<>();
 			for (MeasurementCondition condition : offer.differing())
 				differing.add(condition.name());
-			offers.add(new KeepOffer(offer.attempt(), offer.historical(), differing, weakest, categories));
+			offers.add(new KeepOffer(offer.attempt(), offer.historical(), differing, weakest, cells));
 		}
 		return offers;
 	}

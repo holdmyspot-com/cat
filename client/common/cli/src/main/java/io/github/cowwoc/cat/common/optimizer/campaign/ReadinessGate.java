@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 
 import java.util.List;
 
@@ -12,11 +11,11 @@ import java.util.List;
 public final class ReadinessGate
 {
 	/**
-	 * The fewest representative development trials that a ready category has.
+	 * The fewest representative development trials that a ready cell has.
 	 */
 	public static final int MINIMUM_TRIALS = 100;
 	/**
-	 * The most failures that each of the latest two complete batches of a ready category has.
+	 * The most failures that each of the latest two complete batches of a ready cell has.
 	 */
 	public static final int BATCH_FAILURE_LIMIT = 1;
 
@@ -28,11 +27,11 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Indicates whether a category's development counts meet the gate: at least {@value #MINIMUM_TRIALS} trials, at
+	 * Indicates whether a cell's development counts meet the gate: at least {@value #MINIMUM_TRIALS} trials, at
 	 * least 99% passes, and at least 98% passes in each of the latest two complete batches.
 	 *
-	 * @param counts the category's development counts
-	 * @return {@code true} if the category is ready
+	 * @param counts the cell's development counts
+	 * @return {@code true} if the cell is ready
 	 * @throws NullPointerException if {@code counts} is null
 	 */
 	public static boolean isReady(CategoryCounts counts)
@@ -49,7 +48,7 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Indicates whether the working candidate meets the gate: every category is ready, no diagnosis, round or author
+	 * Indicates whether the working candidate meets the gate: every cell is ready, no diagnosis, round or author
 	 * attempt is unresolved, no regression instance is known to fail for the working candidate, and the incumbent
 	 * baseline is met.
 	 *
@@ -65,9 +64,9 @@ public final class ReadinessGate
 		Development development = campaign.development();
 		if (development.isPaused())
 			return false;
-		for (Category category : campaign.contract().categories())
+		for (String cell : campaign.contract().cellIds())
 		{
-			if (!isReady(development.count(category.id())))
+			if (!isReady(development.count(cell)))
 				return false;
 		}
 		for (RegressionInstance regression : campaign.lineage().regressionSet())

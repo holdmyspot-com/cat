@@ -39,22 +39,23 @@ public final class Generator
 	}
 
 	/**
-	 * Draws one representative instance of a category.
+	 * Draws one representative instance of a cell's category.
 	 *
-	 * @param categoryId the category, which the caller chose before the draw
+	 * @param cellId the cell, which the caller chose before the draw
 	 * @param stream the stream to draw from
 	 * @return the validated instance
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the contract has no such category
+	 * @throws IllegalArgumentException if the contract has no such cell
 	 * @throws IllegalStateException if {@code stream} is closed
 	 * @throws GeneratorValidationException if the drawn instance is not permitted by its test definition
 	 */
-	public TrialInstance draw(String categoryId, DrawStream stream)
+	public TrialInstance draw(String cellId, DrawStream stream)
 	{
-		requireThat(categoryId, "categoryId").isNotNull();
+		requireThat(cellId, "cellId").isNotNull();
 		requireThat(stream, "stream").isNotNull();
-		Category category = contract.findCategory(categoryId).orElseThrow(() -> new IllegalArgumentException(
-			"The contract has no category '" + categoryId + "'"));
+		Cell cell = contract.findCell(cellId).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no cell '" + cellId + "'"));
+		Category category = contract.categoryOf(cell);
 
 		TrialInstance instance;
 		// A draw reads several values. Holding the stream's lock keeps another thread's draw from taking some of them.
@@ -71,8 +72,9 @@ public final class Generator
 				choices.add(new VariationChoice(rule.dimension(), value.label(), value.probability()));
 				textByDimension.put(rule.dimension(), value.text());
 			}
-			instance = new TrialInstance(category.id(), test.id(), choices, test.expandTurns(textByDimension),
-				test.expectedBehaviour(), IDENTITY, start.kind(), start.position(), false);
+			instance = new TrialInstance(cell.id(), category.id(), test.id(), choices,
+				test.expandTurns(textByDimension), test.expectedBehaviour(), IDENTITY, start.kind(), start.position(),
+				false);
 		}
 		validate(instance);
 		return instance;
@@ -109,8 +111,9 @@ public final class Generator
 	public TrialInstance markTargeted(TrialInstance instance)
 	{
 		validate(instance);
-		return new TrialInstance(instance.categoryId(), instance.testId(), instance.choices(), instance.turns(),
-			instance.expectedBehaviour(), instance.generator(), instance.streamKind(), instance.streamPosition(), true);
+		return new TrialInstance(instance.cellId(), instance.categoryId(), instance.testId(), instance.choices(),
+			instance.turns(), instance.expectedBehaviour(), instance.generator(), instance.streamKind(),
+			instance.streamPosition(), true);
 	}
 
 	/**
@@ -128,8 +131,14 @@ public final class Generator
 			throw new GeneratorValidationException("The instance was drawn by '" + instance.generator() +
 				"', not by '" + IDENTITY + "'");
 		}
-		Category category = contract.findCategory(instance.categoryId()).orElseThrow(() ->
-			new GeneratorValidationException("The contract has no category '" + instance.categoryId() + "'"));
+		Cell cell = contract.findCell(instance.cellId()).orElseThrow(() ->
+			new GeneratorValidationException("The contract has no cell '" + instance.cellId() + "'"));
+		if (!cell.categoryId().equals(instance.categoryId()))
+		{
+			throw new GeneratorValidationException("The cell '" + cell.id() + "' belongs to the category '" +
+				cell.categoryId() + "', not to '" + instance.categoryId() + "'");
+		}
+		Category category = contract.categoryOf(cell);
 		TestDefinition test = category.tests().stream().filter(candidate -> candidate.id().equals(instance.testId())).
 			findFirst().orElseThrow(() -> new GeneratorValidationException("The category '" + category.id() +
 				"' has no test '" + instance.testId() + "'"));

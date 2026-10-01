@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -95,6 +96,7 @@ final class ProposalText
 		requirements();
 		loading();
 		categories();
+		trialProfiles();
 		judge();
 		fixtures();
 		procedure();
@@ -156,6 +158,21 @@ final class ProposalText
 	}
 
 	/**
+	 * Lists the trial profiles: the inventory and its source, the bindings, the restriction and each category's cells
+	 * (design &sect;6.6).
+	 */
+	private void trialProfiles()
+	{
+		heading("Trial profiles");
+		text.append("Each category runs once per cell: under every inventory profile that the files supplying its " +
+			"requirements allow. Every cell needs its own readiness gate, baseline and certification trials. " +
+			"Confirmation freezes the profile set. In revision feedback, you may restrict it to part of the " +
+			"inventory.\n\n");
+		for (String line : contract.profiles().describe())
+			text.append(line).append('\n');
+	}
+
+	/**
 	 * Lists one test definition.
 	 *
 	 * @param test the test definition
@@ -206,7 +223,8 @@ final class ProposalText
 	{
 		heading("Judge");
 		JudgeProfile judge = contract.judge();
-		text.append("- Model: ").append(judge.model()).append('\n').
+		text.append("- Role profile: ").append(judge.profile().label()).append(" (the `optimize-xhigh` binding, " +
+			"which the deriver, judge and author sessions run under)\n").
 			append("- Prompt: CAT's judge prompt, which states the judge's authority and output rules; the prompt " +
 				"system cannot change it\n").
 			append("- Rubric: ").append(judge.rubric()).append('\n').
@@ -338,14 +356,15 @@ final class ProposalText
 		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
 			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
 				"reruns, author sessions and promotion runs.\n\n").
-			append("Minimum trials by category:\n\n");
-		for (Category category : contract.categories())
+			append("Minimum trials by cell:\n\n");
+		for (Cell cell : contract.cells())
 		{
-			text.append("- `").append(category.id()).append("`: ");
+			text.append("- `").append(cell.id()).append("` (category `").append(cell.categoryId()).
+				append("`, profile ").append(cell.profile().label()).append("): ");
 			List<String> parts = new ArrayList<>();
 			for (RemainingWork.Entry entry : remaining.entries())
 			{
-				if (entry.category().equals(category.id()))
+				if (entry.cell().equals(cell.id()))
 				{
 					parts.add(entry.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " +
 						entry.trials());

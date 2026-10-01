@@ -38,8 +38,8 @@ public final class ContractIdentityTest
 			isEqualTo(Sha256.of(schema.toJson(contract).getBytes(UTF_8)));
 		requireThat(ContractIdentity.of(schema, ContractFixtures.contract()), "equal").
 			isEqualTo(ContractIdentity.of(schema, contract));
-		Contract revised = new Contract(contract.requirements(), contract.categories(), contract.judge(),
-			contract.fixtures(), List.of("Only the English and French prompts are covered."));
+		Contract revised = new Contract(contract.requirements(), contract.categories(), contract.profiles(),
+			contract.judge(), contract.fixtures(), List.of("Only the English and French prompts are covered."));
 		requireThat(ContractIdentity.of(schema, revised), "revised").
 			isNotEqualTo(ContractIdentity.of(schema, contract));
 	}

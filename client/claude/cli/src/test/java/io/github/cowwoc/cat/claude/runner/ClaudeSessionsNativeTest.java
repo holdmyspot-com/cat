@@ -9,6 +9,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -47,6 +48,10 @@ import org.testng.annotations.Test;
 public final class ClaudeSessionsNativeTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(10);
+	/**
+	 * The cheapest profile, which leaves the reasoning effort at the harness's default.
+	 */
+	private static final TrialProfile PROFILE = new TrialProfile("haiku", "");
 	private static final long WAIT_MINUTES = 12;
 
 	/**
@@ -111,8 +116,8 @@ public final class ClaudeSessionsNativeTest
 		Path source = Files.createDirectories(fixture.resolve("source"));
 		Files.writeString(source.resolve("README.md"), "fixture\n", UTF_8);
 		Path runRoot = fixture.resolve("runs");
-		ClaudeSessions sessions = new ClaudeSessions(new ClaudeSessions.Settings(artifact, runRoot, "", "haiku", "",
-			false, environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
+		ClaudeSessions sessions = new ClaudeSessions(new ClaudeSessions.Settings(artifact, runRoot, "", false,
+			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
 		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}
 
@@ -227,7 +232,7 @@ public final class ClaudeSessionsNativeTest
 		try (HarnessSubject subject = open())
 		{
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(subject.quickPrompt()), List.of(), LIMIT));
+				List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
 
 			SessionResult result = await(session);
 
@@ -287,7 +292,7 @@ public final class ClaudeSessionsNativeTest
 			for (SessionRole role : SessionRole.values())
 			{
 				SessionHandle session = subject.port().start(new SessionRequest(role, subject.workspace(),
-					List.of(subject.quickPrompt()), List.of(), LIMIT));
+					List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
 
 				SessionResult result = await(session);
 
@@ -315,7 +320,7 @@ public final class ClaudeSessionsNativeTest
 				"text child-done, and then reply done. Do not create the file yourself. After you start the " +
 				"subagent, reply with the single word started.";
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(prompt), List.of(), LIMIT));
+				List.of(prompt), List.of(), LIMIT, PROFILE));
 
 			SessionResult result = await(session);
 
@@ -346,7 +351,7 @@ public final class ClaudeSessionsNativeTest
 				"The subagent's only job is to run `sleep 240` with the Bash tool and then reply done. After you " +
 				"start the subagent, reply with the single word started.";
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(prompt), List.of(), LIMIT));
+				List.of(prompt), List.of(), LIMIT, PROFILE));
 			long deadline = System.nanoTime() + Duration.ofMinutes(5).toNanos();
 			// The root reply ends first, so the session is by then only waiting for the child.
 			while (!subject.transcriptContains("\"task_started\"") || !subject.transcriptContains("\"type\":\"result\""))

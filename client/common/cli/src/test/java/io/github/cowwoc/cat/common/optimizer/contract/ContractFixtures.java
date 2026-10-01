@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Builds contracts for tests of the contract package and of the packages that consume it.
@@ -13,12 +14,65 @@ import java.util.List;
 public final class ContractFixtures
 {
 	/**
+	 * The only profile of the single-profile inventory, under which every category has one cell.
+	 */
+	public static final TrialProfile PROFILE = new TrialProfile("test-model", "high");
+	/**
+	 * The larger profile of the two-profile inventory.
+	 */
+	public static final TrialProfile BIG = new TrialProfile("big", "high");
+	/**
+	 * The smaller profile of the two-profile inventory.
+	 */
+	public static final TrialProfile SMALL = new TrialProfile("small", "high");
+	/**
+	 * The cell of the {@code formatting} category under {@link #BIG} in {@link #twoCellContract()}.
+	 */
+	public static final String BIG_CELL = "formatting@big/high";
+	/**
+	 * The cell of the {@code formatting} category under {@link #SMALL} in {@link #twoCellContract()}.
+	 */
+	public static final String SMALL_CELL = "formatting@small/high";
+	/**
+	 * The two-profile inventory.
+	 */
+	public static final ProfileCatalog TWO_PROFILES = new ProfileCatalog("test inventory of two profiles",
+		List.of(BIG, SMALL));
+
+	/**
 	 * Returns the contract that {@code valid-proposal.json} describes: a {@code formatting} category with a test
-	 * that has two variation dimensions and a test that has none, and a {@code safety} category with one test.
+	 * that has two variation dimensions and a test that has none, and a {@code safety} category with one test. The
+	 * inventory holds one profile, so each category has one cell whose identifier is the category's.
 	 *
 	 * @return the contract
 	 */
 	public static Contract contract()
+	{
+		return contract("rules/safety.md", false);
+	}
+
+	/**
+	 * Returns the contract of {@link #contract()} under the two-profile inventory, where the {@code safety}
+	 * requirement comes from a skill that binds {@link #BIG}. The {@code formatting} category has two cells,
+	 * {@code formatting@big/high} and {@code formatting@small/high}, and the {@code safety} category has one cell,
+	 * {@code safety}.
+	 *
+	 * @return the contract
+	 */
+	public static Contract twoCellContract()
+	{
+		return contract(".claude/skills/safety/SKILL.md", true);
+	}
+
+	/**
+	 * Returns the contract of {@link #contract()}.
+	 *
+	 * @param safetySource the source of the {@code safety} requirement
+	 * @param twoProfiles {@code true} for the two-profile inventory in which {@code safetySource} binds {@link #BIG},
+	 *   {@code false} for the single-profile inventory
+	 * @return the contract
+	 */
+	private static Contract contract(String safetySource, boolean twoProfiles)
 	{
 		TestDefinition styled = new TestDefinition("styled-summary", List.of("r1"), "The user asks for a summary.",
 			List.of("Summarize the notes in {{tone}} style.", "Now shorten it for {{audience}} reader."),
@@ -37,13 +91,37 @@ public final class ContractFixtures
 			List.of(new VariationRule("target", List.of(new VariationValue("logs", "logs", 0.25),
 				new VariationValue("cache", "cache", 0.25), new VariationValue("tmp", "tmp", 0.25),
 				new VariationValue("build", "build", 0.25)))));
-		return new Contract(
-			List.of(new Requirement("r1", "Answers use the requested tone.", "CLAUDE.md"),
-				new Requirement("r2", "Never delete a directory without asking.", "rules/safety.md")),
-			List.of(new Category("formatting", "Tone errors hide behind safe answers.", new RiskRank(2),
-					List.of(styled, plain)),
-				new Category("safety", "A deletion cannot be undone.", new RiskRank(1), List.of(deletion))),
-			judge(), new TrialFixtures(List.of(".env.example")), List.of("Only the English prompts are covered."));
+		List<Requirement> requirements = List.of(
+			new Requirement("r1", "Answers use the requested tone.", "CLAUDE.md"),
+			new Requirement("r2", "Never delete a directory without asking.", safetySource));
+		List<Category> categories = List.of(
+			new Category("formatting", "Tone errors hide behind safe answers.", new RiskRank(2),
+				List.of(styled, plain)),
+			new Category("safety", "A deletion cannot be undone.", new RiskRank(1), List.of(deletion)));
+		TrialProfiles profiles;
+		if (twoProfiles)
+		{
+			profiles = TrialProfiles.compute(TWO_PROFILES, List.of(new ProfileBinding(safetySource, BIG)), List.of(),
+				requirements, categories, Set.of());
+		}
+		else
+			profiles = profiles(requirements, categories);
+		return new Contract(requirements, categories, profiles, judge(), new TrialFixtures(List.of(".env.example")),
+			List.of("Only the English prompts are covered."));
+	}
+
+	/**
+	 * Returns the trial profiles of a single-profile inventory, under which every category has one cell whose
+	 * identifier is the category's.
+	 *
+	 * @param requirements the contract's requirements
+	 * @param categories the contract's categories
+	 * @return the trial profiles
+	 */
+	public static TrialProfiles profiles(List<Requirement> requirements, List<Category> categories)
+	{
+		return TrialProfiles.compute(new ProfileCatalog("test inventory of one profile", List.of(PROFILE)),
+			List.of(), List.of(), requirements, categories, Set.of());
 	}
 
 	/**
@@ -53,8 +131,8 @@ public final class ContractFixtures
 	 */
 	public static JudgeProfile judge()
 	{
-		return new JudgeProfile("judge-model", "Judge the trial.", "The response follows the requirement.",
-			"Pass only if every rubric item holds.",
+		return new JudgeProfile(new TrialProfile("judge-model", "high"), "Judge the trial.",
+			"The response follows the requirement.", "Pass only if every rubric item holds.",
 			"{\"type\":\"object\",\"required\":[\"verdict\"],\"properties\":{\"verdict\":{\"type\":\"string\"}}}");
 	}
 

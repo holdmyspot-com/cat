@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
@@ -32,10 +33,6 @@ import java.util.random.RandomGenerator;
  */
 public abstract class OptimizerCommandScope implements AutoCloseable
 {
-	/**
-	 * The judge model that every command uses: the harness's default model.
-	 */
-	private static final String JUDGE_MODEL = "harness-default";
 	private boolean closed;
 	private Path projectRoot;
 	private CampaignStore store;
@@ -62,6 +59,15 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	public abstract SessionPort sessions();
+
+	/**
+	 * Returns the port that lists the harness's profile inventory, reads prompt files' profile bindings and reads
+	 * the role profile.
+	 *
+	 * @return the port
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public abstract ProfileInventory profiles();
 
 	/**
 	 * Returns the signal that reports whether the host user interrupted the host session.
@@ -134,18 +140,6 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	abstract CapCalibrator calibrator();
-
-	/**
-	 * Returns the name of the judge model.
-	 *
-	 * @return {@code harness-default}
-	 * @throws IllegalStateException if this scope is closed
-	 */
-	final String judgeModel()
-	{
-		ensureOpen();
-		return JUDGE_MODEL;
-	}
 
 	/**
 	 * Returns the slice's time budget: the 8-minute budget plus the 1-minute grace period that fits the skill's

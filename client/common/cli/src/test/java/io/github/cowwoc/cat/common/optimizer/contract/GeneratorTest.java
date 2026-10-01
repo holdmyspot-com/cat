@@ -208,7 +208,7 @@ public final class GeneratorTest
 
 		requireThat(targeted.targeted(), "targeted").isTrue();
 		requireThat(targeted.isRepresentative(), "representative").isFalse();
-		requireThat(targeted, "targeted").isEqualTo(new TrialInstance(drawn.categoryId(), drawn.testId(),
+		requireThat(targeted, "targeted").isEqualTo(new TrialInstance(drawn.cellId(), drawn.categoryId(), drawn.testId(),
 			drawn.choices(), drawn.turns(), drawn.expectedBehaviour(), drawn.generator(), drawn.streamKind(),
 			drawn.streamPosition(), true));
 		requireThat(stream.state(), "stream.state()").isEqualTo(before);
@@ -277,6 +277,9 @@ public final class GeneratorTest
 					base.expectedBehaviour(), base.generator())},
 				{"test of another category", with(base, "safety", base.testId(), choices, base.turns(),
 					base.expectedBehaviour(), base.generator())},
+				{"category other than the cell's", new TrialInstance(base.cellId(), "safety", base.testId(), choices,
+					base.turns(), base.expectedBehaviour(), base.generator(), base.streamKind(), base.streamPosition(),
+					base.targeted())},
 				{"missing dimension", with(base, base.categoryId(), base.testId(), List.of(tone), base.turns(),
 					base.expectedBehaviour(), base.generator())},
 				{"extra dimension", with(base, base.categoryId(), base.testId(),
@@ -315,8 +318,8 @@ public final class GeneratorTest
 	private static TrialInstance with(TrialInstance base, String categoryId, String testId,
 		List<VariationChoice> choices, List<String> turns, String expectedBehaviour, String generator)
 	{
-		return new TrialInstance(categoryId, testId, choices, turns, expectedBehaviour, generator, base.streamKind(),
-			base.streamPosition(), base.targeted());
+		return new TrialInstance(categoryId, categoryId, testId, choices, turns, expectedBehaviour, generator,
+			base.streamKind(), base.streamPosition(), base.targeted());
 	}
 
 	/**
@@ -360,9 +363,10 @@ public final class GeneratorTest
 			List.of("It costs {{price}}; repeat: {{price}}."), java.time.Duration.ofMinutes(1), "Complies.", List.of(),
 			List.of(price));
 		Contract original = ContractFixtures.contract();
-		Contract contract = new Contract(original.requirements(),
-			List.of(new Category("quotes", "Why.", new RiskRank(1), List.of(test))), original.judge(),
-			original.fixtures(), original.limitations());
+		List<Category> categories = List.of(new Category("quotes", "Why.", new RiskRank(1), List.of(test)));
+		Contract contract = new Contract(original.requirements(), categories,
+			ContractFixtures.profiles(original.requirements(), categories), original.judge(), original.fixtures(),
+			original.limitations());
 
 		TrialInstance instance = new Generator(contract).draw("quotes",
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED));

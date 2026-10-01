@@ -10,8 +10,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
@@ -24,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -67,12 +70,12 @@ public final class StatusReportTest
 	 */
 	private static CategoryReport category(StatusReport report, String category)
 	{
-		for (CategoryReport candidate : report.categories())
+		for (CategoryReport candidate : report.cells())
 		{
-			if (candidate.category().equals(category))
+			if (candidate.cell().equals(category))
 				return candidate;
 		}
-		throw new AssertionError("No category " + category + " in " + report.categories());
+		throw new AssertionError("No category " + category + " in " + report.cells());
 	}
 
 	/**
@@ -260,7 +263,7 @@ public final class StatusReportTest
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.allocation().get("formatting"), "formattingAllocation").isEqualTo(120);
 		requireThat(report.allocation().get("safety"), "safetyAllocation").isEqualTo(61);
-		List<Benchmark.CategoryWeights> weights = report.benchmark().categories();
+		List<Benchmark.CategoryWeights> weights = report.benchmark().cells();
 		requireThat(weights, "weights").isEqualTo(List.of(new Benchmark.CategoryWeights("formatting", 2, 0.5),
 			new Benchmark.CategoryWeights("safety", 1, 1.0)));
 
@@ -306,11 +309,11 @@ public final class StatusReportTest
 			Campaign campaign = confirmed().readyDevelopment().outcome(outcome).build();
 			reported.add(StatusReport.of(campaign, ReportEvidence.NONE).outcome());
 		}
-		ReportEvidence interrupted = new ReportEvidence(List.of(), java.util.Map.of(), List.of(), List.of(), false, true,
+		ReportEvidence interrupted = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), false, true,
 			null);
 		Campaign running = confirmed().readyDevelopment().build();
 		reported.add(StatusReport.of(running, interrupted).outcome());
-		ReportEvidence failed = new ReportEvidence(List.of(), java.util.Map.of(), List.of(), List.of(), false, false,
+		ReportEvidence failed = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), false, false,
 			"The runner exited with status 7");
 		StatusReport failure = StatusReport.of(running, failed);
 		reported.add(failure.outcome());
@@ -336,6 +339,25 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that a condition that one cell observed is listed under that cell's name, in the conditions and in the
+	 * claim.
+	 */
+	@Test
+	public void conditionsNameEachCellsValue()
+	{
+		// Requirement: R-E17
+		MeasurementIdentity campaignWide = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity identity = new MeasurementIdentity(campaignWide.values(),
+			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "model-c")));
+		StatusReport report = StatusReport.of(confirmed().identity(identity).readyDevelopment().build(),
+			ReportEvidence.NONE);
+		requireThat(report.conditions().get(MeasurementCondition.MODEL.name()), "model").isEqualTo("model-a");
+		requireThat(report.conditions().get(MeasurementCondition.MODEL.name() + "[formatting]"), "cellModel").
+			isEqualTo("model-c");
+		requireThat(report.claim(), "claim").contains("MODEL[formatting]=model-c");
+	}
+
+	/**
 	 * Verifies that the claim names the frozen judge, the benchmark and the conditions, and that limitations are
 	 * listed.
 	 */
@@ -345,7 +367,7 @@ public final class StatusReportTest
 		// Requirement: R-P4
 		Campaign campaign = confirmed().readyDevelopment().build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(report.claim(), "claim").contains(ContractFixtures.judge().model()).
+		requireThat(report.claim(), "claim").contains(ContractFixtures.judge().profile().label()).
 			contains(ContractFixtures.judge().decisionRule()).contains("balanced benchmark").
 			contains("not usage frequencies").contains("model-a");
 		requireThat(report.conditions().get(MeasurementCondition.MODEL.name()), "model").isEqualTo("model-a");
@@ -354,7 +376,7 @@ public final class StatusReportTest
 		requireThat(report.limitations(), "limitations").contains("Only the English prompts are covered.");
 		// the contract's own limitations come after the fixed ones, which are always listed
 		requireThat(report.limitations().size(), "limitationCount").isGreaterThan(1);
-		requireThat(report.summary(), "summary").contains(ContractFixtures.judge().model()).
+		requireThat(report.summary(), "summary").contains(ContractFixtures.judge().profile().label()).
 			contains("Only the English prompts are covered.");
 	}
 
@@ -366,7 +388,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-W6
 		Campaign campaign = confirmed().readyDevelopment().build();
-		ReportEvidence links = new ReportEvidence(List.of(), java.util.Map.of(), List.of(), List.of(), true, false, null);
+		ReportEvidence links = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), true, false, null);
 		List<String> without = StatusReport.of(campaign, ReportEvidence.NONE).limitations();
 		List<String> with = StatusReport.of(campaign, links).limitations();
 		requireThat(with.size(), "size").isEqualTo(without.size() + 1);
@@ -406,19 +428,23 @@ public final class StatusReportTest
 		requireThat(offer.historical(), "historical").isFalse();
 		requireThat(offer.differing(), "differing").isEmpty();
 		requireThat(offer.weakestLowerBound(), "weakest").isEqualTo(ExploratoryBounds.wilson(95, 100).lower());
-		KeepOffer.Category formatting = offer.categories().get(0);
-		requireThat(formatting.category(), "firstCategory").isEqualTo("formatting");
+		KeepOffer.Category formatting = offer.cells().get(0);
+		requireThat(formatting.cell(), "firstCategory").isEqualTo("formatting");
 		requireThat(formatting.state(), "formattingState").isEqualTo("proven better");
 		requireThat(formatting.incumbentUpper(), "UI").isEqualTo(0.9);
 		requireThat(formatting.incumbentLower(), "LI").isEqualTo(0.8);
 		requireThat(formatting.note(), "formattingNote").isNull();
-		KeepOffer.Category safety = offer.categories().get(1);
+		KeepOffer.Category safety = offer.cells().get(1);
 		requireThat(safety.state(), "safetyState").isEqualTo("undecided");
 		requireThat(safety.passes(), "safetyPasses").isEqualTo(95);
 		requireThat(safety.trials(), "safetyTrials").isEqualTo(100);
 		// the difference interval's lower endpoint is below 0, so the category might be slightly worse
 		requireThat(safety.difference().lower(), "differenceLower").isLessThan(0.0);
 		requireThat(safety.note(), "safetyNote").isNotNull();
+
+		JsonNode offerNode = report.toJson(JsonMapper.builder().build()).path("keepOffers").get(0);
+		requireThat(offerNode.has("categories"), "offerCategories").isFalse();
+		requireThat(offerNode.path("cells").get(0).path("cell").asString(), "offerCell").isEqualTo("formatting");
 	}
 
 	/**
@@ -507,8 +533,8 @@ public final class StatusReportTest
 		requireThat(json.path("status").asString(), "status").isEqualTo("running");
 		requireThat(json.path("phase").asString(), "phase").isEqualTo("development");
 		requireThat(json.path("remaining").path("total").asInt(), "remaining").isEqualTo(226);
-		JsonNode first = json.path("categories").get(0);
-		requireThat(first.path("category").asString(), "category").isEqualTo("formatting");
+		JsonNode first = json.path("cells").get(0);
+		requireThat(first.path("cell").asString(), "cell").isEqualTo("formatting");
 		requireThat(first.path("passRate").path("label").asString(), "label").isEqualTo("development estimate");
 		requireThat(first.path("comparison").path("state").asString(), "state").isEqualTo("not certified");
 		String text = json.toString().toLowerCase(java.util.Locale.ROOT);
@@ -567,5 +593,103 @@ public final class StatusReportTest
 		requireThat(report.summary(), "summary").contains("Authority warning: requirement R1 needs an edit at " +
 			"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
 			"choices: authorize target (--target /external/shared.md), use authorized source, stop, revise");
+	}
+
+	/**
+	 * Verifies that a category under two profiles is reported as two cells with separate counts, readiness and
+	 * decisions, that the claim counts cells, and that the status shows the trial profiles.
+	 */
+	@Test
+	public void twoCellCategoryIsReportedPerCell()
+	{
+		// Requirement: R-C11
+		// Requirement: R-C10
+		Contract contract = ContractFixtures.twoCellContract();
+		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+			development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 60, 1).build();
+		StatusReport report = StatusReport.of(development, ReportEvidence.NONE);
+		requireThat(report.cells().stream().map(CategoryReport::cell).toList(), "cells").
+			isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety"));
+		requireThat(category(report, ContractFixtures.BIG_CELL).comparison().readiness(), "bigReadiness").
+			isEqualTo("ready");
+		requireThat(category(report, ContractFixtures.SMALL_CELL).trials(), "smallTrials").isEqualTo(61);
+		requireThat(category(report, ContractFixtures.SMALL_CELL).comparison().readiness(), "smallReadiness").
+			isEqualTo("not ready");
+		requireThat(report.claim(), "claim").contains("3 cells");
+		requireThat(report.summary(), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
+			contains(ContractFixtures.TWO_PROFILES.source());
+
+		JsonNode profiles = report.toJson(JsonMapper.builder().build()).path("trialProfiles");
+		requireThat(profiles.path("inventorySource").asString(), "inventorySource").
+			isEqualTo(ContractFixtures.TWO_PROFILES.source());
+		requireThat(profiles.path("inventory").size(), "inventory").isEqualTo(2);
+		requireThat(profiles.path("bindings").get(0).path("file").asString(), "binding").
+			isEqualTo(".claude/skills/safety/SKILL.md");
+		JsonNode small = profiles.path("cells").get(1);
+		requireThat(small.path("id").asString(), "small.id").isEqualTo(ContractFixtures.SMALL_CELL);
+		requireThat(small.path("category").asString(), "small.category").isEqualTo("formatting");
+		requireThat(small.path("model").asString(), "small.model").isEqualTo("small");
+		requireThat(small.path("effort").asString(), "small.effort").isEqualTo("high");
+
+		// Each cell is decided on its own counts: big certifies, small is clearly below, safety is undecided
+		Campaign formal = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries(3)).
+			category(ContractFixtures.BIG_CELL, 120, 0).category(ContractFixtures.SMALL_CELL, 0, 8).
+			category("safety", 60, 1).build();
+		StatusReport formalReport = StatusReport.of(formal, ReportEvidence.NONE);
+		requireThat(category(formalReport, ContractFixtures.BIG_CELL).comparison().state(), "big").
+			isEqualTo("certified");
+		requireThat(category(formalReport, ContractFixtures.SMALL_CELL).comparison().state(), "small").
+			isEqualTo("clearly below");
+		requireThat(category(formalReport, "safety").comparison().state(), "safety").isEqualTo("undecided");
+	}
+
+	/**
+	 * Verifies that every JSON status key whose value is a cell identifier names it a cell, and that {@code category}
+	 * remains only where the value is a category.
+	 */
+	@Test
+	public void jsonKeysNameCells()
+	{
+		// Requirement: R-C11
+		// Requirement: R-E12
+		Contract contract = ContractFixtures.twoCellContract();
+		Campaign campaign = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+			development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 60, 1).build();
+		ObjectNode json = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build());
+		List<String> cells = List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety");
+
+		requireThat(json.has("categories"), "categories").isFalse();
+		requireThat(values(json.path("cells"), "cell"), "cells").isEqualTo(cells);
+		requireThat(json.path("allocation").propertyNames(), "allocation").containsExactly(cells);
+		requireThat(json.path("benchmark").has("categories"), "benchmark.categories").isFalse();
+		requireThat(values(json.path("benchmark").path("cells"), "cell"), "benchmark.cells").isEqualTo(cells);
+		JsonNode entries = json.path("remaining").path("entries");
+		requireThat(entries.isEmpty(), "entries.isEmpty").isFalse();
+		requireThat(cells, "cells").containsAll(values(entries, "cell"));
+		JsonNode profileCells = json.path("trialProfiles").path("cells");
+		requireThat(values(profileCells, "id"), "trialProfiles.cells").isEqualTo(cells);
+		requireThat(values(profileCells, "category"), "trialProfiles.categories").
+			isEqualTo(List.of("formatting", "formatting", "safety"));
+	}
+
+	/**
+	 * Returns one text field of each element of an array.
+	 *
+	 * @param array the array
+	 * @param field the field's name
+	 * @return the values, in order
+	 * @throws AssertionError if an element lacks the field
+	 */
+	private static List<String> values(JsonNode array, String field)
+	{
+		List<String> values = new ArrayList<>();
+		for (JsonNode element : array)
+		{
+			if (!element.has(field))
+				throw new AssertionError("No " + field + " in " + element);
+			values.add(element.path(field).asString());
+		}
+		return values;
 	}
 }

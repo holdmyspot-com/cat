@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 
 import java.nio.file.Path;
@@ -56,10 +55,8 @@ final class UserChoices
 			case TARGETED_OPTIMIZATION ->
 			{
 				PendingDecision.CheckpointReached checkpoint = (PendingDecision.CheckpointReached) pending;
-				List<String> categories = new ArrayList<>();
-				for (Category category : draft.contract().categories())
-					categories.add(category.id());
-				draft.round = TrialAdoption.failingRound(draft.developmentCounts, categories, checkpoint.category());
+				draft.round = TrialAdoption.failingRound(draft.developmentCounts, draft.contract().cellIds(),
+					checkpoint.category());
 				draft.resolve();
 			}
 			case KEEP_IMPROVEMENT -> keepImprovement(draft, campaign, choose.attempt());

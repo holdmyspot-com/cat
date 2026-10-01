@@ -26,8 +26,8 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Converts a {@link DeliveryJournal} to and from a JSON tree.
  * <p>
- * The document starts with {@code format_version}, the same version that {@link CampaignJson} writes. Keys are
- * snake_case, kinds are written by name, modes in {@code rwxr-xr-x} form, and file bytes in Base64.
+ * The document starts with {@code format_version}. Keys are snake_case, kinds are written by name, modes in
+ * {@code rwxr-xr-x} form, and file bytes in Base64.
  * <p>
  * Reading reports a document that does not describe a valid journal with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -36,6 +36,11 @@ import tools.jackson.databind.node.ObjectNode;
  */
 final class DeliveryJournalJson
 {
+	/**
+	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
+	 * when campaign files became keyed by cell.
+	 */
+	static final int FORMAT_VERSION = 1;
 	private static final String VERSION = "format_version";
 	private final JsonMapper json;
 
@@ -60,7 +65,7 @@ final class DeliveryJournalJson
 	ObjectNode write(DeliveryJournal journal)
 	{
 		ObjectNode root = json.createObjectNode();
-		root.put(VERSION, CampaignJson.FORMAT_VERSION);
+		root.put(VERSION, FORMAT_VERSION);
 		root.put("candidate", journal.candidate().hex());
 		root.put("applied", journal.applied());
 		ArrayNode changes = root.putArray("changes");
@@ -141,10 +146,10 @@ final class DeliveryJournalJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
-		if (version != CampaignJson.FORMAT_VERSION)
+		if (version != FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ", but this version of CAT reads " +
-				CampaignJson.FORMAT_VERSION);
+				FORMAT_VERSION);
 		}
 		JsonNode changesNode = field(root, "changes");
 		if (!changesNode.isArray())

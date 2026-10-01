@@ -93,7 +93,7 @@ public final class OptimizerCommandScopeTest
 			{
 			}
 			requireThat(scope.isClosed(), "isClosed").isTrue();
-			for (Runnable access : List.<Runnable>of(scope::judgeModel, scope::sliceSettings,
+			for (Runnable access : List.<Runnable>of(scope::profiles, scope::sliceSettings,
 				scope::ceiling, scope::json, scope::sessions))
 			{
 				IllegalStateException failure = null;

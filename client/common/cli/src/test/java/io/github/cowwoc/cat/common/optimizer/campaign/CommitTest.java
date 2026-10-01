@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -185,5 +187,34 @@ public final class CommitTest
 		requireThat(campaign.attempt(1).candidate(), "frozen").isEqualTo(frozen);
 		requireThat(campaign.development().working(), "working").isEqualTo(new Candidate(2, edit));
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(2);
+	}
+
+	/**
+	 * Verifies that a commit freezes one comparison per cell from that cell's baseline, divides the improvement and
+	 * incumbent budgets by the number of cells, and waits until every cell is ready.
+	 */
+	@Test
+	public void commitFreezesEachCell()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		CampaignBuilder ready = new CampaignBuilder().confirmed(contract, 1).working(1).readyDevelopment().
+			baseline(ContractFixtures.BIG_CELL, 50, 0).baseline(ContractFixtures.SMALL_CELL, 48, 2).
+			baseline("safety", 50, 0);
+		Campaign campaign = CampaignTransitions.apply(ready.build(), new CampaignEvent.Commit(calibration(1), 41));
+		CertificationProcedure procedure = campaign.attempt(1).procedure();
+
+		requireThat(procedure.categories(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
+			ContractFixtures.SMALL_CELL, "safety"));
+		SignificanceLevel improvement = ErrorBudget.improvementLevel(1, 3);
+		SignificanceLevel incumbent = ErrorBudget.incumbentLevel(1, 3);
+		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(improvement);
+		requireThat(procedure.boundaries().comparisons().get(0).comparison(), "bigComparison").
+			isEqualTo(Comparison.freeze(50, 0, incumbent, improvement));
+		requireThat(procedure.boundaries().comparisons().get(1).comparison(), "smallComparison").
+			isEqualTo(Comparison.freeze(48, 2, incumbent, improvement));
+
+		Campaign smallShort = ready.development(ContractFixtures.SMALL_CELL, 99, 0).build();
+		requireThat(ReadinessGate.isCommitDue(smallShort), "smallShort").isFalse();
 	}
 }

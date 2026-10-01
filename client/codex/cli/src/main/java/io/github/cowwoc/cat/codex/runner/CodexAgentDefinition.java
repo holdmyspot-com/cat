@@ -11,12 +11,14 @@ import java.util.regex.Pattern;
 
 /**
  * Represents the model, effort, and developer contract declared by one CAT Codex custom agent.
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param model the selected Codex model
  * @param effort the selected reasoning effort
  * @param developerInstructions the complete developer contract
  */
-record CodexAgentDefinition(String model, String effort, String developerInstructions)
+public record CodexAgentDefinition(String model, String effort, String developerInstructions)
 {
 	private static final Pattern MODEL = field("model");
 	private static final Pattern EFFORT = field("model_reasoning_effort");
@@ -31,7 +33,7 @@ record CodexAgentDefinition(String model, String effort, String developerInstruc
 	 * @return the parsed agent definition
 	 * @throws IOException if the named agent is absent or malformed
 	 */
-	static CodexAgentDefinition load(Path artifact, String agent) throws IOException
+	public static CodexAgentDefinition load(Path artifact, String agent) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(agent, "agent").isNotBlank();

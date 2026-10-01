@@ -15,19 +15,19 @@ import java.util.List;
  * @param attempt the certification index of the attempt whose frozen snapshot the choice delivers
  * @param historical {@code true} if the attempt was measured under an earlier measurement identity
  * @param differing the names of the conditions that differ from the current identity, empty if it is current
- * @param weakestLowerBound the 95% Wilson lower bound on the attempt's weakest category, which ranks it within its
+ * @param weakestLowerBound the 95% Wilson lower bound on the attempt's weakest cell, which ranks it within its
  *   identity
- * @param categories the evidence of each category
+ * @param cells the evidence of each cell
  */
 public record KeepOffer(int attempt, boolean historical, List<String> differing, double weakestLowerBound,
-	List<Category> categories)
+	List<Category> cells)
 {
 	/**
-	 * The evidence that one category of an offered attempt gives.
+	 * The evidence that one cell of an offered attempt gives.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @param passes the attempt's adopted passes
 	 * @param trials the attempt's adopted outcomes
 	 * @param state {@code proven better}, {@code proven worse} or {@code undecided} at {@code β_i / K}
@@ -37,13 +37,13 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 	 * @param note a warning that a category that is not proven better might still be slightly worse, or
 	 *   {@code null} if none applies
 	 */
-	public record Category(String category, int passes, int trials, String state, double incumbentUpper,
+	public record Category(String cell, int passes, int trials, String state, double incumbentUpper,
 		double incumbentLower, Interval difference, String note)
 	{
 		/**
-		 * Creates the evidence of a category.
+		 * Creates the evidence of a cell.
 		 *
-		 * @param category the category
+		 * @param cell the cell's identifier
 		 * @param passes the attempt's adopted passes
 		 * @param trials the attempt's adopted outcomes
 		 * @param state {@code proven better}, {@code proven worse} or {@code undecided}
@@ -51,13 +51,13 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 		 * @param incumbentLower the incumbent's frozen lower bound {@code LI(k)}
 		 * @param difference the difference interval
 		 * @param note a warning that the category might still be slightly worse, or {@code null} if none applies
-		 * @throws NullPointerException if {@code category}, {@code state} or {@code difference} are null
+		 * @throws NullPointerException if {@code cell}, {@code state} or {@code difference} are null
 		 * @throws IllegalArgumentException if {@code trials} is negative or {@code passes} is outside
 		 *   [0, {@code trials}]
 		 */
 		public Category
 		{
-			requireThat(category, "category").isNotNull();
+			requireThat(cell, "cell").isNotNull();
 			requireThat(trials, "trials").isNotNegative();
 			requireThat(passes, "passes").isBetween(0, true, trials, true);
 			requireThat(state, "state").isNotNull();
@@ -71,17 +71,17 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 	 * @param attempt the certification index of the attempt whose frozen snapshot the choice delivers
 	 * @param historical {@code true} if the attempt was measured under an earlier measurement identity
 	 * @param differing the names of the conditions that differ from the current identity
-	 * @param weakestLowerBound the 95% Wilson lower bound on the attempt's weakest category
-	 * @param categories the evidence of each category
-	 * @throws NullPointerException if {@code differing} or {@code categories} are null
+	 * @param weakestLowerBound the 95% Wilson lower bound on the attempt's weakest cell
+	 * @param cells the evidence of each cell
+	 * @throws NullPointerException if {@code differing} or {@code cells} are null
 	 * @throws IllegalArgumentException if {@code attempt} is not positive
 	 */
 	public KeepOffer
 	{
 		requireThat(attempt, "attempt").isPositive();
 		requireThat(differing, "differing").isNotNull();
-		requireThat(categories, "categories").isNotNull();
+		requireThat(cells, "cells").isNotNull();
 		differing = List.copyOf(differing);
-		categories = List.copyOf(categories);
+		cells = List.copyOf(cells);
 	}
 }

@@ -113,7 +113,7 @@ public sealed interface Admission
 			if (instance != null)
 			{
 				requireThat(instance.targeted(), "instance.targeted()").isTrue();
-				requireThat(instance.categoryId(), "instance.categoryId()").isEqualTo(category, "category");
+				requireThat(instance.cellId(), "instance.cellId()").isEqualTo(category, "category");
 			}
 		}
 	}

@@ -22,7 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Each session runs in a fresh, isolated run directory of the runner and holds one {@link HarnessCapacity} permit
  * for its lifetime. A session sends the request's turns one at a time through the runner's JSONL bridge. It parses
  * the harness's events for the observed model, the token usage and the rate-limit windows, and keeps the
- * events as the transcript.
+ * events as the transcript. The runner selects the request's profile: {@code --model} and {@code --effort} for each
+ * bound dimension, which reach the app-server as {@code thread/start}'s {@code model} and {@code turn/start}'s
+ * {@code effort}; an unbound dimension is not selected, so Codex applies its default.
  * <p>
  * The Codex runner has no option for read-only evidence (design &sect;11, H23), so {@link SessionRequest#readOnly()}
  * is not passed to it. A judge reads the evidence by path, and only file permissions protect it.
@@ -95,22 +97,20 @@ public final class CodexSessions implements SessionPort
 	}
 
 	/**
-	 * How the Codex runner is configured. Every session of a port shares these settings, because a session
-	 * request names no model. The runner takes the reasoning effort from the Codex configuration.
+	 * How the Codex runner is configured. Every session of a port shares these settings; the model and reasoning
+	 * effort come from each request's profile.
 	 *
 	 * @param artifact the complete Codex artifact that the runner validates and installs
 	 * @param runRoot the absolute directory that holds the runner's run directories
 	 * @param executable the Codex executable, or blank for {@code codex}
-	 * @param model the model to select, or blank for the harness default
 	 * @param installCat whether the runner installs CAT into the session's isolated home
 	 * @param environment the host environment that the runner scrubs for the session
 	 * @param configurationDirectory the host's Codex configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
 	 */
-	public record Settings(Path artifact, Path runRoot, String executable, String model, boolean installCat,
-		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity,
-		Clock clock)
+	public record Settings(Path artifact, Path runRoot, String executable, boolean installCat,
+		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
 	{
 		/**
 		 * Creates settings.
@@ -118,8 +118,7 @@ public final class CodexSessions implements SessionPort
 		 * @param artifact the complete Codex artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the runner's run directories
 		 * @param executable the Codex executable, or blank for {@code codex}
-		 * @param model the model to select, or blank for the harness default
-		 * @param installCat whether the runner installs CAT into the session's isolated home
+			 * @param installCat whether the runner installs CAT into the session's isolated home
 		 * @param environment the host environment that the runner scrubs for the session
 		 * @param configurationDirectory the host's Codex configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
@@ -133,7 +132,6 @@ public final class CodexSessions implements SessionPort
 			requireThat(runRoot, "runRoot").isNotNull();
 			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
 			requireThat(executable, "executable").isNotNull();
-			requireThat(model, "model").isNotNull();
 			requireThat(environment, "environment").isNotNull();
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 			requireThat(capacity, "capacity").isNotNull();

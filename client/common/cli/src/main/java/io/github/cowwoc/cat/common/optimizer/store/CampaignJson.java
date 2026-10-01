@@ -81,7 +81,11 @@ import tools.jackson.databind.node.ObjectNode;
  * Converts campaign snapshots and trial records to and from JSON trees.
  * <p>
  * Every document starts with {@code format_version}. Keys are snake_case and constants are written by name. Maps are
- * written with sorted keys, except a {@link Round}, whose category order is part of its state. Big numbers and
+ * written with sorted keys, except a {@link Round}, whose cell order is part of its state.
+ * <p>
+ * Version 2 keys counts, rounds, review points, trial keys, sequences and certification procedures by cell
+ * (design &sect;2.1) and records the observed model and reasoning per cell. Version 1 keyed them by category; it is
+ * refused rather than migrated. Big numbers and
  * instants are written as strings so that they round-trip exactly.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
@@ -94,7 +98,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	static final int FORMAT_VERSION = 1;
+	static final int FORMAT_VERSION = 2;
 	private static final String VERSION = "format_version";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -155,7 +159,7 @@ final class CampaignJson
 		for (Entry<SequenceGroup, Long> entry : sortedSequences.entrySet())
 		{
 			ObjectNode node = sequences.addObject();
-			node.put("category", entry.getKey().category());
+			node.put("cell", entry.getKey().category());
 			node.put("purpose", entry.getKey().purpose().name());
 			node.put("snapshot", entry.getKey().snapshot().hex());
 			node.put("last_sequence", entry.getValue());
@@ -220,7 +224,7 @@ final class CampaignJson
 		Map<SequenceGroup, Long> sequences = new HashMap<>();
 		for (JsonNode node : elements(root, "sequences"))
 		{
-			SequenceGroup group = new SequenceGroup(text(node, "category"), constant(node, "purpose", Purpose.class),
+			SequenceGroup group = new SequenceGroup(text(node, "cell"), constant(node, "purpose", Purpose.class),
 				sha256(node, "snapshot"));
 			if (sequences.put(group, longInteger(node, "last_sequence")) != null)
 				throw new IllegalArgumentException("sequences: duplicate group " + group);
@@ -444,7 +448,7 @@ final class CampaignJson
 			for (Entry<String, Integer> entry : round.attempts().entrySet())
 			{
 				ObjectNode element = attempts.addObject();
-				element.put("category", entry.getKey());
+				element.put("cell", entry.getKey());
 				element.put("attempts", entry.getValue());
 			}
 		}
@@ -455,7 +459,7 @@ final class CampaignJson
 		{
 			ObjectNode element = node.putObject("author");
 			element.put("number", author.number());
-			element.put("category", author.category());
+			element.put("cell", author.category());
 			element.put("snapshot", author.snapshot().hex());
 			ArrayNode runs = element.putArray("runs");
 			for (PromotionRun run : author.runs())
@@ -495,9 +499,9 @@ final class CampaignJson
 			Map<String, Integer> attempts = new LinkedHashMap<>();
 			for (JsonNode element : elements(node, "round"))
 			{
-				String category = text(element, "category");
-				if (attempts.put(category, integer(element, "attempts")) != null)
-					throw new IllegalArgumentException("round: duplicate category " + category);
+				String cell = text(element, "cell");
+				if (attempts.put(cell, integer(element, "attempts")) != null)
+					throw new IllegalArgumentException("round: duplicate cell " + cell);
 			}
 			round = new Round(attempts);
 		}
@@ -512,7 +516,7 @@ final class CampaignJson
 					readInstance(field(run, "instance")), nullableKey(run, "trial"),
 					nullableConstant(run, "verdict", Verdict.class)));
 			}
-			author = new AuthorAttempt(integer(authorNode, "number"), text(authorNode, "category"),
+			author = new AuthorAttempt(integer(authorNode, "number"), text(authorNode, "cell"),
 				sha256(authorNode, "snapshot"), runs);
 		}
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
@@ -540,9 +544,9 @@ final class CampaignJson
 		ObjectNode procedureNode = node.putObject("procedure");
 		procedureNode.put("improvement_level", procedure.improvementLevel().threshold().toString());
 		procedureNode.put("baseline_index", procedure.baselineIndex());
-		ArrayNode categories = procedureNode.putArray("categories");
-		for (String category : procedure.categories())
-			categories.add(category);
+		ArrayNode cells = procedureNode.putArray("cells");
+		for (String cell : procedure.categories())
+			cells.add(cell);
 		procedureNode.set("boundaries", writeBoundaries(procedure.boundaries()));
 		procedureNode.put("bets", procedure.bets());
 		procedureNode.put("allocation_policy", procedure.allocationPolicy());
@@ -563,8 +567,8 @@ final class CampaignJson
 	{
 		JsonNode procedureNode = field(node, "procedure");
 		List<String> categories = new ArrayList<>();
-		for (JsonNode category : elements(procedureNode, "categories"))
-			categories.add(stringValue(category, "categories"));
+		for (JsonNode cell : elements(procedureNode, "cells"))
+			categories.add(stringValue(cell, "cells"));
 		CertificationProcedure procedure = new CertificationProcedure(level(procedureNode, "improvement_level"),
 			integer(procedureNode, "baseline_index"), categories, readBoundaries(field(procedureNode, "boundaries")),
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
@@ -759,7 +763,7 @@ final class CampaignJson
 			case PendingDecision.CheckpointReached checkpoint ->
 			{
 				node.put("type", "CHECKPOINT_REACHED");
-				node.put("category", checkpoint.category());
+				node.put("cell", checkpoint.category());
 				node.put("outcomes", checkpoint.outcomes());
 			}
 			case PendingDecision.ImprovementProven proven ->
@@ -820,7 +824,7 @@ final class CampaignJson
 			case "TRIAL_FAILURES" -> new PendingDecision.TrialFailures(readKey(field(node, "key")));
 			case "CALIBRATION_FAILURE" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
 			case "CHECKPOINT_REACHED" ->
-				new PendingDecision.CheckpointReached(text(node, "category"), integer(node, "outcomes"));
+				new PendingDecision.CheckpointReached(text(node, "cell"), integer(node, "outcomes"));
 			case "IMPROVEMENT_PROVEN" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
 			case "REGRESSION_TRADE_OFF" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));
 			case "PLATEAU_REACHED" -> new PendingDecision.PlateauReached();
@@ -856,7 +860,7 @@ final class CampaignJson
 		node.put("purpose", key.purpose().name());
 		node.put("series", key.series());
 		node.put("snapshot", key.snapshot().hex());
-		node.put("category", key.category());
+		node.put("cell", key.category());
 		node.put("sequence", key.sequence());
 		return node;
 	}
@@ -885,7 +889,7 @@ final class CampaignJson
 	private static TrialKey readKey(JsonNode node)
 	{
 		return new TrialKey(constant(node, "purpose", Purpose.class), integer(node, "series"),
-			sha256(node, "snapshot"), text(node, "category"), longInteger(node, "sequence"));
+			sha256(node, "snapshot"), text(node, "cell"), longInteger(node, "sequence"));
 	}
 
 	/**
@@ -912,6 +916,7 @@ final class CampaignJson
 	private ObjectNode writeInstance(TrialInstance instance)
 	{
 		ObjectNode node = json.createObjectNode();
+		node.put("cell_id", instance.cellId());
 		node.put("category_id", instance.categoryId());
 		node.put("test_id", instance.testId());
 		ArrayNode choices = node.putArray("choices");
@@ -950,7 +955,8 @@ final class CampaignJson
 		List<String> turns = new ArrayList<>();
 		for (JsonNode element : elements(node, "turns"))
 			turns.add(stringValue(element, "turns"));
-		return new TrialInstance(text(node, "category_id"), text(node, "test_id"), choices, turns,
+		return new TrialInstance(text(node, "cell_id"), text(node, "category_id"), text(node, "test_id"), choices,
+			turns,
 			text(node, "expected_behaviour"), text(node, "generator"),
 			constant(node, "stream_kind", DrawStream.Kind.class), longInteger(node, "stream_position"),
 			bool(node, "targeted"));
@@ -1085,7 +1091,8 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts measurement conditions to a document, in condition order.
+	 * Converts measurement conditions to a document: the campaign-wide conditions in condition order, then each
+	 * cell's conditions in cell order.
 	 *
 	 * @param identity the conditions
 	 * @return the document
@@ -1093,13 +1100,27 @@ final class CampaignJson
 	private ObjectNode writeIdentity(MeasurementIdentity identity)
 	{
 		ObjectNode node = json.createObjectNode();
+		writeConditions(node.putObject("conditions"), identity.values());
+		ObjectNode cells = node.putObject("cells");
+		for (Entry<String, Map<MeasurementCondition, String>> cell : new TreeMap<>(identity.cells()).entrySet())
+			writeConditions(cells.putObject(cell.getKey()), cell.getValue());
+		return node;
+	}
+
+	/**
+	 * Writes measurement conditions, in condition order.
+	 *
+	 * @param node the object to write to
+	 * @param values the value of each recorded condition
+	 */
+	private static void writeConditions(ObjectNode node, Map<MeasurementCondition, String> values)
+	{
 		for (MeasurementCondition condition : MeasurementCondition.values())
 		{
-			String value = identity.values().get(condition);
+			String value = values.get(condition);
 			if (value != null)
 				node.put(condition.name(), value);
 		}
-		return node;
 	}
 
 	/**
@@ -1111,13 +1132,29 @@ final class CampaignJson
 	private static MeasurementIdentity readIdentity(JsonNode node)
 	{
 		requireObject(node, "identity");
+		Map<String, Map<MeasurementCondition, String>> cells = new HashMap<>();
+		for (Entry<String, JsonNode> cell : object(node, "cells").properties())
+			cells.put(cell.getKey(), readConditions(cell.getValue(), "identity.cells." + cell.getKey()));
+		return new MeasurementIdentity(readConditions(field(node, "conditions"), "identity.conditions"), cells);
+	}
+
+	/**
+	 * Converts a document to measurement conditions.
+	 *
+	 * @param node the document
+	 * @param name the document's name in error messages
+	 * @return the value of each recorded condition
+	 */
+	private static Map<MeasurementCondition, String> readConditions(JsonNode node, String name)
+	{
+		requireObject(node, name);
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		for (Entry<String, JsonNode> entry : node.properties())
 		{
 			values.put(MeasurementCondition.valueOf(entry.getKey()),
-				stringValue(entry.getValue(), "identity." + entry.getKey()));
+				stringValue(entry.getValue(), name + "." + entry.getKey()));
 		}
-		return new MeasurementIdentity(values);
+		return values;
 	}
 
 	/**
@@ -1214,8 +1251,9 @@ final class CampaignJson
 		int version = integer(root, VERSION);
 		if (version != FORMAT_VERSION)
 		{
-			throw new IllegalArgumentException(VERSION + " is " + version + ", but this version of CAT reads " +
-				FORMAT_VERSION);
+			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
+				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
+				"campaign.");
 		}
 	}
 

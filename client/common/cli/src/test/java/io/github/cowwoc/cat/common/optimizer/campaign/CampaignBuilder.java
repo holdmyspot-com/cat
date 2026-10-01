@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -134,7 +133,7 @@ public final class CampaignBuilder
 		values.putAll(identity.values());
 		values.put(MeasurementCondition.CONTRACT, contractHash().hex());
 		values.put(MeasurementCondition.GENERATOR, Generator.IDENTITY);
-		return new MeasurementIdentity(values);
+		return new MeasurementIdentity(values, identity.cells());
 	}
 
 	/**
@@ -310,14 +309,14 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Gives every category of the contract 100 passing development trials.
+	 * Gives every cell of the contract 100 passing development trials.
 	 *
 	 * @return this builder
 	 */
 	public CampaignBuilder readyDevelopment()
 	{
-		for (Category category : contract.categories())
-			development(category.id(), 100, 0);
+		for (String cell : contract.cellIds())
+			development(cell, 100, 0);
 		return this;
 	}
 
@@ -433,14 +432,14 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Gives every category of the contract 50 passing baseline trials, which meets the baseline.
+	 * Gives every cell of the contract 50 passing baseline trials, which meets the baseline.
 	 *
 	 * @return this builder
 	 */
 	public CampaignBuilder readyBaseline()
 	{
-		for (Category category : contract.categories())
-			baseline(category.id(), 50, 0);
+		for (String cell : contract.cellIds())
+			baseline(cell, 50, 0);
 		return this;
 	}
 
@@ -810,9 +809,7 @@ public final class CampaignBuilder
 		 */
 		private CertificationAttempt toAttempt()
 		{
-			List<String> categories = new ArrayList<>();
-			for (Category category : contract.categories())
-				categories.add(category.id());
+			List<String> categories = contract.cellIds();
 			DecisionBoundaries frozen = boundaries;
 			if (frozen == null)
 				frozen = Boundaries.standard(categories.size());

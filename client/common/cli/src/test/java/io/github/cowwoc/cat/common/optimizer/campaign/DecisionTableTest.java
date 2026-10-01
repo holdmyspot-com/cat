@@ -6,6 +6,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.Action;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.AttemptDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CategoryDecision;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.List;
@@ -331,5 +333,34 @@ public final class DecisionTableTest
 		Campaign campaign = new CampaignBuilder().confirmed().pending(new PendingDecision.PlateauReached()).
 			outcome(Outcome.PLATEAU).build();
 		CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
+	}
+
+	/**
+	 * Verifies that each cell of a category under two profiles is decided on its own counts, and that one cell below
+	 * the minimum decides the attempt even when the other cell of the same category certifies.
+	 */
+	@Test
+	public void cellsAreDecidedSeparately()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		CertificationAttempt certified = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
+			category(ContractFixtures.BIG_CELL, 100, 0).category(ContractFixtures.SMALL_CELL, 100, 0).
+			category("safety", 100, 0).build().attempt(1);
+		requireThat(DecisionTable.attemptDecision(certified), "certified").isEqualTo(AttemptDecision.CERTIFIED);
+
+		CertificationAttempt split = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
+			category(ContractFixtures.BIG_CELL, 100, 0).category(ContractFixtures.SMALL_CELL, 0, 5).
+			category("safety", 100, 0).build().attempt(1);
+		DecisionBoundaries boundaries = split.procedure().boundaries();
+		requireThat(DecisionTable.categoryDecision(boundaries, split.count(ContractFixtures.BIG_CELL)), "big").
+			isEqualTo(CategoryDecision.CERTIFIED);
+		requireThat(DecisionTable.categoryDecision(boundaries, split.count(ContractFixtures.SMALL_CELL)), "small").
+			isEqualTo(CategoryDecision.CLEARLY_BELOW);
+		requireThat(DecisionTable.attemptDecision(split), "split").isEqualTo(AttemptDecision.BELOW_MINIMUM);
+
+		CertificationAttempt undecided = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
+			category(ContractFixtures.BIG_CELL, 100, 0).category("safety", 100, 0).build().attempt(1);
+		requireThat(DecisionTable.attemptDecision(undecided), "smallUntried").isEqualTo(AttemptDecision.UNDECIDED);
 	}
 }

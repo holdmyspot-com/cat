@@ -9,6 +9,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -115,8 +116,8 @@ public final class CodexSessionsNativeTest
 		Path source = Files.createDirectories(fixture.resolve("source"));
 		Files.writeString(source.resolve("README.md"), "fixture\n", UTF_8);
 		Path runRoot = fixture.resolve("runs");
-		CodexSessions sessions = new CodexSessions(new CodexSessions.Settings(artifact, runRoot, "", "",
-			false, environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
+		CodexSessions sessions = new CodexSessions(new CodexSessions.Settings(artifact, runRoot, "", false,
+			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
 		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}
 
@@ -231,7 +232,7 @@ public final class CodexSessionsNativeTest
 		try (HarnessSubject subject = open())
 		{
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(subject.quickPrompt()), List.of(), LIMIT));
+				List.of(subject.quickPrompt()), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT));
 
 			SessionResult result = await(session);
 
@@ -292,7 +293,7 @@ public final class CodexSessionsNativeTest
 			for (SessionRole role : SessionRole.values())
 			{
 				SessionHandle session = subject.port().start(new SessionRequest(role, subject.workspace(),
-					List.of(subject.quickPrompt()), List.of(), LIMIT));
+					List.of(subject.quickPrompt()), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT));
 
 				SessionResult result = await(session);
 
@@ -320,7 +321,7 @@ public final class CodexSessionsNativeTest
 				"directory, containing the text child-done, and then reply done. Wait for the child agent to " +
 				"finish, then reply with the single word finished.";
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(prompt), List.of(), LIMIT));
+				List.of(prompt), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT));
 
 			SessionResult result = await(session);
 

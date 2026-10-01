@@ -14,9 +14,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.execution.FixedCalibrator;
@@ -55,10 +57,12 @@ public final class ProposalTest
 {
 	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent");
 	private static final String OBSERVED = "hook: .claude/hooks/session-start.sh\nskill: release-notes";
-	private static final String JUDGE_MODEL = "judge-model-from-cat";
+	private static final TrialProfile ROLE = new TrialProfile("role-model", "xhigh");
+	private static final ProfileEvidence PROFILES = new ProfileEvidence(
+		ContractFixtures.contract().profiles().inventory(), Map.of());
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
-	private final JudgeTemplate judge = new JudgeTemplate(json, JUDGE_MODEL);
+	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final DeriverProtocol deriver = new DeriverProtocol(json, schema, judge);
 
 	/**
@@ -122,7 +126,7 @@ public final class ProposalTest
 	private Contract expectedContract()
 	{
 		Contract fixture = ContractFixtures.contract();
-		return new Contract(fixture.requirements(), fixture.categories(),
+		return new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(),
 			judge.profile("The response follows the requirement.", "Pass only if every rubric item holds."),
 			fixture.fixtures(), fixture.limitations());
 	}
@@ -137,7 +141,7 @@ public final class ProposalTest
 	 */
 	private Proposal proposal(LinkReport links, HostLogin login) throws InvalidProposalException
 	{
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")));
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
 		return Proposal.of(derived, new CampaignBuilder().build(), links, login,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 	}
@@ -188,7 +192,7 @@ public final class ProposalTest
 	public void requestCarriesTheDeriverSchema()
 	{
 		// Requirement: R-E13
-		SessionRequest request = deriver.request(PROMPT_SYSTEM);
+		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES.inventory());
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.DERIVER);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -219,10 +223,11 @@ public final class ProposalTest
 		// Requirement: R-E13
 		// Requirement: R-C5
 		// Requirement: R-C7
-		DerivedProposal derived = deriver.proposal(session("```json\n" + fixture("derivation.json") + "```\n"));
+		DerivedProposal derived = deriver.proposal(session("```json\n" + fixture("derivation.json") + "```\n"),
+			PROFILES);
 
 		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
-		requireThat(derived.contract().judge().model(), "judge.model").isEqualTo(JUDGE_MODEL);
+		requireThat(derived.contract().judge().profile(), "judge.profile").isEqualTo(ROLE);
 		requireThat(derived.contract().judge().prompt(), "judge.prompt").
 			isEqualTo(PromptTemplate.load("/optimizer/judge/judge.md").text());
 		requireThat(json.readTree(derived.contract().judge().resultSchema()), "judge.resultSchema").
@@ -243,7 +248,7 @@ public final class ProposalTest
 	public void derivesTheProposalFromBareOutput() throws InvalidProposalException
 	{
 		// Requirement: R-E13
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")));
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
 
 		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
 	}
@@ -259,7 +264,7 @@ public final class ProposalTest
 		// Requirement: R-E13
 		try
 		{
-			deriver.proposal(session(fixture("derivation-aggregate.json")));
+			deriver.proposal(session(fixture("derivation-aggregate.json")), PROFILES);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -278,7 +283,7 @@ public final class ProposalTest
 		// Requirement: R-C5
 		try
 		{
-			deriver.proposal(session(fixture("derivation-with-judge-fields.json")));
+			deriver.proposal(session(fixture("derivation-with-judge-fields.json")), PROFILES);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -298,7 +303,7 @@ public final class ProposalTest
 		// Requirement: R-E13
 		try
 		{
-			deriver.proposal(session("Here is the proposal:\n" + fixture("derivation.json")));
+			deriver.proposal(session("Here is the proposal:\n" + fixture("derivation.json")), PROFILES);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -326,7 +331,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			deriver.proposal(session(output));
+			deriver.proposal(session(output), PROFILES);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -348,10 +353,10 @@ public final class ProposalTest
 	public void feedbackRegeneratesTheCompleteProposal() throws InvalidProposalException
 	{
 		// Requirement: R-C2
-		DerivedProposal first = deriver.proposal(session(fixture("derivation.json")));
+		DerivedProposal first = deriver.proposal(session(fixture("derivation.json")), PROFILES);
 		String feedback = "Split the safety category by the kind of directory.";
 
-		SessionRequest request = deriver.request(PROMPT_SYSTEM, first, feedback);
+		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES.inventory(), first, feedback);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.DERIVER);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -363,8 +368,8 @@ public final class ProposalTest
 
 		String revised = changedDerivation(root -> ((ObjectNode) root.get("requirements").get(1)).
 			put("description", "Never delete a directory or a file without asking."));
-		Proposal second = Proposal.of(deriver.proposal(session(revised)), new CampaignBuilder().build(), noLinks(),
-			HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES), new CampaignBuilder().build(),
+			noLinks(), HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
 			contains("styled-summary").contains("delete-directory").contains("## Statistical procedure");
 	}
@@ -417,7 +422,7 @@ public final class ProposalTest
 		}
 		requireThat(text, "text").contains("Rubric: " + contract.judge().rubric()).
 			contains("Decision rule: " + contract.judge().decisionRule()).
-			contains("Model: " + JUDGE_MODEL).
+			contains("Role profile: " + ROLE.label()).
 			contains("- .env.example\n").
 			contains("Only the English prompts are covered.");
 	}
@@ -456,7 +461,7 @@ public final class ProposalTest
 	public void rendersAnUnavailableCap() throws InvalidProposalException
 	{
 		// Requirement: R-C1
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")));
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
 		Proposal proposal = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
 			level ->
 			{
@@ -506,7 +511,7 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the minimum session count counts one trial session and one judge session for each of the
-	 * minimum remaining trials, with each category's share.
+	 * minimum remaining trials, with each cell's share.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -522,7 +527,9 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("## Minimum session count").
 			contains("At least " + 2 * trials + " nested sessions remain if every trial passes: " + trials +
 				" trials, each with one trial session and one judge session.").
-			contains("- `formatting`: readiness ").contains("- `safety`: readiness ");
+			contains("- `formatting` (category `formatting`, profile " + ContractFixtures.PROFILE.label() +
+				"): readiness ").
+			contains("- `safety` (category `safety`, profile " + ContractFixtures.PROFILE.label() + "): readiness ");
 	}
 
 	/**
@@ -611,5 +618,119 @@ public final class ProposalTest
 			campaign = CampaignTransitions.apply(campaign, event);
 		requireThat(campaign.contract().judge(), "judge").isEqualTo(expectedContract().judge());
 		requireThat(campaign.lineage().unavailable(), "unavailable").isEqualTo(Set.of(Outcome.UNSUPPORTED_OUTPUT));
+	}
+
+	/**
+	 * Returns the evidence of a two-profile inventory in which {@code rules/safety.md} binds the big profile.
+	 *
+	 * @return the evidence
+	 */
+	private static ProfileEvidence twoProfiles()
+	{
+		return new ProfileEvidence(ContractFixtures.TWO_PROFILES, Map.of("rules/safety.md", ContractFixtures.BIG));
+	}
+
+	/**
+	 * Verifies that CAT computes each category's cells from the inventory and the bindings, and that the proposal
+	 * shows the inventory with its source, the bindings, each category's cells and the minimum trials of each cell.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void rendersTrialProfilesAndCells() throws InvalidProposalException
+	{
+		// Requirement: R-C10
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles());
+		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
+			ContractFixtures.SMALL_CELL, "safety"));
+		requireThat(derived.contract().findCell("safety").orElseThrow().profile(), "safety.profile").
+			isEqualTo(ContractFixtures.BIG);
+
+		String text = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+		requireThat(text, "text").contains("## Trial profiles").
+			contains("Trial profile inventory (" + ContractFixtures.TWO_PROFILES.source() + "): big/high, small/high").
+			contains("rules/safety.md binds big/high").
+			contains("category formatting: " + ContractFixtures.BIG_CELL + " (big/high), " +
+				ContractFixtures.SMALL_CELL + " (small/high)").
+			contains("category safety: safety (big/high)").
+			contains("Minimum trials by cell:").
+			contains("- `" + ContractFixtures.SMALL_CELL + "` (category `formatting`, profile small/high): readiness ");
+	}
+
+	/**
+	 * Verifies that a revision's profile restriction narrows every category's profile set, that a restriction that
+	 * names only an effort keeps that effort, and that a restriction that matches no inventory profile is rejected.
+	 *
+	 * @throws InvalidProposalException if the restricted output is rejected
+	 */
+	@Test
+	public void restrictionNarrowsTheProfileSet() throws InvalidProposalException
+	{
+		// Requirement: R-C10
+		String restricted = changedDerivation(output -> output.putArray("profile_restriction").addObject().
+			put("model", "small").put("effort", ""));
+		DerivedProposal derived = deriver.proposal(session(restricted), new ProfileEvidence(
+			ContractFixtures.TWO_PROFILES, Map.of()));
+		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of("formatting", "safety"));
+		requireThat(derived.contract().findCell("formatting").orElseThrow().profile(), "profile").
+			isEqualTo(ContractFixtures.SMALL);
+		requireThat(derived.contract().profiles().restriction(), "restriction").
+			isEqualTo(List.of(new TrialProfile("small", "")));
+
+		String byEffort = changedDerivation(output -> output.putArray("profile_restriction").addObject().
+			put("model", "").put("effort", "high"));
+		requireThat(deriver.proposal(session(byEffort), twoProfiles()).contract().profiles().restriction(),
+			"effortRestriction").isEqualTo(List.of(new TrialProfile("", "high")));
+
+		String unmatched = changedDerivation(output -> output.putArray("profile_restriction").addObject().
+			put("model", "huge").put("effort", ""));
+		try
+		{
+			deriver.proposal(session(unmatched), twoProfiles());
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").contains("huge/default").
+				contains(ContractFixtures.TWO_PROFILES.source());
+		}
+	}
+
+	/**
+	 * Verifies that the deriver cannot supply the trial profiles, which CAT computes.
+	 */
+	@Test
+	public void rejectsDeriverTrialProfiles()
+	{
+		// Requirement: R-C10
+		String output = changedDerivation(derivation -> derivation.putObject("trial_profiles"));
+		try
+		{
+			deriver.proposal(session(output), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").contains("$.trial_profiles: CAT computes the trial profiles, so " +
+				"the deriver must leave them out");
+		}
+	}
+
+	/**
+	 * Verifies that the deriver's request lists the harness's profile inventory and its source, so that it can turn
+	 * the user's feedback into a restriction, and that it names a model without an effort dimension as such.
+	 */
+	@Test
+	public void requestListsTheProfileInventory()
+	{
+		// Requirement: R-C10
+		String prompt = deriver.request(PROMPT_SYSTEM, ContractFixtures.TWO_PROFILES).turns().getFirst();
+		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
+			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
+
+		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
+		requireThat(deriver.request(PROMPT_SYSTEM, plain).turns().getFirst(), "plainPrompt").
+			contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
 	}
 }

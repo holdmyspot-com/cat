@@ -7,6 +7,7 @@ import java.util.List;
 /**
  * One concrete trial that a generator drew, with everything an assignment record keeps.
  *
+ * @param cellId the cell that the trial belongs to, which is its statistical unit
  * @param categoryId the category that the trial belongs to
  * @param testId the test definition that the trial instantiates
  * @param choices the selected value of each of the test's dimensions, in the test's dimension order
@@ -18,12 +19,14 @@ import java.util.List;
  * @param targeted {@code true} if the trial is a rerun, promotion run or regression run, which never counts as
  *   representative or formal evidence
  */
-public record TrialInstance(String categoryId, String testId, List<VariationChoice> choices, List<String> turns,
-	String expectedBehaviour, String generator, DrawStream.Kind streamKind, long streamPosition, boolean targeted)
+public record TrialInstance(String cellId, String categoryId, String testId, List<VariationChoice> choices,
+	List<String> turns, String expectedBehaviour, String generator, DrawStream.Kind streamKind, long streamPosition,
+	boolean targeted)
 {
 	/**
 	 * Creates an instance.
 	 *
+	 * @param cellId the cell that the trial belongs to, which is its statistical unit
 	 * @param categoryId the category that the trial belongs to
 	 * @param testId the test definition that the trial instantiates
 	 * @param choices the selected value of each of the test's dimensions, in the test's dimension order
@@ -39,6 +42,7 @@ public record TrialInstance(String categoryId, String testId, List<VariationChoi
 	 */
 	public TrialInstance
 	{
+		requireThat(cellId, "cellId").isNotBlank();
 		requireThat(categoryId, "categoryId").isNotBlank();
 		requireThat(testId, "testId").isNotBlank();
 		requireThat(choices, "choices").isNotNull();

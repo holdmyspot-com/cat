@@ -189,7 +189,7 @@ public final class ProposalSchemaTest
 		for (JsonNode name : schema.get("required"))
 			required.add(name.asString());
 		requireThat(required, "required").isEqualTo(
-			java.util.Set.of("requirements", "categories", "judge", "fixtures", "limitations"));
+			java.util.Set.of("requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations"));
 	}
 
 	/**
@@ -452,7 +452,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C5
 		JudgeProfile judge = schema().parse(ContractFixtures.resource("valid-proposal.json")).judge();
 
-		requireThat(judge.model(), "model").isEqualTo("judge-model");
+		requireThat(judge.profile(), "profile").isEqualTo(new TrialProfile("judge-model", "high"));
 		requireThat(judge.prompt(), "prompt").isEqualTo("Judge the trial.");
 		requireThat(judge.rubric(), "rubric").isEqualTo("The response follows the requirement.");
 		requireThat(judge.decisionRule(), "decisionRule").isEqualTo("Pass only if every rubric item holds.");

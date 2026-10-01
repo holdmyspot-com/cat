@@ -44,9 +44,11 @@
 
 ### Evidence
 
-The category to improve:
+The cell to improve: one category under one trial profile. Its identifier is the category's, followed by `@` and
+the profile's `model/effort` when the category runs under several profiles (the contract's `trial_profiles.cells`
+lists each one):
 
-{{category}}
+{{cell}}
 
 The confirmed contract, as JSON:
 
@@ -58,7 +60,7 @@ its failure in `judge_rationale`, and the targeted reruns of the same instance a
 
 {{failures}}
 
-The development counts of the working candidate per category, as JSON:
+The development counts of the working candidate per cell, as JSON:
 
 {{development_counts}}
 

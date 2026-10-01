@@ -8,28 +8,30 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * Objective assertions and exit statuses may inform the judge's decision, but they never replace it.
  *
- * @param model the model that judges
+ * @param profile the role profile that the judge session runs under (design &sect;3.1)
  * @param prompt the instructions that the judge session receives
  * @param rubric what the judge checks in a trial's text, file effects and tool effects
  * @param decisionRule how the judge turns its findings into a pass or a failure
  * @param resultSchema the JSON schema, as JSON text, that a judge result must satisfy
  */
-public record JudgeProfile(String model, String prompt, String rubric, String decisionRule, String resultSchema)
+public record JudgeProfile(TrialProfile profile, String prompt, String rubric, String decisionRule,
+	String resultSchema)
 {
 	/**
 	 * Creates a judge profile.
 	 *
-	 * @param model the model that judges
+	 * @param profile the role profile that the judge session runs under (design &sect;3.1)
 	 * @param prompt the instructions that the judge session receives
 	 * @param rubric what the judge checks in a trial's text, file effects and tool effects
 	 * @param decisionRule how the judge turns its findings into a pass or a failure
 	 * @param resultSchema the JSON schema, as JSON text, that a judge result must satisfy
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if any argument is blank
+	 * @throws IllegalArgumentException if {@code profile} binds nothing or any other argument is blank
 	 */
 	public JudgeProfile
 	{
-		requireThat(model, "model").isNotBlank();
+		requireThat(profile, "profile").isNotNull();
+		requireThat(profile.isBound(), "profile.isBound()").isTrue();
 		requireThat(prompt, "prompt").isNotBlank();
 		requireThat(rubric, "rubric").isNotBlank();
 		requireThat(decisionRule, "decisionRule").isNotBlank();

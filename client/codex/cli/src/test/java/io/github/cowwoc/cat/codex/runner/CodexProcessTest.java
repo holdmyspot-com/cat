@@ -1,14 +1,31 @@
 package io.github.cowwoc.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
+import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
+import io.github.cowwoc.cat.common.runner.HarnessRunManager;
+import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -17,15 +34,16 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.LongFunction;
+import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests how {@link CodexProcess} runs, interrupts and reports a turn. Each test plays the Codex app-server
- * with a {@link FakeHarnessCli} that answers JSON-RPC requests with notifications shaped like those codex-cli
- * 0.159.1 printed for a root thread with child threads.
+ * Tests how {@link CodexProcess} runs, interrupts and reports a turn, and how {@link CodexRunner} starts it. Each
+ * test plays the Codex app-server with a {@link FakeHarnessCli} that answers JSON-RPC requests with notifications
+ * shaped like those codex-cli 0.159.1 printed for a root thread with child threads.
  */
 public final class CodexProcessTest
 {
@@ -69,6 +87,92 @@ public final class CodexProcessTest
 			requireThat(result.completed(), "completed").isTrue();
 			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("{\"verdict\":\"fail\"}");
 		}
+	}
+
+	/**
+	 * Verifies that the runner selects its profile through the app-server protocol: the model as
+	 * {@code thread/start}'s {@code model} and the reasoning effort as each {@code turn/start}'s {@code effort}.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void selectsTheProfileThroughTheAppServer() throws IOException
+	{
+		// Requirement: R-E17
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, "done"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+		try (CodexProcess process = server.start("gpt-5.5", "xhigh"))
+		{
+			process.sendTurn("Run the trial.");
+
+			requireThat(server.requests("thread/start").getFirst().path("model").asString(""), "model").
+				isEqualTo("gpt-5.5");
+			requireThat(server.requests("turn/start").getFirst().path("effort").asString(""), "effort").
+				isEqualTo("xhigh");
+		}
+	}
+
+	/**
+	 * Verifies that the runner starts the app-server under the model and effort it was asked for: the model reaches
+	 * {@code thread/start} and the effort reaches each {@code turn/start}.
+	 *
+	 * @throws IOException if the run fails
+	 */
+	@Test(timeOut = 10_000)
+	public void runnerSelectsTheRequestedProfile() throws IOException
+	{
+		// Requirement: R-E17
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, "done"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-runner-"));
+			Path artifact = createArtifact(root.resolve("artifact"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			List<List<String>> commands = new CopyOnWriteArrayList<>();
+			CodexRunner runner = new CodexRunner((command, _, _) ->
+			{
+				commands.add(command);
+				return new StartedProcess(server.process);
+			});
+			try (HarnessRunSession session = runner.start(artifact, project, manager, "codex",
+				Map.of("HOME", root.resolve("home").toString()), "gpt-6.1-sol", "high", false, null))
+			{
+				session.sendTurn("Run the trial.");
+			}
+
+			requireThat(commands, "commands").isEqualTo(List.of(List.of("codex", "app-server", "--stdio",
+				"--disable", "plugins")));
+			requireThat(server.requests("thread/start").getFirst().path("model").asString(""), "model").
+				isEqualTo("gpt-6.1-sol");
+			requireThat(server.requests("turn/start").getFirst().path("effort").asString(""), "effort").
+				isEqualTo("high");
+		}
+	}
+
+	/**
+	 * Creates the smallest directory that the runner accepts as a Codex artifact.
+	 *
+	 * @param artifact the directory to create
+	 * @return {@code artifact}
+	 * @throws IOException if the filesystem operation fails
+	 */
+	private static Path createArtifact(Path artifact) throws IOException
+	{
+		Files.createDirectories(artifact.resolve(".codex-plugin"));
+		Files.createDirectories(artifact.resolve("client/bin"));
+		Files.writeString(artifact.resolve(".codex-plugin/plugin.json"), "{}\n", UTF_8);
+		Files.writeString(artifact.resolve("client/VERSION"), PluginInfo.CAT_VERSION + "\n", UTF_8);
+		for (String launcher : List.of("plugin-info", "session-start"))
+		{
+			Path file = artifact.resolve("client/bin").resolve(launcher);
+			Files.writeString(file, "#!/bin/sh\nexit 0\n", UTF_8);
+			Files.setPosixFilePermissions(file, Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
+		}
+		return artifact;
 	}
 
 	/**
@@ -238,6 +342,182 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * An in-memory app-server as the runner sees a started operating-system process. The runner records the
+	 * process's identifier and start time, which an in-memory child lacks, so this process reports the test JVM's;
+	 * everything else is the in-memory child's.
+	 */
+	private static final class StartedProcess extends Process
+	{
+		private final FakeHarnessCli child;
+
+		/**
+		 * Wraps an in-memory child.
+		 *
+		 * @param child the child
+		 */
+		private StartedProcess(FakeHarnessCli child)
+		{
+			this.child = child;
+		}
+
+		@Override
+		public OutputStream getOutputStream()
+		{
+			return child.getOutputStream();
+		}
+
+		@Override
+		public InputStream getInputStream()
+		{
+			return child.getInputStream();
+		}
+
+		@Override
+		public InputStream getErrorStream()
+		{
+			return child.getErrorStream();
+		}
+
+		@Override
+		public int waitFor() throws InterruptedException
+		{
+			return child.waitFor();
+		}
+
+		@Override
+		public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
+		{
+			return child.waitFor(timeout, unit);
+		}
+
+		@Override
+		public int exitValue()
+		{
+			return child.exitValue();
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return child.isAlive();
+		}
+
+		@Override
+		public void destroy()
+		{
+			child.destroy();
+		}
+
+		@Override
+		public long pid()
+		{
+			return ProcessHandle.current().pid();
+		}
+
+		@Override
+		public ProcessHandle toHandle()
+		{
+			return new Handle(child.toHandle());
+		}
+
+		/**
+		 * The in-memory child's handle, with the test JVM's identifier and start time.
+		 */
+		private static final class Handle implements ProcessHandle
+		{
+			private final ProcessHandle child;
+
+			/**
+			 * Wraps the in-memory child's handle.
+			 *
+			 * @param child the child's handle
+			 */
+			private Handle(ProcessHandle child)
+			{
+				this.child = child;
+			}
+
+			@Override
+			public long pid()
+			{
+				return ProcessHandle.current().pid();
+			}
+
+			@Override
+			public Optional<ProcessHandle> parent()
+			{
+				return child.parent();
+			}
+
+			@Override
+			public Stream<ProcessHandle> children()
+			{
+				return child.children();
+			}
+
+			@Override
+			public Stream<ProcessHandle> descendants()
+			{
+				return child.descendants();
+			}
+
+			@Override
+			public Info info()
+			{
+				return ProcessHandle.current().info();
+			}
+
+			@Override
+			public CompletableFuture<ProcessHandle> onExit()
+			{
+				return child.onExit();
+			}
+
+			@Override
+			public boolean supportsNormalTermination()
+			{
+				return child.supportsNormalTermination();
+			}
+
+			@Override
+			public boolean destroy()
+			{
+				return child.destroy();
+			}
+
+			@Override
+			public boolean destroyForcibly()
+			{
+				return child.destroyForcibly();
+			}
+
+			@Override
+			public boolean isAlive()
+			{
+				return child.isAlive();
+			}
+
+			@Override
+			public int compareTo(ProcessHandle other)
+			{
+				return child.compareTo(other);
+			}
+
+			@Override
+			public boolean equals(Object value)
+			{
+				return value instanceof Handle other && other.child.equals(child);
+			}
+
+			@Override
+			public int hashCode()
+			{
+				return child.hashCode();
+			}
+		}
+	}
+
+	/**
 	 * Plays the Codex app-server: answers the start-up requests, then answers each {@code turn/start} and
 	 * {@code turn/interrupt} request with the lines the test supplies.
 	 */
@@ -284,9 +564,36 @@ public final class CodexProcessTest
 		 */
 		private CodexProcess start() throws IOException
 		{
+			return start("", "");
+		}
+
+		/**
+		 * Starts a runner process over this app-server under a profile and creates its root thread.
+		 *
+		 * @param model the model to select, or empty for Codex's default
+		 * @param effort the reasoning effort to select, or empty for Codex's default
+		 * @return the initialized runner process
+		 * @throws IOException if initialization fails
+		 */
+		private CodexProcess start(String model, String effort) throws IOException
+		{
 			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false);
-			result.initialize(PROJECT, "");
+			result.initialize(PROJECT, model, "", effort);
 			return result;
+		}
+
+		/**
+		 * Returns the requests received so far that call a method.
+		 *
+		 * @param method the method
+		 * @return each request's parameters
+		 */
+		private List<JsonNode> requests(String method)
+		{
+			return process.requests().stream().map(json::readTree).
+				filter(request -> request.path("method").asString("").equals(method)).
+				map(request -> request.path("params")).
+				toList();
 		}
 
 		/**

@@ -138,7 +138,7 @@ final class InMemoryForks implements Forks
 		{
 			this.campaign = campaign;
 			this.inventory = inventory;
-			this.workspace = new FakeWorkspacePort(campaign, inventory);
+			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
 			inventories.put(campaign, inventory);
 		}
 

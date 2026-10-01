@@ -52,7 +52,7 @@ public final class Promotion
 	/**
 	 * Plans the promotion runs of an author attempt.
 	 *
-	 * @param category the round category that the attempt addresses
+	 * @param category the round cell that the attempt addresses
 	 * @param failures the failing instances that the author received
 	 * @param regressionSet the lineage's regression set
 	 * @param generator the contract's generator, which marks the instances targeted
@@ -71,7 +71,7 @@ public final class Promotion
 		List<TrialInstance> triggeringInstances = new ArrayList<>();
 		for (TrialInstance failure : failures)
 		{
-			if (!failure.categoryId().equals(category))
+			if (!failure.cellId().equals(category))
 				continue;
 			TrialInstance instance = generator.markTargeted(failure);
 			triggeringInstances.add(instance);
@@ -210,11 +210,11 @@ public final class Promotion
 	 *
 	 * @param first an instance
 	 * @param second another instance
-	 * @return {@code true} if both have the same category, test, variation choices and turns
+	 * @return {@code true} if both have the same cell, test, variation choices and turns
 	 */
 	static boolean isSameContent(TrialInstance first, TrialInstance second)
 	{
-		return first.categoryId().equals(second.categoryId()) && first.testId().equals(second.testId()) &&
+		return first.cellId().equals(second.cellId()) && first.testId().equals(second.testId()) &&
 			first.choices().equals(second.choices()) && first.turns().equals(second.turns());
 	}
 }

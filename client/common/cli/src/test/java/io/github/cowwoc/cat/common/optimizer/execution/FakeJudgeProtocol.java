@@ -40,7 +40,8 @@ public final class FakeJudgeProtocol implements JudgeProtocol
 	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence)
 	{
 		return new SessionRequest(SessionRole.JUDGE, evidence.effects(), List.of(PREFIX +
-			evidence.responses().getLast()), List.of(evidence.transcript()), Duration.ofMinutes(5));
+			evidence.responses().getLast()), List.of(evidence.transcript()), Duration.ofMinutes(5),
+			profile.profile());
 	}
 
 	@Override

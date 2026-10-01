@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -448,10 +449,11 @@ final class Session implements SessionHandle
 			request.source().toString(), "--run-root", settings.runRoot().toString(), "--keep-run"));
 		if (!settings.executable().isBlank())
 			arguments.addAll(List.of("--executable", settings.executable()));
-		if (!settings.model().isBlank())
-			arguments.addAll(List.of("--model", settings.model()));
-		if (!settings.effort().isBlank())
-			arguments.addAll(List.of("--effort", settings.effort()));
+		TrialProfile profile = request.profile();
+		if (!profile.model().isEmpty())
+			arguments.addAll(List.of("--model", profile.model()));
+		if (!profile.effort().isEmpty())
+			arguments.addAll(List.of("--effort", profile.effort()));
 		if (settings.installCat())
 			arguments.add("--install-cat");
 		for (Path evidence : request.readOnly())

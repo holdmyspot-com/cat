@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
@@ -201,8 +200,8 @@ public final class CampaignTransitions
 		}
 		Contract contract = draft.contract();
 		String category = admission.category();
-		if (contract.findCategory(category).isEmpty())
-			throw new IllegalArgumentException("The contract has no category " + category);
+		if (contract.findCell(category).isEmpty())
+			throw new IllegalArgumentException("The contract has no cell " + category);
 		TrialKey key = new TrialKey(admission.purpose(), admission.series(), admission.snapshot(), category,
 			draft.nextSequence(new SequenceGroup(category, admission.purpose(), admission.snapshot())));
 		TrialInstance instance = switch (admission.purpose())
@@ -499,9 +498,7 @@ public final class CampaignTransitions
 			throw new IllegalStateException("The cap was calibrated at " + calibration.level() + ", but attempt " +
 				index + " uses " + level);
 		}
-		List<String> categories = new ArrayList<>();
-		for (Category category : draft.contract().categories())
-			categories.add(category.id());
+		List<String> categories = draft.contract().cellIds();
 		int categoryCount = categories.size();
 		SignificanceLevel improvementLevel = ErrorBudget.improvementLevel(index, categoryCount);
 		SignificanceLevel incumbentLevel = ErrorBudget.incumbentLevel(draft.baselineIndex, categoryCount);

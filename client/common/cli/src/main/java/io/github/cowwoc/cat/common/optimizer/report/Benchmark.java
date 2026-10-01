@@ -11,33 +11,33 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param categories the weight of each test within each category, in the contract's category order
+ * @param cells the weight of each test within each cell, in the contract's cell order
  */
-public record Benchmark(List<CategoryWeights> categories)
+public record Benchmark(List<CategoryWeights> cells)
 {
 	/**
-	 * The weight of each test of one category.
+	 * The weight of each test of one cell, which runs its category's tests.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the category
-	 * @param tests the number of tests in the category
+	 * @param cell the cell's identifier
+	 * @param tests the number of tests in the cell's category
 	 * @param testWeight the benchmark weight of each test within the category
 	 */
-	public record CategoryWeights(String category, int tests, double testWeight)
+	public record CategoryWeights(String cell, int tests, double testWeight)
 	{
 		/**
-		 * Creates the weights of a category.
+		 * Creates the weights of a cell.
 		 *
-		 * @param category the category
-		 * @param tests the number of tests in the category
+		 * @param cell the cell's identifier
+		 * @param tests the number of tests in the cell's category
 		 * @param testWeight the benchmark weight of each test within the category
-		 * @throws NullPointerException if {@code category} is null
+		 * @throws NullPointerException if {@code cell} is null
 		 * @throws IllegalArgumentException if {@code tests} is not positive, or {@code testWeight} is outside (0, 1]
 		 */
 		public CategoryWeights
 		{
-			requireThat(category, "category").isNotNull();
+			requireThat(cell, "cell").isNotNull();
 			requireThat(tests, "tests").isPositive();
 			requireThat(testWeight, "testWeight").isBetween(0.0, false, 1.0, true);
 		}
@@ -46,12 +46,12 @@ public record Benchmark(List<CategoryWeights> categories)
 	/**
 	 * Creates a benchmark.
 	 *
-	 * @param categories the weight of each test within each category
-	 * @throws NullPointerException if {@code categories} is null
+	 * @param cells the weight of each test within each cell
+	 * @throws NullPointerException if {@code cells} is null
 	 */
 	public Benchmark
 	{
-		requireThat(categories, "categories").isNotNull();
-		categories = List.copyOf(categories);
+		requireThat(cells, "cells").isNotNull();
+		cells = List.copyOf(cells);
 	}
 }

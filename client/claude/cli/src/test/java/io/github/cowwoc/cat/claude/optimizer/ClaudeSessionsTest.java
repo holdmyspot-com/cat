@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -82,7 +83,7 @@ public final class ClaudeSessionsTest
 	private static ClaudeSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(runRoot, runRoot, "", "", "", false, Map.of(),
+		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(runRoot, runRoot, "", false, Map.of(),
 			runRoot, capacity, clock);
 		return new ClaudeSessions(settings, (options, input, output) ->
 		{
@@ -102,7 +103,21 @@ public final class ClaudeSessionsTest
 	 */
 	private static SessionRequest request(Path source, List<Path> readOnly, String... turns)
 	{
-		return new SessionRequest(SessionRole.TRIAL, source, List.of(turns), readOnly, LIMIT);
+		return request(TrialProfile.HARNESS_DEFAULT, source, readOnly, turns);
+	}
+
+	/**
+	 * Creates a request under a profile.
+	 *
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param source the directory that the session works in
+	 * @param readOnly the evidence that the session may read
+	 * @param turns the turns
+	 * @return the request
+	 */
+	private static SessionRequest request(TrialProfile profile, Path source, List<Path> readOnly, String... turns)
+	{
+		return new SessionRequest(SessionRole.TRIAL, source, List.of(turns), readOnly, LIMIT, profile);
 	}
 
 	/**
@@ -170,7 +185,7 @@ public final class ClaudeSessionsTest
 	 */
 	private static ClaudeSessions loginPort(Path root, Map<String, String> environment)
 	{
-		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, root.resolve("runs"), "", "", "", false,
+		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, root.resolve("runs"), "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC());
 		return new ClaudeSessions(settings, (options, input, output) ->
 		{
@@ -273,6 +288,41 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that the runner receives the request's model and reasoning effort, and that an unbound dimension is
+	 * not selected, so the harness applies its default.
+	 *
+	 * @throws Exception if a session fails
+	 */
+	@Test(timeOut = 120_000)
+	public void passesTheRequestedProfile() throws Exception
+	{
+		// Requirement: R-E17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				arguments, List.of(Turn.replies("ok")));
+
+			await(sessions.start(request(new TrialProfile("opus", "high"), source, List.of(), "complete")));
+			await(sessions.start(request(new TrialProfile("haiku", ""), source, List.of(), "partial")));
+			await(sessions.start(request(new TrialProfile("", "low"), source, List.of(), "effortOnly")));
+
+			requireThat(arguments.size(), "arguments.size()").isEqualTo(3);
+			List<String> complete = arguments.get(0);
+			requireThat(ScriptedHarness.optionValue(complete, "--model"), "completeModel").isEqualTo("opus");
+			requireThat(ScriptedHarness.optionValue(complete, "--effort"), "completeEffort").isEqualTo("high");
+			List<String> partial = arguments.get(1);
+			requireThat(ScriptedHarness.optionValue(partial, "--model"), "partialModel").isEqualTo("haiku");
+			requireThat(partial.contains("--effort"), "partialEffort").isFalse();
+			List<String> effortOnly = arguments.get(2);
+			requireThat(effortOnly.contains("--model"), "effortOnlyModel").isFalse();
+			requireThat(ScriptedHarness.optionValue(effortOnly, "--effort"), "effortOnlyEffort").isEqualTo("low");
+		}
+	}
+
+	/**
 	 * Verifies that an interrupt that CAT requests while a turn runs ends the session as an interruption, and that the
 	 * runner is asked to stop the turn.
 	 *
@@ -320,7 +370,7 @@ public final class ClaudeSessionsTest
 			Path runs = root.resolve("runs");
 			List<String> requests = new CopyOnWriteArrayList<>();
 			CountDownLatch turnReceived = new CountDownLatch(1);
-			ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, runs, "", "", "", false, Map.of(), root,
+			ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, runs, "", false, Map.of(), root,
 				HarnessCapacity.unlimited(), Clock.systemUTC());
 			ClaudeSessions sessions = new ClaudeSessions(settings, (options, input, output) ->
 			{
@@ -508,7 +558,7 @@ public final class ClaudeSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, root.resolve("runs"), "", "", "", false,
+			ClaudeSessions.Settings settings = new ClaudeSessions.Settings(root, root.resolve("runs"), "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			ClaudeSessions sessions = new ClaudeSessions(settings, (options, input, output) ->
 			{

@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
@@ -37,7 +38,7 @@ public final class PortFakesTest
 	private static SessionRequest request(String turn)
 	{
 		return new SessionRequest(SessionRole.TRIAL, Path.of("/staged"), List.of(turn), List.of(),
-			Duration.ofMinutes(1));
+			Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 	}
 
 	/**
@@ -101,9 +102,11 @@ public final class PortFakesTest
 
 	/**
 	 * Verifies that the fake workspace tracks staged sources, authoring copies and materialized candidates.
+	 *
+	 * @throws IOException if the fake fails
 	 */
 	@Test
-	public void workspaceTracksItsDirectories()
+	public void workspaceTracksItsDirectories() throws IOException
 	{
 		FileInventory fork = new FileInventory(Path.of("/project"), Map.of());
 		FakeWorkspacePort workspace = new FakeWorkspacePort(Path.of("/workspace"), fork);

@@ -12,30 +12,34 @@ import java.util.Set;
  *
  * @param requirements every requirement and its source
  * @param categories the categories, in the order that breaks allocation ties last
+ * @param profiles the trial profiles and the cells, which are the statistical units
  * @param judge the frozen judge profile
  * @param fixtures the ignored files that trials need
  * @param limitations the material interactions and conditions that the contract does not cover
  */
-public record Contract(List<Requirement> requirements, List<Category> categories, JudgeProfile judge,
-	TrialFixtures fixtures, List<String> limitations)
+public record Contract(List<Requirement> requirements, List<Category> categories, TrialProfiles profiles,
+	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations)
 {
 	/**
 	 * Creates a contract.
 	 *
 	 * @param requirements every requirement and its source
 	 * @param categories the categories, in the order that breaks allocation ties last
+	 * @param profiles the trial profiles and the cells, which are the statistical units
 	 * @param judge the frozen judge profile
 	 * @param fixtures the ignored files that trials need
 	 * @param limitations the material interactions and conditions that the contract does not cover
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
 	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
-	 *   requirement that the contract does not list
+	 *   requirement that the contract does not list, a category has no cell, or a cell names a category that the
+	 *   contract does not list
 	 */
 	public Contract
 	{
 		requireThat(requirements, "requirements").isNotEmpty();
 		requireThat(categories, "categories").isNotEmpty();
+		requireThat(profiles, "profiles").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(fixtures, "fixtures").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
@@ -74,6 +78,16 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 					}
 				}
 			}
+			if (profiles.cellsOf(category.id()).isEmpty())
+				throw new IllegalArgumentException("The category '" + category.id() + "' has no cell");
+		}
+		for (Cell cell : profiles.cells())
+		{
+			if (!categoryIds.contains(cell.categoryId()))
+			{
+				throw new IllegalArgumentException("The cell '" + cell.id() + "' belongs to the category '" +
+					cell.categoryId() + "', which the contract does not list");
+			}
 		}
 	}
 
@@ -86,5 +100,51 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	public Optional<Category> findCategory(String id)
 	{
 		return categories.stream().filter(category -> category.id().equals(id)).findFirst();
+	}
+
+	/**
+	 * Returns the cells, which are the statistical units (design &sect;2.1).
+	 *
+	 * @return every cell, grouped by category in category order
+	 */
+	public List<Cell> cells()
+	{
+		return profiles.cells();
+	}
+
+	/**
+	 * Returns the identifiers of the cells.
+	 *
+	 * @return the identifier of every cell, in cell order
+	 */
+	public List<String> cellIds()
+	{
+		return cells().stream().map(Cell::id).toList();
+	}
+
+	/**
+	 * Finds a cell.
+	 *
+	 * @param id a cell identifier
+	 * @return the cell with that identifier, or empty if the contract has none
+	 */
+	public Optional<Cell> findCell(String id)
+	{
+		return profiles.findCell(id);
+	}
+
+	/**
+	 * Returns the category of a cell.
+	 *
+	 * @param cell a cell of this contract
+	 * @return the cell's category
+	 * @throws NullPointerException if {@code cell} is null
+	 * @throws IllegalArgumentException if the contract has no such category
+	 */
+	public Category categoryOf(Cell cell)
+	{
+		requireThat(cell, "cell").isNotNull();
+		return findCategory(cell.categoryId()).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no category '" + cell.categoryId() + "'"));
 	}
 }

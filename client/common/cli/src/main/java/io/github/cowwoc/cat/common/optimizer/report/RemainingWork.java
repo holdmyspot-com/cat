@@ -11,7 +11,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -32,7 +31,7 @@ import java.util.Optional;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param phase the phase that the count describes
- * @param entries the trials still required, by category and reason
+ * @param entries the trials still required, by cell and reason
  * @param total the sum of the entries, or {@code null} if the count is unavailable
  * @param unavailable why {@code total} is unavailable, or {@code null} if it is available
  */
@@ -62,31 +61,31 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * The trials that one category still requires for one reason.
+	 * The trials that one cell still requires for one reason.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @param kind what the trials are required for
 	 * @param trials the trials still required, or {@code null} if the count is unavailable
 	 * @param unavailable why {@code trials} is unavailable, or {@code null} if it is available
 	 */
-	public record Entry(String category, Kind kind, Integer trials, String unavailable)
+	public record Entry(String cell, Kind kind, Integer trials, String unavailable)
 	{
 		/**
 		 * Creates an entry.
 		 *
-		 * @param category the category
+		 * @param cell the cell's identifier
 		 * @param kind what the trials are required for
 		 * @param trials the trials still required, or {@code null} if the count is unavailable
 		 * @param unavailable why {@code trials} is unavailable, or {@code null} if it is available
-		 * @throws NullPointerException if {@code category} or {@code kind} are null
+		 * @throws NullPointerException if {@code cell} or {@code kind} are null
 		 * @throws IllegalArgumentException if {@code trials} is negative, or {@code trials} is null exactly when
 		 *   {@code unavailable} is null
 		 */
 		public Entry
 		{
-			requireThat(category, "category").isNotNull();
+			requireThat(cell, "cell").isNotNull();
 			requireThat(kind, "kind").isNotNull();
 			if (trials != null)
 				requireThat(trials, "trials").isNotNegative();
@@ -98,7 +97,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 * Creates a count.
 	 *
 	 * @param phase the phase that the count describes
-	 * @param entries the trials still required, by category and reason
+	 * @param entries the trials still required, by cell and reason
 	 * @param total the sum of the entries, or {@code null} if the count is unavailable
 	 * @param unavailable why {@code total} is unavailable, or {@code null} if it is available
 	 * @throws NullPointerException if {@code phase} or {@code entries} are null
@@ -157,13 +156,13 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	private static RemainingWork development(Campaign campaign)
 	{
 		Contract contract = campaign.contract();
-		int categories = contract.categories().size();
+		List<String> cells = contract.cellIds();
+		int categories = cells.size();
 		int nextAttempt = allPassMinimum(ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
-		for (Category category : contract.categories())
+		for (String id : cells)
 		{
-			String id = category.id();
 			CategoryCounts counts = campaign.development().count(id);
 			int readiness = readinessRemaining(counts);
 			int baseline = baselineRemaining(campaign.baseline(), id, categories);

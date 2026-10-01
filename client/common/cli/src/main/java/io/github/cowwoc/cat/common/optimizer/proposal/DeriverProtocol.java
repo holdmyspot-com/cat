@@ -4,7 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -16,6 +19,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.StringJoiner;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,10 +31,10 @@ import tools.jackson.databind.node.ObjectNode;
  * Turns a prompt system into a deriver session, and the deriver's output into a validated proposal (design
  * &sect;6.1).
  * <p>
- * The deriver's output follows the proposal schema without the judge fields that CAT owns, plus the deriver's
- * findings that the contract does not hold: the prompt files whose loading no harness event reports, and the
- * conditions that make certification unavailable. CAT adds its judge fields before validating the proposal, and
- * rejects output that supplies them.
+ * The deriver's output follows the proposal schema without the judge fields and the trial profiles that CAT owns,
+ * plus the deriver's findings that the contract does not hold: the prompt files whose loading no harness event
+ * reports, the user's profile restriction, and the conditions that make certification unavailable. CAT adds its judge
+ * fields and computes the trial profiles before validating the proposal, and rejects output that supplies them.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -81,8 +86,8 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Returns the schema of the deriver's output: the proposal schema without the judge fields that CAT owns, plus
-	 * the deriver's findings.
+	 * Returns the schema of the deriver's output: the proposal schema without the judge fields and the trial profiles
+	 * that CAT owns, plus the deriver's findings.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schema the proposal schema
@@ -91,6 +96,14 @@ public final class DeriverProtocol
 	private static String outputSchema(JsonMapper json, ProposalSchema schema)
 	{
 		ObjectNode root = (ObjectNode) json.readTree(schema.schemaText());
+		((ObjectNode) root.get("properties")).remove(ProposalSchema.TRIAL_PROFILES);
+		ArrayNode required = json.createArrayNode();
+		for (JsonNode name : root.get("required"))
+		{
+			if (!name.asString().equals(ProposalSchema.TRIAL_PROFILES))
+				required.add(name);
+		}
+		root.set("required", required);
 		ObjectNode judgeSchema = (ObjectNode) root.get("properties").get("judge");
 		((ObjectNode) judgeSchema.get("properties")).remove(JudgeTemplate.OWNED_FIELDS);
 		ArrayNode judgeRequired = json.createArrayNode();
@@ -101,7 +114,7 @@ public final class DeriverProtocol
 		}
 		judgeSchema.set("required", judgeRequired);
 		judgeSchema.put("description", "The rubric and decision rule of the judge profile. CAT supplies the " +
-			"judge model, prompt and result schema.");
+			"role profile, prompt and result schema.");
 
 		JsonNode findings = json.readTree(PromptTemplate.readResource(FINDINGS_RESOURCE));
 		((ObjectNode) root.get("properties")).setAll((ObjectNode) findings.get("properties"));
@@ -114,61 +127,81 @@ public final class DeriverProtocol
 	 *
 	 * @param promptSystem the directory that holds the prompt system, which the session works in so that the harness
 	 *   loads it as it would in production
+	 * @param inventory the harness's profile inventory, which a profile restriction selects from
 	 * @return a request whose role is {@link SessionRole#DERIVER}
-	 * @throws NullPointerException if {@code promptSystem} is null
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public SessionRequest request(Path promptSystem)
+	public SessionRequest request(Path promptSystem, ProfileCatalog inventory)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
-		return request(promptSystem, NONE, NONE);
+		requireThat(inventory, "inventory").isNotNull();
+		return request(promptSystem, inventory, NONE, NONE);
 	}
 
 	/**
 	 * Returns the session that regenerates the complete proposal from the user's feedback.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
+	 * @param inventory the harness's profile inventory, which a profile restriction selects from
 	 * @param previous the proposal that the user gave feedback on
 	 * @param feedback the user's feedback
 	 * @return a request whose role is {@link SessionRole#DERIVER}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code feedback} is blank
 	 */
-	public SessionRequest request(Path promptSystem, DerivedProposal previous, String feedback)
+	public SessionRequest request(Path promptSystem, ProfileCatalog inventory, DerivedProposal previous,
+		String feedback)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
+		requireThat(inventory, "inventory").isNotNull();
 		requireThat(previous, "previous").isNotNull();
 		requireThat(feedback, "feedback").isNotBlank();
-		return request(promptSystem, previous.derivation(), feedback);
+		return request(promptSystem, inventory, previous.derivation(), feedback);
 	}
 
 	/**
 	 * Returns a deriver session.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
+	 * @param inventory the harness's profile inventory
 	 * @param previous the previous proposal, or {@code none}
 	 * @param feedback the user's feedback, or {@code none}
 	 * @return the request
 	 */
-	private SessionRequest request(Path promptSystem, String previous, String feedback)
+	private SessionRequest request(Path promptSystem, ProfileCatalog inventory, String previous, String feedback)
 	{
-		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "output_schema",
-			outputSchema));
-		return new SessionRequest(SessionRole.DERIVER, promptSystem, List.of(turn, outputTurn), List.of(), TIME_LIMIT);
+		StringJoiner profiles = new StringJoiner("\n");
+		profiles.add("Source: " + inventory.source());
+		for (TrialProfile profile : inventory.profiles())
+		{
+			if (profile.effort().isEmpty())
+				profiles.add("- model `" + profile.model() + "`, no effort dimension");
+			else
+				profiles.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
+		}
+		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
+			profiles.toString(), "output_schema", outputSchema));
+		return new SessionRequest(SessionRole.DERIVER, promptSystem, List.of(turn, outputTurn), List.of(), TIME_LIMIT,
+			judge.role());
 	}
 
 	/**
-	 * Validates a deriver session's output.
+	 * Validates a deriver session's output and computes its trial profiles.
 	 *
 	 * @param result the deriver session's result
+	 * @param profiles the profile inventory and bindings that CAT read when the deriver ran
 	 * @return the proposal
-	 * @throws NullPointerException if {@code result} is null
+	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
-	 *   Markdown code fence, or the object violates the deriver's output schema, supplies a judge field that CAT
-	 *   owns, or breaks a rule of the contract model
+	 *   Markdown code fence, or the object violates the deriver's output schema, supplies a judge field or the trial
+	 *   profiles that CAT owns, restricts the profiles to a set that the inventory cannot satisfy, or breaks a rule of
+	 *   the contract model
 	 */
-	public DerivedProposal proposal(SessionResult.Completed result) throws InvalidProposalException
+	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles)
+		throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
 		Optional<ObjectNode> extracted = responses.parseFinalResponse(result);
 		if (extracted.isEmpty())
 			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
@@ -180,6 +213,13 @@ public final class DeriverProtocol
 		JsonNode scopeNode = output.remove(DeriverFindings.SCOPE_CONDITIONS);
 		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(DeriverFindings.DERIVED_SOURCES));
 		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
+		List<TrialProfile> restriction = findings.profileRestriction(
+			output.remove(DeriverFindings.PROFILE_RESTRICTION));
+		if (output.remove(ProposalSchema.TRIAL_PROFILES) != null)
+		{
+			problems.add("$." + ProposalSchema.TRIAL_PROFILES + ": CAT computes the trial profiles, so the deriver " +
+				"must leave them out");
+		}
 		if (output.get("judge") instanceof ObjectNode judgeNode)
 		{
 			for (String field : JudgeTemplate.OWNED_FIELDS)
@@ -193,7 +233,9 @@ public final class DeriverProtocol
 		Contract contract = null;
 		try
 		{
-			contract = schema.parse(json.writeValueAsString(output));
+			contract = schema.parse(json.writeValueAsString(output), (requirements, categories) ->
+				TrialProfiles.compute(profiles.inventory(), profiles.bindingsOf(requirements), restriction,
+					requirements, categories, Set.of()));
 			findings.checkRequirements(scopeNode, contract);
 		}
 		catch (InvalidProposalException e)

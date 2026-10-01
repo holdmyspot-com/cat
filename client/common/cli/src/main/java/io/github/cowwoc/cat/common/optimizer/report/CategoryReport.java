@@ -7,14 +7,14 @@ import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import java.util.List;
 
 /**
- * The four outputs of {@code design.md} section 2.9 for one category: the estimated pass rate, the improvement over
+ * The four outputs of {@code design.md} section 2.9 for one cell: the estimated pass rate, the improvement over
  * the incumbent, the comparison with 95%, and the error bars.
  * <p>
  * Every output that cannot be shown carries the reason.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param category the category
+ * @param cell the cell's identifier
  * @param passes the candidate's adopted passes in the reported phase
  * @param trials the candidate's adopted outcomes in the reported phase
  * @param passRate the estimated pass rate
@@ -23,7 +23,7 @@ import java.util.List;
  * @param errorBars the error bars; the one-sided certification bound is kept apart from descriptive two-sided
  *   intervals
  */
-public record CategoryReport(String category, int passes, int trials, PassRate passRate, Improvement improvement,
+public record CategoryReport(String cell, int passes, int trials, PassRate passRate, Improvement improvement,
 	Threshold comparison, List<ErrorBar> errorBars)
 {
 	/**
@@ -218,9 +218,9 @@ public record CategoryReport(String category, int passes, int trials, PassRate p
 	}
 
 	/**
-	 * Creates a category report.
+	 * Creates a cell's report.
 	 *
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @param passes the candidate's adopted passes in the reported phase
 	 * @param trials the candidate's adopted outcomes in the reported phase
 	 * @param passRate the estimated pass rate
@@ -233,7 +233,7 @@ public record CategoryReport(String category, int passes, int trials, PassRate p
 	 */
 	public CategoryReport
 	{
-		requireThat(category, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		requireThat(trials, "trials").isNotNegative();
 		requireThat(passes, "passes").isBetween(0, true, trials, true);
 		requireThat(passRate, "passRate").isNotNull();

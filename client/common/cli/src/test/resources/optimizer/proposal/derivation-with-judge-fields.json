@@ -150,6 +150,7 @@
 	"limitations": [
 		"Only the English prompts are covered."
 	],
+	"profile_restriction": [],
 	"derived_sources": [
 		{
 			"path": "CLAUDE.md",

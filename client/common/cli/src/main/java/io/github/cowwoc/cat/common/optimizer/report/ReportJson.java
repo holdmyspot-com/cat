@@ -1,6 +1,10 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
@@ -49,13 +53,14 @@ final class ReportJson
 		putText(root, "pending", report.pending());
 		choices(root.putArray("choices"), report);
 		authorityWarnings(root.putArray("authorityWarnings"), report);
-		ArrayNode categories = root.putArray("categories");
-		for (CategoryReport category : report.categories())
-			category(categories.addObject(), category);
+		ArrayNode cells = root.putArray("cells");
+		for (CategoryReport cell : report.cells())
+			cell(cells.addObject(), cell);
 		ObjectNode allocation = root.putObject("allocation");
 		for (Map.Entry<String, Integer> entry : report.allocation().entrySet())
 			allocation.put(entry.getKey(), entry.getValue());
 		benchmark(root, report);
+		trialProfiles(root, report.trialProfiles());
 		remaining(root.putObject("remaining"), report.remaining());
 		tokens(root.putObject("tokens"), report.tokens());
 		StatusReport.Concurrency concurrency = report.concurrency();
@@ -147,14 +152,14 @@ final class ReportJson
 	}
 
 	/**
-	 * Adds a category's four outputs.
+	 * Adds a cell's four outputs.
 	 *
 	 * @param node the node
-	 * @param category the category
+	 * @param category the cell's report
 	 */
-	private static void category(ObjectNode node, CategoryReport category)
+	private static void cell(ObjectNode node, CategoryReport category)
 	{
-		node.put("category", category.category());
+		node.put("cell", category.cell());
 		node.put("passes", category.passes());
 		node.put("trials", category.trials());
 		ObjectNode passRate = node.putObject("passRate");
@@ -218,14 +223,65 @@ final class ReportJson
 			root.putNull("benchmark");
 			return;
 		}
-		ArrayNode array = root.putObject("benchmark").putArray("categories");
-		for (Benchmark.CategoryWeights weights : report.benchmark().categories())
+		ArrayNode array = root.putObject("benchmark").putArray("cells");
+		for (Benchmark.CategoryWeights weights : report.benchmark().cells())
 		{
 			ObjectNode node = array.addObject();
-			node.put("category", weights.category());
+			node.put("cell", weights.cell());
 			node.put("tests", weights.tests());
 			node.put("testWeight", weights.testWeight());
 		}
+	}
+
+	/**
+	 * Adds the confirmed trial profiles and cells.
+	 *
+	 * @param root the root
+	 * @param profiles the trial profiles, or {@code null} before a contract is confirmed
+	 */
+	private static void trialProfiles(ObjectNode root, TrialProfiles profiles)
+	{
+		if (profiles == null)
+		{
+			root.putNull("trialProfiles");
+			return;
+		}
+		ObjectNode node = root.putObject("trialProfiles");
+		node.put("inventorySource", profiles.inventory().source());
+		ArrayNode inventory = node.putArray("inventory");
+		for (TrialProfile profile : profiles.inventory().profiles())
+			profile(inventory.addObject(), profile);
+		ArrayNode bindings = node.putArray("bindings");
+		for (ProfileBinding binding : profiles.bindings())
+		{
+			ObjectNode bindingNode = bindings.addObject();
+			bindingNode.put("file", binding.file());
+			profile(bindingNode, binding.profile());
+			bindingNode.put("outsideInventory", profiles.inventory().isOutside(binding.profile()));
+		}
+		ArrayNode restriction = node.putArray("restriction");
+		for (TrialProfile pattern : profiles.restriction())
+			profile(restriction.addObject(), pattern);
+		ArrayNode cells = node.putArray("cells");
+		for (Cell cell : profiles.cells())
+		{
+			ObjectNode cellNode = cells.addObject();
+			cellNode.put("id", cell.id());
+			cellNode.put("category", cell.categoryId());
+			profile(cellNode, cell.profile());
+		}
+	}
+
+	/**
+	 * Adds a profile's model and effort, an empty value meaning the harness's default.
+	 *
+	 * @param node the node
+	 * @param profile the profile
+	 */
+	private static void profile(ObjectNode node, TrialProfile profile)
+	{
+		node.put("model", profile.model());
+		node.put("effort", profile.effort());
 	}
 
 	/**
@@ -246,7 +302,7 @@ final class ReportJson
 		for (RemainingWork.Entry entry : remaining.entries())
 		{
 			ObjectNode entryNode = entries.addObject();
-			entryNode.put("category", entry.category());
+			entryNode.put("cell", entry.cell());
 			entryNode.put("kind", entry.kind().name().toLowerCase(Locale.ROOT));
 			if (entry.trials() == null)
 				entryNode.putNull("trials");
@@ -332,11 +388,11 @@ final class ReportJson
 			node.put("historical", offer.historical());
 			strings(node.putArray("differing"), offer.differing());
 			node.put("weakestLowerBound", offer.weakestLowerBound());
-			ArrayNode categories = node.putArray("categories");
-			for (KeepOffer.Category category : offer.categories())
+			ArrayNode cells = node.putArray("cells");
+			for (KeepOffer.Category category : offer.cells())
 			{
-				ObjectNode categoryNode = categories.addObject();
-				categoryNode.put("category", category.category());
+				ObjectNode categoryNode = cells.addObject();
+				categoryNode.put("cell", category.cell());
 				categoryNode.put("passes", category.passes());
 				categoryNode.put("trials", category.trials());
 				categoryNode.put("state", category.state());

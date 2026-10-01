@@ -14,6 +14,19 @@
 				}
 			}
 		},
+		"profile_restriction": {
+			"description": "The trial profiles that the user's feedback restricts every category to, as patterns over the harness's profile inventory. An empty model or effort matches every value. Empty unless the user asked for a restriction.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["model", "effort"],
+				"properties": {
+					"model": {"type": "string"},
+					"effort": {"type": "string"}
+				}
+			}
+		},
 		"scope_conditions": {
 			"description": "Every condition that makes certification unavailable. Empty if none.",
 			"type": "array",
@@ -32,5 +45,5 @@
 			}
 		}
 	},
-	"required": ["derived_sources", "scope_conditions"]
+	"required": ["derived_sources", "profile_restriction", "scope_conditions"]
 }

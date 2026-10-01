@@ -203,7 +203,8 @@ public final class SchedulerTest
 			Category category = fixture.findCategory(id).orElseThrow();
 			categories.add(new Category(category.id(), category.rationale(), new RiskRank(1), category.tests()));
 		}
-		return new Contract(fixture.requirements(), categories, fixture.judge(), fixture.fixtures(),
+		return new Contract(fixture.requirements(), categories,
+			ContractFixtures.profiles(fixture.requirements(), categories), fixture.judge(), fixture.fixtures(),
 			fixture.limitations());
 	}
 
@@ -334,5 +335,27 @@ public final class SchedulerTest
 			"revision").isEmpty();
 		requireThat(Scheduler.plan(working().
 			pending(new PendingDecision.UnownedChange("edited CLAUDE.md")).build(), NOW, 8), "pending").isEmpty();
+	}
+
+	/**
+	 * Verifies that a category under two profiles is scheduled as two cells with separate counts: development admits
+	 * the weaker cell, and the formal phase gives each cell its own first trial.
+	 */
+	@Test
+	public void twoCellCategoryIsScheduledPerCell()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+			development(ContractFixtures.BIG_CELL, 60, 0).development(ContractFixtures.SMALL_CELL, 60, 1).
+			development("safety", 100, 0).slowStart(new SlowStart(2, 0)).build();
+		requireThat(categories(Scheduler.plan(development, NOW, 8)), "development").
+			isEqualTo(List.of(ContractFixtures.SMALL_CELL, ContractFixtures.SMALL_CELL));
+
+		Campaign formal = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+			slowStart(new SlowStart(1, 0)).certificationAttempt(1).category(ContractFixtures.BIG_CELL, 50, 0).
+			category("safety", 50, 0).build();
+		requireThat(categories(Scheduler.plan(formal, NOW, 8)), "formal").
+			isEqualTo(List.of(ContractFixtures.SMALL_CELL));
 	}
 }

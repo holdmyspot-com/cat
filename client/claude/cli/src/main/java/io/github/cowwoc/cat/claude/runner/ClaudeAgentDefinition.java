@@ -11,12 +11,14 @@ import java.util.regex.Pattern;
 
 /**
  * Represents the model and effort declared by one CAT Claude custom agent.
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param name the CAT agent name
  * @param model the selected Claude model
  * @param effort the selected reasoning effort
  */
-record ClaudeAgentDefinition(String name, String model, String effort)
+public record ClaudeAgentDefinition(String name, String model, String effort)
 {
 	private static final Pattern FRONTMATTER = Pattern.compile("(?s)\\A---\\R(.*?)\\R---");
 	private static final Pattern MODEL = field("model");
@@ -30,7 +32,7 @@ record ClaudeAgentDefinition(String name, String model, String effort)
 	 * @return the parsed agent definition
 	 * @throws IOException if the named agent is absent or malformed
 	 */
-	static ClaudeAgentDefinition load(Path artifact, String agent) throws IOException
+	public static ClaudeAgentDefinition load(Path artifact, String agent) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(agent, "agent").isNotBlank();

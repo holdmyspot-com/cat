@@ -9,7 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBound;
@@ -64,7 +63,7 @@ final class CategoryReports
 	}
 
 	/**
-	 * Builds the reports of a campaign's categories.
+	 * Builds the reports of a campaign's cells.
 	 *
 	 * @param campaign the campaign, which has a confirmed contract
 	 * @param attempt the certification attempt to report, or {@code null} to report the working candidate's
@@ -74,12 +73,12 @@ final class CategoryReports
 	static List<CategoryReport> of(Campaign campaign, CertificationAttempt attempt)
 	{
 		List<CategoryReport> reports = new ArrayList<>();
-		for (Category category : campaign.contract().categories())
+		for (String cell : campaign.contract().cellIds())
 		{
 			if (attempt == null)
-				reports.add(development(campaign, category.id()));
+				reports.add(development(campaign, cell));
 			else
-				reports.add(formal(campaign, attempt, category.id()));
+				reports.add(formal(campaign, attempt, cell));
 		}
 		return reports;
 	}
@@ -126,7 +125,7 @@ final class CategoryReports
 		Interval other = ExploratoryBounds.wilson(incumbent.passes(), incumbent.outcomes());
 		Interval difference = new Interval(candidate.lower() - other.upper(), candidate.upper() - other.lower());
 		return new CategoryReport.Improvement(null, points(counts, incumbent), incumbentCounts(baseline, incumbent),
-			deficiency(baseline, incumbent, campaign.contract().categories().size()), difference,
+			deficiency(baseline, incumbent, campaign.contract().cells().size()), difference,
 			"exploratory difference of the two 95% Wilson intervals", null, null, null);
 	}
 

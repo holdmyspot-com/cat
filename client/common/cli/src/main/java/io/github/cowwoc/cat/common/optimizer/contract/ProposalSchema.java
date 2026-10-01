@@ -29,9 +29,14 @@ import tools.jackson.databind.node.ObjectNode;
 public final class ProposalSchema
 {
 	private static final String SCHEMA_RESOURCE = "/optimizer/contract/proposal.schema.json";
+	/**
+	 * The property that holds the trial profiles, which CAT computes rather than the deriver.
+	 */
+	public static final String TRIAL_PROFILES = "trial_profiles";
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
+	private final SchemaValidator withoutProfiles;
 
 	/**
 	 * Creates a schema reader.
@@ -55,6 +60,28 @@ public final class ProposalSchema
 			throw new UncheckedIOException(e);
 		}
 		validator = new SchemaValidator(json.readTree(schemaText));
+		withoutProfiles = new SchemaValidator(withoutProfiles(json, schemaText));
+	}
+
+	/**
+	 * Returns the proposal schema without the trial profiles.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param schemaText the proposal schema
+	 * @return the schema of a proposal whose trial profiles CAT has not computed yet
+	 */
+	private static JsonNode withoutProfiles(JsonMapper json, String schemaText)
+	{
+		ObjectNode root = (ObjectNode) json.readTree(schemaText);
+		((ObjectNode) root.get("properties")).remove(TRIAL_PROFILES);
+		ArrayNode required = json.createArrayNode();
+		for (JsonNode name : root.get("required"))
+		{
+			if (!name.asString().equals(TRIAL_PROFILES))
+				required.add(name);
+		}
+		root.set("required", required);
+		return root;
 	}
 
 	/**
@@ -79,6 +106,38 @@ public final class ProposalSchema
 	public Contract parse(String proposal) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
+		return parse(proposal, validator, null);
+	}
+
+	/**
+	 * Validates deriver output that holds no trial profiles, computes them and converts the output to a contract.
+	 *
+	 * @param proposal the deriver's JSON output, without {@value #TRIAL_PROFILES}
+	 * @param profiles computes the trial profiles from the proposal's requirements and categories
+	 * @return the contract that the proposal describes
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds trial
+	 *   profiles, breaks a rule that the schema cannot express, or {@code profiles} rejects it
+	 */
+	public Contract parse(String proposal, ProfileRule profiles) throws InvalidProposalException
+	{
+		requireThat(proposal, "proposal").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
+		return parse(proposal, withoutProfiles, profiles);
+	}
+
+	/**
+	 * Validates a proposal and converts it to a contract.
+	 *
+	 * @param proposal the JSON text
+	 * @param schema the schema that the proposal must satisfy
+	 * @param profiles computes the trial profiles, or {@code null} to read them from the proposal
+	 * @return the contract
+	 * @throws InvalidProposalException if the proposal is invalid
+	 */
+	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles)
+		throws InvalidProposalException
+	{
 		JsonNode root;
 		try
 		{
@@ -91,12 +150,12 @@ public final class ProposalSchema
 		if (root == null || root.isMissingNode())
 			throw new InvalidProposalException(List.of("$: not valid JSON: the proposal is empty"));
 
-		List<String> violations = validator.violations(root);
+		List<String> violations = schema.violations(root);
 		if (!violations.isEmpty())
 			throw new InvalidProposalException(violations);
 
 		List<String> problems = new ArrayList<>();
-		Contract contract = new Builder(problems).contract(root);
+		Contract contract = new Builder(problems).contract(root, profiles);
 		if (contract == null)
 			throw new InvalidProposalException(problems);
 		return contract;
@@ -132,9 +191,11 @@ public final class ProposalSchema
 			for (TestDefinition test : category.tests())
 				write(test, tests.addObject());
 		}
+		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		JudgeProfile judge = contract.judge();
 		ObjectNode judgeNode = root.putObject("judge");
-		judgeNode.put("model", judge.model());
+		judgeNode.put("model", judge.profile().model());
+		judgeNode.put("effort", judge.profile().effort());
 		judgeNode.put("prompt", judge.prompt());
 		judgeNode.put("rubric", judge.rubric());
 		judgeNode.put("decision_rule", judge.decisionRule());
@@ -144,6 +205,50 @@ public final class ProposalSchema
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes the trial profiles.
+	 *
+	 * @param profiles the trial profiles
+	 * @param node the object that receives their properties
+	 */
+	private static void write(TrialProfiles profiles, ObjectNode node)
+	{
+		node.put("inventory_source", profiles.inventory().source());
+		ArrayNode inventory = node.putArray("inventory");
+		for (TrialProfile profile : profiles.inventory().profiles())
+			write(profile, inventory.addObject());
+		ArrayNode bindings = node.putArray("bindings");
+		for (ProfileBinding binding : profiles.bindings())
+		{
+			ObjectNode bindingNode = bindings.addObject();
+			bindingNode.put("file", binding.file());
+			write(binding.profile(), bindingNode);
+		}
+		ArrayNode restriction = node.putArray("restriction");
+		for (TrialProfile pattern : profiles.restriction())
+			write(pattern, restriction.addObject());
+		ArrayNode cells = node.putArray("cells");
+		for (Cell cell : profiles.cells())
+		{
+			ObjectNode cellNode = cells.addObject();
+			cellNode.put("id", cell.id());
+			cellNode.put("category", cell.categoryId());
+			write(cell.profile(), cellNode);
+		}
+	}
+
+	/**
+	 * Writes a profile's dimensions.
+	 *
+	 * @param profile the profile
+	 * @param node the object that receives its {@code model} and {@code effort}
+	 */
+	private static void write(TrialProfile profile, ObjectNode node)
+	{
+		node.put("model", profile.model());
+		node.put("effort", profile.effort());
 	}
 
 	/**
@@ -206,9 +311,10 @@ public final class ProposalSchema
 		 * Builds the contract.
 		 *
 		 * @param root the proposal
+		 * @param rule computes the trial profiles, or {@code null} to read them from the proposal
 		 * @return the contract, or null if a problem was added
 		 */
-		Contract contract(JsonNode root)
+		Contract contract(JsonNode root, ProfileRule rule)
 		{
 			int problemsBefore = problems.size();
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
@@ -216,15 +322,58 @@ public final class ProposalSchema
 					text(node, "source"))));
 			List<Category> categories = list(root.get("categories"), "$.categories", this::category);
 			JsonNode judgeNode = root.get("judge");
-			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(text(judgeNode, "model"),
+			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
 				judgeNode.get("result_schema").toString()));
 			TrialFixtures fixtures = attempt("$.fixtures", () -> new TrialFixtures(
 				strings(root.get("fixtures").get("ignored_paths"))));
 			if (problems.size() > problemsBefore)
 				return null;
-			return attempt("$", () -> new Contract(requirements, categories, judge, fixtures,
+			TrialProfiles profiles;
+			if (rule == null)
+				profiles = attempt("$." + TRIAL_PROFILES, () -> profiles(root.get(TRIAL_PROFILES)));
+			else
+				profiles = attempt("$." + TRIAL_PROFILES, () -> rule.profiles(requirements, categories));
+			if (profiles == null)
+				return null;
+			return attempt("$", () -> new Contract(requirements, categories, profiles, judge, fixtures,
 				strings(root.get("limitations"))));
+		}
+
+		/**
+		 * Builds the trial profiles that a proposal holds.
+		 *
+		 * @param node the {@value #TRIAL_PROFILES} object
+		 * @return the trial profiles
+		 * @throws IllegalArgumentException if a model constructor rejects a value
+		 */
+		private static TrialProfiles profiles(JsonNode node)
+		{
+			List<TrialProfile> inventory = new ArrayList<>();
+			for (JsonNode profileNode : node.get("inventory"))
+				inventory.add(profile(profileNode));
+			List<ProfileBinding> bindings = new ArrayList<>();
+			for (JsonNode bindingNode : node.get("bindings"))
+				bindings.add(new ProfileBinding(text(bindingNode, "file"), profile(bindingNode)));
+			List<TrialProfile> restriction = new ArrayList<>();
+			for (JsonNode patternNode : node.get("restriction"))
+				restriction.add(profile(patternNode));
+			List<Cell> cells = new ArrayList<>();
+			for (JsonNode cellNode : node.get("cells"))
+				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "category"), profile(cellNode)));
+			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), bindings,
+				restriction, cells);
+		}
+
+		/**
+		 * Reads a profile's dimensions.
+		 *
+		 * @param node an object with {@code model} and {@code effort}
+		 * @return the profile
+		 */
+		private static TrialProfile profile(JsonNode node)
+		{
+			return new TrialProfile(text(node, "model"), text(node, "effort"));
 		}
 
 		/**

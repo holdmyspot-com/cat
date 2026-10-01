@@ -4,7 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
@@ -34,7 +36,8 @@ public final class ContractTest
 	}
 
 	/**
-	 * Verifies that a judge profile cannot omit or blank any of its five fields.
+	 * Verifies that a judge profile cannot omit or blank any of its five fields, and that its role profile must bind
+	 * a dimension.
 	 */
 	@Test
 	public void judgeProfileRejectsBlankFields()
@@ -42,11 +45,12 @@ public final class ContractTest
 		// Requirement: R-C5
 		JudgeProfile valid = ContractFixtures.judge();
 		List<Runnable> blanks = List.of(
-			() -> new JudgeProfile(" ", valid.prompt(), valid.rubric(), valid.decisionRule(), valid.resultSchema()),
-			() -> new JudgeProfile(valid.model(), "", valid.rubric(), valid.decisionRule(), valid.resultSchema()),
-			() -> new JudgeProfile(valid.model(), valid.prompt(), "", valid.decisionRule(), valid.resultSchema()),
-			() -> new JudgeProfile(valid.model(), valid.prompt(), valid.rubric(), "", valid.resultSchema()),
-			() -> new JudgeProfile(valid.model(), valid.prompt(), valid.rubric(), valid.decisionRule(), ""));
+			() -> new JudgeProfile(TrialProfile.HARNESS_DEFAULT, valid.prompt(), valid.rubric(), valid.decisionRule(),
+				valid.resultSchema()),
+			() -> new JudgeProfile(valid.profile(), "", valid.rubric(), valid.decisionRule(), valid.resultSchema()),
+			() -> new JudgeProfile(valid.profile(), valid.prompt(), "", valid.decisionRule(), valid.resultSchema()),
+			() -> new JudgeProfile(valid.profile(), valid.prompt(), valid.rubric(), "", valid.resultSchema()),
+			() -> new JudgeProfile(valid.profile(), valid.prompt(), valid.rubric(), valid.decisionRule(), ""));
 		for (Runnable blank : blanks)
 		{
 			boolean rejected = false;
@@ -71,7 +75,7 @@ public final class ContractTest
 	{
 		// Requirement: R-C5
 		JudgeProfile profile = ContractFixtures.judge();
-		JudgeProfile changedRubric = new JudgeProfile(profile.model(), profile.prompt(), "A different rubric.",
+		JudgeProfile changedRubric = new JudgeProfile(profile.profile(), profile.prompt(), "A different rubric.",
 			profile.decisionRule(), profile.resultSchema());
 
 		requireThat(ContractFixtures.judge(), "same").isEqualTo(profile);
@@ -88,8 +92,8 @@ public final class ContractTest
 		// Requirement: R-C3
 		List<Requirement> requirements = new ArrayList<>(ContractFixtures.contract().requirements());
 		Contract original = ContractFixtures.contract();
-		Contract contract = new Contract(requirements, original.categories(), original.judge(), original.fixtures(),
-			original.limitations());
+		Contract contract = new Contract(requirements, original.categories(), original.profiles(), original.judge(),
+			original.fixtures(), original.limitations());
 
 		requirements.clear();
 
@@ -124,16 +128,17 @@ public final class ContractTest
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of());
 		Category duplicating = new Category("duplicating", "Why.", new RiskRank(3), List.of(duplicate));
 		List<Runnable> inconsistent = List.of(
-			() -> new Contract(List.of(r1, r1), valid.categories(), valid.judge(), valid.fixtures(),
+			() -> new Contract(List.of(r1, r1), valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
 				valid.limitations()),
-			() -> new Contract(valid.requirements(), List.of(formatting, formatting), valid.judge(),
-				valid.fixtures(), valid.limitations()),
-			() -> new Contract(valid.requirements(), List.of(formatting, safety, orphaned), valid.judge(),
-				valid.fixtures(), valid.limitations()),
-			() -> new Contract(valid.requirements(), List.of(formatting, safety, duplicating), valid.judge(),
-				valid.fixtures(), valid.limitations()),
-			() -> new Contract(List.of(), valid.categories(), valid.judge(), valid.fixtures(), valid.limitations()),
-			() -> new Contract(valid.requirements(), List.of(), valid.judge(), valid.fixtures(),
+			() -> new Contract(valid.requirements(), List.of(formatting, formatting), cells(formatting),
+				valid.judge(), valid.fixtures(), valid.limitations()),
+			() -> new Contract(valid.requirements(), List.of(formatting, safety, orphaned),
+				cells(formatting, safety, orphaned), valid.judge(), valid.fixtures(), valid.limitations()),
+			() -> new Contract(valid.requirements(), List.of(formatting, safety, duplicating),
+				cells(formatting, safety, duplicating), valid.judge(), valid.fixtures(), valid.limitations()),
+			() -> new Contract(List.of(), valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
+				valid.limitations()),
+			() -> new Contract(valid.requirements(), List.of(), valid.profiles(), valid.judge(), valid.fixtures(),
 				valid.limitations()));
 		for (Runnable build : inconsistent)
 		{
@@ -258,5 +263,70 @@ public final class ContractTest
 
 		requireThat(contract.findCategory("safety").orElseThrow().id(), "id").isEqualTo("safety");
 		requireThat(contract.findCategory("missing").isPresent(), "present").isFalse();
+	}
+
+	/**
+	 * Returns trial profiles with one cell per distinct category, whose identifier is the category's.
+	 *
+	 * @param categories the categories
+	 * @return the trial profiles
+	 */
+	private static TrialProfiles cells(Category... categories)
+	{
+		Set<String> ids = new LinkedHashSet<>();
+		for (Category category : categories)
+			ids.add(category.id());
+		List<Cell> cells = new ArrayList<>();
+		for (String id : ids)
+			cells.add(new Cell(id, id, ContractFixtures.PROFILE));
+		return new TrialProfiles(new ProfileCatalog("test", List.of(ContractFixtures.PROFILE)), List.of(), List.of(),
+			cells);
+	}
+
+	/**
+	 * Verifies that every category needs a cell and every cell a listed category.
+	 */
+	@Test
+	public void contractRejectsInconsistentCells()
+	{
+		// Requirement: R-C11
+		Contract valid = ContractFixtures.contract();
+		Category formatting = valid.categories().get(0);
+		Category safety = valid.categories().get(1);
+		Category extra = new Category("extra", "Why.", new RiskRank(3), formatting.tests());
+		List<Runnable> inconsistent = List.of(
+			() -> new Contract(valid.requirements(), valid.categories(), cells(formatting), valid.judge(),
+				valid.fixtures(), valid.limitations()),
+			() -> new Contract(valid.requirements(), valid.categories(), cells(formatting, safety, extra),
+				valid.judge(), valid.fixtures(), valid.limitations()));
+		for (Runnable build : inconsistent)
+		{
+			boolean rejected = false;
+			try
+			{
+				build.run();
+			}
+			catch (IllegalArgumentException _)
+			{
+				rejected = true;
+			}
+			requireThat(rejected, "rejected").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a contract finds each cell's category, and that a two-profile category has a cell per profile.
+	 */
+	@Test
+	public void contractMapsCellsToCategories()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		requireThat(contract.cells().stream().map(Cell::id).toList(), "cells").isEqualTo(List.of(
+			"formatting@big/high", "formatting@small/high", "safety"));
+		Cell small = contract.findCell("formatting@small/high").orElseThrow();
+		requireThat(small.profile(), "small.profile()").isEqualTo(ContractFixtures.SMALL);
+		requireThat(contract.categoryOf(small).id(), "categoryOf(small)").isEqualTo("formatting");
+		requireThat(contract.findCell("formatting"), "findCell(formatting)").isEmpty();
 	}
 }

@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.FixedCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.port.FakeHostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.port.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,6 +45,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	private final AtomicInteger versionReads = new AtomicInteger();
 	private final InMemoryForks forks;
 	private final S sessions;
+	private final FakeProfileInventory profiles = new FakeProfileInventory();
 
 	/**
 	 * Creates a scope whose sessions end only when the test ends them.
@@ -92,6 +94,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	{
 		ensureOpen();
 		return sessions;
+	}
+
+	@Override
+	public FakeProfileInventory profiles()
+	{
+		ensureOpen();
+		return profiles;
 	}
 
 	@Override

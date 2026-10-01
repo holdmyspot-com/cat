@@ -15,6 +15,7 @@
 		"ignored_paths": []
 	},
 	"limitations": [],
+	"profile_restriction": [],
 	"derived_sources": [],
 	"scope_conditions": []
 }

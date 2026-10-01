@@ -11,10 +11,12 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.execution.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.port.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -435,6 +437,21 @@ public final class OptimizerCoreTest
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> deriver)
 		throws IOException
 	{
+		return repository(scope, deriver, Set.of(Path.of("CLAUDE.md")));
+	}
+
+	/**
+	 * Creates a repository and a core whose sessions follow a script.
+	 *
+	 * @param scope removes the repository
+	 * @param deriver returns the deriver's final response for the number of deriver sessions started so far
+	 * @param tracked the files, relative to the project, that Git tracks
+	 * @return the repository
+	 * @throws IOException if the repository cannot be written
+	 */
+	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> deriver,
+		Set<Path> tracked) throws IOException
+	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
 		Files.createDirectory(root.resolve(".git"));
@@ -467,7 +484,7 @@ public final class OptimizerCoreTest
 			}
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
-			Set.of(Path.of("CLAUDE.md")), clock -> new ScriptedSessions(clock, script));
+			tracked, clock -> new ScriptedSessions(clock, script));
 		return new Repository(root, command, new OptimizerCore(command));
 	}
 
@@ -489,6 +506,51 @@ public final class OptimizerCoreTest
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
 			requireThat(repository.directory(id).resolve("proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} reads the bindings from the staged prompt system: a requirement whose source binds a
+	 * profile gives its category one cell under that profile, while an unbound category has a cell for each inventory
+	 * profile. Only files that the harness can bind are read, and a binding file that binds nothing is ignored. The
+	 * deriver runs under the role profile, and the proposal shows the inventory and the cells.
+	 */
+	@Test
+	public void startComputesCellsFromStagedBindings() throws Exception
+	{
+		// Requirement: R-C10
+		// Requirement: R-E17
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				ObjectNode safety = (ObjectNode) output.get("requirements").get(1);
+				safety.put("source", "agents/safety.agent");
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("agents/safety.agent"), Path.of("agents/unused.agent"),
+				Path.of("agents/empty.agent")));
+			TrialProfile bound = new TrialProfile("bound-model", "low");
+			Files.writeString(repository.root().resolve("CLAUDE.md"), "Be brief.\nmodel=not-a-binding-file\n");
+			Files.createDirectory(repository.root().resolve("agents"));
+			Files.writeString(repository.root().resolve("agents/empty.agent"), "Binds nothing.\n");
+			Files.writeString(repository.root().resolve("agents/safety.agent"), FakeProfileInventory.content(bound));
+			Files.writeString(repository.root().resolve("agents/unused.agent"),
+				FakeProfileInventory.content(new TrialProfile("unused-model", "")));
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+			requireThat(repository.sessions().requests.getFirst().profile(), "deriverProfile").
+				isEqualTo(FakeProfileInventory.ROLE);
+			requireThat(result.proposal(), "proposal").
+				contains("Trial profile inventory (" + FakeProfileInventory.INVENTORY.source() + ")").
+				contains("agents/safety.agent binds bound-model/low (outside the inventory, used as written)").
+				contains("category safety: safety (bound-model/low)").
+				contains("category formatting: formatting (test-model/high)").
+				doesNotContain("unused-model").doesNotContain("not-a-binding-file").doesNotContain("empty.agent");
+
+			String id = result.status().campaignId();
+			repository.core().confirm(id);
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.contract().findCell("safety").orElseThrow().profile(), "safety").isEqualTo(bound);
+			requireThat(campaign.contract().judge().profile(), "judge").isEqualTo(FakeProfileInventory.ROLE);
 		}
 	}
 

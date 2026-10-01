@@ -13,22 +13,28 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
+import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CategoryDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
@@ -61,6 +67,8 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -888,6 +896,95 @@ public final class DriverTest
 				requireThat(report.keepOffers().getFirst().attempt(), "attempt").isEqualTo(1);
 				requireThat(report.keepOffers().getFirst().historical(), "historical").isTrue();
 			}
+		}
+	}
+
+	/**
+	 * Trace 15: a category whose file is unbound runs under two profiles. Each cell has its own counts, readiness,
+	 * commit and decision; a trial runs under its cell's profile while the judge runs under the role profile, and
+	 * each cell records the model its trials observed.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void cellsRunUnderTheirProfiles() throws IOException
+	{
+		// Requirement: R-C11
+		// Requirement: R-E17
+		Contract contract = ContractFixtures.twoCellContract();
+		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.OBSERVED.values());
+		values.remove(MeasurementCondition.MODEL);
+		Campaign start = new CampaignBuilder().identity(new MeasurementIdentity(values)).confirmed(contract, 1).
+			working(1).development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 90, 0).
+			development("safety", 100, 0).readyBaseline().build();
+		requireThat(ReadinessGate.isCommitDue(start), "commitDueBeforeSmallCell").isFalse();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
+			harness.trials(request ->
+			{
+				try
+				{
+					boolean formal = harness.campaign().runningAttempt().isPresent();
+					if (formal && request.profile().equals(ContractFixtures.SMALL))
+						return harness.completed("fail", request.profile().model());
+					return harness.completed("pass", request.profile().model());
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			});
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
+				requireThat(committed.development().count(ContractFixtures.SMALL_CELL).passes(), "smallDevelopment").
+					isGreaterThanOrEqualTo(100);
+				requireThat(committed.development().count(ContractFixtures.BIG_CELL).passes(), "bigDevelopment").
+					isEqualTo(100);
+				campaign = harness.runUntil(driver, state -> !state.attempt(1).isRunning());
+			}
+
+			CertificationAttempt attempt = campaign.attempt(1);
+			requireThat(attempt.procedure().categories(), "committedCells").
+				isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety"));
+			requireThat(attempt.count(ContractFixtures.BIG_CELL).failures(), "bigFailures").isEqualTo(0);
+			requireThat(attempt.count(ContractFixtures.SMALL_CELL).passes(), "smallPasses").isEqualTo(0);
+			DecisionBoundaries boundaries = attempt.procedure().boundaries();
+			requireThat(DecisionTable.categoryDecision(boundaries, attempt.count(ContractFixtures.SMALL_CELL)),
+				"smallDecision").isEqualTo(CategoryDecision.CLEARLY_BELOW);
+			requireThat(DecisionTable.categoryDecision(boundaries, attempt.count(ContractFixtures.BIG_CELL)),
+				"bigDecision").isNotEqualTo(CategoryDecision.CLEARLY_BELOW);
+			requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
+
+			Map<TrialProfile, Integer> formatting = new HashMap<>();
+			int judges = 0;
+			for (FakeSession session : harness.sessions().sessions())
+			{
+				SessionRequest request = session.request();
+				if (request.role() == SessionRole.JUDGE)
+				{
+					++judges;
+					requireThat(request.profile(), "judgeProfile").isEqualTo(contract.judge().profile());
+				}
+				else if (request.role() == SessionRole.TRIAL)
+				{
+					if (DriverHarness.category(request).equals("safety"))
+						requireThat(request.profile(), "safetyProfile").isEqualTo(ContractFixtures.BIG);
+					else
+						formatting.merge(request.profile(), 1, Integer::sum);
+				}
+			}
+			requireThat(judges, "judges").isPositive();
+			requireThat(formatting.keySet(), "formattingProfiles").
+				isEqualTo(Set.of(ContractFixtures.BIG, ContractFixtures.SMALL));
+
+			MeasurementIdentity identity = campaign.identity();
+			requireThat(identity.cells().get(ContractFixtures.BIG_CELL).get(MeasurementCondition.MODEL), "bigModel").
+				isEqualTo("big");
+			requireThat(identity.cells().get(ContractFixtures.SMALL_CELL).get(MeasurementCondition.MODEL),
+				"smallModel").isEqualTo("small");
 		}
 	}
 

@@ -2,11 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
+
+import java.util.List;
 
 /**
  * The targets of the incumbent's baseline arm, from {@code design.md} section 2.5.
@@ -81,7 +82,7 @@ public final class Baseline
 	}
 
 	/**
-	 * Indicates whether every category of a contract meets its target.
+	 * Indicates whether every cell of a contract meets its target.
 	 *
 	 * @param baseline the baseline
 	 * @param contract the contract
@@ -92,11 +93,11 @@ public final class Baseline
 	{
 		requireThat(baseline, "baseline").isNotNull();
 		requireThat(contract, "contract").isNotNull();
-		int categories = contract.categories().size();
-		for (Category category : contract.categories())
+		List<String> cells = contract.cellIds();
+		for (String cell : cells)
 		{
-			CategoryCounts counts = baseline.count(category.id());
-			if (counts.outcomes() < target(counts, baseline.index(), categories))
+			CategoryCounts counts = baseline.count(cell);
+			if (counts.outcomes() < target(counts, baseline.index(), cells.size()))
 				return false;
 		}
 		return true;

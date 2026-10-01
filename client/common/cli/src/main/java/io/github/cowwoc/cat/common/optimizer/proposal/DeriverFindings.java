@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,8 +16,8 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Reads the deriver's findings that the contract does not hold: {@code derived_sources} and
- * {@code scope_conditions}, as {@code deriver-findings.schema.json} describes them.
+ * Reads the deriver's findings that the contract does not hold: {@code derived_sources},
+ * {@code profile_restriction} and {@code scope_conditions}, as {@code deriver-findings.schema.json} describes them.
  * <p>
  * Each violation is reported at its location in the deriver's output, in the form that the proposal schema uses.
  * <p>
@@ -28,6 +29,10 @@ final class DeriverFindings
 	 * The property that lists the derived prompt sources.
 	 */
 	static final String DERIVED_SOURCES = "derived_sources";
+	/**
+	 * The property that lists the user's profile restriction.
+	 */
+	static final String PROFILE_RESTRICTION = "profile_restriction";
 	/**
 	 * The property that lists the scope conditions.
 	 */
@@ -78,6 +83,65 @@ final class DeriverFindings
 				sources.add(new DerivedSource(path, rule));
 		}
 		return sources;
+	}
+
+	/**
+	 * Reads the user's profile restriction.
+	 *
+	 * @param node the {@code profile_restriction} value, or null if the output omits it
+	 * @return the patterns that are valid
+	 */
+	List<TrialProfile> profileRestriction(JsonNode node)
+	{
+		List<TrialProfile> patterns = new ArrayList<>();
+		String location = "$." + PROFILE_RESTRICTION;
+		if (!isArray(node, location))
+			return patterns;
+		for (int i = 0; i < node.size(); ++i)
+		{
+			String itemLocation = location + "[" + i + "]";
+			JsonNode item = node.get(i);
+			if (!isObject(item, itemLocation, Set.of("model", "effort")))
+				continue;
+			String model = string(item, "model", itemLocation);
+			String effort = string(item, "effort", itemLocation);
+			if (model == null || effort == null)
+				continue;
+			try
+			{
+				patterns.add(new TrialProfile(model, effort));
+			}
+			catch (IllegalArgumentException e)
+			{
+				problems.add(itemLocation + ": " + e.getMessage());
+			}
+		}
+		return patterns;
+	}
+
+	/**
+	 * Reads a required string property that may be empty.
+	 *
+	 * @param object the object
+	 * @param name the property name
+	 * @param location the location of the object
+	 * @return the value, or null if it is invalid
+	 */
+	private String string(JsonNode object, String name, String location)
+	{
+		JsonNode value = object.get(name);
+		String valueLocation = location + "." + name;
+		if (value == null)
+		{
+			problems.add(valueLocation + ": required property is missing");
+			return null;
+		}
+		if (!value.isString())
+		{
+			problems.add(valueLocation + ": expected string but found " + typeOf(value));
+			return null;
+		}
+		return value.asString();
 	}
 
 	/**

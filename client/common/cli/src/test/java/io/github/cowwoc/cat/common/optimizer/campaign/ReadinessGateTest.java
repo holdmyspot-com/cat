@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -155,5 +158,22 @@ public final class ReadinessGateTest
 	private static CampaignBuilder ready()
 	{
 		return new CampaignBuilder().confirmed().readyDevelopment().readyBaseline();
+	}
+
+	/**
+	 * Verifies that a category under two profiles needs each of its cells to be ready and each cell's baseline to be
+	 * met.
+	 */
+	@Test
+	public void gateIsPerCell()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+			readyBaseline().build()), "ready").isTrue();
+		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+			readyBaseline().development(ContractFixtures.SMALL_CELL, 99, 0).build()), "smallCellShort").isFalse();
+		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+			readyBaseline().baseline(ContractFixtures.BIG_CELL, 49, 0).build()), "bigBaselineShort").isFalse();
 	}
 }

@@ -6,7 +6,10 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -17,7 +20,9 @@ import java.util.Set;
 /**
  * A {@link WorkspacePort} that keeps every directory and inventory in memory.
  * <p>
- * Returned paths are names under a root that the fake never reads or writes. An authoring copy, and the effects of
+ * Returned paths are names under a root that the fake never reads or writes, except that a fake created with a project
+ * directory writes each staged source: the fork's project files, copied from the project directory. An authoring copy,
+ * and the effects of
  * an author session that ran on it, scan as the working candidate's snapshot unless the test records an author's
  * edits with {@link #editAuthoringCopy(Path, FileInventory)}.
  * <p>
@@ -27,6 +32,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 {
 	private final Object lock = new Object();
 	private final Path root;
+	/**
+	 * The project directory that staged sources are copied from, or {@code null} if they are not written.
+	 */
+	private final Path project;
 	private final Set<Sha256> staged = new LinkedHashSet<>();
 	private final Map<Path, FileInventory> authoringCopies = new HashMap<>();
 	private final List<Overlay> materialized = new ArrayList<>();
@@ -45,18 +54,50 @@ public final class FakeWorkspacePort implements WorkspacePort
 		requireThat(root, "root").isNotNull();
 		requireThat(worktree, "worktree").isNotNull();
 		this.root = root;
+		this.project = null;
+		this.worktree = worktree;
+	}
+
+	/**
+	 * Creates a workspace whose staged sources hold the fork's project files.
+	 *
+	 * @param root the directory that returned paths are named under
+	 * @param worktree the optimization worktree's initial inventory
+	 * @param project the project directory that each staged source copies the fork's project files from
+	 * @throws NullPointerException if any argument is null
+	 */
+	public FakeWorkspacePort(Path root, FileInventory worktree, Path project)
+	{
+		requireThat(root, "root").isNotNull();
+		requireThat(worktree, "worktree").isNotNull();
+		requireThat(project, "project").isNotNull();
+		this.root = root;
+		this.project = project;
 		this.worktree = worktree;
 	}
 
 	@Override
-	public Path stage(Overlay candidate)
+	public Path stage(Overlay candidate) throws IOException
 	{
 		synchronized (lock)
 		{
 			requireThat(candidate, "candidate").isNotNull();
 			Sha256 identity = candidate.identity();
 			staged.add(identity);
-			return root.resolve("staged").resolve(identity.hex());
+			Path directory = root.resolve("staged").resolve(identity.hex());
+			if (project != null)
+			{
+				for (Path file : candidate.fork().entries().keySet())
+				{
+					if (file.isAbsolute())
+						continue;
+					Path target = directory.resolve(file);
+					Files.createDirectories(target.getParent());
+					Files.copy(project.resolve(file), target, StandardCopyOption.REPLACE_EXISTING);
+				}
+				Files.createDirectories(directory);
+			}
+			return directory;
 		}
 	}
 

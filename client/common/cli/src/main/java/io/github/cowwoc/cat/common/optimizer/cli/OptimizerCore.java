@@ -12,7 +12,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
 import io.github.cowwoc.cat.common.optimizer.execution.Driver;
 import io.github.cowwoc.cat.common.optimizer.execution.DriverContext;
@@ -27,6 +29,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
@@ -34,6 +37,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.DeriverProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
+import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
@@ -59,8 +63,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Implements the commands on the real store, fork, driver and sessions of one project.
@@ -77,7 +83,10 @@ public final class OptimizerCore implements Core
 	private static final int RANDOM_ID_DIGITS = 6;
 	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
-	private final DeriverProtocol deriver;
+	/**
+	 * The deriver protocol, created on first use because it reads the installed role profile.
+	 */
+	private DeriverProtocol deriver;
 
 	/**
 	 * Creates the core.
@@ -90,7 +99,49 @@ public final class OptimizerCore implements Core
 		requireThat(scope, "scope").isNotNull();
 		this.scope = scope;
 		this.schema = new ProposalSchema(scope.json());
-		this.deriver = new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(), scope.judgeModel()));
+	}
+
+	/**
+	 * Returns the deriver protocol, which completes proposals with the harness's role profile.
+	 *
+	 * @return the protocol
+	 * @throws IOException if the installed role profile cannot be read
+	 */
+	private DeriverProtocol deriver() throws IOException
+	{
+		if (deriver == null)
+		{
+			deriver = new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
+				scope.profiles().roleProfile()));
+		}
+		return deriver;
+	}
+
+	/**
+	 * Reads what the trial profiles depend on: the harness's profile inventory and the profile that each binding file
+	 * of a staged source binds.
+	 *
+	 * @param staged the staged source of the prompt system
+	 * @return the evidence
+	 * @throws IOException if the inventory or a binding file cannot be read
+	 */
+	private ProfileEvidence profileEvidence(Path staged) throws IOException
+	{
+		ProfileInventory profiles = scope.profiles();
+		ProfileCatalog inventory = profiles.inventory();
+		Map<String, TrialProfile> bindings = new TreeMap<>();
+		List<Path> files;
+		try (Stream<Path> walk = Files.walk(staged))
+		{
+			files = walk.filter(Files::isRegularFile).map(staged::relativize).filter(profiles::canBind).toList();
+		}
+		for (Path file : files)
+		{
+			TrialProfile binding = profiles.binding(Files.readString(staged.resolve(file), StandardCharsets.UTF_8));
+			if (binding.isBound())
+				bindings.put(file.toString(), binding);
+		}
+		return new ProfileEvidence(inventory, bindings);
 	}
 
 	@Override
@@ -426,12 +477,13 @@ public final class OptimizerCore implements Core
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), scope.json()).
 			require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent);
-		DeriverProtocol protocol = deriver;
+		DeriverProtocol protocol = deriver();
+		ProfileEvidence profiles = profileEvidence(staged);
 		SessionRequest request;
 		if (previous == null)
-			request = protocol.request(staged);
+			request = protocol.request(staged, profiles.inventory());
 		else
-			request = protocol.request(staged, previous, feedback);
+			request = protocol.request(staged, profiles.inventory(), previous, feedback);
 		SessionResult result = await(scope.sessions().start(request));
 		if (!(result instanceof SessionResult.Completed completed))
 		{
@@ -441,14 +493,14 @@ public final class OptimizerCore implements Core
 		DerivedProposal derived;
 		try
 		{
-			derived = protocol.proposal(completed);
+			derived = protocol.proposal(completed, profiles);
 		}
 		catch (InvalidProposalException e)
 		{
 			return report(root, campaign, null, "The deriver's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". Run `revise` with feedback, or `start`, to retry.");
 		}
-		new ProposalFile(directory, scope.json()).write(derived);
+		new ProposalFile(directory, scope.json()).write(derived, profiles);
 		return present(root, campaign, fork, derived);
 	}
 
@@ -496,13 +548,13 @@ public final class OptimizerCore implements Core
 	 */
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
-		Optional<SessionResult.Completed> completed = new ProposalFile(directory(root, campaign.header().id()),
+		Optional<ProposalFile.Stored> stored = new ProposalFile(directory(root, campaign.header().id()),
 			scope.json()).read();
-		if (completed.isEmpty())
+		if (stored.isEmpty())
 			return Optional.empty();
 		try
 		{
-			return Optional.of(deriver.proposal(completed.get()));
+			return Optional.of(deriver().proposal(stored.get().result(), stored.get().profiles()));
 		}
 		catch (InvalidProposalException e)
 		{

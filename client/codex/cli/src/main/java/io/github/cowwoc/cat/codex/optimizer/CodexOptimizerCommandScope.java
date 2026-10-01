@@ -2,8 +2,10 @@ package io.github.cowwoc.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
 import io.github.cowwoc.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 
@@ -17,15 +19,18 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production scope of one {@code prompt-optimizer} command in Codex. This class alone reads the process
- * environment and the home directory, and supplies the Codex sessions and the host interrupt signal.
+ * environment and the home directory, and supplies the Codex sessions, the host interrupt signal and the Codex
+ * profile inventory.
  */
 final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 {
 	private static final String HARNESS = "codex";
+	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".codex/config.toml"));
 	private final SessionPort sessions;
 	private final HostInterruptSignal interrupts;
+	private final ProfileInventory profiles;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -58,6 +63,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 			environment.get("CODEX_HOME"));
 		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
+		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
 	}
 
 	/**
@@ -89,6 +95,13 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		return interrupts;
 	}
 
+	@Override
+	public ProfileInventory profiles()
+	{
+		ensureOpen();
+		return profiles;
+	}
+
 	/**
 	 * Creates the port that runs nested sessions through the Codex runner.
 	 *
@@ -105,7 +118,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		Path root = directory.toAbsolutePath().normalize();
 		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS);
-		CodexSessions.Settings settings = new CodexSessions.Settings(artifact, runRoot, "", "", true,
+		CodexSessions.Settings settings = new CodexSessions.Settings(artifact, runRoot, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new CodexSessions(settings);

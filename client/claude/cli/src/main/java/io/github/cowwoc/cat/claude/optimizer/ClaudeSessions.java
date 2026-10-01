@@ -22,8 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
  * Each session runs in a fresh, isolated run directory of the runner and holds one {@link HarnessCapacity} permit
  * for its lifetime. A session sends the request's turns one at a time through the runner's JSONL bridge. It parses
  * the harness's events for the observed model, the token usage and the rate-limit windows, and keeps the
- * events as the transcript. Evidence in {@link SessionRequest#readOnly()} is passed to the runner as read-only
- * evidence. The runner exposes it as an added directory, which Claude treats as advisory (design &sect;11, H23).
+ * events as the transcript. The runner selects the request's profile: {@code --model} and {@code --effort} for each
+ * bound dimension, and nothing for an unbound one, so the harness applies its default. Evidence in
+ * {@link SessionRequest#readOnly()} is passed to the runner as read-only evidence. The runner exposes it as an added
+ * directory, which Claude treats as advisory (design &sect;11, H23).
  * <p>
  * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
  * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
@@ -93,23 +95,20 @@ public final class ClaudeSessions implements SessionPort
 	}
 
 	/**
-	 * How the Claude runner is configured. Every session of a port shares these settings, because a session
-	 * request names neither a model nor a reasoning effort.
+	 * How the Claude runner is configured. Every session of a port shares these settings; the model and reasoning
+	 * effort come from each request's profile.
 	 *
 	 * @param artifact the complete Claude artifact that the runner validates and installs
 	 * @param runRoot the absolute directory that holds the runner's run directories
 	 * @param executable the Claude executable, or blank for {@code claude}
-	 * @param model the model to select, or blank for the harness default
-	 * @param effort the reasoning effort to select, or blank for the harness default
 	 * @param installCat whether the runner installs CAT into the session's isolated home
 	 * @param environment the host environment that the runner scrubs for the session
 	 * @param configurationDirectory the host's Claude configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
 	 */
-	public record Settings(Path artifact, Path runRoot, String executable, String model, String effort,
-		boolean installCat, Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity,
-		Clock clock)
+	public record Settings(Path artifact, Path runRoot, String executable, boolean installCat,
+		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
 	{
 		/**
 		 * Creates settings.
@@ -117,8 +116,6 @@ public final class ClaudeSessions implements SessionPort
 		 * @param artifact the complete Claude artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the runner's run directories
 		 * @param executable the Claude executable, or blank for {@code claude}
-		 * @param model the model to select, or blank for the harness default
-		 * @param effort the reasoning effort to select, or blank for the harness default
 		 * @param installCat whether the runner installs CAT into the session's isolated home
 		 * @param environment the host environment that the runner scrubs for the session
 		 * @param configurationDirectory the host's Claude configuration directory, which holds the login
@@ -133,8 +130,6 @@ public final class ClaudeSessions implements SessionPort
 			requireThat(runRoot, "runRoot").isNotNull();
 			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
 			requireThat(executable, "executable").isNotNull();
-			requireThat(model, "model").isNotNull();
-			requireThat(effort, "effort").isNotNull();
 			requireThat(environment, "environment").isNotNull();
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 			requireThat(capacity, "capacity").isNotNull();

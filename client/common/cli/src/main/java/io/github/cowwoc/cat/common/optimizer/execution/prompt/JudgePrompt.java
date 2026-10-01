@@ -86,7 +86,8 @@ public final class JudgePrompt implements JudgeProtocol
 		Path transcriptDirectory = evidence.transcript().getParent();
 		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.JUDGE, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT);
+		return new SessionRequest(SessionRole.JUDGE, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
+			profile.profile());
 	}
 
 	/**

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.port.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
@@ -156,7 +157,7 @@ public final class SessionPortContract
 	 */
 	private static SessionRequest request(Subject subject, SessionRole role, List<Path> readOnly, List<String> turns)
 	{
-		return new SessionRequest(role, subject.workspace(), turns, readOnly, LIMIT);
+		return new SessionRequest(role, subject.workspace(), turns, readOnly, LIMIT, TrialProfile.HARNESS_DEFAULT);
 	}
 
 	/**

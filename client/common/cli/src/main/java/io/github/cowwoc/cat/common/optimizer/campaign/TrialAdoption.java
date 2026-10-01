@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.util.ArrayList;
@@ -264,8 +263,7 @@ final class TrialAdoption
 			case EDIT ->
 			{
 				draft.diagnosis = null;
-				draft.round = failingRound(draft.developmentCounts, draft.contract().categories().stream().
-					map(Category::id).toList(), null);
+				draft.round = failingRound(draft.developmentCounts, draft.contract().cellIds(), null);
 			}
 			case CONTINUE -> draft.diagnosis = null;
 		}

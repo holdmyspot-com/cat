@@ -134,6 +134,50 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * A campaign whose category has two cells keeps each cell's counts, review point, trials and observed profile
+	 * apart across a reload.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void cellsSurviveReload() throws IOException
+	{
+		// Requirement: R-C11
+		// Requirement: R-E17
+		try (StoreFixture fixture = open())
+		{
+			Map<String, Map<MeasurementCondition, String>> cells = Map.of(
+				ContractFixtures.BIG_CELL, Map.of(MeasurementCondition.MODEL, "big-observed",
+					MeasurementCondition.REASONING, "high"),
+				ContractFixtures.SMALL_CELL, Map.of(MeasurementCondition.MODEL, "small-observed",
+					MeasurementCondition.REASONING, "high"));
+			MeasurementIdentity identity = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "judge-model"),
+				cells);
+			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, CampaignBuilder.snapshot("candidate-1"),
+				ContractFixtures.SMALL_CELL, 3);
+			TrialInstance instance = new TrialInstance(ContractFixtures.SMALL_CELL, "formatting", "test-3",
+				List.of(), List.of("A turn"), "Answers in the house style", "generator-1",
+				DrawStream.Kind.DEVELOPMENT, 3, false);
+			Campaign campaign = new CampaignBuilder().header(header("campaign-cells")).identity(identity).
+				confirmed(ContractFixtures.twoCellContract(), 1).working(1).
+				development(ContractFixtures.BIG_CELL, 100, 0).
+				development(ContractFixtures.SMALL_CELL, 30, 2).
+				reviewPoint(ContractFixtures.SMALL_CELL, 250).
+				baseline(ContractFixtures.BIG_CELL, 50, 0).
+				trial(LogicalTrial.assigned(key, instance, identity, allocation(AllocationRule.COVERAGE_FLOOR, 1))).
+				build();
+			fixture.store().replaceSnapshot(campaign);
+
+			Campaign loaded = fixture.reopen().load("campaign-cells").orElseThrow();
+			requireThat(loaded, "loaded").isEqualTo(campaign);
+			requireThat(loaded.identity().cells().get(ContractFixtures.SMALL_CELL).get(MeasurementCondition.MODEL),
+				"smallModel").isEqualTo("small-observed");
+			requireThat(loaded.development().count(ContractFixtures.SMALL_CELL).failures(), "smallFailures").
+				isEqualTo(2);
+		}
+	}
+
+	/**
 	 * The commit fields of every certification attempt survive a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
@@ -692,7 +736,7 @@ public abstract class CampaignStoreContract
 	 */
 	static TrialInstance instance(String category, String test, long position, boolean targeted)
 	{
-		return new TrialInstance(category, test, List.of(new VariationChoice("tone", "formal", 0.25),
+		return new TrialInstance(category, category, test, List.of(new VariationChoice("tone", "formal", 0.25),
 			new VariationChoice("length", "short", 1.0 / 3)), List.of("First turn with \"quotes\"", "Second\nturn"),
 			"Answers without deleting files", "generator-1", DrawStream.Kind.DEVELOPMENT, position, targeted);
 	}

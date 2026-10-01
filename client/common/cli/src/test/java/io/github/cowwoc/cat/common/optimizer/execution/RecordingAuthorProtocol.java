@@ -37,7 +37,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 		{
 			briefs.add(brief);
 			return new SessionRequest(SessionRole.AUTHOR, copy, List.of("Improve " + brief.category()), List.of(),
-				Duration.ofMinutes(10));
+				Duration.ofMinutes(10), brief.contract().judge().profile());
 		}
 	}
 

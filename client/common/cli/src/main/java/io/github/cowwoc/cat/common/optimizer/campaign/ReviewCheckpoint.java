@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 
 import java.util.Optional;
@@ -39,21 +38,21 @@ public final class ReviewCheckpoint
 	}
 
 	/**
-	 * Returns the first category, in contract order, whose review checkpoint is due.
+	 * Returns the first cell, in contract order, whose review checkpoint is due.
 	 *
 	 * @param development the development state
 	 * @param contract the contract
-	 * @return the category, or empty if none is due
+	 * @return the cell, or empty if none is due
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static Optional<String> due(Development development, Contract contract)
 	{
 		requireThat(development, "development").isNotNull();
 		requireThat(contract, "contract").isNotNull();
-		for (Category category : contract.categories())
+		for (String cell : contract.cellIds())
 		{
-			if (isDue(development, category.id()))
-				return Optional.of(category.id());
+			if (isDue(development, cell))
+				return Optional.of(cell);
 		}
 		return Optional.empty();
 	}

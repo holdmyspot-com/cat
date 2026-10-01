@@ -23,9 +23,9 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Converts a candidate's {@link Overlay} to and from a JSON tree.
  * <p>
- * The document holds {@code format_version}, the same version that {@link CampaignJson} writes, the identity of the
- * fork that the overlay is on, and the overlay's entries in path order. It does not hold the fork's files: campaign
- * storage already records them once, and reading supplies them. Each entry holds its path and kind ({@code WRITE} or
+ * The document holds {@code format_version}, the identity of the fork that the overlay is on, and the overlay's
+ * entries in path order. It does not hold the fork's files: campaign storage already records them once, and reading
+ * supplies them. Each entry holds its path and kind ({@code WRITE} or
  * {@code DELETE}); a write also holds its mode in {@code rwxr-xr-x} form and its bytes in Base64.
  * <p>
  * Reading reports a document that does not describe an overlay on the supplied fork with an
@@ -35,6 +35,11 @@ import tools.jackson.databind.node.ObjectNode;
  */
 final class OverlayJson
 {
+	/**
+	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
+	 * when campaign files became keyed by cell.
+	 */
+	static final int FORMAT_VERSION = 1;
 	private static final String VERSION = "format_version";
 	private static final Set<String> ROOT_FIELDS = Set.of(VERSION, "fork", "entries");
 	private static final Set<String> WRITE_FIELDS = Set.of("path", "kind", "permissions", "content");
@@ -62,7 +67,7 @@ final class OverlayJson
 	ObjectNode write(Overlay overlay)
 	{
 		ObjectNode root = json.createObjectNode();
-		root.put(VERSION, CampaignJson.FORMAT_VERSION);
+		root.put(VERSION, FORMAT_VERSION);
 		root.put("fork", overlay.fork().identity().hex());
 		ArrayNode entries = root.putArray("entries");
 		for (Entry<Path, OverlayEntry> entry : overlay.entries().entrySet())
@@ -97,10 +102,10 @@ final class OverlayJson
 	{
 		requireFields(root, "$", ROOT_FIELDS);
 		JsonNode version = field(root, VERSION);
-		if (!version.isInt() || version.asInt() != CampaignJson.FORMAT_VERSION)
+		if (!version.isInt() || version.asInt() != FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ", but this version of CAT reads " +
-				CampaignJson.FORMAT_VERSION);
+				FORMAT_VERSION);
 		}
 		String forkIdentity = text(root, "fork");
 		if (!forkIdentity.equals(fork.identity().hex()))

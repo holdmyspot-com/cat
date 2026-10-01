@@ -2,7 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -95,7 +96,7 @@ public final class Scheduler
 		if (diagnosis != null && !diagnosis.pending().isEmpty() && diagnosis.rerun() == null)
 		{
 			TrialInstance instance = diagnosis.pending().getFirst();
-			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, instance.categoryId(),
+			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, instance.cellId(),
 				instance, allocations.of(AllocationRule.TARGETED)));
 		}
 		AuthorAttempt author = development.author();
@@ -106,7 +107,7 @@ public final class Scheduler
 			if (run.trial() != null)
 				continue;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, author.number(), Promotion.snapshot(author, run, working),
-				run.instance().categoryId(), run.instance(), allocations.of(AllocationRule.TARGETED)));
+				run.instance().cellId(), run.instance(), allocations.of(AllocationRule.TARGETED)));
 		}
 	}
 
@@ -211,12 +212,11 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the working candidate's representative development trials: among the categories that are neither ready
-	 * nor at their review point, and that lead the least-sampled such category by fewer than
-	 * {@value #COVERAGE_LEAD} assignments, the lowest 95% Wilson lower bound first, ties to fewer outcomes, then
-	 * higher risk, then category order. The allocation rule is {@link AllocationRule#COVERAGE_FLOOR} when the floor
-	 * excluded the category that the bound alone would choose, otherwise
-	 * {@link AllocationRule#LOWEST_EXPLORATORY_BOUND}.
+	 * Plans the working candidate's representative development trials: among the cells that are neither ready nor at
+	 * their review point, and that lead the least-sampled such cell by fewer than {@value #COVERAGE_LEAD}
+	 * assignments, the lowest 95% Wilson lower bound first, ties to fewer outcomes, then the higher risk of the
+	 * cell's category, then cell order. The allocation rule is {@link AllocationRule#COVERAGE_FLOOR} when the floor
+	 * excluded the cell that the bound alone would choose, otherwise {@link AllocationRule#LOWEST_EXPLORATORY_BOUND}.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -227,30 +227,31 @@ public final class Scheduler
 		Allocations allocations)
 	{
 		Development development = campaign.development();
+		Contract contract = campaign.contract();
 		Map<String, Integer> inFlight = inFlight(campaign, Purpose.DEVELOPMENT, development.series());
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
-		List<Category> eligible = new ArrayList<>();
-		for (Category category : campaign.contract().categories())
+		List<Cell> eligible = new ArrayList<>();
+		for (Cell cell : contract.cells())
 		{
-			CategoryCounts counts = development.count(category.id());
-			if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(category.id()))
-				eligible.add(category);
+			CategoryCounts counts = development.count(cell.id());
+			if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
+				eligible.add(cell);
 		}
 		while (slots > 0 && plan.size() < freeCapacity && !eligible.isEmpty())
 		{
 			int leastAssigned = Integer.MAX_VALUE;
-			for (Category category : eligible)
-				leastAssigned = Math.min(leastAssigned, assigned(development, inFlight, category.id()));
-			Category best = null;
-			Category weakest = null;
-			for (Category category : eligible)
+			for (Cell cell : eligible)
+				leastAssigned = Math.min(leastAssigned, assigned(development, inFlight, cell.id()));
+			Cell best = null;
+			Cell weakest = null;
+			for (Cell cell : eligible)
 			{
-				if (weakest == null || isWeaker(development, category, weakest))
-					weakest = category;
-				if (assigned(development, inFlight, category.id()) >= leastAssigned + COVERAGE_LEAD)
+				if (weakest == null || isWeaker(contract, development, cell, weakest))
+					weakest = cell;
+				if (assigned(development, inFlight, cell.id()) >= leastAssigned + COVERAGE_LEAD)
 					continue;
-				if (best == null || isWeaker(development, category, best))
-					best = category;
+				if (best == null || isWeaker(contract, development, cell, best))
+					best = cell;
 			}
 			AllocationRule rule;
 			if (best.equals(weakest))
@@ -265,29 +266,30 @@ public final class Scheduler
 	}
 
 	/**
-	 * Returns a category's representative development assignments.
+	 * Returns a cell's representative development assignments.
 	 *
 	 * @param development the development state
-	 * @param inFlight the unadopted trials per category
-	 * @param category the category
+	 * @param inFlight the unadopted trials per cell
+	 * @param cell the cell's identifier
 	 * @return the adopted outcomes plus the unadopted trials
 	 */
-	private static int assigned(Development development, Map<String, Integer> inFlight, String category)
+	private static int assigned(Development development, Map<String, Integer> inFlight, String cell)
 	{
-		return development.count(category).outcomes() + inFlight.getOrDefault(category, 0);
+		return development.count(cell).outcomes() + inFlight.getOrDefault(cell, 0);
 	}
 
 	/**
-	 * Indicates whether a category should receive the next development trial before another.
+	 * Indicates whether a cell should receive the next development trial before another.
 	 *
+	 * @param contract the campaign's contract
 	 * @param development the development state
-	 * @param category a category that comes after {@code other} in category order
-	 * @param other the best category so far
-	 * @return {@code true} if {@code category} comes first
+	 * @param cell a cell that comes after {@code other} in cell order
+	 * @param other the best cell so far
+	 * @return {@code true} if {@code cell} comes first
 	 */
-	private static boolean isWeaker(Development development, Category category, Category other)
+	private static boolean isWeaker(Contract contract, Development development, Cell cell, Cell other)
 	{
-		CategoryCounts counts = development.count(category.id());
+		CategoryCounts counts = development.count(cell.id());
 		CategoryCounts otherCounts = development.count(other.id());
 		int byBound = Double.compare(ExploratoryBounds.wilson(counts.passes(), counts.outcomes()).lower(),
 			ExploratoryBounds.wilson(otherCounts.passes(), otherCounts.outcomes()).lower());
@@ -295,12 +297,12 @@ public final class Scheduler
 			return byBound < 0;
 		if (counts.outcomes() != otherCounts.outcomes())
 			return counts.outcomes() < otherCounts.outcomes();
-		return category.riskRank().compareTo(other.riskRank()) < 0;
+		return contract.categoryOf(cell).riskRank().compareTo(contract.categoryOf(other).riskRank()) < 0;
 	}
 
 	/**
-	 * Plans the incumbent's baseline trials on the remaining capacity, one category at a time in turn, until each
-	 * category's unadopted and adopted trials reach its target.
+	 * Plans the incumbent's baseline trials on the remaining capacity, one cell at a time in turn, until each cell's
+	 * unadopted and adopted trials reach its target.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -313,27 +315,27 @@ public final class Scheduler
 		if (campaign.development().working().isIncumbent())
 			return;
 		IncumbentBaseline baseline = campaign.baseline();
-		List<Category> categories = campaign.contract().categories();
+		List<String> cells = campaign.contract().cellIds();
 		Map<String, Integer> inFlight = inFlight(campaign, Purpose.BASELINE, baseline.index());
 		Map<String, Integer> needed = new HashMap<>();
-		for (Category category : categories)
+		for (String cell : cells)
 		{
-			CategoryCounts counts = baseline.count(category.id());
-			int target = Baseline.target(counts, baseline.index(), categories.size());
-			needed.put(category.id(), target - counts.outcomes() - inFlight.getOrDefault(category.id(), 0));
+			CategoryCounts counts = baseline.count(cell);
+			int target = Baseline.target(counts, baseline.index(), cells.size());
+			needed.put(cell, target - counts.outcomes() - inFlight.getOrDefault(cell, 0));
 		}
 		boolean added = true;
 		while (added)
 		{
 			added = false;
-			for (Category category : categories)
+			for (String cell : cells)
 			{
-				int need = needed.get(category.id());
+				int need = needed.get(cell);
 				if (need <= 0 || plan.size() >= freeCapacity)
 					continue;
 				plan.add(new Admission.Assign(Purpose.BASELINE, baseline.index(), campaign.incumbent().snapshot(),
-					category.id(), null, allocations.of(AllocationRule.BASELINE_ARM)));
-				needed.put(category.id(), need - 1);
+					cell, null, allocations.of(AllocationRule.BASELINE_ARM)));
+				needed.put(cell, need - 1);
 				added = true;
 			}
 		}

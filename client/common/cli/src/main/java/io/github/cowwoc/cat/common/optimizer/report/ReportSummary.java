@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
@@ -62,26 +63,28 @@ final class ReportSummary
 		}
 		for (AuthorityWarning warning : report.authorityWarnings())
 			lines.add(authorityWarning(warning));
-		for (CategoryReport category : report.categories())
-			category(lines, category);
+		for (CategoryReport cell : report.cells())
+			cell(lines, cell);
 		if (!report.allocation().isEmpty())
 		{
 			List<String> counts = new ArrayList<>();
-			for (CategoryReport category : report.categories())
-				counts.add(category.category() + " " + report.allocation().get(category.category()));
+			for (CategoryReport cell : report.cells())
+				counts.add(cell.cell() + " " + report.allocation().get(cell.cell()));
 			lines.add("Allocation (adopted outcomes, not benchmark weights): " + String.join(", ", counts));
 		}
 		if (report.benchmark() != null)
 		{
 			List<String> weights = new ArrayList<>();
-			for (Benchmark.CategoryWeights weight : report.benchmark().categories())
+			for (Benchmark.CategoryWeights weight : report.benchmark().cells())
 			{
-				weights.add(weight.category() + ": " + weight.tests() + " tests of weight " +
+				weights.add(weight.cell() + ": " + weight.tests() + " tests of weight " +
 					decimal(weight.testWeight()));
 			}
 			lines.add("Benchmark weights (testing assumptions, not usage frequencies): " +
 				String.join("; ", weights));
 		}
+		if (report.trialProfiles() != null)
+			trialProfiles(lines, report.trialProfiles());
 		remaining(lines, report.remaining());
 		tokens(lines, report.tokens());
 		StatusReport.Concurrency concurrency = report.concurrency();
@@ -147,14 +150,25 @@ final class ReportSummary
 	}
 
 	/**
-	 * Adds a category's four outputs.
+	 * Adds the confirmed trial profiles and cells.
 	 *
 	 * @param lines the lines
-	 * @param category the category
+	 * @param profiles the trial profiles
 	 */
-	private static void category(List<String> lines, CategoryReport category)
+	private static void trialProfiles(List<String> lines, TrialProfiles profiles)
 	{
-		lines.add("Category " + category.category() + ":");
+		lines.addAll(profiles.describe());
+	}
+
+	/**
+	 * Adds a cell's four outputs.
+	 *
+	 * @param lines the lines
+	 * @param category the cell's report
+	 */
+	private static void cell(List<String> lines, CategoryReport category)
+	{
+		lines.add("Cell " + category.cell() + ":");
 		CategoryReport.PassRate passRate = category.passRate();
 		if (passRate.rate() == null)
 			lines.add("  pass rate (" + passRate.label() + "): unavailable, " + passRate.unavailable());
@@ -268,11 +282,11 @@ final class ReportSummary
 		StringBuilder text = new StringBuilder(200).append("Keep improvement, attempt ").append(offer.attempt());
 		if (offer.historical())
 			text.append(" (historical; differs in ").append(String.join(", ", offer.differing())).append(')');
-		lines.add(text.append(": weakest category lower bound ").append(decimal(offer.weakestLowerBound())).
+		lines.add(text.append(": weakest cell lower bound ").append(decimal(offer.weakestLowerBound())).
 			toString());
-		for (KeepOffer.Category category : offer.categories())
+		for (KeepOffer.Category category : offer.cells())
 		{
-			StringBuilder line = new StringBuilder(300).append("  ").append(category.category()).append(": ").
+			StringBuilder line = new StringBuilder(300).append("  ").append(category.cell()).append(": ").
 				append(category.passes()).append('/').append(category.trials()).append(", ").
 				append(category.state()).append(" (UI ").append(decimal(category.incumbentUpper())).
 				append(", LI ").append(decimal(category.incumbentLower())).append("), difference ").
