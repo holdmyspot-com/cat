@@ -1,0 +1,16 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"TWO"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"TWO","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01YLnNoxmtpUmo433FhPgfhm","name":"Bash"}]},"parent_tool_use_id":"toolu_01B68BGKGeBBQvJwyYEza4wJ","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"b4vqn1xnf","owned_by_subagent":true,"tool_use_id":"toolu_01YLnNoxmtpUmo433FhPgfhm","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"b4vqn1xnf","tool_use_id":"toolu_01YLnNoxmtpUmo433FhPgfhm","status":"completed","summary":"sleep 20","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01B68BGKGeBBQvJwyYEza4wJ","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"a37c4e8e932e475f2","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"a37c4e8e932e475f2","tool_use_id":"toolu_01B68BGKGeBBQvJwyYEza4wJ","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The background agent has completed. It f"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"The background agent has completed. It f","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"session_state_changed","state":"idle","session_id":"s"}

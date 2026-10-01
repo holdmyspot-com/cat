@@ -3,15 +3,17 @@ package io.github.cowwoc.cat.claude.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.claude.runner.ClaudeHarnessProcess.LineEffect;
+import io.github.cowwoc.cat.claude.runner.ClaudeHarnessProcess.TurnBoundary;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.FakeNativeProcess;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -22,19 +24,40 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests how {@link ClaudeHarnessProcess} decides that a turn has ended. Each test plays the Claude CLI with a
  * {@link FakeNativeProcess} that prints stream-json lines shaped like those Claude Code 2.1.286 printed for a root
- * session that launched one background child agent.
+ * session that launched background child agents. The recorded timelines under {@code runner/turn-boundary} are trimmed
+ * copies of the 2026-10-01 probes (design H24). The timelines whose names start with {@code s-} were recorded with
+ * {@code CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1}, so Claude printed its {@code session_state_changed} events; the
+ * others were recorded without it and show a Claude that does not report its session state.
  */
 public final class ClaudeHarnessProcessTest
 {
 	/**
+	 * Claude starts working on the root session's queued work.
+	 */
+	private static final String STATE_RUNNING = "{\"type\":\"system\",\"subtype\":\"session_state_changed\"," +
+		"\"state\":\"running\",\"session_id\":\"s\"}";
+	/**
+	 * Claude has no queued work left for the root session.
+	 */
+	private static final String STATE_IDLE = "{\"type\":\"system\",\"subtype\":\"session_state_changed\"," +
+		"\"state\":\"idle\",\"session_id\":\"s\"}";
+	/**
 	 * The first line Claude prints for each root reply, including a follow-up reply that Claude starts on its own.
 	 */
-	private static final String INIT = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\"}";
+	private static final String INIT = "{\"type\":\"system\",\"subtype\":\"init\"," +
+		"\"claude_code_version\":\"2.1.286\",\"session_id\":\"s\"}";
+	/**
+	 * The start of one root model call.
+	 */
+	private static final String MESSAGE_START = "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\"}," +
+		"\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
 	/**
 	 * The root agent launches one background child agent.
 	 */
@@ -67,22 +90,25 @@ public final class ClaudeHarnessProcessTest
 		"\"session_id\":\"s\"}";
 	private static final String FOLLOW_UP_REPLY = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\"," +
 		"\"content\":[{\"type\":\"text\",\"text\":\"FINISHED\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
+	/**
+	 * The result of a follow-up reply that Claude started on its own after a completion notice.
+	 */
 	private static final String FOLLOW_UP_RESULT = "{\"type\":\"result\",\"subtype\":\"success\"," +
-		"\"is_error\":false,\"result\":\"FINISHED\",\"result_index\":1,\"session_id\":\"s\"}";
+		"\"is_error\":false,\"result\":\"FINISHED\",\"origin\":{\"kind\":\"task-notification\"}," +
+		"\"result_index\":1,\"session_id\":\"s\"}";
+	/**
+	 * The reply to a second user message.
+	 */
+	private static final String SECOND_REPLY = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\"," +
+		"\"content\":[{\"type\":\"text\",\"text\":\"TWO\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
+	private static final String SECOND_RESULT = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false," +
+		"\"result\":\"TWO\",\"session_id\":\"s\"}";
 	/**
 	 * What Claude Code 2.1.286 printed when SIGINT arrived after the root reply while a background child still ran: it
 	 * stopped the root's own background shell command and kept the child listed.
 	 */
 	private static final String SHELL_STOPPED = "{\"type\":\"system\",\"subtype\":\"task_notification\"," +
 		"\"task_id\":\"shell\",\"status\":\"stopped\",\"session_id\":\"s\"}";
-	/**
-	 * A wait for a follow-up reply that no test reaches unless the runner wrongly applies it.
-	 */
-	private static final Duration UNREACHED_FOLLOW_UP_TIMEOUT = Duration.ofMinutes(5);
-	/**
-	 * A wait for a follow-up reply short enough for a test to pass it.
-	 */
-	private static final Duration SHORT_FOLLOW_UP_TIMEOUT = Duration.ofMillis(50);
 
 	/**
 	 * Creates the test fixture.
@@ -92,128 +118,297 @@ public final class ClaudeHarnessProcessTest
 	}
 
 	/**
-	 * Verifies a turn without background children ends at Claude's result line, without waiting for more output.
+	 * Reads a recorded timeline.
 	 *
-	 * @throws IOException if the turn fails
+	 * @param name the file name below {@code runner/turn-boundary}
+	 * @return the timeline's lines in the order Claude printed them
+	 * @throws IOException if the resource cannot be read
 	 */
-	@Test(timeOut = 10_000)
-	public void endsTurnAtResultWithoutChildren() throws IOException
+	private static List<String> recorded(String name) throws IOException
 	{
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		try (InputStream stream = ClaudeHarnessProcessTest.class.getResourceAsStream("/runner/turn-boundary/" + name))
 		{
-		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			UNREACHED_FOLLOW_UP_TIMEOUT))
-		{
-			claude.emit(INIT, ROOT_REPLY, ROOT_RESULT);
-			List<String> relayed = new ArrayList<>();
-
-			HarnessProcessResult result = process.sendTurn("Reply LAUNCHED.", relayed::add);
-
-			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
-			requireThat(relayed, "relayed").isEqualTo(List.of(INIT, ROOT_REPLY, ROOT_RESULT));
+			requireThat(stream, "resource").isNotNull();
+			return new String(stream.readAllBytes(), UTF_8).lines().toList();
 		}
 	}
 
 	/**
-	 * Verifies a turn whose root reply arrives while a background child is still running continues until the child
-	 * has finished and Claude's follow-up reply has arrived, relaying the child's completion notice in the same turn.
+	 * Returns the text of the last result line in a timeline.
 	 *
+	 * @param lines a timeline
+	 * @return the last result's text
+	 */
+	private static String lastResult(List<String> lines)
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		String text = "";
+		for (String line : lines)
+		{
+			if (line.contains("\"type\":\"result\""))
+				text = json.readTree(line).path("result").asString();
+		}
+		return text;
+	}
+
+	/**
+	 * Sends one turn to a Claude that prints a timeline, and verifies the turn relays the whole timeline, replies with
+	 * its last result and reports no diagnostic.
+	 *
+	 * @param lines the timeline
 	 * @throws IOException if the turn fails
 	 */
-	@Test(timeOut = 10_000)
-	public void waitsForChildrenAndFollowUpReply() throws IOException
+	private static void assertTurnSpans(List<String> lines) throws IOException
 	{
-		// Requirement: R-E14
 		FakeNativeProcess claude = new FakeNativeProcess(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			UNREACHED_FOLLOW_UP_TIMEOUT))
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
 		{
-			List<String> lines = List.of(INIT, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED, ROOT_REPLY, ROOT_RESULT,
-				CHILD_REPLY, CHILDREN_FINISHED, CHILD_UPDATED, CHILD_NOTIFICATION, INIT, FOLLOW_UP_REPLY, FOLLOW_UP_RESULT);
 			claude.emit(lines.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
 
 			HarnessProcessResult result = process.sendTurn("Launch a background child.", relayed::add);
 
 			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("FINISHED");
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo(lastResult(lines));
+			requireThat(result.standardError(), "standardError").isEmpty();
 			requireThat(relayed, "relayed").isEqualTo(lines);
 		}
 	}
 
 	/**
-	 * Verifies a turn ends with the root session's own reply when every background child has finished after the
-	 * root reply and Claude starts no follow-up reply within the wait.
+	 * Feeds lines to the turn boundary of a process that has printed no session state yet.
+	 *
+	 * @param lines the lines Claude printed
+	 * @return the boundary after the lines
+	 */
+	private static TurnBoundary boundaryAfter(String... lines)
+	{
+		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false);
+		for (String line : lines)
+			requireThat(boundary.accept(line), "effect").isEqualTo(LineEffect.NONE);
+		return boundary;
+	}
+
+	/**
+	 * Verifies a turn without background children ends at the {@code idle} state that follows Claude's result, without
+	 * waiting for more output.
 	 *
 	 * @throws IOException if the turn fails
 	 */
 	@Test(timeOut = 10_000)
-	public void endsTurnWhenNoFollowUpReplyStarts() throws IOException
+	public void endsTurnAtIdleWithoutChildren() throws IOException
 	{
 		// Requirement: R-E14
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
-		{
-		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			SHORT_FOLLOW_UP_TIMEOUT))
-		{
-			List<String> lines = List.of(INIT, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED, ROOT_REPLY, ROOT_RESULT,
-				CHILD_REPLY, CHILDREN_FINISHED, CHILD_UPDATED, CHILD_NOTIFICATION);
-			claude.emit(lines.toArray(String[]::new));
-			List<String> relayed = new ArrayList<>();
-
-			HarnessProcessResult result = process.sendTurn("Launch a background child.", relayed::add);
-
-			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
-			requireThat(relayed, "relayed").isEqualTo(lines);
-		}
+		assertTurnSpans(List.of(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE));
 	}
 
 	/**
-	 * Verifies that once Claude has started its follow-up reply, the turn waits for that reply's result however long
-	 * it takes, rather than applying the wait for the follow-up to start.
-	 *
-	 * @throws IOException          if the turn fails
-	 * @throws InterruptedException if the test is interrupted while it waits
-	 * @throws ExecutionException   if the turn fails on its own thread
-	 * @throws TimeoutException     if the turn does not end after the follow-up result
+	 * Verifies that a result alone does not end the turn, and the {@code idle} state that follows it does.
 	 */
-	@Test(timeOut = 10_000)
-	public void waitsForFollowUpReplyThatStarted()
-		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	@Test
+	public void endsAtIdleAfterResult()
 	{
 		// Requirement: R-E14
+		TurnBoundary boundary = boundaryAfter(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT);
+
+		requireThat(boundary.accept(STATE_IDLE), "effect").isEqualTo(LineEffect.TURN_ENDS);
+	}
+
+	/**
+	 * Returns the recorded timelines in which Claude printed its session state.
+	 *
+	 * @return the timeline file names
+	 */
+	@DataProvider
+	public static Object[][] sessionStateTimelines()
+	{
+		return new Object[][]{{"s-race-3.jsonl"}, {"s-race-4.jsonl"}, {"s-race-6.jsonl"}, {"s-two-children.jsonl"},
+			{"s-nested.jsonl"}};
+	}
+
+	/**
+	 * Verifies the turn ends at the first {@code idle} state that follows the turn's reply while no background task is
+	 * listed, and at no earlier line: not at a result, not at an {@code idle} state while a task is listed, and not when
+	 * the task list empties between two states. In {@code s-race-3}, {@code s-race-4} and {@code s-race-6} a child
+	 * finished during the root's last model call; in {@code s-two-children} Claude was idle while a child's command was
+	 * still listed, and the list was briefly empty before that child restarted; in {@code s-nested} a grandchild
+	 * outlived its parent.
+	 *
+	 * @param timeline the recorded timeline
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000, dataProvider = "sessionStateTimelines")
+	public void endsAtIdleWithNoTaskListed(String timeline) throws IOException
+	{
+		// Requirement: R-E14
+		List<String> lines = recorded(timeline);
+		requireThat(lines.getLast(), "lastLine").isEqualTo(STATE_IDLE);
+		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false);
+		List<Integer> ends = new ArrayList<>();
+		for (int i = 0; i < lines.size(); ++i)
+		{
+			if (boundary.accept(lines.get(i)) == LineEffect.TURN_ENDS)
+				ends.add(i);
+		}
+		requireThat(ends, "ends").isEqualTo(List.of(lines.size() - 1));
+
+		assertTurnSpans(lines);
+	}
+
+	/**
+	 * Verifies that a user message sent while a child runs is answered within the same turn, and the turn still ends
+	 * only once Claude is idle after replying to the child's completion.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void answersQueuedMessageWithinTurn() throws IOException
+	{
+		// Requirement: R-E14
+		List<String> beforeMessage = recorded("s-queued-1.jsonl");
+		List<String> afterMessage = recorded("s-queued-2.jsonl");
+		String rootResult = beforeMessage.getLast();
 		FakeNativeProcess claude = new FakeNativeProcess(_ ->
 		{
 		});
-		// The root reply and the follow-up reply each begin with INIT, so the second INIT starts the follow-up.
-		CountDownLatch followUpStarted = new CountDownLatch(2);
-		try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-				SHORT_FOLLOW_UP_TIMEOUT))
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
 		{
-			claude.emit(INIT, CHILD_LAUNCH, CHILD_RUNNING, ROOT_REPLY, ROOT_RESULT, CHILDREN_FINISHED,
-				CHILD_NOTIFICATION);
-			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Launch a background child.",
-				line ->
+			claude.emit(beforeMessage.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.", line ->
+			{
+				relayed.add(line);
+				if (line.equals(rootResult))
 				{
-					if (line.equals(INIT))
-						followUpStarted.countDown();
-				}));
-			claude.emit(INIT);
-			followUpStarted.await();
-			// Stay silent for several times the follow-up wait while the follow-up reply is in progress.
-			Thread.sleep(SHORT_FOLLOW_UP_TIMEOUT.toMillis() * 4);
-			claude.emit(FOLLOW_UP_REPLY, FOLLOW_UP_RESULT);
+					process.steer("Reply with the single word TWO.");
+					claude.emit(afterMessage.toArray(String[]::new));
+				}
+			});
 
-			HarnessProcessResult result = turn.get(5, TimeUnit.SECONDS);
+			List<String> expected = new ArrayList<>(beforeMessage);
+			expected.addAll(afterMessage);
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo(lastResult(afterMessage));
+			requireThat(relayed, "relayed").isEqualTo(expected);
+			requireThat(claude.requests().size(), "requests").isEqualTo(2);
+		}
+	}
 
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("FINISHED");
+	/**
+	 * Verifies that a follow-up reply Claude finishes after the previous turn ended, and the {@code idle} state that
+	 * follows it, do not end the next turn or give it its reply: the next turn relays the follow-up's lines, ends once
+	 * Claude is idle after the reply to its own message, and reports the follow-up in its diagnostic.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void reportsFollowUpThatArrivesAfterTurnEnded() throws IOException
+	{
+		// Requirement: R-E14
+		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		{
+		});
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+			process.sendTurn("Reply LAUNCHED.");
+			List<String> lines = List.of(STATE_RUNNING, INIT, MESSAGE_START, FOLLOW_UP_REPLY, FOLLOW_UP_RESULT,
+				STATE_IDLE, STATE_RUNNING, INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, STATE_IDLE);
+			claude.emit(lines.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult next = process.sendTurn("Reply TWO.", relayed::add);
+
+			requireThat(next.completed(), "completed").isTrue();
+			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
+			requireThat(next.standardError(), "standardError").isEqualTo(ClaudeHarnessProcess.LATE_FOLLOW_UP);
+			requireThat(relayed, "relayed").isEqualTo(lines);
+		}
+	}
+
+	/**
+	 * Verifies that when the task list empties after Claude became idle, the turn does not end then, however long
+	 * Claude stays quiet, but at the next {@code idle} state, once Claude has replied to the child's completion.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void waitsForIdleAfterListEmpties() throws IOException
+	{
+		// Requirement: R-E14
+		assertTurnSpans(List.of(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED,
+			MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE, CHILD_REPLY, CHILDREN_FINISHED, CHILD_UPDATED,
+			CHILD_NOTIFICATION, STATE_RUNNING, INIT, MESSAGE_START, FOLLOW_UP_REPLY, FOLLOW_UP_RESULT, STATE_IDLE));
+	}
+
+	/**
+	 * Returns the recorded timelines of a Claude that did not report its session state.
+	 *
+	 * @return the timeline file names
+	 */
+	@DataProvider
+	public static Object[][] noSessionStateTimelines()
+	{
+		return new Object[][]{{"race-3.jsonl"}, {"race-6.jsonl"}, {"race-10.jsonl"}, {"two-children.jsonl"},
+			{"nested.jsonl"}, {"queued-1.jsonl"}};
+	}
+
+	/**
+	 * Verifies that a turn fails at Claude's first {@code system/init} line when the process has not reported its
+	 * session state, and that the failure names Claude's version and the setting that Claude needs to honour.
+	 *
+	 * @param timeline the recorded timeline
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000, dataProvider = "noSessionStateTimelines")
+	public void failsWithoutSessionState(String timeline) throws IOException
+	{
+		// Requirement: R-E14
+		List<String> lines = recorded(timeline);
+		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		{
+		});
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		{
+			claude.emit(lines.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.", relayed::add);
+
+			requireThat(result.completed(), "completed").isFalse();
+			requireThat(result.exitCode(), "exitCode").isNotEqualTo(0);
+			requireThat(result.standardError(), "standardError").contains("2.1.286").
+				contains("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS");
+			requireThat(relayed, "relayed").isEqualTo(List.of(lines.getFirst()));
+		}
+	}
+
+	/**
+	 * Verifies that a process which reported its session state in an earlier turn does not fail a later turn whose
+	 * output does not begin with a state.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void remembersSessionStateAcrossTurns() throws IOException
+	{
+		// Requirement: R-E14
+		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		{
+		});
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+			process.sendTurn("Reply LAUNCHED.");
+			claude.emit(INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, STATE_IDLE);
+
+			HarnessProcessResult next = process.sendTurn("Reply TWO.");
+
+			requireThat(next.completed(), "completed").isTrue();
+			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
 		}
 	}
 
@@ -230,47 +425,17 @@ public final class ClaudeHarnessProcessTest
 		FakeNativeProcess claude = new FakeNativeProcess(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			UNREACHED_FOLLOW_UP_TIMEOUT))
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
 		{
-			claude.emit(INIT, ROOT_REPLY, ROOT_RESULT);
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
 
 			process.interrupt();
 
-			claude.emit(INIT, FOLLOW_UP_REPLY, FOLLOW_UP_RESULT);
-			HarnessProcessResult next = process.sendTurn("Reply FINISHED.");
-			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("FINISHED");
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, STATE_IDLE);
+			HarnessProcessResult next = process.sendTurn("Reply TWO.");
+			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
 			requireThat(claude.requests().size(), "requests").isEqualTo(2);
-		}
-	}
-
-	/**
-	 * Verifies a turn ends at the root's result when every background child finished before that result, without
-	 * waiting for a follow-up reply. The follow-up wait applies only when a child still ran at the result.
-	 *
-	 * @throws IOException if the turn fails
-	 */
-	@Test(timeOut = 10_000)
-	public void endsAtResultAfterChildrenFinished() throws IOException
-	{
-		// Requirement: R-E14
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
-		{
-		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			UNREACHED_FOLLOW_UP_TIMEOUT))
-		{
-			List<String> lines = List.of(INIT, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED, CHILD_REPLY,
-				CHILDREN_FINISHED, CHILD_UPDATED, CHILD_NOTIFICATION, ROOT_REPLY, ROOT_RESULT);
-			claude.emit(lines.toArray(String[]::new));
-			List<String> relayed = new ArrayList<>();
-
-			HarnessProcessResult result = process.sendTurn("Launch a background child.", relayed::add);
-
-			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
-			requireThat(relayed, "relayed").isEqualTo(lines);
 		}
 	}
 
@@ -287,10 +452,9 @@ public final class ClaudeHarnessProcessTest
 		FakeNativeProcess claude = new FakeNativeProcess(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude,
-			UNREACHED_FOLLOW_UP_TIMEOUT))
+		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
 		{
-			claude.emit(INIT);
+			claude.emit(STATE_RUNNING, INIT);
 			claude.closeOutputThenExitWhenAwaited();
 
 			HarnessProcessResult result = process.sendTurn("Launch a background child.", _ ->
@@ -326,8 +490,8 @@ public final class ClaudeHarnessProcessTest
 			Path directory = cleanup.add(Files.createTempDirectory("cat-claude-interrupt-"));
 			Path before = directory.resolve("before.jsonl");
 			Path after = directory.resolve("after.jsonl");
-			Files.writeString(before, String.join("\n", INIT, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED, ROOT_REPLY,
-				ROOT_RESULT) + "\n", UTF_8);
+			Files.writeString(before, String.join("\n", STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING,
+				CHILD_STARTED, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE) + "\n", UTF_8);
 			Files.writeString(after, String.join("\n", SHELL_STOPPED, CHILD_RUNNING) + "\n", UTF_8);
 			String script = "sleep 600 & waiter=$!; trap 'kill $waiter; cat \"$2\"; exit 0' INT; read request; " +
 				"cat \"$1\"; wait $waiter";
@@ -335,17 +499,16 @@ public final class ClaudeHarnessProcessTest
 				before.toString(), after.toString());
 			builder.redirectError(ProcessBuilder.Redirect.DISCARD);
 			Process shell = builder.start();
-			CountDownLatch rootReplied = new CountDownLatch(1);
-			try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), shell,
-				UNREACHED_FOLLOW_UP_TIMEOUT))
+			CountDownLatch rootIdle = new CountDownLatch(1);
+			try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), shell))
 			{
 				Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Launch a background child.",
 					line ->
 					{
-						if (line.equals(ROOT_RESULT))
-							rootReplied.countDown();
+						if (line.equals(STATE_IDLE))
+							rootIdle.countDown();
 					}));
-				rootReplied.await();
+				rootIdle.await();
 
 				process.interrupt();
 

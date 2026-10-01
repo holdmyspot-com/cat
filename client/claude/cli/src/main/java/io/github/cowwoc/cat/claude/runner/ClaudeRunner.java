@@ -160,6 +160,9 @@ public final class ClaudeRunner
 			}
 			isolatedEnvironment.put("HOME", isolatedProcessHome.toString());
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
+			// The turn boundary in ClaudeHarnessProcess depends on Claude's session_state_changed lines. Set it after
+			// copying the caller's settings so that no inherited value turns it off.
+			ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
 			Path marketplace = null;
 			if (installCat)
 				marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);

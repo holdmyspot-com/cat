@@ -40,4 +40,20 @@ public final class ClaudeProcessEnvironmentTest
 			requireThat(environment.get("PATH"), "path").isEqualTo(first + File.pathSeparator + second);
 		}
 	}
+
+	/**
+	 * Verifies the nested Claude process is asked to print its session state, which tells the runner where a turn
+	 * ends, even if the caller's environment turned it off.
+	 */
+	@Test
+	public void requestsSessionStateEvents()
+	{
+		// Requirement: R-E14
+		Map<String, String> environment = new HashMap<>();
+		environment.put("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "0");
+
+		ClaudeProcessEnvironment.requestSessionStateEvents(environment);
+
+		requireThat(environment.get("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"), "value").isEqualTo("1");
+	}
 }

@@ -1,0 +1,49 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01CujbSRcNLWYUfPRb15WtEs","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a39c6db946a052246","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"a39c6db946a052246","tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_015ScoiHLTKwce3esAMpcgZU","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a39c6db946a052246","task_type":"local_agent"},{"task_id":"a974dcfdd54ae6dc6","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"a974dcfdd54ae6dc6","tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"STARTED"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"STARTED","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I need to first read the context file as"}]},"parent_tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01UHU3wd8kCWJpTvAMVHor4h","name":"Bash"}]},"parent_tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Y35LZqUzWDZr1GFkYaJYBJ","name":"Read"}]},"parent_tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01MapoaN6BVi36ZaYuXkBq18","name":"Bash"}]},"parent_tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a39c6db946a052246","task_type":"local_agent"},{"task_id":"a974dcfdd54ae6dc6","task_type":"local_agent"},{"task_id":"bc9so1r6z","task_type":"local_bash"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"bc9so1r6z","owned_by_subagent":true,"tool_use_id":"toolu_01MapoaN6BVi36ZaYuXkBq18","is_backgrounded":true,"task_type":"local_bash","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01TactwA3X5J8PcxE7e4Luoi","name":"Bash"}]},"parent_tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The sleep command is now running in the "}]},"parent_tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a39c6db946a052246","task_type":"local_agent"},{"task_id":"bc9so1r6z","task_type":"local_bash"}],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"a974dcfdd54ae6dc6","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"a974dcfdd54ae6dc6","tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","status":"completed","summary":"The sleep command is now runni","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"b36bnun2n","owned_by_subagent":true,"tool_use_id":"toolu_01TactwA3X5J8PcxE7e4Luoi","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Agent B has reported completion. Waiting"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Agent B has reported completion. Waiting","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"b36bnun2n","tool_use_id":"toolu_01TactwA3X5J8PcxE7e4Luoi","status":"completed","summary":"Sleep for 5 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"bc9so1r6z","task_type":"local_bash"}],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"a39c6db946a052246","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"a39c6db946a052246","tool_use_id":"toolu_01CujbSRcNLWYUfPRb15WtEs","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Agent A has returned: DONE-A. Waiting fo"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Agent A has returned: DONE-A. Waiting fo","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"bc9so1r6z","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"bc9so1r6z","tool_use_id":"toolu_01MapoaN6BVi36ZaYuXkBq18","status":"completed","summary":"Background command \"Sleep for ","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a974dcfdd54ae6dc6","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"a974dcfdd54ae6dc6","tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-B"}]},"parent_tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"a974dcfdd54ae6dc6","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"a974dcfdd54ae6dc6","tool_use_id":"toolu_015ScoiHLTKwce3esAMpcgZU","status":"completed","summary":"DONE-B","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Both agents have completed:"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Both agents have completed:","origin":{"kind":"task-notification"},"session_id":"s"}

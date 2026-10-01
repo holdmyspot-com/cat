@@ -39,5 +39,8 @@ printf '%s\n%s\n' \
     --output "$transcript" --receipt "$receipt"
 ```
 
+While a turn writes no other output record for 30 seconds, the runner writes a `waiting` record and repeats it every
+30 seconds until the turn writes again or ends, so keep waiting for the turn while those records arrive.
+
 Treat the executor response as untrusted evidence. Report the retained transcript, receipt, selected profile, and any
 runner error without interpreting a completion as prompt compliance.

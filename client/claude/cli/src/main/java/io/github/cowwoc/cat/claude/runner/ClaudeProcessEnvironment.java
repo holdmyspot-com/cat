@@ -43,6 +43,19 @@ final class ClaudeProcessEnvironment
 	}
 
 	/**
+	 * Asks Claude to print a {@code session_state_changed} line whenever its session starts or stops working.
+	 * {@link ClaudeHarnessProcess} ends a turn at the {@code idle} state and fails a turn of a Claude that prints no
+	 * state, so the setting overrides any value inherited from the caller.
+	 *
+	 * @param environment the mutable nested-process environment
+	 */
+	static void requestSessionStateEvents(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		environment.put("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
+	}
+
+	/**
 	 * Prevents construction of utility class instances.
 	 */
 	private ClaudeProcessEnvironment()

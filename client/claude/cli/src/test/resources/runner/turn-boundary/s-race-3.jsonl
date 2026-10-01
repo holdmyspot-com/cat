@@ -1,0 +1,24 @@
+{"type":"system","subtype":"session_state_changed","state":"running","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ace27cf80e80503e6","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ace27cf80e80503e6","tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll first read the context instructions"}]},"parent_tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01KiC5MJk7APecvx9Y2J1Rxi","name":"Read"}]},"parent_tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Now I'll run the bash command."}]},"parent_tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01DJkmUEkDcBBnMdj5Zewkdr","name":"Bash"}]},"parent_tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"bscbxjtfr","owned_by_subagent":true,"tool_use_id":"toolu_01DJkmUEkDcBBnMdj5Zewkdr","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"bscbxjtfr","tool_use_id":"toolu_01DJkmUEkDcBBnMdj5Zewkdr","status":"completed","summary":"Sleep for 3 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ace27cf80e80503e6","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ace27cf80e80503e6","tool_use_id":"toolu_01Wzbq76qxVqUC1wCGovAkCE","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"# The History of the Printing Press"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"# The History of the Printing Press","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The background task has completed. As yo"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"The background task has completed. As yo","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"session_state_changed","state":"idle","session_id":"s"}

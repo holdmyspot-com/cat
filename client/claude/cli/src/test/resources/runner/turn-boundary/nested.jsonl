@@ -1,0 +1,30 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_018LepR8BXjtkvgVs1q4vthX","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a254e951bb8e3d7f7","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"a254e951bb8e3d7f7","tool_use_id":"toolu_018LepR8BXjtkvgVs1q4vthX","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"STARTED"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"STARTED","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01TkJzScBRd6t7WWwzbaq4X4","name":"Agent"}]},"parent_tool_use_id":"toolu_018LepR8BXjtkvgVs1q4vthX","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a254e951bb8e3d7f7","task_type":"local_agent"},{"task_id":"ac763336665713876","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ac763336665713876","tool_use_id":"toolu_01TkJzScBRd6t7WWwzbaq4X4","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"CHILD-STARTED"}]},"parent_tool_use_id":"toolu_018LepR8BXjtkvgVs1q4vthX","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ac763336665713876","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"a254e951bb8e3d7f7","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"a254e951bb8e3d7f7","tool_use_id":"toolu_018LepR8BXjtkvgVs1q4vthX","status":"completed","summary":"CHILD-STARTED","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_012DxHbs6dbWFFWV7yLh9uqY","name":"Bash"}]},"parent_tool_use_id":"toolu_01TkJzScBRd6t7WWwzbaq4X4","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Child agent completed with CHILD-STARTED"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Child agent completed with CHILD-STARTED","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"bzyjahlv3","owned_by_subagent":true,"tool_use_id":"toolu_012DxHbs6dbWFFWV7yLh9uqY","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"bzyjahlv3","tool_use_id":"toolu_012DxHbs6dbWFFWV7yLh9uqY","status":"completed","summary":"Sleep for 15 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"GRANDCHILD-DONE"}]},"parent_tool_use_id":"toolu_01TkJzScBRd6t7WWwzbaq4X4","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ac763336665713876","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ac763336665713876","tool_use_id":"toolu_01TkJzScBRd6t7WWwzbaq4X4","status":"completed","summary":"GRANDCHILD-DONE","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Grandchild agent completed with GRANDCHI"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Grandchild agent completed with GRANDCHI","origin":{"kind":"task-notification"},"session_id":"s"}

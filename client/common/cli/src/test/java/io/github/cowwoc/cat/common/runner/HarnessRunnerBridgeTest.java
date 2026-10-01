@@ -7,7 +7,10 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.Closeable;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -15,9 +18,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -309,7 +316,9 @@ public final class HarnessRunnerBridgeTest
 
 	/**
 	 * Verifies an interrupt that reaches the bridge after its turn ended leaves the harness untouched and the bridge
-	 * keeps serving later requests.
+	 * keeps serving later requests. The bridge's turn thread is held right after it writes {@code turn-completed}
+	 * until the bridge has handled the interrupt, so the interrupt reaches the bridge while the thread that ran the
+	 * turn has not yet returned.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -318,11 +327,13 @@ public final class HarnessRunnerBridgeTest
 	{
 		// Requirement: R-E10, R-E15
 		CountDownLatch firstTurnCompleted = new CountDownLatch(1);
+		CountDownLatch interruptHandled = new CountDownLatch(1);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			CountingInterruptProcess process = new CountingInterruptProcess();
+			CountingInterruptProcess process = new CountingInterruptProcess(interruptHandled);
 			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", firstTurnCompleted,
-				"{\"type\":\"interrupt\"}\n{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
-			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", firstTurnCompleted))
+				"{\"type\":\"interrupt\"}\n", interruptHandled,
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
+			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", firstTurnCompleted, interruptHandled))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
@@ -337,28 +348,241 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Client input that withholds its later requests until an earlier bridge response has been written, so a test can
-	 * order a request after the turn that precedes it has ended.
+	 * Verifies that while a turn writes no record for 30 seconds, the bridge writes a {@code waiting} record and
+	 * repeats it every 30 seconds; that any other record of the turn restarts that count; and that no {@code waiting}
+	 * record is written before a turn, after {@code turn-completed}, or between turns. The test moves the clock and runs
+	 * the heartbeat itself.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void reportsQuietTurnEveryThirtySeconds() throws IOException
+	{
+		// Requirement: R-E14
+		ManualClock clock = new ManualClock(Instant.parse("2026-10-01T00:00:00Z"));
+		ManualTicker ticker = new ManualTicker();
+		CountDownLatch turnCompleted = new CountDownLatch(1);
+		Runnable quietBetweenTurns = () ->
+		{
+			clock.advance(Duration.ofSeconds(90));
+			ticker.tick();
+			ticker.tick();
+		};
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			QuietProcess process = new QuietProcess(clock, ticker);
+			Reader input = new QuietReader(quietBetweenTurns, "{\"type\":\"turn\",\"prompt\":\"first\"}\n",
+				turnCompleted, "{\"type\":\"complete\"}\n");
+			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", turnCompleted, new CountDownLatch(0)))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), null, true,
+				input, output, clock, ticker);
+
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> records = new ArrayList<>();
+			for (String line : output.toString().lines().toList())
+			{
+				JsonNode record = json.readTree(line);
+				String type = record.path("type").asString();
+				if (type.equals("waiting"))
+				{
+					requireThat(record.path("runId").asString(), "runId").isEqualTo("run-1");
+					records.add(type + " " + record.path("quietSeconds").asLong());
+				}
+				else
+					records.add(type);
+			}
+			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "native-event",
+				"waiting 30", "turn-completed", "completed"));
+		}
+	}
+
+	/**
+	 * A heartbeat that runs only when a test runs it.
+	 */
+	private static final class ManualTicker implements HeartbeatTicker
+	{
+		private final AtomicReference<Runnable> tick = new AtomicReference<>();
+
+		@Override
+		public Closeable start(Runnable tick)
+		{
+			this.tick.set(tick);
+			return () -> this.tick.set(null);
+		}
+
+		/**
+		 * Runs the bridge's heartbeat once.
+		 */
+		private void tick()
+		{
+			Runnable current = tick.get();
+			requireThat(current, "tick").isNotNull();
+			current.run();
+		}
+	}
+
+	/**
+	 * A process whose turn stays quiet while the test moves the clock and runs the heartbeat, prints one native
+	 * event, stays quiet again and then completes.
+	 */
+	private static final class QuietProcess implements HarnessProcess
+	{
+		private final ManualClock clock;
+		private final ManualTicker ticker;
+
+		/**
+		 * Creates a process.
+		 *
+		 * @param clock  the bridge's clock
+		 * @param ticker the bridge's heartbeat
+		 */
+		private QuietProcess(ManualClock clock, ManualTicker ticker)
+		{
+			this.clock = clock;
+			this.ticker = ticker;
+		}
+
+		/**
+		 * Moves the clock forward and runs the heartbeat.
+		 *
+		 * @param seconds how far to move the clock
+		 */
+		private void quiet(int seconds)
+		{
+			clock.advance(Duration.ofSeconds(seconds));
+			ticker.tick();
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request)
+		{
+			throw new AssertionError("The bridge relays native events");
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
+		{
+			quiet(29);
+			quiet(1);
+			quiet(29);
+			quiet(1);
+			listener.accept("native line");
+			quiet(29);
+			quiet(1);
+			return new HarnessProcessResult(0, "native line\n", "", true, "done");
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return true;
+		}
+
+		@Override
+		public void close()
+		{
+		}
+	}
+
+	/**
+	 * Client input that runs an action before its first request and again once the turn has completed, before it sends
+	 * its last request.
+	 */
+	private static final class QuietReader extends Reader
+	{
+		private final Runnable quiet;
+		private final StringReader turn;
+		private final CountDownLatch turnCompleted;
+		private final StringReader rest;
+		private boolean started;
+		private boolean turnExhausted;
+
+		/**
+		 * Creates the input.
+		 *
+		 * @param quiet         runs before the first request and once {@code turnCompleted} opens
+		 * @param turn          the turn request
+		 * @param turnCompleted opens once the bridge has written {@code turn-completed}
+		 * @param rest          the requests sent after the turn completed
+		 */
+		private QuietReader(Runnable quiet, String turn, CountDownLatch turnCompleted, String rest)
+		{
+			this.quiet = quiet;
+			this.turn = new StringReader(turn);
+			this.turnCompleted = turnCompleted;
+			this.rest = new StringReader(rest);
+		}
+
+		@Override
+		public int read(char[] buffer, int offset, int length) throws IOException
+		{
+			if (!started)
+			{
+				started = true;
+				quiet.run();
+			}
+			if (!turnExhausted)
+			{
+				int count = turn.read(buffer, offset, length);
+				if (count != -1)
+					return count;
+				turnExhausted = true;
+				try
+				{
+					turnCompleted.await();
+				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+					throw new IOException("Interrupted while waiting for the turn to complete", e);
+				}
+				quiet.run();
+			}
+			return rest.read(buffer, offset, length);
+		}
+
+		@Override
+		public void close()
+		{
+			turn.close();
+			rest.close();
+		}
+	}
+
+	/**
+	 * Client input that sends a request only after an earlier bridge response has been written, and reports when the
+	 * bridge has handled that request.
 	 */
 	private static final class GatedReader extends Reader
 	{
 		private final StringReader first;
 		private final CountDownLatch gate;
-		private final StringReader second;
+		private final StringReader gated;
+		private final CountDownLatch gatedHandled;
+		private final StringReader rest;
 		private boolean firstExhausted;
+		private boolean gatedExhausted;
 
 		/**
-		 * Creates input that serves {@code first}, waits for {@code gate}, then serves {@code second}.
+		 * Creates input that serves {@code first}, waits for {@code gate}, serves {@code gated}, then opens
+		 * {@code gatedHandled} and serves {@code rest}.
 		 *
 		 * @param first the requests available immediately
-		 * @param gate opens once the bridge has written the response that the later requests must follow
-		 * @param second the requests available after the gate opens
+		 * @param gate opens once the bridge has written the response that {@code gated} must follow
+		 * @param gated one request line sent after {@code gate} opens
+		 * @param gatedHandled opened when the bridge asks for input after {@code gated}, which it does only once it
+		 *   has handled that request
+		 * @param rest the requests after {@code gated}
 		 */
-		private GatedReader(String first, CountDownLatch gate, String second)
+		private GatedReader(String first, CountDownLatch gate, String gated, CountDownLatch gatedHandled, String rest)
 		{
 			this.first = new StringReader(first);
 			this.gate = gate;
-			this.second = new StringReader(second);
+			this.gated = new StringReader(gated);
+			this.gatedHandled = gatedHandled;
+			this.rest = new StringReader(rest);
 		}
 
 		@Override
@@ -371,52 +595,75 @@ public final class HarnessRunnerBridgeTest
 					return count;
 				firstExhausted = true;
 			}
-			try
+			if (!gatedExhausted)
 			{
-				gate.await();
+				try
+				{
+					gate.await();
+				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+					throw new IOException("Interrupted while waiting for the gated bridge input", e);
+				}
+				int count = gated.read(buffer, offset, length);
+				if (count != -1)
+					return count;
+				gatedExhausted = true;
 			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while waiting for the gated bridge input", e);
-			}
-			return second.read(buffer, offset, length);
+			gatedHandled.countDown();
+			return rest.read(buffer, offset, length);
 		}
 
 		@Override
 		public void close()
 		{
 			first.close();
-			second.close();
+			gated.close();
+			rest.close();
 		}
 	}
 
 	/**
-	 * Bridge output that opens a latch once a response containing a marker has been written.
+	 * Bridge output that opens a latch once a response containing a marker has been written, then holds the writing
+	 * thread until another latch opens.
 	 */
 	private static final class SignalingWriter extends StringWriter
 	{
 		private final String marker;
 		private final CountDownLatch written;
+		private final CountDownLatch release;
 
 		/**
-		 * Creates output that signals {@code written} after the first response containing {@code marker}.
+		 * Creates output that signals {@code written} after the first response containing {@code marker}, and holds
+		 * the thread that wrote it until {@code release} opens.
 		 *
 		 * @param marker the text that identifies the awaited response
 		 * @param written opened when that response is flushed
+		 * @param release opens when the thread that wrote the response may continue
 		 */
-		private SignalingWriter(String marker, CountDownLatch written)
+		private SignalingWriter(String marker, CountDownLatch written, CountDownLatch release)
 		{
 			this.marker = marker;
 			this.written = written;
+			this.release = release;
 		}
 
 		@Override
 		public void flush()
 		{
 			super.flush();
-			if (toString().contains(marker))
-				written.countDown();
+			if (written.getCount() == 0 || !toString().contains(marker))
+				return;
+			written.countDown();
+			try
+			{
+				release.await();
+			}
+			catch (InterruptedException _)
+			{
+				Thread.currentThread().interrupt();
+			}
 		}
 	}
 
@@ -425,9 +672,20 @@ public final class HarnessRunnerBridgeTest
 	 */
 	private static final class CountingInterruptProcess implements HarnessProcess
 	{
+		private final CountDownLatch interrupted;
 		private boolean closed;
 		private int turns;
 		private int interrupts;
+
+		/**
+		 * Creates a process.
+		 *
+		 * @param interrupted opened when the process receives an interrupt
+		 */
+		private CountingInterruptProcess(CountDownLatch interrupted)
+		{
+			this.interrupted = interrupted;
+		}
 
 		@Override
 		public HarnessProcessResult sendTurn(String request)
@@ -441,6 +699,7 @@ public final class HarnessRunnerBridgeTest
 		public void interrupt()
 		{
 			interrupts += 1;
+			interrupted.countDown();
 		}
 
 		@Override

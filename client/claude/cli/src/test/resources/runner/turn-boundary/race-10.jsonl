@@ -1,0 +1,21 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_018eXPrdHbBzo7syMpKdbUbS","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"aa335bf092864029b","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"aa335bf092864029b","tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I need to read the context instructions "}]},"parent_tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01FT4Nwakxy2RhrHkfbHzhed","name":"Read"}]},"parent_tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"# The History of the Printing Press"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"# The History of the Printing Press","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Qs2diNAAeaW1fHF7DyJFar","name":"Bash"}]},"parent_tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"bckibvgza","owned_by_subagent":true,"tool_use_id":"toolu_01Qs2diNAAeaW1fHF7DyJFar","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"bckibvgza","tool_use_id":"toolu_01Qs2diNAAeaW1fHF7DyJFar","status":"completed","summary":"Sleep for 10 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"aa335bf092864029b","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"aa335bf092864029b","tool_use_id":"toolu_018eXPrdHbBzo7syMpKdbUbS","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I've completed the essay on the history "}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"I've completed the essay on the history ","origin":{"kind":"task-notification"},"session_id":"s"}

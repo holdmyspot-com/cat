@@ -1,0 +1,21 @@
+{"type":"system","subtype":"session_state_changed","state":"running","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A55DarfcaLQBjXhZBVjAhP","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ab6561acc33d64f25","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ab6561acc33d64f25","tool_use_id":"toolu_01A55DarfcaLQBjXhZBVjAhP","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01V7MwPavieosKCddQAcPTo6","name":"Bash"}]},"parent_tool_use_id":"toolu_01A55DarfcaLQBjXhZBVjAhP","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"bpq3r5au0","owned_by_subagent":true,"tool_use_id":"toolu_01V7MwPavieosKCddQAcPTo6","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"bpq3r5au0","tool_use_id":"toolu_01V7MwPavieosKCddQAcPTo6","status":"completed","summary":"sleep 6","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01A55DarfcaLQBjXhZBVjAhP","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ab6561acc33d64f25","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ab6561acc33d64f25","tool_use_id":"toolu_01A55DarfcaLQBjXhZBVjAhP","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## The History of the Printing Press"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"## The History of the Printing Press","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The background task has completed. Your "}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"The background task has completed. Your ","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"session_state_changed","state":"idle","session_id":"s"}

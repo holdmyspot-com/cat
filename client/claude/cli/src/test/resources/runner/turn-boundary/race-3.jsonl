@@ -1,0 +1,19 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01XbR7s1y9w7nP89ZTr1eWzK","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ad00d06d2df9eb6cd","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ad00d06d2df9eb6cd","tool_use_id":"toolu_01XbR7s1y9w7nP89ZTr1eWzK","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HhtBjSLeqywCMGBqc7WdKK","name":"Bash"}]},"parent_tool_use_id":"toolu_01XbR7s1y9w7nP89ZTr1eWzK","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"b4pwsqu94","owned_by_subagent":true,"tool_use_id":"toolu_01HhtBjSLeqywCMGBqc7WdKK","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"b4pwsqu94","tool_use_id":"toolu_01HhtBjSLeqywCMGBqc7WdKK","status":"completed","summary":"Sleep for 3 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01XbR7s1y9w7nP89ZTr1eWzK","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ad00d06d2df9eb6cd","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ad00d06d2df9eb6cd","tool_use_id":"toolu_01XbR7s1y9w7nP89ZTr1eWzK","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"# The History of the Printing Press"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"# The History of the Printing Press","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The background task has completed. The e"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"The background task has completed. The e","origin":{"kind":"task-notification"},"session_id":"s"}

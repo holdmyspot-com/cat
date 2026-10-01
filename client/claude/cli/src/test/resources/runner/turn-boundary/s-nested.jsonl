@@ -1,0 +1,34 @@
+{"type":"system","subtype":"session_state_changed","state":"running","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01QNutaWEigB7LHGrRcj1QUE","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ac653307ab5a1d831","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ac653307ab5a1d831","tool_use_id":"toolu_01QNutaWEigB7LHGrRcj1QUE","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"STARTED"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"STARTED","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01R3QA6HBhDHod4RxuoDNggY","name":"Agent"}]},"parent_tool_use_id":"toolu_01QNutaWEigB7LHGrRcj1QUE","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ac653307ab5a1d831","task_type":"local_agent"},{"task_id":"ac8d787786ceafc0c","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"ac8d787786ceafc0c","tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll read the context file first as inst"}]},"parent_tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"CHILD-STARTED"}]},"parent_tool_use_id":"toolu_01QNutaWEigB7LHGrRcj1QUE","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"ac8d787786ceafc0c","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ac653307ab5a1d831","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ac653307ab5a1d831","tool_use_id":"toolu_01QNutaWEigB7LHGrRcj1QUE","status":"completed","summary":"CHILD-STARTED","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Y5gFNJ4BZpvjq6UMExiJ8G","name":"Read"}]},"parent_tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_0132ibPqwHCwVhEo6DPyF2EB","name":"Bash"}]},"parent_tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Child agent completed with result: **CHI"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Child agent completed with result: **CHI","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"brkh133dh","owned_by_subagent":true,"tool_use_id":"toolu_0132ibPqwHCwVhEo6DPyF2EB","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"brkh133dh","tool_use_id":"toolu_0132ibPqwHCwVhEo6DPyF2EB","status":"completed","summary":"Sleep for 15 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"GRANDCHILD-DONE"}]},"parent_tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"ac8d787786ceafc0c","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"ac8d787786ceafc0c","tool_use_id":"toolu_01R3QA6HBhDHod4RxuoDNggY","status":"completed","summary":"GRANDCHILD-DONE","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Grandchild agent completed with result: "}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"Grandchild agent completed with result: ","origin":{"kind":"task-notification"},"session_id":"s"}
+{"type":"system","subtype":"session_state_changed","state":"idle","session_id":"s"}

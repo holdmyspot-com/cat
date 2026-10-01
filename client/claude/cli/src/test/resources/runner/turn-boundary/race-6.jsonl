@@ -1,0 +1,19 @@
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01STkiZjyjdXoUypk6aE7LpD","name":"Agent"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"abb501d1fb318d230","task_type":"local_agent"}],"session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"abb501d1fb318d230","tool_use_id":"toolu_01STkiZjyjdXoUypk6aE7LpD","is_backgrounded":true,"task_type":"local_agent","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01LNdm3C9VCbV8HXWiTPRLKW","name":"Bash"}]},"parent_tool_use_id":"toolu_01STkiZjyjdXoUypk6aE7LpD","session_id":"s"}
+{"type":"system","subtype":"task_started","task_id":"b7eycfp12","owned_by_subagent":true,"tool_use_id":"toolu_01LNdm3C9VCbV8HXWiTPRLKW","is_backgrounded":false,"task_type":"local_bash","session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"b7eycfp12","tool_use_id":"toolu_01LNdm3C9VCbV8HXWiTPRLKW","status":"completed","summary":"Sleep for 6 seconds","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE-A"}]},"parent_tool_use_id":"toolu_01STkiZjyjdXoUypk6aE7LpD","session_id":"s"}
+{"type":"system","subtype":"background_tasks_changed","tasks":[],"session_id":"s"}
+{"type":"system","subtype":"task_updated","task_id":"abb501d1fb318d230","patch":{"status":"completed"},"session_id":"s"}
+{"type":"system","subtype":"task_notification","task_id":"abb501d1fb318d230","tool_use_id":"toolu_01STkiZjyjdXoUypk6aE7LpD","status":"completed","summary":"DONE-A","session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"# The History of the Printing Press"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"# The History of the Printing Press","session_id":"s"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.286","session_id":"s"}
+{"type":"stream_event","event":{"type":"message_start"},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The essay above provides a comprehensive"}]},"parent_tool_use_id":null,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":false,"result":"The essay above provides a comprehensive","origin":{"kind":"task-notification"},"session_id":"s"}
