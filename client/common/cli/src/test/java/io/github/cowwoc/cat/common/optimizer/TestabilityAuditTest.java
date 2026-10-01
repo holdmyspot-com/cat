@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -93,15 +94,13 @@ public final class TestabilityAuditTest
 	/**
 	 * Verifies that the scan finds the statistics sources and this test, so that a wrong source root cannot pass the
 	 * audit vacuously.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void scanCoversOptimizerSources() throws IOException
+	public void scanCoversOptimizerSources()
 	{
 		// Requirement: R-T1, R-T2
 		Path client = clientDirectory();
-		List<Path> scanned = scan(client).stream().map(SourceFile::path).toList();
+		List<Path> scanned = Scan.FILES.stream().map(SourceFile::path).toList();
 		requireThat(scanned, "scanned").contains(client.resolve("common/cli/src/main/java/" +
 			"io/github/cowwoc/cat/common/optimizer/statistics/BettingProcess.java"));
 		requireThat(scanned, "scanned").contains(auditSource(client));
@@ -109,45 +108,39 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that no scanned static field is mutable.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void staticFieldsAreFinal() throws IOException
+	public void staticFieldsAreFinal()
 	{
 		// Requirement: R-T1
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(clientDirectory()))
+		for (SourceFile file : Scan.FILES)
 			violations.addAll(findMutableStaticFields(file));
 		requireThat(violations, "violations").isEmpty();
 	}
 
 	/**
 	 * Verifies that every scanned test class has only final fields.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void testClassFieldsAreFinal() throws IOException
+	public void testClassFieldsAreFinal()
 	{
 		// Requirement: R-T1
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(clientDirectory()))
+		for (SourceFile file : Scan.FILES)
 			violations.addAll(findMutableTestClassFields(file));
 		requireThat(violations, "violations").isEmpty();
 	}
 
 	/**
 	 * Verifies that no scanned source sleeps.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void sourcesDoNotSleep() throws IOException
+	public void sourcesDoNotSleep()
 	{
 		// Requirement: R-T1
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(clientDirectory()))
+		for (SourceFile file : Scan.FILES)
 			violations.addAll(findSleeps(file));
 		requireThat(violations, "violations").isEmpty();
 	}
@@ -155,17 +148,14 @@ public final class TestabilityAuditTest
 	/**
 	 * Verifies that only {@code main} classes and harness production scopes read the home directory or the process
 	 * environment.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void onlyMainReadsEnvironment() throws IOException
+	public void onlyMainReadsEnvironment()
 	{
 		// Requirement: R-T1
-		Path client = clientDirectory();
-		Path audit = auditSource(client);
+		Path audit = auditSource(clientDirectory());
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(client))
+		for (SourceFile file : Scan.FILES)
 		{
 			// This class names the forbidden literals in order to find them
 			violations.addAll(findEnvironmentReads(file, !file.path().equals(audit)));
@@ -175,33 +165,27 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that the harness-neutral core references no harness package.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void coreReferencesNoHarness() throws IOException
+	public void coreReferencesNoHarness()
 	{
 		// Requirement: R-T2
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(clientDirectory()))
+		for (SourceFile file : Scan.FILES)
 			violations.addAll(findHarnessReferences(file));
 		requireThat(violations, "violations").isEmpty();
 	}
 
 	/**
 	 * Verifies that production sources reference no type from a test source tree.
-	 *
-	 * @throws IOException if a source cannot be read
 	 */
 	@Test
-	public void productionReferencesNoTestSupport() throws IOException
+	public void productionReferencesNoTestSupport()
 	{
 		// Requirement: R-T2
-		Path client = clientDirectory();
-		Set<String> testTypes = findTestTypes(client);
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : scan(client))
-			violations.addAll(findTestSupportReferences(file, testTypes));
+		for (SourceFile file : Scan.FILES)
+			violations.addAll(findTestSupportReferences(file, Scan.TEST_TYPES));
 		requireThat(violations, "violations").isEmpty();
 	}
 
@@ -467,7 +451,7 @@ public final class TestabilityAuditTest
 					files.add(new SourceFile(path, isProduction, isCore, JavaSource.parse(Files.readString(path))));
 			}
 		}
-		return files;
+		return List.copyOf(files);
 	}
 
 	/**
@@ -645,6 +629,44 @@ public final class TestabilityAuditTest
 				violations.add(file.describe(matcher.start(), "references test support: " + matcher.group(1)));
 		}
 		return violations;
+	}
+
+	/**
+	 * The sources in the audit's scope, parsed once for every test of the class because parsing them dominates each
+	 * check's runtime. The holder is initialized on first use, so a failure to read the sources fails only the tests
+	 * that need them.
+	 */
+	private static final class Scan
+	{
+		/**
+		 * Every source file in the audit's scope.
+		 */
+		static final List<SourceFile> FILES;
+		/**
+		 * The qualified names of the types in every test source tree.
+		 */
+		static final Set<String> TEST_TYPES;
+
+		static
+		{
+			Path client = clientDirectory();
+			try
+			{
+				FILES = scan(client);
+				TEST_TYPES = Set.copyOf(findTestTypes(client));
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		}
+
+		/**
+		 * Prevents construction.
+		 */
+		private Scan()
+		{
+		}
 	}
 
 	/**

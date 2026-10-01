@@ -1,8 +1,8 @@
 ## Scenario
 
-Failure Prevention analysis has confirmed three reproducible failures in user-owned prompt or workflow guidance, and
-prompt optimization is available. An agent is promoting them into reusable regression scenarios. For each, decide which
-incident details belong in the scenario and what the scenario must check.
+Failure Prevention analysis has confirmed three reproducible failures in user-owned prompt or workflow guidance. An
+agent is promoting them into reusable regression scenarios. For each, decide which incident details belong in the
+scenario and what the scenario must check.
 
 1. During work item `Q7`, an agent saw no dedicated skill file for a runner and proposed a new skill without checking
    whether the installed workflow could call its existing runner launcher. `Q7` identifies the planning row only.

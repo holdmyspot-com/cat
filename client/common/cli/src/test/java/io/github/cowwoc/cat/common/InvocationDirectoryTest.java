@@ -36,7 +36,7 @@ public final class InvocationDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path temporaryRoot = project.resolve(".cat/work/temp");
 
-			Path directory = InvocationDirectory.create(temporaryRoot, "prompt-optimizer");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
 
 			requireThat(directory.getParent(), "directoryParent").isEqualTo(temporaryRoot.toAbsolutePath().normalize());
 			requireThat(directory, "directory").isDirectory();
@@ -55,9 +55,9 @@ public final class InvocationDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path temporaryRoot = project.resolve(".cat/work/temp");
-			Path directory = InvocationDirectory.create(temporaryRoot, "prompt-optimizer");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
 			Files.writeString(directory.resolve("receipt.txt"), "accepted\n");
-			Path retained = temporaryRoot.resolve("retained/prompt-optimizer-evidence");
+			Path retained = temporaryRoot.resolve("retained/mutation-transaction-evidence");
 
 			Path result = InvocationDirectory.handoff(temporaryRoot, directory, retained);
 
@@ -79,7 +79,7 @@ public final class InvocationDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path temporaryRoot = project.resolve(".cat/work/temp");
-			Path directory = InvocationDirectory.create(temporaryRoot, "prompt-optimizer");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
 			Files.writeString(directory.resolve("receipt.txt"), "temporary\n");
 
 			InvocationDirectory.delete(temporaryRoot, directory);
@@ -160,7 +160,7 @@ public final class InvocationDirectoryTest
 			Path temporaryRoot = project.resolve(".cat/work/temp");
 			Output output = new Output();
 
-			int status = InvocationDirectory.run(new String[]{"create", "prompt-optimizer"}, temporaryRoot,
+			int status = InvocationDirectory.run(new String[]{"create", "mutation-transaction"}, temporaryRoot,
 				output.out, output.err);
 
 			requireThat(status, "status").isEqualTo(0);
@@ -186,7 +186,7 @@ public final class InvocationDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path temporaryRoot = project.resolve(".cat/work/temp");
-			Path directory = InvocationDirectory.create(temporaryRoot, "prompt-optimizer");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
 			Path retained = temporaryRoot.resolve("retained/evidence").toAbsolutePath().normalize();
 			Output output = new Output();
 
@@ -210,7 +210,7 @@ public final class InvocationDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
 			Path temporaryRoot = project.resolve(".cat/work/temp");
-			Path directory = InvocationDirectory.create(temporaryRoot, "prompt-optimizer");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
 			Output output = new Output();
 
 			int status = InvocationDirectory.run(new String[]{"delete", directory.toString()}, temporaryRoot,

@@ -4,19 +4,19 @@
 
 - Turn each confirmed, reproducible user-owned prompt, rule, or workflow failure into the smallest evidence-backed
   correction at its owning decision boundary and regression coverage that detects its return.
-- Begin that correction on the first qualifying failure whenever the current session exposes prompt optimization,
-  without depending on an earlier optimizer invocation.
+- Make that correction on the first qualifying failure without halting the user's task for a certification campaign,
+  and leave certifying the corrected guidance to a campaign that the user chooses to start.
 - Keep prompt and workflow regression coverage coherent by consolidating cases that make the same reader decision,
   rather than accumulating one standalone test per incident.
 
 ## Guidance
 
 Use this rule only after Failure Prevention has produced its attribution record and the routing condition established
-that prompt optimization is available from the session's enabled capabilities and the affected guidance is user-owned.
-The confirmed first failure initiates this procedure: invoke `cat:prompt-optimizer` for the affected guidance before
-resuming dependent work. Do not treat a prior optimizer invocation as a prerequisite. Preserve the reported observable
-failure, governing instruction or contract, earliest divergent decision, available delivery evidence, and direct
-regression case.
+that the affected guidance is user-owned. The confirmed first failure initiates this procedure: make the correction and
+add its regression coverage yourself before resuming dependent work. Do not invoke `cat:prompt-optimizer` for the
+failure, because a campaign needs a clean worktree, a confirmed contract and many trials, and would halt the user's
+task. Preserve the reported observable failure, governing instruction or contract, earliest divergent decision,
+available delivery evidence, and direct regression case.
 
 Classify the attribution before changing guidance:
 
@@ -42,3 +42,7 @@ second progress-estimation rule.
 Accept a promotion only after rerunning the reported regression, its analogous and dissimilar cases, and prompt or
 rule validation for every changed source directory. Retain one test matrix organized by reader decision and trigger;
 periodically merge duplicate rows that prove the same branch without losing an independently observable boundary.
+
+A correction made this way is regression-tested but not certified. When you report it, you may suggest a
+`cat:prompt-optimizer` campaign for the corrected guidance if the user wants its compliance certified; start one only
+at the user's request.

@@ -1,7 +1,7 @@
 ---
-description: Use when the user asks to optimize a prompt-driven workflow: observe it, diagnose mistakes without interruption, apply backward design, update the prompt, and retest.
+description: Use when the user asks to improve, optimize or certify the compliance of a prompt file or prompt system through a measured campaign.
 ---
 
-Use `${PLUGIN_ROOT}/client/bin/workflow-temp` to create invocation-local optimizer evidence storage.
+The launcher is `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer`.
 
 <!-- cat:include ../shared-lazy-body.md -->

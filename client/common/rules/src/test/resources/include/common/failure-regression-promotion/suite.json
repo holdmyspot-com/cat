@@ -20,6 +20,18 @@
           "include/common/failure-regression-promotion.md"
         ]
       }
+    },
+    "correct-without-campaign": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/failure-regression-promotion.md"
+        ]
+      }
     }
   }
 }

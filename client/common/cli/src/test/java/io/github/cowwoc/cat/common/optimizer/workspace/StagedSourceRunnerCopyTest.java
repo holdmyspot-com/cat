@@ -19,48 +19,54 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.Set;
 
-import org.testng.SkipException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
  * Verifies that the runner's project copy accepts a staged source that is built from a project with links, and
  * refuses the project itself.
  * <p>
- * The test runs only in the {@code native} group, with {@code -Dcat.native.harness=claude} or
- * {@code -Dcat.native.harness=codex}. Both harness runners copy their project through
- * {@link HarnessRunManager#copyProject(Path, HarnessRun)}, so the test registers a run for the selected harness and
- * copies into it. It starts no model and no harness process.
+ * Both harness runners copy their project through {@link HarnessRunManager#copyProject(Path, HarnessRun)}, so the
+ * test registers a run for each harness and copies into it. It starts no model and no harness process.
  */
-public final class StagedSourceNativeTest
+public final class StagedSourceRunnerCopyTest
 {
 	/**
 	 * Creates the test.
 	 */
-	public StagedSourceNativeTest()
+	public StagedSourceRunnerCopyTest()
 	{
+	}
+
+	/**
+	 * Returns the harnesses whose runs the test copies into.
+	 *
+	 * @return one row per harness
+	 */
+	@DataProvider
+	public static Object[][] harnesses()
+	{
+		return new Object[][]
+		{
+			{"claude"},
+			{"codex"}
+		};
 	}
 
 	/**
 	 * Verifies that the runner refuses a project that contains links, accepts the staged source of the same project,
 	 * and copies it with every link replaced by a regular copy of its target.
 	 *
+	 * @param harness the harness whose run receives the copy
 	 * @throws IOException if the fixture cannot be created or copied
 	 */
-	@Test(groups = "native")
-	public void runnerAcceptsStagedSourceWithLinks() throws IOException
+	@Test(dataProvider = "harnesses")
+	public void runnerAcceptsStagedSourceWithLinks(String harness) throws IOException
 	{
 		// Requirement: R-W5
-		String harness = System.getProperty("cat.native.harness");
-		if (!"claude".equals(harness) && !"codex".equals(harness))
-			throw new SkipException("Run with -Pnative -Dcat.native.harness=claude or -Dcat.native.harness=codex");
-		String workTemp = System.getProperty("cat.work.temp");
-		if (workTemp == null || workTemp.isBlank())
-			throw new IllegalStateException("The build must pass the CAT work temp root as cat.work.temp");
-		Path workTempRoot = Path.of(workTemp).toAbsolutePath().normalize();
-		Files.createDirectories(workTempRoot);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path fixture = cleanup.add(Files.createTempDirectory(workTempRoot, "native-staged-"));
+			Path fixture = cleanup.add(Files.createTempDirectory("staged-runner-copy-"));
 			LinkedProject project = ProjectFixtures.linkedProject(fixture);
 			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
 				stage(Overlay.of(project.tree().inventory()));

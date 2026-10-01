@@ -3,10 +3,10 @@
 Decide whether an implementation needs a new integration entry point in each situation. State the smallest check that
 supports the decision before proposing a change.
 
-1. A prompt optimizer plan says to execute a nested agent through the existing runner skill for the current harness,
+1. A trial-review plan says to execute a nested agent through the existing runner skill for the current harness,
    using production prompt loading and a host tool. A skills-directory inventory finds a Codex-side `claude-runner`
    skill, no separate Codex-side `codex-runner` skill, and no Claude-side runner skill. Other search results include
-   `skills/prompt-optimizer/SKILL.md` in both harness artifacts and `client/bin/codex-runner` and
+   `skills/trial-review/SKILL.md` in both harness artifacts and `client/bin/codex-runner` and
    `client/bin/claude-runner` in their respective installed artifacts. Their caller relationship has not been checked,
    and no current installed native behavior probe has been run. Decide the next implementation action.
 2. A service needs to submit a job and observe its result. There is no class named `JobSubmissionAdapter`, but the
@@ -20,7 +20,7 @@ supports the decision before proposing a change.
 
 ### existing-runner-route
 
-For situation 1, the executor first checks whether each optimizer skill can invoke its current-harness launcher, then
+For situation 1, the executor first checks whether each trial-review skill can invoke its current-harness launcher, then
 runs the smallest installed native probe for production prompt loading and a host tool. It does not conclude or
 recommend that a dedicated runner skill is needed from the missing skill file alone, or claim the two-harness gate
 passed from the directory inventory or launcher presence.

@@ -50,8 +50,8 @@ The shared narrative is tested through one parameterized scenario rather than a 
   successful build. The suite declares those measurements for subsequent native execution; no certified compliance
   rate is claimed here.
 
-Invocation-local evidence belongs to the implementing agent under
-`.cat/work/temp/prompt-optimizer-2505463487070316191/`. Its terminal record must contain the independent executor's
+Invocation-local evidence belongs to the implementing agent under the `.cat/work/temp/` directory that
+`workflow-temp create` returned. Its terminal record must contain the independent executor's
 receipt, assertion assessment, and build result. Delete the directory through `workflow-temp delete` after those
 results are recorded here; no later consumer requires its uncommitted files.
 

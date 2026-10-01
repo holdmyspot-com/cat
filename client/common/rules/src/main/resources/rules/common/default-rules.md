@@ -159,17 +159,14 @@ user-authorized scope, diagnosing why an agent ignored or misapplied an instruct
 load `../include/common/failure-prevention.md` to classify its cause, isolate the earliest controllable decision or
 delivery boundary, and verify the prevention.
 
-When the Failure Prevention analysis confirms a reproducible failure involving prompt, rule, or workflow guidance,
-the affected guidance is user-owned, and prompt optimization is available for this session, lazy load
-`../include/common/failure-regression-promotion.md` and start its optimization procedure before resuming dependent
-work. The first qualifying failure is the trigger: establish availability from the session's enabled skills or
-capabilities, then invoke `cat:prompt-optimizer`; do not wait for or infer prior optimizer use. User-owned guidance is
-under the current project's `.cat/rules/` tree or the current user's
-`${HOME}/.cat/rules/` tree, or is CAT plugin source while the user is that plugin's developer. Do not infer prompt-
-optimization availability from a source checkout; do not load this rule for installed/cache, third-party, or
-unknown-owner guidance. A subagent does not load this rule, invoke `cat:prompt-optimizer` or edit that guidance:
-it reports the confirmed failure, the affected guidance and the attribution evidence to the agent that delegated its
-work, then continues only work that does not depend on the correction.
+When the Failure Prevention analysis confirms a reproducible failure involving prompt, rule, or workflow guidance and
+the affected guidance is user-owned, lazy load `../include/common/failure-regression-promotion.md` and apply its
+correction and regression procedure before resuming dependent work. The first qualifying failure is the trigger.
+User-owned guidance is under the current project's `.cat/rules/` tree or the current user's `${HOME}/.cat/rules/` tree,
+or is CAT plugin source while the user is that plugin's developer. Do not load this rule for installed/cache,
+third-party, or unknown-owner guidance. A subagent does not load this rule or edit that guidance: it reports the
+confirmed failure, the affected guidance and the attribution evidence to the agent that delegated its work, then
+continues only work that does not depend on the correction.
 
 Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
 `../include/common/failure-prevention.md` to use its transactional snapshot, scope-validation, conditional-rollback,

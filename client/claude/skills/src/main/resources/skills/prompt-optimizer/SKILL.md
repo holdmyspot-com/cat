@@ -1,8 +1,9 @@
 ---
-description: Use when the user asks to optimize a prompt-driven workflow: observe it, diagnose mistakes without interruption, apply backward design, update the prompt, and retest.
+description: Use when the user asks to improve, optimize or certify the compliance of a prompt file or prompt system through a measured campaign.
 allowed-tools: [Bash]
 ---
 
-Use `${CLAUDE_PLUGIN_ROOT}/client/bin/workflow-temp` to create invocation-local optimizer evidence storage.
+The launcher is `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer`. Run each `run` command with a Bash timeout of 600000
+milliseconds, which outlasts the time slice of one run.
 
 <!-- cat:include ../shared-lazy-body.md -->
