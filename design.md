@@ -621,6 +621,7 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
 
 - `campaign.json`: a compact snapshot holding identities, the frozen contract and procedure, `(S, F)` per candidate and
   category, allocation positions, and pending decisions;
+- the current proposal, until confirmation freezes it into `campaign.json`;
 - one record file per logical trial;
 - candidate overlays, and staged sources, which are caches: CAT deletes a staged source once its snapshot is no longer
   scheduled and rebuilds it from the overlay when needed;
@@ -641,6 +642,8 @@ creating anything and tells the user to commit, stash or remove the changes. CAT
 bytes, modes and symbolic links. It copies participating files that are ignored by Git, or that lie outside the
 project, into campaign storage. It then adds a detached optimization worktree at the base `HEAD`, which always holds
 the current working candidate for the user to inspect.
+Confirmation records the confirmed contract's trial fixtures, and the derived prompt sources that the fork does not yet
+hold, the same way before anything runs, so trials never read a live fixture or source.
 
 Base-worktree edits after the fork do not invalidate the campaign; delivery handles them ([§4.7](#47-delivery)).
 
@@ -663,6 +666,10 @@ When diagnosis finds that a requirement needs an edit outside this authority, CA
 requirement, the link path, the resolved target, the limit and the viable choices: authorize the target, use another
 authorized source, or stop or revise the campaign. Reauthorizing an already authorized external target cannot permit a
 structural edit.
+
+The warning is an `awaiting-user` decision. The author reports each edit it needed but did not make, and CAT checks each
+one against this authority. Choosing to authorize a target records it in the campaign, and later author attempts may
+edit its content.
 
 ### 4.4 Trial staging
 
