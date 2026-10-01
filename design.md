@@ -593,8 +593,11 @@ The driver therefore runs as a foreground command in time-bounded **slices**:
 Each status shows the phase, the current candidate, the per-category four outputs, concurrency and throttle state, and
 the **minimum remaining trials**: the number still required if every remaining trial passes.
 
-- **Development:** the sum over categories of `max(0, max(100, 100·f_k) − n_k)`. Add the incumbent's remaining
-  baseline, and the next attempt's all-pass minimum for every category.
+- **Development:** the sum over categories of the fewest further all-pass trials after which the category meets the
+  readiness gate's count conditions ([§2.7](#27-development-readiness-and-edit-or-continue)): at least 100 trials, at
+  least 99% passes, and the latest two completed batches at 98% or more. This is at least
+  `max(0, max(100, 100·f_k) − n_k)`, and more when a recent batch holds 2 or more failures. Add the incumbent's
+  remaining baseline, and the next attempt's all-pass minimum for every category.
 - **Formal:** for each unresolved category, the smallest `s` such that `E↑(S + s, F)` exceeds `1/α_i`.
 
 The status also shows each nested-session kind's observed token usage per session (median and 90th percentile) when
