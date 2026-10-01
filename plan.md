@@ -92,7 +92,7 @@ A mismatch is fixed in the agent definition before any delegation.
 
 | Work item | Executor | Reason |
 |---|---|---|
-| WI-0 | Orchestrator, with the user for P1–P3. `optimize-medium` writes the probe scripts. | P1–P3 need a person to press ESC in an interactive host, and choosing a fallback changes the design. |
+| WI-0 | Orchestrator. `optimize-medium` writes the probe scripts. For P1–P3 the orchestrator runs each interactive host in a terminal multiplexer and sends it the ESC key; the user presses ESC only if that fails. | P1–P3 need ESC in an interactive host, and choosing a fallback changes the design. |
 | WI-1 | `optimize-xhigh` | Exact rational decisions, a proven-safe floating-point margin and calibration fixtures. |
 | WI-2 | `optimize-medium` | A schema and seeded draw streams with complete specifications. |
 | WI-3 | `optimize-xhigh` | Interacting policies, the decision table and the scheduler. |
@@ -107,7 +107,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-12 | `optimize-low` | Rendering from builder states. |
 | WI-13 | `optimize-low` | Command parsing and wiring. |
 | WI-14 | `optimize-high` | Rule and skill edits under CAT's prompt rules and contract retirement. |
-| WI-15 | Orchestrator, with the user pressing ESC for E2 and the native ESC tests. `optimize-low` may run the other native and end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
+| WI-15 | Orchestrator, sending ESC for E2 and the native ESC tests as in P1–P3, with the user as the fallback. `optimize-low` may run the other native and end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
 
@@ -161,13 +161,14 @@ overkill.
 | Work item | State |
 |---|---|
 | Setup (§1.1) | Done (commit `bd37b5b3d`). Verified 2026-10-01 with one trivial task per agent. Claude offers `cat:claude:optimize-<tier>`; transcripts record `claude-opus-5-5` (xhigh, high) and `claude-sonnet-5-5` (medium, low), with effort observable and matching. Codex offers `cat-optimize-<tier>` (rollout `agent_role`); rollouts record `gpt-6.1-sol` high/medium and `gpt-6-luna` high/medium. Every agent's injected context contains Default Rule Routing, Request Execution and the body's decision rule; in Claude the rules arrive through the SubagentStart context file. |
-| WI-0 | In progress: `optimize-medium` writing the probe scripts in `.cat/work/temp/optimizer-probes-13495928275341475570`. P1–P3 then need the user to press ESC. |
+| WI-0 | In progress: `optimize-medium` writing the probe scripts in `.cat/work/temp/optimizer-probes-13495928275341475570`. The orchestrator then runs P1–P3 with ESC sent through `tmux`. |
 | WI-1, WI-2, WI-5, WI-6 | In progress: delegated from snapshot `c748be064`, each in worktree `worktrees/v1.0-wi<N>` (branch `v1.0-wi<N>`), uncommitted. |
 | WI-3, WI-4, WI-7 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
 - R-S6: owner changed from WI-1 to WI-1, WI-3. Its proof `AdmissionTest` tests admission, which WI-3 builds.
+- §1.1 assignments for WI-0 and WI-15: at the user's direction (2026-10-01), the orchestrator sends ESC through a terminal multiplexer, and the user presses ESC only if that fails.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
