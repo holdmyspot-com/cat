@@ -121,45 +121,11 @@ public final class DistributionMain
 		JlinkImageBuilder imageBuilder = new JlinkImageBuilder();
 		Path claudeImage = imageBuilder.build(append(append(sharedRuntimeModules, packagedClaudeCli), jsonRuntimeModules),
 			Set.of("io.github.cowwoc.cat.claude.cli", "org.slf4j.nop"),
-			List.of(
-				new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.ClaudePluginInfo"),
-				new JlinkImageBuilder.Launcher("claude-runner", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
-				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
-				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.InvocationDirectory"),
-				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.history.SessionHistory"),
-				new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.ClaudeGetHistory"),
-				new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.ClaudeSessionStartHook"),
-				new JlinkImageBuilder.Launcher("session-end", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.ClaudeSessionEndHook"),
-				new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.claude.cli",
-					"io.github.cowwoc.cat.claude.ClaudeSubagentStartHook")), jlinkDirectory.resolve("claude"));
+			claudeLaunchers(), jlinkDirectory.resolve("claude"));
 		List<Path> codexModules = append(append(sharedRuntimeModules, packagedCodexCli), jsonRuntimeModules);
 		Path codexImage = imageBuilder.build(codexModules,
 			Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"),
-			List.of(
-				new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.codex.cli",
-					"io.github.cowwoc.cat.codex.CodexPluginInfo"),
-				new JlinkImageBuilder.Launcher("codex-runner", "io.github.cowwoc.cat.codex.cli",
-					"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
-				new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
-				new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.InvocationDirectory"),
-				new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
-					"io.github.cowwoc.cat.common.history.SessionHistory"),
-				new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.codex.cli",
-					"io.github.cowwoc.cat.codex.CodexGetHistory"),
-				new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.codex.cli",
-					"io.github.cowwoc.cat.codex.CodexSessionStartHook"),
-				new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
-					"io.github.cowwoc.cat.codex.CodexSubagentStartHook")), jlinkDirectory.resolve("codex"));
+			codexLaunchers(), jlinkDirectory.resolve("codex"));
 
 		// Resolve these eagerly so a missing runtime dependency fails with a specific artifact name.
 		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(claudeCli) ||
@@ -365,5 +331,63 @@ public final class DistributionMain
 			}
 		}
 		Files.createDirectories(directory);
+	}
+
+	/**
+	 * Returns the launchers of the Claude image.
+	 *
+	 * @return the launchers
+	 */
+	static List<JlinkImageBuilder.Launcher> claudeLaunchers()
+	{
+		return List.of(
+			new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudePluginInfo"),
+			new JlinkImageBuilder.Launcher("claude-runner", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
+			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
+			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.InvocationDirectory"),
+			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.history.SessionHistory"),
+			new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudeGetHistory"),
+			new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudeSessionStartHook"),
+			new JlinkImageBuilder.Launcher("session-end", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudeSessionEndHook"),
+			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudeSubagentStartHook"),
+			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.optimizer.ClaudePromptOptimizer"));
+	}
+
+	/**
+	 * Returns the launchers of the Codex image.
+	 *
+	 * @return the launchers
+	 */
+	static List<JlinkImageBuilder.Launcher> codexLaunchers()
+	{
+		return List.of(
+			new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexPluginInfo"),
+			new JlinkImageBuilder.Launcher("codex-runner", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
+			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
+			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.InvocationDirectory"),
+			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.history.SessionHistory"),
+			new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexGetHistory"),
+			new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexSessionStartHook"),
+			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexSubagentStartHook"),
+			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer"));
 	}
 }

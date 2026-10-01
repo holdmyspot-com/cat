@@ -1,0 +1,98 @@
+package io.github.cowwoc.cat.common.optimizer.cli;
+
+import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+
+import java.io.IOException;
+import java.nio.file.Path;
+
+/**
+ * What the commands call. Each method implements one {@link Command} on already validated input.
+ * <p>
+ * A method that throws {@link CommandRefusedException} has changed nothing.
+ */
+public interface Core
+{
+	/**
+	 * Starts the campaign for a target, or resumes the target's resumable campaign.
+	 *
+	 * @param target the prompt file or prompt system
+	 * @return the result, which presents the proposal that awaits confirmation
+	 * @throws CommandRefusedException if the other harness started the target's campaign, the target is not in the
+	 *   project, or the base worktree has uncommitted changes
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	CommandResult start(Path target) throws CommandRefusedException, IOException, InterruptedException;
+
+	/**
+	 * Advances a campaign for one slice.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign does not exist or the other harness started it
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits
+	 */
+	CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException;
+
+	/**
+	 * Reports a campaign without changing it. Either harness may report any campaign.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign does not exist
+	 * @throws IOException if the store cannot be read
+	 */
+	CommandResult status(String campaign) throws CommandRefusedException, IOException;
+
+	/**
+	 * Confirms the campaign's current proposal.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, it has no
+	 *   proposal to confirm, or the proposal cannot be confirmed
+	 * @throws IOException if the store or the workspace fails
+	 */
+	CommandResult confirm(String campaign) throws CommandRefusedException, IOException;
+
+	/**
+	 * Regenerates the proposal from the user's feedback.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param feedback the user's feedback
+	 * @return the result, which presents the regenerated proposal
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or its state does
+	 *   not permit a revision
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	CommandResult revise(String campaign, String feedback)
+		throws CommandRefusedException, IOException, InterruptedException;
+
+	/**
+	 * Passes the user's answer to a pending decision back to the campaign.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param choice the choice
+	 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
+	 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or the choice is
+	 *   not one that the campaign offers now
+	 * @throws IOException if the store or the workspace fails
+	 */
+	CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+		throws CommandRefusedException, IOException;
+
+	/**
+	 * Cancels a campaign, keeping its history and spent allowance.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or it is not
+	 *   active
+	 * @throws IOException if the store or the workspace fails
+	 */
+	CommandResult cancel(String campaign) throws CommandRefusedException, IOException;
+}

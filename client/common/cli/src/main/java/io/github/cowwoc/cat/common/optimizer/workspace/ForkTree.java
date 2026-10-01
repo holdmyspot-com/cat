@@ -112,6 +112,46 @@ public final class ForkTree
 	}
 
 	/**
+	 * Copies further paths into an existing tree. A path that the tree already holds, or that lies under a held
+	 * directory, is left alone.
+	 *
+	 * @param base the project directory that the tree was recorded from
+	 * @param paths the paths to record, named as in {@link #record(Path, Path, Set)}
+	 * @return the tree, rescanned
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if a path cannot be recorded
+	 * @throws WorkspaceException if a path does not exist
+	 * @throws IOException if the files cannot be copied
+	 */
+	ForkTree extend(Path base, Set<Path> paths) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(paths, "paths").isNotNull();
+		Path normalizedBase = base.toAbsolutePath().normalize();
+		for (Path path : paths)
+			requireRecordable(normalizedBase, path);
+		Set<Path> omitted = Set.of(normalizedBase.resolve(GIT_METADATA), normalizedBase.resolve(WORK_DIRECTORY),
+			directory.getParent());
+		for (Path path : paths)
+		{
+			if (inventory.entries().keySet().stream().anyMatch(key -> key.startsWith(path)))
+				continue;
+			Path source;
+			if (path.isAbsolute())
+				source = path;
+			else
+				source = normalizedBase.resolve(path);
+			if (Files.notExists(source, NOFOLLOW_LINKS))
+			{
+				throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
+					"recorded in the fork.");
+			}
+			FileTree.copy(source, FileTree.locate(project, external, path), omitted);
+		}
+		return new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
+	}
+
+	/**
 	 * Requires that a path can be recorded.
 	 *
 	 * @param base the project directory

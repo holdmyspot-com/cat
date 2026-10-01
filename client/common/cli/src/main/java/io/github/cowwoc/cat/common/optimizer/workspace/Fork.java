@@ -7,6 +7,7 @@ import static java.nio.file.StandardOpenOption.CREATE;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 
 import java.io.IOException;
@@ -26,7 +27,7 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
-public final class Fork
+public final class Fork implements ForkView
 {
 	private static final String EXCLUDE_ENTRY = "/.cat/work/";
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index", ".cat/work/probe"};
@@ -247,6 +248,36 @@ public final class Fork
 	}
 
 	/**
+	 * Records further participants in the fork and writes them into the optimization worktree. A participant that the
+	 * fork already holds is left alone. This fork stays unchanged: callers use the returned fork, whose inventory is
+	 * extended, so any overlay on the old inventory must be saved again for the new one.
+	 *
+	 * @param base the base worktree that the fork was created from
+	 * @param participants the paths to add, named as in {@link #create(Path, Path, Set)}
+	 * @return the extended fork
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if a path cannot be recorded
+	 * @throws WorkspaceException if a path does not exist
+	 * @throws IOException if the files cannot be copied or written
+	 */
+	@Override
+	public Fork addParticipants(Path base, Set<Path> participants) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(participants, "participants").isNotNull();
+		ForkTree extended = tree.extend(base, participants);
+		Workspace extendedWorkspace = new Workspace(extended, tree.directory().getParent(), worktree);
+		extendedWorkspace.materialize(Overlay.of(extended.inventory()));
+		return new Fork(extended, extendedWorkspace, worktree, excludeAdded);
+	}
+
+	@Override
+	public FileInventory inventory()
+	{
+		return tree.inventory();
+	}
+
+	/**
 	 * Returns the recorded files.
 	 *
 	 * @return the fork's tree
@@ -261,6 +292,7 @@ public final class Fork
 	 *
 	 * @return the workspace
 	 */
+	@Override
 	public Workspace workspace()
 	{
 		return workspace;

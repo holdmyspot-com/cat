@@ -239,6 +239,50 @@ public final class ForkTest
 	}
 
 	/**
+	 * Verifies that participants added after creation are recorded and written into the worktree, that held paths
+	 * are left alone, and that a missing path is refused by name.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void addsParticipantsAfterCreation() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
+			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Forks forks = new GitForks();
+			ForkView fork = forks.create(base, campaign, Set.of());
+
+			Fork extended = (Fork) fork.addParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
+				external));
+
+			FileInventory inventory = extended.tree().inventory();
+			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
+			requireThat(inventory.entries().containsKey(external), "external").isTrue();
+			requireThat(Files.readString(extended.worktree().resolve("ignored.md"), UTF_8), "worktreeFile").
+				isEqualTo("ignored");
+			requireThat(extended.workspace().scanWorktree().entries(), "worktreeEntries").
+				isEqualTo(inventory.entries());
+			requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(inventory);
+			requireThat(forks.exists(campaign), "exists").isTrue();
+			requireThat(forks.exists(campaign.resolveSibling("c2")), "otherExists").isFalse();
+			try
+			{
+				extended.addParticipants(base, Set.of(Path.of("missing.md")));
+				throw new AssertionError("A missing participant must be refused.");
+			}
+			catch (WorkspaceException e)
+			{
+				requireThat(e.getMessage(), "message").contains("missing.md");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the fork records the tracked files, modes and links, and copies the ignored and external
 	 * participants into campaign storage.
 	 *
