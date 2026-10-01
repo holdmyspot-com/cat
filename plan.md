@@ -36,11 +36,12 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Test tiers:**
   - **Unit:** runs in the default build under TestNG parallel methods. It includes file-system and real-Git tests that
     use test-owned temporary directories.
-  - **Native:** TestNG group `native`, excluded by default and enabled with the Maven profile `native` and
-    `-Dcat.native.harness=claude|codex`. It starts real nested sessions through the runners. Fixtures consumed by a
-    runner live under the CAT work temp root, not the system temp directory.
+  - Java tests are unit tests. None starts a runner, a harness process or a model (user ruling, 2026-10-01: only
+    prompt tests use a model). Session adapters are tested against recorded native events and fakes.
   - **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
-    systems. Each run records a receipt: commands, versions, outcome, and paths to retained evidence.
+    systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
+    in each harness. Fixtures consumed by a runner live under the CAT work temp root, not the system temp directory.
+    Each run records a receipt: commands, versions, outcome, and paths to retained evidence.
 - **Build check:** `./mvnw verify` from `client/` is the unrestricted build. A work item is not done until it passes,
   along with the work item's focused tests.
 
@@ -107,7 +108,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-12 | `optimize-low` | Rendering from builder states. |
 | WI-13 | `optimize-low` | Command parsing and wiring. |
 | WI-14 | `optimize-high` | Rule and skill edits under CAT's prompt rules and contract retirement. |
-| WI-15 | Orchestrator, sending ESC for E2 and the native ESC tests as in P1–P3, with the user as the fallback. `optimize-low` may run the other native and end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
+| WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
 
@@ -177,7 +178,7 @@ overkill.
 | WI-9 | Done (commit `0abcd21f0`); full build passed on the integrated tree. `DriverTest` has 27 tests, the 14 §7 traces among them, and runs in under 1 s; `ReconciliationTest` covers each write-ahead crash point; `SliceTest` covers cutoff, grace and the one threaded `SliceRunner` test. Author edits are captured with `WorkspacePort.scanAuthorEffects(copy, effects)` (design §9), and the AUTHOR session's source is the prepared authoring copy. `PROMPT_SOURCES` comes from `Completed.promptSources()`. `ProcessHandleTerminator` terminates a leftover run only when the recorded start instant matches; descendants already reparented are not found. Main code preceded most tests, so mutation checks were run: every mutation failed a test, and one that first survived (a judge's rate-limit rejection counted as a judge failure) gained `judgeRateLimit`. Accepted: the status has no delivery-output fields (WI-13 renders `SliceResult.delivery()`), and a crash between materializing a promotion and replacing the snapshot is reconciled. Seams for WI-10: `JudgeProtocol`, `AuthorProtocol`. `optimizer.execution` is not exported; WI-13 decides. |
 | Candidate overlay store (WI-4/WI-9 follow-up) | Done (commit `c93657464`); 15 overlay tests and the full build passed on the integrated tree. `CandidateOverlays` moved to `optimizer.port`, so the store does not depend on `execution`. `FileCandidateOverlays(campaignDirectory)` writes `<campaign>/overlays/<snapshot>.json` atomically (`format_version: 1`, the fork's identity, entries with Base64 content and mode); loading rebuilds the overlay from the persisted fork inventory and rejects a corrupt file, another fork, or an identity that differs from the requested snapshot. `FileCampaignStore` shares `AtomicFiles`. Verified: `Driver.submit` saves an overlay before any snapshot references it. For WI-13: save the incumbent `Overlay.of(fork inventory)` before the first `campaign.json` write. |
 | WI-10 | In progress: delegated to `optimize-xhigh` in `worktrees/v1.0-wi10` (branch `v1.0-wi10`, snapshot `f5142e800`), uncommitted. First pass: unit, focused and full builds passed; deriver and judge native sessions passed in both harnesses (Claude on `haiku` needed a two-turn deriver: inspect, then a tool-free turn that sends only the proposal). Sent back: an UNKNOWN login shows the full authentication warning (P6 fallback); qualified exports of `execution` and `campaign` to the harness modules so the native author session can run; `Verdict` carries the judge rationale, persisted with the outcome and passed with any diagnoses to `AuthorBrief` (§2.7, §3.1). Accepted: the proposal presentation choices and the deriver on the adapter's model. Open with the user: `.cat/rules/include/java-testing.md` forbids Java tests that start a native harness, which conflicts with the plan's `native` group. |
-| Claude follow-up attribution (WI-8 follow-up) | Not started; runs after WI-10 is integrated. Native probes (Claude 2.1.286, haiku): a background child's `task_notification` that arrives before the root's last model call starts is consumed by that call, and no follow-up starts within 70 seconds; one that arrives after the root `result` is followed at once by a follow-up `system/init`. Fix in `ClaudeHarnessProcess.TurnBoundary`: a backgrounded task's notification is unseen until the next root `message_start`; at the root `result`, the turn continues to the follow-up while a notification is unseen or a task runs, and otherwise ends without the 30-second wait. A notification that arrives during the root's final model call is not yet observed natively; its unit test is shaped like the probes. |
+| Claude follow-up attribution (WI-8 follow-up) | Not started; runs after WI-10 is integrated. Probes (Claude 2.1.286, haiku, six scenarios, `design.md` H24) reproduced the race: a child that finished during the root's last model call left an empty task list before the root `result`, and a follow-up `init`/`result` came within 0.1 seconds. Fix in `ClaudeHarnessProcess.TurnBoundary`, per `design.md` §3.2: at each root `result`, end the turn only when the latest `background_tasks_changed` lists no task and every `task_notification` for a task without `owned_by_subagent: true` arrived before the latest root `message_start`; otherwise wait for the next root `result` and decide again. A task-list change alone never ends a turn; the 30-second timer remains only as a safety limit once the list is empty and no notice is unseen. A follow-up `result` carries `origin.kind` `task-notification`; one that arrives with no turn open is reported, not attributed to the next turn. Unit tests replay the probe timelines. |
 | WI-13 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
@@ -191,6 +192,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.3 and D8: the risk ceiling first permits 2, 4 and 8 trials at `n` = 11, 23 and 47 (D8 said 48); R-E4's proof now tests each threshold on both sides. D3: a committed 97% candidate certifies about 17%, matching §2.7 (it said 15%). WI-1 found both.
 - §4: added the gate results. WI-8: added the runner fixes for H17 and H19 and their allowlist. WI-9: reconciliation terminates recorded processes. WI-10: loading split and the output extraction rule.
 - `design.md` §5: a runner or CAT version change is a material harness change (H17). WI-3 asked whether these conditions are material; recorded as D21.
+- `design.md` §10 (T3, T6) and §14 (G6, G7, G9), plan §1 test tiers, §3 proofs, WI-5, WI-7, WI-8, WI-10, WI-14, WI-15, §8 and §9 gates 2–3: Java tests are unit tests and never start a model; only prompt tests, run end to end, use one (user ruling, 2026-10-01). Native (N) proofs became end-to-end (E) proofs; WI-14 retires the native tier.
+- `design.md` §3.2 and §11 H24: a Claude turn ends at a root reply only when the task list is empty and no root completion notice is unseen by a later root model call. Found by the follow-up attribution probes.
 - `design.md` §3.9: the development minimum counts the readiness gate's batch condition. The old formula alone could undercount, contradicting "exact". WI-12 found it.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
@@ -199,7 +202,8 @@ evidence depended on changes.
 ## 3. Requirement inventory
 
 Each requirement points to the `design.md` section that defines it, its owning work item and its proof. A requirement
-is closed only when every listed proof passes at its tier. Tier abbreviations: U = unit, N = native, E = end-to-end.
+is closed only when every listed proof passes at its tier. Tier abbreviations: U = unit, E = end-to-end. Proofs that
+named the retired native tier (N) now name the end-to-end scenario that covers them.
 
 ### 3.1 Statistics
 
@@ -249,17 +253,17 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-E3 | Allocation order: targeted work, development coverage floor, Wilson lower bound, formal rule (the category furthest from certifying), baseline arm, with the stated tie-breaks. | §3.3 | WI-3 | U: `SchedulerTest` |
 | R-E4 | Concurrency: risk ceiling, slow start, category limit from the passes still required to certify, campaign ceiling (default 8, range 1–16), baseline arm on the remaining ceiling. | §3.3 | WI-3 | U: `ConcurrencyPolicyTest` (no failures: 1 at n=10 and 2 at n=11, 3 at n=22 and 4 at n=23, 7 at n=46 and 8 at n=47; 10 at 1 of 100; reset after a failure) |
 | R-E5 | Adoption in assignment order; post-decision outcomes never change a decision. | §3.4 | WI-3, WI-9 | U: `AdoptionTest`; U: `DriverTest` (completions out of order) |
-| R-E6 | Throttling at 80% and 95% utilization, rejection backoff of 1, 2, 4 … up to 30 minutes, per-trial records, no evasion features. | §3.5 | WI-3, WI-8 | U: `ThrottleTest`; N: rate-limit event parsing per harness |
-| R-E7 | Authentication warning for a subscription login, including the minimum session count. | §3.5 | WI-8, WI-10 | U: `ProposalTest`; N: classification per harness |
-| R-E8 | Shared harness capacity is an injected per-harness instance, acquired by both runner CLIs and per optimizer session, with `tryAcquire` and an injected pause. | §3.6 | WI-5 | U: `HarnessCapacityTest`; N: two processes bounded |
+| R-E6 | Throttling at 80% and 95% utilization, rejection backoff of 1, 2, 4 … up to 30 minutes, per-trial records, no evasion features. | §3.5 | WI-3, WI-8 | U: `ThrottleTest`; E: rate-limit state in the per-trial records of E1 per harness |
+| R-E7 | Authentication warning for a subscription login, including the minimum session count. | §3.5 | WI-8, WI-10 | U: `ProposalTest`; E: E1 login classification per harness |
+| R-E8 | Shared harness capacity is an injected per-harness instance, acquired by both runner CLIs and per optimizer session, with `tryAcquire` and an injected pause. | §3.6 | WI-5 | U: `HarnessCapacityTest`; E: E8 |
 | R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver. | §3.7 | WI-9 | U: `SliceTest` |
-| R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; N: ESC per harness |
+| R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree. | §3.8 | WI-9 | U: `ReconciliationTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases; token statistics; no totals or time estimates. | §3.9 | WI-12 | U: `RemainingWorkTest` |
-| R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; N: one session per role per harness |
-| R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | N: child scenarios per harness (premise P7) |
-| R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; N: Claude interrupt |
-| R-E16 | The observed model comes from native events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; N |
+| R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, author and deriver sessions per harness |
+| R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
+| R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
+| R-E16 | The observed model comes from native events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
 
 ### 3.5 Workspace
 
@@ -269,7 +273,7 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-W2 | Clean-base refusal before anything is created. The fork records paths, bytes, modes and links, copies ignored and external participants, and creates a detached optimization worktree. | §4.2 | WI-7 | U: `ForkTest` (real Git, once per operation) |
 | R-W3 | Candidate identity is the hash of the overlay and the fork. | §4.3 | WI-6 | U: `OverlayTest` |
 | R-W4 | Edit authority rules, including rejection of ambiguous dual-path edits, plus diagnosis warnings. | §4.3 | WI-6 | U: `AuthorityTest` |
-| R-W5 | Staged source: tracked files, recorded participants, fixtures and overlay; links dereferenced; cycles and missing targets block confirmation; `.cat/work/` excluded; caches deleted when unused. | §4.4 | WI-7 | U: `StagedSourceTest`; N: runner accepts the staged source |
+| R-W5 | Staged source: tracked files, recorded participants, fixtures and overlay; links dereferenced; cycles and missing targets block confirmation; `.cat/work/` excluded; caches deleted when unused. | §4.4 | WI-7 | U: `StagedSourceTest`; the runner's project copy accepts the staged source in both harnesses |
 | R-W6 | Symbolic-link report contents, and the limitation recorded on results. | §4.5 | WI-7, WI-12 | U: `LinkReportTest`, `StatusReportTest` |
 | R-W7 | Inventory validation of author attempts; unowned-change detection at every `run`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
 | R-W8 | Delivery: verify the optimization worktree and materialize a selected candidate that is not the working candidate, preflight, journal, preimage checks, resume applying each change at most once, final verification, historical result after a base-only prompt edit. CAT never commits. | §1, §4.7 | WI-6, WI-11 | U: `DeliveryPlanTest`, `DeliveryTest` (fault between writes, concurrent edit, no commit created) |
@@ -283,13 +287,13 @@ is closed only when every listed proof passes at its tier. Tier abbreviations: U
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality; missing data gives `INDETERMINATE` and an unavailable comparison; each differing condition is named. | §5 | WI-3 | U: `ComparabilityTest` |
 | R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
-| R-C1 | The proposal lists every §6.1 item, without aggregate summaries. | §6.1 | WI-2, WI-10 | U: `ProposalTest`; N: deriver per harness |
+| R-C1 | The proposal lists every §6.1 item, without aggregate summaries. | §6.1 | WI-2, WI-10 | U: `ProposalTest`; E: E1 deriver per harness |
 | R-C2 | Feedback regenerates a complete proposal; nothing runs before confirmation. | §6.1 | WI-9, WI-10 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Categories and a balanced benchmark, frozen at confirmation; allocation never changes weights. | §6.2 | WI-2 | U: `DistributionTest` |
 | R-C4 | Generator validation; separate durable seeded streams; targeted work marked before execution; formal draws after the freeze; repeated instances allowed. | §6.3 | WI-2 | U: `GeneratorTest`, `DrawStreamTest` |
-| R-C5 | A frozen judge profile; semantic judgment; assertions only as inputs. | §6.4 | WI-2, WI-10 | U: `JudgeVerdictTest`; N: judge per harness |
+| R-C5 | A frozen judge profile; semantic judgment; assertions only as inputs. | §6.4 | WI-2, WI-10 | U: `JudgeVerdictTest`; E: E1 judge per harness |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
-| R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | N: per harness |
+| R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
 | R-L2 | Revision creates a new lineage; the incumbent is measured again as a new baseline; allowance continues. | §7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-L3 | Revision during formal testing waits for a safe checkpoint; a stopped attempt never resumes. | §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` |
@@ -441,8 +445,8 @@ The riskiest pure code, built first.
   Follow `contract-retirement.md` for the removed static API.
 - **Closes:** R-E8.
 - **Tests:** `HarnessCapacityTest` uses a test-owned directory and a manual pause. It covers acquisition up to the
-  maximum, `tryAcquire` failing at the maximum, release, and two instances on the same directory sharing slots. Native:
-  two runner processes with a maximum of 1 serialize.
+  maximum, `tryAcquire` failing at the maximum, release, and two instances on the same directory sharing slots. E8
+  shows two CAT processes bounded by the shared capacity.
 - **Exit:** the focused and runner tests pass; `grep` finds no `HarnessConcurrencyLimit` references.
 
 ### WI-6 — Inventory, authority and delivery planning (`optimizer.inventory`)
@@ -471,8 +475,8 @@ The riskiest pure code, built first.
 - **Closes:** R-W1 (exclude), R-W2, R-W5, R-W6.
 - **Tests:** `ForkTest` runs each Git operation once in a test-owned repository: a dirty-base refusal for each change
   kind, the exclude added only when needed, and the worktree at `HEAD`. `StagedSourceTest` covers dereferencing,
-  exclusion and fixtures. `LinkReportTest` covers the report. Native: the runner accepts a staged source built from a
-  project with links.
+  exclusion and fixtures. `LinkReportTest` covers the report. A unit test shows that the runner's project copy
+  accepts a staged source built from a project with links, in both harnesses.
 - **Exit:** the focused tests pass.
 
 ### WI-8 — Session adapters and host signals (harness modules)
@@ -485,7 +489,7 @@ The riskiest pure code, built first.
   - Credential classification for each harness.
   - `RolloutInterruptSignal` (Codex) and `TranscriptInterruptSignal` (Claude) implement `HostInterruptSignal` from an
     injected path and clock.
-  - Shared `SessionPortContract` tests run against the fake always, and against each real adapter in the native tier.
+  - Shared `SessionPortContract` tests run against the fake and against each adapter fed recorded native events.
   - Runner fixes the adapters depend on (`design.md` §11 H17, H19):
     - the Claude runner ends a turn only when the root reply has arrived and `background_tasks_changed` lists no task,
       relaying `task_notification` records and the follow-up reply in the same turn;
@@ -497,9 +501,9 @@ The riskiest pure code, built first.
 - **Allowlist note:** the runner fixes above write the runner sources under `client/claude/cli`, `client/codex/cli` and
   `client/common/cli`.
 - **Tests:** event-parsing tests feed recorded native lines captured during WI-0 into the parser as in-memory input.
-  Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. Native tests
-  run the contract once per operation and harness.
-- **Exit:** unit tests pass, and native contract tests pass in both harnesses.
+  Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. WI-15's
+  end-to-end runs exercise each operation in both harnesses.
+- **Exit:** unit tests pass.
 
 ### WI-9 — Driver (`optimizer.execution`)
 
@@ -532,9 +536,8 @@ The riskiest pure code, built first.
   deriver output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the authentication and link warnings in the proposal; and the judge profile freeze.
 - **Closes:** R-C1, R-C2 (rendering), R-C5, R-C6 (detection in proposals), R-C7, R-E7 (warning), R-E13 (schemas).
 - **Tests:** `ProposalTest` uses fixture deriver outputs, valid and invalid, to check every required item and the
-  rejection of aggregate-only summaries. Native: one deriver, judge and author session per harness on a small fixture
-  prompt system, recording the schema-valid rate from P11.
-- **Exit:** unit tests and native sessions pass.
+  rejection of aggregate-only summaries. E1 runs the deriver, judge and author in both harnesses.
+- **Exit:** unit tests pass.
 
 ### WI-11 — Delivery executor (`optimizer.delivery`)
 
@@ -587,14 +590,18 @@ The riskiest pure code, built first.
   Update the test resources that cite the old skill (`check-assumptions/existing-route-before-new-wrapper/scenario.md`,
   `limitations-and-workarounds/verification.md`) and `InvocationDirectoryTest`'s directory label if it no longer
   describes a real consumer. Follow `contract-retirement.md`.
+- **Native tier retirement:** delete the Java tests that start a runner, a harness process or a model
+  (`ClaudeRunnerCliNativeTest`, `ClaudeSessionsNativeTest`, `CodexRunnerCliNativeTest`, `CodexSessionsNativeTest`);
+  make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
+  `cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
+  parsing tests. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
 - **Closes:** R-I1 (content), R-I3.
 - **Tests:** existing rule tests pass. A reference audit (`grep -rn "prompt-optimizer"`) shows only references to the
   new skill.
-- **Exit:** the audit is clean and the build passes.
+- **Exit:** the audit is clean, no Java test starts a runner, a harness process or a model, and the build passes.
 
 ### WI-15 — Acceptance
 
-- **Native tier:** in both harnesses, run all `native` tests.
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
   - **E1:** a dirty base is refused; a deficient fixture improves to `certified` and is delivered as a Git diff, with a
     disjoint base edit surviving.
@@ -693,7 +700,7 @@ These rules restate `design.md` §10 as checks for reviewers:
 - The only test that runs `CapCalibration` is `CapCalibrationTest`.
 - The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check) and
   `InventoryScannerTest` (ignored files).
-- The only tests that start nested sessions are in the `native` group.
+- No Java test starts a runner, a harness process or a model. Only the WI-15 end-to-end runs start nested sessions.
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
   directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
@@ -710,8 +717,9 @@ unrun; an unrun gate is unmet.
      its proof names. An agent checks this by extracting the IDs from this file and the tags from the sources and
      test reports.
    - No ID is untagged, and no tag names an unknown ID.
-   - Every N and E proof has a receipt from WI-15.
-3. **Native tier:** passes in both harnesses.
+   - Every E proof has a receipt from WI-15.
+3. **No model in Java tests:** an audit finds no Java test that starts a runner, a harness process or a model, and no
+   `native` test group or Maven profile.
 4. **End-to-end:** E1–E8 pass in both harnesses through the installed artifacts.
 5. **Design acceptance:** each G1–G10 row of `design.md` §14 maps to passing evidence from gates 1–4.
 6. **Testability audit:** the §8 rules hold, and the G9 check, unit tests run with `HOME` and `user.home` pointing at a

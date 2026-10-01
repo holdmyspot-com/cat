@@ -461,7 +461,11 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 - Each logical trial starts one fresh root session, and every turn of a multi-turn test runs in that session. A turn
   ends when the root session has replied and none of its background child tasks is still running. In Claude, the reply
   to a turn can arrive before background children finish; their completion notices and the follow-up reply belong to
-  the same turn (H17).
+  the same turn (H17). A child can also finish during the root's last model call: the task list is then empty when the
+  root replies, yet the CLI still starts a follow-up. So a Claude turn ends at a root reply only when the latest task
+  list is empty and every completion notice for a task the root sees arrived before the root's latest model call
+  started (H24). A change to the task list alone never ends a turn, because a finished child can restart to handle its
+  own background command.
 - A run that ends without a compliance outcome (provider error, rate-limit rejection, interruption, crash) is an
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
@@ -951,8 +955,10 @@ Every implementation change must keep these properties; reviewers reject changes
     table through injection.
   - Real Git operations are tested once per operation, in test-owned repositories. The other workspace tests use
     in-memory inventories.
-  - Real nested sessions run only in the opt-in native tier, once per port operation and harness, through contract
-    tests shared with the fakes.
+  - Java tests are unit tests: none starts a runner, a harness process or a model. Session adapters are tested
+    against recorded native events and fakes, through contract tests shared with the fakes.
+  - Only prompt tests use a model. Real nested sessions run only in the end-to-end checks, which run prompt-test
+    fixtures through the installed `prompt-optimizer` in each harness and exercise every port operation there.
 - **T4 — No shared resources:**
   - No static mutable state. Caches are instance-scoped and injected. Test classes have no mutable fields.
   - Every path is under a directory the test creates and deletes.
@@ -965,7 +971,7 @@ Every implementation change must keep these properties; reviewers reject changes
   - Driver concurrency is tested with a fake `SessionPort` whose completion order the test controls.
   - Real threads are exercised by one focused test of the blocking wrapper.
 - **T6 — Crash consistency by fault injection:** the store accepts an injected failure after any write step, and
-  recovery is tested from each step. Real process kills appear only in the native tier, once per harness.
+  recovery is tested from each step. Real process kills appear only in the end-to-end checks, once per harness.
 - **T7 — Runtime:** a unit test normally finishes in under one second. A slower test records why its claim needs the
   extra work.
 
@@ -1000,6 +1006,7 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H21 | Hook runs are observable in both harnesses: Claude emits `hook_started` and `hook_response`, and Codex emits `hook/started` and `hook/completed` with the hook's source path. Claude's `init` and `commands_changed` records list the loaded skills and commands. No native event in either harness names a loaded instruction file (`CLAUDE.md` or `AGENTS.md`), although the model saw each harness's file. | Same probe. Premise P9 fails for instruction files. |
 | H22 | A Codex host command that ran for 662 seconds completed with exit status 0. No timeout, yield or background transition was reported. | 2026-10-01 probe, `codex exec` 0.159.1+23. Premise P10 passes for the 8-minute slice. |
 | H23 | Over 20 judge sessions per harness on fixed evidence, every verdict was the expected `fail` and quoted the evidence's session ID, and the evidence was unchanged afterwards. Codex returned the bare JSON object 20 of 20 times. Claude (`haiku`) wrapped it in a Markdown code fence 20 of 20 times and never returned it bare. Claude's read-only evidence is advisory (an added directory under `acceptEdits`); the Codex runner has no read-only option, so only file permissions protected the evidence. | Same probe as H14. Premise P11 passes with the extraction rule in §3.1. |
+| H24 | A child that finished during the root's last model call emitted `task_notification` and an empty `background_tasks_changed` before the root's `result`; the CLI then started a follow-up (`init`, then `result`) within 0.1 seconds (2 of 3 runs, children of 3 and 6 seconds). Each follow-up `result` carries `origin.kind` `task-notification`; a reply to a user message has no `origin`. Every root notice not yet followed by a root `message_start` led to a follow-up, and none followed a notice that preceded one. Two children produced one follow-up per notice. A grandchild's `task_started` lacks `owned_by_subagent` and its notice reaches the root; a subagent's own command carries `owned_by_subagent: true`, and its notice restarted that subagent (a second `task_started` for the same `task_id`) instead of the root. `subagent_stats` lagged the notices and cannot decide the end of a turn. A user message sent while a child ran was answered at once, with no `origin`, and the child's follow-up came later. | 2026-10-01 probe, Claude 2.1.286 (`haiku`), runner flags with `--include-partial-messages`; six scenarios. Refines H17: the turn-end condition in §3.2. |
 
 ## 12. Premise gates
 
@@ -1052,7 +1059,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 
 The feature is complete only when every gate below passes on the final tree, together with the unrestricted project
 build and the complete requirement inventory in `plan.md`. Unit evidence can prove a calculation, but it cannot replace
-a named native or end-to-end boundary.
+a named end-to-end boundary.
 
 | Goal | Required evidence |
 |---|---|
@@ -1061,8 +1068,8 @@ a named native or end-to-end boundary.
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark and the conditions. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a missing comparability field makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. |
-| G6 | **Native in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
-| G7 | **Native in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
+| G6 | **End-to-end in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
+| G7 | **End-to-end in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
 | G8 | **Unit:** allocation picks the riskiest category first; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the category limit and the ceilings. **Throttling:** it responds to utilization and rejections. **Volume warning:** the authentication warning appears for a subscription login. |
-| G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration, each Git operation and each native session operation have exactly one owning test. |
+| G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
 | G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, and rule tests pass. |
