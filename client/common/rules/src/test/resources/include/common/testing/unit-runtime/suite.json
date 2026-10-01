@@ -9,32 +9,28 @@
     "false_reject_rate": 0.05
   },
   "scenarios": {
-    "overlapping-source-chain": {
-      "measures": ["organic_selection", "application"],
+    "fixture-cost-versus-claims": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
       "route_expectation": {
         "mode": "organic",
-        "selected": ["include/common/testing.md", "include/common/testing/unit-runtime.md"]
-      }
-    },
-    "overlapping-pagination-check": {
-      "measures": ["organic_selection", "application"],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": ["include/common/testing.md", "include/common/testing/unit-runtime.md"]
-      }
-    },
-    "unproved-limit-boundary": {
-      "measures": ["organic_selection", "application"],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": ["include/common/testing.md", "include/common/testing/unit-runtime.md"]
+        "selected": [
+          "include/common/testing.md",
+          "include/common/testing/unit-runtime.md"
+        ]
       }
     },
     "ordinary-unit-test": {
-      "measures": ["organic_selection"],
+      "measures": [
+        "organic_selection"
+      ],
       "route_expectation": {
         "mode": "organic",
-        "selected": ["include/common/testing.md"]
+        "selected": [
+          "include/common/testing.md"
+        ]
       }
     }
   }

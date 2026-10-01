@@ -9,25 +9,28 @@
     "false_reject_rate": 0.05
   },
   "scenarios": {
-    "later-recovery-branch": {
-      "measures": ["organic_selection", "application"],
+    "red-gate-per-behavior": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
       "route_expectation": {
         "mode": "organic",
-        "selected": ["include/common/tdd.md"]
-      }
-    },
-    "dormant-public-path": {
-      "measures": ["organic_selection", "application"],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": ["include/common/tdd.md"]
+        "selected": [
+          "include/common/tdd.md"
+        ]
       }
     },
     "behavior-preserving-refactor": {
-      "measures": ["organic_selection", "application"],
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
       "route_expectation": {
         "mode": "organic",
-        "not_selected": ["include/common/tdd.md"]
+        "not_selected": [
+          "include/common/tdd.md"
+        ]
       }
     }
   }

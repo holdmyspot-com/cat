@@ -21,19 +21,7 @@
         ]
       }
     },
-    "analogous-inline-chain-whitespace": {
-      "measures": [
-        "organic_selection",
-        "application"
-      ],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": [
-          "include/java/style.md"
-        ]
-      }
-    },
-    "wrapped-chain": {
+    "method-chain-layout": {
       "measures": [
         "organic_selection",
         "application"

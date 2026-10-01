@@ -1,8 +1,8 @@
-## Diagnostic Scenario
+## Scenario
 
-This diagnostic directly delivers `rules/common/intermediate-vs-terminal-goals.md` and
-`rules/include/common/delegation.md` from the evaluated plugin artifact for the following recovery. It is not a
-certification scenario and must not contribute to a selection or compliance-rate result.
+This is an application test. First read `rules/common/intermediate-vs-terminal-goals.md` and
+`rules/include/common/delegation.md` from the evaluated plugin artifact; use those candidate revisions for the following
+recovery.
 
 An active goal requires a read-only delegate. The current top-level collaboration interface exposes direct spawn.
 No spawn has been attempted and no exec cell is live. The preceding parent action was an exec wait with the invented

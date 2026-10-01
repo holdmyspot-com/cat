@@ -45,7 +45,7 @@
         ]
       }
     },
-    "indirect-input-dependency-cycle": {
+    "producer-before-consumer": {
       "measures": [
         "organic_selection",
         "application"
@@ -79,13 +79,6 @@
         "selected": [
           "common/design-quality.md"
         ]
-      }
-    },
-    "pre-slice-recovery-and-producer-frontier": {
-      "measures": ["organic_selection", "application"],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": ["common/design-quality.md"]
       }
     }
   }

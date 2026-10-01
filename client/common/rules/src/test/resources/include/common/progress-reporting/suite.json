@@ -38,6 +38,18 @@
           "include/common/progress-reporting.md"
         ]
       }
+    },
+    "measured-slice-forecast": {
+      "measures": [
+        "organic_selection",
+        "application"
+      ],
+      "route_expectation": {
+        "mode": "organic",
+        "selected": [
+          "include/common/progress-reporting.md"
+        ]
+      }
     }
   }
 }

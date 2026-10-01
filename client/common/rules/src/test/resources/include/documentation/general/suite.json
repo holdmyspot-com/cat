@@ -9,19 +9,7 @@
     "false_reject_rate": 0.05
   },
   "scenarios": {
-    "product-license-with-internal-packaging": {
-      "measures": [
-        "organic_selection",
-        "application"
-      ],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": [
-          "include/documentation/general.md"
-        ]
-      }
-    },
-    "api-with-replaceable-storage": {
+    "caller-contract-boundaries": {
       "measures": [
         "organic_selection",
         "application"
@@ -34,18 +22,6 @@
       }
     },
     "overgeneralized-documentation-prohibition": {
-      "measures": [
-        "organic_selection",
-        "application"
-      ],
-      "route_expectation": {
-        "mode": "organic",
-        "selected": [
-          "include/documentation/general.md"
-        ]
-      }
-    },
-    "security-guarantee": {
       "measures": [
         "organic_selection",
         "application"

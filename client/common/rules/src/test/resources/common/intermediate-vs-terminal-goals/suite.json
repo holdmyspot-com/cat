@@ -57,6 +57,11 @@
       "measures": [
         "application"
       ]
+    },
+    "invalid-exec-wait-recovery": {
+      "measures": [
+        "application"
+      ]
     }
   }
 }
