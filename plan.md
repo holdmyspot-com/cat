@@ -161,7 +161,9 @@ overkill.
 | Work item | State |
 |---|---|
 | Setup (§1.1) | Done (commit `bd37b5b3d`). Verified 2026-10-01 with one trivial task per agent. Claude offers `cat:claude:optimize-<tier>`; transcripts record `claude-opus-5-5` (xhigh, high) and `claude-sonnet-5-5` (medium, low), with effort observable and matching. Codex offers `cat-optimize-<tier>` (rollout `agent_role`); rollouts record `gpt-6.1-sol` high/medium and `gpt-6-luna` high/medium. Every agent's injected context contains Default Rule Routing, Request Execution and the body's decision rule; in Claude the rules arrive through the SubagentStart context file. |
-| WI-0 to WI-15 | Not started |
+| WI-0 | In progress: `optimize-medium` writing the probe scripts in `.cat/work/temp/optimizer-probes-13495928275341475570`. P1–P3 then need the user to press ESC. |
+| WI-1, WI-2, WI-5, WI-6 | In progress: delegated from snapshot `c748be064`, each in worktree `worktrees/v1.0-wi<N>` (branch `v1.0-wi<N>`), uncommitted. |
+| WI-3, WI-4, WI-7 to WI-15 | Not started |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
