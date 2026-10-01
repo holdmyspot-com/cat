@@ -558,7 +558,7 @@ priority first:
 1. pending targeted work, which is reruns, promotion runs and regression runs;
 2. development only: the cell tier of [§6.6](#66-trial-profiles). Representative assignments go only to active
    cells, and among them the coverage floor applies: no cell may be more than 50 representative assignments ahead of
-   the least-sampled eligible active cell;
+   the least-sampled eligible active cell. Within the floor, each model's lowest-effort active cell goes first;
 3. development: the lowest exploratory Wilson 95% lower bound for the current candidate. An empty category counts as 0.
    Ties are broken by fewer outcomes, then the contract's risk rank, then category order;
 4. formal: one trial per category first, then the category furthest from certifying: the lowest current lower bound
@@ -1015,6 +1015,10 @@ changes only the cost of development, never the claim:
   The usual allocation then fills the rest, and empty cells count as 0. A failure in a newly sampled cell makes it
   active and is handled like any other development failure.
 - **Edits.** A new working candidate starts again in the active cells only, with counts at zero as usual.
+- **Lowest effort first (user ruling, 2026-10-01).** Among a model's active cells, its lowest-effort cell receives
+  representative assignments first, up to the coverage floor of [§3.3](#33-allocation-and-concurrency). Lower effort
+  failed more often in H27 and H28, so it finds failures in fewer trials. The highest effort stays active, because
+  higher effort can fail in ways the lowest does not (H28: adding the motto for a discontinued product).
 
 With the Codex inventory of 2026-10-01, the active set starts at 16 of 44 cells per unbound category (the lowest and
 highest effort of each of 8 models), plus every cell where the screen found a failure.
@@ -1222,6 +1226,7 @@ records with the evidence.
 | P12 | Claude Code's documentation names the model aliases a user can select and the reasoning efforts each one accepts. | Ship the aliases with every documented effort level, and record as a limitation that an unsupported combination fails its first trial as an infrastructure failure. | Open until E1 runs a Claude trial per alias. Claude Code 2.1.287: `claude --help` names `opus`, `sonnet` and `fable` and the efforts low to max; `haiku` is named only in the changelog, and the local model-catalog cache (`~/.claude/cache/model-catalog/`, undocumented) gives it no effort options. CAT ships these as its inventory resource and does not read the cache at run time. |
 | P13 | Each runner can start a session under a requested model and effort, and the harness events report the model and effort that ran. | A runner that cannot select a profile tests only its default profile, and the proposal says so. | Open. Codex `codex debug models` lists each model's supported reasoning levels (0.159.1, 2026-10-01). |
 | P14 | Reasoning effort changes compliance with the same prompt on the same model, so effort must stay a dimension of the profile set (§6.6). | If no difference is detected, effort stays in the profile set: a test that fails to reject equal rates does not show that they are equal. Only an equivalence test with a stated margin could support testing fewer efforts, and only for the kind of rule tested. | Holds (H27, H28). H27: a fixture with conflicting rules on `gpt-6.1-sol`, 25% compliant at low and 95% at xhigh (p ≈ 2.2 × 10^-6). H28: a rule without a conflict on `gpt-6-luna`, 20% at low and 75% at xhigh (p ≈ 0.0006), mostly through whether the model read the docs. H26, at a floor and a ceiling, was inconclusive. Effort stays in the profile set. |
+| P15 | A candidate developed only in one cell, the weakest model at its lowest effort, once its rate there is high, also has a high rate under stronger models and higher efforts. If this holds across several prompt files, development could sample only that cell (certification would still cover every cell). The weakest model is the one with the lowest incumbent-baseline pass rate at its lowest effort. | Until it is shown, development keeps each model's lowest and highest effort active (§6.6). | Open. Test after the first real prompt file is optimized (plan §4). H28 is consistent with it (gpt-6.1-sol was at its ceiling where gpt-6-luna failed) but tested no stronger model's failure kinds. |
 
 ## 13. Decision records
 
