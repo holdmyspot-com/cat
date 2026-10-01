@@ -24,13 +24,13 @@ the [installation guide](installation.md).
 #### Claude Code
 
 ```bash
-client/claude/lifecycle/src/main/resources/install/install-claude.sh client/common/distribution/target/runtime/claude
+client/common/distribution/target/runtime/claude/install/install-claude.sh client/common/distribution/target/runtime/claude
 ```
 
 #### Codex
 
 ```bash
-client/codex/lifecycle/src/main/resources/install/install-codex.sh client/common/distribution/target/runtime/codex
+client/common/distribution/target/runtime/codex/install/install-codex.sh client/common/distribution/target/runtime/codex
 ```
 
 ### Test removal or an upgrade
