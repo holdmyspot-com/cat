@@ -160,7 +160,10 @@ overkill.
 
 | Work item | State |
 |---|---|
+| Setup (§1.1) | Tier agents added (shared body `optimize.md`, four Claude and four Codex wrappers, README updated), built with `./mvnw verify`, installed in both harnesses and committed. Next: in a new session, verify each agent with a trivial task against the §1.1 checklist, then start WI-0. |
 | WI-0 to WI-15 | Not started |
+
+Changes made to `design.md` and this plan during implementation: none yet, apart from this section.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.

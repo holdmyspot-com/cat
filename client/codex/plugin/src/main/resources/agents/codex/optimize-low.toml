@@ -1,0 +1,10 @@
+name = "cat-optimize-low"
+nickname_candidates = ["optimize-low"]
+description = "Low-tier CAT work-item implementer."
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = '''
+Implementer tier: low.
+<!-- cat:include ../common/optimize.md -->
+'''

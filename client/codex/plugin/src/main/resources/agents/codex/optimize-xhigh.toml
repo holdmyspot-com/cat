@@ -1,0 +1,10 @@
+name = "cat-optimize-xhigh"
+nickname_candidates = ["optimize-xhigh"]
+description = "Xhigh-tier CAT work-item implementer."
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = '''
+Implementer tier: xhigh.
+<!-- cat:include ../common/optimize.md -->
+'''
