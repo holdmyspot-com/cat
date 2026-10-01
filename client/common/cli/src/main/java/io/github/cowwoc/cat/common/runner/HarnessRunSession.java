@@ -65,10 +65,10 @@ public final class HarnessRunSession implements AutoCloseable
 	}
 
 	/**
-	 * Sends one turn and forwards native events while the process remains live.
+	 * Sends one turn and forwards harness events while the process remains live.
 	 *
 	 * @param request the framed turn request
-	 * @param listener receives raw native event lines
+	 * @param listener receives raw harness event lines
 	 * @return the terminal result for the turn
 	 * @throws IOException if the harness process is no longer alive, the turn fails, or event forwarding fails
 	 */

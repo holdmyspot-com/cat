@@ -21,11 +21,11 @@ public enum MeasurementCondition
 	 */
 	JUDGE,
 	/**
-	 * The trial model as observed in native events.
+	 * The trial model as observed in harness events.
 	 */
 	MODEL,
 	/**
-	 * The trial reasoning configuration as observed in native events.
+	 * The trial reasoning configuration as observed in harness events.
 	 */
 	REASONING,
 	/**

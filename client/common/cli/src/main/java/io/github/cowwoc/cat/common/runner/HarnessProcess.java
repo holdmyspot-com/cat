@@ -11,7 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public interface HarnessProcess extends AutoCloseable
 {
 	/**
-	 * Sends one turn without restarting the native harness.
+	 * Sends one turn without restarting the harness.
 	 *
 	 * @param request the framed turn request
 	 *
@@ -22,11 +22,11 @@ public interface HarnessProcess extends AutoCloseable
 	HarnessProcessResult sendTurn(String request) throws IOException;
 
 	/**
-	 * Sends one turn and forwards each native event before returning its terminal result.
+	 * Sends one turn and forwards each harness event before returning its terminal result.
 	 *
 	 * @param request the framed turn request
 	 *
-	 * @param listener receives raw native event lines
+	 * @param listener receives raw harness event lines
 	 *
 	 * @return the terminal result for the turn
 	 *
@@ -56,7 +56,7 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
-	 * Stops the active turn while retaining the harness session when the native harness supports it.
+	 * Stops the active turn while retaining the harness session when the harness supports it.
 	 *
 	 * @throws IOException if the harness cannot interrupt the active turn
 	 */
@@ -66,14 +66,14 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
-	 * Returns whether the native harness remains alive.
+	 * Returns whether the harness remains alive.
 	 *
 	 * @return true if the process is alive
 	 */
 	boolean isAlive();
 
 	/**
-	 * Closes native input and ends the harness process tree before reporting shutdown complete. Implementations must not
+	 * Closes harness input and ends the harness process tree before reporting shutdown complete. Implementations must not
 	 * leave a descendant able to write to a stream inherited from the harness after this method returns.
 	 *
 	 * @throws IOException if shutdown fails

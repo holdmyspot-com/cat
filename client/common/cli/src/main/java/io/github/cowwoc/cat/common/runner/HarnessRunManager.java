@@ -55,13 +55,13 @@ public final class HarnessRunManager
 		  "phase": "(?<phase>initializing|idle|working|completed|failed)",
 		  "ownerPid": "?(?<ownerPid>[1-9][0-9]*)"?,
 		  "ownerStartedAt": "(?<ownerStartedAt>[^\"]+)",
-		  "nativePid": (?<nativePid>null|[1-9][0-9]*),
-		  "nativeStartedAt": (?<nativeStartedAt>null|"(?<nativeStartedAtValue>[^\"]+)"),
+		  "harnessPid": (?<harnessPid>null|[1-9][0-9]*),
+		  "harnessStartedAt": (?<harnessStartedAt>null|"(?<harnessStartedAtValue>[^\"]+)"),
 		  "createdAt": "(?<createdAt>[^\"]+)",
 		  "artifactPath": "(?<artifactPath>(?:[^"\\\\]|\\\\.)*)",
 		  "projectPath": "(?<projectPath>(?:[^"\\\\]|\\\\.)*)",
 		  "transport": "(?<transport>(?:[^"\\\\]|\\\\.)*)",
-		  "nativeCommand": "(?<nativeCommand>(?:[^"\\\\]|\\\\.)*)",
+		  "harnessCommand": "(?<harnessCommand>(?:[^"\\\\]|\\\\.)*)",
 		  "startedAt": (?<startedAt>null|"(?<startedAtValue>[^\"]+)"),
 		  "turnNumber": (?<turnNumber>[0-9]+),
 		  "exitCode": (?<exitCode>null|-?[0-9]+),
@@ -82,7 +82,7 @@ public final class HarnessRunManager
 	 */
 	public HarnessRunManager(Path root, Clock clock)
 	{
-		this(root, clock, new NativeProcessLiveness());
+		this(root, clock, new ProcessHandleLiveness());
 	}
 
 	/**
@@ -136,13 +136,13 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Records non-secret metadata required to investigate an owned native process.
+	 * Records non-secret metadata required to investigate an owned harness process.
 	 *
 	 * @param run the owned run
 	 * @param artifact the complete harness artifact
 	 * @param project the source project
-	 * @param transport the persistent native transport identifier
-	 * @param command the native command with any secret values redacted
+	 * @param transport the persistent harness transport identifier
+	 * @param command the harness command with any secret values redacted
 	 * @throws IOException if the manifest cannot be persisted
 	 */
 	public void initialize(HarnessRun run, Path artifact, Path project, String transport, List<String> command)
@@ -158,7 +158,7 @@ public final class HarnessRunManager
 			throw new IOException("Cannot initialize a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), previous.nativePid(), previous.nativeStartedAt(), previous.createdAt(),
+			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
 			artifact.toAbsolutePath().normalize().toString(), project.toAbsolutePath().normalize().toString(), transport,
 			redact(command), clock.instant(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
 			previous.diagnostic()), run.directory());
@@ -236,32 +236,32 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Records the identity of the native process owned by a live run.
+	 * Records the identity of the harness process owned by a live run.
 	 *
 	 * @param run the owned run
-	 * @param nativePid the positive native process identifier
-	 * @param nativeStartedAt the native process start marker
-	 * @throws NullPointerException if {@code run} or {@code nativeStartedAt} are null
-	 * @throws IllegalArgumentException if {@code nativePid} is not positive
+	 * @param harnessPid the positive harness process identifier
+	 * @param harnessStartedAt the harness process start marker
+	 * @throws NullPointerException if {@code run} or {@code harnessStartedAt} are null
+	 * @throws IllegalArgumentException if {@code harnessPid} is not positive
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void recordNativeProcess(HarnessRun run, long nativePid, Instant nativeStartedAt) throws IOException
+	public void recordHarnessProcess(HarnessRun run, long harnessPid, Instant harnessStartedAt) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
-		requireThat(nativeStartedAt, "nativeStartedAt").isNotNull();
-		requireThat(nativePid, "nativePid").isPositive();
+		requireThat(harnessStartedAt, "harnessStartedAt").isNotNull();
+		requireThat(harnessPid, "harnessPid").isPositive();
 		Manifest previous = readManifest(run);
 		if (!previous.state().equals("running"))
-			throw new IOException("Cannot record a native process for a terminal run");
+			throw new IOException("Cannot record a harness process for a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), nativePid, nativeStartedAt, previous.createdAt(), previous.artifactPath(),
-			previous.projectPath(), previous.transport(), previous.nativeCommand(), previous.startedAt(),
+			previous.ownerStartedAt(), harnessPid, harnessStartedAt, previous.createdAt(), previous.artifactPath(),
+			previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
 			previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic()), run.directory());
 	}
 
 	/**
-	 * Replaces the captured standard streams of a native command for failed-run investigation.
+	 * Replaces the captured standard streams of a harness command for failed-run investigation.
 	 *
 	 * @param run the owned run
 	 * @param commandName the generated command name
@@ -286,11 +286,11 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Records one native turn's raw events and error stream for later investigation.
+	 * Records one harness turn's raw events and error stream for later investigation.
 	 *
 	 * @param run the owned run
 	 * @param turnNumber the positive one-based turn number
-	 * @param result the captured native turn result
+	 * @param result the captured harness turn result
 	 * @throws IOException if the owned turn artifacts cannot be persisted
 	 */
 	public void writeTurnOutput(HarnessRun run, int turnNumber, HarnessProcessResult result) throws IOException
@@ -307,19 +307,19 @@ public final class HarnessRunManager
 		Manifest previous = readManifest(run);
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), previous.nativePid(), previous.nativeStartedAt(), previous.createdAt(),
-			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.nativeCommand(),
+			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
+			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 			previous.startedAt(), turnNumber, result.exitCode(), previous.finishedAt(), previous.diagnostic()),
 			run.directory());
 	}
 
 	/**
-	 * Appends one native event while its turn remains active, making current progress inspectable before terminal output
+	 * Appends one harness event while its turn remains active, making current progress inspectable before terminal output
 	 * is available.
 	 *
 	 * @param run the owned run
 	 * @param turnNumber the positive one-based turn number
-	 * @param event one non-blank native event line
+	 * @param event one non-blank harness event line
 	 * @throws IOException if the event cannot be persisted
 	 */
 	public void appendTurnEvent(HarnessRun run, int turnNumber, String event) throws IOException
@@ -427,15 +427,15 @@ public final class HarnessRunManager
 				throw new IOException("Run is already terminal: " + id);
 			if (isOwnerAlive(manifest))
 				throw new IOException("Run is still owned by a live process: " + id);
-			if (isNativeProcessAlive(manifest))
+			if (isHarnessProcessAlive(manifest))
 			{
-				terminateNativeProcess(manifest);
-				if (isNativeProcessAlive(manifest))
-					throw new IOException("Native process is still running for run: " + id);
+				terminateHarnessProcess(manifest);
+				if (isHarnessProcessAlive(manifest))
+					throw new IOException("Harness process is still running for run: " + id);
 			}
 			writeManifest(new Manifest(manifest.harness(), manifest.id(), "failed", "failed", manifest.ownerPid(),
-				manifest.ownerStartedAt(), manifest.nativePid(), manifest.nativeStartedAt(), manifest.createdAt(),
-				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.nativeCommand(),
+				manifest.ownerStartedAt(), manifest.harnessPid(), manifest.harnessStartedAt(), manifest.createdAt(),
+				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.harnessCommand(),
 				manifest.startedAt(), manifest.turnNumber(), exitCode, clock.instant(), diagnostic), run.directory());
 		}
 	}
@@ -471,7 +471,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Removes disposable isolated runtime state after a receipt retained the project, native events, and raw response.
+	 * Removes disposable isolated runtime state after a receipt retained the project, harness events, and raw response.
 	 *
 	 * @param run the completed retained run
 	 * @throws IOException if the run is not terminal or its disposable state cannot be removed
@@ -628,7 +628,7 @@ public final class HarnessRunManager
 	 *
 	 * @param run the owned run whose recorded owner is no longer alive
 	 * @return {@code true} if the run was made terminal, or {@code false} if it is still active or unavailable
-	 * @throws IOException if the manifest cannot be read, the native process cannot be stopped, or terminal state cannot
+	 * @throws IOException if the manifest cannot be read, the harness process cannot be stopped, or terminal state cannot
 	 *     be persisted
 	 */
 	private boolean markAbandonedRunFailed(HarnessRun run) throws IOException
@@ -643,15 +643,15 @@ public final class HarnessRunManager
 				return true;
 			if (isOwnerAlive(manifest))
 				return false;
-			if (isNativeProcessAlive(manifest))
+			if (isHarnessProcessAlive(manifest))
 			{
-				terminateNativeProcess(manifest);
-				if (isNativeProcessAlive(manifest))
+				terminateHarnessProcess(manifest);
+				if (isHarnessProcessAlive(manifest))
 					return false;
 			}
 			writeManifest(new Manifest(manifest.harness(), manifest.id(), "failed", "failed", manifest.ownerPid(),
-				manifest.ownerStartedAt(), manifest.nativePid(), manifest.nativeStartedAt(), manifest.createdAt(),
-				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.nativeCommand(),
+				manifest.ownerStartedAt(), manifest.harnessPid(), manifest.harnessStartedAt(), manifest.createdAt(),
+				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.harnessCommand(),
 				manifest.startedAt(), manifest.turnNumber(), manifest.exitCode(), clock.instant(),
 				"Runner process ended without recording a terminal result"), run.directory());
 			return true;
@@ -697,8 +697,8 @@ public final class HarnessRunManager
 		if (!state.equals("running"))
 			finishedAt = clock.instant();
 		writeManifest(new Manifest(run.harness(), run.id(), state, state, previous.ownerPid(), previous.ownerStartedAt(),
-			previous.nativePid(), previous.nativeStartedAt(), previous.createdAt(), previous.artifactPath(),
-			previous.projectPath(), previous.transport(), previous.nativeCommand(), previous.startedAt(),
+			previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(), previous.artifactPath(),
+			previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
 			previous.turnNumber(), previous.exitCode(), finishedAt, diagnostic), run.directory());
 	}
 
@@ -717,8 +717,8 @@ public final class HarnessRunManager
 		if (!previous.state().equals("running"))
 			throw new IOException("Cannot update the phase of a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), phase, previous.ownerPid(),
-			previous.ownerStartedAt(), previous.nativePid(), previous.nativeStartedAt(), previous.createdAt(),
-			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.nativeCommand(),
+			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
+			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 			previous.startedAt(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
 			previous.diagnostic()), run.directory());
 	}
@@ -738,12 +738,12 @@ public final class HarnessRunManager
 			"\",\n  \"harness\": \"" + manifest.harness() + "\",\n  \"id\": \"" + manifest.id() +
 			"\",\n  \"state\": \"" + manifest.state() + "\",\n  \"phase\": \"" + manifest.phase() +
 			"\",\n  \"ownerPid\": " + manifest.ownerPid() +
-			",\n  \"ownerStartedAt\": \"" + manifest.ownerStartedAt() + "\",\n  \"nativePid\": " +
-			nullableNumber(manifest.nativePid()) + ",\n  \"nativeStartedAt\": " +
-			nullableInstant(manifest.nativeStartedAt()) + ",\n  \"createdAt\": \"" + manifest.createdAt() +
+			",\n  \"ownerStartedAt\": \"" + manifest.ownerStartedAt() + "\",\n  \"harnessPid\": " +
+			nullableNumber(manifest.harnessPid()) + ",\n  \"harnessStartedAt\": " +
+			nullableInstant(manifest.harnessStartedAt()) + ",\n  \"createdAt\": \"" + manifest.createdAt() +
 			"\",\n  \"artifactPath\": \"" + escape(manifest.artifactPath()) + "\",\n  \"projectPath\": \"" +
 			escape(manifest.projectPath()) + "\",\n  \"transport\": \"" + escape(manifest.transport()) +
-			"\",\n  \"nativeCommand\": \"" + escape(manifest.nativeCommand()) + "\",\n  \"startedAt\": " +
+			"\",\n  \"harnessCommand\": \"" + escape(manifest.harnessCommand()) + "\",\n  \"startedAt\": " +
 			nullableInstant(manifest.startedAt()) + ",\n  \"turnNumber\": " + manifest.turnNumber() +
 			",\n  \"exitCode\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finishedAt\": " +
 			nullableInstant(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
@@ -790,14 +790,14 @@ public final class HarnessRunManager
 		{
 			long ownerPid = Long.parseLong(matcher.group("ownerPid"));
 			Instant ownerStartedAt = Instant.parse(matcher.group("ownerStartedAt"));
-			Long nativePid = null;
-			if (!matcher.group("nativePid").equals("null"))
-				nativePid = Long.parseLong(matcher.group("nativePid"));
-			Instant nativeStartedAt = null;
-			if (!matcher.group("nativeStartedAt").equals("null"))
-				nativeStartedAt = Instant.parse(matcher.group("nativeStartedAtValue"));
-			if ((nativePid == null) != (nativeStartedAt == null))
-				throw new IOException("Run manifest has an incomplete native process identity: " + file);
+			Long harnessPid = null;
+			if (!matcher.group("harnessPid").equals("null"))
+				harnessPid = Long.parseLong(matcher.group("harnessPid"));
+			Instant harnessStartedAt = null;
+			if (!matcher.group("harnessStartedAt").equals("null"))
+				harnessStartedAt = Instant.parse(matcher.group("harnessStartedAtValue"));
+			if ((harnessPid == null) != (harnessStartedAt == null))
+				throw new IOException("Run manifest has an incomplete harness process identity: " + file);
 			Instant createdAt = Instant.parse(matcher.group("createdAt"));
 			Instant startedAt = null;
 			if (!matcher.group("startedAt").equals("null"))
@@ -817,9 +817,9 @@ public final class HarnessRunManager
 			if (!state.equals("running") && !phase.equals(state))
 				throw new IOException("Run manifest has an invalid terminal phase: " + file);
 			return new Manifest(matcher.group("harness"), matcher.group("id"), state, phase, ownerPid,
-				ownerStartedAt, nativePid, nativeStartedAt, createdAt, unescape(matcher.group("artifactPath")),
+				ownerStartedAt, harnessPid, harnessStartedAt, createdAt, unescape(matcher.group("artifactPath")),
 				unescape(matcher.group("projectPath")), unescape(matcher.group("transport")),
-				unescape(matcher.group("nativeCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
+				unescape(matcher.group("harnessCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
 				exitCode, finishedAt, "");
 		}
 		catch (DateTimeParseException e)
@@ -837,32 +837,32 @@ public final class HarnessRunManager
 	private static boolean isOwnerAlive(Manifest manifest)
 	{
 		assert manifest != null;
-		return new NativeProcessLiveness().isAlive(manifest.ownerPid(), manifest.ownerStartedAt());
+		return new ProcessHandleLiveness().isAlive(manifest.ownerPid(), manifest.ownerStartedAt());
 	}
 
 	/**
-	 * Determines whether the recorded native process remains alive.
+	 * Determines whether the recorded harness process remains alive.
 	 *
 	 * @param manifest the validated run manifest
-	 * @return {@code true} if the native process is recorded and remains alive
+	 * @return {@code true} if the harness process is recorded and remains alive
 	 */
-	private boolean isNativeProcessAlive(Manifest manifest)
+	private boolean isHarnessProcessAlive(Manifest manifest)
 	{
 		assert manifest != null;
-		return manifest.nativePid() != null && processLiveness.isAlive(manifest.nativePid(),
-			manifest.nativeStartedAt());
+		return manifest.harnessPid() != null && processLiveness.isAlive(manifest.harnessPid(),
+			manifest.harnessStartedAt());
 	}
 
 	/**
-	 * Requests termination of the recorded native process.
+	 * Requests termination of the recorded harness process.
 	 *
 	 * @param manifest the validated run manifest
 	 */
-	private void terminateNativeProcess(Manifest manifest)
+	private void terminateHarnessProcess(Manifest manifest)
 	{
 		assert manifest != null;
-		assert manifest.nativePid() != null;
-		processLiveness.terminate(manifest.nativePid(), manifest.nativeStartedAt());
+		assert manifest.harnessPid() != null;
+		processLiveness.terminate(manifest.harnessPid(), manifest.harnessStartedAt());
 	}
 
 	/**
@@ -900,22 +900,22 @@ public final class HarnessRunManager
 	 * @param phase the current activity or terminal phase
 	 * @param ownerPid the orchestrator process identifier
 	 * @param ownerStartedAt the orchestrator process start marker
-	 * @param nativePid the native process identifier, if started
-	 * @param nativeStartedAt the native process start marker, if started
+	 * @param harnessPid the harness process identifier, if started
+	 * @param harnessStartedAt the harness process start marker, if started
 	 * @param createdAt the immutable creation timestamp
 	 * @param artifactPath the complete artifact path
 	 * @param projectPath the source project path
-	 * @param transport the native persistent transport
-	 * @param nativeCommand the redacted native command
-	 * @param startedAt the native-run start timestamp, if initialized
+	 * @param transport the harness persistent transport
+	 * @param harnessCommand the redacted harness command
+	 * @param startedAt the harness-run start timestamp, if initialized
 	 * @param turnNumber the latest completed turn number
-	 * @param exitCode the latest observed native-turn or externally reported runner exit status, if available
+	 * @param exitCode the latest observed harness-turn or externally reported runner exit status, if available
 	 * @param finishedAt the terminal timestamp, if terminal
 	 * @param diagnostic the optional diagnostic
 	 */
 	private record Manifest(String harness, String id, String state, String phase, long ownerPid, Instant ownerStartedAt,
-		Long nativePid, Instant nativeStartedAt, Instant createdAt, String artifactPath, String projectPath,
-		String transport, String nativeCommand, Instant startedAt, int turnNumber, Integer exitCode, Instant finishedAt,
+		Long harnessPid, Instant harnessStartedAt, Instant createdAt, String artifactPath, String projectPath,
+		String transport, String harnessCommand, Instant startedAt, int turnNumber, Integer exitCode, Instant finishedAt,
 		String diagnostic)
 	{
 	}
@@ -975,9 +975,9 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Redacts values following secret-bearing option names in a native command.
+	 * Redacts values following secret-bearing option names in a harness command.
 	 *
-	 * @param command the native command
+	 * @param command the harness command
 	 * @return the printable redacted command
 	 */
 	private static String redact(List<String> command)

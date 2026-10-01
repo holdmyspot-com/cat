@@ -60,7 +60,7 @@ platform=${expected_platform}" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
-@test "Claude removal delegates to the native plugin command" {
+@test "Claude removal delegates to the harness plugin command" {
 	create_fake_engine_command claude
 	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace"
 

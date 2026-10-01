@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.runner.fakes.FakeNativeProcess;
+import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
@@ -23,11 +23,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests how {@link CodexAppServerProcess} runs, interrupts and reports a turn. Each test plays the Codex app-server
- * with a {@link FakeNativeProcess} that answers JSON-RPC requests with notifications shaped like those codex-cli
+ * Tests how {@link CodexProcess} runs, interrupts and reports a turn. Each test plays the Codex app-server
+ * with a {@link FakeHarnessCli} that answers JSON-RPC requests with notifications shaped like those codex-cli
  * 0.159.1 printed for a root thread with child threads.
  */
-public final class CodexAppServerProcessTest
+public final class CodexProcessTest
 {
 	private static final String ROOT_THREAD = "thread-root";
 	private static final String CHILD_THREAD = "thread-child";
@@ -41,7 +41,7 @@ public final class CodexAppServerProcessTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public CodexAppServerProcessTest()
+	public CodexProcessTest()
 	{
 	}
 
@@ -62,7 +62,7 @@ public final class CodexAppServerProcessTest
 			agentMessage(CHILD_THREAD, "Child afterthought."),
 			turnCompleted(CHILD_THREAD, "turn-child", "completed"),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexAppServerProcess process = server.start())
+		try (CodexProcess process = server.start())
 		{
 			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
 
@@ -88,7 +88,7 @@ public final class CodexAppServerProcessTest
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
 		CountDownLatch working = new CountDownLatch(1);
 		try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			CodexAppServerProcess process = server.start())
+			CodexProcess process = server.start())
 		{
 			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task.", line ->
 			{
@@ -125,7 +125,7 @@ public final class CodexAppServerProcessTest
 		AppServer server = new AppServer(NO_ANSWER,
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
 		try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			CodexAppServerProcess process = server.start())
+			CodexProcess process = server.start())
 		{
 			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task."));
 			long turnRequest = server.awaitTurnRequest();
@@ -153,7 +153,7 @@ public final class CodexAppServerProcessTest
 		// Requirement: R-E10
 		AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "Done."),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexAppServerProcess process = server.start())
+		try (CodexProcess process = server.start())
 		{
 			process.sendTurn("First task.");
 
@@ -176,7 +176,7 @@ public final class CodexAppServerProcessTest
 	{
 		// Requirement: R-E13
 		AppServer server = new AppServer(id -> List.of(turnStarted(id)), NO_ANSWER).closingOutputAfterTurnStart();
-		try (CodexAppServerProcess process = server.start())
+		try (CodexProcess process = server.start())
 		{
 			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
 
@@ -246,7 +246,7 @@ public final class CodexAppServerProcessTest
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final LongFunction<List<String>> onTurnStart;
 		private final LongFunction<List<String>> onTurnInterrupt;
-		private final FakeNativeProcess process = new FakeNativeProcess(this::answer);
+		private final FakeHarnessCli process = new FakeHarnessCli(this::answer);
 		private final CountDownLatch turnRequested = new CountDownLatch(1);
 		private volatile long turnRequestId;
 		private volatile boolean closesOutputAfterTurnStart;
@@ -282,9 +282,9 @@ public final class CodexAppServerProcessTest
 		 * @return the initialized runner process
 		 * @throws IOException if initialization fails
 		 */
-		private CodexAppServerProcess start() throws IOException
+		private CodexProcess start() throws IOException
 		{
-			CodexAppServerProcess result = new CodexAppServerProcess(process, new HarnessRunnerScope(), false);
+			CodexProcess result = new CodexProcess(process, new HarnessRunnerScope(), false);
 			result.initialize(PROJECT, "");
 			return result;
 		}

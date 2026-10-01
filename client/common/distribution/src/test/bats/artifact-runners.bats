@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests packaged Claude and Codex runners for isolated native protocol and artifact boundaries.
+# Tests packaged Claude and Codex runners for isolated harness protocol and artifact boundaries.
 
 # Bats invokes this before each test to allocate a CAT-work root for runner-owned fixtures.
 #
@@ -110,6 +110,7 @@ while IFS= read -r line; do
 	else
 		printf '%s\n' '{"type":"result","result":"completed"}'
 	fi
+	printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"idle"}'
 done
 SCRIPT
 	chmod +x "${FAKE_BIN}/claude"
@@ -159,9 +160,9 @@ SCRIPT
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"type":"started"'* ]]
-	native_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"native-event"' | head -n 1 | cut -d: -f1)"
+	harness_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"harness-event"' | head -n 1 | cut -d: -f1)"
 	completed_line="$(printf '%s\n' "${output}" | grep -n '"type":"turn-completed"' | head -n 1 | cut -d: -f1)"
-	[ "${native_event_line}" -lt "${completed_line}" ]
+	[ "${harness_event_line}" -lt "${completed_line}" ]
 	[ "$(grep -c '^serve:' "${FAKE_BIN}/harness.log")" -eq 1 ]
 	grep -F "plugin marketplace add" "${FAKE_BIN}/harness.log"
 	grep -F "plugin install cat@cat" "${FAKE_BIN}/harness.log"
@@ -206,9 +207,9 @@ SCRIPT
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"type":"turn-completed"'* ]]
-	native_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"native-event"' | head -n 1 | cut -d: -f1)"
+	harness_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"harness-event"' | head -n 1 | cut -d: -f1)"
 	completed_line="$(printf '%s\n' "${output}" | grep -n '"type":"turn-completed"' | head -n 1 | cut -d: -f1)"
-	[ "${native_event_line}" -lt "${completed_line}" ]
+	[ "${harness_event_line}" -lt "${completed_line}" ]
 	[ "$(grep -c '^serve:' "${FAKE_BIN}/harness.log")" -eq 1 ]
 	grep -F "plugin marketplace add" "${FAKE_BIN}/harness.log"
 	grep -F "plugin add cat@cat" "${FAKE_BIN}/harness.log"

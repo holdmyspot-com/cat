@@ -10,7 +10,7 @@ import java.io.IOException;
 public interface HarnessEventListener
 {
 	/**
-	 * Receives one non-blank native-harness event line.
+	 * Receives one non-blank harness event line.
 	 *
 	 * @param event the raw event line
 	 *

@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * Each session runs in a fresh, isolated run directory of the runner and holds one {@link HarnessCapacity} permit
  * for its lifetime. A session sends the request's turns one at a time through the runner's JSONL bridge. It parses
- * the harness's native events for the observed model, the token usage and the rate-limit windows, and keeps the
+ * the harness's events for the observed model, the token usage and the rate-limit windows, and keeps the
  * events as the transcript.
  * <p>
  * The Codex runner has no option for read-only evidence (design &sect;11, H23), so {@link SessionRequest#readOnly()}

@@ -24,7 +24,7 @@ public final class HarnessCommand
 	private static final int MAXIMUM_COMMAND_OUTPUT_BYTES = 1_048_576;
 
 	/**
-	 * Executes a native setup command and rejects non-zero exit codes.
+	 * Executes a harness setup command and rejects non-zero exit codes.
 	 *
 	 * @param command the non-empty command and arguments
 	 *
@@ -41,7 +41,7 @@ public final class HarnessCommand
 	}
 
 	/**
-	 * Executes a native setup command, retaining bounded diagnostics under an owned run.
+	 * Executes a harness setup command, retaining bounded diagnostics under an owned run.
 	 *
 	 * @param command the non-empty command and arguments
 	 *

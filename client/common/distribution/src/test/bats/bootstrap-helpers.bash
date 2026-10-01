@@ -19,7 +19,7 @@ setup()
 	: > "${COMMAND_LOG}"
 }
 
-# Creates a fake native harness command that appends its invocation to the test command log.
+# Creates a fake harness command that appends its invocation to the test command log.
 create_fake_engine_command()
 {
 	harness="$1"

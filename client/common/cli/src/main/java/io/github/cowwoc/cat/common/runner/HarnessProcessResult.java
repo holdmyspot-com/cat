@@ -7,7 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Captures a harness CLI command's exit code, terminal-turn state, and redacted standard-output and standard-error
  * text.
  *
- * @param exitCode the native process exit code
+ * @param exitCode the harness process exit code
  *
  * @param standardOutput captured standard output
  *
@@ -23,7 +23,7 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 	/**
 	 * Creates a result whose success requires both a zero exit code and no terminal diagnostic.
 	 *
-	 * @param exitCode the native process exit code
+	 * @param exitCode the harness process exit code
 	 *
 	 * @param standardOutput captured standard output
 	 *
@@ -37,7 +37,7 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 	/**
 	 * Creates a result with an explicit terminal state and no extracted assistant response.
 	 *
-	 * @param exitCode the native process exit code
+	 * @param exitCode the harness process exit code
 	 *
 	 * @param standardOutput captured standard output
 	 *
@@ -53,7 +53,7 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 	/**
 	 * Validates captured process output and terminal state.
 	 *
-	 * @param exitCode the native process exit code
+	 * @param exitCode the harness process exit code
 	 *
 	 * @param standardOutput captured standard output
 	 *

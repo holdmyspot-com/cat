@@ -16,22 +16,22 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link NativeEvents} against native lines that the Codex runner recorded, and against synthetic lines for the
- * shapes that no probe observed.
+ * Tests {@link HarnessEvents} against harness lines that the Codex runner recorded, and against synthetic lines for
+ * the shapes that no probe observed.
  */
-public final class NativeEventsTest
+public final class HarnessEventsTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Creates the test.
 	 */
-	public NativeEventsTest()
+	public HarnessEventsTest()
 	{
 	}
 
 	/**
-	 * Reads the lines of a recorded native event file.
+	 * Reads the lines of a recorded harness event file.
 	 *
 	 * @param name the resource name below {@code optimizer}
 	 * @return the lines
@@ -39,7 +39,7 @@ public final class NativeEventsTest
 	 */
 	private static List<String> recorded(String name) throws IOException
 	{
-		try (InputStream stream = NativeEventsTest.class.getResourceAsStream("/optimizer/" + name))
+		try (InputStream stream = HarnessEventsTest.class.getResourceAsStream("/optimizer/" + name))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -49,12 +49,12 @@ public final class NativeEventsTest
 	/**
 	 * Parses recorded lines.
 	 *
-	 * @param lines the native event lines
+	 * @param lines the harness event lines
 	 * @return the parsed events
 	 */
-	private static NativeEvents parse(List<String> lines)
+	private static HarnessEvents parse(List<String> lines)
 	{
-		NativeEvents events = new NativeEvents(JSON);
+		HarnessEvents events = new HarnessEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events;
@@ -69,7 +69,7 @@ public final class NativeEventsTest
 	public void readsObservedModelAndReasoning() throws IOException
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(recorded("codex-children.jsonl"));
+		HarnessEvents events = parse(recorded("codex-children.jsonl"));
 		requireThat(events.model(), "model").isEqualTo("gpt-6-luna");
 		requireThat(events.reasoning(), "reasoning").isEqualTo("medium");
 	}
@@ -84,7 +84,7 @@ public final class NativeEventsTest
 	public void sumsLatestTotalOfEveryThread() throws IOException
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(recorded("codex-children.jsonl"));
+		HarnessEvents events = parse(recorded("codex-children.jsonl"));
 		requireThat(events.usage(), "usage").isEqualTo(new TokenUsage(203_636, 148_992, 1_626, 531));
 	}
 
@@ -98,7 +98,7 @@ public final class NativeEventsTest
 	public void readsWindowsFromRateLimitsUpdated() throws IOException
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(recorded("codex-children.jsonl"));
+		HarnessEvents events = parse(recorded("codex-children.jsonl"));
 		requireThat(events.windows(), "windows").isEqualTo(List.of(
 			new RateLimitWindow(0.36, Instant.ofEpochSecond(1_791_046_710L))));
 		requireThat(events.rejection(), "rejection").isEqualTo(Optional.empty());
@@ -112,7 +112,7 @@ public final class NativeEventsTest
 	public void reportsNothingForUnrecognizedLines()
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(List.of("", "not json", "[1,2]", "{\"method\":\"item/started\"}"));
+		HarnessEvents events = parse(List.of("", "not json", "[1,2]", "{\"method\":\"item/started\"}"));
 		requireThat(events.model(), "model").isNull();
 		requireThat(events.reasoning(), "reasoning").isNull();
 		requireThat(events.usage(), "usage").isNull();
@@ -128,12 +128,12 @@ public final class NativeEventsTest
 	public void reportsReachedRateLimit()
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
+		HarnessEvents events = parse(List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
 			"{\"primary\":{\"usedPercent\":100,\"windowDurationMins\":300,\"resetsAt\":1791000000}," +
 			"\"secondary\":{\"usedPercent\":40,\"windowDurationMins\":10080,\"resetsAt\":1791500000}," +
 			"\"rateLimitReachedType\":\"primary\"}}}"));
 		requireThat(events.rejection(), "rejection").isEqualTo(
-			Optional.of(new NativeEvents.Rejection(Instant.ofEpochSecond(1_791_000_000L))));
+			Optional.of(new HarnessEvents.Rejection(Instant.ofEpochSecond(1_791_000_000L))));
 		requireThat(events.windows(), "windows").isEqualTo(List.of(
 			new RateLimitWindow(1.0, Instant.ofEpochSecond(1_791_000_000L)),
 			new RateLimitWindow(0.4, Instant.ofEpochSecond(1_791_500_000L))));
@@ -146,9 +146,9 @@ public final class NativeEventsTest
 	public void reportsReachedRateLimitWithoutResetTime()
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
+		HarnessEvents events = parse(List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
 			"{\"primary\":null,\"secondary\":null,\"rateLimitReachedType\":\"workspace_member_usage_limit_reached\"}}}"));
-		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new NativeEvents.Rejection(null)));
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new HarnessEvents.Rejection(null)));
 	}
 
 	/**
@@ -161,15 +161,15 @@ public final class NativeEventsTest
 		// Requirement: R-E7
 		String started = "{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"root\"," +
 			"\"parentThreadId\":null,\"model\":\"gpt-6-luna\",\"reasoningEffort\":\"medium\"}}}";
-		NativeEvents child = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"child\"," +
+		HarnessEvents child = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"child\"," +
 			"\"turn\":{\"status\":\"failed\"}}}"));
 		requireThat(child.error(), "child.error").isNull();
 
-		NativeEvents interrupted = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":" +
+		HarnessEvents interrupted = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":" +
 			"\"root\",\"turn\":{\"status\":\"interrupted\"}}}"));
 		requireThat(interrupted.error(), "interrupted.error").isNull();
 
-		NativeEvents failed = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\"," +
+		HarnessEvents failed = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\"," +
 			"\"turn\":{\"status\":\"failed\",\"error\":{\"message\":\"secret details\"}}}}"));
 		requireThat(failed.error(), "failed.error").isEqualTo("Codex turn finished with status failed");
 	}

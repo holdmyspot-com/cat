@@ -25,7 +25,7 @@ import tools.jackson.databind.JsonNode;
 /**
  * Adapts Codex's app-server CLI process to the multi-request {@link HarnessProcess} contract.
  */
-public final class CodexAppServerProcess implements HarnessProcess
+public final class CodexProcess implements HarnessProcess
 {
 	/**
 	 * How long to wait for the operating system to report Codex's exit once its output has ended.
@@ -66,7 +66,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	 * @param verifyCatHookDelivery whether CAT hook configuration and delegated-hook delivery must be verified
 	 * @throws NullPointerException if {@code process} or {@code scope} are null
 	 */
-	public CodexAppServerProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery)
+	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery)
 	{
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
@@ -163,7 +163,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	 * it through {@link #interrupt()} is a completed turn.
 	 *
 	 * @param request the non-blank user prompt
-	 * @param listener receives each native event line
+	 * @param listener receives each harness event line
 	 * @return the captured app-server event stream for the turn
 	 * @throws IOException if input or output fails, or the listener fails
 	 */
@@ -293,7 +293,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	 * Records the active turn's identifier from Codex's answer to the {@code turn/start} request, and sends an
 	 * interrupt that the caller requested before Codex identified the turn.
 	 *
-	 * @param event a native event, or {@code null} if the line was not JSON
+	 * @param event a harness event, or {@code null} if the line was not JSON
 	 * @param turnRequestId the {@code turn/start} request's identifier
 	 * @throws IOException if a pending interrupt cannot be written to Codex
 	 */
@@ -315,7 +315,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	/**
 	 * Returns the text of an {@code agentMessage} item that the root thread completed.
 	 *
-	 * @param event a native event, or {@code null} if the line was not JSON
+	 * @param event a harness event, or {@code null} if the line was not JSON
 	 * @return the message text, or {@code null} if the event is not a completed root-thread {@code agentMessage}
 	 */
 	private String rootAgentMessage(JsonNode event)
@@ -332,7 +332,7 @@ public final class CodexAppServerProcess implements HarnessProcess
 	}
 
 	/**
-	 * Parses one native event line.
+	 * Parses one harness event line.
 	 *
 	 * @param line the raw line
 	 * @return the parsed event, or {@code null} if the line is not JSON
@@ -346,15 +346,15 @@ public final class CodexAppServerProcess implements HarnessProcess
 		}
 		catch (JacksonException _)
 		{
-			// The complete native stream remains retained even when an unrelated diagnostic line is not protocol JSON.
+			// The complete harness stream remains retained even when an unrelated diagnostic line is not protocol JSON.
 			return null;
 		}
 	}
 
 	/**
-	 * Returns whether one native event completes the thread that received the current request.
+	 * Returns whether one harness event completes the thread that received the current request.
 	 *
-	 * @param event the raw native event
+	 * @param event the raw harness event
 	 * @param targetThreadId the requested thread identifier
 	 * @return {@code true} if the event completes that thread
 	 * @throws IOException if a completion event is malformed
@@ -388,9 +388,9 @@ public final class CodexAppServerProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns the native process identifier.
+	 * Returns the harness process identifier.
 	 *
-	 * @return the positive native process identifier
+	 * @return the positive harness process identifier
 	 */
 	public long pid()
 	{
@@ -398,9 +398,9 @@ public final class CodexAppServerProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns the native process start marker.
+	 * Returns the harness process start marker.
 	 *
-	 * @return the native process start marker
+	 * @return the harness process start marker
 	 * @throws IOException if the operating system does not expose a start marker
 	 */
 	public Instant startedAt() throws IOException

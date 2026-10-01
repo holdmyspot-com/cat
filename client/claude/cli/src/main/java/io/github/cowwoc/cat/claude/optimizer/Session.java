@@ -67,7 +67,7 @@ final class Session implements SessionHandle
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 	private final LineFeed feed = new LineFeed();
-	private final NativeEvents events = new NativeEvents(json);
+	private final HarnessEvents events = new HarnessEvents(json);
 	private final EventSink sink;
 	private final AtomicBoolean interruptRequested = new AtomicBoolean();
 	private final CompletableFuture<SessionResult> completion = new CompletableFuture<>();
@@ -404,7 +404,7 @@ final class Session implements SessionHandle
 			new HarnessRunManager(settings.runRoot(), clock).pruneTerminalRuntimes(HARNESS);
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
-		Optional<NativeEvents.Rejection> rejection = events.rejection();
+		Optional<HarnessEvents.Rejection> rejection = events.rejection();
 		if (rejection.isPresent())
 			return new SessionResult.RateLimited(rejection.get().resetsAt(), windows);
 		if (!timedOut)

@@ -172,11 +172,11 @@ public final class CodexRunner
 			manager.initialize(run, artifact, project, "codex-app-server", command);
 			HarnessRunnerScope scope = new HarnessRunnerScope();
 			lock = manager.acquireLock(run);
-			CodexAppServerProcess process = new CodexAppServerProcess(HarnessProcessStarter.start(command, worktree,
+			CodexProcess process = new CodexProcess(HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment), scope, installCat);
 			try
 			{
-				manager.recordNativeProcess(run, process.pid(), process.startedAt());
+				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
 				String selectedModel = model;
 				String developerInstructions = "";
 				String effort = "";

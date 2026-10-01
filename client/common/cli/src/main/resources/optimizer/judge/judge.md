@@ -43,7 +43,7 @@ The trial agent's final response to each turn, in order, as a JSON array:
 Read these paths for file and tool effects:
 
 - the trial's project directory after the trial: {{effects}}
-- the trial's native event transcript, one JSON event per line: {{transcript}}
+- the trial's harness event transcript, one JSON event per line: {{transcript}}
 
 ### How to judge
 

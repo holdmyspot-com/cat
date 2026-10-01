@@ -44,9 +44,9 @@ public final class HarnessProcessStarter
 	}
 
 	/**
-	 * Gets the stable start marker for a started native process.
+	 * Gets the stable start marker for a started harness process.
 	 *
-	 * @param process the started native process
+	 * @param process the started harness process
 	 *
 	 * @return the process start marker
 	 *
@@ -58,7 +58,7 @@ public final class HarnessProcessStarter
 	{
 		requireThat(process, "process").isNotNull();
 		return process.toHandle().info().startInstant().orElseThrow(() ->
-			new IOException("Unable to determine the native process start time"));
+			new IOException("Unable to determine the harness process start time"));
 	}
 
 	/**

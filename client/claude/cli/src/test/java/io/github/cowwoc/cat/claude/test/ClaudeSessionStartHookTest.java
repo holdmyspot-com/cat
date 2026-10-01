@@ -70,7 +70,7 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies Claude injects a user rule derived from its native configuration directory without placing it in a
+	 * Verifies Claude injects a user rule derived from its harness configuration directory without placing it in a
 	 * project.
 	 */
 	@Test
@@ -93,7 +93,7 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies CAT installation variables must agree with Claude's native plugin root and cannot override it.
+	 * Verifies CAT installation variables must agree with Claude's harness plugin root and cannot override it.
 	 */
 	@Test
 	public void rejectsConflictingInstallationDirectory() throws IOException
@@ -205,21 +205,21 @@ public final class ClaudeSessionStartHookTest
 	 * Verifies path-scoped rules remain lazy and the hook event's directory takes precedence over configuration.
 	 */
 	@Test
-	public void keepsRulesLazyAndPrefersNativeCwd() throws IOException
+	public void keepsRulesLazyAndPrefersHarnessCwd() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path configuredProject = cleanup.add(Files.createTempDirectory("cat-configured-project-"));
-			Path nativeProject = cleanup.add(Files.createTempDirectory("cat-native-project-"));
+			Path harnessProject = cleanup.add(Files.createTempDirectory("cat-harness-project-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			write(configuredProject, ".cat/rules/common/rule.md", "configured project");
-			write(nativeProject, ".cat/rules/claude/path.md", "---\npaths: [\"*.java\"]\n---\nproject Java rule");
-			write(nativeProject, ".cat/rules/claude/rule.md", "native project");
+			write(harnessProject, ".cat/rules/claude/path.md", "---\npaths: [\"*.java\"]\n---\nproject Java rule");
+			write(harnessProject, ".cat/rules/claude/rule.md", "harness project");
 
-			String context = completeContext(invoke("{\"cwd\":\"" + nativeProject + "\"}",
-				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), nativeProject));
+			String context = completeContext(invoke("{\"cwd\":\"" + harnessProject + "\"}",
+				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), harnessProject));
 
-			requireThat(context, "context").contains("native project").
+			requireThat(context, "context").contains("harness project").
 				contains("Load `.cat/rules/claude/path.md` only when an accessed file matches [*.java].").
 				doesNotContain("configured project").
 				doesNotContain("project Java rule");
@@ -227,7 +227,7 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the native SubagentStart hook injects only rules addressed to the spawned agent type.
+	 * Verifies the harness SubagentStart hook injects only rules addressed to the spawned agent type.
 	 */
 	@Test
 	public void injectsRulesForSubagentAudience() throws IOException
@@ -420,10 +420,10 @@ public final class ClaudeSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> nativeEnvironment = new HashMap<>(environment);
-		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		Map<String, String> harnessEnvironment = new HashMap<>(environment);
+		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSessionStartHook.run(args, new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -442,10 +442,10 @@ public final class ClaudeSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> nativeEnvironment = new HashMap<>(environment);
-		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		Map<String, String> harnessEnvironment = new HashMap<>(environment);
+		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSubagentStartHook.run(new String[0], new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -463,15 +463,15 @@ public final class ClaudeSessionStartHookTest
 		assert environment != null;
 		assert workingDirectory != null;
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> nativeEnvironment = new HashMap<>(environment);
-		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		Map<String, String> harnessEnvironment = new HashMap<>(environment);
+		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		ClaudeSessionEndHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)),
-			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return error.toString(UTF_8);
 	}
 
 	/**
-	 * Adds the common native Claude session metadata to a valid test event.
+	 * Adds the common Claude harness session metadata to a valid test event.
 	 *
 	 * @param input the hook input
 	 * @return the input with session metadata when it is a complete JSON object

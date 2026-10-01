@@ -95,7 +95,7 @@ SCRIPT
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
-@test "Codex uninstall removes only CAT-owned user agents before native plugin removal" {
+@test "Codex uninstall removes only CAT-owned user agents before harness plugin removal" {
 	create_fake_engine_command codex
 	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat" "${CODEX_HOME}/agents"
 	printf 'cat agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"

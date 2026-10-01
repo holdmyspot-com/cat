@@ -13,7 +13,7 @@ import java.util.Map;
 public interface HarnessProcessFactory
 {
 	/**
-	 * Starts one native harness process.
+	 * Starts one harness process.
 	 *
 	 * @param command the command and arguments
 	 *
@@ -21,7 +21,7 @@ public interface HarnessProcessFactory
 	 *
 	 * @param environment the complete scrubbed environment
 	 *
-	 * @return the live native process
+	 * @return the live harness process
 	 *
 	 * @throws IOException if the process cannot be started
 	 */

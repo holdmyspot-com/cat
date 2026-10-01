@@ -16,7 +16,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's native Claude events say about the model, token usage, rate limits and errors.
+ * Reads what a session's Claude harness events say about the model, token usage, rate limits and errors.
  * <p>
  * The parser follows the records that the runner captured (design &sect;11, H14 and H15):
  * <ul>
@@ -29,7 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class NativeEvents
+final class HarnessEvents
 {
 	private static final String RATE_LIMITED_STATUS = "rejected";
 	private static final int RATE_LIMITED_ERROR = 429;
@@ -49,14 +49,14 @@ final class NativeEvents
 	 * @param json the JSON mapper
 	 * @throws NullPointerException if {@code json} is null
 	 */
-	NativeEvents(JsonMapper json)
+	HarnessEvents(JsonMapper json)
 	{
 		requireThat(json, "json").isNotNull();
 		this.json = json;
 	}
 
 	/**
-	 * Absorbs one native event line.
+	 * Absorbs one harness event line.
 	 *
 	 * @param line the line. A line that is not a JSON object is ignored.
 	 * @throws NullPointerException if {@code line} is null

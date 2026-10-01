@@ -144,10 +144,10 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 
-			manager.fail(run, "native harness failed");
+			manager.fail(run, "harness failed");
 
 			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("failed").
-				contains("native harness failed");
+				contains("harness failed");
 		}
 	}
 
@@ -178,13 +178,13 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies a late supervisor report preserves the already recorded native failure rather than replacing it with the
+	 * Verifies a late supervisor report preserves the already recorded harness failure rather than replacing it with the
 	 * runner's exit status.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void preservesRecordedNativeFailure() throws IOException
+	public void preservesRecordedHarnessFailure() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -192,14 +192,14 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
-			manager.fail(run, "native harness exited with exit status 2");
+			manager.fail(run, "harness exited with exit status 2");
 			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
 				"\\\"ownerStartedAt\\\": \\\"[^\\\"]+\\\"", "\\\"ownerStartedAt\\\": \\\"1970-01-01T00:00:00Z\\\"");
 			Files.writeString(manifestPath, inactiveOwnerManifest);
 
 			manager.fail("harness", run.id(), "runner ended with exit status 1", 1);
 
-			requireThat(Files.readString(manifestPath), "manifest").contains("native harness exited with exit status 2").
+			requireThat(Files.readString(manifestPath), "manifest").contains("harness exited with exit status 2").
 				doesNotContain("runner ended with exit status 1");
 		}
 	}
@@ -341,12 +341,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies a live run records the native process identity used by stale-run safety checks.
+	 * Verifies a live run records the harness process identity used by stale-run safety checks.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void recordsNativeProcessIdentity() throws IOException
+	public void recordsHarnessProcessIdentity() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -354,21 +354,21 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 
-			manager.recordNativeProcess(run, 12_345, Instant.parse("2026-07-29T00:00:00Z"));
+			manager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-29T00:00:00Z"));
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(manifest, "manifest").contains("\"nativePid\": 12345").
-				contains("\"nativeStartedAt\": \"2026-07-29T00:00:00Z\"");
+			requireThat(manifest, "manifest").contains("\"harnessPid\": 12345").
+				contains("\"harnessStartedAt\": \"2026-07-29T00:00:00Z\"");
 		}
 	}
 
 	/**
-	 * Verifies retained manifests record reproducible native-process metadata without command secrets.
+	 * Verifies retained manifests record reproducible harness-process metadata without command secrets.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void recordsRedactedNativeProcessMetadata() throws IOException
+	public void recordsRedactedHarnessProcessMetadata() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -383,17 +383,17 @@ public final class HarnessRunManagerTest
 			String manifest = Files.readString(run.directory().resolve("run.json"));
 			requireThat(manifest, "manifest").contains("\"artifactPath\": \"" + artifact + "\"").
 				contains("\"projectPath\": \"" + project + "\"").contains("\"transport\": \"structured-protocol\"").
-				contains("\"nativeCommand\": \"harness --api-key <redacted>\"").doesNotContain("secret");
+				contains("\"harnessCommand\": \"harness --api-key <redacted>\"").doesNotContain("secret");
 		}
 	}
 
 	/**
-	 * Verifies native command streams are retained in the owned diagnostics directory.
+	 * Verifies harness command streams are retained in the owned diagnostics directory.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void retainsNativeCommandStreams() throws IOException
+	public void retainsHarnessCommandStreams() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -412,12 +412,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies native turn streams are retained in the owned diagnostics directory.
+	 * Verifies harness turn streams are retained in the owned diagnostics directory.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void retainsNativeTurnStreams() throws IOException
+	public void retainsHarnessTurnStreams() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -425,11 +425,11 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 
-			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "native events", "native error"));
+			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "harness events", "harness error"));
 
 			Path artifacts = run.directory().resolve("artifacts");
-			requireThat(Files.readString(artifacts.resolve("turn-1.events")), "events").isEqualTo("native events");
-			requireThat(Files.readString(artifacts.resolve("turn-1.stderr")), "standardError").isEqualTo("native error");
+			requireThat(Files.readString(artifacts.resolve("turn-1.events")), "events").isEqualTo("harness events");
+			requireThat(Files.readString(artifacts.resolve("turn-1.stderr")), "standardError").isEqualTo("harness error");
 		}
 	}
 
@@ -459,12 +459,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies native events remain inspectable while a turn is still active.
+	 * Verifies harness events remain inspectable while a turn is still active.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void appendsLiveNativeTurnEvents() throws IOException
+	public void appendsLiveHarnessTurnEvents() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -632,12 +632,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies abandoned-run recovery terminates a recorded native child before retaining its failed diagnostic.
+	 * Verifies abandoned-run recovery terminates a recorded harness child before retaining its failed diagnostic.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void recordsAbandonedNativeRunFailure() throws IOException
+	public void recordsAbandonedHarnessRunFailure() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -647,7 +647,7 @@ public final class HarnessRunManagerTest
 				Instant.parse("2026-07-20T00:00:01Z"));
 			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock, processLiveness);
 			HarnessRun run = oldManager.create("harness");
-			oldManager.recordNativeProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
+			oldManager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
 			Path manifest = run.directory().resolve("run.json");
 			String orphanedManifest = Files.readString(manifest).replaceFirst("\"ownerPid\": [0-9]+",
 				"\"ownerPid\": 999999");
@@ -772,7 +772,7 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * A controllable recorded-native-process liveness service.
+	 * A controllable recorded-harness-process liveness service.
 	 */
 	private static final class FakeProcessLiveness implements HarnessProcessLiveness
 	{

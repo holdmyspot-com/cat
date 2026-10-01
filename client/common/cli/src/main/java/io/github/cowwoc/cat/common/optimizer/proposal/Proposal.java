@@ -36,7 +36,7 @@ public final class Proposal
 	 * The limitation that every confirmed contract records: no harness names the instruction files it loaded, so
 	 * their loading is derived from documented rules rather than observed (design &sect;6.1, H21).
 	 */
-	public static final String DERIVED_LOADING_LIMIT = "Prompt files that no native event reports loading were " +
+	public static final String DERIVED_LOADING_LIMIT = "Prompt files that no harness event reports loading were " +
 		"identified from documented loading rules rather than observed, so trials can load a different set of " +
 		"prompt files than production if the harness does not follow those rules.";
 	/**

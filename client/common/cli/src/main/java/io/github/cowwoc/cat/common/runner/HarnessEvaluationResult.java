@@ -11,7 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Identifies the retained evidence produced by one completed harness execution.
  *
  * <p>
- * The evaluator can use this value without knowing how a harness started its native process, carried turns, or wrote
+ * The evaluator can use this value without knowing how a harness started its harness process, carried turns, or wrote
  * its protocol stream. The harness runner owns those details and returns only the project and final response that the
  * next evaluation boundary needs.
  *

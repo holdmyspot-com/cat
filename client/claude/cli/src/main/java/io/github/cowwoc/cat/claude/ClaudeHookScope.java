@@ -9,7 +9,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Owns one Claude hook invocation and translates its native environment at the harness boundary.
+ * Owns one Claude hook invocation and translates its harness environment at the harness boundary.
  */
 final class ClaudeHookScope implements AutoCloseable
 {
@@ -17,9 +17,9 @@ final class ClaudeHookScope implements AutoCloseable
 	private final Path userRulesRoot;
 
 	/**
-	 * Creates a scope from Claude's native hook environment.
+	 * Creates a scope from Claude's harness hook environment.
 	 *
-	 * @param environment the non-null native hook environment
+	 * @param environment the non-null harness hook environment
 	 * @throws IOException if Claude did not supply a usable plugin root
 	 */
 	ClaudeHookScope(Map<String, String> environment) throws IOException
@@ -39,11 +39,11 @@ final class ClaudeHookScope implements AutoCloseable
 	}
 
 	/**
-	 * Rejects CAT variables that disagree with or are not derived from Claude's native plugin root.
+	 * Rejects CAT variables that disagree with or are not derived from Claude's harness plugin root.
 	 *
-	 * @param environment the native hook environment
-	 * @param pluginRoot the resolved native plugin root
-	 * @throws IOException if a CAT variable conflicts with the native root
+	 * @param environment the harness hook environment
+	 * @param pluginRoot the resolved harness plugin root
+	 * @throws IOException if a CAT variable conflicts with the harness root
 	 */
 	private static void validateCatVariables(Map<String, String> environment, Path pluginRoot) throws IOException
 	{
@@ -91,7 +91,7 @@ final class ClaudeHookScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the current user's CAT rule directory derived from its native home directory.
+	 * Returns the current user's CAT rule directory derived from its harness home directory.
 	 *
 	 * @return the normalized user-rule directory, which may not exist yet
 	 */
@@ -103,7 +103,7 @@ final class ClaudeHookScope implements AutoCloseable
 	/**
 	 * Resolves the project directory for a Claude hook event.
 	 *
-	 * @param event the native event
+	 * @param event the harness event
 	 * @param workingDirectory the hook process directory
 	 * @return the normalized project directory
 	 * @throws IOException if the resolved directory is not a directory

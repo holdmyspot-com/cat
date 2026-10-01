@@ -13,7 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Owns values and services shared for one native hook invocation.
+ * Owns values and services shared for one harness hook invocation.
  */
 public final class HookScope implements AutoCloseable
 {
@@ -76,9 +76,9 @@ public final class HookScope implements AutoCloseable
 	}
 
 	/**
-	 * Resolves the native hook's current working directory.
+	 * Resolves the harness hook's current working directory.
 	 *
-	 * @param event the native SessionStart event
+	 * @param event the harness SessionStart event
 	 * @param workingDirectory the hook process's working directory
 	 * @return the normalized current working directory
 	 * @throws NullPointerException if {@code event} or {@code workingDirectory} are null

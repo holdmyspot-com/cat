@@ -54,7 +54,7 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Reads the lines of a recorded native event file.
+	 * Reads the lines of a recorded harness event file.
 	 *
 	 * @param name the resource name below {@code optimizer}
 	 * @return the lines

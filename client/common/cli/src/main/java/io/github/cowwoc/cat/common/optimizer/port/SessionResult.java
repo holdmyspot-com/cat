@@ -29,11 +29,11 @@ public sealed interface SessionResult
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param transcript the retained native event archive
+	 * @param transcript the retained harness event archive
 	 * @param responses the final response to each turn, in turn order
 	 * @param effects the directory that holds the session's project effects
-	 * @param model the model observed in native events, or {@code null} if the events did not name one
-	 * @param reasoning the reasoning configuration observed in native events, or {@code null} if the events did not
+	 * @param model the model observed in harness events, or {@code null} if the events did not name one
+	 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if the events did not
 	 *   name one
 	 * @param usage the reported token usage, or {@code null} if the harness did not report it
 	 * @param windows the rate-limit windows that the harness reported during the session
@@ -47,11 +47,11 @@ public sealed interface SessionResult
 		/**
 		 * Creates a completed result.
 		 *
-		 * @param transcript the retained native event archive
+		 * @param transcript the retained harness event archive
 		 * @param responses the final response to each turn, in turn order
 		 * @param effects the directory that holds the session's project effects
-		 * @param model the model observed in native events, or {@code null} if the events did not name one
-		 * @param reasoning the reasoning configuration observed in native events, or {@code null} if the events did
+		 * @param model the model observed in harness events, or {@code null} if the events did not name one
+		 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if the events did
 		 *   not name one
 		 * @param usage the reported token usage, or {@code null} if the harness did not report it
 		 * @param windows the rate-limit windows that the harness reported during the session

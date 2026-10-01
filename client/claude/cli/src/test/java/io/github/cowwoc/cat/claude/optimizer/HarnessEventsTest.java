@@ -16,22 +16,22 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link NativeEvents} against native lines that the Claude runner recorded, and against synthetic lines for the
- * shapes that no probe observed.
+ * Tests {@link HarnessEvents} against harness lines that the Claude runner recorded, and against synthetic lines for
+ * the shapes that no probe observed.
  */
-public final class NativeEventsTest
+public final class HarnessEventsTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Creates the test.
 	 */
-	public NativeEventsTest()
+	public HarnessEventsTest()
 	{
 	}
 
 	/**
-	 * Reads the lines of a recorded native event file.
+	 * Reads the lines of a recorded harness event file.
 	 *
 	 * @param name the resource name below {@code optimizer}
 	 * @return the lines
@@ -39,7 +39,7 @@ public final class NativeEventsTest
 	 */
 	private static List<String> recorded(String name) throws IOException
 	{
-		try (InputStream stream = NativeEventsTest.class.getResourceAsStream("/optimizer/" + name))
+		try (InputStream stream = HarnessEventsTest.class.getResourceAsStream("/optimizer/" + name))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -49,12 +49,12 @@ public final class NativeEventsTest
 	/**
 	 * Parses recorded lines.
 	 *
-	 * @param lines the native event lines
+	 * @param lines the harness event lines
 	 * @return the parsed events
 	 */
-	private static NativeEvents parse(List<String> lines)
+	private static HarnessEvents parse(List<String> lines)
 	{
-		NativeEvents events = new NativeEvents(JSON);
+		HarnessEvents events = new HarnessEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events;
@@ -70,7 +70,7 @@ public final class NativeEventsTest
 	public void readsObservedModelFromInit() throws IOException
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(recorded("claude-single-turn.jsonl"));
+		HarnessEvents events = parse(recorded("claude-single-turn.jsonl"));
 		requireThat(events.model(), "model").isEqualTo("claude-haiku-4-5-20251001");
 		requireThat(events.reasoning(), "reasoning").isNull();
 	}
@@ -82,7 +82,7 @@ public final class NativeEventsTest
 	public void readsObservedReasoningWhenInitNamesIt()
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(List.of(
+		HarnessEvents events = parse(List.of(
 			"{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-haiku-4-5-20251001\",\"effort\":\"medium\"}"));
 		requireThat(events.reasoning(), "reasoning").isEqualTo("medium");
 	}
@@ -97,7 +97,7 @@ public final class NativeEventsTest
 	public void readsWindowsFromRateLimitEvent() throws IOException
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(recorded("claude-single-turn.jsonl"));
+		HarnessEvents events = parse(recorded("claude-single-turn.jsonl"));
 		requireThat(events.windows(), "windows").isEqualTo(List.of(
 			new RateLimitWindow(0.3, Instant.ofEpochSecond(1_790_851_200L)),
 			new RateLimitWindow(0.04, Instant.ofEpochSecond(1_791_064_800L))));
@@ -115,10 +115,10 @@ public final class NativeEventsTest
 	public void readsCumulativeUsageFromLastResult() throws IOException
 	{
 		// Requirement: R-E16
-		NativeEvents single = parse(recorded("claude-single-turn.jsonl"));
+		HarnessEvents single = parse(recorded("claude-single-turn.jsonl"));
 		requireThat(single.usage(), "single.usage").isEqualTo(new TokenUsage(56_055, 40_099, 565, 397));
 
-		NativeEvents background = parse(recorded("claude-background-child.jsonl"));
+		HarnessEvents background = parse(recorded("claude-background-child.jsonl"));
 		requireThat(background.usage(), "background.usage").isEqualTo(new TokenUsage(94_995, 69_217, 566, 349));
 		requireThat(background.windows().size(), "background.windows.size()").isEqualTo(2);
 	}
@@ -130,7 +130,7 @@ public final class NativeEventsTest
 	public void reportsNothingForUnrecognizedLines()
 	{
 		// Requirement: R-E16
-		NativeEvents events = parse(List.of("", "not json", "[1,2]", "{\"type\":\"assistant\"}"));
+		HarnessEvents events = parse(List.of("", "not json", "[1,2]", "{\"type\":\"assistant\"}"));
 		requireThat(events.model(), "model").isNull();
 		requireThat(events.usage(), "usage").isNull();
 		requireThat(events.windows(), "windows").isEqualTo(List.of());
@@ -145,12 +145,12 @@ public final class NativeEventsTest
 	public void reportsRejectedRateLimit()
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(List.of(
+		HarnessEvents events = parse(List.of(
 			"{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":1790851200," +
 				"\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":1.0," +
 				"\"resetsAt\":1790851200}}}}"));
 		requireThat(events.rejection(), "rejection").isEqualTo(
-			Optional.of(new NativeEvents.Rejection(Instant.ofEpochSecond(1_790_851_200L))));
+			Optional.of(new HarnessEvents.Rejection(Instant.ofEpochSecond(1_790_851_200L))));
 		requireThat(events.windows(), "windows").isEqualTo(List.of(
 			new RateLimitWindow(1.0, Instant.ofEpochSecond(1_790_851_200L))));
 	}
@@ -162,9 +162,9 @@ public final class NativeEventsTest
 	public void reportsRejectionWithoutResetTime()
 	{
 		// Requirement: R-E6
-		NativeEvents events = parse(List.of(
+		HarnessEvents events = parse(List.of(
 			"{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"}}"));
-		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new NativeEvents.Rejection(null)));
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new HarnessEvents.Rejection(null)));
 	}
 
 	/**
@@ -177,20 +177,20 @@ public final class NativeEventsTest
 	public void classifiesErrorResults() throws IOException
 	{
 		// Requirement: R-E7
-		NativeEvents limited = parse(List.of(
+		HarnessEvents limited = parse(List.of(
 			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":429," +
 				"\"terminal_reason\":\"completed\",\"result\":\"limit reached\"}"));
 		requireThat(limited.rejection().isPresent(), "limited.rejection.isPresent()").isTrue();
 		requireThat(limited.error(), "limited.error").isNull();
 
-		NativeEvents failed = parse(List.of(
+		HarnessEvents failed = parse(List.of(
 			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":500," +
 				"\"terminal_reason\":\"model_error\",\"result\":\"secret details\"}"));
 		requireThat(failed.rejection().isPresent(), "failed.rejection.isPresent()").isFalse();
 		requireThat(failed.error(), "failed.error").isEqualTo(
 			"Claude reported an error result (api_error_status=500, terminal_reason=model_error)");
 
-		NativeEvents fine = parse(recorded("claude-single-turn.jsonl"));
+		HarnessEvents fine = parse(recorded("claude-single-turn.jsonl"));
 		requireThat(fine.error(), "fine.error").isNull();
 	}
 }

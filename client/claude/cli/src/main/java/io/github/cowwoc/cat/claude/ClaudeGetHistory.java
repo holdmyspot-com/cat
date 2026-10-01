@@ -155,9 +155,9 @@ public final class ClaudeGetHistory
 	}
 
 	/**
-	 * Returns one required native environment value.
+	 * Returns one required harness environment value.
 	 *
-	 * @param environment the native Claude Code environment
+	 * @param environment the Claude Code harness environment
 	 * @param name the value name
 	 * @return the non-blank value
 	 * @throws IOException if the value is absent

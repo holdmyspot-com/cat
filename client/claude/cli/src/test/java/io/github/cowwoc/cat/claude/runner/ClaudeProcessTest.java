@@ -3,10 +3,10 @@ package io.github.cowwoc.cat.claude.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.claude.runner.ClaudeHarnessProcess.LineEffect;
-import io.github.cowwoc.cat.claude.runner.ClaudeHarnessProcess.TurnBoundary;
+import io.github.cowwoc.cat.claude.runner.ClaudeProcess.LineEffect;
+import io.github.cowwoc.cat.claude.runner.ClaudeProcess.TurnBoundary;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.runner.fakes.FakeNativeProcess;
+import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
@@ -29,14 +29,14 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests how {@link ClaudeHarnessProcess} decides that a turn has ended. Each test plays the Claude CLI with a
- * {@link FakeNativeProcess} that prints stream-json lines shaped like those Claude Code 2.1.286 printed for a root
+ * Tests how {@link ClaudeProcess} decides that a turn has ended. Each test plays the Claude CLI with a
+ * {@link FakeHarnessCli} that prints stream-json lines shaped like those Claude Code 2.1.286 printed for a root
  * session that launched background child agents. The recorded timelines under {@code runner/turn-boundary} are trimmed
  * copies of the 2026-10-01 probes (design H24). The timelines whose names start with {@code s-} were recorded with
  * {@code CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1}, so Claude printed its {@code session_state_changed} events; the
  * others were recorded without it and show a Claude that does not report its session state.
  */
-public final class ClaudeHarnessProcessTest
+public final class ClaudeProcessTest
 {
 	/**
 	 * Claude starts working on the root session's queued work.
@@ -113,7 +113,7 @@ public final class ClaudeHarnessProcessTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public ClaudeHarnessProcessTest()
+	public ClaudeProcessTest()
 	{
 	}
 
@@ -126,7 +126,7 @@ public final class ClaudeHarnessProcessTest
 	 */
 	private static List<String> recorded(String name) throws IOException
 	{
-		try (InputStream stream = ClaudeHarnessProcessTest.class.getResourceAsStream("/runner/turn-boundary/" + name))
+		try (InputStream stream = ClaudeProcessTest.class.getResourceAsStream("/runner/turn-boundary/" + name))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -160,10 +160,10 @@ public final class ClaudeHarnessProcessTest
 	 */
 	private static void assertTurnSpans(List<String> lines) throws IOException
 	{
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(lines.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -270,10 +270,10 @@ public final class ClaudeHarnessProcessTest
 		List<String> beforeMessage = recorded("s-queued-1.jsonl");
 		List<String> afterMessage = recorded("s-queued-2.jsonl");
 		String rootResult = beforeMessage.getLast();
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(beforeMessage.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -308,10 +308,10 @@ public final class ClaudeHarnessProcessTest
 	public void reportsFollowUpThatArrivesAfterTurnEnded() throws IOException
 	{
 		// Requirement: R-E14
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -324,7 +324,7 @@ public final class ClaudeHarnessProcessTest
 
 			requireThat(next.completed(), "completed").isTrue();
 			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
-			requireThat(next.standardError(), "standardError").isEqualTo(ClaudeHarnessProcess.LATE_FOLLOW_UP);
+			requireThat(next.standardError(), "standardError").isEqualTo(ClaudeProcess.LATE_FOLLOW_UP);
 			requireThat(relayed, "relayed").isEqualTo(lines);
 		}
 	}
@@ -368,10 +368,10 @@ public final class ClaudeHarnessProcessTest
 	{
 		// Requirement: R-E14
 		List<String> lines = recorded(timeline);
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(lines.toArray(String[]::new));
 			List<String> relayed = new ArrayList<>();
@@ -396,10 +396,10 @@ public final class ClaudeHarnessProcessTest
 	public void remembersSessionStateAcrossTurns() throws IOException
 	{
 		// Requirement: R-E14
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -422,10 +422,10 @@ public final class ClaudeHarnessProcessTest
 	public void ignoresInterruptAfterTurnEnded() throws IOException
 	{
 		// Requirement: R-E15
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 			process.sendTurn("Reply LAUNCHED.");
@@ -449,10 +449,10 @@ public final class ClaudeHarnessProcessTest
 	public void waitsForExitAfterOutputEnds() throws IOException
 	{
 		// Requirement: R-E14
-		FakeNativeProcess claude = new FakeNativeProcess(_ ->
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
-		try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), claude))
+		try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), claude))
 		{
 			claude.emit(STATE_RUNNING, INIT);
 			claude.closeOutputThenExitWhenAwaited();
@@ -500,7 +500,7 @@ public final class ClaudeHarnessProcessTest
 			builder.redirectError(ProcessBuilder.Redirect.DISCARD);
 			Process shell = builder.start();
 			CountDownLatch rootIdle = new CountDownLatch(1);
-			try (ClaudeHarnessProcess process = new ClaudeHarnessProcess(new HarnessRunnerScope(), shell))
+			try (ClaudeProcess process = new ClaudeProcess(new HarnessRunnerScope(), shell))
 			{
 				Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Launch a background child.",
 					line ->

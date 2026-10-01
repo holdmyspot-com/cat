@@ -29,7 +29,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 /**
  * Adapts Claude's stream-json CLI process to the multi-request {@link HarnessProcess} contract.
  */
-public final class ClaudeHarnessProcess implements HarnessProcess
+public final class ClaudeProcess implements HarnessProcess
 {
 	/**
 	 * How long to wait for the operating system to report Claude's exit once its output has ended.
@@ -72,7 +72,7 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	 * @throws NullPointerException if {@code scope} or {@code process} are null
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	public ClaudeHarnessProcess(HarnessRunnerScope scope, Process process)
+	public ClaudeProcess(HarnessRunnerScope scope, Process process)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(process, "process").isNotNull();
@@ -250,7 +250,7 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	/**
 	 * Creates the result of a turn that Claude finished.
 	 *
-	 * @param events the complete native event stream for the turn
+	 * @param events the complete harness event stream for the turn
 	 * @param replyEvents the part of {@code events} that belongs to the turn's own reply
 	 * @param diagnostics the turn's diagnostics, one per line, or an empty string if there are none
 	 * @return a completed result carrying the turn's final assistant response
@@ -266,7 +266,7 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	/**
 	 * Extracts Claude's final assistant text without exposing Claude stream-JSON details to the common runner bridge.
 	 *
-	 * @param events the complete native event stream for one terminal turn
+	 * @param events the complete harness event stream for one terminal turn
 	 * @return the root session's last assistant or terminal result text, or an empty string when none was emitted
 	 */
 	private String assistantResponse(String events)
@@ -290,7 +290,7 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 			}
 			catch (JacksonException _)
 			{
-				// The complete native stream remains retained even when an unrelated diagnostic line is not protocol JSON.
+				// The complete harness stream remains retained even when an unrelated diagnostic line is not protocol JSON.
 			}
 		}
 		return response;
@@ -379,9 +379,9 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns the native process identifier.
+	 * Returns the harness process identifier.
 	 *
-	 * @return the positive native process identifier
+	 * @return the positive harness process identifier
 	 */
 	public long pid()
 	{
@@ -389,9 +389,9 @@ public final class ClaudeHarnessProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns the native process start marker.
+	 * Returns the harness process start marker.
 	 *
-	 * @return the native process start marker
+	 * @return the harness process start marker
 	 * @throws IOException if the operating system does not expose a start marker
 	 */
 	public Instant startedAt() throws IOException

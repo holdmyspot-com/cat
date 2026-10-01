@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Starts CAT's native SubagentStart hook from the installed plugin that contains this launcher.
+# Starts CAT's harness SubagentStart hook from the installed plugin that contains this launcher.
 set -eu
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

@@ -110,19 +110,19 @@ final class CodexConnectionConfiguration
 	 * Gives the nested process's own runtime state the same narrowly scoped write authority as its project workspace.
 	 *
 	 * <p>
-	 * The native shell starts from the copied project, while the runner deliberately puts its credentials, session
+	 * The harness shell starts from the copied project, while the runner deliberately puts its credentials, session
 	 * state, plugins, and configuration in a sibling isolated home. A workspace-only profile cannot initialize that
 	 * shell because its required home lies outside the workspace. The child profile preserves the parent's CAT policy
-	 * when available and adds only the newly created isolated home, the native temporary directory, and the shared
-	 * dependency cache. Codex's Linux sandbox creates its process lock and scratch state under the native temporary
+	 * when available and adds only the newly created isolated home, the harness temporary directory, and the shared
+	 * dependency cache. Codex's Linux sandbox creates its process lock and scratch state under the harness temporary
 	 * directory before a shell command can run, so it needs the same temporary-directory authority as the parent
 	 * workspace-write sandbox. Its temporary directory is created inside the runner-owned home beneath CAT work storage,
-	 * rather than granting global {@code /tmp}; the native sandbox uses it before the first shell command can run.
+	 * rather than granting global {@code /tmp}; the harness sandbox uses it before the first shell command can run.
 	 *
 	 * @param configuration the isolated configuration being assembled
 	 * @param isolatedHome the fresh runtime home that the runner owns
 	 * @param npmCache the verified shared dependency cache, or {@code null} when no cache was supplied
-	 * @param temporaryDirectory the fresh native temporary directory owned by the runner
+	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
 	 */
 	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, Path npmCache,
 		Path temporaryDirectory)

@@ -101,7 +101,7 @@ public final class CodexSessionsNativeTest
 	 * @return the subject
 	 * @throws IOException if the fixtures cannot be created
 	 */
-	private static NativeSubject open() throws IOException
+	private static HarnessSubject open() throws IOException
 	{
 		requireHarness();
 		String workTemp = System.getProperty("cat.work.temp");
@@ -117,7 +117,7 @@ public final class CodexSessionsNativeTest
 		Path runRoot = fixture.resolve("runs");
 		CodexSessions sessions = new CodexSessions(new CodexSessions.Settings(artifact, runRoot, "", "",
 			false, environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
-		return new NativeSubject(cleanup, sessions, source, runRoot);
+		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}
 
 	/**
@@ -218,7 +218,7 @@ public final class CodexSessionsNativeTest
 	}
 
 	/**
-	 * Verifies that the model comes from native events rather than from the alias that CAT passed, and that the usage
+	 * Verifies that the model comes from harness events rather than from the alias that CAT passed, and that the usage
 	 * and rate-limit windows are read from the same events.
 	 *
 	 * @throws Exception if the session fails
@@ -228,7 +228,7 @@ public final class CodexSessionsNativeTest
 	{
 		// Requirement: R-E16
 		// Requirement: R-E6
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
 				List.of(subject.quickPrompt()), List.of(), LIMIT));
@@ -258,7 +258,7 @@ public final class CodexSessionsNativeTest
 	public void classifiesTheHostLogin() throws Exception
 	{
 		// Requirement: R-E7
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			HostLogin login = subject.port().hostLogin();
 
@@ -287,7 +287,7 @@ public final class CodexSessionsNativeTest
 	public void runsOneSessionPerRole() throws Exception
 	{
 		// Requirement: R-E13
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			for (SessionRole role : SessionRole.values())
 			{
@@ -313,7 +313,7 @@ public final class CodexSessionsNativeTest
 	public void recordsAChildOfTheSession() throws Exception
 	{
 		// Requirement: R-E14
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			String prompt = "Do not create any file yourself. Delegate with your child-agent (sub-agent) tool: " +
 				"start exactly one child agent whose only job is to create the file child.txt in the current " +
@@ -341,7 +341,7 @@ public final class CodexSessionsNativeTest
 	/**
 	 * The real adapter with its fixtures.
 	 */
-	private static final class NativeSubject implements Subject
+	private static final class HarnessSubject implements Subject
 	{
 		private final TemporaryDirectories cleanup;
 		private final SessionPort port;
@@ -356,7 +356,7 @@ public final class CodexSessionsNativeTest
 		 * @param workspace the source directory
 		 * @param runRoot   the directory of run directories
 		 */
-		private NativeSubject(TemporaryDirectories cleanup, SessionPort port, Path workspace, Path runRoot)
+		private HarnessSubject(TemporaryDirectories cleanup, SessionPort port, Path workspace, Path runRoot)
 		{
 			this.cleanup = cleanup;
 			this.port = port;

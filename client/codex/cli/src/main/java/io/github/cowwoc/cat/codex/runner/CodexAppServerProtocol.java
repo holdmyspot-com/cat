@@ -123,7 +123,7 @@ public final class CodexAppServerProtocol
 	}
 
 	/**
-	 * Frames a controlled thread that receives exact base and developer instructions without native discovery.
+	 * Frames a controlled thread that receives exact base and developer instructions without harness discovery.
 	 *
 	 * @param requestId the positive JSON-RPC request identifier
 	 * @param workingDirectory the writable copied-project directory
@@ -142,11 +142,11 @@ public final class CodexAppServerProtocol
 	}
 
 	/**
-	 * Frames an inventory-only native thread that must not resume or persist a user conversation.
+	 * Frames an inventory-only harness thread that must not resume or persist a user conversation.
 	 *
 	 * @param requestId the positive JSON-RPC request identifier
 	 * @param workingDirectory preflight project directory
-	 * @param model selected native model
+	 * @param model selected harness model
 	 * @return ephemeral thread-start request line
 	 */
 	public static String preflightThreadStart(long requestId, Path workingDirectory, String model)
@@ -155,7 +155,7 @@ public final class CodexAppServerProtocol
 	}
 
 	/**
-	 * Frames one native thread-start request.
+	 * Frames one harness thread-start request.
 	 *
 	 * @param requestId the positive JSON-RPC request identifier
 	 * @param workingDirectory writable copied-project directory
@@ -164,7 +164,7 @@ public final class CodexAppServerProtocol
 	 * @param developerInstructions optional CAT-owned developer instruction content
 	 * @param permissionProfile optional named Codex permission profile
 	 * @param runtimeWorkspaceRoots writable project plus read-only evidence roots
-	 * @param ephemeral whether the native thread must not persist or resume conversation state
+	 * @param ephemeral whether the harness thread must not persist or resume conversation state
 	 * @return JSON-RPC request line
 	 */
 	private static String threadStart(long requestId, Path workingDirectory, String model, String baseInstructions,
@@ -297,7 +297,7 @@ public final class CodexAppServerProtocol
 	 * Frames the fresh-thread memory disablement required before production inventory.
 	 *
 	 * @param requestId positive JSON-RPC request identifier
-	 * @param threadId native thread to configure
+	 * @param threadId harness thread to configure
 	 * @return JSON-RPC request line
 	 */
 	public static String threadMemoryModeSet(long requestId, String threadId)
@@ -312,7 +312,7 @@ public final class CodexAppServerProtocol
 	 * Frames one full MCP-status page without ever invoking an MCP tool.
 	 *
 	 * @param requestId positive JSON-RPC request identifier
-	 * @param threadId native thread to inspect
+	 * @param threadId harness thread to inspect
 	 * @param cursor response cursor, or empty for the first page
 	 * @return JSON-RPC request line
 	 */

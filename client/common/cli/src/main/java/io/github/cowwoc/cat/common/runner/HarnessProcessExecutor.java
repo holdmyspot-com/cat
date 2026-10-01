@@ -13,7 +13,7 @@ import java.util.Map;
 public interface HarnessProcessExecutor
 {
 	/**
-	 * Executes one native command.
+	 * Executes one harness command.
 	 *
 	 * @param command the command and arguments
 	 *

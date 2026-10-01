@@ -69,7 +69,7 @@ createInterface({input: child.stdout}).on("line", (line) =>
       runId = message.runId;
       started();
     }
-    else if (message.type === "native-event")
+    else if (message.type === "harness-event")
       writes = writes.then(() => appendFile(output, `${message.event}\n`));
     else if (message.type === "turn-completed" && !completed)
     {

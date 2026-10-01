@@ -18,7 +18,7 @@ const reviewContract = await reviewFormat(artifact);
 await writeFile(output, "");
 const child = spawn(runner, ["--artifact", artifact, "--project", project, "--run-root", runRoot, "--keep-run", "--install-cat"], {stdio: ["pipe", "pipe", "pipe"]});
 const keepAlive = setInterval(() => {}, 1_000); let error = ""; let started; const ready = new Promise(resolve => { started = resolve; }); let complete; const turns = []; let writes = Promise.resolve();
-createInterface({input: child.stdout}).on("line", line => { const message = JSON.parse(line); if (message.type === "started") started(); if (message.type === "native-event") writes = writes.then(() => appendFile(output, `${message.event}\n`)); if (message.type === "turn-completed") { if (complete) { complete(message); complete = null; } else turns.push(message); } });
+createInterface({input: child.stdout}).on("line", line => { const message = JSON.parse(line); if (message.type === "started") started(); if (message.type === "harness-event") writes = writes.then(() => appendFile(output, `${message.event}\n`)); if (message.type === "turn-completed") { if (complete) { complete(message); complete = null; } else turns.push(message); } });
 child.stderr.on("data", chunk => { error += chunk; });
 const send = async (prompt) => { child.stdin.write(`${JSON.stringify({type: "turn", prompt})}\n`); return turns.shift() ?? new Promise(resolve => { complete = resolve; }); };
 await ready; await send(delegationPrompt(initial, reviewContract)); await writes;

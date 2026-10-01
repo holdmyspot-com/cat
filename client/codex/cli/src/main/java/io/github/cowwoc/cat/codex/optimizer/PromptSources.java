@@ -56,7 +56,7 @@ final class PromptSources
 	}
 
 	/**
-	 * Absorbs one native event line.
+	 * Absorbs one harness event line.
 	 *
 	 * @param line the line. A line that is not a JSON object is ignored.
 	 * @throws NullPointerException if {@code line} is null

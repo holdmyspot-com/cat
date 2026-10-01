@@ -33,7 +33,7 @@ public final class EventSinkTest
 
 	/**
 	 * Verifies that a {@code waiting} record, which the bridge writes while a turn is quiet, neither reports progress
-	 * nor reaches the native event transcript.
+	 * nor reaches the harness event transcript.
 	 *
 	 * @throws IOException if the run directory cannot be created
 	 */
@@ -46,7 +46,7 @@ public final class EventSinkTest
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = new EventSink(JSON, new NativeEvents(JSON), harnessDirectory, Map.of(), messages))
+			try (EventSink sink = new EventSink(JSON, new HarnessEvents(JSON), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
 					{"type":"started","runId":"r"}
@@ -60,6 +60,34 @@ public final class EventSinkTest
 				new Message.TurnCompleted("done")));
 			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").resolve(EventSink.TRANSCRIPT);
 			requireThat(Files.readString(transcript, UTF_8), "transcript").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a {@code harness-event} record, which the bridge writes for each raw event line that the
+	 * harness prints, reaches the retained event transcript.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 */
+	// Requirement: R-E14
+	@Test
+	public void retainsHarnessEventInTranscript() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-event-sink-"));
+			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
+			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
+			try (EventSink sink = new EventSink(JSON, new HarnessEvents(JSON), harnessDirectory, Map.of(), messages))
+			{
+				sink.write("""
+					{"type":"started","runId":"r"}
+					{"type":"harness-event","event":"{\\"type\\":\\"system\\"}"}
+					""");
+			}
+
+			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").resolve(EventSink.TRANSCRIPT);
+			requireThat(Files.readString(transcript, UTF_8), "transcript").isEqualTo("{\"type\":\"system\"}\n");
 		}
 	}
 }

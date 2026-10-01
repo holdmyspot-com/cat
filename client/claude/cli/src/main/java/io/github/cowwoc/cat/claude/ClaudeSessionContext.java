@@ -25,10 +25,10 @@ final class ClaudeSessionContext
 	}
 
 	/**
-	 * Writes the complete rules for one native Claude event.
+	 * Writes the complete rules for one Claude harness event.
 	 *
 	 * @param catTemp CAT's temporary root
-	 * @param event the native hook event
+	 * @param event the harness hook event
 	 * @param eventName the event name
 	 * @param rules the complete rules
 	 * @return the written context file
@@ -51,7 +51,7 @@ final class ClaudeSessionContext
 	 * Deletes the context files owned by a completed Claude session.
 	 *
 	 * @param catTemp CAT's temporary root
-	 * @param event the native SessionEnd event
+	 * @param event the harness SessionEnd event
 	 * @throws IOException if the session identifier is invalid or a context file cannot be deleted
 	 */
 	static void delete(Path catTemp, JsonNode event) throws IOException
@@ -91,9 +91,9 @@ final class ClaudeSessionContext
 	}
 
 	/**
-	 * Returns a validated native Claude session identifier.
+	 * Returns a validated Claude harness session identifier.
 	 *
-	 * @param event the native hook event
+	 * @param event the harness hook event
 	 * @return the session identifier
 	 * @throws IOException if the event lacks a UUID session identifier
 	 */
@@ -116,8 +116,8 @@ final class ClaudeSessionContext
 	/**
 	 * Returns the session-specific file name owned by a Claude context-producing event.
 	 *
-	 * @param event the native hook event
-	 * @param eventName the native event name
+	 * @param event the harness hook event
+	 * @param eventName the harness event name
 	 * @return the file name for the event
 	 */
 	private static String fileName(JsonNode event, String eventName) throws IOException
@@ -133,9 +133,9 @@ final class ClaudeSessionContext
 	}
 
 	/**
-	 * Returns the identifier for a native Claude subagent.
+	 * Returns the identifier for a Claude harness subagent.
 	 *
-	 * @param event the native SubagentStart event
+	 * @param event the harness SubagentStart event
 	 * @return the subagent identifier
 	 * @throws IOException if the identifier is absent or unsafe as a file name component
 	 */

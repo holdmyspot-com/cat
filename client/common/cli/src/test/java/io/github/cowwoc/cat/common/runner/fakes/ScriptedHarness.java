@@ -27,7 +27,7 @@ import java.util.concurrent.CountDownLatch;
  * Plays a harness behind the real runner bridge.
  * <p>
  * {@link #serve} runs {@link HarnessRunnerBridge} over a harness process that follows a script, so a test sees the
- * bridge's real protocol, manifest and failure behavior without starting a native harness.
+ * bridge's real protocol, manifest and failure behavior without starting a harness.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -90,7 +90,7 @@ public final class ScriptedHarness
 	/**
 	 * What the harness does for one turn.
 	 *
-	 * @param events the native event lines that the harness prints during the turn
+	 * @param events the harness event lines that the harness prints during the turn
 	 * @param kind how the turn ends
 	 * @param response the final assistant response of a turn that completes
 	 * @param files files that the turn writes into the run's {@code project} directory, by relative path
@@ -131,7 +131,7 @@ public final class ScriptedHarness
 		/**
 		 * Creates a turn.
 		 *
-		 * @param events the native event lines that the harness prints during the turn
+		 * @param events the harness event lines that the harness prints during the turn
 		 * @param kind how the turn ends
 		 * @param response the final assistant response of a turn that completes
 		 * @param files files that the turn writes into the run's {@code project} directory, by relative path
@@ -153,7 +153,7 @@ public final class ScriptedHarness
 		 * Returns a turn that replies.
 		 *
 		 * @param response the final assistant response
-		 * @param events the native event lines that the harness prints
+		 * @param events the harness event lines that the harness prints
 		 * @return the turn
 		 */
 		public static Turn replies(String response, String... events)
@@ -164,7 +164,7 @@ public final class ScriptedHarness
 		/**
 		 * Returns a turn that ends of its own accord without a terminal result.
 		 *
-		 * @param events the native event lines that the harness prints
+		 * @param events the harness event lines that the harness prints
 		 * @return the turn
 		 */
 		public static Turn fails(String... events)
@@ -175,7 +175,7 @@ public final class ScriptedHarness
 		/**
 		 * Returns a turn that continues until it is interrupted and then ends with a terminal result.
 		 *
-		 * @param events the native event lines that the harness prints before it blocks
+		 * @param events the harness event lines that the harness prints before it blocks
 		 * @return the turn
 		 */
 		public static Turn blocksUntilInterrupted(String... events)
@@ -186,7 +186,7 @@ public final class ScriptedHarness
 		/**
 		 * Returns a turn that continues until it is interrupted and then ends without a terminal result.
 		 *
-		 * @param events the native event lines that the harness prints before it blocks
+		 * @param events the harness event lines that the harness prints before it blocks
 		 * @return the turn
 		 */
 		public static Turn failsWhenInterrupted(String... events)
@@ -197,7 +197,7 @@ public final class ScriptedHarness
 		/**
 		 * Returns a turn that never ends and ignores interrupts.
 		 *
-		 * @param events the native event lines that the harness prints before it blocks
+		 * @param events the harness event lines that the harness prints before it blocks
 		 * @return the turn
 		 */
 		public static Turn blocksForever(String... events)

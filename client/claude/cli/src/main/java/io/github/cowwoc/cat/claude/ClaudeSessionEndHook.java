@@ -20,7 +20,7 @@ public final class ClaudeSessionEndHook
 	private static final int MAXIMUM_INPUT_BYTES = 1_048_576;
 
 	/**
-	 * Runs the native SessionEnd hook.
+	 * Runs the harness SessionEnd hook.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @throws NullPointerException if {@code args} is null
@@ -35,7 +35,7 @@ public final class ClaudeSessionEndHook
 	 * Processes one Claude SessionEnd event and deletes its owned context files.
 	 *
 	 * @param args a non-null empty command-line argument array
-	 * @param input non-null native hook input
+	 * @param input non-null harness hook input
 	 * @param error non-null diagnostic output
 	 * @param environment a non-null process environment
 	 * @param workingDirectory a non-null process working directory
@@ -67,10 +67,10 @@ public final class ClaudeSessionEndHook
 	}
 
 	/**
-	 * Parses a bounded native hook event.
+	 * Parses a bounded harness hook event.
 	 *
 	 * @param json the hook JSON mapper
-	 * @param input the native hook input
+	 * @param input the harness hook input
 	 * @return the parsed event
 	 * @throws IOException if the input is too large or not an object
 	 */

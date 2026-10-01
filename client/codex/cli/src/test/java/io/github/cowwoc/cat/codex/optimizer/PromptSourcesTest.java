@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link PromptSources} against native lines that the Codex runner recorded.
+ * Tests {@link PromptSources} against harness lines that the Codex runner recorded.
  */
 public final class PromptSourcesTest
 {
@@ -46,7 +46,7 @@ public final class PromptSourcesTest
 	/**
 	 * Observes lines.
 	 *
-	 * @param lines the native event lines
+	 * @param lines the harness event lines
 	 * @param run the run directory that the lines mention
 	 * @return the observed value
 	 */

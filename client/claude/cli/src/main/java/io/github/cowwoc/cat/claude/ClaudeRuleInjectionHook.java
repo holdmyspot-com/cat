@@ -35,12 +35,12 @@ final class ClaudeRuleInjectionHook
 	}
 
 	/**
-	 * Loads rules for one Claude hook event and emits its native JSON response.
+	 * Loads rules for one Claude hook event and emits its harness JSON response.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
-	 * @param input the native hook input
-	 * @param output the native hook output
+	 * @param input the harness hook input
+	 * @param output the harness hook output
 	 * @param error diagnostics for the host
 	 * @param environment the hook environment
 	 * @param workingDirectory the hook process directory
@@ -94,7 +94,7 @@ final class ClaudeRuleInjectionHook
 	/**
 	 * Returns the host-provided subagent type without making malformed optional metadata a hook crash.
 	 *
-	 * @param event the native hook event
+	 * @param event the harness hook event
 	 * @return the subagent type, or blank when it is absent or not textual
 	 */
 	private static String subagentType(JsonNode event)

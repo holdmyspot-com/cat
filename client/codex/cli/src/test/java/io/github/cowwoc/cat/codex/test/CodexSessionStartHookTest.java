@@ -45,7 +45,7 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies CAT installation variables must agree with Codex's native plugin root and cannot override it.
+	 * Verifies CAT installation variables must agree with Codex's harness plugin root and cannot override it.
 	 */
 	@Test
 	public void rejectsConflictingInstallationDirectory() throws IOException
@@ -100,7 +100,8 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies Codex injects a user rule derived from its native configuration directory without placing it in a project.
+	 * Verifies Codex injects a user rule derived from its harness configuration directory without placing it in a
+	 * project.
 	 */
 	@Test
 	public void injectsUserRulesOutsideTheProject() throws IOException
@@ -167,25 +168,25 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies native cwd takes precedence over the configured project directory.
+	 * Verifies harness cwd takes precedence over the configured project directory.
 	 */
 	@Test
-	public void prefersNativeCwd() throws IOException
+	public void prefersHarnessCwd() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path configuredProject = cleanup.add(Files.createTempDirectory("cat-configured-project-"));
-			Path nativeProject = cleanup.add(Files.createTempDirectory("cat-native-project-"));
+			Path harnessProject = cleanup.add(Files.createTempDirectory("cat-harness-project-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Files.writeString(Files.createDirectories(configuredProject.resolve(".cat/rules/common")).resolve("rule.md"),
 				"configured project");
-			Files.writeString(Files.createDirectories(nativeProject.resolve(".cat/rules/common")).resolve("rule.md"),
-				"native project");
+			Files.writeString(Files.createDirectories(harnessProject.resolve(".cat/rules/common")).resolve("rule.md"),
+				"harness project");
 
-			String context = context(invoke("{\"cwd\":\"" + nativeProject + "\"}", Map.of("PLUGIN_ROOT",
+			String context = context(invoke("{\"cwd\":\"" + harnessProject + "\"}", Map.of("PLUGIN_ROOT",
 				plugin.toString()), Path.of(".")));
 
-			requireThat(context, "context").contains("native project").doesNotContain("configured project");
+			requireThat(context, "context").contains("harness project").doesNotContain("configured project");
 		}
 	}
 
@@ -305,10 +306,10 @@ public final class CodexSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> nativeEnvironment = new HashMap<>(environment);
-		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		Map<String, String> harnessEnvironment = new HashMap<>(environment);
+		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -327,7 +328,7 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Parses one native hook response within its bounded JSON operation.
+	 * Parses one harness hook response within its bounded JSON operation.
 	 *
 	 * @param result the captured hook result
 	 * @return the parsed response envelope

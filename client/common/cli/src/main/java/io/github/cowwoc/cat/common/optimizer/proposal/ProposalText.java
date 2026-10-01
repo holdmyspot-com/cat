@@ -125,7 +125,7 @@ final class ProposalText
 	private void loading()
 	{
 		heading("Prompt loading");
-		text.append("Observed in the deriver session's native events:\n\n");
+		text.append("Observed in the deriver session's harness events:\n\n");
 		for (String line : derived.observedSources().lines().toList())
 			text.append("- ").append(line).append('\n');
 		text.append("\nDerived from documented loading rules:\n\n");

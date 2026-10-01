@@ -64,7 +64,7 @@ public final class HarnessRunnerBridgeTest
 			requireThat(process.closed, "closed").isTrue();
 			requireThat(result, "result").isEqualTo(run);
 			requireThat(output.toString(), "output").contains("\"type\":\"started\"").
-				contains("\"type\":\"native-event\"").contains("\"type\":\"turn-completed\"").
+				contains("\"type\":\"harness-event\"").contains("\"type\":\"turn-completed\"").
 				contains("\"type\":\"completed\"");
 			requireThat(output.toString().lines().count(), "lineCount").isEqualTo(6L);
 			requireThat(output.toString(), "output").doesNotContain("\"events\":");
@@ -174,13 +174,13 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies a native process that exits before completing a turn records its exit status and leaves the owned run
+	 * Verifies a harness process that exits before completing a turn records its exit status and leaves the owned run
 	 * failed rather than allowing the bridge to complete it.
 	 *
 	 * @throws IOException if filesystem setup fails
 	 */
 	@Test
-	public void recordsFailedNativeTurn() throws IOException
+	public void recordsFailedHarnessTurn() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -192,7 +192,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
 					true, input, new StringWriter());
-				throw new AssertionError("Expected the native process failure");
+				throw new AssertionError("Expected the harness process failure");
 			}
 			catch (IOException e)
 			{
@@ -206,7 +206,7 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies a clean native exit without a terminal turn event is still recorded as a failed bridge turn.
+	 * Verifies a clean harness exit without a terminal turn event is still recorded as a failed bridge turn.
 	 *
 	 * @throws IOException if filesystem setup fails
 	 */
@@ -223,7 +223,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new HarnessRunnerScope()), manager,
 					true, input, new StringWriter());
-				throw new AssertionError("Expected the incomplete native turn to fail");
+				throw new AssertionError("Expected the incomplete harness turn to fail");
 			}
 			catch (IOException e)
 			{
@@ -393,7 +393,7 @@ public final class HarnessRunnerBridgeTest
 				else
 					records.add(type);
 			}
-			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "native-event",
+			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "harness-event",
 				"waiting 30", "turn-completed", "completed"));
 		}
 	}
@@ -424,7 +424,7 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * A process whose turn stays quiet while the test moves the clock and runs the heartbeat, prints one native
+	 * A process whose turn stays quiet while the test moves the clock and runs the heartbeat, prints one harness
 	 * event, stays quiet again and then completes.
 	 */
 	private static final class QuietProcess implements HarnessProcess
@@ -458,7 +458,7 @@ public final class HarnessRunnerBridgeTest
 		@Override
 		public HarnessProcessResult sendTurn(String request)
 		{
-			throw new AssertionError("The bridge relays native events");
+			throw new AssertionError("The bridge relays harness events");
 		}
 
 		@Override
@@ -468,10 +468,10 @@ public final class HarnessRunnerBridgeTest
 			quiet(1);
 			quiet(29);
 			quiet(1);
-			listener.accept("native line");
+			listener.accept("harness line");
 			quiet(29);
 			quiet(1);
-			return new HarnessProcessResult(0, "native line\n", "", true, "done");
+			return new HarnessProcessResult(0, "harness line\n", "", true, "done");
 		}
 
 		@Override
@@ -772,7 +772,7 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * A native process that has ended before returning a terminal turn result.
+	 * A harness process that has ended before returning a terminal turn result.
 	 */
 	private static final class FailedProcess implements HarnessProcess
 	{
@@ -782,7 +782,7 @@ public final class HarnessRunnerBridgeTest
 		public HarnessProcessResult sendTurn(String request)
 		{
 			assert request != null;
-			return new HarnessProcessResult(143, "partial native event\n", "terminated before completion");
+			return new HarnessProcessResult(143, "partial harness event\n", "terminated before completion");
 		}
 
 		@Override
@@ -809,7 +809,7 @@ public final class HarnessRunnerBridgeTest
 		public HarnessProcessResult sendTurn(String request)
 		{
 			assert request != null;
-			return new HarnessProcessResult(0, "partial native event\n", "ended before completion");
+			return new HarnessProcessResult(0, "partial harness event\n", "ended before completion");
 		}
 
 		@Override

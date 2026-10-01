@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Starts CAT's native SessionEnd cleanup hook from the installed Claude plugin.
+# Starts CAT's harness SessionEnd cleanup hook from the installed Claude plugin.
 set -eu
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

@@ -19,13 +19,13 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
- * Stands in for a native harness child process in memory. The test plays the child: it writes the lines the child
+ * Stands in for a harness child process in memory. The test plays the child: it writes the lines the child
  * prints on standard output with {@link #emit(String...)} and ends the child with {@link #exit()}. Each line the
  * runner writes to the child's standard input is recorded and passed to a test-supplied handler, and closing that
  * input ends the child. The child has no operating-system process, so {@link #pid()} fails, which makes any attempt
  * to signal it fail the test.
  */
-public final class FakeNativeProcess extends Process
+public final class FakeHarnessCli extends Process
 {
 	/**
 	 * Chunks of the child's standard output; an empty chunk marks the end of the stream.
@@ -44,7 +44,7 @@ public final class FakeNativeProcess extends Process
 	 * @param requestHandler receives each line, without its line terminator, that the runner writes to the child's
 	 *   standard input; it may call {@link #emit(String...)} to answer
 	 */
-	public FakeNativeProcess(Consumer<String> requestHandler)
+	public FakeHarnessCli(Consumer<String> requestHandler)
 	{
 		this.requestHandler = requestHandler;
 	}
@@ -291,7 +291,7 @@ public final class FakeNativeProcess extends Process
 		@Override
 		public boolean destroy()
 		{
-			FakeNativeProcess.this.destroy();
+			FakeHarnessCli.this.destroy();
 			return true;
 		}
 
@@ -304,7 +304,7 @@ public final class FakeNativeProcess extends Process
 		@Override
 		public boolean isAlive()
 		{
-			return FakeNativeProcess.this.isAlive();
+			return FakeHarnessCli.this.isAlive();
 		}
 
 		@Override

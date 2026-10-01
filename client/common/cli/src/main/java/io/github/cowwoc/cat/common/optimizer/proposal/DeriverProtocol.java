@@ -27,7 +27,7 @@ import tools.jackson.databind.node.ObjectNode;
  * &sect;6.1).
  * <p>
  * The deriver's output follows the proposal schema without the judge fields that CAT owns, plus the deriver's
- * findings that the contract does not hold: the prompt files whose loading no native event reports, and the
+ * findings that the contract does not hold: the prompt files whose loading no harness event reports, and the
  * conditions that make certification unavailable. CAT adds its judge fields before validating the proposal, and
  * rejects output that supplies them.
  * <p>

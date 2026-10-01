@@ -438,7 +438,7 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Verifies that reconciliation terminates the owner and native processes of every run that an earlier driver
+	 * Verifies that reconciliation terminates the owner and harness processes of every run that an earlier driver
 	 * left running, and ignores runs that ended.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -452,17 +452,17 @@ public final class ReconciliationTest
 			Path directory = cleanup.add(Files.createTempDirectory("reconcile"));
 			DriverHarness harness = new DriverHarness(directory, developing().build());
 			Instant ownerStart = Instant.parse("2026-10-01T11:00:00Z");
-			Instant nativeStart = Instant.parse("2026-10-01T11:00:01Z");
+			Instant harnessStart = Instant.parse("2026-10-01T11:00:01Z");
 			writeManifest(directory.resolve("runs/claude/run-1"), """
 				{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-				"nativePid": "4002", "nativeStartedAt": "2026-10-01T11:00:01Z"}""");
+				"harnessPid": "4002", "harnessStartedAt": "2026-10-01T11:00:01Z"}""");
 			writeManifest(directory.resolve("runs/claude/run-2"), """
 				{"state": "completed", "ownerPid": 5001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-				"nativePid": 5002, "nativeStartedAt": "2026-10-01T11:00:01Z"}""");
+				"harnessPid": 5002, "harnessStartedAt": "2026-10-01T11:00:01Z"}""");
 			try (Driver _ = harness.open())
 			{
 				requireThat(harness.terminator().terminated(), "terminated").isEqualTo(List.of(
-					new RecordedProcess(4001, ownerStart), new RecordedProcess(4002, nativeStart)));
+					new RecordedProcess(4001, ownerStart), new RecordedProcess(4002, harnessStart)));
 			}
 		}
 	}

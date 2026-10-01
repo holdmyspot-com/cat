@@ -49,21 +49,21 @@ public final class HookScopeTest
 	}
 
 	/**
-	 * Verifies the scope prefers the native SessionStart directory over the configured project directory.
+	 * Verifies the scope prefers the harness SessionStart directory over the configured project directory.
 	 */
 	@Test
-	public void prefersNativeProjectRoot() throws IOException
+	public void prefersHarnessProjectRoot() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			Path nativeDirectory = cleanup.add(Files.createTempDirectory("cat-native-project-"));
+			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-harness-project-"));
 			try (HookScope scope = new HookScope(plugin))
 			{
-				Path actual = scope.projectDir(scope.json().readTree("{\"cwd\":\"" + nativeDirectory + "\"}"),
+				Path actual = scope.projectDir(scope.json().readTree("{\"cwd\":\"" + harnessDirectory + "\"}"),
 					Path.of("."));
 
-				requireThat(actual, "projectRoot").isEqualTo(nativeDirectory.toAbsolutePath().normalize());
+				requireThat(actual, "projectRoot").isEqualTo(harnessDirectory.toAbsolutePath().normalize());
 			}
 		}
 	}

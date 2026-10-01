@@ -2,7 +2,7 @@
 	"description": "The deriver's findings that the contract does not hold. CAT adds these properties to the proposal schema for the deriver's output.",
 	"properties": {
 		"derived_sources": {
-			"description": "Every prompt file that loads for this prompt system although no native event reports it, with the documented rule that loads it. Empty if none.",
+			"description": "Every prompt file that loads for this prompt system although no harness event reports it, with the documented rule that loads it. Empty if none.",
 			"type": "array",
 			"items": {
 				"type": "object",

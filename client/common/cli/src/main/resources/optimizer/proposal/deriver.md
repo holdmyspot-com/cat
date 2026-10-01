@@ -5,7 +5,7 @@
 - From the prompt system in the current directory, return one complete compliance contract proposal whose lists hold
   every requirement, category, test definition, variation value, trial fixture and known limitation as separate items,
   so the user can review each item before confirming it. A count or a summary never stands in for an item.
-- Name every prompt file that loads for this prompt system although no native harness event reports it loading,
+- Name every prompt file that loads for this prompt system although no harness event reports it loading,
   together with the documented rule that loads it, so CAT can record that this loading was derived rather than
   observed.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so
@@ -72,10 +72,10 @@
 
 ### Derived sources
 
-`derived_sources` lists every prompt file that loads for this prompt system although no native event reports it, with
+`derived_sources` lists every prompt file that loads for this prompt system although no harness event reports it, with
 the file's `path` and the documented `rule` that loads it. No harness reports loading an instruction file, so list
 every instruction file that the harness reads by convention, including the one in the current directory, and every
-rule file that CAT's rule loader injects. Native events report hook runs, and some harnesses report their skill
+rule file that CAT's rule loader injects. Harness events report hook runs, and some harnesses report their skill
 inventory; do not list those.
 
 ### Scope conditions

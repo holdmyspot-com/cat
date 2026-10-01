@@ -24,9 +24,9 @@ public final class LeftoverRunsTest
 	 */
 	private static final Instant OWNER_START = Instant.parse("2026-10-01T11:00:00Z");
 	/**
-	 * The recorded start time of every native process.
+	 * The recorded start time of every harness process.
 	 */
-	private static final Instant NATIVE_START = Instant.parse("2026-10-01T11:00:01.250Z");
+	private static final Instant HARNESS_START = Instant.parse("2026-10-01T11:00:01.250Z");
 
 	/**
 	 * Creates the test.
@@ -47,19 +47,19 @@ public final class LeftoverRunsTest
 			{
 				{"""
 					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"nativePid": 4002, "nativeStartedAt": "2026-10-01T11:00:01.250Z"}""",
-					List.of(new RecordedProcess(4001, OWNER_START), new RecordedProcess(4002, NATIVE_START))},
+					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					List.of(new RecordedProcess(4001, OWNER_START), new RecordedProcess(4002, HARNESS_START))},
 				{"""
 					{"state": "running", "ownerPid": "4001", "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"nativePid": null, "nativeStartedAt": null}""",
+					"harnessPid": null, "harnessStartedAt": null}""",
 					List.of(new RecordedProcess(4001, OWNER_START))},
 				{"""
 					{"state": "running", "ownerPid": 4001,
-					"nativePid": 4002, "nativeStartedAt": "2026-10-01T11:00:01.250Z"}""",
-					List.of(new RecordedProcess(4002, NATIVE_START))},
+					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					List.of(new RecordedProcess(4002, HARNESS_START))},
 				{"""
 					{"state": "running", "ownerPid": "41a", "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"nativePid": -4, "nativeStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					"harnessPid": -4, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
 					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "yesterday"}""",

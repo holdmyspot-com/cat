@@ -14,7 +14,7 @@ import java.util.Map;
 public final class CodexSessionStartHook
 {
 	/**
-	 * Runs the native SessionStart hook.
+	 * Runs the harness SessionStart hook.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @throws NullPointerException if {@code args} is null
@@ -29,8 +29,8 @@ public final class CodexSessionStartHook
 	 * Processes one Codex SessionStart event and writes CAT's hook response.
 	 *
 	 * @param args a non-null empty command-line argument array
-	 * @param input non-null native hook input
-	 * @param output non-null native hook output
+	 * @param input non-null harness hook input
+	 * @param output non-null harness hook output
 	 * @param error non-null diagnostic output
 	 * @param environment a non-null process environment
 	 * @param workingDirectory a non-null process working directory

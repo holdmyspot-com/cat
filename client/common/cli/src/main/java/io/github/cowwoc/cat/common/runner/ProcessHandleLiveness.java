@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * Checks whether a Java {@link ProcessHandle} still identifies the process recorded for a harness execution.
  */
-final class NativeProcessLiveness implements HarnessProcessLiveness
+final class ProcessHandleLiveness implements HarnessProcessLiveness
 {
 	@Override
 	public boolean isAlive(long pid, Instant startedAt)

@@ -101,9 +101,9 @@ public final class CodexGetHistory
 	}
 
 	/**
-	 * Returns one required native environment value.
+	 * Returns one required harness environment value.
 	 *
-	 * @param environment the native Codex environment
+	 * @param environment the Codex harness environment
 	 * @param name the value name
 	 * @return the non-blank value
 	 * @throws IOException if the value is absent

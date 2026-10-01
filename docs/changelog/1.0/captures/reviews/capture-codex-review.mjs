@@ -66,7 +66,7 @@ lines.on("line", (line) =>
     const message = JSON.parse(line);
     if (message.type === "started")
       started();
-    else if (message.type === "native-event")
+    else if (message.type === "harness-event")
     {
       events.push(JSON.parse(message.event));
       writes = writes.then(() => appendFile(output, `${message.event}\n`));

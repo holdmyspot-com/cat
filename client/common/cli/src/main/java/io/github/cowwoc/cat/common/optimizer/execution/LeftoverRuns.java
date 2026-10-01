@@ -21,8 +21,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Finds the processes of runner runs that an earlier {@link Driver} left running.
  * <p>
  * The runner records each run in {@code <runRoot>/<harness>/<id>/run.json}, including the run's owner process
- * ({@code ownerPid}, {@code ownerStartedAt}) and its native harness process ({@code nativePid},
- * {@code nativeStartedAt}). The run root must hold only the runs of one campaign, so that every run still marked
+ * ({@code ownerPid}, {@code ownerStartedAt}) and its harness process ({@code harnessPid},
+ * {@code harnessStartedAt}). The run root must hold only the runs of one campaign, so that every run still marked
  * {@code running} while the driver holds the campaign's lock belongs to an earlier driver of that campaign.
  * <p>
  * A manifest that cannot be parsed, or that lacks a process's start time, identifies no process: without the start
@@ -53,7 +53,7 @@ public final class LeftoverRuns
 	/**
 	 * Returns the processes of every run that is still marked {@code running}.
 	 *
-	 * @return the owner and native processes, in directory order
+	 * @return the owner and harness processes, in directory order
 	 * @throws IOException if the run directories cannot be listed
 	 */
 	public List<RecordedProcess> find() throws IOException
@@ -99,7 +99,7 @@ public final class LeftoverRuns
 	 * Returns the processes that a run manifest records for a running run.
 	 *
 	 * @param manifest the manifest's content
-	 * @return the owner process and, if recorded, the native process; empty if the run is not running or the
+	 * @return the owner process and, if recorded, the harness process; empty if the run is not running or the
 	 *   manifest cannot be parsed
 	 */
 	private List<RecordedProcess> parse(byte[] manifest)
@@ -117,7 +117,7 @@ public final class LeftoverRuns
 		if (root == null || !root.isObject() || !text(root, "state").equals(Optional.of("running")))
 			return processes;
 		process(root, "ownerPid", "ownerStartedAt").ifPresent(processes::add);
-		process(root, "nativePid", "nativeStartedAt").ifPresent(processes::add);
+		process(root, "harnessPid", "harnessStartedAt").ifPresent(processes::add);
 		return processes;
 	}
 

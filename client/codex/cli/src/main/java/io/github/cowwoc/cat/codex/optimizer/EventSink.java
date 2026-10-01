@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The runner's response stream. It reads each response line as the runner writes it.
  * <p>
- * A {@code native-event} response goes to the transcript, the event parser and the prompt-source observation. A
+ * A {@code harness-event} response goes to the transcript, the event parser and the prompt-source observation. A
  * {@code started} or {@code turn-completed} response goes to the session driver.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -28,11 +28,11 @@ import tools.jackson.databind.json.JsonMapper;
 final class EventSink extends Writer
 {
 	/**
-	 * The name of the retained native event archive, inside the run's {@code artifacts} directory.
+	 * The name of the retained harness event archive, inside the run's {@code artifacts} directory.
 	 */
 	static final String TRANSCRIPT = "transcript.jsonl";
 	private final JsonMapper json;
-	private final NativeEvents events;
+	private final HarnessEvents events;
 	private final Path harnessDirectory;
 	private final Map<String, Path> placeholders;
 	private final BlockingQueue<Message> messages;
@@ -44,14 +44,14 @@ final class EventSink extends Writer
 	 * Creates a sink.
 	 *
 	 * @param json the JSON mapper
-	 * @param events the parser that absorbs every native event
+	 * @param events the parser that absorbs every harness event
 	 * @param harnessDirectory the directory that holds the runner's run directories for this harness
 	 * @param placeholders maps each placeholder to a directory whose staged location must not appear in the prompt
 	 *   sources. The sink adds the run directory.
 	 * @param messages where the sink reports the runner's progress
 	 * @throws NullPointerException if any argument is null
 	 */
-	EventSink(JsonMapper json, NativeEvents events, Path harnessDirectory, Map<String, Path> placeholders,
+	EventSink(JsonMapper json, HarnessEvents events, Path harnessDirectory, Map<String, Path> placeholders,
 		BlockingQueue<Message> messages)
 	{
 		requireThat(json, "json").isNotNull();
@@ -128,7 +128,7 @@ final class EventSink extends Writer
 		switch (response.path("type").asString(""))
 		{
 			case "started" -> start(response.path("runId").asString(""));
-			case "native-event" ->
+			case "harness-event" ->
 			{
 				String event = response.path("event").asString("");
 				events.accept(event);

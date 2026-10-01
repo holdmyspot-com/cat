@@ -160,7 +160,7 @@ public final class ClaudeRunner
 			}
 			isolatedEnvironment.put("HOME", isolatedProcessHome.toString());
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
-			// The turn boundary in ClaudeHarnessProcess depends on Claude's session_state_changed lines. Set it after
+			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 			// copying the caller's settings so that no inherited value turns it off.
 			ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
 			Path marketplace = null;
@@ -191,11 +191,11 @@ public final class ClaudeRunner
 				hookResults, readOnlyEvidence);
 			manager.initialize(run, artifact, project, "claude-stream-json", command);
 			lock = manager.acquireLock(run);
-			ClaudeHarnessProcess process = new ClaudeHarnessProcess(scope, HarnessProcessStarter.start(command, worktree,
+			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment));
 			try
 			{
-				manager.recordNativeProcess(run, process.pid(), process.startedAt());
+				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -285,11 +285,11 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Derives the non-repository CAT user-rule directory from the parent process's native home directory.
+	 * Derives the non-repository CAT user-rule directory from the parent process's harness home directory.
 	 *
 	 * @param environment the parent process environment
 	 * @return the CAT user-rule directory
-	 * @throws IOException if the native home directory is unavailable
+	 * @throws IOException if the harness home directory is unavailable
 	 */
 	private static Path userRulesRoot(Map<String, String> environment) throws IOException
 	{
@@ -341,7 +341,7 @@ public final class ClaudeRunner
 	 * @param marketplace the optional marketplace
 	 * @param installCat whether CAT is installed
 	 * @param hookResults the hook context directory
-	 * @return the complete native command
+	 * @return the complete harness command
 	 */
 	static List<String> command(String executable, String model, Path marketplace, boolean installCat,
 		Path hookResults)
@@ -358,7 +358,7 @@ public final class ClaudeRunner
 	 * @param installCat whether CAT is installed
 	 * @param hookResults the hook context directory
 	 * @param readOnlyEvidence executor evidence exposed through added directories
-	 * @return the complete native command
+	 * @return the complete harness command
 	 */
 	static List<String> command(String executable, String model, Path marketplace, boolean installCat,
 		Path hookResults, List<Path> readOnlyEvidence)
@@ -377,7 +377,7 @@ public final class ClaudeRunner
 	 * @param installCat whether CAT is installed
 	 * @param hookResults the hook context directory
 	 * @param readOnlyEvidence executor evidence exposed through added directories
-	 * @return the complete native command
+	 * @return the complete harness command
 	 */
 	static List<String> command(String executable, String model, String effort, String agent, Path marketplace,
 		boolean installCat, Path hookResults, List<Path> readOnlyEvidence)

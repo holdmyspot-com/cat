@@ -97,7 +97,7 @@ public final class ClaudeSessionsNativeTest
 	 * @return the subject
 	 * @throws IOException if the fixtures cannot be created
 	 */
-	private static NativeSubject open() throws IOException
+	private static HarnessSubject open() throws IOException
 	{
 		requireHarness();
 		String workTemp = System.getProperty("cat.work.temp");
@@ -113,7 +113,7 @@ public final class ClaudeSessionsNativeTest
 		Path runRoot = fixture.resolve("runs");
 		ClaudeSessions sessions = new ClaudeSessions(new ClaudeSessions.Settings(artifact, runRoot, "", "haiku", "",
 			false, environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
-		return new NativeSubject(cleanup, sessions, source, runRoot);
+		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}
 
 	/**
@@ -214,7 +214,7 @@ public final class ClaudeSessionsNativeTest
 	}
 
 	/**
-	 * Verifies that the model comes from native events rather than from the alias that CAT passed, and that the usage
+	 * Verifies that the model comes from harness events rather than from the alias that CAT passed, and that the usage
 	 * and rate-limit windows are read from the same events.
 	 *
 	 * @throws Exception if the session fails
@@ -224,7 +224,7 @@ public final class ClaudeSessionsNativeTest
 	{
 		// Requirement: R-E16
 		// Requirement: R-E6
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
 				List.of(subject.quickPrompt()), List.of(), LIMIT));
@@ -253,7 +253,7 @@ public final class ClaudeSessionsNativeTest
 	public void classifiesTheHostLogin() throws Exception
 	{
 		// Requirement: R-E7
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			HostLogin login = subject.port().hostLogin();
 
@@ -282,7 +282,7 @@ public final class ClaudeSessionsNativeTest
 	public void runsOneSessionPerRole() throws Exception
 	{
 		// Requirement: R-E13
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			for (SessionRole role : SessionRole.values())
 			{
@@ -308,7 +308,7 @@ public final class ClaudeSessionsNativeTest
 	public void waitsForABackgroundChild() throws Exception
 	{
 		// Requirement: R-E14
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			String prompt = "Use the Agent tool with run_in_background set to true to start exactly one subagent. " +
 				"The subagent's only job is to create the file child.txt in the current directory, containing the " +
@@ -340,7 +340,7 @@ public final class ClaudeSessionsNativeTest
 	{
 		// Requirement: R-E15
 		// Requirement: R-E14
-		try (NativeSubject subject = open())
+		try (HarnessSubject subject = open())
 		{
 			String prompt = "Use the Agent tool with run_in_background set to true to start exactly one subagent. " +
 				"The subagent's only job is to run `sleep 240` with the Bash tool and then reply done. After you " +
@@ -366,7 +366,7 @@ public final class ClaudeSessionsNativeTest
 	/**
 	 * The real adapter with its fixtures.
 	 */
-	private static final class NativeSubject implements Subject
+	private static final class HarnessSubject implements Subject
 	{
 		private final TemporaryDirectories cleanup;
 		private final SessionPort port;
@@ -381,7 +381,7 @@ public final class ClaudeSessionsNativeTest
 		 * @param workspace the source directory
 		 * @param runRoot   the directory of run directories
 		 */
-		private NativeSubject(TemporaryDirectories cleanup, SessionPort port, Path workspace, Path runRoot)
+		private HarnessSubject(TemporaryDirectories cleanup, SessionPort port, Path workspace, Path runRoot)
 		{
 			this.cleanup = cleanup;
 			this.port = port;

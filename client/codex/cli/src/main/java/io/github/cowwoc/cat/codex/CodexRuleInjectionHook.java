@@ -27,12 +27,12 @@ final class CodexRuleInjectionHook
 	}
 
 	/**
-	 * Loads rules for one Codex hook event and emits its native JSON response.
+	 * Loads rules for one Codex hook event and emits its harness JSON response.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
-	 * @param input the native hook input
-	 * @param output the native hook output
+	 * @param input the harness hook input
+	 * @param output the harness hook output
 	 * @param error diagnostics for the host
 	 * @param environment the hook environment
 	 * @param workingDirectory the hook process directory
@@ -81,11 +81,11 @@ final class CodexRuleInjectionHook
 }
 
 	/**
-	 * Reports a hook failure and writes the native failure response through the invocation-owned mapper.
+	 * Reports a hook failure and writes the harness failure response through the invocation-owned mapper.
 	 *
 	 * @param json the invocation-owned JSON mapper
 	 * @param eventName the Codex hook event name
-	 * @param output the native hook output
+	 * @param output the harness hook output
 	 * @param error diagnostics for the host
 	 * @param failure the hook failure
 	 */
@@ -111,7 +111,7 @@ final class CodexRuleInjectionHook
 	 * Reports a failure that prevented hook-scope construction and writes Codex's mandatory stop response.
 	 *
 	 * @param eventName the Codex hook event name
-	 * @param output the native hook output
+	 * @param output the harness hook output
 	 * @param error diagnostics for the host
 	 * @param failure the scope-construction failure
 	 */
@@ -134,7 +134,7 @@ final class CodexRuleInjectionHook
 	/**
 	 * Returns the host-provided subagent type without making malformed optional metadata a hook crash.
 	 *
-	 * @param event the native hook event
+	 * @param event the harness hook event
 	 * @return the subagent type, or blank when it is absent or not textual
 	 */
 	private static String subagentType(JsonNode event)

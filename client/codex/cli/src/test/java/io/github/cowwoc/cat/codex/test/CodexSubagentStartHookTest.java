@@ -23,7 +23,7 @@ import tools.jackson.databind.JsonNode;
 public final class CodexSubagentStartHookTest
 {
 	/**
-	 * Verifies the native hook selects only rules addressed to the spawned Codex agent type.
+	 * Verifies the harness hook selects only rules addressed to the spawned Codex agent type.
 	 */
 	@Test
 	public void filtersRulesForSubagentAudience() throws IOException
@@ -64,10 +64,10 @@ public final class CodexSubagentStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> nativeEnvironment = new HashMap<>(environment);
-		nativeEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		Map<String, String> harnessEnvironment = new HashMap<>(environment);
+		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
 		CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), nativeEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

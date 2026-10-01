@@ -148,7 +148,7 @@ public final class RunnerRuntimeManifest
 	}
 
 	/**
-	 * Lists the package-declared files that can change native runner behavior.
+	 * Lists the package-declared files that can change harness runner behavior.
 	 *
 	 * @param root the assembled artifact directory
 	 *

@@ -19,7 +19,7 @@ final class CodexHookDelivery
 	/**
 	 * Verifies that Codex has accepted CAT's two context hooks before a CAT-enabled run starts.
 	 *
-	 * @param response the native {@code hooks/list} response
+	 * @param response the harness {@code hooks/list} response
 	 * @throws IOException if either CAT hook is unavailable or not trusted
 	 */
 	static void verifyConfiguredHooks(JsonNode response) throws IOException
@@ -31,9 +31,9 @@ final class CodexHookDelivery
 	}
 
 	/**
-	 * Verifies that each subagent activity in one completed turn has a matching native {@code subagentStart} hook event.
+	 * Verifies that each subagent activity in one completed turn has a matching harness {@code subagentStart} hook event.
 	 *
-	 * @param events the line-delimited native event stream for one turn
+	 * @param events the line-delimited harness event stream for one turn
 	 * @param json the JSON parser used by the owning runner session
 	 * @throws IOException if the event stream is malformed or Codex omitted a required subagent hook event
 	 */
@@ -67,7 +67,7 @@ final class CodexHookDelivery
 			}
 			catch (JacksonException e)
 			{
-				throw new IOException("Codex app-server returned malformed native event while verifying CAT hooks", e);
+				throw new IOException("Codex app-server returned malformed harness event while verifying CAT hooks", e);
 			}
 		}
 		subagents.removeAll(delivered);
@@ -81,7 +81,7 @@ final class CodexHookDelivery
 	/**
 	 * Verifies one configured CAT hook is trusted or managed by Codex.
 	 *
-	 * @param hooks the native hook metadata list
+	 * @param hooks the harness hook metadata list
 	 * @param key the expected CAT hook key
 	 * @throws IOException if the hook is unavailable or untrusted
 	 */

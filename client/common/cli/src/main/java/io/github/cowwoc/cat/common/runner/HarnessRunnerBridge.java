@@ -31,8 +31,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessRunnerBridge
 {
 	/**
-	 * Starts one session and serves turn and completion messages until completion. Native events are written once as
-	 * {@code native-event} responses; the terminal response records only the final status and error.
+	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
+	 * {@code harness-event} responses; the terminal response records only the final status and error.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -160,16 +160,16 @@ public final class HarnessRunnerBridge
 									turnStarted.countDown();
 									if (manager != null)
 										manager.markWorking(session.run());
-									HarnessProcessResult result = session.sendTurn(prompt, nativeEvent ->
+									HarnessProcessResult result = session.sendTurn(prompt, harnessEvent ->
 									{
 										if (manager != null)
-											manager.appendTurnEvent(session.run(), currentTurn, nativeEvent);
-										forwardNativeEvent(session, client, nativeEvent);
+											manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
+										forwardHarnessEvent(session, client, harnessEvent);
 									});
 									if (manager != null)
 										manager.writeTurnOutput(session.run(), currentTurn, result);
 									if (!result.completed())
-										throw nativeTurnFailure(result);
+										throw harnessTurnFailure(result);
 									if (manager != null)
 										manager.markIdle(session.run());
 									ObjectNode response = event(session.scope(), "turn-completed");
@@ -354,16 +354,16 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Converts a native turn that ended without a terminal result into the bridge's caller-visible failure.
+	 * Converts a harness turn that ended without a terminal result into the bridge's caller-visible failure.
 	 *
-	 * @param result the completed native turn result
+	 * @param result the completed harness turn result
 	 *
-	 * @return the failure that preserves the native exit status and safe diagnostic
+	 * @return the failure that preserves the harness exit status and safe diagnostic
 	 */
-	private static IOException nativeTurnFailure(HarnessProcessResult result)
+	private static IOException harnessTurnFailure(HarnessProcessResult result)
 	{
 		assert result != null;
-		String diagnostic = "Native harness ended before completing the requested turn (exit status " +
+		String diagnostic = "Harness process ended before completing the requested turn (exit status " +
 			result.exitCode() + ")";
 		if (!result.standardError().isBlank())
 			diagnostic += "; inspect the retained turn stderr artifact for details";
@@ -436,25 +436,25 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Writes one native event before its enclosing turn reaches completion.
+	 * Writes one harness event before its enclosing turn reaches completion.
 	 *
 	 * @param session the live harness session
 	 *
 	 * @param client the JSONL client output
 	 *
-	 * @param nativeEvent the raw native event line
+	 * @param harnessEvent the raw harness event line
 	 *
 	 * @throws IOException if client output fails
 	 */
-	private static void forwardNativeEvent(HarnessRunSession session, ClientOutput client, String nativeEvent)
+	private static void forwardHarnessEvent(HarnessRunSession session, ClientOutput client, String harnessEvent)
 		throws IOException
 	{
 		assert session != null;
 		assert client != null;
-		assert nativeEvent != null;
-		ObjectNode response = event(session.scope(), "native-event");
+		assert harnessEvent != null;
+		ObjectNode response = event(session.scope(), "harness-event");
 		response.put("runId", session.run().id());
-		response.put("event", nativeEvent);
+		response.put("event", harnessEvent);
 		client.write(response);
 	}
 

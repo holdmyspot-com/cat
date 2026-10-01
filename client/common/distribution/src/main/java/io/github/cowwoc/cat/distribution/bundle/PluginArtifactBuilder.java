@@ -100,7 +100,7 @@ public final class PluginArtifactBuilder
 	 *
 	 * <p>
 	 * Prompt-only repackaging copies current model-facing resources into a staging directory without rebuilding the
-	 * Java runtime. It must still apply the same include expansion as a complete artifact build so a native harness never
+	 * Java runtime. It must still apply the same include expansion as a complete artifact build so a harness never
 	 * receives source-only bodies or unresolved directives.
 	 *
 	 * @param artifactDirectory the staged plugin directory containing agents and skills

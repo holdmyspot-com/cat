@@ -7,7 +7,7 @@ import java.io.IOException;
 import org.testng.annotations.Test;
 
 /**
- * Tests CAT hook delivery verification at Codex's native app-server event boundary.
+ * Tests CAT hook delivery verification at Codex's harness app-server event boundary.
  */
 public final class CodexHookDeliveryTest
 {
@@ -45,7 +45,7 @@ public final class CodexHookDeliveryTest
 	}
 
 	/**
-	 * Verifies a native subagent hook event satisfies the matching delegated agent's delivery requirement.
+	 * Verifies a harness subagent hook event satisfies the matching delegated agent's delivery requirement.
 	 */
 	@Test
 	public void acceptsDeliveredSubagentStartEvent() throws IOException

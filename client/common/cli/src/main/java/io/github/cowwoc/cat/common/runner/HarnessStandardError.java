@@ -39,7 +39,7 @@ public final class HarnessStandardError
 	}
 
 	/**
-	 * Closes the diagnostic pipe when the owning runner has terminated the native process and its descendants.
+	 * Closes the diagnostic pipe when the owning runner has terminated the harness process and its descendants.
 	 *
 	 * @throws IOException if the pipe cannot be closed
 	 */
