@@ -115,6 +115,27 @@ public final class Git
 	}
 
 	/**
+	 * Runs Git and returns its exit status, without treating a nonzero status as a failure.
+	 * <p>
+	 * Use this for a command whose nonzero status is an answer, such as {@code git check-ignore}, where status 1 means
+	 * "not ignored" and 128 means a real failure. Git's output is discarded. On Unix, a process that a signal killed
+	 * reports status 128 plus the signal number, so callers must accept only the statuses they expect.
+	 *
+	 * @param arguments the Git subcommand and arguments
+	 * @return Git's exit status
+	 * @throws IOException if Git cannot start or the wait is interrupted
+	 */
+	public int status(String... arguments) throws IOException
+	{
+		try (Process process = start(Map.of(), arguments))
+		{
+			// Drain the output so that Git cannot block on a full pipe
+			readBoundedOutput(process.getInputStream());
+			return waitFor(process);
+		}
+	}
+
+	/**
 	 * Returns Git's three-way merge of an earlier file, the source's parent version, and the source version.
 	 *
 	 * @param earlierFile the earlier file version that receives the source change
@@ -179,10 +200,22 @@ public final class Git
 	 */
 	private void waitForSuccess(Process process, String[] arguments, String output) throws IOException
 	{
+		if (waitFor(process) != 0)
+			throw new IOException("Git command failed: git " + String.join(" ", arguments) + ": " + output);
+	}
+
+	/**
+	 * Waits for Git to exit.
+	 *
+	 * @param process the started Git process
+	 * @return Git's exit status
+	 * @throws IOException if the wait is interrupted
+	 */
+	private int waitFor(Process process) throws IOException
+	{
 		try
 		{
-			if (process.waitFor() != 0)
-				throw new IOException("Git command failed: git " + String.join(" ", arguments) + ": " + output);
+			return process.waitFor();
 		}
 		catch (InterruptedException e)
 		{
