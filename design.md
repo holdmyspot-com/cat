@@ -63,12 +63,14 @@ The user names a prompt file or prompt system in a Git worktree. CAT:
 
 The user commits, reverts or asks for another revision. CAT never commits on the user's behalf.
 
-A campaign ends with exactly one of these outcomes, each with its evidence and available next actions:
+CAT reports each of these outcomes with its evidence and available next actions. A campaign closes with `certified`,
+`improved, not certified` or `not certified`; every other outcome leaves it open:
 
 | Outcome | Meaning |
 |---|---|
 | `certified` | G3 holds; delivery follows the decision table in [§2.8](#28-decision-table). |
 | `improved, not certified` | The user kept a candidate proven better than the incumbent in at least one category, proven worse in none, and checked for regression in every other category ([§2.10](#210-keeping-a-proven-improvement)). |
+| `not certified` | The user accepted an uncertified candidate ([§2.8](#28-decision-table)). |
 | `not certified: below minimum` | A category is proven below 95% in the current certification attempt. |
 | `not certified: inconclusive` | A category reached its trial cap undecided. |
 | `not certified: plateau` | A full development round produced no stronger candidate. |
@@ -76,15 +78,21 @@ A campaign ends with exactly one of these outcomes, each with its evidence and a
 | `not certified: testing environment changed` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
 | `certification unavailable: unsupported instruction source` | A remote or MCP response supplies governing instructions. |
 | `certification unavailable: ineligible trial effect` | A required trial path writes persistent state outside the trial copy, or lacks read-only credentials or a disposable fixture. |
-| `certification unavailable: unsupported output` | A material requirement produces image, audio or video output. |
-| `certification unavailable: unsupported test interaction` | A material obligation needs a follow-up turn chosen from the agent's reply. |
+| `certification unavailable: unsupported output` | A requirement produces image, audio or video output. |
+| `certification unavailable: unsupported test interaction` | An obligation needs a follow-up turn chosen from the agent's reply. |
 | `certification unavailable: invalid statistical assumptions` | A detected dependence between trials invalidates the formal procedure ([§2.6](#26-validity-conditions-and-assumption-review)). |
 | `interrupted` | Work stopped and can resume. |
 | infrastructure failure | A precise failure that is not a compliance outcome. |
 
-Several of these outcomes stop development and certification but leave the campaign open, so the user can still
-resume or close it: `not certified: below minimum` and `not certified: inconclusive` apply to one certification attempt
-and normally return to development automatically ([§2.8](#28-decision-table)).
+What follows an open outcome depends on the outcome:
+
+- `not certified: below minimum` and `not certified: inconclusive` end one certification attempt and return to
+  development automatically, unless the attempt's evidence offers `keep improvement` ([§2.8](#28-decision-table)).
+- `not certified: stopped for contract revision` and `not certified: testing environment changed` end the running
+  certification attempt.
+- `not certified: plateau` and each `certification unavailable` outcome pause for the user's choice
+  ([§2.8](#28-decision-table)).
+- `interrupted` and an infrastructure failure pause until the user resumes.
 
 ### 1.1 Scope
 
@@ -147,7 +155,8 @@ The statistical unit is the cell: one category under one trial profile ([§6.6](
 has one cell. Every other category has one cell per profile in the confirmed profile set, so each of its trial counts
 is multiplied by the number of profiles.
 
-- **Certification claim (a):** For every material category `k`, the candidate's pass probability `pC(k)` exceeds 0.95.
+- **Certification claim (a):** For every category `k` in the confirmed contract, the candidate's pass probability
+  `pC(k)` exceeds 0.95.
 - **Deficiency claim:** The incumbent's pass probability `pI(k)` is below 0.95. CAT makes this claim only for categories
   where its baseline evidence proves it.
 - **Improvement claim (b):** In every category with a deficiency claim, `pC(k) − pI(k) > 0`.
@@ -316,7 +325,7 @@ assumptions`, not a weaker claim. One example is an assignment that read another
 All development numbers apply to one candidate snapshot, one category and comparable measurement conditions. An edit
 creates a new candidate with new counts. Earlier outcomes remain available for diagnosis.
 
-**Readiness gate (commit condition).** Every material category needs all of the following:
+**Readiness gate (commit condition).** Every category needs all of the following:
 
 - at least 100 representative development trials;
 - at least 99% observed passes;
@@ -374,12 +383,12 @@ it once.
 **Several attempts while the candidate is weak.** While the working candidate is weak, a round's author attempts run
 independently and at the same time (user ruling, 2026-10-01). The candidate is weak when, in any cell of a category the
 round addresses, its development estimate (the exploratory 95% Wilson lower bound) is below 80%, or it has no
-development outcome there. A weak round makes 3 attempts; otherwise a round makes its attempts one at a time. Each
-attempt receives the same brief and runs through the same promotion runs. Among the attempts that the promotion rule
-accepts, the winner has the most passing promotion runs; a tie goes to the attempt that changes fewer lines, then to the
-earlier attempt. Only the winner goes through the minimality pass and can become the working candidate; the others are
-retained with their evidence. The status records each attempt's promotion results, so the benefit of several attempts
-can be measured. All of these runs are targeted and never counted.
+development outcome there. A weak round makes 3 attempts for each failing category; otherwise it makes each category's
+attempts one at a time. Each attempt receives the same brief and runs through the same promotion runs. Among the
+attempts that the promotion rule accepts, the winner has the most passing promotion runs; a tie goes to the attempt that
+changes fewer lines, then to the earlier attempt. Only the winner goes through the minimality pass and can become the
+working candidate; the others are retained with their evidence. The status records each attempt's promotion results, so
+the benefit of several attempts can be measured. All of these runs are targeted and never counted.
 
 **Minimality pass.** Before a promoted attempt becomes the working candidate, CAT removes the parts of it that the
 evidence does not need. It divides the attempt's changed hunks into groups and reduces them by delta debugging:
@@ -428,10 +437,10 @@ When a certification attempt ends `not certified` and its evidence meets the kee
 instead of returning to development automatically. [§2.10](#210-keeping-a-proven-improvement) states that pause and
 every later offer of `keep improvement`.
 
-The user can stop at any point. At a plateau, a stop or another uncertified outcome, CAT may offer `accept without
-certification`. `keep improvement` and `accept without certification` are separate explicit choices and never the
-default. CAT labels the merged result `improved, not certified` or `not certified` respectively.
-Certification status and delivery status are always reported separately.
+The user can stop at any point. When the user stops, at a plateau, or when certification is unavailable, CAT offers
+`accept without certification` if the working candidate is not the incumbent. `keep improvement` and `accept without
+certification` are separate explicit choices and never the default. CAT labels the merged result `improved, not
+certified` or `not certified` respectively. Certification status and delivery status are always reported separately.
 
 ### 2.9 Four outputs
 
@@ -936,7 +945,7 @@ Before any output counts as evidence, CAT validates that a generator:
 
 Formal draws for an attempt begin only after its candidate and procedure are frozen. Targeted diagnostics, meaning
 reruns, promotion runs and regression runs, are marked before execution and never enter representative or formal counts.
-Repeated draws of the same concrete instance are legitimate and are never rejected. A material obligation that needs
+Repeated draws of the same concrete instance are legitimate and are never rejected. An obligation that needs
 response-contingent follow-up turns is reported as a coverage gap and leads to `certification unavailable: unsupported
 test interaction`. A generator or judge validation failure is an infrastructure failure, not evidence.
 
@@ -967,8 +976,8 @@ record in place of a judge rationale.
 
 ### 6.5 Certifiable scope
 
-- **Certifiable outputs:** text, plus observable file and tool effects. A material requirement for image, audio or
-  video output makes certification unavailable.
+- **Certifiable outputs:** text, plus observable file and tool effects. A requirement for image, audio or video
+  output makes certification unavailable.
 - **Remote and MCP responses:** allowed as task data. When they supply governing instructions, for the agent or for a
   child, certification is unavailable. The source's role decides this, not its wording.
 - **Trial writes:** allowed only in the trial copy or in disposable external fixtures. External services need confirmed
@@ -1092,6 +1101,10 @@ The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `statu
 `cancel`. Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for
 the user and any choices. The skill never interprets statistics itself.
 
+Agents locate CAT's installed files without shell variables that the harness does not define. The session hooks
+render the plugin root into the injected skill-environment rule, and CAT derives the harness home from `CODEX_HOME` or
+`CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`.
+
 **Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
 replace the observe-diagnose-retest procedure. `failure-regression-promotion.md` applies its own correction and
 regression procedure instead of invoking `cat:prompt-optimizer` for every qualifying failure, and it may recommend a
@@ -1126,6 +1139,9 @@ The core owns these ports; adapters implement them at the edges:
   a file system.
 - **`CampaignStore`** is the file-system boundary for campaign persistence. Production has one implementation. Driver
   tests use an in-memory implementation from test sources, and both implementations pass the same contract tests.
+- **`CandidateOverlays`** saves each candidate's overlay ([§4.3](#43-candidates-and-edit-authority)) under its snapshot
+  and returns it, so the driver can stage trial sources, prepare authoring copies, and materialize and deliver a
+  candidate. Its file implementation and its in-memory test implementation pass the same contract tests.
 - **`HostInterruptSignal`** reports whether the host turn was interrupted after a given instant (Codex rollout, Claude
   transcript).
 - **`HarnessCapacity`** is the permit pool described in [§3.6](#36-shared-harness-capacity).
