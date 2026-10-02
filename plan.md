@@ -118,6 +118,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-19 | `optimize-xhigh` | Allocation policy that interacts with readiness, the coverage floor and edits. |
 | WI-20 | `optimize-xhigh` | Selection among concurrent attempts decides which edit ships and how rounds spend author sessions. |
 | WI-21 | `optimize-high` | A proposal check, a rule edit under CAT's prompt rules, and a migration whose completeness an audit must prove. |
+| WI-22 | `optimize-high` | A result-shape change through both adapters, the checks, the judge and the author evidence, with recorded-event tests per harness. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -212,6 +213,7 @@ requirement names.
 | R-W1 exclude notice (convention-pass follow-up) | Done (`138f66e87`; full build 1441 tests, 0 failures; bats 32/32). `ForkView.excludeAdded()` reaches the `start` command's message ("Added /.cat/work/ to the repository's local info/exclude."); `OptimizerCoreTest` covers added, already excluded, and added with a deriver failure, and failed first. |
 | WI-21 | Done (`ea5a59fb9`; full build 1584 tests, 0 failures; bats 32/32). The approved `failure-regression-promotion.md` text is delivered unchanged. All 61 rule scenarios and 6 fixtures moved to `.cat/tests/client/common/rules/src/main/resources/rules/<rule>/<case>.md` (fixtures under `fixtures/`); the 16 `suite.json` manifests and the two retired `verification.md` notes were deleted. `RegressionScenarios` discovers project and user scenarios, the deriver receives their content and must cite each scenario of a named prompt source in `regression_scenarios`; `start` and `confirm` refuse an uncited proposal. Proposal format 4 and campaign format 7; older formats are refused, so the plugin is reinstalled only after the running E1 campaign ends, followed by a fresh derivation receipt on the final build. `RegressionScenariosTest` locates the repository through `cat.client.directory`. Open: the test uses `cat.work.temp`, like 11 other tests, which the native-tier removal must replace. |
 | Skill proposal display (WI-15 finding) | Done (`c60e6d073`; full build 1568 tests, 0 failures; bats 32/32). In three E1 turns the Codex agent saved the proposal (74 KB, 25 KB, 15 KB) to `/tmp` and linked it instead of showing it. The user approved defining "show" in `first-use.md` as verbatim text in the reply; three regression scenarios are recorded under `.cat/tests/client/common/skills/src/main/resources/skills/prompt-optimizer/first-use/` (recorded, not tested). |
+| WI-22 | Not started. User ruling (2026-10-02, `design.md` D29, H31): a turn's reply is every assistant message of the turn. The first Codex E1 campaign plateaued because the judge failed six correct final responses for Codex's progress note before a tool call, while the checks saw only final responses. That campaign was stopped as the test user; the base stayed clean at the same HEAD (early E3 evidence on the pre-WI-21 build). |
 | Skill launcher paths (WI-15 finding, R-I5) | Done (`a1d70a4bd`; full build 1568 tests, 0 failures, none at or over 1 s; bats 32/32). Codex still ran `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer` literally in 2 of 4 runs although the injected skill-environment rule named the plugin directory. The user chose skill-relative paths: every skill names `client/bin/<launcher>` in the plugin directory two levels above the skill's directory, and `BundledSkillLauncherTest` fails if a shipped skill writes the variable (it failed first on all 8 skills). After reinstalling, 6 of 6 Codex runs called the launcher by its absolute path first. |
 | Real Git in tests (user ruling 2026-10-02: assume third-party tools work as documented) | Done (`18891bd45`, `f8f57259c`; full builds 1463 and 1461 tests, 0 failures; bats 32/32). The runner tests no longer use Git: `HarnessProjectRepository` and `CodexCuratedPluginCache` expose the commands and environment they give Git, and their tests assert those. `JlinkImageBuilderTest` asserts the launcher text instead of starting launchers and Maven wrappers; `GeneratorTest` checks `Generator.select` at each probability boundary instead of 40,000 draws. git-replay (`04ec22dfd`, one commit per the user's ruling; full build 1567 tests, 0 failures, none at or over 1 s; bats 32/32): its decisions are extracted and tested over captured facts, Git processes fall from 1,845 to 264, and nine integration tests keep real Git, one per Git operation, each under 1 s. §8 lists them and `GitTest`. |
 | Fake contracts (doubles audit follow-up) | Done (`06515f1c8`, `7e8a2795d`; full builds 1514 and 1510 tests; bats 32/32). Shared contracts run `FakeWorkspacePort` against `Workspace` and `FakeHostInterruptSignal` against both harnesses' interrupt signals; the fakes were corrected where checks failed. `FakeJudgeProtocol` is deleted: the driver tests use the real `JudgePrompt` and script only the judge session's JSON judgment. |
@@ -249,6 +251,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
   failing category, as R-D6 counts attempts; `accept without certification` is offered at a stop, a plateau or
   unavailable certification when the working candidate is not the incumbent. Plan R-D12 says "for that category". All
   four follow the implementation (found in the convention pass).
+- `design.md` §1.2, §3.1, §6.4, D29 and H31: a turn's reply is every assistant message of the turn; R-C12 and WI-22 added with §1.1, §2, §6 (user ruling, 2026-10-02, after the first Codex E1 campaign).
 - `design.md` §8 states R-I5's obligation (locating CAT's files without undefined shell variables), which R-I5 already
   cited; §9 lists the `CandidateOverlays` port. Plan §7 declares H-13 (needed edits → authority warning) and H-14
   (candidate overlay), traced from the driver (found in the convention pass).
@@ -369,6 +372,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C9 | Deterministic checks: a closed set of kinds with parameters that may name variation values; each check is validated against its known-good and known-bad controls at confirmation and at load; a failing check is discarded and its requirement judged semantically, with the reason in the proposal. A trial passes when every check passes and the judge passes every semantic requirement; no judge session runs when a check failed or no semantic requirement remains; a failed check's record reaches the author. | §6.1, §6.4, D23 | WI-17 | U: `DeterministicCheckTest` (each kind, each control on both sides), `DriverTest`; E: E7 |
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per category and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
 | R-C11 | Cells are the statistical unit: every §2 and §3 rule that names a category applies per cell, and `K` counts cells. | §2.1 | WI-16 | U: `SchedulerTest`, `ReadinessGateTest`, `CommitTest` (a two-profile category gives two cells with separate counts, gates and decisions) |
+| R-C12 | A turn's reply is every assistant message of the turn; deterministic checks of reply text, the judge's evidence and the author's failure records all use it. | §1.2, §6.4, D29 | WI-22 | U: per-harness adapter tests over recorded events, `DeterministicCheckTest`, `JudgeVerdictTest`, `DriverTest`; E: E1 per harness |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -809,6 +813,26 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
   rules module.
 
+### WI-22 — Replies include interim messages (user ruling, 2026-10-02)
+
+- **Result:** `SessionResult.Completed` carries each turn's reply as its assistant messages in order, ending with the
+  final response (`design.md` §1.2 Reply, D29). The Codex adapter takes every `agent_message` of the turn; the Claude
+  adapter takes every assistant text block of the turn, including those before a tool call and those of a follow-up
+  that belongs to the turn.
+- **Checks:** a deterministic check of reply text reads the whole reply: the turn's messages joined in order, so a
+  suffix check still ends at the final response and a forbidden-text check sees an interim message (`design.md` §6.4).
+  Control validation uses the same shape.
+- **Judge:** the `responses` evidence gives each turn's messages in order, and the judge prompt says that every one
+  of them is part of the reply.
+- **Author:** a failure record carries the same reply, so the author sees the interim message that failed.
+- **Stored format:** trial records and the campaign format that hold responses change format; older formats are
+  refused, as before.
+- **Closes:** R-C12.
+- **Tests:** per harness, an adapter test over recorded events with a progress message before a tool call; a check
+  test where a forbidden text appears only in an interim message and a suffix check still passes; a judge request test
+  that shows every message; an author failure-record test.
+- **Exit:** unit tests pass; the full build passes; then E1 restarts on the final build.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -872,6 +896,7 @@ blocks only the part of a work item that it names.
 | WI-19 | WI-16 |
 | WI-20 | WI-18 |
 | WI-21 | WI-14, WI-10 |
+| WI-22 | WI-8, WI-17 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
