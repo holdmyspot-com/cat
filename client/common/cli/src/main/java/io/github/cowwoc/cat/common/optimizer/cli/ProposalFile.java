@@ -132,11 +132,14 @@ final class ProposalFile
 	/**
 	 * Reads the stored proposal.
 	 *
+	 * @param project the user's project root, which the stored derivation's paths name
 	 * @return the proposal, or empty if no proposal is stored
+	 * @throws NullPointerException if {@code project} is null
 	 * @throws IOException if the file cannot be read or is not a proposal file of this version
 	 */
-	Optional<Stored> read() throws IOException
+	Optional<Stored> read(Path project) throws IOException
 	{
+		requireThat(project, "project").isNotNull();
 		if (!Files.exists(file))
 			return Optional.empty();
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
@@ -168,11 +171,11 @@ final class ProposalFile
 		{
 			throw new IOException(file + " holds invalid trial profiles: " + e.getMessage(), e);
 		}
-		// The deriver protocol reads only the responses and the prompt sources, so this file stands in for the
-		// session's transcript and the campaign directory for its effects directory
+		// Stored text already names the user's project, so the deriver protocol must use that same root when it
+		// validates the text again. The proposal file stands in for the session's transcript.
 		SessionResult.Completed result = new SessionResult.Completed(file,
 			List.of(List.of(root.get("derivation").asString())),
-			file.getParent(), null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
+			project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
 		return Optional.of(new Stored(result, profiles));
 	}
 

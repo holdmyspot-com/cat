@@ -264,6 +264,154 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that conflict quotations, resolutions and recommendation reasons name the user's project in both
+	 * accepted findings and the derivation saved for later reads.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	// Requirement: R-C13
+	@Test
+	public void rewritesConflictProjectPaths() throws InvalidProposalException
+	{
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("requirement_ids").add("r1").add("r2");
+			conflict.put("evidence", "[AGENTS.md:6](/runs/deriver/project/AGENTS.md:6) contradicts " +
+				"/runs/deriver/project/rules/safety.md.");
+			conflict.putArray("resolutions").add("Edit /runs/deriver/project/AGENTS.md.").
+				add("Edit [safety.md](/runs/deriver/project/rules/safety.md).");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps [AGENTS.md](/runs/deriver/project/AGENTS.md) and " +
+				"/runs/deriver/project/rules/safety.md consistent.");
+		});
+
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		Conflict expected = new Conflict(List.of("r1", "r2"),
+			"[AGENTS.md:6](/staged/incumbent/AGENTS.md:6) contradicts /staged/incumbent/rules/safety.md.",
+			List.of("Edit /staged/incumbent/AGENTS.md.", "Edit [safety.md](/staged/incumbent/rules/safety.md)."), 1,
+			"Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent.");
+		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
+		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/deriver/project");
+		requireThat(deriver.proposal(session(derived.derivation()), PROFILES).conflicts(), "storedConflicts").
+			isEqualTo(List.of(expected));
+	}
+
+	/**
+	 * Verifies that scope evidence names the user's project in links and bare paths before it is saved.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	// Requirement: R-C13
+	@Test
+	public void rewritesScopeProjectPaths() throws InvalidProposalException
+	{
+		String output = changedDerivation(root -> ((ObjectNode) root.get("scope_conditions").get(0)).
+			put("evidence", "[CLAUDE.md:2](/runs/deriver/project/CLAUDE.md:2) loads " +
+				"/runs/deriver/project/rules/images.md."));
+
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		ScopeCondition expected = new ScopeCondition(Outcome.UNSUPPORTED_OUTPUT, List.of("r1"),
+			"[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md.");
+		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
+		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/deriver/project");
+		requireThat(deriver.proposal(session(derived.derivation()), PROFILES).scopeConditions(), "storedScope").
+			isEqualTo(List.of(expected));
+	}
+
+	/**
+	 * Verifies that ordinary prose and paths to session artifacts outside its project directory remain unchanged.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	// Requirement: R-C13
+	@Test
+	public void preservesOtherFindingText() throws InvalidProposalException
+	{
+		String evidence = "[transcript](/runs/deriver/artifacts/transcript.jsonl) explains the conflict.";
+		Conflict expected = new Conflict(List.of("r1", "r2"), evidence,
+			List.of("Exempt explanations.", "Drop brevity."), 1, "Keeps the most intent.");
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("requirement_ids").add("r1").add("r2");
+			conflict.put("evidence", evidence);
+			conflict.putArray("resolutions").add("Exempt explanations.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps the most intent.");
+		});
+
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
+		requireThat(derived.scopeConditions().getFirst().evidence(), "scopeEvidence").
+			isEqualTo("CLAUDE.md asks for a diagram image with every summary.");
+		requireThat(json.readTree(derived.derivation()), "derivation").isEqualTo(json.readTree(output));
+	}
+
+	/**
+	 * Supplies deriver text locations displayed alongside the conflict and scope findings.
+	 *
+	 * @return JSON pointers to prose, sources, variations and deterministic-check evidence
+	 */
+	@DataProvider
+	public Object[][] proposalTextLocations()
+	{
+		return new Object[][]
+		{
+			{"/requirements/0/description"}, {"/requirements/0/source"},
+			{"/derived_sources/0/path"}, {"/derived_sources/0/rule"},
+			{"/categories/0/rationale"}, {"/categories/0/tests/0/applicability"},
+			{"/categories/0/tests/0/turns/0"}, {"/categories/0/tests/0/expected_behavior"},
+			{"/categories/0/tests/0/regression_scenarios/0"},
+			{"/categories/0/tests/1/uncovered_interactions/0"},
+			{"/categories/0/tests/0/variations/0/values/0/text"},
+			{"/categories/0/tests/0/variations/0/values/0/label"},
+			{"/categories/0/tests/1/checks/0/parameters/pattern"},
+			{"/categories/0/tests/1/checks/0/known_good/replies/0/0"},
+			{"/categories/0/tests/1/checks/0/known_bad/replies/0/0"},
+			{"/categories/0/tests/1/checks/0/known_good/files/0/content"},
+			{"/categories/0/tests/1/checks/0/known_good/tool_calls/0/tool"},
+			{"/categories/0/tests/1/checks/0/known_good/tool_calls/0/command"},
+			{"/judge/rubric"}, {"/judge/decision_rule"}, {"/limitations/0"}
+		};
+	}
+
+	/**
+	 * Verifies that all displayed deriver prose is rewritten in the saved derivation and accepted again with the
+	 * user's paths, including nested arrays and deterministic controls.
+	 *
+	 * @param pointer the location of the text in the deriver output
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	// Requirement: R-C13
+	@Test(dataProvider = "proposalTextLocations")
+	public void rewritesOtherProposalText(String pointer) throws InvalidProposalException
+	{
+		ObjectNode output = (ObjectNode) json.readTree(fixture("derivation-with-checks.json"));
+		ObjectNode test = (ObjectNode) output.at("/categories/0/tests/0");
+		test.putArray("regression_scenarios").add("scenario.md");
+		ObjectNode control = (ObjectNode) output.at("/categories/0/tests/1/checks/0/known_good");
+		control.putArray("files").addObject().put("path", "notes.md").put("content", "notes");
+		control.putArray("tool_calls").addObject().put("tool", "shell").put("command", "pwd").
+			put("exit_status", 0);
+		int separator = pointer.lastIndexOf('/');
+		JsonNode parent = output.at(pointer.substring(0, separator));
+		String field = pointer.substring(separator + 1);
+		String stagedText = "/runs/deriver/project/notes.md";
+		if (parent instanceof ObjectNode object)
+			object.put(field, stagedText);
+		else
+			((ArrayNode) parent).set(Integer.parseInt(field), json.getNodeFactory().stringNode(stagedText));
+
+		DerivedProposal derived = deriver.proposal(session(json.writeValueAsString(output)), PROFILES);
+
+		requireThat(json.readTree(derived.derivation()).at(pointer).asString(), "savedText").
+			isEqualTo("/staged/incumbent/notes.md");
+		DerivedProposal reread = deriver.proposal(session(derived.derivation()), PROFILES);
+		requireThat(reread.contract(), "storedContract").isEqualTo(derived.contract());
+	}
+
+	/**
 	 * Verifies that a bare deriver output is accepted as well as a fenced one.
 	 *
 	 * @throws InvalidProposalException if the output is rejected

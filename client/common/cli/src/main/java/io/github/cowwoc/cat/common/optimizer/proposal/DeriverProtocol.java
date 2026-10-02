@@ -187,7 +187,8 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Validates a deriver session's output and computes its trial profiles.
+	 * Validates a deriver session's output and computes its trial profiles. References to the session's project
+	 * directory in the output's text name the user's project in both the proposal and its saved derivation.
 	 *
 	 * @param result the deriver session's result
 	 * @param profiles the profile inventory and bindings that CAT read when the deriver ran
@@ -208,6 +209,8 @@ public final class DeriverProtocol
 		if (extracted.isEmpty())
 			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
 		ObjectNode output = extracted.get();
+		rewriteProjectPaths(output, result.effects().toAbsolutePath().normalize().toString(),
+			scenarios.project().toString());
 		String derivation = json.writerWithDefaultPrettyPrinter().writeValueAsString(output);
 
 		List<String> problems = new ArrayList<>();
@@ -253,6 +256,40 @@ public final class DeriverProtocol
 			throw new InvalidProposalException(problems);
 		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, result.promptSources(),
 			derivation);
+	}
+
+	/**
+	 * Replaces staged project references in every string value of the deriver's output. Paths to the session's
+	 * artifacts outside its project directory remain unchanged.
+	 *
+	 * @param node the output value whose text is rewritten in place
+	 * @param staged the absolute root of the session's project copy
+	 * @param project the absolute root of the user's project
+	 */
+	private void rewriteProjectPaths(JsonNode node, String staged, String project)
+	{
+		if (node instanceof ObjectNode object)
+		{
+			for (String name : object.propertyNames())
+			{
+				JsonNode value = object.get(name);
+				if (value.isString())
+					object.put(name, value.asString().replace(staged, project));
+				else
+					rewriteProjectPaths(value, staged, project);
+			}
+		}
+		else if (node instanceof ArrayNode array)
+		{
+			for (int i = 0; i < array.size(); ++i)
+			{
+				JsonNode value = array.get(i);
+				if (value.isString())
+					array.set(i, json.getNodeFactory().stringNode(value.asString().replace(staged, project)));
+				else
+					rewriteProjectPaths(value, staged, project);
+			}
+		}
 	}
 
 	/**

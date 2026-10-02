@@ -560,7 +560,7 @@ public final class OptimizerCore implements Core
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
 		Optional<ProposalFile.Stored> stored = new ProposalFile(directory(root, campaign.header().id()),
-			scope.json()).read();
+			scope.json()).read(root);
 		if (stored.isEmpty())
 			return Optional.empty();
 		try
