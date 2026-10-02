@@ -155,16 +155,35 @@ public final class Driver implements AutoCloseable
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(context.lockFile());
 		if (lock.isEmpty())
 			return Optional.empty();
+		return Optional.of(open(context, campaignId, lock.get()));
+	}
+
+	/**
+	 * Reconciles a campaign under a write lock that the caller has taken.
+	 * <p>
+	 * Takes ownership of the lock, releasing it if the driver cannot be created.
+	 *
+	 * @param context the driver's context
+	 * @param campaignId the campaign's identifier
+	 * @param lock the campaign's write lock
+	 * @return the driver
+	 * @throws IllegalArgumentException if the store holds no campaign with that identifier
+	 * @throws IOException if the store, the worktree or the run records cannot be read or written
+	 */
+	static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
+	{
 		try
 		{
 			Instant now = context.clock().instant();
 			Campaign campaign = Reconciler.reconcile(context, load(context, campaignId), now);
-			return Optional.of(new Driver(context, lock.get(), campaign, now));
+			return new Driver(context, lock, campaign, now);
 		}
 		catch (IOException | RuntimeException e)
 		{
-			lock.get().close();
-			throw e;
+			try (lock)
+			{
+				throw e;
+			}
 		}
 	}
 

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.execution.fixture.FaultingFileChannel;
 import io.github.cowwoc.cat.common.optimizer.campaign.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
@@ -1129,6 +1130,38 @@ public final class DriverTest
 				requireThat(campaign.runningAttempt().isEmpty(), "running").isTrue();
 				for (LogicalTrial trial : campaign.trials())
 					requireThat(trial.key().purpose(), "purpose").isNotEqualTo(Purpose.FORMAL);
+			}
+		}
+	}
+
+	/**
+	 * When the driver cannot open a campaign and releasing its lock then fails too, the open failure is reported with
+	 * the release failure attached, so the user sees the original cause.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	@SuppressWarnings("PMD.CloseResource")
+	public void openKeepsFailureWhenUnlockFails() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-unlock")),
+				developing().build());
+			IOException release = new IOException("release failed");
+			try (FaultingFileChannel channel = new FaultingFileChannel(null, release, null))
+			{
+				// Driver.open takes ownership of the lock and releases it when it fails
+				CampaignLock lock = CampaignLock.tryAcquire(channel).orElseThrow();
+				try
+				{
+					Driver.open(harness.context(), "missing-campaign", lock).close();
+					throw new AssertionError("Expected the missing campaign to fail");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(List.of(e.getSuppressed()), "suppressed").isEqualTo(List.of(release));
+				}
 			}
 		}
 	}
