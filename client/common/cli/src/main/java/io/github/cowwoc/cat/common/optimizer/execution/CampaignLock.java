@@ -48,7 +48,20 @@ final class CampaignLock implements AutoCloseable
 		Path parent = file.toAbsolutePath().getParent();
 		if (parent != null)
 			Files.createDirectories(parent);
-		FileChannel channel = FileChannel.open(file, CREATE, WRITE);
+		return tryAcquire(FileChannel.open(file, CREATE, WRITE));
+	}
+
+	/**
+	 * Acquires the lock on an open channel without waiting.
+	 * <p>
+	 * Takes ownership of the channel, closing it unless the returned lock holds it.
+	 *
+	 * @param channel the open campaign lock file
+	 * @return the lock, or empty if another driver holds it
+	 * @throws IOException if locking or closing the channel fails
+	 */
+	static Optional<CampaignLock> tryAcquire(FileChannel channel) throws IOException
+	{
 		try
 		{
 			FileLock lock = channel.tryLock();
@@ -61,8 +74,10 @@ final class CampaignLock implements AutoCloseable
 		}
 		catch (IOException | RuntimeException e)
 		{
-			channel.close();
-			throw e;
+			try (channel)
+			{
+				throw e;
+			}
 		}
 		channel.close();
 		return Optional.empty();
