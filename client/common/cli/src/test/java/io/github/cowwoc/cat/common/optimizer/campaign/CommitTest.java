@@ -154,7 +154,7 @@ public final class CommitTest
 		// Requirement: R-F4
 		Campaign campaign = CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
 		CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety",
-			CampaignBuilder.snapshot("edit")));
+			CampaignBuilder.snapshot("edit"), List.of()));
 	}
 
 	/**
@@ -174,7 +174,7 @@ public final class CommitTest
 		requireThat(campaign.development().round(), "round").isNotNull();
 
 		Sha256 edit = CampaignBuilder.snapshot("edit");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", edit));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", edit, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		for (PromotionRun run : author.runs())
 		{
@@ -184,6 +184,7 @@ public final class CommitTest
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), snapshot, run.instance(),
 				Verdict.PASS);
 		}
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(edit));
 		requireThat(campaign.attempt(1).candidate(), "frozen").isEqualTo(frozen);
 		requireThat(campaign.development().working(), "working").isEqualTo(new Candidate(2, edit));
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(2);

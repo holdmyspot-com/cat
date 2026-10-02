@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -754,7 +755,7 @@ public abstract class CampaignStoreContract
 	static CampaignEvent.Complete complete(TrialKey key, Verdict verdict)
 	{
 		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
-			CampaignBuilder.confirmedIdentity("model-a"));
+			CampaignBuilder.confirmedIdentity("model-a"), null);
 	}
 
 	/**
@@ -814,7 +815,7 @@ public abstract class CampaignStoreContract
 					Verdict.PASS),
 				new PromotionRun(PromotionRun.Role.REGRESSION, instance("formatting", "tone", 6, true), null, null),
 				new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, instance("safety", "deletion", 7, true),
-					null, null)))).
+					null, null)), Minimality.start(List.of(), CampaignBuilder.snapshot("author-2")))).
 			authorAttempts(3).
 			reviewPoint("safety", 250).
 			baselineIndex(2).
@@ -907,6 +908,6 @@ public abstract class CampaignStoreContract
 			built.candidates(), built.authorAttempts(), built.development(), built.failedCells(), built.baseline(),
 			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
 			built.authorizedTargets(), built.pendingDecisions(), built.revisionRequested(), built.outcome(),
-			built.delivery());
+			built.delivery(), built.optimization());
 	}
 }

@@ -5,6 +5,17 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
+import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
+import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
+import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import java.nio.file.attribute.PosixFilePermissions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -26,6 +37,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -93,6 +105,92 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that an unfinished reduction retains its original bytes and last passing evidence on disk.
+	 *
+	 * @throws IOException if the fixture cannot be read or written
+	 */
+	@Test
+	public void preservesMinimalityAcrossReload() throws IOException
+	{
+		// Requirement: R-D11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign")), JSON);
+			FileDelta file = new FileDelta(Path.of("CLAUDE.md"), new FileContent("first\nseparator\nlast\n".
+				getBytes(UTF_8)), new FileContent("needed\nseparator\nunneeded\n".getBytes(UTF_8)),
+				PosixFilePermissions.fromString("rw-r--r--"));
+			TrialKey key = new TrialKey(Purpose.PROMOTION, 1, CampaignBuilder.snapshot("author"), "safety", 1);
+			PromotionRun passed = new PromotionRun(PromotionRun.Role.TRIGGERING,
+				CampaignBuilder.targeted("safety", "cache"), key, Verdict.PASS);
+			Minimality search = Minimality.start(List.of(file), key.snapshot()).advance(key.snapshot(), List.of(passed),
+				Promotion.Decision.PROMOTE);
+			Campaign campaign = new CampaignBuilder().confirmed().working(1).
+				round(new Round(Map.of("safety", 0))).author(new AuthorAttempt(1, "safety",
+					CampaignBuilder.snapshot("reduction"), List.of(), search)).build();
+			store.replaceSnapshot(campaign);
+			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
+			requireThat(loaded.development().author().minimality(), "search").isEqualTo(search);
+			requireThat(loaded.development().author().minimality().files().getFirst().before(), "workingBytes").
+				isEqualTo(file.before());
+		}
+	}
+
+	/**
+	 * Verifies that descriptive prompt sizes and input observations survive a store reload.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void preservesOptimizationMeasurements() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON);
+			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(),
+				Map.of(CampaignBuilder.INCUMBENT, new PromptSize(4L, 1L, null)),
+				Map.of(CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L)))));
+			Campaign campaign = new CampaignBuilder().confirmed().optimization(evidence).build();
+			store.replaceSnapshot(campaign);
+			requireThat(store.load(campaign.header().id()).orElseThrow().optimization(), "measurements").
+				isEqualTo(evidence);
+		}
+	}
+
+	/**
+	 * Verifies that a crash after a token-bearing outcome is written preserves usage and adopts it once.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void recoversInputUsageWithOutcome() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("input-usage"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			Campaign campaign = start();
+			Campaign assigned = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+				Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
+				"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
+					Instant.parse("2026-10-01T12:00:00Z")))));
+			LogicalTrial trial = assigned.trials().getLast();
+			store.writeAssignment(ID, trial);
+			Campaign running = CampaignTransitions.apply(assigned, new CampaignEvent.Start(trial.key()));
+			store.replaceSnapshot(running);
+			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", running.identity(), 0L));
+			reconcile(new FileCampaignStore(base, JSON));
+			Campaign recovered = store.load(ID).orElseThrow();
+			TrialInputs inputs = recovered.optimization().trialInputs().get(trial.key().snapshot()).get("safety");
+			requireThat(inputs, "inputs").isEqualTo(new TrialInputs(1, List.of(0L)));
+			reconcile(new FileCampaignStore(base, JSON));
+			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(trial.key().snapshot()).
+				get("safety"), "inputs").isEqualTo(inputs);
+		}
+	}
+
+	/**
 	 * A crash after any write step of a delivery journal update leaves the earlier progress until the new journal is
 	 * renamed into place, and the new progress afterwards; the journal file carries the format version.
 	 *
@@ -140,57 +238,69 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Returns every write step at which the trial lifecycle can crash.
+	 *
+	 * @return each crash position, counted from one
+	 * @throws IOException if the lifecycle cannot be measured
+	 */
+	@DataProvider(name = "trialWriteSteps")
+	public static Object[][] trialWriteSteps() throws IOException
+	{
+		int steps = countTrialSteps();
+		requireThat(steps, "steps").isEqualTo(5 * STEPS_PER_WRITE);
+		Object[][] positions = new Object[steps][1];
+		for (int index = 0; index < steps; ++index)
+			positions[index][0] = index + 1;
+		return positions;
+	}
+
+	/**
 	 * A crash after any write step of a trial's lifecycle, followed by a restart and reconciliation, leaves exactly one
 	 * adopted outcome: the recorded failure if its record was renamed into place, otherwise the rerun's pass.
 	 *
+	 * @param crashAfter the write step after which the process crashes, counted from one
 	 * @throws IOException if the store fails
 	 */
-	@Test
-	public void faultAfterEveryWriteStepLosesNoOutcome() throws IOException
+	@Test(dataProvider = "trialWriteSteps")
+	public void faultAfterEveryWriteStepLosesNoOutcome(int crashAfter) throws IOException
 	{
 		// Requirement: R-E1
-		int steps = countTrialSteps();
-		requireThat(steps, "steps").isEqualTo(5 * STEPS_PER_WRITE);
-		for (int crashAfter = 1; crashAfter <= steps; ++crashAfter)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-fault-"));
+			Campaign start = start();
+			new FileCampaignStore(base, JSON).replaceSnapshot(start);
+			AtomicInteger performed = new AtomicInteger();
+			FileCampaignStore crashing = new FileCampaignStore(base, JSON, step ->
 			{
-				Path base = cleanup.add(Files.createTempDirectory("cat-campaign-fault-"));
-				Campaign start = start();
-				new FileCampaignStore(base, JSON).replaceSnapshot(start);
-				AtomicInteger performed = new AtomicInteger();
-				int limit = crashAfter;
-				FileCampaignStore crashing = new FileCampaignStore(base, JSON, step ->
-				{
-					if (performed.incrementAndGet() == limit)
-						throw new SimulatedCrash(step);
-				});
-				boolean crashed = false;
-				try
-				{
-					runTrial(crashing, start, Verdict.FAIL);
-				}
-				catch (SimulatedCrash _)
-				{
-					crashed = true;
-				}
-				requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
-
-				FileCampaignStore restarted = new FileCampaignStore(base, JSON);
-				reconcile(restarted);
-
-				Campaign end = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
-				CategoryCounts expected;
-				if (crashAfter >= OUTCOME_RENAME)
-					expected = CampaignBuilder.counts(0, 1);
-				else
-					expected = CampaignBuilder.counts(1, 0);
-				requireThat(end.development().count("safety"), "counts").withContext(crashAfter, "crashAfter").
-					isEqualTo(expected);
-				requireThat(end.trials(), "unadopted").withContext(crashAfter, "crashAfter").isEmpty();
-				requireThat(restarted.listUnadoptedOutcomes(end), "outcomes").withContext(crashAfter, "crashAfter").
-					isEmpty();
+				if (performed.incrementAndGet() == crashAfter)
+					throw new SimulatedCrash(step);
+			});
+			boolean crashed = false;
+			try
+			{
+				runTrial(crashing, start, Verdict.FAIL);
 			}
+			catch (SimulatedCrash _)
+			{
+				crashed = true;
+			}
+			requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
+
+			FileCampaignStore restarted = new FileCampaignStore(base, JSON);
+			reconcile(restarted);
+
+			Campaign end = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
+			CategoryCounts expected;
+			if (crashAfter >= OUTCOME_RENAME)
+				expected = CampaignBuilder.counts(0, 1);
+			else
+				expected = CampaignBuilder.counts(1, 0);
+			requireThat(end.development().count("safety"), "counts").withContext(crashAfter, "crashAfter").
+				isEqualTo(expected);
+			requireThat(end.trials(), "unadopted").withContext(crashAfter, "crashAfter").isEmpty();
+			requireThat(restarted.listUnadoptedOutcomes(end), "outcomes").withContext(crashAfter, "crashAfter").
+				isEmpty();
 		}
 	}
 
@@ -289,10 +399,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(3);
+					"recordVersion").isEqualTo(4);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(3);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(4);
 		}
 	}
 
@@ -425,7 +535,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 4);
+			root.put("format_version", 5);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);
@@ -477,6 +587,31 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 2);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
+	 * A campaign of format version 3, which lacks author manifests and resumable minimality progress, is refused
+	 * with a message that names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 3 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionThreeCampaign() throws IOException
+	{
+		// Requirement: R-D11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-3-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 3);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);
@@ -572,7 +707,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	private static void finish(CampaignStore store, Campaign running, TrialKey key, Verdict verdict)
 		throws IOException
 	{
-		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", running.identity());
+		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", running.identity(), null);
 		store.writeOutcome(ID, outcome);
 		store.replaceSnapshot(CampaignTransitions.apply(running, outcome));
 	}

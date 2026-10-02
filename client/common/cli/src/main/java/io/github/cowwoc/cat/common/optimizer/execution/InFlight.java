@@ -58,9 +58,10 @@ sealed interface InFlight
 	 * @param overlay the working candidate's overlay
 	 * @param copy the new project directory containing the working candidate, prepared for the author session
 	 * @param before the copy's inventory before the session
+	 * @param brief the exact evidence supplied to this session
 	 * @param handle the session
 	 */
-	record Author(String category, Candidate working, Overlay overlay, Path copy, FileInventory before,
+	record Author(String category, Candidate working, Overlay overlay, Path copy, FileInventory before, AuthorBrief brief,
 		SessionHandle handle) implements InFlight
 	{
 	}

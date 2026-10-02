@@ -45,7 +45,8 @@ final class TrialAdoption
 			case FORMAL -> isStaleFormal(draft, key);
 			case DIAGNOSTIC -> key.series() != draft.series || draft.diagnosis == null ||
 				!key.equals(draft.diagnosis.rerun());
-			case PROMOTION -> draft.author == null || key.series() != draft.author.number();
+			case PROMOTION -> draft.author == null || key.series() != draft.author.number() ||
+				draft.author.runs().stream().noneMatch(run -> key.equals(run.trial()));
 		};
 	}
 
@@ -365,7 +366,7 @@ final class TrialAdoption
 				break;
 			}
 		}
-		draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs);
+		draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs, author.minimality());
 		decidePromotion(draft);
 	}
 
@@ -383,9 +384,14 @@ final class TrialAdoption
 			{
 				// More runs are needed
 			}
-			case PROMOTE -> promote(draft, author);
+			case PROMOTE ->
+			{
+				// The driver advances minimality before delivering the final promotion
+			}
 			case REJECT ->
 			{
+				if (author.minimality().testing() != null)
+					return;
 				draft.author = null;
 				rejectAuthorAttempt(draft, author.category());
 			}
@@ -398,7 +404,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param author the author attempt
 	 */
-	private static void promote(Draft draft, AuthorAttempt author)
+	static void promote(Draft draft, AuthorAttempt author)
 	{
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{

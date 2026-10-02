@@ -818,7 +818,7 @@ public final class OptimizerCoreTest
 			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
 				c.candidates(), c.authorAttempts(), c.development(), c.failedCells(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(), c.authorizedTargets(),
-				List.of(), c.revisionRequested(), c.outcome(), c.delivery());
+				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
 			Campaign warned = CampaignTransitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
 			String before = Files.readString(repository.directory(id).resolve("campaign.json"));

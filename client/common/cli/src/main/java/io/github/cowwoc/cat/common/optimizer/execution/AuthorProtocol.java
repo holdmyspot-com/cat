@@ -17,6 +17,13 @@ import java.util.Optional;
 public interface AuthorProtocol
 {
 	/**
+	 * Reads the complete evidence manifest and needed edits from the author's final response.
+	 *
+	 * @param result the completed session
+	 * @return the report, or empty if its shape or required values are invalid
+	 */
+	Optional<AuthorReport> report(SessionResult.Completed result);
+	/**
 	 * Creates the session request for one author attempt.
 	 *
 	 * @param brief what the author may see
@@ -33,5 +40,8 @@ public interface AuthorProtocol
 	 * @return the needed edits in report order, or empty if the final response is not a well-formed report
 	 * @throws NullPointerException if {@code result} is null
 	 */
-	Optional<List<NeededEdit>> neededEdits(SessionResult.Completed result);
+	default Optional<List<NeededEdit>> neededEdits(SessionResult.Completed result)
+	{
+		return report(result).map(AuthorReport::neededEdits);
+	}
 }

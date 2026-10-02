@@ -7,8 +7,9 @@
   weakening any other requirement. A category is a group of uses needing its own compliance claim.
 - Keep every change inside the confirmed edit authority below. CAT rejects the whole attempt when any change falls
   outside it.
-- End with a final response that reports each edit a requirement needs but that you did not make because it lies
-  outside your authority. CAT reads your edits from the copy and measures the result itself.
+- Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
+  Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
+  failures, then measures the attempt itself.
 
 ## Guidance
 
@@ -74,6 +75,17 @@ The formal outcomes of the certification attempts that have ended, as JSON. Each
 
 ### How to edit
 
+1. Classify every supplied failure before editing: `routing` when an existing instruction was not loaded or applied;
+   `guidance` when an instruction is missing, ambiguous or contradictory; `not guidance` for a model limitation,
+   a test or contract defect, or infrastructure failure. Make no prompt edit for a failure classified `not guidance`.
+2. Make the smallest correction supported by the evidence in the file that owns the decision. Remove a contradiction
+   or ambiguity before adding emphasis. Capitals, "important" markers and repeated instructions are not corrections.
+3. For each change, name an analogous case that needs the same path and a dissimilar case that must not receive the
+   new guidance. Word the correction for the invariant shared by the failing and analogous cases.
+4. Emit the manifest: every supplied failure's classification, and every changed hunk's motivating failure ids,
+   analogous case and dissimilar case. CAT rejects an uncited hunk or a citation to a failure you did not receive.
+   When no edit is needed, report the classifications with an empty `hunks` array; the attempt produces no candidate.
+
 - Diagnose why the failing instances failed by comparing each one's turns with its expected behaviour, with the
   requirement text and with the rationales. Reruns that passed show the failure is intermittent; reruns that
   failed show it reproduces.
@@ -88,6 +100,10 @@ The final response is one JSON object, bare or alone in one Markdown code fence,
 schema:
 
 {{report_schema}}
+
+The hunk definition used by both manifest validation and reduction:
+
+{{hunk_definition}}
 
 Report an empty `needed_edits` array when every edit you needed lies inside your authority. CAT treats any other final
 response as a failed attempt.

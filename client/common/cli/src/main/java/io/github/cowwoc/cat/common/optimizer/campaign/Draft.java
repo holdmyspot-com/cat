@@ -95,6 +95,10 @@ final class Draft
 	 */
 	AuthorAttempt author;
 	/**
+	 * Descriptive author, minimality and snapshot measurements.
+	 */
+	OptimizationEvidence optimization;
+	/**
 	 * The next review threshold of each cell that differs from the default.
 	 */
 	Map<String, Integer> reviewPoints;
@@ -183,6 +187,7 @@ final class Draft
 		diagnosis = development.diagnosis();
 		round = development.round();
 		author = development.author();
+		optimization = campaign.optimization();
 		reviewPoints = new LinkedHashMap<>(development.reviewPoints());
 		widened = development.widened();
 		failedCells = new HashSet<>(campaign.failedCells());
@@ -461,6 +466,6 @@ final class Draft
 			diagnosis, round, author, reviewPoints, widened);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
 			development, failedCells, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
+			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
 	}
 }

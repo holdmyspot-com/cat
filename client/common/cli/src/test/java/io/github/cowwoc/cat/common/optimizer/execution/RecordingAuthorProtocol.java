@@ -3,11 +3,26 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.AuthorPrompt;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Set;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -47,6 +62,40 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 		synchronized (lock)
 		{
 			return reports.apply(result);
+		}
+	}
+
+	@Override
+	public Optional<AuthorReport> report(SessionResult.Completed result)
+	{
+		synchronized (lock)
+		{
+			JsonMapper json = JsonMapper.builder().build();
+			if (!result.responses().getLast().equals("done"))
+				return new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of()).report(result);
+			Map<String, FailureKind> classifications = new HashMap<>();
+			for (String identifier : briefs.getLast().failureIds())
+				classifications.put(identifier, FailureKind.GUIDANCE);
+			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
+			try
+			{
+				Path file = Path.of(Files.readString(result.effects().resolve("changed-path")));
+				FileDelta delta = new FileDelta(file, new FileContent(Files.readAllBytes(
+					result.effects().resolve("before"))), new FileContent(Files.readAllBytes(result.effects().resolve(file))),
+					PosixFilePermissions.fromString("rw-r--r--"));
+				for (Hunk hunk : Hunks.between(delta))
+				{
+					evidence.add(new AuthorManifest.Evidence(file, hunk.beforeStart(), hunk.beforeEnd(),
+						hunk.afterStart(), hunk.afterEnd(), List.copyOf(classifications.keySet()),
+						"Another use requiring the same instruction", "A use outside the instruction's scope"));
+				}
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+			return reports.apply(result).map(edits -> new AuthorReport(edits, new AuthorManifest(classifications,
+				evidence)));
 		}
 	}
 

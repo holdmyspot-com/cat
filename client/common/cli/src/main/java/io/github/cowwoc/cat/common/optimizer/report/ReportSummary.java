@@ -1,6 +1,9 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
@@ -89,6 +92,7 @@ final class ReportSummary
 			cellTier(lines, report.cellTier());
 		remaining(lines, report.remaining());
 		tokens(lines, report.tokens());
+		optimization(lines, report.optimization());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		String throttle = "no hold";
 		if (concurrency.holdUntil() != null)
@@ -281,6 +285,55 @@ final class ReportSummary
 				pair(usage.input()) + ", cached input " + pair(usage.cachedInput()) + ", output " +
 				pair(usage.output()) + ", reasoning output " + pair(usage.reasoningOutput()));
 		}
+	}
+
+	/**
+	 * Adds descriptive sizes, input comparisons, and retained diagnoses.
+	 *
+	 * @param lines the summary lines
+	 * @param report the optimization report
+	 */
+	private static void optimization(List<String> lines, OptimizationReport report)
+	{
+		lines.add("Prompt size, working: " + promptSize(report.working()));
+		lines.add("Prompt size, incumbent: " + promptSize(report.incumbent()));
+		for (OptimizationReport.InputComparison input : report.inputs())
+		{
+			if (input.unavailable() != null)
+				lines.add("Trial input tokens in cell " + input.cell() + ": unavailable, " + input.unavailable());
+			else
+			{
+				lines.add("Median trial input tokens in cell " + input.cell() + ": working " + input.workingMedian() +
+					" (" + input.workingSessions() + " sessions), incumbent " + input.incumbentMedian() + " (" +
+					input.incumbentSessions() + " sessions)");
+			}
+		}
+		for (AuthorDiagnosis author : report.authors())
+		{
+			List<String> classifications = author.classifications().values().stream().map(FailureKind::label).
+				distinct().sorted().toList();
+			lines.add("Author diagnosis in cell " + author.category() + ": " + String.join(", ", classifications) +
+				"; evidence " + author.transcript());
+			for (String rejection : author.rejections())
+				lines.add("  Rejected: " + rejection);
+		}
+		if (!report.removed().isEmpty())
+			lines.add("Minimality removed hunks: " + String.join(", ", report.removed()));
+	}
+
+	/**
+	 * Describes available prompt sizes and missing measurements.
+	 *
+	 * @param size the measurements
+	 * @return the description
+	 */
+	private static String promptSize(PromptSize size)
+	{
+		if (size.bytes() == null)
+			return "unavailable, " + size.unavailable();
+		if (size.words() == null)
+			return size.bytes() + " bytes; words unavailable, " + size.unavailable();
+		return size.bytes() + " bytes, " + size.words() + " words";
 	}
 
 	/**

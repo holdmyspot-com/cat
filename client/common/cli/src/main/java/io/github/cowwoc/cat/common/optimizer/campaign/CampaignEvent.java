@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 
@@ -105,8 +106,9 @@ public sealed interface CampaignEvent
 	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 	 *   deterministic checks
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
+	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 */
-	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed)
+	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed, Long inputTokens)
 		implements CampaignEvent
 	{
 		/**
@@ -117,7 +119,9 @@ public sealed interface CampaignEvent
 		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 		 *   deterministic checks
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
-		 * @throws NullPointerException if any argument is null
+		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
+		 * @throws NullPointerException if an argument other than inputTokens is null
+		 * @throws IllegalArgumentException if inputTokens is negative
 		 */
 		public Complete
 		{
@@ -125,6 +129,8 @@ public sealed interface CampaignEvent
 			requireThat(verdict, "verdict").isNotNull();
 			requireThat(rationale, "rationale").isNotNull();
 			requireThat(observed, "observed").isNotNull();
+			if (inputTokens != null)
+				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
 		}
 	}
 
@@ -197,14 +203,16 @@ public sealed interface CampaignEvent
 	 *
 	 * @param category the optimization round's cell identifier that the attempt addresses
 	 * @param snapshot the attempt's snapshot
+	 * @param changes the captured original file changes
 	 */
-	record SubmitAuthorAttempt(String category, Sha256 snapshot) implements CampaignEvent
+	record SubmitAuthorAttempt(String category, Sha256 snapshot, List<FileDelta> changes) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param category the optimization round's cell identifier that the attempt addresses
 		 * @param snapshot the attempt's snapshot
+		 * @param changes the captured original file changes
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code category} is blank
 		 */
@@ -212,6 +220,67 @@ public sealed interface CampaignEvent
 		{
 			requireThat(category, "category").isNotBlank();
 			requireThat(snapshot, "snapshot").isNotNull();
+			changes = List.copyOf(changes);
+		}
+	}
+
+	/**
+	 * Advances a completed promotion decision to the next reduction or promotes its minimal passing snapshot.
+	 *
+	 * @param snapshot the saved overlay for the next reduction, ignored when the search has finished
+	 */
+	record AdvanceMinimality(Sha256 snapshot) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param snapshot the saved next reduction
+		 * @throws NullPointerException if snapshot is null
+		 */
+		public AdvanceMinimality
+		{
+			requireThat(snapshot, "snapshot").isNotNull();
+		}
+	}
+
+	/**
+	 * Records a snapshot's observed prompt-file sizes.
+	 *
+	 * @param snapshot the measured snapshot
+	 * @param size the measurements or the reason they are unavailable
+	 */
+	record MeasurePrompt(Sha256 snapshot, PromptSize size) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param snapshot the measured snapshot
+		 * @param size the measurements
+		 * @throws NullPointerException if either argument is null
+		 */
+		public MeasurePrompt
+		{
+			requireThat(snapshot, "snapshot").isNotNull();
+			requireThat(size, "size").isNotNull();
+		}
+	}
+
+	/**
+	 * Retains a completed author session's diagnosis independently of whether it contributes a candidate.
+	 *
+	 * @param diagnosis the author's retained evidence
+	 */
+	record RetainAuthorDiagnosis(AuthorDiagnosis diagnosis) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param diagnosis the retained evidence
+		 * @throws NullPointerException if the diagnosis is null
+		 */
+		public RetainAuthorDiagnosis
+		{
+			requireThat(diagnosis, "diagnosis").isNotNull();
 		}
 	}
 

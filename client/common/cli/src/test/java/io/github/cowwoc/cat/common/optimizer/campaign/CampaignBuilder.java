@@ -73,8 +73,21 @@ public final class CampaignBuilder
 	private boolean revisionRequested;
 	private Outcome outcome;
 	private DeliveryRequest delivery;
+	private OptimizationEvidence optimization = OptimizationEvidence.EMPTY;
 	private final Map<SequenceGroup, Long> sequences = new HashMap<>();
 	private long evidenceRevision;
+
+	/**
+	 * Supplies descriptive optimization measurements.
+	 *
+	 * @param evidence the measurements
+	 * @return this builder
+	 */
+	public CampaignBuilder optimization(OptimizationEvidence evidence)
+	{
+		optimization = evidence;
+		return this;
+	}
 
 	/**
 	 * Creates a builder for an active campaign that has no confirmed contract.
@@ -668,7 +681,7 @@ public final class CampaignBuilder
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			authorAttempts, state, failedCells, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
-			throttle, authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery);
+			throttle, authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
 	}
 
 	/**

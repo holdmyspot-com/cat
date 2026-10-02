@@ -65,6 +65,7 @@ final class ReportJson
 		cellTier(root, report.cellTier());
 		remaining(root.putObject("remaining"), report.remaining());
 		tokens(root.putObject("tokens"), report.tokens());
+		OptimizationJson.write(root, report.optimization());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());

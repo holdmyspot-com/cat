@@ -3,20 +3,131 @@
 	"title": "Author report",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["needed_edits"],
+	"required": [
+		"needed_edits",
+		"classifications",
+		"hunks"
+	],
+	"$defs": {
+		"path": {
+			"description": "A non-empty project-relative or absolute path whose parsed path is normalized and does not start with a '..' segment. Dot and dot-dot segments are rejected. Repeated and trailing separators are treated as their parsed path. Hunk paths name the resolved target, including an absolute path for an external target.",
+			"type": "string",
+			"pattern": "^(?!\\.\\.(?:/|$))(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\u0000]+$"
+		}
+	},
 	"properties": {
+		"classifications": {
+			"description": "Classify every failure supplied in development failures and ended attempts, using its id, exactly once.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"instance",
+					"classification"
+				],
+				"properties": {
+					"instance": {
+						"type": "string",
+						"pattern": "\\S"
+					},
+					"classification": {
+						"enum": [
+							"routing",
+							"guidance",
+							"not guidance"
+						]
+					}
+				}
+			}
+		},
+		"hunks": {
+			"description": "Each changed hunk, as defined in the hunk definition supplied with this schema, exactly once. Use an empty array when no file changes.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"path",
+					"before_start",
+					"before_end",
+					"after_start",
+					"after_end",
+					"instances",
+					"analogous",
+					"dissimilar"
+				],
+				"properties": {
+					"path": {
+						"$ref": "#/$defs/path"
+					},
+					"instances": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
+					},
+					"analogous": {
+						"type": "string",
+						"pattern": "\\S"
+					},
+					"dissimilar": {
+						"type": "string",
+						"pattern": "\\S"
+					},
+					"before_start": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"before_end": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"after_start": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"after_end": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			}
+		},
 		"needed_edits": {
 			"description": "Each edit that a requirement needs but that you did not make because it lies outside your authority. Empty if there is none.",
 			"type": "array",
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["requirement", "path", "operation"],
+				"required": [
+					"requirement",
+					"path",
+					"operation"
+				],
 				"properties": {
-					"requirement": {"description": "The contract's identifier of the requirement that needs the edit.", "type": "string", "pattern": "\\S"},
-					"path": {"description": "The project-relative path, or the absolute path, at which the edit is needed.", "type": "string", "minLength": 1},
-					"operation": {"enum": ["edit_content", "create", "delete", "change_mode", "change_link"]},
-					"target": {"description": "The link's resolved target, only where the path is a symbolic link.", "type": "string", "minLength": 1}
+					"requirement": {
+						"description": "The contract's identifier of the requirement that needs the edit.",
+						"type": "string",
+						"pattern": "\\S"
+					},
+					"path": {
+						"$ref": "#/$defs/path"
+					},
+					"operation": {
+						"enum": [
+							"edit_content",
+							"create",
+							"delete",
+							"change_mode",
+							"change_link"
+						]
+					},
+					"target": {
+						"$ref": "#/$defs/path"
+					}
 				}
 			}
 		}

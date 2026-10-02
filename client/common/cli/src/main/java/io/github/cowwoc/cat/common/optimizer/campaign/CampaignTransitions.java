@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,6 +66,21 @@ public final class CampaignTransitions
 					draft.slowStart = SlowStart.INITIAL;
 			}
 			case CampaignEvent.SubmitAuthorAttempt submit -> submitAuthorAttempt(draft, submit);
+			case CampaignEvent.AdvanceMinimality advance -> advanceMinimality(draft, advance.snapshot());
+			case CampaignEvent.MeasurePrompt measured ->
+			{
+				Map<Sha256, PromptSize> sizes = new HashMap<>(draft.optimization.promptSizes());
+				sizes.put(measured.snapshot(), measured.size());
+				draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
+					sizes, draft.optimization.trialInputs());
+			}
+			case CampaignEvent.RetainAuthorDiagnosis retain ->
+			{
+				List<AuthorDiagnosis> authors = new ArrayList<>(draft.optimization.authors());
+				authors.add(retain.diagnosis());
+				draft.optimization = new OptimizationEvidence(authors, draft.optimization.removed(),
+					draft.optimization.promptSizes(), draft.optimization.trialInputs());
+			}
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
 			{
@@ -315,7 +331,8 @@ public final class CampaignTransitions
 				Promotion.isSameContent(run.instance(), admission.instance()))
 			{
 				runs.set(i, new PromotionRun(run.role(), run.instance(), key, null));
-				draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs);
+				draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs,
+					author.minimality());
 				return run.instance();
 			}
 		}
@@ -382,6 +399,8 @@ public final class CampaignTransitions
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
+		draft.optimization = draft.optimization.addTrial(complete.key().snapshot(), complete.key().category(),
+			complete.inputTokens());
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity().extendWith(observed),
@@ -475,8 +494,44 @@ public final class CampaignTransitions
 		++draft.authorAttempts;
 		List<TrialInstance> failures = draft.developmentFailures.stream().map(Failure::instance).toList();
 		List<PromotionRun> runs = Promotion.plan(category, failures, draft.regressionSet, draft.generator());
-		draft.author = new AuthorAttempt(draft.authorAttempts, category, submit.snapshot(), runs);
+		draft.author = new AuthorAttempt(draft.authorAttempts, category, submit.snapshot(), runs,
+			Minimality.start(submit.changes(), submit.snapshot()));
 		TrialAdoption.decidePromotion(draft);
+	}
+
+	/**
+	 * Advances the shared reduction policy after the current attempt's runs have settled.
+	 *
+	 * @param draft the state
+	 * @param snapshot the saved overlay of the next reduction
+	 * @throws IllegalStateException if there is no completed promotion decision or targeted runs remain
+	 */
+	private static void advanceMinimality(Draft draft, Sha256 snapshot)
+	{
+		AuthorAttempt author = draft.author;
+		if (author == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
+			throw new IllegalStateException("Minimality needs a completed attempt with no remaining promotion trials");
+		Minimality next = author.minimality().advance(author.snapshot(), author.runs(),
+			Promotion.decide(author, draft.regressionSet));
+		if (next.testing() == null)
+		{
+			List<String> removed = new ArrayList<>(draft.optimization.removed());
+			removed.addAll(next.removed());
+			draft.optimization = new OptimizationEvidence(draft.optimization.authors(), removed,
+				draft.optimization.promptSizes(), draft.optimization.trialInputs());
+			TrialAdoption.promote(draft, new AuthorAttempt(author.number(), author.category(), next.accepted(),
+				next.acceptedRuns(), next));
+			return;
+		}
+		List<PromotionRun> runs = new ArrayList<>();
+		for (PromotionRun run : author.runs())
+		{
+			if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+				runs.add(run);
+			else
+				runs.add(new PromotionRun(run.role(), run.instance(), null, null));
+		}
+		draft.author = new AuthorAttempt(author.number(), author.category(), snapshot, runs, next);
 	}
 
 	/**

@@ -151,7 +151,7 @@ final class TransitionSteps
 	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict, String rationale)
 	{
 		return CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale,
-			campaign.identity()));
+			campaign.identity(), null));
 	}
 
 	/**

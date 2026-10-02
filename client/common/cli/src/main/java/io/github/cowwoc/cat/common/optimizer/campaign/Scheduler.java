@@ -107,11 +107,11 @@ public final class Scheduler
 				instance, allocations.of(AllocationRule.TARGETED)));
 		}
 		AuthorAttempt author = development.author();
-		if (author == null)
+		if (author == null || Promotion.decide(author, campaign.lineage().regressionSet()) != Promotion.Decision.PENDING)
 			return;
 		for (PromotionRun run : author.runs())
 		{
-			if (run.trial() != null)
+			if (run.trial() != null || run.verdict() != null)
 				continue;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, author.number(), Promotion.snapshot(author, run, working),
 				run.instance().cellId(), run.instance(), allocations.of(AllocationRule.TARGETED)));

@@ -11,13 +11,16 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
 
 /**
  * The contract and outcomes that an author session may see: development failures and counts for the working
@@ -67,6 +70,69 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 		endedAttempts = List.copyOf(endedAttempts);
 		authorizedTargets = Set.copyOf(authorizedTargets);
 		links = Map.copyOf(links);
+	}
+
+	/**
+	 * Returns every supplied failure's citation identifier, preserving its occurrence in this brief.
+	 *
+	 * @return the unique identifiers
+	 */
+	public Set<String> failureIds()
+	{
+		Set<String> identifiers = new HashSet<>();
+		for (int index = 0; index < developmentFailures.size(); ++index)
+			identifiers.add(developmentId(index));
+		for (EndedAttempt attempt : endedAttempts)
+		{
+			for (int index = 0; index < attempt.failures().size(); ++index)
+				identifiers.add(endedId(attempt.index(), index));
+		}
+		return Set.copyOf(identifiers);
+	}
+
+	/**
+	 * Identifies one supplied development failure.
+	 *
+	 * @param occurrence the failure's list index, from zero
+	 * @return its scoped citation identifier
+	 * @throws IndexOutOfBoundsException if the occurrence is absent
+	 */
+	public String developmentId(int occurrence)
+	{
+		return failureId("development", occurrence, developmentFailures.get(occurrence));
+	}
+
+	/**
+	 * Identifies one supplied failure of an ended attempt.
+	 *
+	 * @param attemptIndex the ended attempt's index
+	 * @param occurrence the failure's list index, from zero
+	 * @return its scoped citation identifier
+	 * @throws IllegalArgumentException if the ended attempt is absent
+	 * @throws IndexOutOfBoundsException if the occurrence is absent
+	 */
+	public String endedId(int attemptIndex, int occurrence)
+	{
+		for (EndedAttempt attempt : endedAttempts)
+		{
+			if (attempt.index() == attemptIndex)
+				return failureId("ended:" + attemptIndex, occurrence, attempt.failures().get(occurrence));
+		}
+		throw new IllegalArgumentException("No supplied ended attempt " + attemptIndex);
+	}
+
+	/**
+	 * Frames the brief location and instance identity so repeated instances remain distinct supplied failures.
+	 *
+	 * @param origin the development or ended-attempt location
+	 * @param occurrence the list index
+	 * @param failure the supplied failure
+	 * @return the scoped digest
+	 */
+	private static String failureId(String origin, int occurrence, Failure failure)
+	{
+		return Sha256.of((origin + "\n" + occurrence + "\n" + AuthorManifest.instanceId(failure.instance())).
+			getBytes(StandardCharsets.UTF_8)).hex();
 	}
 
 	/**

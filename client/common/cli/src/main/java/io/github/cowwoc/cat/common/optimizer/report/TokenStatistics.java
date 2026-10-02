@@ -135,6 +135,17 @@ public record TokenStatistics(Map<SessionRole, RoleUsage> roles, String unavaila
 	}
 
 	/**
+	 * Returns the observed input median using the same nearest-rank convention as role statistics.
+	 *
+	 * @param values nonempty observed counts
+	 * @return the median
+	 */
+	static long median(List<Long> values)
+	{
+		return nearestRank(values.stream().mapToLong(Long::longValue).sorted().toArray(), 50);
+	}
+
+	/**
 	 * Returns a percentile by the nearest-rank method.
 	 *
 	 * @param sorted the values in ascending order

@@ -5,7 +5,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -13,7 +12,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
-import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -99,7 +97,7 @@ public final class ReconciliationTest
 	 */
 	private static CampaignEvent.Complete passed(Campaign campaign, TrialKey key)
 	{
-		return new CampaignEvent.Complete(key, Verdict.PASS, "", campaign.identity());
+		return new CampaignEvent.Complete(key, Verdict.PASS, "", campaign.identity(), null);
 	}
 
 	/**
@@ -271,7 +269,7 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Runs a campaign until the process crashes after recording the outcome that promotes an author's candidate.
+	 * Runs a campaign until the process crashes after minimality finishes and the working candidate is materialized.
 	 * The driver writes the promoted candidate into the optimization worktree before it replaces the snapshot, so
 	 * at the crash the worktree holds the promoted candidate and the snapshot the one it replaces.
 	 *
@@ -291,24 +289,17 @@ public final class ReconciliationTest
 		});
 		try (Driver driver = harness.open())
 		{
-			Campaign campaign = harness.runUntil(driver, state -> state.development().author() != null);
-			// Ends one session per step, so that the crash follows the outcome of the last promotion run
-			while (true)
+			harness.crashingStore().crashAfter(CrashingStore.Write.WORKING_CANDIDATE);
+			boolean crashed = false;
+			try
 			{
-				if (missingVerdicts(campaign.development().author()) == 1)
-					harness.crashingStore().crashAfter(CrashingStore.Write.OUTCOME);
-				try
-				{
-					driver.step();
-				}
-				catch (IOException _)
-				{
-					break;
-				}
-				harness.endOldest();
-				campaign = harness.campaign();
-				requireThat(campaign.development().working().number(), "working").isEqualTo(1);
+				harness.runUntil(driver, state -> state.development().working().number() == 2);
 			}
+			catch (IOException _)
+			{
+				crashed = true;
+			}
+			requireThat(crashed, "crashed").isTrue();
 		}
 		harness.crashingStore().restart();
 		requireThat(harness.campaign().development().working().number(), "working").isEqualTo(1);
@@ -316,7 +307,7 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Crash point: the outcome that promotes an author's candidate is recorded, and the optimization worktree holds
+	 * Crash point: minimality's final outcomes are recorded, and the optimization worktree holds
 	 * the promoted candidate. Reconciliation adopts the promotion, which the worktree already matches.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -344,7 +335,7 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Crash point: the outcome that promotes an author's candidate is recorded, but the optimization worktree still
+	 * Crash point: minimality's final outcomes are recorded, but the optimization worktree still
 	 * holds the candidate that it replaces. Reconciliation adopts the promotion and writes the new working candidate
 	 * into the worktree, without reporting an unowned change.
 	 *
@@ -370,23 +361,6 @@ public final class ReconciliationTest
 				requireThat(reconciled.pending(), "pending").isNull();
 			}
 		}
-	}
-
-	/**
-	 * Returns the number of an author attempt's promotion runs that have no verdict.
-	 *
-	 * @param author the author attempt
-	 * @return the number of runs
-	 */
-	private static long missingVerdicts(AuthorAttempt author)
-	{
-		long missing = 0;
-		for (PromotionRun run : author.runs())
-		{
-			if (run.verdict() == null)
-				++missing;
-		}
-		return missing;
 	}
 
 	/**

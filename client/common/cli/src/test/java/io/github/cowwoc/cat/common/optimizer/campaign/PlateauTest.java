@@ -76,7 +76,7 @@ public final class PlateauTest
 	{
 		// Requirement: R-D6
 		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT,
 			author.runs().getFirst().instance(), Verdict.FAIL);
@@ -97,7 +97,7 @@ public final class PlateauTest
 	{
 		// Requirement: R-D6
 		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, author.number(), ATTEMPT,
 			author.runs().getFirst().instance());
@@ -124,13 +124,14 @@ public final class PlateauTest
 	{
 		// Requirement: R-D6
 		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		for (PromotionRun run : author.runs())
 		{
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, run.instance(),
 				Verdict.PASS);
 		}
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().round(), "round").isNull();
@@ -144,6 +145,6 @@ public final class PlateauTest
 	public void categoryGetsTwoAttempts()
 	{
 		// Requirement: R-D6
-		CampaignTransitions.apply(lastAttempt(), new CampaignEvent.SubmitAuthorAttempt("formatting", ATTEMPT));
+		CampaignTransitions.apply(lastAttempt(), new CampaignEvent.SubmitAuthorAttempt("formatting", ATTEMPT, List.of()));
 	}
 }

@@ -41,6 +41,7 @@ final class Reconciler
 	 *   <li>adopts every recorded outcome that the snapshot does not hold yet;</li>
 	 *   <li>returns every trial that started without an outcome to the queue, to rerun as the same logical
 	 *   trial;</li>
+	 *   <li>advances a completed minimality decision using the saved passing evidence;</li>
 	 *   <li>verifies the optimization worktree of an active campaign;</li>
 	 *   <li>records the measurement conditions that the driver observes outside trials;</li>
 	 *   <li>replaces the snapshot.</li>
@@ -60,6 +61,7 @@ final class Reconciler
 		Candidate previous = campaign.development().working();
 		Campaign reconciled = adoptRecordedOutcomes(context, campaign);
 		reconciled = requeueStartedTrials(reconciled, now);
+		reconciled = MinimalityAdvancement.advance(context, reconciled);
 		if (reconciled.lifecycle() == Lifecycle.ACTIVE)
 			reconciled = WorktreeCheck.verify(context, reconciled, previous);
 		if (reconciled.lifecycle() == Lifecycle.ACTIVE)

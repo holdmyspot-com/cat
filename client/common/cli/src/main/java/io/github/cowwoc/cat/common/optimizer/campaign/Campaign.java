@@ -44,13 +44,14 @@ import java.util.Set;
  * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
  * @param outcome the outcome that the campaign reports, or {@code null} if none
  * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
+ * @param optimization the retained author and minimality evidence
  */
 public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int authorAttempts, Development development, Set<String> failedCells,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
 	Set<Path> authorizedTargets, List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
-	DeliveryRequest delivery)
+	DeliveryRequest delivery, OptimizationEvidence optimization)
 {
 	/**
 	 * The default maximum number of concurrent nested sessions.
@@ -92,6 +93,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
 	 * @param outcome the outcome that the campaign reports, or {@code null} if none
 	 * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
+	 * @param optimization the retained author and minimality evidence
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
 	 *   {@code delivery} is null, or {@code baseline} is null after a confirmation
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value #MAXIMUM_CEILING}], a count is
@@ -101,6 +103,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 */
 	public Campaign
 	{
+		requireThat(optimization, "optimization").isNotNull();
 		requireThat(header, "header").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, MAXIMUM_CEILING, true);
 		requireThat(lineages, "lineages").isNotNull();
@@ -171,7 +174,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
 			Set.of(), null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, Set.of(), List.of(),
-			false, null, null);
+			false, null, null, OptimizationEvidence.EMPTY);
 	}
 
 	/**

@@ -14,6 +14,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
+import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Base64;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
@@ -90,15 +100,16 @@ import tools.jackson.databind.node.ObjectNode;
  * Converts campaign snapshots and trial records to and from JSON trees.
  * <p>
  * Every document starts with {@code format_version}. Keys are snake_case and constants are written by name. Maps are
- * written with sorted keys, except a {@link Round}, whose cell order is part of its state.
+ * written with sorted keys, except a {@link Round}, whose cell order is part of its state. Version 4 retains author
+ * diagnoses, prompt sizes, trial input usage, and the original bytes, partitions and passing evidence of minimality
+ * searches.
  * <p>
- * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell,
- * and the observed model and reasoning are recorded per cell. Version 3 adds the development cell
- * tier: the cells in which a candidate failed ({@code failed_cells}) and whether development has
- * widened ({@code development.widened}). It also stores a contract whose tests hold their deterministic checks with
- * the checks' controls, their discarded checks and the core-task requirement. Version 2 lacked
- * these and version 1 keyed by category; both are refused rather than migrated. Big numbers and instants are written
- * as strings so that they round-trip exactly.
+ * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
+ * observed model and reasoning are recorded per cell. Version 3 adds the development cell tier: the cells in which a
+ * candidate failed ({@code failed_cells}) and whether development has widened ({@code development.widened}). It also
+ * stores a contract whose tests hold their deterministic checks with the checks' controls, their discarded checks and
+ * the core-task requirement. Version 2 lacked these and version 1 keyed by category. Versions 1 through 3 are refused
+ * rather than migrated. Big numbers and instants are written as strings so that they round-trip exactly.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -110,7 +121,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 3;
+	private static final int FORMAT_VERSION = 4;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -149,6 +160,7 @@ final class CampaignJson
 		root.put("candidates", campaign.candidates());
 		root.put("author_attempts", campaign.authorAttempts());
 		root.set("development", writeDevelopment(campaign.development()));
+		root.set("optimization", writeOptimization(campaign.optimization()));
 		ArrayNode failedCells = root.putArray("failed_cells");
 		for (String cell : new TreeSet<>(campaign.failedCells()))
 			failedCells.add(cell);
@@ -276,7 +288,143 @@ final class CampaignJson
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
 			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
-			delivery);
+			delivery, readOptimization(field(root, "optimization")));
+	}
+
+	/**
+	 * Writes retained author diagnoses and removed hunks.
+	 *
+	 * @param evidence the durable descriptive evidence
+	 * @return its document
+	 */
+	private ObjectNode writeOptimization(OptimizationEvidence evidence)
+	{
+		ObjectNode node = json.createObjectNode();
+		ArrayNode authors = node.putArray("authors");
+		for (AuthorDiagnosis diagnosis : evidence.authors())
+		{
+			ObjectNode author = authors.addObject();
+			author.put("cell", diagnosis.category());
+			author.put("snapshot", diagnosis.snapshot().hex());
+			author.put("transcript", diagnosis.transcript().toString());
+			author.put("effects", diagnosis.effects().toString());
+			ObjectNode classifications = author.putObject("classifications");
+			for (Entry<String, FailureKind> entry : new TreeMap<>(diagnosis.classifications()).entrySet())
+				classifications.put(entry.getKey(), entry.getValue().name());
+			ArrayNode rejections = author.putArray("rejections");
+			for (String reason : diagnosis.rejections())
+				rejections.add(reason);
+		}
+		ArrayNode removed = node.putArray("removed");
+		for (String hunk : evidence.removed())
+			removed.add(hunk);
+		ObjectNode sizes = node.putObject("prompt_sizes");
+		for (Map.Entry<Sha256, PromptSize> entry : orderedSnapshots(evidence.promptSizes()).entrySet())
+		{
+			ObjectNode size = sizes.putObject(entry.getKey().hex());
+			size.put("bytes", entry.getValue().bytes());
+			size.put("words", entry.getValue().words());
+			size.put("unavailable", entry.getValue().unavailable());
+		}
+		ObjectNode inputs = node.putObject("trial_inputs");
+		for (Map.Entry<Sha256, Map<String, TrialInputs>> snapshot : orderedSnapshots(evidence.trialInputs()).entrySet())
+		{
+			ObjectNode cells = inputs.putObject(snapshot.getKey().hex());
+			for (Map.Entry<String, TrialInputs> entry : new TreeMap<>(snapshot.getValue()).entrySet())
+			{
+				ObjectNode cell = cells.putObject(entry.getKey());
+				cell.put("outcomes", entry.getValue().outcomes());
+				ArrayNode tokens = cell.putArray("tokens");
+				for (long token : entry.getValue().tokens())
+					tokens.add(token);
+			}
+		}
+		return node;
+	}
+
+	/**
+	 * Reads retained author diagnoses and removed hunks.
+	 *
+	 * @param node the document
+	 * @return the durable evidence
+	 */
+	private static OptimizationEvidence readOptimization(JsonNode node)
+	{
+		List<AuthorDiagnosis> authors = new ArrayList<>();
+		for (JsonNode author : elements(node, "authors"))
+		{
+			Map<String, FailureKind> classifications = new HashMap<>();
+			for (Entry<String, JsonNode> entry : object(author, "classifications").properties())
+				classifications.put(entry.getKey(), FailureKind.valueOf(stringValue(entry.getValue(), "classification")));
+			authors.add(new AuthorDiagnosis(text(author, "cell"), sha256(author, "snapshot"), classifications,
+				readStrings(author, "rejections"), Path.of(text(author, "transcript")), Path.of(text(author, "effects"))));
+		}
+		Map<Sha256, PromptSize> sizes = new HashMap<>();
+		for (Entry<String, JsonNode> entry : object(node, "prompt_sizes").properties())
+		{
+			JsonNode size = entry.getValue();
+			sizes.put(new Sha256(entry.getKey()), new PromptSize(nullableLong(size, "bytes"),
+				nullableLong(size, "words"), nullableText(size, "unavailable")));
+		}
+		Map<Sha256, Map<String, TrialInputs>> inputs = new HashMap<>();
+		for (Entry<String, JsonNode> snapshot : object(node, "trial_inputs").properties())
+		{
+			requireThat(snapshot.getValue().isObject(), "trial_inputs").isTrue();
+			Map<String, TrialInputs> cells = new HashMap<>();
+			for (Entry<String, JsonNode> entry : snapshot.getValue().properties())
+			{
+				List<Long> tokens = new ArrayList<>();
+				for (JsonNode token : elements(entry.getValue(), "tokens"))
+					tokens.add(longValue(token, "token"));
+				cells.put(entry.getKey(), new TrialInputs(longInteger(entry.getValue(), "outcomes"), tokens));
+			}
+			inputs.put(new Sha256(snapshot.getKey()), cells);
+		}
+		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs);
+	}
+
+	/**
+	 * Orders snapshot-keyed measurements by their hexadecimal identities.
+	 *
+	 * @param values the measurements
+	 * @param <T> the measured value type
+	 * @return the ordered entries
+	 */
+	private static <T> Map<Sha256, T> orderedSnapshots(Map<Sha256, T> values)
+	{
+		Map<Sha256, T> ordered = new TreeMap<>(Comparator.comparing(Sha256::hex));
+		ordered.putAll(values);
+		return ordered;
+	}
+
+	/**
+	 * Reads an optional integer count, preserving unavailable measurements.
+	 *
+	 * @param node the object
+	 * @param name the property
+	 * @return the count, or {@code null}
+	 */
+	private static Long nullableLong(JsonNode node, String name)
+	{
+		JsonNode value = nullable(node, name);
+		if (value == null)
+			return null;
+		return longValue(value, name);
+	}
+
+	/**
+	 * Reads an array of required strings.
+	 *
+	 * @param node the containing object
+	 * @param name the array property
+	 * @return its strings
+	 */
+	private static List<String> readStrings(JsonNode node, String name)
+	{
+		List<String> values = new ArrayList<>();
+		for (JsonNode element : elements(node, name))
+			values.add(stringValue(element, name));
+		return List.copyOf(values);
 	}
 
 	/**
@@ -318,6 +466,7 @@ final class CampaignJson
 			node.put("verdict", outcome.verdict().name());
 			node.put("rationale", outcome.rationale());
 			node.set("observed", writeIdentity(outcome.observed()));
+			node.put("input_tokens", outcome.inputTokens());
 		}
 		return root;
 	}
@@ -340,7 +489,8 @@ final class CampaignJson
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readIdentity(field(outcomeNode, "observed")));
+				text(outcomeNode, "rationale"), readIdentity(field(outcomeNode, "observed")),
+			nullableLong(outcomeNode, "input_tokens"));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome);
@@ -482,6 +632,7 @@ final class CampaignJson
 			element.put("number", author.number());
 			element.put("cell", author.category());
 			element.put("snapshot", author.snapshot().hex());
+			element.set("minimality", writeMinimality(author.minimality()));
 			ArrayNode runs = element.putArray("runs");
 			for (PromotionRun run : author.runs())
 			{
@@ -497,6 +648,99 @@ final class CampaignJson
 			reviewPoints.put(entry.getKey(), entry.getValue());
 		node.put("widened", development.widened());
 		return node;
+	}
+
+	/**
+	 * Writes all bytes and progress needed to resume a minimality search without the authoring copy.
+	 *
+	 * @param state the search
+	 * @return its document
+	 */
+	private ObjectNode writeMinimality(Minimality state)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("groups", state.groups());
+		node.put("group", state.group());
+		node.put("accepted", state.accepted().hex());
+		ArrayNode retained = node.putArray("retained");
+		for (String hunk : state.retained())
+			retained.add(hunk);
+		if (state.testing() == null)
+			node.putNull("testing");
+		else
+		{
+			ArrayNode testing = node.putArray("testing");
+			for (String hunk : state.testing())
+				testing.add(hunk);
+		}
+		ArrayNode files = node.putArray("files");
+		for (FileDelta file : state.files())
+		{
+			ObjectNode element = files.addObject();
+			element.put("path", file.path().toString());
+			element.put("permissions", PosixFilePermissions.toString(file.permissions()));
+			putContent(element, "before", file.before());
+			putContent(element, "after", file.after());
+		}
+		ArrayNode runs = node.putArray("accepted_runs");
+		for (PromotionRun run : state.acceptedRuns())
+		{
+			ObjectNode element = runs.addObject();
+			element.put("role", run.role().name());
+			element.set("instance", writeInstance(run.instance()));
+			putKey(element, "trial", run.trial());
+			putConstant(element, "verdict", run.verdict());
+		}
+		return node;
+	}
+
+	/**
+	 * Writes nullable file bytes using base64, preserving binary files and final newlines.
+	 *
+	 * @param node the containing document
+	 * @param name the side of the delta
+	 * @param content the content, or {@code null} for absence
+	 */
+	private static void putContent(ObjectNode node, String name, FileContent content)
+	{
+		if (content == null)
+			node.putNull(name);
+		else
+			node.put(name, Base64.getEncoder().encodeToString(content.bytes()));
+	}
+
+	/**
+	 * Reads a persisted minimality search.
+	 *
+	 * @param node its document
+	 * @return the search
+	 */
+	private static Minimality readMinimality(JsonNode node)
+	{
+		List<FileDelta> files = new ArrayList<>();
+		for (JsonNode element : elements(node, "files"))
+		{
+			FileContent before = null;
+			FileContent after = null;
+			if (nullable(element, "before") != null)
+				before = new FileContent(Base64.getDecoder().decode(text(element, "before")));
+			if (nullable(element, "after") != null)
+				after = new FileContent(Base64.getDecoder().decode(text(element, "after")));
+			files.add(new FileDelta(Path.of(text(element, "path")), before, after,
+				PosixFilePermissions.fromString(text(element, "permissions"))));
+		}
+		List<PromotionRun> runs = new ArrayList<>();
+		for (JsonNode run : elements(node, "accepted_runs"))
+		{
+			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
+				readInstance(field(run, "instance")), nullableKey(run, "trial"),
+				nullableConstant(run, "verdict", Verdict.class)));
+		}
+		List<String> testing = null;
+		if (nullable(node, "testing") != null)
+			testing = readStrings(node, "testing");
+		return new Minimality(files, readStrings(node, "retained"), integer(node, "groups"), integer(node, "group"),
+			testing, sha256(node, "accepted"), runs);
 	}
 
 	/**
@@ -539,7 +783,7 @@ final class CampaignJson
 					nullableConstant(run, "verdict", Verdict.class)));
 			}
 			author = new AuthorAttempt(integer(authorNode, "number"), text(authorNode, "cell"),
-				sha256(authorNode, "snapshot"), runs);
+				sha256(authorNode, "snapshot"), runs, readMinimality(field(authorNode, "minimality")));
 		}
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
@@ -1340,7 +1584,19 @@ final class CampaignJson
 	 */
 	private static long longInteger(JsonNode node, String name)
 	{
-		JsonNode value = field(node, name);
+		return longValue(field(node, name), name);
+	}
+
+	/**
+	 * Reads a parsed integer value without coercing strings or fractional numbers.
+	 *
+	 * @param value the parsed value
+	 * @param name its diagnostic name
+	 * @return the integer
+	 * @throws IllegalArgumentException if the value is not a 64-bit integer
+	 */
+	private static long longValue(JsonNode value, String name)
+	{
 		if (!value.isIntegralNumber() || !value.canConvertToLong())
 			throw new IllegalArgumentException(name + ": must be a 64-bit integer");
 		return value.asLong();

@@ -2,6 +2,17 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.execution.Driver;
+import io.github.cowwoc.cat.common.optimizer.execution.DriverHarness;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
@@ -24,7 +35,12 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.time.Duration;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +65,112 @@ public final class StatusReportTest
 	 */
 	public StatusReportTest()
 	{
+	}
+
+	/**
+	 * Verifies that missing prompt measurements and trial token comparisons remain explicit in status.
+	 */
+	@Test
+	public void explainsUnavailablePromptSizes()
+	{
+		// Requirement: R-E18
+		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		ObjectNode output = report.toJson(JsonMapper.builder().build());
+		requireThat(output.has("prompt_size"), "promptSize").isTrue();
+		requireThat(output.get("prompt_size").get("working").get("unavailable").asString(), "reason").isNotBlank();
+		requireThat(output.get("prompt_size").get("incumbent").get("unavailable").asString(), "reason").isNotBlank();
+		requireThat(output.has("trial_input_tokens"), "trialTokens").isTrue();
+		for (JsonNode cell : output.get("trial_input_tokens"))
+		{
+			requireThat(cell.get("working_median").isNull(), "workingUnavailable").isTrue();
+			requireThat(cell.get("incumbent_median").isNull(), "incumbentUnavailable").isTrue();
+			requireThat(cell.get("unavailable").asString(), "reason").isNotBlank();
+		}
+	}
+
+	/**
+	 * Verifies measured snapshot sizes and per-cell trial input tokens through the driver.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void reportsSnapshotSizesAndTrialTokens() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("prompt-sizes"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+			FileInventory fork = new FileInventory(project, Map.of(DriverHarness.PROMPT,
+				new RegularFile(Sha256.of("fork".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new CampaignBuilder().confirmed().working(1).build(), fork, project);
+			Sha256 working = CampaignBuilder.snapshot("candidate-1");
+			harness.overlays().put(working, harness.candidate("short prompt\n"));
+			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
+			harness.trials(request ->
+			{
+				SessionResult.Completed trial = harness.passed();
+				long input = 30;
+				if (harness.snapshot(request).equals(CampaignBuilder.INCUMBENT))
+					input = 70;
+				return new SessionResult.Completed(trial.transcript(), trial.responses(), trial.effects(), trial.model(),
+					trial.reasoning(), new TokenUsage(input, 10, 1, 0), trial.windows(),
+					trial.promptSources(), trial.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.baseline().count("safety").outcomes() > 0 &&
+					state.baseline().count("formatting").outcomes() > 0 &&
+					state.development().counts().getOrDefault("safety", CategoryCounts.EMPTY).outcomes() > 0 &&
+					state.development().counts().getOrDefault("formatting", CategoryCounts.EMPTY).outcomes() > 0);
+				harness.clock().set(harness.clock().instant().plus(Duration.ofHours(1)));
+				StatusReport report = harness.runSlice(driver).status();
+				ObjectNode output = report.toJson(JsonMapper.builder().build());
+				requireThat(output.has("prompt_size"), "promptSize").isTrue();
+				requireThat(output.get("prompt_size").get("working").get("bytes").asLong(), "workingBytes").isEqualTo(13);
+				requireThat(output.get("prompt_size").get("working").get("words").asLong(), "workingWords").isEqualTo(2);
+				requireThat(output.get("prompt_size").get("incumbent").get("bytes").asLong(), "incumbentBytes").isEqualTo(4);
+				requireThat(output.get("prompt_size").get("incumbent").get("words").asLong(), "incumbentWords").isEqualTo(1);
+				for (JsonNode cell : output.get("trial_input_tokens"))
+				{
+					requireThat(cell.get("working_median").asLong(), "workingMedian").isEqualTo(30);
+					requireThat(cell.get("incumbent_median").asLong(), "incumbentMedian").isEqualTo(70);
+				}
+				requireThat(output.get("trial_input_tokens").size(), "cells").isEqualTo(2);
+				requireThat(report.summary(), "summary").contains("13 bytes").contains("30").contains("70");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that medians use observed samples, with zero distinguished from missing usage.
+	 */
+	@Test
+	public void reportsNearestRankAndZeroUsage()
+	{
+		// Requirement: R-E18
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
+			CampaignBuilder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(5, List.of(100L, 10L, 50L, 30L))),
+			CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(100L, 0L)))));
+		Campaign campaign = new CampaignBuilder().confirmed().working(1).optimization(evidence).build();
+		JsonNode cells = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
+			get("trial_input_tokens");
+		for (JsonNode cell : cells)
+		{
+			if (cell.get("cell").asString().equals("safety"))
+			{
+				requireThat(cell.get("working_median").asLong(), "workingMedian").isEqualTo(30);
+				requireThat(cell.get("incumbent_median").asLong(), "incumbentMedian").isEqualTo(0);
+				requireThat(cell.get("working_outcomes").asLong(), "outcomes").isEqualTo(5);
+				requireThat(cell.get("working_sessions").asInt(), "observed").isEqualTo(4);
+				requireThat(cell.get("unavailable").isNull(), "available").isTrue();
+			}
+			else
+				requireThat(cell.get("unavailable").asString(), "reason").isNotBlank();
+		}
 	}
 
 	/**
@@ -242,7 +364,7 @@ public final class StatusReportTest
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
-			frozen.delivery());
+			frozen.delivery(), frozen.optimization());
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();

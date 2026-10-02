@@ -166,8 +166,10 @@ public final class AuthorTest
 	 */
 	private static SessionResult.Completed completed(String response)
 	{
+		String report = response.replace("{\"needed_edits\":",
+			"{\"classifications\": [], \"hunks\": [], \"needed_edits\":");
 		return new SessionResult.Completed(Path.of("/runs/author-3/artifacts/transcript.jsonl"),
-			List.of("working", response), COPY, "author-model", null, null, List.of(), "none", List.of());
+			List.of("working", report), COPY, "author-model", null, null, List.of(), "none", List.of());
 	}
 
 	/**

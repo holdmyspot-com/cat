@@ -8,9 +8,12 @@ import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Tests the behavior that {@link OptimizerCommandScope} shares with every variant.
@@ -56,9 +59,11 @@ public final class OptimizerCommandScopeTest
 	@Test
 	public void refusesDirectoryOutsideGit() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FileSystem isolated = FileSystems.newFileSystem(cleanup.add(Files.createTempDirectory("optimizer-scope")).
+				resolve("no-repository.zip"), Map.of("create", "true")))
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("optimizer-scope")).toRealPath();
+			Path directory = isolated.getPath("/");
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				directory))
 			{

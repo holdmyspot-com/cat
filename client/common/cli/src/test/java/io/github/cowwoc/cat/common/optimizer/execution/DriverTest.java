@@ -19,6 +19,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CategoryDeci
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
@@ -59,6 +60,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -94,6 +97,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Covers campaign scenarios from builder state, through the in-memory store, the
@@ -101,6 +105,232 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class DriverTest
 {
+	/**
+	 * Verifies that promotion removes an unneeded hunk and keeps targeted runs outside the evidence counts.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void promotedAttemptKeepsOnlyNeededHunks() throws IOException
+	{
+		// Requirement: R-D11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = minimalityHarness(cleanup.add(Files.createTempDirectory("minimality")),
+				new AtomicInteger());
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> state.development().working().number() == 2);
+				Overlay promoted = harness.overlays().require(campaign.development().working().snapshot());
+				Write entry = (Write)
+					promoted.entries().get(DriverHarness.PROMPT);
+				requireThat(new String(entry.content().bytes(), UTF_8), "prompt").
+					isEqualTo("needed\nseparator\nlast\n");
+				requireThat(campaign.development().counts(), "counts").isEmpty();
+				requireThat(campaign.attempts(), "allowance").isEmpty();
+				requireThat(campaign.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+				requireThat(report.toJson(JsonMapper.builder().build()).path("removed_hunks").get(0).asString(),
+					"reportedRemoval").isEqualTo("CLAUDE.md#2");
+				requireThat(report.summary(), "summary").contains("CLAUDE.md#2");
+			}
+		}
+	}
+	/**
+	 * Verifies that an uncited author edit contributes no candidate and the next attempt runs.
+	 *
+	 * @throws IOException if the fixture cannot be read or written
+	 */
+	@Test
+	public void uncitedHunkRetainedAndRetried() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of())).
+					build());
+			harness.authors(request ->
+			{
+				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				return new SessionResult.Completed(edited.transcript(), List.of("""
+					{"needed_edits": [], "classifications": [
+					  {"instance":"%s","classification":"guidance"}], "hunks": []}
+					""".formatted(harness.author().briefs().getLast().developmentId(0))), edited.effects(), edited.model(),
+					edited.reasoning(), edited.usage(), edited.windows(),
+					edited.promptSources(), edited.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().working().number() == 2 ||
+					harness.author().briefs().size() == 2);
+				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
+				requireThat(harness.author().briefs().size(), "authors").isEqualTo(2);
+				requireThat(harness.campaign().optimization().authors().size(), "retained").isEqualTo(1);
+				requireThat(harness.campaign().optimization().authors().getFirst().rejections(), "rejections").
+					contains("Uncited changed hunk: CLAUDE.md#1");
+				requireThat(Files.isRegularFile(harness.campaign().optimization().authors().getFirst().effects().
+					resolve(DriverHarness.PROMPT)), "effects").isTrue();
+			}
+		}
+	}
+	/**
+	 * Verifies that a restart during reduction preserves the last passing snapshot and reuses working references.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void resumesMinimalityAfterRestart() throws IOException
+	{
+		// Requirement: R-D11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			AtomicInteger references = new AtomicInteger();
+			DriverHarness harness = minimalityHarness(cleanup.add(Files.createTempDirectory("minimality")), references);
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().author() != null &&
+					state.development().author().minimality().testing() != null);
+			}
+			Campaign saved = harness.campaign();
+			requireThat(saved.development().working().number(), "working").isEqualTo(1);
+			requireThat(saved.development().author().minimality().acceptedRuns(), "passingEvidence").isNotEmpty();
+			try (Driver driver = harness.open())
+			{
+				Campaign resumed = harness.runUntil(driver, state -> state.development().working().number() == 2);
+				Write entry = (Write) harness.overlays().require(resumed.development().working().snapshot()).
+					entries().get(DriverHarness.PROMPT);
+				requireThat(new String(entry.content().bytes(), UTF_8), "prompt").isEqualTo("needed\nseparator\nlast\n");
+				requireThat(resumed.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				requireThat(resumed.development().counts(), "counts").isEmpty();
+				requireThat(resumed.attempts(), "allowance").isEmpty();
+			}
+			requireThat(references.get(), "workingReferences").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that an unknown citation is rejected even when every actual hunk has evidence.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void unknownCitationRetainedAndRetried() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(CampaignBuilder.targeted("safety", "cache")).build());
+			harness.authors(request ->
+			{
+				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String response = """
+					{"needed_edits":[],"classifications":[{"instance":"%s","classification":"guidance"}],
+					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "instances":["unknown"],"analogous":"related case","dissimilar":"unrelated case"}]}
+					""".formatted(harness.author().briefs().getLast().developmentId(0));
+				return new SessionResult.Completed(edited.transcript(), List.of(response), edited.effects(), edited.model(),
+					edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
+					edited.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> harness.author().briefs().size() == 2);
+				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
+				requireThat(harness.campaign().optimization().authors().getFirst().rejections(), "rejections").
+					isEqualTo(List.of("Unknown failing instance unknown cited at CLAUDE.md"));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that no-edit classifications survive the round ending at a plateau.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void noEditRetainsRoundDiagnosis() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(CampaignBuilder.targeted("safety", "cache")).build());
+			harness.authors(_ -> harness.completed("""
+				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not guidance"}],"hunks":[]}
+				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> state.outcome() == Outcome.PLATEAU);
+				requireThat(ended.candidates(), "candidates").isEqualTo(1);
+				requireThat(ended.optimization().authors().size(), "diagnoses").isEqualTo(2);
+				requireThat(ended.optimization().authors().getFirst().classifications().values(), "classification").
+					contains(FailureKind.NOT_GUIDANCE);
+				StatusReport report = StatusReport.of(ended, ReportEvidence.NONE);
+				requireThat(report.toJson(JsonMapper.builder().build()).path("author_diagnoses").size(),
+					"reportedDiagnoses").isEqualTo(2);
+				requireThat(report.summary(), "summary").contains("not guidance");
+			}
+		}
+	}
+
+	/**
+	 * Creates an author and trial fixture whose second hunk adds unnecessary guidance.
+	 *
+	 * @param directory the owned fixture directory
+	 * @param references counts runs of the working reference snapshot
+	 * @return the fixture
+	 * @throws IOException if it cannot be created
+	 */
+	private static DriverHarness minimalityHarness(Path directory, AtomicInteger references) throws IOException
+	{
+		DriverHarness harness = new DriverHarness(directory,
+			new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+				failure(CampaignBuilder.targeted("safety", "cache")).
+				regression(CampaignBuilder.targeted("formatting", "formal"), null).build());
+		Sha256 working = CampaignBuilder.snapshot("candidate-1");
+		harness.overlays().put(working, harness.candidate("first\nseparator\nlast\n"));
+		harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
+		harness.authors(request -> harness.edit(request, DriverHarness.PROMPT, "needed\nseparator\nunneeded\n"));
+		harness.trials(request ->
+		{
+			try
+			{
+				if (harness.snapshot(request).equals(working) && harness.campaign().development().author() != null &&
+					harness.campaign().development().author().minimality().testing() == null)
+				{
+					references.incrementAndGet();
+				}
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+			if (DriverHarness.category(request).equals("formatting"))
+				return harness.passed();
+			try
+			{
+				Overlay overlay = harness.overlays().require(harness.snapshot(request));
+				Write entry = (Write) overlay.entries().get(DriverHarness.PROMPT);
+				if (entry != null && new String(entry.content().bytes(), UTF_8).lines().
+					anyMatch(line -> line.equals("needed")))
+				{
+					return harness.passed();
+				}
+				return harness.failed();
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		});
+		return harness;
+	}
+
 	/**
 	 * Creates the test.
 	 */
@@ -1591,6 +1821,7 @@ public final class DriverTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("driver")).toRealPath();
 			Path target = Files.createDirectories(directory.resolve("external")).resolve("shared.md");
+			Files.writeString(target, "external", UTF_8);
 			Path link = Path.of("shared.md");
 			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
 			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
@@ -1598,8 +1829,7 @@ public final class DriverTest
 				link, new FileEntry.SymbolicLink(target),
 				target, new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions)));
 			DriverHarness harness = new DriverHarness(directory, authorityWarningCampaign(), fork);
-			// Only the first author attempt, which edits the prompt instead of the external target, fails safety
-			Sha256 firstEdit = Sha256.of("author-1".getBytes(UTF_8));
+			// Safety requires the external owning file to change, so reverting that change must fail.
 			Map<Path, Boolean> failsSafety = new HashMap<>();
 			SessionResult.Completed passed = harness.passed();
 			SessionResult.Completed failed = harness.failed();
@@ -1612,9 +1842,9 @@ public final class DriverTest
 				{
 					if (fails == null)
 					{
-						FileEntry prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
-							entry(DriverHarness.PROMPT).orElseThrow();
-						fails = ((RegularFile) prompt).contentHash().equals(firstEdit);
+						FileEntry external = harness.overlays().require(harness.snapshot(request)).snapshot().
+							entry(target).orElseThrow();
+						fails = ((RegularFile) external).contentHash().equals(Sha256.of("external".getBytes(UTF_8)));
 						failsSafety.put(request.source(), fails);
 					}
 				}
@@ -1631,7 +1861,18 @@ public final class DriverTest
 			harness.authors(request ->
 			{
 				if (harness.author().briefs().getLast().authorizedTargets().contains(target))
+				{
+					try
+					{
+						Files.createDirectories(request.source());
+						Files.writeString(request.source().resolve(link), "external", UTF_8);
+					}
+					catch (IOException e)
+					{
+						throw new UncheckedIOException(e);
+					}
 					return harness.edit(request, target);
+				}
 				return harness.edit(request, DriverHarness.PROMPT);
 			});
 			harness.author().reports(_ ->

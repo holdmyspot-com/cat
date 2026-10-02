@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
@@ -87,13 +88,16 @@ public final class FakeWorkspacePort implements WorkspacePort
 			Path directory = root.resolve("staged").resolve(identity.hex());
 			if (project != null)
 			{
-				for (Path file : candidate.fork().entries().keySet())
+				for (Path file : candidate.snapshot().entries().keySet())
 				{
 					if (file.isAbsolute())
 						continue;
 					Path target = directory.resolve(file);
 					Files.createDirectories(target.getParent());
-					Files.copy(project.resolve(file), target, StandardCopyOption.REPLACE_EXISTING);
+					if (candidate.entries().get(file) instanceof Write write)
+						Files.write(target, write.content().bytes());
+					else
+						Files.copy(project.resolve(file), target, StandardCopyOption.REPLACE_EXISTING);
 				}
 				Files.createDirectories(directory);
 			}

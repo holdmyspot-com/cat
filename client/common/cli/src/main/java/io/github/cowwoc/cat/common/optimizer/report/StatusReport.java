@@ -44,10 +44,9 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * The report shows each cell's estimated pass rate, improvement over the incumbent, comparison with 95% and error
  * bars, the trial profiles, the development cell tier, the outcome names, the claim and its limitations, the minimum
- * remaining trials, token
- * statistics, the descriptive check by concurrency level and the choices that the user may give now, with the
- * evidence of a keep-improvement choice. It never shows a pooled pass fraction, a token total, a time estimate or a
- * completion probability.
+ * remaining trials, token statistics, the descriptive check by concurrency level, the snapshot size comparisons and
+ * retained author diagnoses, and the choices that the user may give now, with the evidence of a keep-improvement
+ * choice. It never shows a pooled pass fraction, a token total, a time estimate or a completion probability.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -82,6 +81,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param claim the statement that the measurements support, or {@code null} before a contract is confirmed
  * @param limitations what the claim does not cover
  * @param conditions the measurement conditions that the claim holds under
+ * @param optimization descriptive snapshot comparisons and retained author diagnoses
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -92,7 +92,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	TokenStatistics tokens,
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
-	List<String> limitations, Map<String, String> conditions)
+	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization)
 {
 	/**
 	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
@@ -188,6 +188,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param claim the statement that the measurements support, or {@code null} before a contract is confirmed
 	 * @param limitations what the claim does not cover
 	 * @param conditions the measurement conditions that the claim holds under
+	 * @param optimization descriptive snapshot comparisons and retained author diagnoses
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
 	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
@@ -215,6 +216,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		requireThat(keepOffers, "keepOffers").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
 		requireThat(conditions, "conditions").isNotNull();
+		requireThat(optimization, "optimization").isNotNull();
 		choices = List.copyOf(choices);
 		authorityWarnings = List.copyOf(authorityWarnings);
 		cells = List.copyOf(cells);
@@ -318,7 +320,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(evidence.tokenUsage()),
-			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions);
+			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
+			OptimizationReport.of(campaign));
 	}
 
 	/**

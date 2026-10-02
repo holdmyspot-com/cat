@@ -15,8 +15,10 @@ import java.util.List;
  * @param category the failing cell that the attempt addresses
  * @param snapshot the attempt's snapshot
  * @param runs the promotion runs
+ * @param minimality the original changes and reduction progress
  */
-public record AuthorAttempt(int number, String category, Sha256 snapshot, List<PromotionRun> runs)
+public record AuthorAttempt(int number, String category, Sha256 snapshot, List<PromotionRun> runs,
+	Minimality minimality)
 {
 	/**
 	 * Creates an author attempt.
@@ -25,6 +27,7 @@ public record AuthorAttempt(int number, String category, Sha256 snapshot, List<P
 	 * @param category the failing cell that the attempt addresses
 	 * @param snapshot the attempt's snapshot
 	 * @param runs the promotion runs
+	 * @param minimality the original changes and reduction progress
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code number} is not positive or {@code category} is blank
 	 */
@@ -34,6 +37,7 @@ public record AuthorAttempt(int number, String category, Sha256 snapshot, List<P
 		requireThat(category, "category").isNotBlank();
 		requireThat(snapshot, "snapshot").isNotNull();
 		requireThat(runs, "runs").isNotNull();
+		requireThat(minimality, "minimality").isNotNull();
 		runs = List.copyOf(runs);
 	}
 }

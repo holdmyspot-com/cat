@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.FakeHostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
@@ -131,13 +132,30 @@ public final class DriverHarness
 	 */
 	public DriverHarness(Path directory, Campaign campaign, FileInventory fork) throws IOException
 	{
+		this(directory, campaign, fork, null);
+	}
+
+	/**
+	 * Creates ports with recorded project files available to staged-source measurements.
+	 *
+	 * @param directory the fixture directory
+	 * @param campaign the initial campaign
+	 * @param fork the recorded inventory
+	 * @param project the fixture's project files, or {@code null} for an in-memory workspace
+	 * @throws IOException if the campaign cannot be persisted
+	 */
+	public DriverHarness(Path directory, Campaign campaign, FileInventory fork, Path project) throws IOException
+	{
 		this.directory = directory;
 		this.fork = fork;
 		overlays.put(CampaignBuilder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
 			overlays.put(CampaignBuilder.snapshot("candidate-" + number), candidate("candidate-" + number));
-		this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"),
-			overlays.require(campaign.development().working().snapshot()).snapshot());
+		FileInventory working = overlays.require(campaign.development().working().snapshot()).snapshot();
+		if (project == null)
+			this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"), working);
+		else
+			this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"), working, project);
 		store.replaceSnapshot(campaign);
 	}
 
@@ -348,12 +366,34 @@ public final class DriverHarness
 	 */
 	public SessionResult edit(SessionRequest request, Path file)
 	{
+		return edit(request, file, "author-" + (edits + 1));
+	}
+
+	/**
+	 * Writes specific prompt bytes as an author's edit.
+	 *
+	 * @param request the author request
+	 * @param file the changed prompt path
+	 * @param text the edited content
+	 * @return the completed session
+	 */
+	public SessionResult edit(SessionRequest request, Path file, String text)
+	{
 		++edits;
 		Path effects = directory.resolve("effects").resolve(String.valueOf(edits));
-		byte[] content = ("author-" + edits).getBytes(UTF_8);
+		byte[] content = text.getBytes(UTF_8);
 		try
 		{
 			Files.createDirectories(effects);
+			Overlay working = overlays.require(campaign().development().working().snapshot());
+			Write entry = (Write) working.entries().get(file);
+			byte[] before = "fork".getBytes(UTF_8);
+			if (entry != null)
+				before = entry.content().bytes();
+			else if (file.isAbsolute() && Files.isRegularFile(file))
+				before = Files.readAllBytes(file);
+			Files.write(effects.resolve("before"), before);
+			Files.writeString(effects.resolve("changed-path"), file.toString(), UTF_8);
 			Files.write(effects.resolve(file), content);
 		}
 		catch (IOException e)

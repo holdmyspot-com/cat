@@ -6,6 +6,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
@@ -37,6 +39,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -275,6 +280,7 @@ public final class Driver implements AutoCloseable
 		boolean started = startJudges(now);
 		if (now.isBefore(deadline))
 		{
+			started |= advanceMinimality();
 			started |= commitIfDue();
 			started |= startAuthor(now);
 			started |= admit(now);
@@ -682,7 +688,8 @@ public final class Driver implements AutoCloseable
 		Verdict verdict, String rationale, String judgeModel) throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
-		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, observed);
+		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, observed,
+			trialInputTokens(trial));
 		if (campaign.identity().differences(observed).isEmpty())
 		{
 			context.store().writeOutcome(campaignId, complete);
@@ -774,16 +781,37 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
-			SessionRequest request = context.author().request(AuthorBrief.of(campaign, category.get(), overlay.fork()),
-				copy);
+			AuthorBrief brief = AuthorBrief.of(campaign, category.get(), overlay.fork());
+			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
-			register(new InFlight.Author(category.get(), working, overlay, copy, before, handle));
+			register(new InFlight.Author(category.get(), working, overlay, copy, before, brief, handle));
 		}
 		catch (IOException e)
 		{
 			context.workspace().deleteAuthoringCopy(copy);
 			authorFailed("The author session could not start: " + describe(e));
 		}
+		return true;
+	}
+
+	/**
+	 * Saves and starts the next reduction, or promotes the last passing reduction after all groups fail.
+	 *
+	 * @return whether the search advanced
+	 * @throws IOException if an overlay, snapshot or worktree cannot be read or written
+	 */
+	private boolean advanceMinimality() throws IOException
+	{
+		if (!isDrained())
+			return false;
+		Campaign updated = MinimalityAdvancement.advance(context, campaign);
+		if (updated == campaign)
+			return false;
+		Candidate previous = campaign.development().working();
+		if (!updated.development().working().equals(previous))
+			updated = WorktreeCheck.verify(context, updated, previous);
+		campaign = updated;
+		context.store().replaceSnapshot(campaign);
 		return true;
 	}
 
@@ -848,8 +876,8 @@ public final class Driver implements AutoCloseable
 	 */
 	private void submit(InFlight.Author author, SessionResult.Completed completed) throws IOException
 	{
-		Optional<List<NeededEdit>> neededEdits = context.author().neededEdits(completed);
-		if (neededEdits.isEmpty() || !namesContractRequirements(neededEdits.get()))
+		Optional<AuthorReport> report = context.author().report(completed);
+		if (report.isEmpty() || !namesContractRequirements(report.get().neededEdits()))
 		{
 			authorFailed("The author's report of needed edits is malformed");
 			return;
@@ -857,7 +885,7 @@ public final class Driver implements AutoCloseable
 		Authority authority = authority();
 		FileInventory fork = author.overlay().fork();
 		List<AuthorityWarning> warnings = new ArrayList<>();
-		for (NeededEdit edit : neededEdits.get())
+		for (NeededEdit edit : report.get().neededEdits())
 			authority.diagnose(edit.requirement(), edit.path(), edit.operation(), fork).ifPresent(warnings::add);
 
 		// The session edits the runner's copy of the authoring copy, so its edits are in the effects directory
@@ -874,6 +902,24 @@ public final class Driver implements AutoCloseable
 			authorFailed("A file in the author's copy changed while CAT read it");
 			return;
 		}
+		Optional<List<FileDelta>> changes = AuthorDelta.changes(author.overlay(), author.copy(), completed.effects(),
+			review.changes());
+		if (changes.isEmpty())
+		{
+			authorFailed("A file in the author's effects changed while CAT read it");
+			return;
+		}
+		List<Hunk> hunks = changes.get().stream().flatMap(change -> Hunks.between(change).stream()).toList();
+		Set<String> received = author.brief().failureIds();
+		List<String> violations = report.get().manifest().violations(received, hunks);
+		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.category(),
+			author.working().snapshot(), report.get().manifest().classifications(), violations, completed.transcript(),
+			completed.effects())));
+		if (!violations.isEmpty())
+		{
+			authorFailed("The author manifest is invalid: " + violations);
+			return;
+		}
 		if (offersAuthorAttempt(author))
 		{
 			Sha256 snapshot = author.working().snapshot();
@@ -882,7 +928,7 @@ public final class Driver implements AutoCloseable
 				context.overlays().save(candidate.get());
 				snapshot = candidate.get().identity();
 			}
-			record(new CampaignEvent.SubmitAuthorAttempt(author.category(), snapshot));
+			record(new CampaignEvent.SubmitAuthorAttempt(author.category(), snapshot, changes.get()));
 		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
@@ -1191,6 +1237,45 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
+	 * Records the working and incumbent snapshots' observed prompt-file sizes.
+	 *
+	 * @param snapshot the snapshot
+	 * @throws IOException if the descriptive evidence cannot be persisted
+	 */
+	private void measurePrompt(Sha256 snapshot) throws IOException
+	{
+		PromptSize previous = campaign.optimization().promptSizes().get(snapshot);
+		if (previous != null && previous.unavailable() == null)
+			return;
+		PromptSize size;
+		try
+		{
+			Overlay overlay = context.overlays().require(snapshot);
+			Path source = context.workspace().stage(overlay);
+			staged.put(snapshot, overlay.identity());
+			size = PromptMeasurements.measure(source, overlay.snapshot(), context.promptSources());
+		}
+		catch (IOException e)
+		{
+			size = PromptSize.unavailable("Prompt files could not be staged for measurement: " + e.getMessage());
+		}
+		record(new CampaignEvent.MeasurePrompt(snapshot, size));
+	}
+
+	/**
+	 * Returns the trial session's reported input tokens, preserving absent usage.
+	 *
+	 * @param trial the completed trial session
+	 * @return input tokens including cached input, or {@code null}
+	 */
+	private static Long trialInputTokens(SessionResult.Completed trial)
+	{
+		if (trial.usage() == null)
+			return null;
+		return trial.usage().input();
+	}
+
+	/**
 	 * Returns the slice's result.
 	 *
 	 * @return the result
@@ -1198,6 +1283,8 @@ public final class Driver implements AutoCloseable
 	 */
 	private SliceResult result() throws IOException
 	{
+		measurePrompt(campaign.development().working().snapshot());
+		measurePrompt(campaign.incumbent().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
 		boolean symbolicLinks = !LinkReport.of(working.fork(), authority()).entries().isEmpty();
 		StatusReport report = StatusReport.of(campaign,

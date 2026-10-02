@@ -62,7 +62,7 @@ public final class PromotionTest
 	 */
 	private static AuthorAttempt attempt(PromotionRun... runs)
 	{
-		return new AuthorAttempt(1, "safety", ATTEMPT, List.of(runs));
+		return new AuthorAttempt(1, "safety", ATTEMPT, List.of(runs), Minimality.start(List.of(), ATTEMPT));
 	}
 
 	/**
@@ -197,7 +197,7 @@ public final class PromotionTest
 	{
 		// Requirement: R-D3
 		Campaign campaign = inRound();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		requireThat(author.runs(), "runs").size().isEqualTo(2);
 		TrialInstance logs = author.runs().getFirst().instance();
@@ -207,6 +207,7 @@ public final class PromotionTest
 		requireThat(campaign.development().working().number(), "working").isEqualTo(1);
 
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs, Verdict.PASS);
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 		requireThat(campaign.development().working(), "promoted").isEqualTo(new Candidate(2, ATTEMPT));
 		requireThat(campaign.development().count("safety"), "newCounts").isEqualTo(CategoryCounts.EMPTY);
 		requireThat(campaign.development().round(), "round").isNull();
@@ -227,7 +228,7 @@ public final class PromotionTest
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			regression(formal, Verdict.PASS).round(new Round(Map.of("safety", 0))).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		requireThat(author.runs().stream().map(PromotionRun::role).toList(), "roles").
 			isEqualTo(List.of(Role.TRIGGERING, Role.TRIGGERING, Role.REGRESSION));
@@ -248,7 +249,7 @@ public final class PromotionTest
 	{
 		// Requirement: R-D3
 		Campaign campaign = inRound();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		TrialInstance logs = author.runs().getFirst().instance();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs, Verdict.FAIL);
@@ -268,7 +269,7 @@ public final class PromotionTest
 		// Requirement: R-D3
 		Campaign campaign = inRound();
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety",
-			campaign.development().working().snapshot()));
+			campaign.development().working().snapshot(), List.of()));
 		requireThat(campaign.development().author(), "author").isNull();
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 1)));
 	}
@@ -281,7 +282,7 @@ public final class PromotionTest
 	{
 		// Requirement: R-D3
 		Campaign campaign = inRound();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
 		AuthorAttempt author = campaign.development().author();
 		TrialInstance logs = author.runs().getFirst().instance();
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs);

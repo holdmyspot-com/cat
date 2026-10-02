@@ -5,12 +5,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorProtocol;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorReport;
 import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -22,6 +26,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,7 +42,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds requests for sessions that edit prompt files, and reads their reports of needed edits outside the allowed
- * paths and operations.
+ * paths and operations, together with their evidence manifest.
  * <p>
  * <b>Thread Safety:</b> Callers may build requests and read reports concurrently.
  */
@@ -119,9 +124,10 @@ public final class AuthorPrompt implements AuthorProtocol
 		requireThat(brief, "brief").isNotNull();
 		requireThat(copy, "copy").isNotNull();
 		ArrayNode failures = json.createArrayNode();
-		for (Failure failure : brief.developmentFailures())
+		for (int index = 0; index < brief.developmentFailures().size(); ++index)
 		{
-			ObjectNode node = encodeFailure(failure);
+			Failure failure = brief.developmentFailures().get(index);
+			ObjectNode node = encodeFailure(failure, brief.developmentId(index));
 			ArrayNode reruns = node.putArray("diagnostic_reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -139,20 +145,21 @@ public final class AuthorPrompt implements AuthorProtocol
 			node.put("outcome", attempt.outcome().label());
 			node.set("counts", encodeCounts(attempt.counts()));
 			ArrayNode attemptFailures = node.putArray("failures");
-			for (Failure failure : attempt.failures())
-				attemptFailures.add(encodeFailure(failure));
+			for (int index = 0; index < attempt.failures().size(); ++index)
+				attemptFailures.add(encodeFailure(attempt.failures().get(index), brief.endedId(attempt.index(), index)));
 		}
-		String turn = prompt.fill(Map.of(
-			"prompt_sources", promptSources,
-			"loader_configuration", loaderConfiguration,
-			"authorized_targets", list(brief.authorizedTargets()),
-			"links", links(brief.links()),
-			"cell", brief.category(),
-			"contract", schema.toJson(brief.contract()),
-			"failures", pretty(failures),
-			"development_counts", pretty(encodeCounts(brief.developmentCounts())),
-			"ended_attempts", pretty(ended),
-			"report_schema", reportSchema));
+		String turn = prompt.fill(Map.ofEntries(
+			Map.entry("hunk_definition", Hunk.DEFINITION),
+			Map.entry("prompt_sources", promptSources),
+			Map.entry("loader_configuration", loaderConfiguration),
+			Map.entry("authorized_targets", list(brief.authorizedTargets())),
+			Map.entry("links", links(brief.links())),
+			Map.entry("cell", brief.category()),
+			Map.entry("contract", schema.toJson(brief.contract())),
+			Map.entry("failures", pretty(failures)),
+			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
+			Map.entry("ended_attempts", pretty(ended)),
+			Map.entry("report_schema", reportSchema)));
 		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT,
 			brief.contract().judge().profile());
 	}
@@ -161,12 +168,15 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * Writes a failing trial instance and the evidence that explains its failure.
 	 *
 	 * @param failure the instance and rationale to show the author
+	 * @param id the scoped identifier of the supplied failure
 	 * @return the failing instance with the reason for its failure in {@code rationale}: the judge's rationale, or
 	 *   the record of each failed deterministic check
 	 */
-	private ObjectNode encodeFailure(Failure failure)
+	private ObjectNode encodeFailure(Failure failure, String id)
 	{
 		ObjectNode node = InstanceJson.encode(json, failure.instance());
+		node.put("id", id);
+		node.put("cell", failure.instance().cellId());
 		node.put("rationale", failure.rationale());
 		return node;
 	}
@@ -204,17 +214,17 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The report is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
-	 * fence, that holds exactly a {@code needed_edits} array as the report schema requires. Each element holds exactly
+	 * fence, that holds the manifest and a {@code needed_edits} array as the report schema requires. Each edit holds
 	 * a non-blank {@code requirement}, a {@code path}, an {@code operation} that names an {@link Operation} in lower
-	 * case and, optionally, a {@code target}. In addition to the schema, path validation requires non-empty, normalized
-	 * paths that do not start with {@code ..}.
+	 * case and, optionally, a {@code target}. Path validation follows the schema's parsed-path constraints, including
+	 * normalized paths with no leading {@code ..} segment.
 	 */
 	@Override
-	public Optional<List<NeededEdit>> neededEdits(SessionResult.Completed result)
+	public Optional<AuthorReport> report(SessionResult.Completed result)
 	{
 		requireThat(result, "result").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
-		if (output.isEmpty() || output.get().size() != 1)
+		if (output.isEmpty() || !properties(output.get()).equals(Set.of(NEEDED_EDITS, "classifications", "hunks")))
 			return Optional.empty();
 		JsonNode edits = output.get().get(NEEDED_EDITS);
 		if (edits == null || !edits.isArray())
@@ -227,7 +237,101 @@ public final class AuthorPrompt implements AuthorProtocol
 				return Optional.empty();
 			neededEdits.add(neededEdit.get());
 		}
-		return Optional.of(neededEdits);
+		try
+		{
+			Map<String, FailureKind> classifications = new LinkedHashMap<>();
+			JsonNode diagnoses = output.get().get("classifications");
+			JsonNode hunks = output.get().get("hunks");
+			if (!diagnoses.isArray() || !hunks.isArray())
+				return Optional.empty();
+			for (JsonNode diagnosis : diagnoses)
+			{
+				if (!properties(diagnosis).equals(Set.of("instance", "classification")))
+					return Optional.empty();
+				String id = text(diagnosis, "instance");
+				FailureKind kind = FailureKind.valueOf(text(diagnosis, "classification").
+					replace(' ', '_').toUpperCase(Locale.ROOT));
+				if (!text(diagnosis, "classification").equals(kind.label()) ||
+					classifications.put(id, kind) != null)
+				{
+					return Optional.empty();
+				}
+			}
+			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
+			for (JsonNode hunk : hunks)
+			{
+				if (!properties(hunk).equals(Set.of("path", "before_start", "before_end", "after_start", "after_end",
+					"instances", "analogous", "dissimilar")) ||
+					!hunk.get("path").isString() || !isRangeInteger(hunk, "before_start") ||
+					!isRangeInteger(hunk, "before_end") ||
+					!isRangeInteger(hunk, "after_start") || !isRangeInteger(hunk, "after_end") ||
+					!hunk.get("instances").isArray())
+				{
+					return Optional.empty();
+				}
+				List<String> instances = new ArrayList<>();
+				for (JsonNode instance : hunk.get("instances"))
+				{
+					if (!instance.isString() || instance.asString().isBlank())
+						return Optional.empty();
+					instances.add(instance.asString());
+				}
+				evidence.add(new AuthorManifest.Evidence(Path.of(hunk.get("path").asString()), hunk.get("before_start").asInt(),
+					hunk.get("before_end").asInt(), hunk.get("after_start").asInt(), hunk.get("after_end").asInt(),
+					instances, text(hunk, "analogous"), text(hunk, "dissimilar")));
+			}
+			return Optional.of(new AuthorReport(neededEdits, new AuthorManifest(classifications, evidence)));
+		}
+		catch (IllegalArgumentException _)
+		{
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Checks an annotation coordinate's integer representation.
+	 *
+	 * @param node the annotation
+	 * @param name the coordinate property
+	 * @return whether it is an integer fitting in a Java line index
+	 */
+	private static boolean isRangeInteger(JsonNode node, String name)
+	{
+		JsonNode value = node.get(name);
+		return value.isIntegralNumber() && value.canConvertToInt();
+	}
+
+	/**
+	 * Returns the names of an object's properties.
+	 *
+	 * @param node the report value
+	 * @return the names, empty for a non-object
+	 */
+	private static Set<String> properties(JsonNode node)
+	{
+		Set<String> result = new HashSet<>();
+		if (node.isObject())
+		{
+			for (Map.Entry<String, JsonNode> property : node.properties())
+				result.add(property.getKey());
+		}
+		return result;
+	}
+
+	/**
+	 * Reads required non-blank report text.
+	 *
+	 * @param node the object
+	 * @param name the property
+	 * @return the text
+	 * @throws IllegalArgumentException if the property is absent, non-textual or blank
+	 */
+	private static String text(JsonNode node, String name)
+	{
+		JsonNode value = node.get(name);
+		if (value == null || !value.isString() || value.asString().isBlank())
+			throw new IllegalArgumentException("Missing non-blank text: " + name);
+		return value.asString();
 	}
 
 	/**

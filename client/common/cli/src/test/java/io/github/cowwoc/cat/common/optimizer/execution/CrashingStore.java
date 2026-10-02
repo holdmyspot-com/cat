@@ -112,6 +112,11 @@ public final class CrashingStore implements CampaignStore
 	@Override
 	public void replaceSnapshot(Campaign campaign) throws IOException
 	{
+		if (trigger == Write.WORKING_CANDIDATE && !delegate.load(campaign.header().id()).orElseThrow().
+			development().working().equals(campaign.development().working()))
+		{
+			written = true;
+		}
 		if (written)
 		{
 			trigger = null;
@@ -159,6 +164,10 @@ public final class CrashingStore implements CampaignStore
 		/**
 		 * A trial's outcome.
 		 */
-		OUTCOME
+		OUTCOME,
+		/**
+		 * A snapshot replacement that promotes a different working candidate.
+		 */
+		WORKING_CANDIDATE
 	}
 }
