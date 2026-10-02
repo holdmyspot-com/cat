@@ -30,9 +30,10 @@ public final class Plateau
 		requireThat(round, "round").isNotNull();
 		for (int attempts : round.attempts().values())
 		{
-			if (attempts < Round.ATTEMPTS)
+			if (attempts < round.maxAttempts())
 				return false;
 		}
-		return true;
+		return !round.weak() || round.pendingAuthorAttempts().isEmpty() && round.validationAttempts().stream().
+			allMatch(attempt -> attempt.runs().stream().allMatch(run -> run.verdict() != null));
 	}
 }

@@ -169,7 +169,7 @@ public final class CampaignTransitionsTest
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			round(new Round(Map.of("safety", 0))).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", attempt, List.of()));
+		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
 		for (int run = 0; run < 2; ++run)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, attempt, logs, Verdict.PASS);
 

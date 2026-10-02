@@ -1,10 +1,14 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 
@@ -45,8 +49,11 @@ final class TrialAdoption
 			case FORMAL -> isStaleFormal(draft, key);
 			case DIAGNOSTIC -> key.series() != draft.series || draft.diagnosis == null ||
 				!key.equals(draft.diagnosis.rerun());
-			case PROMOTION -> draft.author == null || key.series() != draft.author.number() ||
-				draft.author.runs().stream().noneMatch(run -> key.equals(run.trial()));
+			case PROMOTION ->
+			{
+				AuthorAttempt author = draft.findAuthor(key.series());
+				yield author == null || author.runs().stream().noneMatch(run -> key.equals(run.trial()));
+			}
 		};
 	}
 
@@ -272,31 +279,50 @@ final class TrialAdoption
 			case EDIT ->
 			{
 				draft.diagnosis = null;
-				draft.round = failingRound(draft.developmentCounts, draft.contract().cellIds(), null);
+				draft.round = failingRound(draft.developmentCounts, draft.contract(), null);
 			}
 			case CONTINUE -> draft.diagnosis = null;
 		}
 	}
 
 	/**
-	 * Creates an optimization round with zero author attempts for each listed cell that has failures or matches
-	 * {@code required}.
+	 * Creates a round from currently failing cells and freezes its weak-candidate policy.
 	 *
-	 * @param counts the counts per cell; missing cells have no outcomes
-	 * @param categories the cell identifiers to consider, in contract order
-	 * @param required a listed cell to include even without failures, or {@code null}
+	 * @param counts the current development counts
+	 * @param contract the confirmed contract
+	 * @param required a cell to address even without failures, or null
 	 * @return the round
 	 */
-	static Round failingRound(Map<String, CategoryCounts> counts, List<String> categories, String required)
+	static Round failingRound(Map<String, CategoryCounts> counts, Contract contract, String required)
+	{
+		return failingRound(counts, counts, contract, required);
+	}
+
+	/**
+	 * Creates a round addressing failures from either phase while testing weakness from development alone.
+	 *
+	 * @param failures the counts that identify failing cells
+	 * @param development the working candidate's development outcomes
+	 * @param contract the confirmed contract
+	 * @param required a required cell, or null
+	 * @return the frozen round
+	 */
+	private static Round failingRound(Map<String, CategoryCounts> failures, Map<String, CategoryCounts> development,
+		Contract contract, String required)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>();
-		for (String category : categories)
+		for (String cell : contract.cellIds())
 		{
-			CategoryCounts categoryCounts = counts.getOrDefault(category, CategoryCounts.EMPTY);
-			if (categoryCounts.failures() > 0 || category.equals(required))
-				attempts.put(category, 0);
+			if (failures.getOrDefault(cell, CategoryCounts.EMPTY).failures() > 0 || cell.equals(required))
+				attempts.put(cell, 0);
 		}
-		return new Round(attempts);
+		boolean weak = AttemptSelection.isWeak(development, contract, List.copyOf(attempts.keySet()));
+		if (weak)
+		{
+			Set<String> addressed = new HashSet<>();
+			attempts.keySet().removeIf(cell -> !addressed.add(contract.findCell(cell).orElseThrow().categoryId()));
+		}
+		return new Round(attempts, weak, Map.of(), List.of());
 	}
 
 	/**
@@ -355,7 +381,7 @@ final class TrialAdoption
 	 */
 	private static void adoptPromotion(Draft draft, LogicalTrial trial)
 	{
-		AuthorAttempt author = draft.author;
+		AuthorAttempt author = draft.findAuthor(trial.key().series());
 		List<PromotionRun> runs = new ArrayList<>(author.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
@@ -366,8 +392,12 @@ final class TrialAdoption
 				break;
 			}
 		}
-		draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs, author.minimality());
-		decidePromotion(draft);
+		draft.updateAuthor(new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs,
+			author.minimality()));
+		if (draft.round.weak() && draft.author == null)
+			decideWeakRound(draft);
+		else
+			decidePromotion(draft);
 	}
 
 	/**
@@ -386,16 +416,82 @@ final class TrialAdoption
 			}
 			case PROMOTE ->
 			{
-				// The driver advances minimality before delivering the final promotion
+				if (author.minimality().acceptedRuns().isEmpty())
+					retainAttempt(draft, author, true, true);
 			}
 			case REJECT ->
 			{
 				if (author.minimality().testing() != null)
 					return;
+				retainAttempt(draft, author, false, false);
 				draft.author = null;
 				rejectAuthorAttempt(draft, author.category());
 			}
 		}
+	}
+
+	/**
+	 * Retains settled contenders and selects only after every addressed category received all three attempts.
+	 *
+	 * @param draft the campaign state
+	 */
+	static void decideWeakRound(Draft draft)
+	{
+		Round round = draft.round;
+		for (AuthorAttempt attempt : round.validationAttempts())
+		{
+			if (attempt.runs().stream().allMatch(run -> run.verdict() != null))
+			{
+				boolean accepted = !attempt.snapshot().equals(draft.working.snapshot()) &&
+					Promotion.decide(attempt, draft.regressionSet) == Promotion.Decision.PROMOTE;
+				retainAttempt(draft, attempt, accepted, false);
+			}
+		}
+		if (!Plateau.isReached(round))
+			return;
+		Optional<AuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
+			draft.working.snapshot(), draft.regressionSet);
+		if (winner.isPresent())
+		{
+			draft.author = winner.get();
+			retainAttempt(draft, draft.author, true, true);
+			return;
+		}
+		draft.outcome = Outcome.PLATEAU;
+		draft.raise(new PendingDecision.PlateauReached());
+	}
+
+	/**
+	 * Saves an original attempt's result without allowing minimality to replace its measured evidence.
+	 *
+	 * @param draft the campaign state
+	 * @param attempt the original attempt
+	 * @param accepted whether the promotion rule accepted it
+	 * @param winner whether it was selected
+	 */
+	static void retainAttempt(Draft draft, AuthorAttempt attempt, boolean accepted, boolean winner)
+	{
+		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
+		AttemptResult result = new AttemptResult(draft.round.number(), draft.working.snapshot(), attempt.number(),
+			attempt.category(), attempt.snapshot(), attempt.runs(), AttemptSelection.changedLines(attempt), accepted,
+			winner);
+		int index = -1;
+		for (int i = 0; i < results.size(); ++i)
+		{
+			if (results.get(i).number() == attempt.number())
+				index = i;
+		}
+		if (index >= 0)
+		{
+			if (results.get(index).winner())
+				return;
+			results.set(index, result);
+		}
+		else
+			results.add(result);
+		results.sort(Comparator.comparingInt(AttemptResult::number));
+		draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
+			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results);
 	}
 
 	/**
@@ -452,7 +548,8 @@ final class TrialAdoption
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>(draft.round.attempts());
 		attempts.put(category, attempts.get(category) + 1);
-		draft.round = new Round(attempts);
+		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
+			draft.round.validationAttempts());
 		if (Plateau.isReached(draft.round))
 		{
 			draft.outcome = Outcome.PLATEAU;
@@ -551,7 +648,7 @@ final class TrialAdoption
 		if (attempt.failures().isEmpty())
 			return;
 		draft.diagnosis = null;
-		draft.round = failingRound(attempt.counts(), attempt.procedure().categories(), null);
+		draft.round = failingRound(attempt.counts(), draft.developmentCounts, draft.contract(), null);
 	}
 
 	/**

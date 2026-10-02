@@ -72,6 +72,45 @@ public final class Hunks
 	}
 
 	/**
+	 * Counts added and removed lines using the same comparison that defines the attempt's hunks.
+	 * Whole-file changes count all lines on both sides; binary content counts newline-delimited byte ranges.
+	 *
+	 * @param file the changed file
+	 * @return the changed line count
+	 */
+	public static int changedLines(FileDelta file)
+	{
+		List<String> before = lines(file.before()).orElse(null);
+		List<String> after = lines(file.after()).orElse(null);
+		if (before == null || after == null)
+			return wholeFileLines(file.before()) + wholeFileLines(file.after());
+		return between(file).stream().mapToInt(hunk -> hunk.beforeEnd() - hunk.beforeStart() +
+			hunk.afterEnd() - hunk.afterStart()).sum();
+	}
+
+	/**
+	 * Counts newline-delimited ranges in a whole-file hunk without requiring text decoding.
+	 *
+	 * @param content the bytes, or null for an absent file
+	 * @return the range count
+	 */
+	private static int wholeFileLines(FileContent content)
+	{
+		if (content == null)
+			return 0;
+		byte[] bytes = content.bytes();
+		int count = 0;
+		for (byte value : bytes)
+		{
+			if (value == '\n')
+				++count;
+		}
+		if (bytes.length > 0 && bytes[bytes.length - 1] != '\n')
+			++count;
+		return count;
+	}
+
+	/**
 	 * Returns exact text lines when the file is present and valid UTF-8 without NUL bytes.
 	 *
 	 * @param content the bytes, or {@code null} for an absent file

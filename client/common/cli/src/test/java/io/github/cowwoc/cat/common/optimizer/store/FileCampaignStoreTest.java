@@ -136,6 +136,39 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that pending author reservations, received contenders and zero-run rejected evidence survive reload.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void preservesConcurrentAttemptProgress() throws IOException
+	{
+		// Requirement: R-D12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign-batch")), JSON);
+			Campaign campaign = new CampaignBuilder().confirmed().working(1).
+				failure(CampaignBuilder.targeted("safety", "cache")).
+				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
+			for (int attempt = 0; attempt < 3; ++attempt)
+				campaign = CampaignTransitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
+			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(3, "safety",
+				CampaignBuilder.snapshot("contender"), List.of()));
+			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(2, "safety",
+				campaign.development().working().snapshot(), List.of()));
+			store.replaceSnapshot(campaign);
+			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
+			requireThat(loaded.development().round(), "round").isEqualTo(campaign.development().round());
+			requireThat(loaded.development().round().pendingAuthorAttempts(), "pendingAuthor").
+				isEqualTo(Map.of(1, "safety"));
+			requireThat(loaded.optimization(), "retainedEvidence").isEqualTo(campaign.optimization());
+			requireThat(loaded.optimization().attempts().getFirst().accepted(), "noEditRejected").isFalse();
+			requireThat(loaded.development().counts(), "counts").isEmpty();
+			requireThat(loaded.attempts(), "allowance").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that descriptive prompt sizes and input observations survive a store reload.
 	 *
 	 * @throws IOException if the fixture cannot be used
@@ -399,10 +432,33 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(4);
+					"recordVersion").isEqualTo(5);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(4);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(5);
+		}
+	}
+
+	/**
+	 * Verifies that an older campaign without concurrent attempt progress is refused.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 4 campaign.*[Ss]tart a new campaign.*")
+	public void refusesSequentialCampaignFormat() throws IOException
+	{
+		// Requirement: R-D12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-old-format"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 4);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			store.load(ID);
 		}
 	}
 
@@ -535,7 +591,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 5);
+			root.put("format_version", 6);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

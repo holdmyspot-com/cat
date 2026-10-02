@@ -146,7 +146,7 @@ public final class SchedulerTest
 		Sha256 attempt = CampaignBuilder.snapshot("attempt");
 		Campaign campaign = working().failure(logs).regression(formal, null).
 			round(new Round(Map.of("safety", 0))).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", attempt, List.of()));
+		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
 		Allocation targeted = allocation(AllocationRule.TARGETED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
 			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
@@ -617,8 +617,8 @@ public final class SchedulerTest
 		Campaign campaign = tiered().widened().failedCell(BIG_MEDIUM).development(BIG_LOW, 100, 0).
 			development(BIG_XHIGH, 100, 0).development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(BIG_MEDIUM,
-			CampaignBuilder.snapshot("attempt"), List.of()));
+		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM,
+			CampaignBuilder.snapshot("attempt"), List.of());
 		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet()) ==
 			Promotion.Decision.PENDING)
 		{

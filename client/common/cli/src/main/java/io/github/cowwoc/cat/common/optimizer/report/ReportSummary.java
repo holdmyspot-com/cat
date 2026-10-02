@@ -319,6 +319,15 @@ final class ReportSummary
 		}
 		if (!report.removed().isEmpty())
 			lines.add("Minimality removed hunks: " + String.join(", ", report.removed()));
+		for (AttemptProgress attempt : report.attempts())
+		{
+			String accepted = "pending";
+			if (attempt.accepted() != null)
+				accepted = attempt.accepted().toString();
+			lines.add("Round " + attempt.round() + ", Attempt " + attempt.number() + " in cell " + attempt.cell() +
+				": passing promotion runs " + attempt.passingRuns() + "/" + attempt.totalRuns() +
+				"; accepted: " + accepted + "; winner: " + attempt.winner());
+		}
 	}
 
 	/**

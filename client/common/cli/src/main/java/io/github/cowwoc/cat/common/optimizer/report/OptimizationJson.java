@@ -67,6 +67,24 @@ final class OptimizationJson
 		ArrayNode removed = root.putArray("removed_hunks");
 		for (String hunk : report.removed())
 			removed.add(hunk);
+
+		ArrayNode attempts = root.putArray("author_attempts");
+		for (AttemptProgress progress : report.attempts())
+		{
+			ObjectNode attempt = attempts.addObject();
+			attempt.put("round", progress.round());
+			attempt.put("number", progress.number());
+			attempt.put("working_snapshot", progress.working().hex());
+			attempt.put("cell", progress.cell());
+			if (progress.snapshot() == null)
+				attempt.putNull("snapshot");
+			else
+				attempt.put("snapshot", progress.snapshot().hex());
+			attempt.put("passing_runs", progress.passingRuns());
+			attempt.put("total_runs", progress.totalRuns());
+			attempt.put("accepted", progress.accepted());
+			attempt.put("winner", progress.winner());
+		}
 	}
 
 	/**

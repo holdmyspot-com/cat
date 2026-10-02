@@ -153,8 +153,8 @@ public final class CommitTest
 	{
 		// Requirement: R-F4
 		Campaign campaign = CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
-		CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety",
-			CampaignBuilder.snapshot("edit"), List.of()));
+		TransitionSteps.submit(campaign, "safety",
+			CampaignBuilder.snapshot("edit"), List.of());
 	}
 
 	/**
@@ -174,7 +174,7 @@ public final class CommitTest
 		requireThat(campaign.development().round(), "round").isNotNull();
 
 		Sha256 edit = CampaignBuilder.snapshot("edit");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", edit, List.of()));
+		campaign = TransitionSteps.submit(campaign, "safety", edit, List.of());
 		AuthorAttempt author = campaign.development().author();
 		for (PromotionRun run : author.runs())
 		{

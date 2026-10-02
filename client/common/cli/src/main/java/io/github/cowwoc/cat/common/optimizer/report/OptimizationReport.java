@@ -24,9 +24,11 @@ import java.util.Map;
  * @param inputs per-cell trial input comparisons
  * @param authors retained author diagnoses, including attempts that produced no candidate
  * @param removed original hunk identifiers removed by minimality
+ * @param attempts original promotion results and unfinished author reservations
  */
 public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapshot, PromptSize working,
-	PromptSize incumbent, List<InputComparison> inputs, List<AuthorDiagnosis> authors, List<String> removed)
+	PromptSize incumbent, List<InputComparison> inputs, List<AuthorDiagnosis> authors, List<String> removed,
+	List<AttemptProgress> attempts)
 {
 	/**
 	 * A cell's descriptive medians of completed trial sessions that reported usage.
@@ -87,6 +89,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 	 * @param inputs trial inputs by cell
 	 * @param authors author diagnoses
 	 * @param removed removed hunk identifiers
+	 * @param attempts original attempt results and progress
 	 * @throws NullPointerException if any argument or collection element is null
 	 */
 	public OptimizationReport
@@ -98,6 +101,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		inputs = List.copyOf(inputs);
 		authors = List.copyOf(authors);
 		removed = List.copyOf(removed);
+		attempts = List.copyOf(attempts);
 	}
 
 	/**
@@ -129,7 +133,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		}
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),
 			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.authors(),
-			evidence.removed());
+			evidence.removed(), AttemptProgress.of(campaign));
 	}
 
 	/**

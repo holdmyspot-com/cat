@@ -4,6 +4,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.time.Instant;
+import java.util.List;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 
 /**
  * Applies the campaign event sequences that tests repeat. Representative trials are sampled and counted;
@@ -21,6 +23,24 @@ final class TransitionSteps
 	 */
 	private TransitionSteps()
 	{
+	}
+
+	/**
+	 * Reserves and submits one valid author report using the same durable transitions as the driver.
+	 *
+	 * @param campaign the campaign
+	 * @param category the addressed cell
+	 * @param snapshot the authored snapshot
+	 * @param changes the authored changes
+	 * @return the updated campaign
+	 */
+	static Campaign submit(Campaign campaign, String category, Sha256 snapshot, List<FileDelta> changes)
+	{
+		Campaign reserved = CampaignTransitions.apply(campaign, new CampaignEvent.StartAuthorAttempt(category));
+		int number = reserved.development().round().reservations().keySet().stream().mapToInt(Integer::intValue).
+			max().orElseThrow();
+		return CampaignTransitions.apply(reserved, new CampaignEvent.SubmitAuthorAttempt(number, category, snapshot,
+			changes));
 	}
 
 	/**

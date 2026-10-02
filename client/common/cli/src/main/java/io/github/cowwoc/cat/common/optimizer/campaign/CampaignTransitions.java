@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
@@ -65,6 +66,7 @@ public final class CampaignTransitions
 				if (!draft.throttle.allowsAdmission(observe.at()))
 					draft.slowStart = SlowStart.INITIAL;
 			}
+			case CampaignEvent.StartAuthorAttempt start -> startAuthorAttempt(draft, start.category());
 			case CampaignEvent.SubmitAuthorAttempt submit -> submitAuthorAttempt(draft, submit);
 			case CampaignEvent.AdvanceMinimality advance -> advanceMinimality(draft, advance.snapshot());
 			case CampaignEvent.MeasurePrompt measured ->
@@ -72,14 +74,14 @@ public final class CampaignTransitions
 				Map<Sha256, PromptSize> sizes = new HashMap<>(draft.optimization.promptSizes());
 				sizes.put(measured.snapshot(), measured.size());
 				draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
-					sizes, draft.optimization.trialInputs());
+					sizes, draft.optimization.trialInputs(), draft.optimization.attempts());
 			}
 			case CampaignEvent.RetainAuthorDiagnosis retain ->
 			{
 				List<AuthorDiagnosis> authors = new ArrayList<>(draft.optimization.authors());
 				authors.add(retain.diagnosis());
 				draft.optimization = new OptimizationEvidence(authors, draft.optimization.removed(),
-					draft.optimization.promptSizes(), draft.optimization.trialInputs());
+					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts());
 			}
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
@@ -319,8 +321,8 @@ public final class CampaignTransitions
 	 */
 	private static TrialInstance assignPromotion(Draft draft, Admission.Assign admission, TrialKey key)
 	{
-		AuthorAttempt author = draft.author;
-		if (author == null || admission.series() != author.number())
+		AuthorAttempt author = draft.findAuthor(admission.series());
+		if (author == null)
 			throw new IllegalArgumentException("No author attempt " + admission.series() + " is under validation");
 		List<PromotionRun> runs = new ArrayList<>(author.runs());
 		for (int i = 0; i < runs.size(); ++i)
@@ -331,8 +333,8 @@ public final class CampaignTransitions
 				Promotion.isSameContent(run.instance(), admission.instance()))
 			{
 				runs.set(i, new PromotionRun(run.role(), run.instance(), key, null));
-				draft.author = new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs,
-					author.minimality());
+				draft.updateAuthor(new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs,
+					author.minimality()));
 				return run.instance();
 			}
 		}
@@ -469,33 +471,70 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Validates an author attempt: an unchanged snapshot is rejected at once, otherwise its promotion runs are
-	 * planned.
+	 * Reserves a stable launch-order number without counting an unvalidated author session.
+	 *
+	 * @param draft the campaign state
+	 * @param category the addressed cell
+	 * @throws IllegalStateException if the round has no available slot for that cell
+	 */
+	private static void startAuthorAttempt(Draft draft, String category)
+	{
+		requireConfirmed(draft);
+		Round round = draft.round;
+		if (round == null || draft.author != null || !round.nextCategory().orElse("").equals(category))
+			throw new IllegalStateException("No round offers an author attempt for " + category);
+		int latest = draft.authorAttempts;
+		for (int number : round.reservations().keySet())
+			latest = Math.max(latest, number);
+		for (AttemptResult result : draft.optimization.attempts())
+			latest = Math.max(latest, result.number());
+		draft.round = round.reserve(latest + 1, category);
+	}
+
+	/**
+	 * Receives a validated attempt into its reserved slot and plans the shared promotion runs.
 	 *
 	 * @param draft the state
-	 * @param submit the event
-	 * @throws IllegalStateException if no round offers an author attempt for the cell
+	 * @param submit the received attempt
+	 * @throws IllegalStateException if no pending reservation matches the attempt
 	 */
 	private static void submitAuthorAttempt(Draft draft, CampaignEvent.SubmitAuthorAttempt submit)
 	{
 		requireConfirmed(draft);
 		String category = submit.category();
+		int number = submit.number();
 		Round round = draft.round;
-		if (round == null || draft.author != null || !round.attempts().containsKey(category) ||
-			round.attempts().get(category) >= Round.ATTEMPTS)
+		if (round == null || draft.author != null || !category.equals(round.pendingAuthorAttempts().get(number)))
+			throw new IllegalStateException("No pending author attempt " + number + " addresses " + category);
+		++draft.authorAttempts;
+		List<PromotionRun> runs = List.of();
+		if (!submit.snapshot().equals(draft.working.snapshot()))
 		{
-			throw new IllegalStateException("No round offers an author attempt for " + category);
+			List<TrialInstance> failures = draft.developmentFailures.stream().map(Failure::instance).toList();
+			List<String> cells = List.of(category);
+			if (round.weak())
+			{
+				String categoryId = draft.contract().findCell(category).orElseThrow().categoryId();
+				cells = draft.contract().profiles().cellsOf(categoryId).stream().map(Cell::id).toList();
+			}
+			runs = Promotion.plan(cells, failures, draft.regressionSet, draft.generator());
 		}
+		AuthorAttempt attempt = new AuthorAttempt(number, category, submit.snapshot(), runs,
+			Minimality.start(submit.changes(), submit.snapshot()));
+		draft.round = round.withAttempt(attempt);
+		if (round.weak())
+		{
+			TrialAdoption.decideWeakRound(draft);
+			return;
+		}
+		draft.author = attempt;
 		if (submit.snapshot().equals(draft.working.snapshot()))
 		{
+			TrialAdoption.retainAttempt(draft, attempt, false, false);
+			draft.author = null;
 			TrialAdoption.rejectAuthorAttempt(draft, category);
 			return;
 		}
-		++draft.authorAttempts;
-		List<TrialInstance> failures = draft.developmentFailures.stream().map(Failure::instance).toList();
-		List<PromotionRun> runs = Promotion.plan(category, failures, draft.regressionSet, draft.generator());
-		draft.author = new AuthorAttempt(draft.authorAttempts, category, submit.snapshot(), runs,
-			Minimality.start(submit.changes(), submit.snapshot()));
 		TrialAdoption.decidePromotion(draft);
 	}
 
@@ -518,7 +557,7 @@ public final class CampaignTransitions
 			List<String> removed = new ArrayList<>(draft.optimization.removed());
 			removed.addAll(next.removed());
 			draft.optimization = new OptimizationEvidence(draft.optimization.authors(), removed,
-				draft.optimization.promptSizes(), draft.optimization.trialInputs());
+				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts());
 			TrialAdoption.promote(draft, new AuthorAttempt(author.number(), author.category(), next.accepted(),
 				next.acceptedRuns(), next));
 			return;

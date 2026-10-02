@@ -196,28 +196,52 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * Reserves an author session's stable number before it starts.
+	 *
+	 * @param category the optimization round's addressed cell
+	 */
+	record StartAuthorAttempt(String category) implements CampaignEvent
+	{
+		/**
+		 * Creates a reservation request.
+		 *
+		 * @param category the addressed cell
+		 * @throws NullPointerException if category is null
+		 * @throws IllegalArgumentException if category is blank
+		 */
+		public StartAuthorAttempt
+		{
+			requireThat(category, "category").isNotBlank();
+		}
+	}
+
+	/**
 	 * An author's proposed file changes passed inventory validation, so checks that decide whether to promote
 	 * the snapshot can start.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
+	 * @param number the reserved attempt number
 	 * @param category the optimization round's cell identifier that the attempt addresses
 	 * @param snapshot the attempt's snapshot
 	 * @param changes the captured original file changes
 	 */
-	record SubmitAuthorAttempt(String category, Sha256 snapshot, List<FileDelta> changes) implements CampaignEvent
+	record SubmitAuthorAttempt(int number, String category, Sha256 snapshot, List<FileDelta> changes)
+		implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
+		 * @param number the reserved attempt number
 		 * @param category the optimization round's cell identifier that the attempt addresses
 		 * @param snapshot the attempt's snapshot
 		 * @param changes the captured original file changes
 		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if {@code category} is blank
+		 * @throws IllegalArgumentException if number is not positive or category is blank
 		 */
 		public SubmitAuthorAttempt
 		{
+			requireThat(number, "number").isPositive();
 			requireThat(category, "category").isNotBlank();
 			requireThat(snapshot, "snapshot").isNotNull();
 			changes = List.copyOf(changes);

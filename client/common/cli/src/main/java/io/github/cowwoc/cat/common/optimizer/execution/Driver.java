@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
@@ -756,42 +757,96 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether an author session was started or failed to start. Starts one if a development round offers an
-	 * author attempt and none runs.
+	 * Starts the round's authors within the available session capacity, concurrently when the frozen policy is weak.
+	 * Weak authors wait for already assigned development trials to settle so every attempt receives the same brief.
 	 *
 	 * @param now the current time
-	 * @return {@code true} if an author session was started or failed to start
-	 * @throws IOException if the workspace cannot be read or written
+	 * @return whether an author session was started or failed to start
+	 * @throws IOException if the workspace or reservation cannot be read or written
 	 */
 	private boolean startAuthor(Instant now) throws IOException
 	{
-		Development development = campaign.development();
-		Round round = development.round();
-		if (!isAdmissible() || round == null || development.author() != null || authorFailures >= AUTHOR_FAILURE_LIMIT ||
-			freeCapacity() <= 0 || !campaign.throttle().allowsAdmission(now) || hasAuthorSession())
+		boolean started = false;
+		while (isAdmissible() && campaign.development().round() != null && campaign.development().author() == null &&
+			authorFailures < AUTHOR_FAILURE_LIMIT && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
 		{
-			return false;
+			Round round = campaign.development().round();
+			if (round.weak() && campaign.trials().stream().anyMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT))
+				break;
+			if (!round.weak() && hasAuthorSession())
+				break;
+			Optional<Entry<Integer, String>> reservation = reserveAuthor();
+			if (reservation.isEmpty())
+				break;
+
+			startAuthorSession(reservation.get().getKey(), reservation.get().getValue());
+			started = true;
+			if (!round.weak())
+				break;
+		}
+		return started;
+	}
+
+	/**
+	 * Finds an unfinished author reservation whose session is absent, or reserves the next unstarted attempt.
+	 *
+	 * @return the reservation in launch order, or empty when every slot has a session or has been submitted
+	 * @throws IOException if a new reservation cannot be persisted
+	 */
+	private Optional<Entry<Integer, String>> reserveAuthor() throws IOException
+	{
+		Round round = campaign.development().round();
+		for (Entry<Integer, String> entry : round.pendingAuthorAttempts().entrySet())
+		{
+			if (!isAuthorRunning(entry.getKey()))
+				return Optional.of(entry);
 		}
 		Optional<String> category = round.nextCategory();
 		if (category.isEmpty())
-			return false;
-		Candidate working = development.working();
+			return Optional.empty();
+
+		record(new CampaignEvent.StartAuthorAttempt(category.get()));
+		return campaign.development().round().pendingAuthorAttempts().entrySet().stream().
+			filter(entry -> !isAuthorRunning(entry.getKey())).findFirst();
+	}
+
+	/**
+	 * Indicates whether an author reservation has a running session in this slice.
+	 *
+	 * @param number the reserved attempt number
+	 * @return whether that session is running
+	 */
+	private boolean isAuthorRunning(int number)
+	{
+		return inFlight.values().stream().anyMatch(session -> session instanceof InFlight.Author author &&
+			author.number() == number);
+	}
+
+	/**
+	 * Launches an already persisted author reservation from the unchanged working candidate and its frozen evidence.
+	 *
+	 * @param number the reserved attempt number
+	 * @param category the addressed cell
+	 * @throws IOException if the workspace or overlay cannot be read or written
+	 */
+	private void startAuthorSession(int number, String category) throws IOException
+	{
+		Candidate working = campaign.development().working();
 		Overlay overlay = context.overlays().require(working.snapshot());
 		Path copy = context.workspace().prepareAuthoringCopy(overlay);
 		try
 		{
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
-			AuthorBrief brief = AuthorBrief.of(campaign, category.get(), overlay.fork());
+			AuthorBrief brief = AuthorBrief.of(campaign, category, overlay.fork());
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
-			register(new InFlight.Author(category.get(), working, overlay, copy, before, brief, handle));
+			register(new InFlight.Author(number, category, working, overlay, copy, before, brief, handle));
 		}
 		catch (IOException e)
 		{
 			context.workspace().deleteAuthoringCopy(copy);
 			authorFailed("The author session could not start: " + describe(e));
 		}
-		return true;
 	}
 
 	/**
@@ -928,7 +983,7 @@ public final class Driver implements AutoCloseable
 				context.overlays().save(candidate.get());
 				snapshot = candidate.get().identity();
 			}
-			record(new CampaignEvent.SubmitAuthorAttempt(author.category(), snapshot, changes.get()));
+			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.category(), snapshot, changes.get()));
 		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
@@ -979,7 +1034,7 @@ public final class Driver implements AutoCloseable
 		Development development = campaign.development();
 		Round round = development.round();
 		return round != null && development.author() == null && development.working().equals(author.working()) &&
-			round.attempts().getOrDefault(author.category(), Round.ATTEMPTS) < Round.ATTEMPTS;
+			author.category().equals(round.pendingAuthorAttempts().get(author.number()));
 	}
 
 	/**

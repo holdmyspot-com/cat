@@ -75,8 +75,7 @@ public final class PlateauTest
 	public void completeRoundWithoutPromotionIsPlateau()
 	{
 		// Requirement: R-D6
-		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
+		Campaign campaign = TransitionSteps.submit(lastAttempt(), "safety", ATTEMPT, List.of());
 		AuthorAttempt author = campaign.development().author();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT,
 			author.runs().getFirst().instance(), Verdict.FAIL);
@@ -96,12 +95,12 @@ public final class PlateauTest
 	public void interruptionNeverEstablishesPlateau()
 	{
 		// Requirement: R-D6
-		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
+		Campaign campaign = TransitionSteps.submit(lastAttempt(), "safety", ATTEMPT, List.of());
 		AuthorAttempt author = campaign.development().author();
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, author.number(), ATTEMPT,
 			author.runs().getFirst().instance());
 		AuthorAttempt assigned = campaign.development().author();
+		Round beforeInterruption = campaign.development().round();
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
@@ -112,7 +111,7 @@ public final class PlateauTest
 
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.pending(), "pending").isNull();
-		requireThat(campaign.development().round(), "round").isEqualTo(round(2, 1));
+		requireThat(campaign.development().round(), "round").isEqualTo(beforeInterruption);
 		requireThat(campaign.development().author(), "author").isEqualTo(assigned);
 	}
 
@@ -123,8 +122,7 @@ public final class PlateauTest
 	public void promotionEndsRoundWithoutPlateau()
 	{
 		// Requirement: R-D6
-		Campaign campaign = CampaignTransitions.apply(lastAttempt(),
-			new CampaignEvent.SubmitAuthorAttempt("safety", ATTEMPT, List.of()));
+		Campaign campaign = TransitionSteps.submit(lastAttempt(), "safety", ATTEMPT, List.of());
 		AuthorAttempt author = campaign.development().author();
 		for (PromotionRun run : author.runs())
 		{
@@ -145,6 +143,6 @@ public final class PlateauTest
 	public void categoryGetsTwoAttempts()
 	{
 		// Requirement: R-D6
-		CampaignTransitions.apply(lastAttempt(), new CampaignEvent.SubmitAuthorAttempt("formatting", ATTEMPT, List.of()));
+		TransitionSteps.submit(lastAttempt(), "formatting", ATTEMPT, List.of());
 	}
 }

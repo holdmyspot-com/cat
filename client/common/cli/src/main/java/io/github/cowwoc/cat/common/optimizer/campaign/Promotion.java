@@ -65,7 +65,24 @@ public final class Promotion
 	public static List<PromotionRun> plan(String category, List<TrialInstance> failures,
 		List<RegressionInstance> regressionSet, Generator generator)
 	{
-		requireThat(category, "category").isNotNull();
+		return plan(List.of(category), failures, regressionSet, generator);
+	}
+
+	/**
+	 * Plans promotion runs for all triggering cells of one addressed category.
+	 *
+	 * @param categories the triggering cells
+	 * @param failures the received failures
+	 * @param regressionSet the regression set
+	 * @param generator the targeting generator
+	 * @return the same triggering, regression and reference plan used for single-cell attempts
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if categories is empty
+	 */
+	public static List<PromotionRun> plan(List<String> categories, List<TrialInstance> failures,
+		List<RegressionInstance> regressionSet, Generator generator)
+	{
+		requireThat(categories, "categories").isNotEmpty();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(generator, "generator").isNotNull();
@@ -73,7 +90,7 @@ public final class Promotion
 		List<TrialInstance> triggeringInstances = new ArrayList<>();
 		for (TrialInstance failure : failures)
 		{
-			if (!failure.cellId().equals(category))
+			if (!categories.contains(failure.cellId()))
 				continue;
 			TrialInstance instance = generator.markTargeted(failure);
 			triggeringInstances.add(instance);

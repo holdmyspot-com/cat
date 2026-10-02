@@ -391,6 +391,12 @@ public final class CampaignBuilder
 	public CampaignBuilder author(AuthorAttempt value)
 	{
 		this.author = value;
+		if (round != null)
+		{
+			if (!round.reservations().containsKey(value.number()))
+				round = round.reserve(value.number(), value.category());
+			round = round.withAttempt(value);
+		}
 		this.authorAttempts = Math.max(authorAttempts, value.number());
 		return this;
 	}

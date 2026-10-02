@@ -106,9 +106,29 @@ public final class Scheduler
 			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, instance.cellId(),
 				instance, allocations.of(AllocationRule.TARGETED)));
 		}
-		AuthorAttempt author = development.author();
-		if (author == null || Promotion.decide(author, campaign.lineage().regressionSet()) != Promotion.Decision.PENDING)
+		Round round = development.round();
+		if (round != null && round.weak() && development.author() == null)
+		{
+			for (AuthorAttempt attempt : round.validationAttempts())
+				planPromotion(attempt, working, plan, allocations);
 			return;
+		}
+		AuthorAttempt author = development.author();
+		if (author != null && Promotion.decide(author, campaign.lineage().regressionSet()) == Promotion.Decision.PENDING)
+			planPromotion(author, working, plan, allocations);
+	}
+
+	/**
+	 * Plans every unassigned run of an attempt, including runs after an early weak-contender rejection.
+	 *
+	 * @param author the attempt
+	 * @param working the working snapshot
+	 * @param plan the planned admissions
+	 * @param allocations the allocation decisions
+	 */
+	private static void planPromotion(AuthorAttempt author, Sha256 working, List<Admission> plan,
+		Allocations allocations)
+	{
 		for (PromotionRun run : author.runs())
 		{
 			if (run.trial() != null || run.verdict() != null)

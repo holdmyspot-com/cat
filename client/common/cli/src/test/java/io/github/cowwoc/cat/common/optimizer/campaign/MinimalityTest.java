@@ -42,9 +42,9 @@ public final class MinimalityTest
 		Sha256 snapshot = CampaignBuilder.snapshot("attempt");
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).failure(failure).
 			round(new Round(Map.of("safety", 0))).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt("safety", snapshot, List.of(
+		campaign = TransitionSteps.submit(campaign, "safety", snapshot, List.of(
 			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
-				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--")))));
+				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
 		for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, failure, Verdict.PASS);
 		requireThat(campaign.development().working().number(), "working").isEqualTo(1);

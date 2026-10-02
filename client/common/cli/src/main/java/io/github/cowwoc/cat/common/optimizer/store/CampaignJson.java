@@ -14,6 +14,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
@@ -108,8 +109,9 @@ import tools.jackson.databind.node.ObjectNode;
  * observed model and reasoning are recorded per cell. Version 3 adds the development cell tier: the cells in which a
  * candidate failed ({@code failed_cells}) and whether development has widened ({@code development.widened}). It also
  * stores a contract whose tests hold their deterministic checks with the checks' controls, their discarded checks and
- * the core-task requirement. Version 2 lacked these and version 1 keyed by category. Versions 1 through 3 are refused
- * rather than migrated. Big numbers and instants are written as strings so that they round-trip exactly.
+ * the core-task requirement. Version 2 lacked these and version 1 keyed by category. Version 5 adds concurrent
+ * attempt reservations, original promotion evidence and winner selection. Versions 1 through 4 are refused rather than
+ * migrated. Big numbers and instants are written as strings so that they round-trip exactly.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -121,7 +123,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 4;
+	private static final int FORMAT_VERSION = 5;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -339,6 +341,20 @@ final class CampaignJson
 					tokens.add(token);
 			}
 		}
+		ArrayNode results = node.putArray("attempts");
+		for (AttemptResult result : evidence.attempts())
+		{
+			ObjectNode attempt = results.addObject();
+			attempt.put("round", result.round());
+			attempt.put("working", result.working().hex());
+			attempt.put("number", result.number());
+			attempt.put("cell", result.category());
+			attempt.put("snapshot", result.snapshot().hex());
+			attempt.set("runs", writePromotionRuns(result.runs()));
+			attempt.put("changed_lines", result.changedLines());
+			attempt.put("accepted", result.accepted());
+			attempt.put("winner", result.winner());
+		}
 		return node;
 	}
 
@@ -380,7 +396,15 @@ final class CampaignJson
 			}
 			inputs.put(new Sha256(snapshot.getKey()), cells);
 		}
-		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs);
+		List<AttemptResult> results = new ArrayList<>();
+		for (JsonNode attempt : elements(node, "attempts"))
+		{
+			results.add(new AttemptResult(integer(attempt, "round"), sha256(attempt, "working"),
+				integer(attempt, "number"), text(attempt, "cell"), sha256(attempt, "snapshot"),
+				readPromotionRuns(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
+				bool(attempt, "winner")));
+		}
+		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs, results);
 	}
 
 	/**
@@ -615,39 +639,104 @@ final class CampaignJson
 			node.putNull("round");
 		else
 		{
-			ArrayNode attempts = node.putArray("round");
+			ObjectNode roundNode = node.putObject("round");
+			roundNode.put("weak", round.weak());
+			ArrayNode attempts = roundNode.putArray("attempts");
 			for (Entry<String, Integer> entry : round.attempts().entrySet())
 			{
 				ObjectNode element = attempts.addObject();
 				element.put("cell", entry.getKey());
 				element.put("attempts", entry.getValue());
 			}
+			ArrayNode reservations = roundNode.putArray("reservations");
+			for (Entry<Integer, String> entry : round.reservations().entrySet())
+			{
+				ObjectNode reservation = reservations.addObject();
+				reservation.put("number", entry.getKey());
+				reservation.put("cell", entry.getValue());
+			}
+			ArrayNode contenders = roundNode.putArray("contenders");
+			for (AuthorAttempt attempt : round.validationAttempts())
+				contenders.add(writeAuthorAttempt(attempt));
 		}
 		AuthorAttempt author = development.author();
 		if (author == null)
 			node.putNull("author");
 		else
-		{
-			ObjectNode element = node.putObject("author");
-			element.put("number", author.number());
-			element.put("cell", author.category());
-			element.put("snapshot", author.snapshot().hex());
-			element.set("minimality", writeMinimality(author.minimality()));
-			ArrayNode runs = element.putArray("runs");
-			for (PromotionRun run : author.runs())
-			{
-				ObjectNode runNode = runs.addObject();
-				runNode.put("role", run.role().name());
-				runNode.set("instance", writeInstance(run.instance()));
-				putKey(runNode, "trial", run.trial());
-				putConstant(runNode, "verdict", run.verdict());
-			}
-		}
+			node.set("author", writeAuthorAttempt(author));
 		ObjectNode reviewPoints = node.putObject("review_points");
 		for (Entry<String, Integer> entry : new TreeMap<>(development.reviewPoints()).entrySet())
 			reviewPoints.put(entry.getKey(), entry.getValue());
 		node.put("widened", development.widened());
 		return node;
+	}
+
+	/**
+	 * Writes one author attempt and all promotion or reduction progress.
+	 *
+	 * @param attempt the attempt
+	 * @return its document
+	 */
+	private ObjectNode writeAuthorAttempt(AuthorAttempt attempt)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("number", attempt.number());
+		node.put("cell", attempt.category());
+		node.put("snapshot", attempt.snapshot().hex());
+		node.set("minimality", writeMinimality(attempt.minimality()));
+		node.set("runs", writePromotionRuns(attempt.runs()));
+		return node;
+	}
+
+	/**
+	 * Writes the targeted evidence used by promotion, minimality and retained reports.
+	 *
+	 * @param runs the promotion runs
+	 * @return their documents
+	 */
+	private ArrayNode writePromotionRuns(List<PromotionRun> runs)
+	{
+		ArrayNode array = json.createArrayNode();
+		for (PromotionRun run : runs)
+		{
+			ObjectNode node = array.addObject();
+			node.put("role", run.role().name());
+			node.set("instance", writeInstance(run.instance()));
+			putKey(node, "trial", run.trial());
+			putConstant(node, "verdict", run.verdict());
+		}
+		return array;
+	}
+
+	/**
+	 * Reads an author attempt without reconstructing its evidence.
+	 *
+	 * @param node its document
+	 * @return the attempt
+	 */
+	private static AuthorAttempt readAuthorAttempt(JsonNode node)
+	{
+		return new AuthorAttempt(integer(node, "number"), text(node, "cell"), sha256(node, "snapshot"),
+			readPromotionRuns(node, "runs"), readMinimality(field(node, "minimality")));
+	}
+
+	/**
+	 * Reads targeted promotion evidence.
+	 *
+	 * @param node the parent document
+	 * @param name the array field
+	 * @return the runs in plan order
+	 */
+	private static List<PromotionRun> readPromotionRuns(JsonNode node, String name)
+	{
+		List<PromotionRun> runs = new ArrayList<>();
+		for (JsonNode run : elements(node, name))
+		{
+			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
+				readInstance(field(run, "instance")), nullableKey(run, "trial"),
+				nullableConstant(run, "verdict", Verdict.class)));
+		}
+		return runs;
 	}
 
 	/**
@@ -763,28 +852,28 @@ final class CampaignJson
 		if (roundNode != null)
 		{
 			Map<String, Integer> attempts = new LinkedHashMap<>();
-			for (JsonNode element : elements(node, "round"))
+			for (JsonNode element : elements(roundNode, "attempts"))
 			{
 				String cell = text(element, "cell");
 				if (attempts.put(cell, integer(element, "attempts")) != null)
 					throw new IllegalArgumentException("round: duplicate cell " + cell);
 			}
-			round = new Round(attempts);
+			Map<Integer, String> reservations = new LinkedHashMap<>();
+			for (JsonNode reservation : elements(roundNode, "reservations"))
+			{
+				int number = integer(reservation, "number");
+				if (reservations.put(number, text(reservation, "cell")) != null)
+					throw new IllegalArgumentException("round: duplicate reservation " + number);
+			}
+			List<AuthorAttempt> contenders = new ArrayList<>();
+			for (JsonNode contender : elements(roundNode, "contenders"))
+				contenders.add(readAuthorAttempt(contender));
+			round = new Round(attempts, bool(roundNode, "weak"), reservations, contenders);
 		}
 		AuthorAttempt author = null;
 		JsonNode authorNode = nullable(node, "author");
 		if (authorNode != null)
-		{
-			List<PromotionRun> runs = new ArrayList<>();
-			for (JsonNode run : elements(authorNode, "runs"))
-			{
-				runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
-					readInstance(field(run, "instance")), nullableKey(run, "trial"),
-					nullableConstant(run, "verdict", Verdict.class)));
-			}
-			author = new AuthorAttempt(integer(authorNode, "number"), text(authorNode, "cell"),
-				sha256(authorNode, "snapshot"), runs, readMinimality(field(authorNode, "minimality")));
-		}
+			author = readAuthorAttempt(authorNode);
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));

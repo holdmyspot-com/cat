@@ -296,6 +296,35 @@ final class Draft
 	}
 
 	/**
+	 * Finds a validating contender or selected attempt by its reserved number.
+	 *
+	 * @param number the attempt number
+	 * @return the attempt, or null if it is absent
+	 */
+	AuthorAttempt findAuthor(int number)
+	{
+		if (author != null && author.number() == number)
+			return author;
+		if (round == null || !round.weak())
+			return null;
+		return round.validationAttempts().stream().filter(attempt -> attempt.number() == number).findFirst().
+			orElse(null);
+	}
+
+	/**
+	 * Replaces either the selected attempt or one concurrent contender.
+	 *
+	 * @param attempt the updated attempt
+	 */
+	void updateAuthor(AuthorAttempt attempt)
+	{
+		if (author != null && author.number() == attempt.number())
+			author = attempt;
+		else
+			round = round.withAttempt(attempt);
+	}
+
+	/**
 	 * Starts a development series for a working candidate, which discards the previous series' state.
 	 *
 	 * @param candidate the working candidate

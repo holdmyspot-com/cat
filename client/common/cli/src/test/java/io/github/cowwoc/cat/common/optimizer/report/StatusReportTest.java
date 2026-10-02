@@ -11,6 +11,13 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
+import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
+import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -55,6 +62,72 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class StatusReportTest
 {
+	/**
+	 * Every retained round attempt reports its passing and total promotion runs, acceptance, and winner.
+	 */
+	@Test
+	public void reportsEachAttemptAndWinner()
+	{
+		// Requirement: R-D12
+		TrialInstance trigger = CampaignBuilder.targeted("safety", "cache");
+		List<PromotionRun> passed = List.of(
+			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
+				CampaignBuilder.snapshot("author-1"), "safety", 1), Verdict.PASS),
+			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
+				CampaignBuilder.snapshot("author-1"), "safety", 2), Verdict.PASS));
+		List<PromotionRun> failed = List.of(
+			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
+				CampaignBuilder.snapshot("author-2"), "safety", 1), Verdict.PASS),
+			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
+				CampaignBuilder.snapshot("author-2"), "safety", 2), Verdict.FAIL));
+		Sha256 working = CampaignBuilder.snapshot("candidate-1");
+		List<AttemptResult> results = List.of(
+			new AttemptResult(1, working, 1, "safety", CampaignBuilder.snapshot("author-1"), passed, 4, true, true),
+			new AttemptResult(1, working, 2, "safety", CampaignBuilder.snapshot("author-2"), failed, 2, false, false));
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), results);
+		StatusReport report = StatusReport.of(new CampaignBuilder().confirmed().working(1).
+			optimization(evidence).build(), ReportEvidence.NONE);
+		JsonNode attempts = report.toJson(JsonMapper.builder().build()).get("author_attempts");
+
+		requireThat(attempts, "attempts").isNotNull();
+		requireThat(attempts.size(), "attempts").isEqualTo(2);
+		requireThat(attempts.get(0).get("round").asInt(), "round").isEqualTo(1);
+		requireThat(attempts.get(0).get("number").asInt(), "attemptNumber").isEqualTo(1);
+		requireThat(attempts.get(0).get("passing_runs").asInt(), "passingRuns").isEqualTo(2);
+		requireThat(attempts.get(0).get("total_runs").asInt(), "totalRuns").isEqualTo(2);
+		requireThat(attempts.get(0).get("accepted").asBoolean(), "accepted").isTrue();
+		requireThat(attempts.get(0).get("winner").asBoolean(), "winner").isTrue();
+		requireThat(attempts.get(1).get("passing_runs").asInt(), "passingRuns").isEqualTo(1);
+		requireThat(attempts.get(1).get("total_runs").asInt(), "totalRuns").isEqualTo(2);
+		requireThat(attempts.get(1).get("accepted").asBoolean(), "accepted").isFalse();
+		requireThat(attempts.get(1).get("winner").asBoolean(), "winner").isFalse();
+		requireThat(report.summary(), "summary").contains("Attempt 1").contains("2/2").
+			contains("accepted: true").contains("winner: true").contains("Attempt 2").contains("1/2").
+			contains("accepted: false").contains("winner: false");
+	}
+
+	/**
+	 * A reserved attempt appears before its author returns, with acceptance still pending.
+	 */
+	@Test
+	public void reportsPendingAttempt()
+	{
+		// Requirement: R-D12
+		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+			round(new Round(Map.of("safety", 0), true, Map.of(1, "safety"), List.of())).build();
+		JsonNode attempts = StatusReport.of(campaign, ReportEvidence.NONE).
+			toJson(JsonMapper.builder().build()).get("author_attempts");
+		requireThat(attempts, "attempts").isNotNull();
+		requireThat(attempts.size(), "attempts").isEqualTo(1);
+		requireThat(attempts.get(0).get("number").asInt(), "attemptNumber").isEqualTo(1);
+		requireThat(attempts.get(0).get("passing_runs").asInt(), "passingRuns").isEqualTo(0);
+		requireThat(attempts.get(0).get("total_runs").asInt(), "totalRuns").isEqualTo(0);
+		requireThat(attempts.get(0).get("accepted").isNull(), "acceptancePending").isTrue();
+		requireThat(attempts.get(0).get("snapshot").isNull(), "authorPending").isTrue();
+		requireThat(attempts.get(0).get("winner").asBoolean(), "winner").isFalse();
+	}
+
+
 	/**
 	 * The tolerance for floating-point comparisons.
 	 */

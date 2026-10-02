@@ -53,6 +53,7 @@ sealed interface InFlight
 	/**
 	 * An author session.
 	 *
+	 * @param number the reserved launch-order attempt number
 	 * @param category the identifier of the cell (one category under one trial profile) that the attempt targets
 	 * @param working the working candidate that the attempt edits
 	 * @param overlay the working candidate's overlay
@@ -61,8 +62,8 @@ sealed interface InFlight
 	 * @param brief the exact evidence supplied to this session
 	 * @param handle the session
 	 */
-	record Author(String category, Candidate working, Overlay overlay, Path copy, FileInventory before, AuthorBrief brief,
-		SessionHandle handle) implements InFlight
+	record Author(int number, String category, Candidate working, Overlay overlay, Path copy, FileInventory before,
+		AuthorBrief brief, SessionHandle handle) implements InFlight
 	{
 	}
 

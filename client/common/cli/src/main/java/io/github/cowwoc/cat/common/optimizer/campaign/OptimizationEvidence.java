@@ -17,9 +17,11 @@ import java.util.HashMap;
  * @param removed the hunks removed from promoted attempts
  * @param promptSizes measured prompt sizes by snapshot
  * @param trialInputs completed trial input observations by snapshot and cell
+ * @param attempts retained original promotion results in launch order
  */
 public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
-	Map<Sha256, PromptSize> promptSizes, Map<Sha256, Map<String, TrialInputs>> trialInputs)
+	Map<Sha256, PromptSize> promptSizes, Map<Sha256, Map<String, TrialInputs>> trialInputs,
+	List<AttemptResult> attempts)
 {
 	/**
 	 * No descriptive evidence has been recorded.
@@ -33,6 +35,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	 * @param removed the removed hunks
 	 * @param promptSizes measured prompt sizes by snapshot
 	 * @param trialInputs completed trial input observations by snapshot and cell
+	 * @param attempts retained original promotion results in launch order
 	 * @throws NullPointerException if an argument or element is null
 	 */
 	public OptimizationEvidence
@@ -44,6 +47,21 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		for (Map.Entry<Sha256, Map<String, TrialInputs>> entry : trialInputs.entrySet())
 			copied.put(entry.getKey(), Map.copyOf(entry.getValue()));
 		trialInputs = Map.copyOf(copied);
+		attempts = List.copyOf(attempts);
+	}
+
+	/**
+	 * Creates fresh descriptive evidence with no author promotion results.
+	 *
+	 * @param authors the author diagnoses
+	 * @param removed the removed hunks
+	 * @param promptSizes the prompt measurements
+	 * @param trialInputs the trial observations
+	 */
+	public OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
+		Map<Sha256, PromptSize> promptSizes, Map<Sha256, Map<String, TrialInputs>> trialInputs)
+	{
+		this(authors, removed, promptSizes, trialInputs, List.of());
 	}
 
 	/**
@@ -64,6 +82,6 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		Map<String, TrialInputs> cells = new HashMap<>(trialInputs.getOrDefault(snapshot, Map.of()));
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
 		updated.put(snapshot, cells);
-		return new OptimizationEvidence(authors, removed, promptSizes, updated);
+		return new OptimizationEvidence(authors, removed, promptSizes, updated, attempts);
 	}
 }

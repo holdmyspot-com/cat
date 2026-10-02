@@ -1,5 +1,5 @@
 {
-  "format_version" : 4,
+  "format_version" : 5,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -212,7 +212,8 @@
     "authors" : [ ],
     "removed" : [ ],
     "prompt_sizes" : { },
-    "trial_inputs" : { }
+    "trial_inputs" : { },
+    "attempts" : [ ]
   },
   "failed_cells" : [ ],
   "baseline" : {
