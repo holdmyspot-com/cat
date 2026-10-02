@@ -78,6 +78,17 @@ final class InMemoryForks implements Forks
 		return List.copyOf(added);
 	}
 
+	/**
+	 * Supplies a captured inventory, including symbolic-link entries that {@link Fork}'s scanner records.
+	 *
+	 * @param campaign the campaign storage directory
+	 * @param inventory the captured files and links supplied to subsequent fork reads
+	 */
+	void setInventory(Path campaign, FileInventory inventory)
+	{
+		inventories.put(campaign, inventory);
+	}
+
 	@Override
 	public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
 	{

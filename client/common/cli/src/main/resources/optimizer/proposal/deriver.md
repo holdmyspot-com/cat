@@ -153,6 +153,13 @@ the `evidence`: the file and the text that show it.
   needs an external service without read-only credentials or disposable fixtures.
 - `unsupported_test_interaction`: a material obligation needs a follow-up turn chosen from the agent's reply.
 
+### Conflicts
+
+`conflicts` lists every set of requirements that no reply can satisfy together, with the `requirement_ids` and the
+`evidence`: the file and the text that show the conflict. Report the conflict; do not decide which requirement
+prevails, and do not narrow a requirement to remove it. On a revision, drop a conflict that the user's feedback
+resolves and apply the resolution to the requirements it affects.
+
 ### Profile restriction
 
 `profile_restriction` lists the trial profiles that the user's feedback restricts every category to, as patterns over

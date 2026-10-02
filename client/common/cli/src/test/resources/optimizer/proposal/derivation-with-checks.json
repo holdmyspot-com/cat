@@ -222,6 +222,7 @@
 			"rule": "The harness reads the project instruction file in the project root at startup."
 		}
 	],
+	"conflicts": [],
 	"scope_conditions": [
 		{
 			"condition": "unsupported_output",

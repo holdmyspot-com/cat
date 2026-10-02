@@ -14,6 +14,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.port.FakeProfileInventory;
@@ -26,6 +28,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -1022,6 +1025,120 @@ public final class OptimizerCoreTest
 			Campaign stored = repository.load(id);
 			requireThat(stored.authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(target));
 			requireThat(stored.pending(), "pending").isNull();
+		}
+	}
+
+	/**
+	 * Verifies that conflicts refuse confirmation without changing the campaign, and feedback can resolve them.
+	 *
+	 * @throws IOException if the owned repository cannot be read or written
+	 * @throws CommandRefusedException if a command other than the expected refusal is refused
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	@Test
+	public void conflictRefusalAndRevision() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-C13
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				ArrayNode conflicts = output.putArray("conflicts");
+				if (count == 0)
+				{
+					ObjectNode conflict = conflicts.addObject();
+					conflict.putArray("requirement_ids").add("r1").add("r2");
+					conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
+				}
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path snapshot = repository.directory(id).resolve("campaign.json");
+			String before = Files.readString(snapshot);
+			try
+			{
+				repository.core().confirm(id);
+				requireThat(false, "refused").isTrue();
+			}
+			catch (CommandRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").isEqualTo("Confirmation is refused because the proposal " +
+					"lists conflicting requirements: `r1` and `r2`. Run revise with feedback that resolves each conflict.");
+			}
+			requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
+			repository.core().revise(id, "Exempt full explanations from the brevity requirement.");
+			repository.core().confirm(id);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Supplies conflict-only and combined link/conflict blockers.
+	 *
+	 * @return whether to add a broken link
+	 */
+	@DataProvider
+	public Object[][] confirmationBlockers()
+	{
+		return new Object[][] {{false}, {true}};
+	}
+
+	/**
+	 * Verifies exact formatting of several conflict groups, including three identifiers, with links listed first.
+	 *
+	 * @param brokenLink whether a broken symbolic link also blocks confirmation
+	 * @throws IOException if the owned repository cannot be read or written
+	 * @throws CommandRefusedException for the expected confirmation refusal
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	@Test(dataProvider = "confirmationBlockers", expectedExceptions = CommandRefusedException.class,
+		expectedExceptionsMessageRegExp = ".*Confirmation is refused because the proposal lists conflicting " +
+			"requirements: `r1`, `r2` and `core-task`; `r2` and `r1`\\. Run revise with feedback that resolves each " +
+			"conflict\\.")
+	public void confirmListsEveryBlocker(boolean brokenLink)
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-C13
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				ArrayNode conflicts = output.putArray("conflicts");
+				ObjectNode first = conflicts.addObject();
+				first.putArray("requirement_ids").add("r1").add("r2").add("core-task");
+				first.put("evidence", "CLAUDE.md: three incompatible instructions.");
+				ObjectNode second = conflicts.addObject();
+				second.putArray("requirement_ids").add("r2").add("r1");
+				second.put("evidence", "rules/safety.md: another conflict.");
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			if (brokenLink)
+			{
+				ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
+				Map<Path, FileEntry> entries = new TreeMap<>(fork.inventory().entries());
+				entries.put(Path.of("broken.md"), new FileEntry.SymbolicLink(Path.of("missing.md")));
+				repository.forks().setInventory(repository.directory(id), new FileInventory(repository.root(), entries));
+			}
+			Path snapshot = repository.directory(id).resolve("campaign.json");
+			String before = Files.readString(snapshot);
+			try
+			{
+				repository.core().confirm(id);
+			}
+			catch (CommandRefusedException e)
+			{
+				String expected = "Confirmation is refused because the proposal lists conflicting requirements: " +
+					"`r1`, `r2` and `core-task`; `r2` and `r1`. Run revise with feedback that resolves each conflict.";
+				if (brokenLink)
+				{
+					expected = "These symbolic links block confirmation until they are resolved: broken.md. " + expected;
+				}
+				requireThat(e.getMessage(), "message").isEqualTo(expected);
+				throw e;
+			}
+			finally
+			{
+				requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
+			}
 		}
 	}
 }

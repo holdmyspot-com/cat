@@ -34,7 +34,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * The deriver's output follows the proposal schema without the judge fields, the trial profiles and the discarded
  * checks that CAT owns, plus the deriver's additional findings: the prompt files whose loading no
- * harness event reports, the user's profile restriction, and the conditions that make certification unavailable.
+ * harness event reports, the user's profile restriction, the conditions that make certification unavailable,
+ * and the groups of requirements that no reply can satisfy together.
  * CAT adds its judge fields and the core-task requirement, which every test checks, computes the trial profiles, and
  * runs each deterministic check against its controls before validating the proposal. It rejects
  * output that supplies a field that CAT owns or a requirement with the core-task requirement's identifier, or omits
@@ -212,6 +213,8 @@ public final class DeriverProtocol
 		List<String> problems = new ArrayList<>();
 		Findings findings = new Findings(problems);
 		JsonNode scopeNode = output.remove(Findings.SCOPE_CONDITIONS);
+		JsonNode conflictsNode = output.remove(Findings.CONFLICTS);
+		List<Conflict> conflicts = findings.conflicts(conflictsNode);
 		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(Findings.DERIVED_SOURCES));
 		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
 		List<TrialProfile> restriction = findings.profileRestriction(
@@ -238,7 +241,8 @@ public final class DeriverProtocol
 			contract = schema.parse(json.writeValueAsString(output), (requirements, categories) ->
 				TrialProfiles.compute(profiles.inventory(), profiles.bindingsOf(requirements), restriction,
 					requirements, categories, Set.of(Requirement.CORE_TASK.id())));
-			findings.checkRequirements(scopeNode, contract);
+			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
+			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 			problems.addAll(scenarios.missingCitations(contract, derivedSources));
 		}
 		catch (InvalidProposalException e)
@@ -247,7 +251,8 @@ public final class DeriverProtocol
 		}
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
-		return new DerivedProposal(contract, derivedSources, scopeConditions, result.promptSources(), derivation);
+		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, result.promptSources(),
+			derivation);
 	}
 
 	/**

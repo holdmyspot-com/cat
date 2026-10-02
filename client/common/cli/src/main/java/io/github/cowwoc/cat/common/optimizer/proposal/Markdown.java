@@ -109,6 +109,7 @@ final class Markdown
 		symbolicLinks();
 		authentication();
 		sessionCount();
+		conflicts();
 		scope();
 		limitations();
 		return text.toString();
@@ -521,6 +522,27 @@ final class Markdown
 		if (group.size() > 1)
 			description += " (" + group.size() + " cells)";
 		return description;
+	}
+
+	/**
+	 * Lists every group of requirements that no reply can satisfy together.
+	 */
+	private void conflicts()
+	{
+		heading("Conflicts");
+		if (derived.conflicts().isEmpty())
+		{
+			text.append("The deriver found no requirements that conflict.\n");
+			return;
+		}
+		text.append("No reply can satisfy each group of requirements below together. Confirmation is refused " +
+			"until your feedback resolves each conflict, for example by exempting one requirement from another or " +
+			"by dropping one:\n\n");
+		for (Conflict conflict : derived.conflicts())
+		{
+			text.append("- `").append(String.join("`, `", conflict.requirementIds())).append("`: ").
+				append(conflict.evidence()).append('\n');
+		}
 	}
 
 	/**

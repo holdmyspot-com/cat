@@ -268,12 +268,7 @@ public final class OptimizerCore implements Core
 			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
 		Proposal proposal = proposal(root, loaded, fork, derived);
 		if (!proposal.isConfirmable())
-		{
-			List<String> blocking = LinkReport.of(fork.inventory(), authority(root, loaded)).blocking().
-				stream().map(entry -> entry.link().toString()).toList();
-			throw new CommandRefusedException("These symbolic links block confirmation until they are resolved: " +
-				String.join(", ", blocking));
-		}
+			throw new CommandRefusedException(proposal.confirmationRefusal());
 		loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
 		return apply(root, loaded, proposal.confirmation(scope.random().nextLong()));
 	}

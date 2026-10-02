@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.StringJoiner;
 
 /**
  * The contract proposal that the user confirms or answers with feedback.
@@ -140,13 +141,42 @@ public final class Proposal
 
 	/**
 	 * Indicates whether the user may confirm the proposal. A link cycle or a link to a missing target blocks
-	 * confirmation until the user resolves it.
+	 * confirmation until the user resolves it. Conflicting requirements also block confirmation.
 	 *
-	 * @return {@code true} if no link blocks confirmation
+	 * @return {@code true} if no link or conflict blocks confirmation
 	 */
 	public boolean isConfirmable()
 	{
-		return links.blocking().isEmpty();
+		return links.blocking().isEmpty() && derived.conflicts().isEmpty();
+	}
+
+	/**
+	 * Returns the reason confirmation is refused, listing blocking links before conflicting requirements.
+	 *
+	 * @return the refusal message, or an empty string if confirmation is allowed
+	 */
+	public String confirmationRefusal()
+	{
+		String linksMessage = "";
+		List<String> blocking = links.blocking().stream().map(entry -> entry.link().toString()).toList();
+		if (!blocking.isEmpty())
+		{
+			linksMessage = "These symbolic links block confirmation until they are resolved: " +
+				String.join(", ", blocking);
+		}
+		if (derived.conflicts().isEmpty())
+			return linksMessage;
+		StringJoiner groups = new StringJoiner("; ");
+		for (Conflict conflict : derived.conflicts())
+		{
+			List<String> ids = conflict.requirementIds().stream().map(id -> "`" + id + "`").toList();
+			groups.add(String.join(", ", ids.subList(0, ids.size() - 1)) + " and " + ids.getLast());
+		}
+		String conflictsMessage = "Confirmation is refused because the proposal lists conflicting requirements: " +
+			groups + ". Run revise with feedback that resolves each conflict.";
+		if (linksMessage.isEmpty())
+			return conflictsMessage;
+		return linksMessage + ". " + conflictsMessage;
 	}
 
 	/**
@@ -165,16 +195,12 @@ public final class Proposal
 	 *
 	 * @param seed the seed of the contract's draw streams
 	 * @return the events, in the order to apply them
-	 * @throws IllegalStateException if a link blocks confirmation
+	 * @throws IllegalStateException if a link or conflict blocks confirmation
 	 */
 	public List<CampaignEvent> confirmation(long seed)
 	{
 		if (!isConfirmable())
-		{
-			List<String> blocking = links.blocking().stream().map(entry -> entry.link().toString()).toList();
-			throw new IllegalStateException("These symbolic links block confirmation until they are resolved: " +
-				String.join(", ", blocking));
-		}
+			throw new IllegalStateException(confirmationRefusal());
 		List<CampaignEvent> events = new ArrayList<>();
 		events.add(new CampaignEvent.Confirm(contract, contractHash, seed));
 		Set<Outcome> outcomes = new LinkedHashSet<>();

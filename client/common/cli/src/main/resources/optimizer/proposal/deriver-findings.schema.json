@@ -27,6 +27,22 @@
 				}
 			}
 		},
+		"conflicts": {
+			"description": "Every set of requirements that no reply can satisfy together. Empty if none.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["requirement_ids", "evidence"],
+				"properties": {
+					"requirement_ids": {
+						"type": "array", "minItems": 2, "uniqueItems": true,
+						"items": {"type": "string", "pattern": "\\S"}
+					},
+					"evidence": {"description": "The file and the text that show the conflict.", "type": "string", "pattern": "\\S"}
+				}
+			}
+		},
 		"scope_conditions": {
 			"description": "Every condition that makes certification unavailable. Empty if none.",
 			"type": "array",
@@ -45,5 +61,5 @@
 			}
 		}
 	},
-	"required": ["derived_sources", "profile_restriction", "scope_conditions"]
+	"required": ["derived_sources", "profile_restriction", "scope_conditions", "conflicts"]
 }

@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -17,7 +18,8 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Validates {@link DeriverProtocol}'s additional findings alongside the proposed contract: {@code derived_sources},
- * {@code profile_restriction} and {@code scope_conditions}, as {@code deriver-findings.schema.json} describes them.
+ * {@code profile_restriction}, {@code scope_conditions} and {@code conflicts}, as
+ * {@code deriver-findings.schema.json} describes them.
  * <p>
  * Each violation is reported at its location in the deriver's output, in the form that the proposal schema uses.
  */
@@ -35,6 +37,10 @@ final class Findings
 	 * The property that lists the scope conditions.
 	 */
 	static final String SCOPE_CONDITIONS = "scope_conditions";
+	/**
+	 * The property that lists the conflicting requirements.
+	 */
+	static final String CONFLICTS = "conflicts";
 	/**
 	 * The outcome that each scope condition reports.
 	 */
@@ -168,7 +174,7 @@ final class Findings
 					problems.add(itemLocation + ".condition: must be one of " + CONDITION_NAMES);
 			}
 			Optional<List<String>> requirementIds = requirementIds(item.get("requirement_ids"),
-				itemLocation + ".requirement_ids");
+				itemLocation + ".requirement_ids", 1, false);
 			String evidence = text(item, "evidence", itemLocation);
 			if (outcome != null && requirementIds.isPresent() && evidence != null)
 				conditions.add(new ScopeCondition(outcome, requirementIds.get(), evidence));
@@ -177,12 +183,40 @@ final class Findings
 	}
 
 	/**
-	 * Reports each requirement identifier in a scope condition that the contract does not contain.
+	 * Reads the groups of conflicting requirements.
 	 *
-	 * @param node the {@code scope_conditions} value, or null if the output omits it
+	 * @param node the {@code conflicts} value, or null if the output omits it
+	 * @return the conflicts that are valid
+	 */
+	List<Conflict> conflicts(JsonNode node)
+	{
+		List<Conflict> conflicts = new ArrayList<>();
+		String location = "$." + CONFLICTS;
+		if (!isArray(node, location))
+			return conflicts;
+		for (int i = 0; i < node.size(); ++i)
+		{
+			String itemLocation = location + "[" + i + "]";
+			JsonNode item = node.get(i);
+			if (!isObject(item, itemLocation, Set.of("requirement_ids", "evidence")))
+				continue;
+			Optional<List<String>> requirementIds = requirementIds(item.get("requirement_ids"),
+				itemLocation + ".requirement_ids", 2, true);
+			String evidence = text(item, "evidence", itemLocation);
+			if (requirementIds.isPresent() && evidence != null)
+				conflicts.add(new Conflict(requirementIds.get(), evidence));
+		}
+		return conflicts;
+	}
+
+	/**
+	 * Reports each finding identifier that the contract does not contain.
+	 *
+	 * @param node the findings array, or null if the output omits it
+	 * @param name the findings property name
 	 * @param contract the proposed contract
 	 */
-	void checkRequirements(JsonNode node, Contract contract)
+	void checkRequirements(JsonNode node, String name, Contract contract)
 	{
 		if (node == null || !node.isArray())
 			return;
@@ -190,12 +224,14 @@ final class Findings
 		for (int i = 0; i < node.size(); ++i)
 		{
 			JsonNode ids = node.get(i).path("requirement_ids");
+			if (!ids.isArray())
+				continue;
 			for (int j = 0; j < ids.size(); ++j)
 			{
 				JsonNode id = ids.get(j);
 				if (id.isString() && !known.contains(id.asString()))
 				{
-					problems.add("$." + SCOPE_CONDITIONS + "[" + i + "].requirement_ids[" + j + "]: " + id.asString() +
+					problems.add("$." + name + "[" + i + "].requirement_ids[" + j + "]: " + id.asString() +
 						" is not a requirement of the proposal");
 				}
 			}
@@ -203,28 +239,36 @@ final class Findings
 	}
 
 	/**
-	 * Reads the requirement identifiers of a scope condition.
+	 * Reads the requirement identifiers of a finding.
 	 *
 	 * @param node the value, or null if it is missing
 	 * @param location the location of the value
+	 * @param minimum the minimum number of identifiers
+	 * @param distinct whether duplicate identifiers are rejected
 	 * @return the identifiers, or empty if the value is invalid
 	 */
-	private Optional<List<String>> requirementIds(JsonNode node, String location)
+	private Optional<List<String>> requirementIds(JsonNode node, String location, int minimum, boolean distinct)
 	{
 		if (!isArray(node, location))
 			return Optional.empty();
-		if (node.isEmpty())
+		if (node.size() < minimum)
 		{
-			problems.add(location + ": must list at least 1 item(s) but lists 0");
+			problems.add(location + ": must list at least " + minimum + " item(s) but lists " + node.size());
 			return Optional.empty();
 		}
 		List<String> ids = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
 		boolean valid = true;
 		for (int i = 0; i < node.size(); ++i)
 		{
 			String id = nonBlank(node.get(i), location + "[" + i + "]");
 			if (id == null)
 				valid = false;
+			else if (distinct && !seen.add(id))
+			{
+				problems.add(location + "[" + i + "]: duplicate requirement identifier " + id);
+				valid = false;
+			}
 			else
 				ids.add(id);
 		}

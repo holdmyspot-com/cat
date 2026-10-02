@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -1020,5 +1021,173 @@ public final class ProposalTest
 			  - `r2`: semantic; the judge decides it
 			  - `core-task`: semantic; the judge decides it
 			""");
+	}
+
+	/**
+	 * Verifies that a valid conflict is accepted and rendered immediately before the certifiable scope.
+	 *
+	 * @throws InvalidProposalException if the valid conflict is rejected
+	 */
+	@Test
+	public void parsesAndRendersConflict() throws InvalidProposalException
+	{
+		// Requirement: R-C13
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("requirement_ids").add("r1").add("r2");
+			conflict.put("evidence", "CLAUDE.md: always be brief; always give a full explanation.");
+		});
+		String text = rendered(output);
+		requireThat(text, "text").contains("""
+			## Conflicts
+
+			No reply can satisfy each group of requirements below together. Confirmation is refused until your \
+			feedback resolves each conflict, for example by exempting one requirement from another or by dropping one:
+
+			- `r1`, `r2`: CLAUDE.md: always be brief; always give a full explanation.
+
+			## Certifiable scope
+			""");
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		requireThat(proposal.isConfirmable(), "confirmable").isFalse();
+	}
+
+	/**
+	 * Verifies that an empty conflict list is rendered immediately before the certifiable scope.
+	 *
+	 * @throws InvalidProposalException if the valid fixture is rejected
+	 */
+	@Test
+	public void rendersNoConflicts() throws InvalidProposalException
+	{
+		// Requirement: R-C13
+		requireThat(rendered(fixture("derivation.json")), "text").contains("""
+			## Conflicts
+
+			The deriver found no requirements that conflict.
+
+			## Certifiable scope
+			""");
+	}
+
+	/**
+	 * Supplies invalid conflicts and the corresponding diagnostic.
+	 *
+	 * @return the invalid values and expected messages
+	 */
+	@DataProvider
+	public Object[][] invalidConflicts()
+	{
+		return new Object[][] {
+			{"[\"r1\"]", "evidence", "requirement_ids: must list at least 2 item(s) but lists 1"},
+			{"[\"r1\",\"r9\"]", "evidence", "requirement_ids[1]: r9 is not a requirement of the proposal"},
+			{"[\"r1\",\"r2\"]", "  ", "evidence: must not be blank"},
+			{"[\"r1\",\"r1\"]", "evidence", "requirement_ids[1]: duplicate requirement identifier r1"}
+		};
+	}
+
+	/**
+	 * Verifies that invalid conflict identifiers and blank evidence are rejected at their JSON location.
+	 *
+	 * @param ids the identifiers as JSON
+	 * @param evidence the evidence
+	 * @param problem the diagnostic suffix
+	 */
+	@Test(dataProvider = "invalidConflicts")
+	public void rejectsInvalidConflicts(String ids, String evidence, String problem)
+	{
+		// Requirement: R-C13
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.set("requirement_ids", json.readTree(ids));
+			conflict.put("evidence", evidence);
+		});
+		try
+		{
+			deriver.proposal(session(output), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").contains("$.conflicts[0]." + problem);
+		}
+	}
+
+	/**
+	 * Verifies that confirmation cannot produce events while a conflict is listed.
+	 *
+	 * @throws InvalidProposalException if the valid fixture is rejected
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void conflictBlocksConfirmation() throws InvalidProposalException
+	{
+		// Requirement: R-C13
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("requirement_ids").add("r1").add("r2");
+			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
+		});
+		Proposal.of(deriver.proposal(session(output), PROFILES), new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).confirmation(7);
+	}
+
+	/**
+	 * Verifies that the deriver receives the conflict reporting and revision instructions with a required schema.
+	 */
+	@Test
+	public void requestRequiresConflicts()
+	{
+		// Requirement: R-C13
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		requireThat(prompt, "prompt").contains("### Conflicts\n\n").
+			contains("Report the conflict; do not decide which requirement").
+			contains("On a revision, drop a conflict that the user's feedback");
+		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
+		requireThat(outputSchema.get("required").valueStream().map(JsonNode::asString).toList(), "required").
+			contains("conflicts");
+		JsonNode conflicts = outputSchema.get("properties").get("conflicts");
+		requireThat(conflicts.get("description").asString(), "description").
+			isEqualTo("Every set of requirements that no reply can satisfy together. Empty if none.");
+		requireThat(conflicts.get("items").get("properties").get("requirement_ids").get("minItems").asInt(),
+			"minimumIds").isEqualTo(2);
+		requireThat(conflicts.get("items").get("properties").get("requirement_ids").get("uniqueItems").asBoolean(),
+			"distinctIds").isTrue();
+	}
+
+	/**
+	 * Verifies that stored derivations from before conflicts were required are rejected.
+	 *
+	 * @throws InvalidProposalException for the missing conflicts property
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = ".*conflicts: required property is missing.*")
+	public void rejectsMissingConflicts() throws InvalidProposalException
+	{
+		// Requirement: R-C13
+		deriver.proposal(session(changedDerivation(root -> root.remove("conflicts"))), PROFILES);
+	}
+
+	/**
+	 * Verifies that a malformed identifier array reports a validation problem instead of failing unchecked.
+	 *
+	 * @throws InvalidProposalException for the malformed identifier array
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = ".*conflicts\\[0\\].requirement_ids: expected array but found object.*")
+	public void rejectsObjectConflictIds() throws InvalidProposalException
+	{
+		// Requirement: R-C13
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putObject("requirement_ids").put("unexpected", "r1");
+			conflict.put("evidence", "CLAUDE.md: conflicting instructions.");
+		});
+		deriver.proposal(session(output), PROFILES);
 	}
 }
