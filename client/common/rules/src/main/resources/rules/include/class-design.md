@@ -1,6 +1,6 @@
 ---
 depends-on:
-  - ../common/backward-design.md
+  - ./common/backward-design.md
 ---
 # Class Design
 

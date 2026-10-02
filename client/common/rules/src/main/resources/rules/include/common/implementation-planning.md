@@ -26,8 +26,8 @@ is already available:
    This applies when your own task is read-only: the trigger is the behavior the plan assigns. TDD owns when test-first
    is required, what establishes a behavioral red result, how unresolved contracts or unavailable test boundaries affect
    readiness, and verification before handoff.
-2. Lazy load `../../common/intermediate-vs-terminal-goals.md`, `../../common/backward-design.md`, and
-   `../../common/design-quality.md`. Those rules own terminal acceptance, design validation, and compatible
+2. Lazy load `../../common/intermediate-vs-terminal-goals.md`, `./backward-design.md`, and
+   `./design-quality.md`. Those rules own terminal acceptance, design validation, and compatible
    implementation dependencies.
 
 An agent-authored design receives the same checks as any other design; its author's confidence or approval is not

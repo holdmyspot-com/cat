@@ -144,8 +144,8 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies Codex receives installed paths for bundled lazy rules instead of references relative to removed rule
-	 * sources.
+	 * Verifies Codex receives bundled lazy rule paths below the {@code ${CAT_PLUGIN_ROOT}} notation, which its skill
+	 * environment rule resolves, instead of absolute paths or references relative to removed rule sources.
 	 */
 	@Test
 	public void resolvesBundledLazyRuleReferences() throws IOException
@@ -163,8 +163,8 @@ public final class CodexSessionStartHookTest
 			String context = context(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
 
-			requireThat(context, "context").contains("`" + lazyRule + "`").
-				doesNotContain("`../include/java/javadoc.md`");
+			requireThat(context, "context").contains("`${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`").
+				doesNotContain(lazyRule.toString()).doesNotContain("`../include/java/javadoc.md`");
 		}
 	}
 

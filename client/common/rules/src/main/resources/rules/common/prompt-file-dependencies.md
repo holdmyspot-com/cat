@@ -19,7 +19,7 @@ Use YAML frontmatter to declare a direct rule's prompt-file prerequisites:
 ```yaml
 ---
 depends-on:
-  - ./backward-design.md
+  - ./intermediate-vs-terminal-goals.md
 ---
 ```
 

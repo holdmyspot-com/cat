@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -326,8 +327,8 @@ public final class ProjectRuleLoader
 			String body = content;
 			if (frontmatter != null)
 				body = frontmatter.body();
-			String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, new HashSet<>()), file,
-				ruleRoot);
+			String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, root, new HashSet<>()),
+				file, ruleRoot, root);
 			if (root == RuleRoot.PLUGIN)
 				injected = injected.replace(PLUGIN_ROOT_DIRECTIVE, ownerRoot.toAbsolutePath().normalize().toString());
 			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
@@ -509,9 +510,11 @@ public final class ProjectRuleLoader
 	 * @param content a non-null rule body
 	 * @param file the direct rule's source file
 	 * @param ruleRoot the rule tree that bounds available lazy rules
+	 * @param root the source kind of {@code ruleRoot}
 	 * @return the rule content to inject
 	 */
-	private static String injectedBody(Frontmatter frontmatter, String content, Path file, Path ruleRoot)
+	private static String injectedBody(Frontmatter frontmatter, String content, Path file, Path ruleRoot,
+		RuleRoot root)
 	{
 		String body = content;
 		if (frontmatter != null)
@@ -520,7 +523,7 @@ public final class ProjectRuleLoader
 		int end = withoutDesignGoals.length();
 		while (end > 0 && (withoutDesignGoals.charAt(end - 1) == '\n' || withoutDesignGoals.charAt(end - 1) == '\r'))
 			--end;
-		return resolveLazyRuleReferences(withoutDesignGoals.substring(0, end), file, ruleRoot);
+		return resolveLazyRuleReferences(withoutDesignGoals.substring(0, end), file, ruleRoot, root);
 	}
 
 	/**
@@ -532,11 +535,13 @@ public final class ProjectRuleLoader
 	 * @param content the direct rule body without its frontmatter
 	 * @param file the file that contains {@code content}
 	 * @param ruleRoot the source-root boundary for included files
+	 * @param root the source kind of {@code ruleRoot}
 	 * @param expanding files in the active include chain
 	 * @return the expanded rule body
 	 * @throws IOException if an include is ambiguous, unsafe, cyclic, or unreadable
 	 */
-	private String expandDirectIncludes(String content, Path file, Path ruleRoot, Set<Path> expanding) throws IOException
+	private String expandDirectIncludes(String content, Path file, Path ruleRoot, RuleRoot root, Set<Path> expanding)
+		throws IOException
 	{
 		Path normalized = file.normalize();
 		if (!expanding.add(normalized))
@@ -555,8 +560,8 @@ public final class ProjectRuleLoader
 				throw new IOException("Direct rule include must name source-only Markdown without frontmatter: " +
 					included);
 			}
-			String expanded = expandDirectIncludes(includedContent, included, ruleRoot, expanding);
-			expanded = injectedBody(null, expanded, included, ruleRoot);
+			String expanded = expandDirectIncludes(includedContent, included, ruleRoot, root, expanding);
+			expanded = injectedBody(null, expanded, included, ruleRoot, root);
 			matcher.appendReplacement(result, Matcher.quoteReplacement(expanded));
 		}
 		matcher.appendTail(result);
@@ -567,13 +572,17 @@ public final class ProjectRuleLoader
 	/**
 	 * Replaces a direct rule's references to included rules with paths that remain usable after its source location is
 	 * removed from injected context.
+	 * <p>
+	 * A bundled rule's reference is rendered below {@code ${CAT_PLUGIN_ROOT}/rules}, because the injected skill
+	 * environment states the plugin directory once; other references are rendered as absolute paths.
 	 *
 	 * @param content the injected direct-rule content
 	 * @param file the direct rule's source file
 	 * @param ruleRoot the rule tree that bounds available lazy rules
+	 * @param root the source kind of {@code ruleRoot}
 	 * @return context with resolvable lazy-rule paths
 	 */
-	private static String resolveLazyRuleReferences(String content, Path file, Path ruleRoot)
+	private static String resolveLazyRuleReferences(String content, Path file, Path ruleRoot, RuleRoot root)
 	{
 		Matcher matcher = LAZY_RULE_REFERENCE.matcher(content);
 		StringBuffer result = new StringBuffer(content.length());
@@ -593,10 +602,30 @@ public final class ProjectRuleLoader
 			Path resolved = file.getParent().resolve(declared).normalize();
 			if (!resolved.startsWith(ruleRoot) || !Files.isRegularFile(resolved, NOFOLLOW_LINKS))
 				continue;
-			matcher.appendReplacement(result, Matcher.quoteReplacement("`" + resolved + "`"));
+			matcher.appendReplacement(result, Matcher.quoteReplacement("`" + lazyRuleReference(resolved, ruleRoot, root) +
+				"`"));
 		}
 		matcher.appendTail(result);
 		return result.toString();
+	}
+
+	/**
+	 * Renders the path of an included rule for injected context.
+	 *
+	 * @param rule the normalized included rule
+	 * @param ruleRoot the rule tree that contains {@code rule}
+	 * @param root the source kind of {@code ruleRoot}
+	 * @return {@code ${CAT_PLUGIN_ROOT}/rules/} followed by the rule's slash-separated path below {@code ruleRoot} for a
+	 *   bundled rule, otherwise the rule's absolute path
+	 */
+	private static String lazyRuleReference(Path rule, Path ruleRoot, RuleRoot root)
+	{
+		if (root != RuleRoot.PLUGIN)
+			return rule.toString();
+		StringJoiner reference = new StringJoiner("/", "${CAT_PLUGIN_ROOT}/rules/", "");
+		for (Path name : ruleRoot.normalize().relativize(rule))
+			reference.add(name.toString());
+		return reference.toString();
 	}
 
 	/**

@@ -142,7 +142,7 @@ platform=${expected_platform}" ]
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SessionStart"'* ]]
-	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*instructions in `\([^`]*\)`.*/\1/p')
+	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "Default Rule Routing" "${context_file}"
 	grep -F "When handling Java exceptions, lazy load" "${context_file}"
 	grep -F "project session rule" "${context_file}"
@@ -161,7 +161,7 @@ platform=${expected_platform}" ]
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
-	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*instructions in `\([^`]*\)`.*/\1/p')
+	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "reviewer rule" "${context_file}"
 	! grep -F "main rule" "${context_file}"
 }

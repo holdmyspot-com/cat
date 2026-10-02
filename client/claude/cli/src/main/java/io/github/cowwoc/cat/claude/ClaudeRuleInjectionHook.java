@@ -25,8 +25,9 @@ final class ClaudeRuleInjectionHook
 	private static final String CONTEXT_FILE_INSTRUCTION = """
 		# CAT %s Context
 
-		First read and apply the instructions in `%s` before planning, using a project tool, or responding. They govern the
-		rest of this conversation.
+		Read the whole file `%s` with the Read tool before planning, using a project tool, or responding, then apply every
+		instruction in it for the rest of this conversation. Do not search it, list its headings, or read only part of it:
+		guidance that you skip still applies.
 		""";
 
 	/**

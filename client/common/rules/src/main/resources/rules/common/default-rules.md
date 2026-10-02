@@ -1,15 +1,13 @@
 ---
-depends-on:
-  - ./design-quality.md
-  - ./backward-design.md
 agents: ["main", "subagents"]
 ---
 # Default Rule Routing
 
 ## Design Goals
 
-- Provide the foundational Design Quality and Backward Design guidance before a reader makes an implementation or
-  review decision, then route specialized decisions to their focused rule.
+- Route a design, implementation, or review decision to the foundational Design Quality and Backward Design guidance,
+  and each specialized decision to its focused rule, before the reader makes it, without loading that guidance into
+  sessions that make no such decision.
 - Route an input-preservation decision from the stated contract before project inspection or candidate selection can
   commit to a transformation that might discard the needed distinction.
 - Make each required route read complete before the task action it governs, without prescribing how the file is read.
@@ -45,22 +43,7 @@ reads in the stated order before any other task action. A successful first read 
 authority to discover its remainder; do not use it to infer, search for, or try another filename. Use the filenames in
 the route as literal route targets. If any required read fails, stop and report the routing failure instead of
 inspecting the project or choosing an alternative. The route, rather than the task's source language, topic, or a
-remembered rule label, selects the required files. Do not reply `ROUTES READY` until that route action has succeeded.
-
-An isolated CAT runner may instead deliver the complete text of selected rules in a dedicated pre-task turn that says it
-activated those task-triggered rules. That runner delivery makes only those rules available for the later task; do not
-read the delivered rules again. It is not global injection: rules without a true trigger remain absent. Without that
-dedicated complete delivery, use the ordered reads above.
-
-When that runner first asks for a machine-readable route selection, return only the selected canonical relative paths in
-its required format. A path is below the installed `rules` directory, so it does not repeat the `rules/` prefix. Do not
-perform the route reads in that selection turn: the runner validates the selected paths and delivers their exact
-installed contents in the following pre-task turn. A malformed, unknown, or duplicate selection stops before the later
-task, so it cannot substitute an informal acknowledgement for an activated route.
-
-For each route read, form its selection value from the path below the installed `rules` directory, such as
-`include/common/example.md` for `../include/common/example.md`. Preserve every directory separator and the filename
-exactly as written. Do not derive a selection value from a rule's human-facing title or flatten a nested companion path into a hyphenated filename.
+remembered rule label, selects the required files.
 
 A task-specific response that states an intended inspection, plan, implementation, test, or conclusion is task-bearing
 for this route. Before the required reads, do not announce such work; either perform the required reads first or give no
@@ -129,6 +112,10 @@ When creating or closing a `PipedInputStream` or waiting for a reader that uses 
 
 When writing or reviewing Java control flow that classifies a value against named alternatives, lazy load
 `../include/java/control-flow.md`.
+
+Before recommending, designing, implementing, or reviewing a change to code, configuration, a prompt, a workflow, or a
+plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
+formatting edit, or other mechanical change that preserves the existing design does not need them.
 
 Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.

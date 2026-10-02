@@ -27,7 +27,8 @@ import tools.jackson.databind.JsonNode;
 public final class ClaudeSessionStartHookTest
 {
 	/**
-	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root.
+	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root and
+	 * requires reading that whole file rather than a searched subset.
 	 */
 	@Test
 	public void injectsClaudeRules() throws IOException
@@ -49,7 +50,8 @@ public final class ClaudeSessionStartHookTest
 			Path rules = referencedFile(instruction);
 
 			requireThat(instruction, "instruction").startsWith("# CAT SessionStart Context").
-				contains("First read and apply the instructions").doesNotContain("plugin common").
+				contains("Read the whole file").contains("with the Read tool").
+				contains("Do not search it, list its headings, or read only part of it").doesNotContain("plugin common").
 				doesNotContain("plugin claude").doesNotContain("project common").doesNotContain("project claude").
 				doesNotContain("plugin codex");
 			try (ToolScope scope = ToolScope.forWorkingDirectory(project))
@@ -254,8 +256,8 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies Claude receives installed paths for bundled lazy rules instead of references relative to removed rule
-	 * sources.
+	 * Verifies Claude receives bundled lazy rule paths below the {@code ${CAT_PLUGIN_ROOT}} notation, which its skill
+	 * environment rule resolves, instead of absolute paths or references relative to removed rule sources.
 	 */
 	@Test
 	public void resolvesBundledLazyRuleReferences() throws IOException
@@ -271,8 +273,8 @@ public final class ClaudeSessionStartHookTest
 			String context = completeContext(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
 
-			requireThat(context, "context").contains("`" + lazyRule + "`").
-				doesNotContain("`../include/java/javadoc.md`");
+			requireThat(context, "context").contains("`${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`").
+				doesNotContain(lazyRule.toString()).doesNotContain("`../include/java/javadoc.md`");
 		}
 	}
 

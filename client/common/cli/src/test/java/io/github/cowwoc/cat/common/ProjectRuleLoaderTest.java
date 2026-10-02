@@ -159,8 +159,8 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
-	 * Verifies direct bundled rules provide installed paths for their lazy included-rule references after source-location
-	 * information has been removed from injected context.
+	 * Verifies direct bundled rules name their lazy included rules below the plugin-root variable, which the injected
+	 * skill environment defines once, instead of repeating the installed directory in every reference.
 	 */
 	@Test
 	public void resolvesBundledLazyRuleReferences() throws IOException
@@ -179,8 +179,8 @@ public final class ProjectRuleLoaderTest
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
 
-			requireThat(context, "context").contains("`" + lazyRule + "`").
-				doesNotContain("`../include/java/javadoc.md`");
+			requireThat(context, "context").contains("`${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`").
+				doesNotContain(lazyRule.toString()).doesNotContain("`../include/java/javadoc.md`");
 		}
 	}
 

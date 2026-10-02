@@ -79,5 +79,5 @@ state loop. It keeps the archive and baseline identity fixed across that retry.
 
 ### guidance-selection
 
-The retained events establish that the executor selects `rules/common/design-quality.md` before its first governed
+The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
 action.

@@ -32,8 +32,9 @@ public final class BundledRuleAudienceTest
 
 	/**
 	 * Verifies a subagent receives CAT's default rule routing and request-execution rule in both harnesses, so it can
-	 * lazy load engineering rules such as TDD and testing and decide which gaps to escalate, while the rules about
-	 * interacting with the user stay with the main agent.
+	 * lazy load engineering rules such as design quality, TDD and testing and decide which gaps to escalate, while the
+	 * rules about interacting with the user stay with the main agent. Neither agent receives the design-quality rule
+	 * itself at startup.
 	 * <p>
 	 * Copying and routing the complete bundled rule trees, then loading all four audience/harness combinations, can take
 	 * over one second. A smaller synthetic tree would miss regressions in shipped audience metadata and dependencies.
@@ -53,13 +54,15 @@ public final class BundledRuleAudienceTest
 			{
 				String subagent = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
 				requireThat(subagent, harness + "Subagent").contains("# Default Rule Routing").
-					contains("# Design Quality").contains("lazy load `").contains("# Request Execution").
+					contains("include/common/design-quality.md`").doesNotContain("# Design Quality").
+					contains("lazy load `").contains("# Request Execution").
 					contains("A subagent does not load this rule").
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
 
 				String main = loader.loadForMainAgent(plugin, project, harness);
 				requireThat(main, harness + "Main").contains("# Default Rule Routing").
-					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links");
+					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links").
+					doesNotContain("# Design Quality");
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 ---
 depends-on:
-  - ./intermediate-vs-terminal-goals.md
+  - ../../common/intermediate-vs-terminal-goals.md
 ---
 # Backward Design and Iterative Generalization
 
