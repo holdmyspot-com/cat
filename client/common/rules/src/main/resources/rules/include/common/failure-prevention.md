@@ -15,8 +15,6 @@
   conditions.
 - Prevent a retry from concealing an incomplete or unexpectedly ended workflow, by requiring its cause and any
   controllable correction to be established before replacement work begins.
-- Preserve supported behavior while correcting an unexpected warning, error, or diagnostic, so a controllable cause is
-  fixed rather than hidden by suppression or feature removal.
 - Diagnose a claimed instruction violation against the product the instruction governs, so an intermediate description
   is not mistaken for a prohibited action unless reader-visible language is itself the required product.
 <!-- A formatter ignored its requested path filter and corrupted multiline logical operators in a dirty worktree.
@@ -151,15 +149,6 @@ time, turn, token, or polling limit on it merely because no conclusion is availa
 until its retained evidence establishes a terminal result, its documented recovery boundary reports a terminal failure,
 or the user explicitly stops, narrows, or replaces it. A waiting observation may time out, but that is evidence to
 classify through the investigation's recovery workflow; it is not authority to stop the investigation itself.
-
-Treat suppressing a warning, ignoring a result, disabling a check or feature, or hiding diagnostic output as containment,
-not a correction. Before using containment, trace whether an in-scope component can correct the underlying behavior
-and attempt the earliest source correction that preserves the supported behavior. Verify that correction at the affected
-boundary: it must prevent the unwanted result while the capability the containment would have removed still works. Use
-containment only when the source cannot safely be corrected with available authority or the user explicitly chooses that
-trade-off; record the limiting evidence and retain the observable diagnostic when doing so. For example, do not disable
-runtime performance data merely to hide a shared-storage warning when the process-launch boundary can instead give each
-runtime its own storage.
 
 Treat a coarse error category, status code, timeout, or failure count as a symptom, not its cause. Before selecting a
 mitigation, identify the failing component and operation, then inspect its retained diagnostic events, error stream,
