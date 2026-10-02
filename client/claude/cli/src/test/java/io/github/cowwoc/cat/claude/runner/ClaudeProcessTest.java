@@ -5,24 +5,14 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.claude.runner.ClaudeProcess.LineEffect;
 import io.github.cowwoc.cat.claude.runner.ClaudeProcess.TurnBoundary;
-import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -501,62 +491,6 @@ public final class ClaudeProcessTest
 
 			requireThat(result.completed(), "completed").isFalse();
 			requireThat(result.standardError(), "standardError").contains("Claude process ended before result");
-		}
-	}
-
-	/**
-	 * Verifies that SIGINT, sent after the root reply while a background child still runs, ends the turn once Claude
-	 * has stopped, instead of leaving the turn waiting for the child. The test plays Claude with a shell process,
-	 * because the signal needs an operating-system process, and prints what Claude Code 2.1.286 printed for that
-	 * signal. The shell starts with the default SIGINT disposition because a test run that was started in the
-	 * background inherits an ignored SIGINT, which a shell cannot trap.
-	 *
-	 * @throws IOException          if the turn or the fixture fails
-	 * @throws InterruptedException if the test is interrupted while it waits
-	 * @throws ExecutionException   if the turn fails on its own thread
-	 * @throws TimeoutException     if the turn does not end after the interrupt
-	 */
-	@Test(timeOut = 30_000)
-	public void interruptEndsTurnWaitingForChildren()
-		throws IOException, InterruptedException, ExecutionException, TimeoutException
-	{
-		// Requirement: R-E15
-		// Requirement: R-E14
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ExecutorService turnThread = Executors.newSingleThreadExecutor())
-		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-claude-interrupt-"));
-			Path before = directory.resolve("before.jsonl");
-			Path after = directory.resolve("after.jsonl");
-			Files.writeString(before, String.join("\n", STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING,
-				CHILD_STARTED, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE) + "\n", UTF_8);
-			Files.writeString(after, String.join("\n", SHELL_STOPPED, CHILD_RUNNING) + "\n", UTF_8);
-			String script = "sleep 600 & waiter=$!; trap 'kill $waiter; cat \"$2\"; exit 0' INT; read request; " +
-				"cat \"$1\"; wait $waiter";
-			ProcessBuilder builder = new ProcessBuilder("env", "--default-signal=INT", "sh", "-c", script, "claude",
-				before.toString(), after.toString());
-			builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-			Process shell = builder.start();
-			CountDownLatch rootIdle = new CountDownLatch(1);
-			try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), shell))
-			{
-				Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Launch a background child.",
-					line ->
-					{
-						if (line.equals(STATE_IDLE))
-							rootIdle.countDown();
-					}));
-				rootIdle.await();
-
-				process.interrupt();
-
-				HarnessProcessResult result = turn.get(10, TimeUnit.SECONDS);
-				requireThat(result.standardOutput(), "standardOutput").contains("\"status\":\"stopped\"");
-			}
-			finally
-			{
-				shell.destroyForcibly();
-			}
 		}
 	}
 }

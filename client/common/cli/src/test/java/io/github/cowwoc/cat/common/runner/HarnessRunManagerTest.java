@@ -507,6 +507,32 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies the copied project's repository runs no background maintenance that could write to the run directory
+	 * after the command that started it returns.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void copiedProjectSkipsBackgroundMaintenance() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve("README.md"), "project");
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRun run = manager.create("harness");
+
+			manager.copyProject(project, run);
+
+			Path copiedProject = run.directory().resolve("project");
+			requireThat(runGit(copiedProject, "config", "--local", "maintenance.auto").strip(), "maintenanceAuto").
+				isEqualTo("false");
+			requireThat(runGit(copiedProject, "config", "--local", "gc.auto").strip(), "gcAuto").isEqualTo("0");
+		}
+	}
+
+	/**
 	 * Verifies copied project files retain their executable permission on POSIX filesystems.
 	 *
 	 * @throws IOException if the filesystem operation fails
@@ -749,7 +775,8 @@ public final class HarnessRunManagerTest
 	 */
 	private static String runGit(Path repository, String... arguments) throws IOException
 	{
-		List<String> command = new java.util.ArrayList<>(List.of("git"));
+		List<String> command = new java.util.ArrayList<>(List.of("git", "-c", "maintenance.auto=false", "-c",
+			"gc.auto=0"));
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).directory(repository.toFile()).redirectErrorStream(true);
 		builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");

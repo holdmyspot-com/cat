@@ -15,7 +15,8 @@ import java.util.Map;
 final class HarnessProjectRepository
 {
 	/**
-	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture.
+	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture and that never starts
+	 * background maintenance.
 	 *
 	 * @param project the copied project directory
 	 * @param runDirectory the owned run directory that may hold setup-only state
@@ -32,6 +33,9 @@ final class HarnessProjectRepository
 		environment.put("GIT_CONFIG_NOSYSTEM", "1");
 		environment.put("GIT_TERMINAL_PROMPT", "0");
 		HarnessCommand.execute(List.of("git", "init", "--quiet"), project, environment);
+		// Detached maintenance outlives the command that starts it and races the deletion of the run directory
+		HarnessCommand.execute(List.of("git", "config", "maintenance.auto", "false"), project, environment);
+		HarnessCommand.execute(List.of("git", "config", "gc.auto", "0"), project, environment);
 		HarnessCommand.execute(List.of("git", "add", "--all"), project, environment);
 		HarnessCommand.execute(List.of("git", "-c", "user.name=CAT fixture", "-c",
 			"user.email=cat-fixture@example.invalid", "-c", "commit.gpgSign=false", "commit", "--quiet",
