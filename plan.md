@@ -121,6 +121,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-22 | `optimize-high` | A result-shape change through both adapters, the checks, the judge and the author evidence, with recorded-event tests per harness. |
 | WI-23 | `optimize-high` | Scenario discovery across module test resources, a rule edit, and moving 64 scenarios with their fixtures. |
 | WI-24 | `optimize-high` | A new deriver finding through the schema, parser, proposal rendering and the confirm command. |
+| WI-25 | `optimize-high` | New deriver and author outputs, a pause state with choices, a revision from a choice, and two prompt-wording changes. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -221,6 +222,7 @@ requirement names.
 | Proposal cell listing (E1 finding) | Done 2026-10-02 (full build 1612 tests, 0 failures, none at or over 1 s; bats 32/32). On the final build, Codex E1's first proposal was 84 KB: six unbound categories under the 44-profile inventory made 264 cells, each listed under trial profiles and again under the minimum session count, and the agent replied with one sentence instead of the proposal. The proposal now lists categories that share a profile set once, with their cell count and naming, and cells that share minimum trials once, naming every cell of a category together (`ProposalTest.groupsCellsThatShareProfilesAndCounts` failed first). The revised 16 KB proposal was shown verbatim. |
 | Convention renames (convention-pass follow-up) | Done 2026-10-02 (Codex medium; full build 1612 tests, 0 failures, none at or over 1 s; bats 32/32). Campaign types no longer repeat their package: `Header`, `Registry`, `Transitions` and the test `Builder`; per-cell types and members say cell where they hold a cell (`CellCounts`, `CellDecision`). The two `ManualClock` doubles are one, in `common.fakes`. Codex had kept the old names in `toString` overrides with tests pinning them; both were removed, so diagnostics name the current record and its fields. |
 | WI-24 | In progress (user ruling 2026-10-02, `design.md` D31). E1 showed a proposal whose certifiable scope said nothing made certification unavailable while its limitations said the motto conflict did. |
+| WI-25 | Not started (user ruling 2026-10-02, `design.md` D31, D32). The user approved the `first-use.md`, `deriver.md` and `author.md` wording. |
 | Skill launcher paths (WI-15 finding, R-I5) | Done (`a1d70a4bd`; full build 1568 tests, 0 failures, none at or over 1 s; bats 32/32). Codex still ran `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer` literally in 2 of 4 runs although the injected skill-environment rule named the plugin directory. The user chose skill-relative paths: every skill names `client/bin/<launcher>` in the plugin directory two levels above the skill's directory, and `BundledSkillLauncherTest` fails if a shipped skill writes the variable (it failed first on all 8 skills). After reinstalling, 6 of 6 Codex runs called the launcher by its absolute path first. |
 | Real Git in tests (user ruling 2026-10-02: assume third-party tools work as documented) | Done (`18891bd45`, `f8f57259c`; full builds 1463 and 1461 tests, 0 failures; bats 32/32). The runner tests no longer use Git: `HarnessProjectRepository` and `CodexCuratedPluginCache` expose the commands and environment they give Git, and their tests assert those. `JlinkImageBuilderTest` asserts the launcher text instead of starting launchers and Maven wrappers; `GeneratorTest` checks `Generator.select` at each probability boundary instead of 40,000 draws. git-replay (`04ec22dfd`, one commit per the user's ruling; full build 1567 tests, 0 failures, none at or over 1 s; bats 32/32): its decisions are extracted and tested over captured facts, Git processes fall from 1,845 to 264, and nine integration tests keep real Git, one per Git operation, each under 1 s. §8 lists them and `GitTest`. |
 | Fake contracts (doubles audit follow-up) | Done (`06515f1c8`, `7e8a2795d`; full builds 1514 and 1510 tests; bats 32/32). Shared contracts run `FakeWorkspacePort` against `Workspace` and `FakeHostInterruptSignal` against both harnesses' interrupt signals; the fakes were corrected where checks failed. `FakeJudgeProtocol` is deleted: the driver tests use the real `JudgePrompt` and script only the judge session's JSON judgment. |
@@ -314,6 +316,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D7 | Incumbent baseline arm: 50 per category, plus 50 conditional. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3 | U: `BaselineTest`, `AdmissionTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25, D30 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
+| R-D12 | An author conflict report whose quotations the confirmed snapshot holds pauses the campaign with each resolution and `stop`; a report quoting only campaign edits is rejected; a chosen resolution becomes a revision that needs confirmation and starts a new lineage. | §2.7, §7, D32 | WI-25 | U: `AuthorManifestTest`, `DriverTest`, `OptimizerCoreTest` |
 | R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction judged by the promotion runs and rule, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
 | R-D12 | Concurrent attempts while weak: when any cell of a category the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts for that category from the same brief; each runs the same promotion runs; the accepted attempt with the most passing promotion runs wins, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results. | §2.7, D28 | WI-20 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
 
@@ -385,6 +388,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C11 | Cells are the statistical unit: every §2 and §3 rule that names a category applies per cell, and `K` counts cells. | §2.1 | WI-16 | U: `SchedulerTest`, `ReadinessGateTest`, `CommitTest` (a two-profile category gives two cells with separate counts, gates and decisions) |
 | R-C12 | A turn's reply is every assistant message of the turn; deterministic checks of reply text, the judge's evidence and the author's failure records all use it. | §1.2, §6.4, D29 | WI-22 | U: per-harness adapter tests over recorded events, `DeterministicCheckTest`, `JudgeVerdictTest`, `DriverTest`; E: E1 per harness |
 | R-C13 | A proposal lists every conflict between requirements with its evidence, and `confirm` is refused while one is listed. | §6.1, D31 | WI-24 | U: `ProposalTest`, `OptimizerCoreTest` |
+| R-C14 | Each proposal conflict offers at least two resolutions and a recommended one with its reason; the agent asks the user to resolve every conflict before offering confirmation. | §6.1, §8, D31 | WI-25 | U: `ProposalTest`; E: E1 per harness |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -825,6 +829,31 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
   rules module.
 
+### WI-25 — Resolving conflicts with the user (user ruling, 2026-10-02)
+
+- **Resolutions:** each deriver conflict gains at least two `resolutions` and the `recommended` one with its `reason`;
+  the proposal's `Conflicts` section lists them with the recommended one marked (`design.md` §6.1, D31). `deriver.md`
+  takes the approved `### Conflicts` wording verbatim.
+- **Agent flow:** `first-use.md` takes the approved step 2 and step 4 wording: the agent asks the user to resolve each
+  conflict, naming the recommended resolution, never offers confirmation while one is listed, and passes the answers to
+  `revise`.
+- **Mid-campaign conflicts:** the author manifest gains the `conflict` classification with the requirement ids, each
+  quoted passage with its file, the resolutions and the recommended one. The author brief carries the campaign's edits
+  since confirmation so the author can tell a conflict it inherited from one a campaign edit introduced. CAT rejects a
+  `conflict` report whose quotation is absent from the snapshot confirmed with the contract. A valid report pauses the
+  campaign: no new trials are scheduled, in-flight work finishes, and the choices are each resolution (recommended one
+  marked, with its reason) and `stop`; `revise` with the user's own wording is also accepted. Choosing a resolution
+  runs a revision with it as feedback and returns the revised proposal for confirmation; a running certification
+  attempt then ends `not certified: stopped for contract revision`, and the confirmed revision starts a new lineage
+  (`design.md` §2.7, §7, D32). `author.md` takes the approved step 1 and step 2 wording verbatim.
+- **Closes:** R-C14, R-D12.
+- **Tests:** resolution parsing and rendering; the author conflict report accepted when its quotation is in the
+  confirmed snapshot and rejected when only a campaign edit holds it; the pause and its choices; choosing a resolution
+  yields a revision and, once confirmed, a new lineage; a running certification attempt ends
+  `stopped for contract revision`.
+- **Exit:** unit tests pass; the full build passes; E1 per harness shows the agent asking the user to resolve the
+  motto conflict with a recommended resolution.
+
 ### WI-24 — Conflicting requirements block confirmation (user ruling, 2026-10-02)
 
 - **Findings:** the deriver's findings gain a required `conflicts` list. Each entry names at least two contract
@@ -944,6 +973,7 @@ blocks only the part of a work item that it names.
 | WI-22 | WI-8, WI-17 |
 | WI-23 | WI-21 |
 | WI-24 | WI-22 |
+| WI-25 | WI-24 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

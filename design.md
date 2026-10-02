@@ -357,7 +357,12 @@ deterministic-check results, the diagnoses and the contract. The author works as
      reaches or triggers it;
    - *guidance*: an instruction is missing, ambiguous or contradicts another, so the author amends it;
    - *not guidance*: a model limitation, a test or contract defect, or an infrastructure fault, so the author makes no
-     prompt edit for it.
+     prompt edit for it;
+   - *conflict*: two requirements of the contract cannot both be satisfied, and the prompt system confirmed with the
+     contract already held the text that causes it. The author quotes that text, offers at least two resolutions and
+     recommends one, and makes no edit for it. CAT checks each quotation against the confirmed snapshot and rejects
+     the report if one is absent, because a conflict that a campaign edit introduced is a *guidance* failure that the
+     author resolves (D32).
 
    An interim message belongs to the reply (D29). Whether a prompt can stop a harness from posting one is not yet
    known, but the prompt can shape its wording, so a failure in an interim message is *routing* or *guidance*, and the
@@ -365,7 +370,9 @@ deterministic-check results, the diagnoses and the contract. The author works as
 2. **Make the smallest correction** that the evidence supports, in the prompt file that owns the decision. The author
    prefers editing or creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session, and
    edits one of them only when the correction cannot otherwise reach the sessions that need it, such as adding the
-   reference that loads a new file (D30). Removing a contradiction or an ambiguity comes before adding emphasis.
+   reference that loads a new file (D30). Removing a contradiction or an ambiguity comes before adding emphasis. An
+   edit must not contradict another instruction of the prompt system; the author resolves any contradiction that its
+   own edit or an earlier candidate's edit introduced.
    Capitals, "important" markers and repeated instructions are not corrections.
 3. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
    dissimilar case that must not receive the new guidance, and word the change for the shared invariant.
@@ -378,6 +385,12 @@ received. A rejected attempt contributes no candidate. Its evidence is retained,
 ([§4.6](#46-inventory-validation)). An attempt that classifies every failure as *not guidance* makes no edit and
 produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review checkpoint or
 plateau, so the user can revise the contract when a test is at fault.
+
+A *conflict* report pauses the campaign for the user's choice: CAT schedules no new trials, and in-flight work
+finishes. The choices are each offered resolution, with the recommended one marked, another resolution that the user
+describes, and stop. A resolution becomes revision feedback; the revised proposal needs confirmation like any other,
+and a confirmed revision starts a new lineage ([§7](#7-campaign-lifecycle)). A certification attempt that is running
+when the user chooses a resolution ends `not certified: stopped for contract revision`.
 
 CAT validates the attempt's file inventory, then runs the attempt on the triggering instances twice each and on the
 lineage's regression set once each. The regression set is every instance that failed representatively for any earlier
@@ -918,14 +931,16 @@ never stand in for the items themselves. The proposal lists:
 - every variation dimension and its probability, plus ignored paths needed as trial fixtures;
 - the statistical procedure: the joint budget, bets, caps for the first attempts, the readiness gate, the review
   checkpoint and the baseline targets;
-- every conflict: requirements that no reply can satisfy together, with the source text that shows it;
+- every conflict: requirements that no reply can satisfy together, with the source text that shows it, at least two
+  ways to resolve it and the recommended one with its reason;
 - the symbolic-link report ([§4.5](#45-symbolic-link-warning)), the authentication and volume warning
   ([§3.5](#35-volume-safeguards)), the minimum session count, and known limitations.
 
 The user gives feedback, and CAT regenerates and presents the complete proposal again. Only a confirmed proposal governs
 trials, and nothing runs before confirmation. CAT refuses to confirm a proposal that lists a conflict (D31). The deriver
-does not decide which requirement prevails; the user resolves each conflict through feedback, for example by exempting
-one requirement from another or by dropping one.
+does not decide which requirement prevails; it offers resolutions, such as exempting one requirement from another or
+dropping one, and recommends one. The agent asks the user to choose a resolution for each conflict, or to describe
+another, and passes the answers to `revise`.
 
 CAT, not the deriver, does four things:
 
@@ -1109,7 +1124,8 @@ The `prompt-optimizer` skill exists in both harnesses as thin wrappers around on
 wants a prompt file or prompt system improved until its compliance is certified. The host agent:
 
 1. starts or resumes the campaign for the named target;
-2. presents the proposal, warnings and minimum session count, and relays feedback until the user confirms;
+2. presents the proposal, warnings and minimum session count, asks the user to resolve each conflict with its
+   resolutions and the recommended one, and relays feedback until the user confirms;
 3. calls `run` while the status is `running`, showing the progress summary after each slice;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
 5. reports the terminal outcome with its four outputs, applicability and limitations.
@@ -1325,7 +1341,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D28 | Make 3 concurrent author attempts while the working candidate is weak, and promote the best (user ruling, 2026-10-01). | One attempt at a time is cheaper per round, but early rounds then spend representative trials discovering that a weak edit is weak, and a failed promotion costs a whole round. Three attempts in every round roughly break even: late rounds rarely gain from a second attempt. | Two extra author sessions and their promotion runs per weak round; all are targeted and consume no allowance. The benefit is estimated, not measured; the recorded per-attempt promotion results measure it. |
 | D29 | A turn's reply is every assistant message of the turn, including interim messages, not only its final response (user ruling, 2026-10-02). | The user sees the interim messages. Judging only the final response would certify a prompt whose agent says prohibited things before it answers, and the checks and the judge would disagree about what a reply is (E1, H31). | Narration that a harness adds by itself, such as Codex's note before a tool call, counts against requirements on reply content. Whether a prompt can suppress it is not yet known, but a prompt can shape its wording, so a failure there is a prompt defect (user ruling, 2026-10-02). |
 | D30 | Authors prefer editing or creating prompt files other than `AGENTS.md` and `CLAUDE.md`, and edit those only when a correction cannot otherwise reach the sessions that need it (user ruling, 2026-10-02). | Both files load into every session, so guidance added there costs context in every task and applies to uses it was not written for. A file that loads only where it applies keeps the always-loaded files small. | A correction in a separate file may need a reference from `AGENTS.md` or `CLAUDE.md` to load. Reading a referenced file can cost a tool call, and with it an interim message whose wording the prompt must keep compliant (D29). |
-| D31 | Refuse to confirm a proposal that lists a conflict between requirements (user ruling, 2026-10-02). | No reply can satisfy a contract with a conflict, so its campaign spends its trials and ends in a plateau. Which requirement prevails is the user's decision, not the deriver's. | The deriver reports each conflict instead of settling it, and `confirm` fails and names the conflicts until feedback resolves them. |
+| D31 | Refuse to confirm a proposal that lists a conflict between requirements (user ruling, 2026-10-02). | No reply can satisfy a contract with a conflict, so its campaign spends its trials and ends in a plateau. Which requirement prevails is the user's decision, not the deriver's. | The deriver reports each conflict with resolutions and a recommended one instead of settling it; the agent asks the user to choose; `confirm` fails and names the conflicts until feedback resolves them. |
+| D32 | A conflict found during a campaign is the author's to resolve if a campaign edit introduced it, and pauses the campaign for the user's resolution, with options and a recommendation, if the confirmed prompt system already held it (user ruling, 2026-10-02). | The user decides which of their own requirements prevails; a conflict that the campaign created is a candidate defect. Checking the quoted text against the confirmed snapshot tells the two apart without trusting the author's account. | A *conflict* classification in the author's manifest, a pause whose choices are the resolutions, and a revision built from the chosen one. |
 
 ## 14. Acceptance evidence
 
