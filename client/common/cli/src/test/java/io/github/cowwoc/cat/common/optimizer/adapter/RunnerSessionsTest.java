@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
+import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
 import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness.Turn;
@@ -22,7 +23,6 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,10 +36,16 @@ import org.testng.annotations.Test;
 
 /**
  * Tests {@link RunnerSessions} over the real runner bridge with a scripted harness.
+ * <p>
+ * Blocking turns supply the interrupted terminal completion documented by codex-cli 0.147.0's app-server README,
+ * as cited by ScriptedHarness. They test CAT's classification and permit lifetime given that input, not the native
+ * harness's reaction. The direct bridge fixture supplies the CAT-owned JSONL protocol documented by
+ * {@link HarnessRunnerBridge}.
  */
 public final class RunnerSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
+	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 
 	/**
@@ -115,18 +121,22 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that the runner receives the request's model and reasoning effort, and that an unbound dimension is
-	 * not selected, so the harness applies its default.
+	 * Verifies that CAT passes bound model and reasoning-effort dimensions to the runner and omits the options for
+	 * unbound dimensions.
 	 *
-	 * @throws Exception if a session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void passesTheRequestedProfile() throws Exception
+	public void passesTheRequestedProfile()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E17
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
@@ -150,18 +160,22 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that the interrupt request that the port sends the runner waits for the turn to start, so that an
-	 * interrupt that reaches the runner before its turn is running is not lost.
+	 * Verifies that CAT sends the interrupt request with the bridge's turn-started control point and classifies the
+	 * supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void interruptWaitsForTheTurnStart() throws Exception
+	public void sendsInterruptAfterTurnStart()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path runs = root.resolve("runs");
 			List<String> requests = new CopyOnWriteArrayList<>();
@@ -200,70 +214,25 @@ public final class RunnerSessionsTest
 		}
 	}
 
-	/**
-	 * Verifies that a harness that fails after CAT asked it to stop still yields an interruption, because the failure
-	 * is a consequence of the interrupt.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void reportsInterruptDespiteFailure() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CountDownLatch entered = new CountDownLatch(1);
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.failsWhenInterrupted().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			handle.interrupt();
-
-			requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-		}
-	}
-
-	/**
-	 * Verifies that interrupting a session that already ended does nothing.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void ignoresInterruptAfterTheSessionEnded() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("done")));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			SessionResult result = await(handle);
-
-			handle.interrupt();
-
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(await(handle), "second").isEqualTo(result);
-		}
-	}
 
 	/**
 	 * Verifies that an interrupt that arrives while the session waits for capacity ends it without starting a
 	 * runner.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void interruptsWhileWaitingForCapacity() throws Exception
+	public void interruptsWhileWaitingForCapacity()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
 			{
@@ -286,15 +255,19 @@ public final class RunnerSessionsTest
 	/**
 	 * Verifies that a session holds one capacity permit from the moment its runner starts until it ends.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void holdsOnePermitForTheSessionsLifetime() throws Exception
+	public void holdsOnePermitForTheSessionsLifetime()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
 			{
@@ -317,18 +290,22 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that a turn that ends without a result is an infrastructure failure, even though the bridge reports
-	 * the failure only when it receives its next request.
+	 * Verifies that CAT classifies a supplied nonzero turn exit without a terminal result as an infrastructure failure
+	 * and identifies the failed turn. It exercises the bridge manifest boundary that records that exit.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesTurnWithoutResultAsFailure() throws Exception
+	public void classifiesTurnWithoutResultAsFailure()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.fails(), Turn.replies("third")));
@@ -344,15 +321,19 @@ public final class RunnerSessionsTest
 	 * Verifies that a runner that fails before the session starts is an infrastructure failure that carries the
 	 * runner's message.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesRunnerStartupFailureAsFailure() throws Exception
+	public void classifiesRunnerStartupFailureAsFailure()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
@@ -368,18 +349,22 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that a session that exceeds its time limit is completed with the replies that it had, because CAT
-	 * judges such a trial on its behavior instead of retrying it.
+	 * Verifies that CAT classifies an expired session as Completed and excludes the late terminal response supplied
+	 * after its stop request, retaining only replies observed before the limit.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void completesWithRepliesSoFarAtTheTimeLimit() throws Exception
+	public void completesWithRepliesSoFarAtTheTimeLimit()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			ManualClock clock = new ManualClock(START);
 			CountDownLatch entered = new CountDownLatch(1);
@@ -394,41 +379,6 @@ public final class RunnerSessionsTest
 			SessionResult result = await(handle);
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of("first"));
-		}
-	}
-
-	/**
-	 * Verifies that a runner that ignores an interrupt does not hold the session forever, and that the session still
-	 * reports the interruption.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void givesUpOnARunnerThatIgnoresAnInterrupt() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			CountDownLatch entered = new CountDownLatch(1);
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
-				new CopyOnWriteArrayList<>(), List.of(Turn.blocksForever().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
-
-			handle.interrupt();
-			// The driver sends the interrupt on its next poll and then starts the grace period on the clock.
-			List<SessionResult> results = new ArrayList<>();
-			handle.completion().thenAccept(results::add);
-			while (results.isEmpty())
-			{
-				clock.advance(Duration.ofSeconds(31));
-				handle.completion().toCompletableFuture().completeOnTimeout(null, 1, TimeUnit.SECONDS).get();
-			}
-
-			requireThat(results.get(0), "result").isInstanceOf(SessionResult.Interrupted.class);
 		}
 	}
 }

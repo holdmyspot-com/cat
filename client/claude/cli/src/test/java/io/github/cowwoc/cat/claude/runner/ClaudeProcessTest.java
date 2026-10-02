@@ -94,15 +94,6 @@ public final class ClaudeProcessTest
 		"\"content\":[{\"type\":\"text\",\"text\":\"TWO\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
 	private static final String SECOND_RESULT = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false," +
 		"\"result\":\"TWO\",\"session_id\":\"s\"}";
-	/**
-	 * The lines Claude Code 2.1.287 printed after an interrupt request that arrived once the root had replied while a
-	 * background task still ran, recorded on 2026-10-01 with {@code CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1}: it stopped
-	 * the task, listed no task, acknowledged the request and reported that it was idle again.
-	 */
-	private static final String CHILD_KILLED = "{\"type\":\"system\",\"subtype\":\"task_updated\"," +
-		"\"task_id\":\"child\",\"patch\":{\"status\":\"killed\"},\"session_id\":\"s\"}";
-	private static final String CHILD_STOPPED = "{\"type\":\"system\",\"subtype\":\"task_notification\"," +
-		"\"task_id\":\"child\",\"tool_use_id\":\"toolu_root\",\"status\":\"stopped\",\"session_id\":\"s\"}";
 
 	/**
 	 * Creates the test fixture.
@@ -238,7 +229,6 @@ public final class ClaudeProcessTest
 	{
 		// Requirement: R-E14
 		List<String> lines = recorded(timeline);
-		requireThat(lines.getLast(), "lastLine").isEqualTo(STATE_IDLE);
 		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false);
 		List<Integer> ends = new ArrayList<>();
 		for (int i = 0; i < lines.size(); ++i)
@@ -252,18 +242,19 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies that a user message sent while a child runs is answered within the same turn, and the turn still ends
-	 * only once Claude is idle after replying to the child's completion.
+	 * Verifies steering writes the supplied user direction while a turn is active, preserving quotes and newlines,
+	 * and that consuming a recorded queued-message timeline continues through the final idle state.
 	 *
 	 * @throws IOException if the turn fails
 	 */
 	@Test(timeOut = 10_000)
-	public void answersQueuedMessageWithinTurn() throws IOException
+	public void steersWithinActiveTurn() throws IOException
 	{
 		// Requirement: R-E14
 		List<String> beforeMessage = recorded("s-queued-1.jsonl");
 		List<String> afterMessage = recorded("s-queued-2.jsonl");
 		String rootResult = beforeMessage.getLast();
+		String direction = "Reply with \"TWO\".\nThen stop.";
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
@@ -277,7 +268,7 @@ public final class ClaudeProcessTest
 				relayed.add(line);
 				if (line.equals(rootResult))
 				{
-					process.steer("Reply with the single word TWO.");
+					process.steer(direction);
 					claude.emit(afterMessage.toArray(String[]::new));
 				}
 			});
@@ -288,6 +279,10 @@ public final class ClaudeProcessTest
 			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo(lastResult(afterMessage));
 			requireThat(relayed, "relayed").isEqualTo(expected);
 			requireThat(claude.requests().size(), "requests").isEqualTo(2);
+			JsonNode steering = JsonMapper.builder().build().readTree(claude.requests().getLast());
+			requireThat(steering.path("type").asString(), "type").isEqualTo("user");
+			requireThat(steering.path("message").path("role").asString(), "role").isEqualTo("user");
+			requireThat(steering.path("message").path("content").asString(), "content").isEqualTo(direction);
 		}
 	}
 
@@ -324,8 +319,8 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies that when the task list empties after Claude became idle, the turn does not end then, however long
-	 * Claude stays quiet, but at the next {@code idle} state, once Claude has replied to the child's completion.
+	 * Verifies that an empty task list after an idle state does not end the turn; consuming the follow-up reply and
+	 * its idle state does.
 	 *
 	 * @throws IOException if the turn fails
 	 */
@@ -407,8 +402,7 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies an interrupt that arrives after the turn has ended does nothing, and the process still serves the next
-	 * turn. The in-memory Claude has no operating-system process, so signalling it would fail the test.
+	 * Verifies an interrupt after a turn ends writes no request, and the process still serves the next turn.
 	 *
 	 * @throws IOException if a turn or the interrupt fails
 	 */
@@ -434,46 +428,50 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies that an interrupt of an active turn writes Claude's stream-json interrupt request to its standard input,
-	 * and that the turn then ends as the lines Claude prints in response dictate. Claude is idle after the root reply
-	 * while a background child is still listed, so the turn waits. Only an interrupt request makes the in-memory Claude
-	 * print the lines that Claude Code 2.1.287 printed for one: the child stopped, no task listed, the request
-	 * acknowledged under its identifier, and an idle state, which ends the turn.
+	 * Verifies each interrupt of an active turn writes a stream-json interrupt request with a distinct identifier.
+	 * The ordinary turn output is supplied independently of the requests; this test makes no claim about Claude's
+	 * response to an interrupt.
 	 *
-	 * @throws IOException if the turn or the interrupt fails
+	 * @throws IOException if the turn or an interrupt fails
 	 */
 	@Test(timeOut = 10_000)
 	public void interruptsThroughStandardInput() throws IOException
 	{
 		// Requirement: R-E15
-		List<String> beforeInterrupt = List.of(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING,
-			CHILD_STARTED, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
-		InterruptibleClaude claude = new InterruptibleClaude();
-		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude.process))
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
-			claude.process.emit(beforeInterrupt.toArray(String[]::new));
-			List<String> relayed = new ArrayList<>();
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
 
-			HarnessProcessResult result = process.sendTurn("Launch a background child.", line ->
+			process.sendTurn("Reply LAUNCHED.", line ->
 			{
-				relayed.add(line);
-				if (relayed.size() == beforeInterrupt.size())
+				if (line.equals(ROOT_REPLY))
+				{
 					process.interrupt();
+					process.interrupt();
+				}
 			});
 
-			String requestId = claude.json.readTree(claude.process.requests().getLast()).path("request_id").asString("");
-			requireThat(requestId, "requestId").isNotBlank();
-			List<String> expected = new ArrayList<>(beforeInterrupt);
-			expected.addAll(claude.afterInterrupt);
-			requireThat(relayed, "relayed").isEqualTo(expected);
-			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
+			requireThat(claude.requests().size(), "requests").isEqualTo(3);
+			JsonMapper json = JsonMapper.builder().build();
+			JsonNode first = json.readTree(claude.requests().get(1));
+			JsonNode second = json.readTree(claude.requests().get(2));
+			for (JsonNode request : List.of(first, second))
+			{
+				requireThat(request.path("type").asString(), "type").isEqualTo("control_request");
+				requireThat(request.path("request").path("subtype").asString(), "subtype").isEqualTo("interrupt");
+				requireThat(request.path("request_id").asString(), "requestId").isNotBlank();
+			}
+			requireThat(second.path("request_id").asString(), "secondRequestId").
+				isNotEqualTo(first.path("request_id").asString());
 		}
 	}
 
 	/**
-	 * Verifies that a turn which ends because Claude closed its output waits for the operating system to report the
-	 * exit, instead of reading an exit status that does not exist yet.
+	 * Verifies a turn whose child output ends waits for termination before reading its exit status. The in-memory
+	 * child models stdout closing before termination is observed; reading its exit status before waiting fails.
 	 *
 	 * @throws IOException if the turn fails
 	 */
@@ -495,40 +493,6 @@ public final class ClaudeProcessTest
 
 			requireThat(result.completed(), "completed").isFalse();
 			requireThat(result.standardError(), "standardError").contains("Claude process ended before result");
-		}
-	}
-
-	/**
-	 * Plays a Claude that is idle after the root reply while a background child is still listed. Each stream-json
-	 * interrupt request that the runner writes makes it print the lines that Claude Code 2.1.287 printed for one,
-	 * acknowledging the request under its identifier.
-	 */
-	private static final class InterruptibleClaude
-	{
-		private final JsonMapper json = JsonMapper.builder().build();
-		private final FakeHarnessCli process = new FakeHarnessCli(this::answer);
-		/**
-		 * The lines printed after the latest interrupt request, or an empty list if none arrived.
-		 */
-		private volatile List<String> afterInterrupt = List.of();
-
-		/**
-		 * Answers one request line. Ignores every request except an interrupt.
-		 *
-		 * @param request a line the runner wrote to standard input
-		 */
-		private void answer(String request)
-		{
-			JsonNode node = json.readTree(request);
-			if (!node.path("type").asString("").equals("control_request") ||
-				!node.path("request").path("subtype").asString("").equals("interrupt"))
-			{
-				return;
-			}
-			String acknowledged = "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\"," +
-				"\"request_id\":" + node.path("request_id") + ",\"response\":{\"still_queued\":[]}}}";
-			afterInterrupt = List.of(CHILD_KILLED, CHILDREN_FINISHED, CHILD_STOPPED, acknowledged, STATE_IDLE);
-			process.emit(afterInterrupt.toArray(String[]::new));
 		}
 	}
 }

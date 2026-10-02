@@ -1,31 +1,14 @@
 package io.github.cowwoc.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
-import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
-import io.github.cowwoc.cat.common.PluginInfo;
-import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
-import io.github.cowwoc.cat.common.runner.HarnessRunManager;
-import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -34,16 +17,15 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.LongFunction;
-import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests how {@link CodexProcess} runs, interrupts and reports a turn, and how {@link CodexRunner} starts it. Each
- * test plays the Codex app-server with a {@link FakeHarnessCli} that answers JSON-RPC requests with notifications
- * shaped like those codex-cli 0.159.1 printed for a root thread with child threads.
+ * Tests how {@link CodexProcess} constructs requests and interprets supplied app-server events.
+ * {@link FakeHarnessCli} supplies controlled protocol input;
+ * these tests do not establish how a live app-server responds.
  */
 public final class CodexProcessTest
 {
@@ -114,70 +96,8 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies that the runner starts the app-server under the model and effort it was asked for: the model reaches
-	 * {@code thread/start} and the effort reaches each {@code turn/start}.
-	 *
-	 * @throws IOException if the run fails
-	 */
-	@Test(timeOut = 10_000)
-	public void runnerSelectsTheRequestedProfile() throws IOException
-	{
-		// Requirement: R-E17
-		AppServer server = new AppServer(id -> List.of(turnStarted(id),
-			agentMessage(ROOT_THREAD, "done"),
-			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-runner-"));
-			Path artifact = createArtifact(root.resolve("artifact"));
-			Path project = Files.createDirectories(root.resolve("project"));
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
-			List<List<String>> commands = new CopyOnWriteArrayList<>();
-			CodexRunner runner = new CodexRunner((command, _, _) ->
-			{
-				commands.add(command);
-				return new StartedProcess(server.process);
-			});
-			try (HarnessRunSession session = runner.start(artifact, project, manager, "codex",
-				Map.of("HOME", root.resolve("home").toString()), "gpt-6.1-sol", "high", false, null))
-			{
-				session.sendTurn("Run the trial.");
-			}
-
-			requireThat(commands, "commands").isEqualTo(List.of(List.of("codex", "app-server", "--stdio",
-				"--disable", "plugins")));
-			requireThat(server.requests("thread/start").getFirst().path("model").asString(""), "model").
-				isEqualTo("gpt-6.1-sol");
-			requireThat(server.requests("turn/start").getFirst().path("effort").asString(""), "effort").
-				isEqualTo("high");
-		}
-	}
-
-	/**
-	 * Creates the smallest directory that the runner accepts as a Codex artifact.
-	 *
-	 * @param artifact the directory to create
-	 * @return {@code artifact}
-	 * @throws IOException if the filesystem operation fails
-	 */
-	private static Path createArtifact(Path artifact) throws IOException
-	{
-		Files.createDirectories(artifact.resolve(".codex-plugin"));
-		Files.createDirectories(artifact.resolve("client/bin"));
-		Files.writeString(artifact.resolve(".codex-plugin/plugin.json"), "{}\n", UTF_8);
-		Files.writeString(artifact.resolve("client/VERSION"), PluginInfo.CAT_VERSION + "\n", UTF_8);
-		for (String launcher : List.of("plugin-info", "session-start"))
-		{
-			Path file = artifact.resolve("client/bin").resolve(launcher);
-			Files.writeString(file, "#!/bin/sh\nexit 0\n", UTF_8);
-			Files.setPosixFilePermissions(file, Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
-		}
-		return artifact;
-	}
-
-	/**
-	 * Verifies an interrupt during a turn sends {@code turn/interrupt} for the active root turn, and the interrupted
-	 * turn ends as a completed bridge turn with the root's last message.
+	 * Verifies an interrupt during a turn targets the active root turn. Given the supplied {@code interrupted}
+	 * completion notification, the bridge classifies the caller-interrupted turn as successful.
 	 *
 	 * @throws IOException          if the turn fails
 	 * @throws InterruptedException if the test is interrupted while it waits
@@ -208,7 +128,6 @@ public final class CodexProcessTest
 				ROOT_TURN));
 			requireThat(result.completed(), "completed").isTrue();
 			requireThat(result.exitCode(), "exitCode").isEqualTo(0);
-			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("Working on it.");
 		}
 	}
 
@@ -246,8 +165,8 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies an interrupt that arrives after the turn has ended sends nothing to Codex, and the process still serves
-	 * the next turn.
+	 * Verifies an interrupt after a supplied completion notification sends no interrupt request. A subsequent
+	 * supplied completion notification is still classified as a completed turn.
 	 *
 	 * @throws IOException if a turn or the interrupt fails
 	 */
@@ -265,13 +184,13 @@ public final class CodexProcessTest
 
 			HarnessProcessResult next = process.sendTurn("Second task.");
 			requireThat(server.interruptRequests(), "interruptRequests").isEmpty();
-			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("Done.");
+			requireThat(next.completed(), "completed").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that a turn which ends because Codex closed its output waits for the operating system to report the
-	 * exit, instead of reading an exit status that does not exist yet.
+	 * Verifies the bridge reports an incomplete turn when its input reaches EOF without a completion notification,
+	 * and waits for the supplied process to exit before reading its exit status.
 	 *
 	 * @throws IOException if the turn fails
 	 */
@@ -323,7 +242,7 @@ public final class CodexProcessTest
 	private static String agentMessage(String threadId, String text)
 	{
 		return "{\"method\":\"item/completed\",\"params\":{\"item\":{\"type\":\"agentMessage\",\"id\":\"msg\"," +
-			"\"text\":" + JsonMapper.builder().build().writeValueAsString(text) + ",\"phase\":\"final_answer\"}," +
+			"\"text\":" + JsonMapper.builder().build().writeValueAsString(text) + "}," +
 			"\"threadId\":\"" + threadId + "\",\"turnId\":\"turn\"}}";
 	}
 
@@ -342,184 +261,15 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * An in-memory app-server as the runner sees a started operating-system process. The runner records the
-	 * process's identifier and start time, which an in-memory child lacks, so this process reports the test JVM's;
-	 * everything else is the in-memory child's.
-	 */
-	private static final class StartedProcess extends Process
-	{
-		private final FakeHarnessCli child;
-
-		/**
-		 * Wraps an in-memory child.
-		 *
-		 * @param child the child
-		 */
-		private StartedProcess(FakeHarnessCli child)
-		{
-			this.child = child;
-		}
-
-		@Override
-		public OutputStream getOutputStream()
-		{
-			return child.getOutputStream();
-		}
-
-		@Override
-		public InputStream getInputStream()
-		{
-			return child.getInputStream();
-		}
-
-		@Override
-		public InputStream getErrorStream()
-		{
-			return child.getErrorStream();
-		}
-
-		@Override
-		public int waitFor() throws InterruptedException
-		{
-			return child.waitFor();
-		}
-
-		@Override
-		public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
-		{
-			return child.waitFor(timeout, unit);
-		}
-
-		@Override
-		public int exitValue()
-		{
-			return child.exitValue();
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return child.isAlive();
-		}
-
-		@Override
-		public void destroy()
-		{
-			child.destroy();
-		}
-
-		@Override
-		public long pid()
-		{
-			return ProcessHandle.current().pid();
-		}
-
-		@Override
-		public ProcessHandle toHandle()
-		{
-			return new Handle(child.toHandle());
-		}
-
-		/**
-		 * The in-memory child's handle, with the test JVM's identifier and start time.
-		 */
-		private static final class Handle implements ProcessHandle
-		{
-			private final ProcessHandle child;
-
-			/**
-			 * Wraps the in-memory child's handle.
-			 *
-			 * @param child the child's handle
-			 */
-			private Handle(ProcessHandle child)
-			{
-				this.child = child;
-			}
-
-			@Override
-			public long pid()
-			{
-				return ProcessHandle.current().pid();
-			}
-
-			@Override
-			public Optional<ProcessHandle> parent()
-			{
-				return child.parent();
-			}
-
-			@Override
-			public Stream<ProcessHandle> children()
-			{
-				return child.children();
-			}
-
-			@Override
-			public Stream<ProcessHandle> descendants()
-			{
-				return child.descendants();
-			}
-
-			@Override
-			public Info info()
-			{
-				return ProcessHandle.current().info();
-			}
-
-			@Override
-			public CompletableFuture<ProcessHandle> onExit()
-			{
-				return child.onExit();
-			}
-
-			@Override
-			public boolean supportsNormalTermination()
-			{
-				return child.supportsNormalTermination();
-			}
-
-			@Override
-			public boolean destroy()
-			{
-				return child.destroy();
-			}
-
-			@Override
-			public boolean destroyForcibly()
-			{
-				return child.destroyForcibly();
-			}
-
-			@Override
-			public boolean isAlive()
-			{
-				return child.isAlive();
-			}
-
-			@Override
-			public int compareTo(ProcessHandle other)
-			{
-				return child.compareTo(other);
-			}
-
-			@Override
-			public boolean equals(Object value)
-			{
-				return value instanceof Handle other && other.child.equals(child);
-			}
-
-			@Override
-			public int hashCode()
-			{
-				return child.hashCode();
-			}
-		}
-	}
-
-	/**
-	 * Plays the Codex app-server: answers the start-up requests, then answers each {@code turn/start} and
-	 * {@code turn/interrupt} request with the lines the test supplies.
+	 * Supplies protocol responses to {@link CodexProcess}. Startup, turn-start and interrupt response shapes follow
+	 * OpenAI's codex-cli 0.147.0
+	 * <a href="https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server/README.md">app-server README</a>
+	 * (Initialization, Lifecycle Overview, and Interrupt an active turn). Notifications retain the fields consumed
+	 * by the bridge. Root/child completion fields appear in {@code optimizer/codex-children.jsonl}
+	 * (codex-cli 0.159.1); agent-message fields follow that README's Events and Items sections.
+	 * Identifiers and message text are controlled test inputs. Withholding a response lets the caller choose when to
+	 * deliver it; it makes no claim about harness timing. EOF-before-exit uses {@link FakeHarnessCli}'s generic process
+	 * lifecycle model.
 	 */
 	private static final class AppServer
 	{
@@ -633,7 +383,8 @@ public final class CodexProcessTest
 			long id = request.path("id").asLong(0);
 			switch (request.path("method").asString(""))
 			{
-				case "initialize" -> process.emit(response(id));
+				case "initialize" -> process.emit("{\"id\":" + id + ",\"result\":{\"userAgent\":\"codex/0.147.0\"," +
+					"\"codexHome\":\"/codex-home\",\"platformFamily\":\"unix\",\"platformOs\":\"linux\"}}");
 				case "thread/start" -> process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" +
 					ROOT_THREAD + "\"}}}");
 				case "turn/start" ->

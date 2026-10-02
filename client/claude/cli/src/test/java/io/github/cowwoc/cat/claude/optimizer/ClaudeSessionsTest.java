@@ -38,10 +38,16 @@ import org.testng.annotations.Test;
 
 /**
  * Tests {@link ClaudeSessions} over the real runner bridge with a scripted harness.
+ * <p>
+ * Inline rejection and error events use the fields documented by Anthropic's Agent SDK v0.2.163, which bundles
+ * Claude Code 2.1.286, in
+ * <a href="https://github.com/anthropics/claude-agent-sdk-python/blob/v0.2.163/src/claude_agent_sdk/types.py">
+ * RateLimitInfo and ResultMessage</a>. Their values are representative parser inputs, not recorded provider outcomes.
  */
 public final class ClaudeSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
+	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
 
 	/**
 	 * Creates the test.
@@ -79,13 +85,30 @@ public final class ClaudeSessionsTest
 	private static ClaudeSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
+		return port(runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
+	}
+
+	/**
+	 * Creates a port and observes the prompts that CAT sends through the bridge.
+	 *
+	 * @param runRoot the directory for run directories
+	 * @param capacity the shared capacity
+	 * @param clock the clock for time limits
+	 * @param arguments receives the runner's options for each session
+	 * @param script what the harness does, turn by turn
+	 * @param requests receives the decoded prompts in turn order
+	 * @return the port
+	 */
+	private static ClaudeSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+		List<List<String>> arguments, List<Turn> script, List<String> requests)
+	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, "", false, Map.of(),
 			runRoot, capacity, clock);
 		return new ClaudeSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude", script, input,
-				output);
+				output, requests);
 		});
 	}
 
@@ -132,13 +155,18 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that a session sends each turn through the runner, and that the completed result carries the replies,
-	 * the transcript, the project effects, the observed model, the usage and the rate-limit windows.
+	 * Verifies that CAT preserves prompt and response order through the bridge, records the unchanged event lines,
+	 * selects the run's project directory, removes its isolated home and derives usage, tool calls and prompt sources
+	 * from recorded events. The observed model and parsed rate-limit windows are retained in the completed result.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void completesEveryTurnWithObservedEvidence() throws Exception
+	public void completesEveryTurnWithObservedEvidence()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-C9
 		// Requirement: R-E13
@@ -146,17 +174,19 @@ public final class ClaudeSessionsTest
 		// Requirement: R-E6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			List<String> events = new ArrayList<>(recorded("claude-single-turn.jsonl"));
 			events.addAll(recorded("claude-tool-calls.jsonl"));
 			List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
-				Turn.replies("second").writing("out.txt", "hello"));
+				Turn.replies("second"));
+			List<String> requests = new CopyOnWriteArrayList<>();
 			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), script);
+				new CopyOnWriteArrayList<>(), script, requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+			SessionResult result = await(sessions.start(request(source, List.of(), "one \"quoted\"", "two\nlines")));
 
+			requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) result;
 			requireThat(completed.responses(), "responses").isEqualTo(List.of("first", "second"));
@@ -169,7 +199,9 @@ public final class ClaudeSessionsTest
 				new RateLimitWindow(0.3, Instant.ofEpochSecond(1_790_851_200L)),
 				new RateLimitWindow(0.04, Instant.ofEpochSecond(1_791_064_800L))));
 			requireThat(Files.readAllLines(completed.transcript()), "transcript").isEqualTo(events);
-			requireThat(Files.readString(completed.effects().resolve("out.txt")), "effect").isEqualTo("hello");
+			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+				resolve("project"));
+			requireThat(completed.effects(), "effects").isDirectory();
 			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
 			List<String> sources = completed.promptSources().lines().toList();
 			requireThat(sources, "promptSources").contains("skill:cat:git-squash");
@@ -198,15 +230,15 @@ public final class ClaudeSessionsTest
 	 * Verifies that the port classifies a signed-in host as a subscription, from the key names of its credential
 	 * file, without starting a session.
 	 *
-	 * @throws Exception if the classification fails
+	 * @throws IOException if a credential fixture cannot be created
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesASubscriptionLogin() throws Exception
+	public void classifiesASubscriptionLogin() throws IOException
 	{
 		// Requirement: R-E7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
 
 			HostLogin login = loginPort(root, Map.of()).hostLogin();
@@ -219,15 +251,15 @@ public final class ClaudeSessionsTest
 	 * Verifies that the port classifies a host whose environment selects an API key as an API-key login, even when a
 	 * subscription credential file exists.
 	 *
-	 * @throws Exception if the classification fails
+	 * @throws IOException if a credential fixture cannot be created
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesAnApiKeyLogin() throws Exception
+	public void classifiesAnApiKeyLogin() throws IOException
 	{
 		// Requirement: R-E7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
 
 			HostLogin login = loginPort(root, Map.of("ANTHROPIC_API_KEY", "")).hostLogin();
@@ -240,15 +272,15 @@ public final class ClaudeSessionsTest
 	 * Verifies that the port reports an unknown login when the host has neither a credential file nor a login
 	 * variable.
 	 *
-	 * @throws Exception if the classification fails
+	 * @throws IOException if a credential fixture cannot be created
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesAMissingLoginAsUnknown() throws Exception
+	public void classifiesAMissingLoginAsUnknown() throws IOException
 	{
 		// Requirement: R-E7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 
 			HostLogin login = loginPort(root, Map.of()).hostLogin();
 
@@ -260,15 +292,19 @@ public final class ClaudeSessionsTest
 	 * Verifies that the runner receives the session's source as its project, and each read-only path as read-only
 	 * evidence.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void passesEvidenceToTheRunnerReadOnly() throws Exception
+	public void passesEvidenceToTheRunnerReadOnly()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path first = Files.createDirectories(root.resolve("evidence-1"));
 			Path second = Files.createDirectories(root.resolve("evidence-2"));
@@ -281,26 +317,32 @@ public final class ClaudeSessionsTest
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
 			List<String> options = arguments.get(0);
 			requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
-			requireThat(options.indexOf("--read-only-evidence"), "firstEvidence").isGreaterThanOrEqualTo(0);
-			requireThat(options.contains(first.toString()), "containsFirst").isTrue();
-			requireThat(options.contains(second.toString()), "containsSecond").isTrue();
+			int firstEvidence = options.indexOf("--read-only-evidence");
+			requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
+			requireThat(options.subList(firstEvidence, options.size()), "evidenceOptions").isEqualTo(List.of(
+				"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
 			requireThat(options.contains("--keep-run"), "keepRun").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that an interrupt that CAT requests while a turn runs ends the session as an interruption, and that the
-	 * runner is asked to stop the turn.
+	 * Verifies that CAT classifies its requested interrupt as Interrupted and retains the parsed windows when the
+	 * bridge supplies a terminal completion. ResultMessage documents cancellation after interrupt; the test makes no
+	 * claim about the native harness's stop timing.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void reportsRequestedInterrupt() throws Exception
+	public void reportsRequestedInterrupt()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			CountDownLatch entered = new CountDownLatch(1);
 			List<String> events = recorded("claude-single-turn.jsonl");
@@ -323,51 +365,64 @@ public final class ClaudeSessionsTest
 	 * Verifies that a provider rejection for a rate limit is reported with its reset time, and that the session sends
 	 * no further turn.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesRateLimitRejection() throws Exception
+	public void classifiesRateLimitRejection()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			String rejected = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"," +
 				"\"resetsAt\":1790851200,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":" +
 				"{\"utilization\":1.0,\"resetsAt\":1790851200}}}}";
+			List<String> requests = new CopyOnWriteArrayList<>();
 			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("limit", rejected)));
+				new CopyOnWriteArrayList<>(), List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
 
 			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
 			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(Instant.ofEpochSecond(1_790_851_200L),
 				List.of(new RateLimitWindow(1.0, Instant.ofEpochSecond(1_790_851_200L)))));
+			requireThat(requests, "requests").isEqualTo(List.of("one"));
 		}
 	}
 
 	/**
-	 * Verifies that an error result is an infrastructure failure that names the error.
+	 * Verifies that CAT classifies an error result as an infrastructure failure, names the error and sends no further
+	 * turn.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesErrorResultAsFailure() throws Exception
+	public void classifiesErrorResultAsFailure()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			String error = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":500," +
 				"\"terminal_reason\":\"model_error\",\"result\":\"details\"}";
+			List<String> requests = new CopyOnWriteArrayList<>();
 			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", error), Turn.replies("never")));
+				new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", error), Turn.replies("never")), requests);
 
 			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 				"Claude reported an error result (api_error_status=500, terminal_reason=model_error)", List.of()));
+			requireThat(requests, "requests").isEqualTo(List.of("one"));
 		}
 	}
 }

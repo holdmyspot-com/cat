@@ -24,6 +24,27 @@ import java.util.stream.Stream;
  * runner writes to the child's standard input is recorded and passed to a test-supplied handler, and closing that
  * input ends the child. The child has no operating-system process, so {@link #pid()} fails, which makes any attempt
  * to signal it fail the test.
+ * <p>
+ * Protocol lines come from caller-owned recordings: Claude Code 2.1.286 timelines under
+ * {@code client/claude/cli/src/test/resources/runner/turn-boundary} and
+ * {@code client/claude/cli/src/test/resources/optimizer/claude-single-turn.jsonl}, Claude Code 2.1.287 recordings
+ * described in {@code client/claude/cli/src/test/resources/optimizer/tool-calls.md}, codex-cli 0.159.1's
+ * {@code client/codex/cli/src/test/resources/optimizer/codex-children.jsonl}, and codex-cli 0.147.0/0.159.1+23
+ * recordings described in {@code client/codex/cli/src/test/resources/optimizer/codex-tool-calls.md}.
+ * This class invents no protocol events
+ * or interrupt responses; its handler records requests or supplies the documented responses named by its caller.
+ * <p>
+ * Closing input models codex-cli 0.147.0's stdio EOF shutdown: OpenAI's
+ * <a href="https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server-transport/src/transport/stdio.rs">
+ * stdio transport</a> reports a closed connection on EOF, and
+ * <a href="https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server/src/lib.rs">app-server</a>
+ * ends its single-client event loop. Claude tests make no claim about stdin EOF shutdown.
+ * Explicit exit, output EOF, waiting, and termination model the generic JDK
+ * <a href="https://docs.oracle.com/en/java/javase/27/docs/api/java.base/java/lang/Process.html">Process contract</a>:
+ * output EOF and process termination are separate observations, and exit status is unavailable while alive.
+ * The delayed-exit option makes waiting observable without asserting a harness-specific delay. Successful exit status
+ * 0 also appears in {@code docs/changelog/1.0/captures/base-codex-live/run.json} (codex-cli 0.147.0) and
+ * {@code base-claude-live/run.json} (Claude Code 2.1.220), with versions named in the captures' README.
  */
 public final class FakeHarnessCli extends Process
 {
@@ -71,8 +92,9 @@ public final class FakeHarnessCli extends Process
 
 	/**
 	 * Closes the child's standard output without marking the child as exited. The child is marked as exited, with
-	 * status 0, only when a caller waits for it, as an operating system reports an exit some time after the child
-	 * closed its output. A caller that reads the exit status without waiting fails.
+	 * status 0, when a caller waits for it. This makes the JDK contract's separate output-EOF and exit observations
+	 * testable; it does not prescribe the ordering or delay of a real harness. Reading the exit status while the
+	 * child is alive fails.
 	 */
 	public void closeOutputThenExitWhenAwaited()
 	{
@@ -164,7 +186,7 @@ public final class FakeHarnessCli extends Process
 
 	/**
 	 * The child's standard input as the runner sees it: each complete line is recorded and passed to the handler.
-	 * Closing it ends the child, as a harness CLI exits once its input ends.
+	 * Closing it models the documented Codex stdio EOF shutdown described on this class.
 	 */
 	private final class ChildInput extends OutputStream
 	{
