@@ -1,12 +1,14 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -14,7 +16,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's Codex app-server notifications say about the model, token usage, rate limits and errors.
+ * Reads what a session's Codex app-server notifications say about the model, token usage, rate limits, errors and
+ * root tool calls.
  * <p>
  * The parser follows the notifications that the runner captured:
  * <ul>
@@ -23,6 +26,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   the sum over every thread, so that child threads count;</li>
  *   <li>{@code account/rateLimits/updated} carries the {@code primary} and {@code secondary} windows, which are
  *   reported in that order;</li>
+ *   <li>{@code item/started} records a root tool call's position, and {@code item/completed} updates that same
+ *   item; command items report their command and numeric {@code exitCode}, while collaboration items name their
+ *   tool and built-in non-command items use their reported type;</li>
  *   <li>a {@code turn/completed} notification of the root thread whose status is neither {@code completed} nor
  *   {@code interrupted} reports an error, without Codex's error text.</li>
  * </ul>
@@ -33,6 +39,7 @@ final class AppServerEvents extends HarnessEvents
 {
 	private static final double PERCENT = 100.0;
 	private final Map<String, TokenUsage> totals = new HashMap<>();
+	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
 	private String rootThread;
 
 	/**
@@ -56,10 +63,62 @@ final class AppServerEvents extends HarnessEvents
 			case "thread/tokenUsage/updated" -> readTokenUsage(params);
 			case "account/rateLimits/updated" -> readRateLimits(params.path("rateLimits"));
 			case "turn/completed" -> readTurnCompleted(params);
+			case "item/started", "item/completed" -> readToolCall(params);
 			default ->
 			{
 			}
 		}
+	}
+
+	/**
+	 * Records a root tool item once, updating its completion without changing its invocation order.
+	 *
+	 * @param params the notification's parameters, including the owning thread and tool item
+	 */
+	private void readToolCall(JsonNode params)
+	{
+		if (rootThread == null || !params.path("threadId").asString("").equals(rootThread))
+			return;
+		JsonNode item = params.path("item");
+		String id = text(item.path("id"));
+		if (id == null)
+			return;
+		String type = item.path("type").asString("");
+		ToolCall call = switch (type)
+		{
+			case "commandExecution" -> commandCall(item);
+			case "collabAgentToolCall", "dynamicToolCall", "mcpToolCall" ->
+			{
+				String tool = text(item.path("tool"));
+				if (tool == null)
+					yield null;
+				yield new ToolCall(tool, null, null);
+			}
+			case "fileChange", "webSearch", "imageView", "sleep", "imageGeneration" ->
+				new ToolCall(type, null, null);
+			default -> null;
+		};
+		if (call == null)
+			return;
+
+		calls.put(id, call);
+		setToolCalls(new ArrayList<>(calls.values()));
+	}
+
+	/**
+	 * Reads a command item's reported command and structured exit code, retaining absent values as null.
+	 *
+	 * @param item the command-execution item
+	 * @return the recorded call
+	 */
+	private static ToolCall commandCall(JsonNode item)
+	{
+		String command = text(item.path("command"));
+		JsonNode code = item.path("exitCode");
+		Integer status = null;
+		if (command != null && code.isIntegralNumber() && code.canConvertToInt())
+			status = code.intValue();
+		return new ToolCall("commandExecution", command, status);
 	}
 
 	/**

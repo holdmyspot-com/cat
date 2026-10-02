@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -40,9 +42,11 @@ public sealed interface SessionResult
 	 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading,
 	 *   normalized so that staged paths do not appear in it, or {@code none} if the events showed nothing
 	 *   loading
+	 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
 	 */
 	record Completed(Path transcript, List<String> responses, Path effects, String model, String reasoning,
-		TokenUsage usage, List<RateLimitWindow> windows, String promptSources) implements SessionResult
+		TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
+		implements SessionResult
 	{
 		/**
 		 * Creates a completed result.
@@ -56,8 +60,9 @@ public sealed interface SessionResult
 		 * @param usage the reported token usage, or {@code null} if the harness did not report it
 		 * @param windows the rate-limit windows that the harness reported during the session
 		 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading
-		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects}, {@code windows} or
-		 *   {@code promptSources} are null
+		 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
+		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects}, {@code windows},
+		 *   {@code promptSources} or {@code toolCalls} are null, or {@code toolCalls} contains a null element
 		 * @throws IllegalArgumentException if {@code promptSources} is blank
 		 */
 		public Completed
@@ -69,6 +74,7 @@ public sealed interface SessionResult
 			requireThat(promptSources, "promptSources").isNotBlank();
 			responses = List.copyOf(responses);
 			windows = List.copyOf(windows);
+			toolCalls = List.copyOf(toolCalls);
 		}
 	}
 

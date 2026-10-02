@@ -199,8 +199,8 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	}
 
 	/**
-	 * Runs every check against its controls. A check that rejects its known-good control or
-	 * accepts its known-bad control is discarded, so its requirement is judged semantically.
+	 * Runs every check against its controls. A check that rejects its known-good control, accepts its known-bad
+	 * control, or cannot be decided on either control is discarded, so its requirement is judged semantically.
 	 *
 	 * @return the test with each failing check moved to {@link #discardedChecks()}
 	 */
@@ -211,12 +211,12 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		for (DeterministicCheck check : checks)
 		{
 			List<String> reasons = new ArrayList<>();
-			CheckResult good = decideControl(check, check.knownGood());
-			if (!good.passed())
-				reasons.add("It rejected its known-good control: " + good.observed() + ".");
-			CheckResult bad = decideControl(check, check.knownBad());
-			if (bad.passed())
-				reasons.add("It accepted its known-bad control: " + bad.observed() + ".");
+			String good = controlProblem(check, check.knownGood(), true);
+			if (good != null)
+				reasons.add(good);
+			String bad = controlProblem(check, check.knownBad(), false);
+			if (bad != null)
+				reasons.add(bad);
 			if (reasons.isEmpty())
 				kept.add(check);
 			else
@@ -231,21 +231,37 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	/**
 	 * Decides a check on one of its controls.
 	 *
-	 * @param check the check
+	 * @param check   the check
 	 * @param control the control
-	 * @return the result
+	 * @param good    {@code true} if the check must accept the control, {@code false} if it must reject it
+	 * @return why the control does not hold, or {@code null} if it holds
 	 */
-	private CheckResult decideControl(DeterministicCheck check, ControlEvidence control)
+	private String controlProblem(DeterministicCheck check, ControlEvidence control, boolean good)
 	{
+		String side;
+		if (good)
+			side = "known-good";
+		else
+			side = "known-bad";
+		CheckResult result;
 		try
 		{
-			return check.decide(control, textByDimension(control.choices()));
+			result = check.decide(control, textByDimension(control.choices()));
 		}
-		catch (IOException | UndecidableCheckException e)
+		catch (IOException e)
 		{
-			// A control is held in memory and records its tool calls
+			// A control is held in memory
 			throw new AssertionError("A control's evidence was unreadable", e);
 		}
+		catch (UndecidableCheckException e)
+		{
+			return "Its " + side + " control cannot decide it: " + e.getMessage() + ".";
+		}
+		if (result.passed() == good)
+			return null;
+		if (good)
+			return "It rejected its known-good control: " + result.observed() + ".";
+		return "It accepted its known-bad control: " + result.observed() + ".";
 	}
 
 	/**

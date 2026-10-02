@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
@@ -59,6 +60,91 @@ public final class AppServerEventsTest
 		for (String line : lines)
 			events.accept(line);
 		return events;
+	}
+
+	/**
+	 * Verifies that start and completion describe one root command, retaining its shell wrapper and exit code.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void recordsSuccessfulCommandOnce() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("codex-command-success.jsonl"));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("commandExecution",
+			"/bin/bash -lc \"ls -la && rg --files -g '\"'!*node_modules*'\"'" +
+				" | sed -n '1,160p' && find .. -name AGENTS.md -print\"",
+			0)));
+	}
+
+	/**
+	 * Verifies that a started command has an absent status until the harness reports its completion.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void leavesStartedCommandExitStatusAbsent() throws IOException
+	{
+		// Requirement: R-C9
+		List<String> lines = recorded("codex-tool-calls.jsonl");
+		HarnessEvents events = parse(lines.subList(0, 2));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(
+			List.of(new ToolCall("commandExecution", "/bin/bash -lc true", null)));
+	}
+
+	/**
+	 * Verifies that failed command completions update their calls, without duplicating them or adding child calls.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void recordsOnlyRootToolCalls() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("codex-tool-calls.jsonl"));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(
+			new ToolCall("commandExecution", "/bin/bash -lc true", 1),
+			new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+	}
+
+	/**
+	 * Verifies that file-change start and completion describe one non-command root call with no exit status.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void recordsFileChangeOnce() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("codex-file-change.jsonl"));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("fileChange", null, null)));
+	}
+
+	/**
+	 * Verifies that a recorded web search is counted once and has no command or inferred exit status.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void recordsWebSearchOnce() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("codex-web-search.jsonl"));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("webSearch", null, null)));
+	}
+
+	/**
+	 * Verifies that a dynamic tool keeps its reported name and does not turn its success flag into an exit code.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void recordsDynamicToolWithoutExitStatus() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("codex-dynamic-tool.jsonl"));
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("recording_echo", null, null)));
 	}
 
 	/**

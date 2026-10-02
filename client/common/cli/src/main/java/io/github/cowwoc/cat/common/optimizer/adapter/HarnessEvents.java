@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
@@ -13,7 +14,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's harness events say about the model, token usage, rate limits and errors.
+ * Reads what a session's harness events say about the model, token usage, rate limits, errors and root tool calls.
  * <p>
  * A subclass reads one harness's event format and records each observation through the protected setters.
  * Unrecognized lines are ignored.
@@ -30,6 +31,7 @@ public abstract class HarnessEvents
 	private List<RateLimitWindow> windows = List.of();
 	private Rejection rejection;
 	private String error;
+	private List<ToolCall> toolCalls = List.of();
 
 	/**
 	 * Creates a parser that has seen no events.
@@ -161,6 +163,30 @@ public abstract class HarnessEvents
 	{
 		requireThat(windows, "windows").isNotNull();
 		this.windows = List.copyOf(windows);
+	}
+
+	/**
+	 * Returns the root agent's tool calls.
+	 *
+	 * @return the calls in invocation order, with unreported commands and exit statuses left null
+	 */
+	public final List<ToolCall> toolCalls()
+	{
+		synchronized (lock)
+		{
+			return toolCalls;
+		}
+	}
+
+	/**
+	 * Records the root agent's tool calls.
+	 *
+	 * @param toolCalls the calls in invocation order
+	 * @throws NullPointerException if {@code toolCalls} or any element is null
+	 */
+	protected final void setToolCalls(List<ToolCall> toolCalls)
+	{
+		this.toolCalls = List.copyOf(toolCalls);
 	}
 
 	/**

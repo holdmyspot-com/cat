@@ -16,10 +16,10 @@ import java.util.Optional;
 
 /**
  * The recorded evidence of a completed trial session that its deterministic checks decide from: the session's final
- * replies and the project copy that holds its file effects.
+ * replies, the project copy that holds its file effects, and the root agent's tool calls in invocation order.
  * <p>
- * The session results that the harness adapters produce do not record tool calls, so a check that observes tool
- * calls cannot be decided from this evidence.
+ * Unreported commands and exit statuses remain null. A recorded list with no calls lets a tool-use check decide
+ * that the trial never called a tool.
  * <p>
  * <b>Thread Safety:</b> Callers may read concurrently. File checks read the project copy's current state; callers
  * must ensure that its files remain unchanged while evaluating the trial.
@@ -75,6 +75,6 @@ final class TrialEvidence implements CheckEvidence
 	@Override
 	public Optional<List<ToolCall>> toolCalls()
 	{
-		return Optional.empty();
+		return Optional.of(trial.toolCalls());
 	}
 }

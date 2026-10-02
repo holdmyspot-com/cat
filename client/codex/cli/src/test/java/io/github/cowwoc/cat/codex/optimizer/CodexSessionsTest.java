@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -167,6 +168,34 @@ public final class CodexSessionsTest
 			requireThat(Files.readString(completed.effects().resolve("out.txt")), "effect").isEqualTo("hello");
 			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
 			requireThat(completed.promptSources(), "promptSources").contains("hook:sessionStart plugin ");
+		}
+	}
+
+	/**
+	 * Verifies that the completed trial carries root tool calls selected and reconciled from recorded events.
+	 *
+	 * @throws Exception if the session fails
+	 */
+	@Test
+	public void completesWithRootToolCalls()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-C9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<String> events = recorded("codex-tool-calls.jsonl");
+			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				new CopyOnWriteArrayList<>(), List.of(Turn.replies("done", events.toArray(String[]::new))));
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "run commands")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
+				new ToolCall("commandExecution", "/bin/bash -lc true", 1),
+				new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
 		}
 	}
 

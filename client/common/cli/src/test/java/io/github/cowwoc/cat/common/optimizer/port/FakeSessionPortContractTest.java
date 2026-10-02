@@ -185,7 +185,7 @@ public final class FakeSessionPortContractTest
 				Files.writeString(transcript, "{\"type\":\"result\"}\n", UTF_8);
 				List<String> responses = Collections.nCopies(fake.request().turns().size(), "ok");
 				fake.end(new SessionResult.Completed(transcript, responses, workspace, "fake-model", "medium",
-					new TokenUsage(10, 0, 5, 0), List.of(new RateLimitWindow(0.1, RESET)), "none"));
+					new TokenUsage(10, 0, 5, 0), List.of(new RateLimitWindow(0.1, RESET)), "none", List.of()));
 			}
 			catch (IOException e)
 			{

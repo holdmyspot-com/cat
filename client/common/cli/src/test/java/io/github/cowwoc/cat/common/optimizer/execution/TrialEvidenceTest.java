@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import org.testng.annotations.Test;
 
@@ -35,7 +36,7 @@ public final class TrialEvidenceTest
 	private static TrialEvidence evidence(Path effects, List<String> replies)
 	{
 		return new TrialEvidence(new SessionResult.Completed(effects.resolveSibling("transcript"), replies, effects,
-			"model-a", null, null, List.of(), "none"));
+			"model-a", null, null, List.of(), "none", List.of()));
 	}
 
 	/**
@@ -110,19 +111,33 @@ public final class TrialEvidenceTest
 	}
 
 	/**
-	 * Verifies that the evidence of a trial session records no tool calls, so a check that observes them cannot be
-	 * decided from it.
+	 * Verifies that a trial without tool calls supplies an empty recorded list, so absence checks can decide.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void recordsNoToolCalls() throws IOException
+	public void recordsAnEmptyToolCallList() throws IOException
 	{
 		// Requirement: R-C9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path effects = cleanup.add(Files.createTempDirectory("trial-evidence"));
-			requireThat(evidence(effects, List.of("reply")).toolCalls(), "toolCalls").isEmpty();
+			requireThat(evidence(effects, List.of("reply")).toolCalls(), "toolCalls").isEqualTo(Optional.of(List.of()));
 		}
+	}
+
+	/**
+	 * Verifies that tool evidence preserves repeated calls, invocation order, and unreported values.
+	 */
+	@Test
+	public void preservesRecordedToolCalls()
+	{
+		// Requirement: R-C9
+		List<ToolCall> calls = List.of(new ToolCall("Bash", "true", 0), new ToolCall("Read", null, null),
+			new ToolCall("Bash", "false", 1), new ToolCall("Bash", "true", null));
+		SessionResult.Completed trial = new SessionResult.Completed(Path.of("transcript"), List.of("done"),
+			Path.of("effects"), "model-a", null, null, List.of(), "none", calls);
+
+		requireThat(new TrialEvidence(trial).toolCalls(), "toolCalls").isEqualTo(Optional.of(calls));
 	}
 }

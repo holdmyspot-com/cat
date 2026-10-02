@@ -237,6 +237,49 @@ public final class DeterministicCheckTest
 	}
 
 	/**
+	 * Verifies that an exit-status check cannot be decided when the harness ran the matching command but did not report
+	 * its exit status, rather than failing the trial for a status nobody observed.
+	 *
+	 * @throws IOException if the evidence cannot be read
+	 */
+	@Test
+	public void exitStatusNeedsAReportedStatus() throws IOException
+	{
+		// Requirement: R-C9
+		CheckCriterion criterion = new ExitStatus("mvn .*test", 0);
+		ControlEvidence unreported = calls(new ToolCall("Bash", "mvn test", 0), new ToolCall("Bash", "mvn test", null));
+		boolean undecidable = false;
+		try
+		{
+			criterion.decide(unreported, Map.of());
+		}
+		catch (UndecidableCheckException e)
+		{
+			undecidable = e.getMessage().contains("`mvn test`");
+		}
+		requireThat(undecidable, "undecidable").isTrue();
+	}
+
+	/**
+	 * Verifies that a check whose control does not record what the check observes is discarded with the reason, since
+	 * the control cannot show that the check rejects or accepts anything.
+	 */
+	@Test
+	public void undecidableControlDiscardsTheCheck()
+	{
+		// Requirement: R-C9
+		DeterministicCheck check = new DeterministicCheck("r1", new ExitStatus("mvn .*test", 0),
+			calls(new ToolCall("Bash", "mvn test", 0)), calls(new ToolCall("Bash", "mvn test", null)));
+		TestDefinition validated = test(List.of(), check).withValidatedControls();
+
+		requireThat(validated.checks(), "checks").isEmpty();
+		requireThat(validated.discardedChecks().size(), "discardedChecks.size()").isEqualTo(1);
+		requireThat(validated.discardedChecks().getFirst().reason(), "reason").
+			startsWith("Its known-bad control cannot decide it: ").contains("`mvn test`");
+		requireThat(validated.semanticRequirementIds(), "semanticRequirementIds").isEqualTo(List.of("r1", "r2"));
+	}
+
+	/**
 	 * Verifies that a criterion rejects parameters that its kind cannot decide from.
 	 */
 	@Test

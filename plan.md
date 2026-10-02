@@ -201,7 +201,7 @@ requirement names.
 | P15 single-cell development (weakest model, lowest effort) | Not started. Runs after the first real prompt file is optimized (§4). |
 | WI-16 | Done 2026-10-01. Trial profiles and cells: contract types `Cell`, `ProfileBinding`, `ProfileCatalog`, `ProfileRule`, `TrialProfile`, `TrialProfiles`; `ProfileInventory` port with `ClaudeProfileInventory` (opus, fable and sonnet with low–max, haiku without effort, from a shipped resource) and `CodexProfileInventory` (listed models of `codex debug models`); session requests carry the cell's profile, judge and deriver use the role profile from the installed `optimize-xhigh` agent; campaign format 2 (format 1 refused); status JSON keys name cells (`cells`, `cell`). `DriverTest.cellsRunUnderTheirProfiles` is trace 15. Mutation checks on code written before its tests: every mutant killed except three equivalent mutants and two untested hops (CX14, the agent effort override, which existed before WI-16 and needs an installed-plugin fake; CX15, `CodexRunnerCli.serve` passing the parsed effort, whose neighbouring links are each tested). Integrated build: 1281 tests, 0 failures; no test at or over 1 second; bats 32/32. |
 | WI-17 | Done 2026-10-01 (`8cfd6d829`). Eight check kinds with known-good and known-bad controls, CAT's core-task requirement on every test, no judge session after a failed check, and the check record in the author brief. The campaign and proposal file formats are version 3; version 2 is refused. Merging with WI-19 needed `TierFixtures` to leave the core-task requirement out of profile binding. Full build 1352 tests, bats 32. Open: `tool_used` and `exit_status` checks cannot be decided on real trials, because the Claude and Codex session results record no tool calls; until the adapters record them, such a check counts as an infrastructure failure. Follow-up: WI-17a. |
-| WI-17a | In progress (Codex, 2026-10-01): the Claude and Codex adapters record each trial's tool calls and command exit statuses in the session result, so that `tool_used` and `exit_status` checks can be decided. The harness convention pass it waited for is done (`f745637f4`). |
+| WI-17a | Done 2026-10-01: the Claude and Codex adapters record each trial's tool calls and command exit statuses in the session result, from recorded harness output. Claude reports no status field (`design.md` H30); by user ruling its adapter reads the recorded result forms and leaves any other form without a status, which makes an `exit_status` check undecidable. A check whose control lacks what it observes is discarded to the judge. Codex MCP, sleep and image tool variants were not recorded. |
 | WI-18 | Not started. |
 | WI-19 | Done 2026-10-01. `CellTier` derives the active set (bound cell, each model's lowest and highest effort in inventory order, any cell with an adopted failure other than a promotion run) from the contract and the persisted `failedCells`; `Scheduler` screens every cell with 3 trials of the incumbent in series 1, samples only active cells under the coverage floor with each model's lowest-effort cell first, and widens through a persisted `widened` latch once every active cell meets the readiness count conditions. Campaign format 3 (`failed_cells`, `development.widened`); format 2 refused. Status shows each category's active cells and the widened flag (`cellTier` in JSON). Trace 19 is `DriverTest.cellTiering`. Integrated build: 1297 tests, 0 failures; no test at or over 1 second in that run (the delegate's runs saw `GeneratorTest.samplesVariationsAtFrozenProbabilities` at 1.446 s and `FinalizationTest.rejectsUnresolvedChallengesBeforeReplay` at 1.059 s, both pre-existing); bats 32/32. |
 | WI-20 | Not started. |
@@ -726,14 +726,17 @@ The riskiest pure code, built first.
 
 - **Contract:** a completed session result lists the trial's tool calls in the order the harness made them: each call's
   tool name, its command when the tool runs one, and the command's exit status when the harness reports one. A field the
-  harness does not report stays absent; it is never inferred from text. Trial evidence passes the list to the `tool_used`
+  harness does not report stays absent. Claude reports a status only in the form of its result (`design.md` H30), so
+  its adapter reads that recorded form and leaves the status absent for any other. Trial evidence passes the list to the `tool_used`
   and `exit_status` checks, which then decide on real trials; a check stays undecidable only when the harness reports
   nothing it needs.
 - **Adapters:** the Claude adapter reads tool calls from stream-json events and the Codex adapter from app-server
   events. Each adapter's parsing tests use output recorded from the real harness, and the recording's source and version
   are documented.
-- **Tests:** each adapter's event tests (a tool call with and without an exit status; a failed command), a
-  `TrialEvidence` test, and `DriverTest`, where a trial's `tool_used` and `exit_status` checks are decided.
+- **Tests:** each adapter's event tests (a tool call with and without an exit status; a failed command; for Claude, an
+  exit code of 1 that Claude interprets as success, a background command and a denied command), a `TrialEvidence`
+  test, `DriverTest`, where a trial's `tool_used` and `exit_status` checks are decided, and `DeterministicCheckTest` cases
+  where a missing status makes the check undecidable, in a trial and in a check's control.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-18 — Author manifest, minimality pass and size report (user ruling, 2026-10-01)

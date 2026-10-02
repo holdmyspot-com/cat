@@ -148,6 +148,6 @@ public final class PortFakesTest
 	public void completedRequiresPromptSources()
 	{
 		new SessionResult.Completed(Path.of("transcript.jsonl"), List.of("ok"), Path.of("effects"), "model", null,
-			null, List.of(), " ");
+			null, List.of(), " ", List.of());
 	}
 }

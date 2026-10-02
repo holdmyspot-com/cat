@@ -562,7 +562,10 @@ public sealed interface CheckCriterion
 			if (last == null)
 				return new Decision(false, "the trial ran no command that matches");
 			if (last.exitStatus() == null)
-				return new Decision(false, "`" + last.command() + "` has no recorded exit status");
+			{
+				throw new UndecidableCheckException("The harness reported no exit status for `" + last.command() +
+					"`, so an " + kind() + " check cannot be decided");
+			}
 			return new Decision(last.exitStatus() == status, "`" + last.command() + "` exited with status " +
 				last.exitStatus());
 		}

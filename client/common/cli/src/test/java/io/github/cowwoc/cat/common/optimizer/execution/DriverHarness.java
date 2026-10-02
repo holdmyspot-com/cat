@@ -245,7 +245,7 @@ public final class DriverHarness
 	public SessionResult.Completed judged(String response)
 	{
 		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(response),
-			directory.resolve("judge-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES);
+			directory.resolve("judge-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -311,7 +311,7 @@ public final class DriverHarness
 	public SessionResult.Completed completed(String response, String model, String promptSources)
 	{
 		return new SessionResult.Completed(directory.resolve("transcript"), List.of(response),
-			directory.resolve("trial-effects"), model, "reasoning-1", null, List.of(), promptSources);
+			directory.resolve("trial-effects"), model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}
 
 	/**
@@ -366,7 +366,7 @@ public final class DriverHarness
 		// The fake rejects an unprepared copy, so an author request cannot edit a project the driver did not supply
 		fakeWorkspace.editAuthoringCopy(request.source(), new FileInventory(effects, entries));
 		return new SessionResult.Completed(directory.resolve("author-transcript"), List.of("done"), effects, MODEL,
-			"reasoning-1", null, List.of(), PROMPT_SOURCES);
+			"reasoning-1", null, List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**

@@ -104,7 +104,7 @@ public final class ProposalTest
 	{
 		return new SessionResult.Completed(Path.of("/runs/deriver/artifacts/transcript.jsonl"),
 			List.of("I will inspect the prompt system.", response), Path.of("/runs/deriver/project"), "model", null,
-			null, List.of(), OBSERVED);
+			null, List.of(), OBSERVED, List.of());
 	}
 
 	/**

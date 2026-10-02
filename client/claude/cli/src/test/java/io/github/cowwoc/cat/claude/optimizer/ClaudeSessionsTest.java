@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -138,6 +140,7 @@ public final class ClaudeSessionsTest
 	@Test(timeOut = 120_000)
 	public void completesEveryTurnWithObservedEvidence() throws Exception
 	{
+		// Requirement: R-C9
 		// Requirement: R-E13
 		// Requirement: R-E16
 		// Requirement: R-E6
@@ -145,7 +148,8 @@ public final class ClaudeSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			List<String> events = recorded("claude-single-turn.jsonl");
+			List<String> events = new ArrayList<>(recorded("claude-single-turn.jsonl"));
+			events.addAll(recorded("claude-tool-calls.jsonl"));
 			List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
 				Turn.replies("second").writing("out.txt", "hello"));
 			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
@@ -156,6 +160,9 @@ public final class ClaudeSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) result;
 			requireThat(completed.responses(), "responses").isEqualTo(List.of("first", "second"));
+			requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
+				new ToolCall("Bash", "true", 0), new ToolCall("Bash", "false", 1),
+				new ToolCall("Read", null, null)));
 			requireThat(completed.model(), "model").isEqualTo("claude-haiku-4-5-20251001");
 			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(56_055, 40_099, 565, 397));
 			requireThat(completed.windows(), "windows").isEqualTo(List.of(

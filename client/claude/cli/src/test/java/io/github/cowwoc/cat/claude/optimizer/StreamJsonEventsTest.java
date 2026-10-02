@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
@@ -193,5 +194,114 @@ public final class StreamJsonEventsTest
 
 		HarnessEvents fine = parse(recorded("claude-single-turn.jsonl"));
 		requireThat(fine.error(), "fine.error").isNull();
+	}
+
+	/**
+	 * Verifies that the parser selects tool-use blocks and preserves their invocation order.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void recordsCallsInInvocationOrder() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-tool-calls.jsonl"));
+
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(
+			new ToolCall("Bash", "true", 0), new ToolCall("Bash", "false", 1),
+			new ToolCall("Read", null, null)));
+	}
+
+	/**
+	 * Verifies that a command Claude reports as successful, with no interpretation of its exit code, exited with 0.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void readsZeroForSuccessfulCommand() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-exit-statuses.jsonl"));
+
+		requireThat(events.toolCalls().getFirst(), "successfulCommand").isEqualTo(new ToolCall("Bash", "true", 0));
+	}
+
+	/**
+	 * Verifies that a failed command's status comes from the exit code that leads Claude's error result.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void readsExitCodeOfFailedCommand() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-exit-statuses.jsonl"));
+
+		requireThat(events.toolCalls().subList(1, 3), "failedCommands").isEqualTo(List.of(
+			new ToolCall("Bash", "false", 1), new ToolCall("Bash", "sh -c \"exit 42\"", 42)));
+	}
+
+	/**
+	 * Verifies that an exit code of 1 that Claude interprets as success, such as {@code grep} finding no match, is still
+	 * recorded as 1 rather than 0.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void readsOneWhenClaudeInterpretsTheExitCode() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-exit-statuses.jsonl"));
+
+		requireThat(events.toolCalls().get(3), "interpretedCommand").
+			isEqualTo(new ToolCall("Bash", "grep zzz sample.txt", 1));
+	}
+
+	/**
+	 * Verifies that a background command, whose status is unknown when Claude returns the tool result, and a command
+	 * that Claude never ran have no exit status.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void leavesStatusOfUnfinishedCommandsNull() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-exit-statuses.jsonl"));
+
+		requireThat(events.toolCalls().subList(4, 6), "unfinishedCommands").isEqualTo(List.of(
+			new ToolCall("Bash", "sh -c \"sleep 1; exit 4\"", null), new ToolCall("Bash", "rm -f missing.txt", null)));
+	}
+
+	/**
+	 * Verifies that an error result whose text does not start with the recorded exit-code form leaves the status
+	 * unreported, so that a check that needs it cannot be decided.
+	 */
+	@Test
+	public void leavesUnrecognizedErrorStatusNull()
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(List.of(
+			"{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_use\"," +
+				"\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"make\"}}]}}",
+			"{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_result\"," +
+				"\"tool_use_id\":\"toolu_1\",\"is_error\":true,\"content\":\"Exited with status 2\"}]}," +
+				"\"tool_use_result\":\"Error: Exited with status 2\"}"));
+
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("Bash", "make", null)));
+	}
+
+	/**
+	 * Verifies that the root's Agent call counts while the child's Bash call does not.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void excludesChildToolCalls() throws IOException
+	{
+		// Requirement: R-C9
+		HarnessEvents events = parse(recorded("claude-child-tool-calls.jsonl"));
+
+		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("Agent", null, null)));
 	}
 }

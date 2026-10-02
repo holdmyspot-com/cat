@@ -1291,40 +1291,43 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that a check whose kind the trial's evidence does not record, such as a tool-use check on a harness
-	 * whose results hold no tool calls, makes the run an infrastructure failure rather than a pass or a fail, so that
-	 * repeated runs pause the campaign.
+	 * Verifies that tool-use and exit-status checks adopt a passing trial without an infrastructure retry or judge.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void undecidableCheckIsInfrastructure() throws IOException
+	public void recordedToolsDecideTrial() throws IOException
 	{
 		// Requirement: R-C9
-		DeterministicCheck wrote = new DeterministicCheck(Requirement.CORE_TASK.id(),
-			new CheckCriterion.ToolUsed("Write", true),
-			new ControlEvidence(List.of("Done."), List.of(), List.of(new ToolCall("Write", null, null)), Map.of()),
+		ToolCall call = new ToolCall("Bash", "true", 0);
+		ControlEvidence good = new ControlEvidence(List.of("Done."), List.of(), List.of(call), Map.of());
+		ControlEvidence bad = new ControlEvidence(List.of("Done."), List.of(),
+			List.of(new ToolCall("Read", null, null), new ToolCall("Bash", "true", 1)), Map.of());
+		DeterministicCheck used = new DeterministicCheck("r1", new CheckCriterion.ToolUsed("Bash", true), good,
 			reply("Done."));
-		Contract contract = withChecks(Map.of("plain-list", List.of(wrote)));
+		DeterministicCheck exited = new DeterministicCheck(Requirement.CORE_TASK.id(),
+			new CheckCriterion.ExitStatus("true", 0), good, bad);
+		Contract contract = withChecks(Map.of("plain-list", List.of(used, exited)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
-			harness.trials(_ -> harness.passed());
+			harness.trials(_ ->
+			{
+				SessionResult.Completed trial = harness.passed();
+				return new SessionResult.Completed(trial.transcript(), trial.responses(), trial.effects(), trial.model(),
+					trial.reasoning(), trial.usage(), trial.windows(), trial.promptSources(), List.of(call));
+			});
 			Campaign campaign;
 			try (Driver driver = harness.open())
 			{
-				campaign = harness.runUntil(driver, state -> state.pending() != null);
+				campaign = harness.runUntil(driver, state -> state.pending() != null || state.trials().stream().
+					anyMatch(trial -> trial.instance().testId().equals("plain-list") && trial.verdict() != null));
 			}
-			requireThat(campaign.pending(), "pending").isInstanceOf(PendingDecision.TrialFailures.class);
-			LogicalTrial failed = campaign.trials().stream().
-				filter(trial -> trial.infrastructureFailures() == Campaign.INFRASTRUCTURE_FAILURE_LIMIT).
-				findFirst().orElseThrow();
-			requireThat(failed.instance().testId(), "testId").isEqualTo("plain-list");
-			requireThat(failed.verdict(), "verdict").isNull();
-			requireThat(failed.infrastructureAttempts().getLast().detail(), "detail").
-				isEqualTo("The deterministic checks could not be decided: The trial's evidence records no tool calls, " +
-					"so a tool_used check cannot be decided");
+			LogicalTrial decided = campaign.trials().stream().
+				filter(trial -> trial.instance().testId().equals("plain-list")).findFirst().orElseThrow();
+			requireThat(decided.verdict(), "verdict").isEqualTo(Verdict.PASS);
+			requireThat(decided.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
 			requireThat(judged(harness, "plain-list"), "judgedPlainList").isFalse();
 		}
 	}
