@@ -28,12 +28,13 @@ or `throws Throwable`; inspect the invoked APIs and declare their concrete check
 ### Isolation and Testability
 
 Do not replace JVM-global streams or read production environment state in a Java test. Test production logic by calling
-Java classes directly. Use Bats only for external launcher, installer, or shell-bootstrap boundaries.
+Java classes directly. Use Bats only to test the plugin's command-line interface, such as its packaged launchers,
+installer, and shell bootstrap; where that interface starts a harness, substitute a fake harness executable.
 
 No Java test, including an opt-in integration test, may invoke a Runner implementation, packaged runner or launcher,
 native harness process, or model. When a test verifies evaluator, CLI, policy, persistence, or status behavior, inject
-typed static evidence at the evaluator boundary. Test an external runner or model boundary through a non-Java external
-test that owns its process lifecycle; it must remain outside the Java test source sets and Maven's Java test execution.
+typed static evidence at the evaluator boundary. No Bats test may start a real harness or model either. Test how CAT
+reads a harness's output against output recorded from that harness, with its source and version documented.
 
 Do not disable or narrow configured test parallelism for a class, method, group, suite, or invocation. In particular,
 do not use TestNG `singleThreaded = true` or any equivalent serial-execution annotation or configuration. When a test

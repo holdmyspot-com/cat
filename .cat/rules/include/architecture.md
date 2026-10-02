@@ -40,6 +40,6 @@ a common file or invokes multiple concrete harnesses. Move every concrete harnes
 configuration, output, or external boundary test into that harness's test suite. Test every harness-specific adaptation
 or external boundary for each supporting harness whenever technically possible. Apply this equally to Java tests and
 Bats boundary tests: verify the same observable contract, not identical implementation details, inputs, or test-file
-layout. Use Bats for each supporting harness when the contract crosses an external launcher, installer, or
-shell-bootstrap boundary. Document a missing peer test with the feature's verification evidence only when that harness
+layout. Use Bats for each supporting harness when the contract crosses the plugin's command-line interface, such as a
+packaged launcher, installer, or shell bootstrap. Document a missing peer test with the feature's verification evidence only when that harness
 cannot support the behavior natively or through emulation.
