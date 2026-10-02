@@ -20,5 +20,8 @@ When writing or reviewing SLF4J logging calls, lazy load `../include/java/slf4j.
 When writing or reviewing a Java test whose assertion depends on elapsed time, lazy load
 `../include/java/test-time.md`.
 
+When writing or reviewing Java code, including tests, that starts an external process or relies on behavior that
+can differ between operating systems, lazy load `../include/java/portability.md`.
+
 When a Java test needs direct access to non-public production behavior to avoid unrelated caller work, lazy load
 `../include/java/test-access.md`.
