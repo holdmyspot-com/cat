@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
+import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -7,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Builds contracts for tests of the contract package and of the packages that consume it.
@@ -132,9 +136,8 @@ public final class ContractFixtures
 	 */
 	public static JudgeProfile judge()
 	{
-		return new JudgeProfile(new TrialProfile("judge-model", "high"), "Judge the trial.",
-			"The response follows the requirement.", "Pass only if every rubric item holds.",
-			"{\"type\":\"object\",\"required\":[\"verdict\"],\"properties\":{\"verdict\":{\"type\":\"string\"}}}");
+		return new JudgeTemplate(JsonMapper.builder().build(), new TrialProfile("judge-model", "high")).
+			profile("The response follows the requirement.", "Pass only if every rubric item holds.");
 	}
 
 	/**

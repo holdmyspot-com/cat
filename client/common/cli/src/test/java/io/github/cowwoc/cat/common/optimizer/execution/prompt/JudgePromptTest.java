@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.common.optimizer.execution.contract;
+package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -8,7 +8,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.execution.JudgeProtocol;
 import io.github.cowwoc.cat.common.optimizer.execution.Judgment;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
@@ -19,40 +18,38 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Shared request and verdict checks for {@link JudgeProtocol}. Adapter tests invoke these plain methods because
- * this support package is not opened to TestNG.
+ * Tests request construction and judgment parsing by {@link JudgePrompt}.
  */
-public final class JudgeProtocolContract
+public final class JudgePromptTest
 {
 	private static final Path EFFECTS = Path.of("contract-evidence/trial/project");
 	private static final Path TRANSCRIPT = EFFECTS.getParent().resolve("artifacts/transcript.jsonl");
 	private static final Requirement REQUIREMENT = new Requirement("ask-first", "Ask before deleting.",
 		"rules/safety.md");
 	private static final String OUTPUT = "{\"verdict\":\"pass\",\"rationale\":\" It asked. \"}";
-	private final JudgeProtocol protocol;
+	private final JudgePrompt prompt = new JudgePrompt(JsonMapper.builder().build(),
+		Path.of("contract-evidence/judge"));
 
 	/**
-	 * Creates shared checks over an adapter.
-	 *
-	 * @param protocol the adapter under test
-	 * @throws NullPointerException if {@code protocol} is null
+	 * Creates the test.
 	 */
-	public JudgeProtocolContract(JudgeProtocol protocol)
+	public JudgePromptTest()
 	{
-		requireThat(protocol, "protocol").isNotNull();
-		this.protocol = protocol;
 	}
 
 	/**
 	 * Checks that the request selects the frozen judge profile and supplies one turn containing the final trial reply.
 	 */
+	@Test
 	public void requestSelectsFrozenProfile()
 	{
+		// Requirement: R-E13
 		JudgeProfile profile = profile();
-		SessionRequest request = protocol.request(profile, instance(),
+		SessionRequest request = prompt.request(profile, instance(),
 			completed(List.of("Earlier reply.", "Should I delete?")), List.of(REQUIREMENT), List.of());
 		requireThat(request.role(), "role").isEqualTo(SessionRole.JUDGE);
 		requireThat(request.profile(), "profile").isEqualTo(profile.profile());
@@ -63,16 +60,18 @@ public final class JudgeProtocolContract
 	/**
 	 * Checks that both trial effects and the transcript directory are read-only evidence.
 	 */
+	@Test
 	public void requestProtectsEvidence()
 	{
-		SessionRequest request = protocol.request(profile(), instance(), completed(List.of("Should I delete?")),
+		// Requirement: R-E13
+		SessionRequest request = prompt.request(profile(), instance(), completed(List.of("Should I delete?")),
 			List.of(REQUIREMENT), List.of());
 		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
-		SessionRequest colocated = protocol.request(profile(), instance(),
+		SessionRequest colocated = prompt.request(profile(), instance(),
 			completed(List.of("Should I delete?"), EFFECTS.resolve("transcript.jsonl"), EFFECTS),
 			List.of(REQUIREMENT), List.of());
 		requireThat(colocated.readOnly(), "colocated.readOnly").isEqualTo(List.of(EFFECTS));
-		SessionRequest parentless = protocol.request(profile(), instance(),
+		SessionRequest parentless = prompt.request(profile(), instance(),
 			completed(List.of("Should I delete?"), Path.of("transcript.jsonl"), EFFECTS),
 			List.of(REQUIREMENT), List.of());
 		requireThat(parentless.readOnly(), "parentless.readOnly").isEqualTo(List.of(EFFECTS));
@@ -81,10 +80,12 @@ public final class JudgeProtocolContract
 	/**
 	 * Checks that the request supplies the frozen rubric and all trial responses for the judge's decision.
 	 */
+	@Test
 	public void requestIncludesProfileAndEvidence()
 	{
+		// Requirement: R-E13
 		JudgeProfile profile = profile();
-		SessionRequest request = protocol.request(profile, instance(),
+		SessionRequest request = prompt.request(profile, instance(),
 			completed(List.of("Earlier reply.", "Should I delete?")), List.of(REQUIREMENT), List.of());
 		requireThat(request.turns().getFirst(), "turn").contains(profile.rubric()).contains(profile.decisionRule()).
 			contains(REQUIREMENT.description()).contains("Earlier reply.").contains("Delete logs.");
@@ -93,77 +94,91 @@ public final class JudgeProtocolContract
 	/**
 	 * Checks that candidate instructions in the trial effects cannot become the judge's working directory.
 	 */
+	@Test
 	public void requestIsolatesJudgeDirectory()
 	{
-		SessionRequest request = protocol.request(profile(), instance(), completed(List.of("Should I delete?")),
+		// Requirement: R-E13
+		SessionRequest request = prompt.request(profile(), instance(), completed(List.of("Should I delete?")),
 			List.of(REQUIREMENT), List.of());
 		requireThat(request.source(), "source").isNotEqualTo(EFFECTS);
 	}
 
 	/**
-	 * Attempts a request with no requirement needing judgment; the adapter must reject it.
+	 * Checks that an empty list of semantic requirements cannot produce a judge request.
 	 *
-	 * @throws IllegalArgumentException if the adapter rejects the empty requirements
+	 * @throws IllegalArgumentException if the prompt rejects the empty requirements
 	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*requirements.*")
 	public void rejectsNoRequirements()
 	{
-		protocol.request(profile(), instance(), completed(List.of("Should I delete?")), List.of(), List.of());
+		// Requirement: R-E13
+		prompt.request(profile(), instance(), completed(List.of("Should I delete?")), List.of(), List.of());
 	}
 
 	/**
 	 * Checks that valid bare and fenced schema outputs retain the judge's exact rationale.
 	 */
+	@Test
 	public void acceptsSchemaOutput()
 	{
+		// Requirement: R-E13
 		Judgment expected = new Judgment(Verdict.PASS, " It asked. ");
-		requireThat(protocol.judgment(completed(List.of(OUTPUT))), "bare").isEqualTo(Optional.of(expected));
-		requireThat(protocol.judgment(completed(List.of("```json\n" + OUTPUT + "\n```"))), "fenced").
+		requireThat(prompt.judgment(completed(List.of(OUTPUT))), "bare").isEqualTo(Optional.of(expected));
+		requireThat(prompt.judgment(completed(List.of("```json\n" + OUTPUT + "\n```"))), "fenced").
 			isEqualTo(Optional.of(expected));
 	}
 
 	/**
 	 * Checks that verdict words alone fail the schema because they provide no rationale.
 	 */
+	@Test
 	public void rejectsBareVerdicts()
 	{
-		requireThat(protocol.judgment(completed(List.of("pass"))), "pass").isEmpty();
-		requireThat(protocol.judgment(completed(List.of("fail"))), "fail").isEmpty();
+		// Requirement: R-E13
+		requireThat(prompt.judgment(completed(List.of("pass"))), "pass").isEmpty();
+		requireThat(prompt.judgment(completed(List.of("fail"))), "fail").isEmpty();
 	}
 
 	/**
 	 * Checks that malformed JSON, unsupported verdicts and prose around a valid object have no judgment.
 	 */
+	@Test
 	public void rejectsMalformedOutput()
 	{
+		// Requirement: R-E13
 		for (String response : List.of("not JSON", "{", "{\"verdict\":\"partial\",\"rationale\":\"Half.\"}",
 			"{\"verdict\":\"pass\"}", "{\"verdict\":\"pass\",\"rationale\":\" \"}", "Here it is: " + OUTPUT))
 		{
-			requireThat(protocol.judgment(completed(List.of(response))), "judgment").isEmpty();
+			requireThat(prompt.judgment(completed(List.of(response))), "judgment").isEmpty();
 		}
 	}
 
 	/**
 	 * Checks that an earlier verdict never rescues invalid final output.
 	 */
+	@Test
 	public void readsOnlyFinalResponse()
 	{
+		// Requirement: R-E13
 		for (String earlier : List.of("pass", OUTPUT))
 		{
 			SessionResult.Completed result = completed(List.of(earlier, "No final verdict."));
-			requireThat(protocol.judgment(result), "judgment").isEmpty();
+			requireThat(prompt.judgment(result), "judgment").isEmpty();
 		}
 	}
 
 	/**
 	 * Checks that a judge session without responses has no judgment.
 	 */
+	@Test
 	public void rejectsAbsentResponses()
 	{
-		requireThat(protocol.judgment(completed(List.of())), "judgment").isEmpty();
+		// Requirement: R-E13
+		requireThat(prompt.judgment(completed(List.of())), "judgment").isEmpty();
 	}
 
 	/**
-	 * Returns the frozen profile used by the shared checks.
+	 * Returns the frozen profile used by the tests.
 	 *
 	 * @return the profile
 	 */

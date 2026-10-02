@@ -50,7 +50,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
-import io.github.cowwoc.cat.common.optimizer.execution.FakeJudgeProtocol.JudgeCall;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
@@ -652,9 +651,10 @@ public final class DriverTest
 				requireThat(brief.category(), "category").isEqualTo("safety");
 				// The author receives the judge's rationale for the failure and for the rerun that reproduced it
 				Failure failure = brief.developmentFailures().getFirst();
-				requireThat(failure.rationale(), "rationale").isEqualTo(FakeJudgeProtocol.RATIONALE + "fail");
+				String rationale = "The trial did not meet the requirements.";
+				requireThat(failure.rationale(), "rationale").isEqualTo(rationale);
 				requireThat(failure.reruns(), "reruns").
-					isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, FakeJudgeProtocol.RATIONALE + "fail")));
+					isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, rationale)));
 				// The author session's project source is the first authoring copy that the workspace prepared
 				SessionRequest author = harness.sessions().sessions().stream().map(FakeSession::request).
 					filter(request -> request.role() == SessionRole.AUTHOR).findFirst().orElseThrow();
@@ -1020,7 +1020,7 @@ public final class DriverTest
 			{
 				if (rejections.getAndDecrement() > 0)
 					return new SessionResult.RateLimited(resetsAt.get(), List.of());
-				return harness.echo(request);
+				return harness.scriptedJudgment(request);
 			});
 			try (Driver driver = harness.open())
 			{
@@ -1404,7 +1404,7 @@ public final class DriverTest
 				{
 					boolean formal = harness.campaign().runningAttempt().isPresent();
 					if (formal && request.profile().equals(ContractFixtures.SMALL))
-						return harness.completed("fail", request.profile().model());
+						return harness.failed(request.profile().model());
 					return harness.completed("pass", request.profile().model());
 				}
 				catch (IOException e)
@@ -1655,8 +1655,13 @@ public final class DriverTest
 				SessionRequest request = session.request();
 				if (request.role() == SessionRole.JUDGE)
 				{
-					requireThat(request.turns(), "judgeTurns").
-						doesNotContain(FakeJudgeProtocol.PREFIX + BROKEN);
+					String turn = request.turns().getFirst();
+					String responsesSection = turn.substring(turn.indexOf("The trial agent's final response"),
+						turn.indexOf("Read these paths"));
+					JsonNode responses = JsonMapper.builder().build().readTree(responsesSection.substring(
+						responsesSection.indexOf('[')));
+					for (JsonNode response : responses)
+						requireThat(response.asString(), "judgedResponse").isNotEqualTo(BROKEN);
 				}
 			}
 		}
@@ -1684,29 +1689,64 @@ public final class DriverTest
 			{
 				harness.runUntil(driver, _ -> judged(harness, "plain-list") && judged(harness, "styled-summary"));
 			}
-			Requirement r1 = contract.requirements().getFirst();
-			List<CheckResult> plainListResults = contract.findTest("plain-list").orElseThrow().
-				decide(List.of(), reply("pass"));
-			for (JudgeCall call : harness.judge().calls())
+			JsonMapper json = JsonMapper.builder().build();
+			for (SessionRequest request : judgeRequests(harness))
 			{
-				String testId = call.instance().testId();
+				String turn = request.turns().getFirst();
+				String requirementsSection = turn.substring(turn.indexOf("### Requirements to decide"),
+					turn.indexOf("### Evidence"));
+				JsonNode requirements = json.readTree(requirementsSection.substring(requirementsSection.indexOf('[')));
+				String resultsSection = turn.substring(turn.indexOf("### Deterministic results"),
+					turn.indexOf("### How to judge"));
+				JsonNode results = json.readTree(resultsSection.substring(resultsSection.indexOf('[')));
+				String testId = judgeTest(request);
 				switch (testId)
 				{
 					case "plain-list" ->
 					{
-						requireThat(call.requirements(), "plainListRequirements").isEqualTo(List.of(r1));
-						requireThat(call.results(), "plainListResults").isEqualTo(plainListResults);
+						requireThat(requirements.size(), "plainListRequirements.size").isEqualTo(1);
+						requireThat(requirements.get(0).get("id").asString(), "semanticRequirement").isEqualTo("r1");
+						CheckResult check = contract.findTest(testId).orElseThrow().decide(List.of(), reply("pass")).
+							getFirst();
+						requireThat(results.size(), "plainListResults.size").isEqualTo(1);
+						requireThat(results.get(0).get("requirement_id").asString(), "checkedRequirement").
+							isEqualTo(check.check().requirementId());
+						requireThat(results.get(0).get("passed").asBoolean(), "checkPassed").isTrue();
+						requireThat(results.get(0).get("observed").asString(), "observed").isEqualTo(check.observed());
 					}
 					case "styled-summary" ->
 					{
-						requireThat(call.requirements(), "styledRequirements").
-							isEqualTo(List.of(r1, Requirement.CORE_TASK));
-						requireThat(call.results(), "styledResults").isEmpty();
+						requireThat(requirements.size(), "styledRequirements.size").isEqualTo(2);
+						requireThat(requirements.get(0).get("id").asString(), "semanticRequirement").isEqualTo("r1");
+						requireThat(requirements.get(1).get("id").asString(), "coreTask").
+							isEqualTo(Requirement.CORE_TASK.id());
+						requireThat(results.size(), "styledResults.size").isEqualTo(0);
 					}
 					default -> throw new AssertionError("A judge ran for the test '" + testId + "'");
 				}
+				requireThat(request.source(), "judgeDirectory").isEqualTo(harness.directory().resolve("judge"));
+				Path effects = request.readOnly().getFirst();
+				requireThat(request.readOnly(), "readOnly").
+					isEqualTo(List.of(effects, effects.getParent().resolve("artifacts")));
+				requireThat(turn, "turn").contains(contract.judge().rubric()).contains(contract.judge().decisionRule());
+				requireThat(request.timeLimit(), "timeLimit").isEqualTo(Duration.ofMinutes(10));
 			}
 		}
+	}
+
+	/**
+	 * Reads the trial test identifier from the real judge request's instance evidence.
+	 *
+	 * @param request the judge session request
+	 * @return the trial's test identifier
+	 */
+	private static String judgeTest(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		String instanceSection = turn.substring(turn.indexOf("### Evidence"),
+			turn.indexOf("The trial agent's final response"));
+		String instance = instanceSection.substring(instanceSection.indexOf('{'));
+		return JsonMapper.builder().build().readTree(instance).get("test").asString();
 	}
 
 	/**
@@ -1718,7 +1758,7 @@ public final class DriverTest
 	 */
 	private static boolean judged(DriverHarness harness, String testId)
 	{
-		return harness.judge().calls().stream().anyMatch(call -> call.instance().testId().equals(testId));
+		return judgeRequests(harness).stream().anyMatch(request -> judgeTest(request).equals(testId));
 	}
 
 	/**
@@ -2085,8 +2125,6 @@ public final class DriverTest
 					return failed;
 				return passed;
 			});
-			Map<String, SessionResult> verdicts = new HashMap<>();
-			harness.judges(request -> verdicts.computeIfAbsent(request.turns().getLast(), _ -> harness.echo(request)));
 			harness.authors(request ->
 			{
 				if (harness.author().briefs().getLast().authorizedTargets().contains(target))
@@ -2280,7 +2318,63 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that an invalid judge result reruns the judge with the same evidence, and that a judge that fails
+	 * Supplies both schema-valid judgment decisions.
+	 *
+	 * @return the verdicts to adopt
+	 */
+	@DataProvider
+	public static Object[][] judgeVerdicts()
+	{
+		return new Object[][] {{Verdict.PASS}, {Verdict.FAIL}};
+	}
+
+	/**
+	 * Verifies that judgment JSON determines development counts independently of the trial's reply, and a failing
+	 * judgment preserves its exact rationale for diagnosis.
+	 *
+	 * @param verdict the decision returned by the judge session
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "judgeVerdicts")
+	public void adoptsJudgmentJson(Verdict verdict) throws IOException
+	{
+		// Requirement: R-E13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			harness.trials(_ -> harness.completed("An unrelated trial reply.", DriverHarness.MODEL));
+			String rationale = "Evidence: \"quoted reply\".\nKeep this line.";
+			harness.judges(_ -> harness.judged(new Judgment(verdict, rationale)));
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				harness.endSessions();
+				harness.settle(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(developmentOutcomes(campaign), "outcomes").isEqualTo(101);
+				int failures = campaign.development().counts().values().stream().mapToInt(CategoryCounts::failures).
+					sum();
+				switch (verdict)
+				{
+					case PASS ->
+					{
+						requireThat(failures, "failures").isEqualTo(0);
+						requireThat(campaign.development().failures(), "diagnosisFailures").isEmpty();
+					}
+					case FAIL ->
+					{
+						requireThat(failures, "failures").isEqualTo(1);
+						requireThat(campaign.development().failures().getFirst().rationale(), "rationale").
+							isEqualTo(rationale);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a bare verdict reruns the judge with the same evidence, and that a judge that fails
 	 * {@value Driver#JUDGE_ATTEMPTS} times returns the trial to the queue as an infrastructure failure.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -2297,8 +2391,8 @@ public final class DriverTest
 			harness.judges(request ->
 			{
 				if (invalid.getAndDecrement() > 0)
-					return harness.judged("not a verdict");
-				return harness.echo(request);
+					return harness.judged("pass");
+				return harness.scriptedJudgment(request);
 			});
 			try (Driver driver = harness.open())
 			{

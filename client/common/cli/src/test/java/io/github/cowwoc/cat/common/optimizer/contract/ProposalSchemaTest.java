@@ -457,7 +457,7 @@ public final class ProposalSchemaTest
 		JudgeProfile judge = schema().parse(ContractFixtures.resource("valid-proposal.json")).judge();
 
 		requireThat(judge.profile(), "profile").isEqualTo(new TrialProfile("judge-model", "high"));
-		requireThat(judge.prompt(), "prompt").isEqualTo("Judge the trial.");
+		requireThat(judge.prompt(), "prompt").isEqualTo(ContractFixtures.judge().prompt());
 		requireThat(judge.rubric(), "rubric").isEqualTo("The response follows the requirement.");
 		requireThat(judge.decisionRule(), "decisionRule").isEqualTo("Pass only if every rubric item holds.");
 		requireThat(json.readTree(judge.resultSchema()).get("required").get(0).asString(), "required").

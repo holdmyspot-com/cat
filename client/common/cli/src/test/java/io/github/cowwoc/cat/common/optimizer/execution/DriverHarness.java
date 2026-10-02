@@ -6,6 +6,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -45,9 +47,9 @@ import java.util.function.Predicate;
 /**
  * The ports, fakes and session script of one driver test.
  * <p>
- * Trial sessions reply with the response that the {@link #trials(Function) trial script} chooses; by default, judge
- * sessions {@link #echo(SessionRequest) repeat} the trial's response, which {@link FakeJudgeProtocol} reads as the
- * verdict, and author sessions write a new {@code CLAUDE.md} into their effects directory.
+ * Trial sessions reply with the response that the {@link #trials(Function) trial script} chooses. Judge sessions
+ * return scripted judgment JSON that {@link JudgePrompt} parses, and author sessions write a new {@code CLAUDE.md}
+ * into their effects directory.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
@@ -95,19 +97,22 @@ public final class DriverHarness
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
 	private final InMemoryOverlays overlays = new InMemoryOverlays();
 	private final RecordingAuthorProtocol author = new RecordingAuthorProtocol();
-	private final FakeJudgeProtocol judge = new FakeJudgeProtocol();
+	private final JsonMapper json = JsonMapper.builder().build();
+	private final JudgePrompt judge;
+	private final Map<Path, Judgment> judgments = new HashMap<>();
 	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
 	private final FileInventory fork;
 	private Function<SessionRequest, SessionResult> trials = _ -> passed();
 	private Function<SessionRequest, SessionResult> authors = request -> edit(request, PROMPT);
-	private Function<SessionRequest, SessionResult> judges = this::echo;
+	private Function<SessionRequest, SessionResult> judges = this::scriptedJudgment;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
 	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private final List<Integer> openTrials = new ArrayList<>();
 	private int ended;
 	private int edits;
+	private int trialResults;
 
 	/**
 	 * Creates the ports of a test and persists a campaign.
@@ -148,6 +153,7 @@ public final class DriverHarness
 	{
 		this.directory = directory;
 		this.fork = fork;
+		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		overlays.put(CampaignBuilder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
 			overlays.put(CampaignBuilder.snapshot("candidate-" + number), candidate("candidate-" + number));
@@ -243,15 +249,35 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Returns the result of a judge session that repeats the judged trial's response, which
-	 * {@link FakeJudgeProtocol} reads as the verdict.
+	 * Returns the scripted judgment associated with the trial's read-only effects directory. Trial text does not
+	 * determine this verdict; {@link #completed(String, String, String)} scripts a pass and {@link #failed()}
+	 * scripts a failure.
 	 *
 	 * @param request the judge session's request
 	 * @return the result
 	 */
-	public SessionResult.Completed echo(SessionRequest request)
+	public SessionResult.Completed scriptedJudgment(SessionRequest request)
 	{
-		return judged(request.turns().getLast().substring(FakeJudgeProtocol.PREFIX.length()));
+		Judgment judgment = judgments.get(request.readOnly().getFirst());
+		if (judgment == null)
+			throw new AssertionError("No judgment scripted for trial evidence: " + request.readOnly());
+		return judged(judgment);
+	}
+
+	/**
+	 * Returns a judge session's schema-valid final response, preserving its rationale exactly.
+	 *
+	 * @param judgment the scripted verdict and rationale
+	 * @return the completed judge session
+	 */
+	public SessionResult.Completed judged(Judgment judgment)
+	{
+		String verdict = switch (judgment.verdict())
+		{
+			case PASS -> "pass";
+			case FAIL -> "fail";
+		};
+		return judged(json.createObjectNode().put("verdict", verdict).put("rationale", judgment.rationale()).toString());
 	}
 
 	/**
@@ -303,13 +329,26 @@ public final class DriverHarness
 	 */
 	public SessionResult.Completed failed()
 	{
-		return completed("fail", MODEL);
+		return failed(MODEL);
 	}
 
 	/**
-	 * Returns a completed trial session.
+	 * Returns a completed trial under an observed model, with a scripted failing judge response.
 	 *
-	 * @param response the trial's response, which the judge repeats
+	 * @param model the model observed by the trial session
+	 * @return the trial result
+	 */
+	public SessionResult.Completed failed(String model)
+	{
+		SessionResult.Completed result = completed("fail", model);
+		judgments.put(result.effects(), new Judgment(Verdict.FAIL, "The trial did not meet the requirements."));
+		return result;
+	}
+
+	/**
+	 * Returns a completed trial session with a scripted passing judge response.
+	 *
+	 * @param response the trial's response, supplied to the judge as evidence
 	 * @param model the observed model
 	 * @return the result
 	 */
@@ -319,17 +358,21 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Returns a completed trial session.
+	 * Returns a completed trial session with a scripted passing judge response and distinct evidence paths.
 	 *
-	 * @param response the trial's response, which the judge repeats
+	 * @param response the trial's response, supplied to the judge as evidence
 	 * @param model the observed model
 	 * @param promptSources the prompt sources that the session observed loading
 	 * @return the result
 	 */
 	public SessionResult.Completed completed(String response, String model, String promptSources)
 	{
-		return new SessionResult.Completed(directory.resolve("transcript"), List.of(response),
-			directory.resolve("trial-effects"), model, "reasoning-1", null, List.of(), promptSources, List.of());
+		++trialResults;
+		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
+		Path effects = evidence.resolve("project");
+		judgments.put(effects, new Judgment(Verdict.PASS, "The trial met the requirements."));
+		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(response),
+			effects, model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}
 
 	/**
@@ -690,16 +733,6 @@ public final class DriverHarness
 	public InMemoryOverlays overlays()
 	{
 		return overlays;
-	}
-
-	/**
-	 * Returns the judge protocol, which records what each judge request received.
-	 *
-	 * @return the protocol
-	 */
-	public FakeJudgeProtocol judge()
-	{
-		return judge;
 	}
 
 	/**
