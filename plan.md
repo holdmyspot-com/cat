@@ -117,6 +117,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-18 | `optimize-xhigh` | Manifest validation, the minimality search and the author prompt decide which edits ship. |
 | WI-19 | `optimize-xhigh` | Allocation policy that interacts with readiness, the coverage floor and edits. |
 | WI-20 | `optimize-xhigh` | Selection among concurrent attempts decides which edit ships and how rounds spend author sessions. |
+| WI-21 | `optimize-high` | A proposal check, a rule edit under CAT's prompt rules, and a migration whose completeness an audit must prove. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -209,6 +210,8 @@ requirement names.
 | Test-double audit (user request 2026-10-01) | Done (`5079b82b0`, `82ee80ec1`; full build 1433 tests, 0 failures; bats 32/32). `FakeHarnessCli` and `ScriptedHarness` name the recording or documentation behind each scripted reaction (Claude Code 2.1.286/2.1.287, codex-cli 0.147.0/0.159.1, the JDK `Process` contract); unsourced reactions (Claude's post-interrupt sequence, failure after interrupt, permanent blocking, simulated writes) are removed. Of 45 test methods, 4 were removed and the rest kept, fixed or narrowed to the production decision; every fix was shown to fail against broken production. The app-server command test it removed is replaced by `CodexRunnerTest.startsAppServerForInstallation`. |
 | Campaign lock failure masking (convention-pass follow-up) | Done (`e085ec1fa`; full build 1438 tests, 0 failures; bats 32/32). `CampaignLock` keeps the primary acquire or release failure and suppresses a close failure; `CampaignLockTest` injects both through `FaultingFileChannel` and failed first. `Driver.open` keeps the open failure when unlocking fails (`d83badc4d`; full build 1461 tests; `DriverTest.openKeepsFailureWhenUnlockFails` failed first). |
 | R-W1 exclude notice (convention-pass follow-up) | Done (`138f66e87`; full build 1441 tests, 0 failures; bats 32/32). `ForkView.excludeAdded()` reaches the `start` command's message ("Added /.cat/work/ to the repository's local info/exclude."); `OptimizerCoreTest` covers added, already excluded, and added with a deriver failure, and failed first. |
+| WI-21 | Not started. The user approved the `failure-regression-promotion.md` diff and chose `.cat/tests/` for every regression scenario (2026-10-02). |
+| Skill launcher paths (WI-15 finding, R-I5) | Done (`a1d70a4bd`; full build 1568 tests, 0 failures, none at or over 1 s; bats 32/32). Codex still ran `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer` literally in 2 of 4 runs although the injected skill-environment rule named the plugin directory. The user chose skill-relative paths: every skill names `client/bin/<launcher>` in the plugin directory two levels above the skill's directory, and `BundledSkillLauncherTest` fails if a shipped skill writes the variable (it failed first on all 8 skills). After reinstalling, 6 of 6 Codex runs called the launcher by its absolute path first. |
 | Real Git in tests (user ruling 2026-10-02: assume third-party tools work as documented) | Done (`18891bd45`, `f8f57259c`; full builds 1463 and 1461 tests, 0 failures; bats 32/32). The runner tests no longer use Git: `HarnessProjectRepository` and `CodexCuratedPluginCache` expose the commands and environment they give Git, and their tests assert those. `JlinkImageBuilderTest` asserts the launcher text instead of starting launchers and Maven wrappers; `GeneratorTest` checks `Generator.select` at each probability boundary instead of 40,000 draws. git-replay (`04ec22dfd`, one commit per the user's ruling; full build 1567 tests, 0 failures, none at or over 1 s; bats 32/32): its decisions are extracted and tested over captured facts, Git processes fall from 1,845 to 264, and nine integration tests keep real Git, one per Git operation, each under 1 s. §8 lists them and `GitTest`. |
 | Fake contracts (doubles audit follow-up) | Done (`06515f1c8`, `7e8a2795d`; full builds 1514 and 1510 tests; bats 32/32). Shared contracts run `FakeWorkspacePort` against `Workspace` and `FakeHostInterruptSignal` against both harnesses' interrupt signals; the fakes were corrected where checks failed. `FakeJudgeProtocol` is deleted: the driver tests use the real `JudgePrompt` and script only the judge session's JSON judgment. |
 | Convention clean-ups (convention-pass follow-up) | Done (`4a6723065`; full build 1463 tests; bats 32/32). `Harness.commandName()`, `FileCampaignStore.directory`, `ReadinessGate.meetsPassRateThreshold` and `EnumNames` each own a rule that was repeated. |
@@ -257,6 +260,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
   requirement tags stay until the traceability gate passes, then a last commit removes them (user ruling, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 - `design.md` §3.8: the Claude runner interrupts with a stream-json `control_request` (H29). §11: added H29.
+- `design.md` §6.1, §8, D13 and G10; plan R-I3, §1.1, WI-21 and §6: a guidance correction records its regression scenarios under `.cat/tests/`, they are recorded, not tested, until a covering campaign, and CAT refuses a proposal that omits one. Nothing ran the old rule suites once the prompt-evaluation runner was retired (user rulings, 2026-10-02).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -382,7 +386,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-P4 | Claim wording names the frozen judge, benchmark and conditions, and lists limitations. | §2.1, §5 | WI-12 | U: `StatusReportTest` |
 | R-I1 | Skill wrappers in both harnesses share one body and follow the §8 loop. | §8 | WI-14 | E: both harnesses |
 | R-I2 | Launcher commands and the JSON status object. | §8 | WI-13 | U: `CommandsTest` |
-| R-I3 | The old skill is retired; `failure-regression-promotion.md` follows D13; `default-rules.md` routing and test resources are updated. | §8, §13 | WI-14 | U: rule tests; reference audit |
+| R-I3 | The old skill is retired; `failure-regression-promotion.md` follows D13; `default-rules.md` routing is updated. Recorded regression scenarios live under `.cat/tests/`, and CAT refuses a proposal that omits a scenario of one of its prompt sources. | §6.1, §8, §13 | WI-14, WI-21 | U: `RegressionScenariosTest` (location audit), the proposal refusal test; reference audit |
 | R-I4 | `prompt-optimizer` launchers are registered for both harnesses in `DistributionMain`. | §8 | WI-13 | U: distribution tests; E: installed launcher runs |
 | R-I5 | Agents locate CAT's installed files without shell variables the harness does not define: the session hooks render the plugin root into the injected skill-environment rule, and Java derives the harness home from `CODEX_HOME` or `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`. | §8 | WI-15 finding | U: session-start hook tests, `CodexGetHistoryTest`, `ClaudeGetHistoryTest`; E: every E-scenario's events show no exit-127 launcher call |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
@@ -786,6 +790,24 @@ The riskiest pure code, built first.
 - **Tests:** `AttemptSelectionTest`, `StatusReportTest`, `DriverTest` trace 20.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-21 — Regression scenarios (user rulings, 2026-10-02)
+
+- **Location:** a scenario for `<root>/.cat/rules/<path>.md` (`<root>` the project or `${HOME}`) lives in
+  `<root>/.cat/tests/<path>/`; one for other guidance in the project lives in
+  `<project>/.cat/tests/<path relative to the project, without .md>/` (`design.md` §8). One Markdown file per scenario
+  holds the prewritten turns and the expected behaviour.
+- **Proposal:** derivation finds the recorded scenarios of every prompt source, gives them to the deriver, and refuses
+  a proposal in which no test cites one of them, naming each missing scenario (`design.md` §6.1).
+- **Rule:** deliver the approved `failure-regression-promotion.md` text.
+- **Migration:** move every scenario under `client/common/rules/src/test/resources/` to the location above, with the
+  fixtures it uses; retire the 16 `suite.json` files and any note that describes running the retired runner. Follow
+  `contract-retirement.md`.
+- **Closes:** R-I3 (with WI-14).
+- **Tests:** a proposal refusal test, a test that a proposal citing every scenario is accepted, and
+  `RegressionScenariosTest`, which fails when a scenario lies outside `.cat/tests/` or names no existing guidance file.
+- **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
+  rules module.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -848,6 +870,7 @@ blocks only the part of a work item that it names.
 | WI-18 | WI-17 |
 | WI-19 | WI-16 |
 | WI-20 | WI-18 |
+| WI-21 | WI-14, WI-10 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
