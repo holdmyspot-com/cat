@@ -16,6 +16,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.StringJoiner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -253,52 +255,52 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Creates the result of a turn that Claude finished.
+	 * Extracts the root session's ordered assistant text blocks and distinct final response for a completed turn.
 	 *
 	 * @param events the complete harness event stream for the turn
 	 * @param replyEvents the part of {@code events} that belongs to the turn's own reply
 	 * @param diagnostics the turn's diagnostics, one per line, or an empty string if there are none
-	 * @return a completed result carrying the turn's final assistant response
+	 * @return a completed result carrying every assistant text block and the final assistant response
 	 */
 	private HarnessProcessResult completedTurn(String events, String replyEvents, String diagnostics)
 	{
 		assert events != null;
 		assert replyEvents != null;
 		assert diagnostics != null;
-		return new HarnessProcessResult(0, events, diagnostics, true, assistantResponse(replyEvents));
-	}
-
-	/**
-	 * Extracts Claude's final assistant text without exposing Claude stream-JSON details to the common runner bridge.
-	 *
-	 * @param events the complete harness event stream for one terminal turn
-	 * @return the root session's last assistant or terminal result text, or an empty string when none was emitted
-	 */
-	private String assistantResponse(String events)
-	{
-		assert events != null;
+		List<String> assistantMessages = new ArrayList<>();
 		String response = "";
-		for (String line : events.lines().toList())
+		for (String line : replyEvents.lines().toList())
 		{
 			try
 			{
 				JsonNode event = scope.json().readTree(line);
-				// Messages printed by a child agent name the tool use that started it; they are not the root's reply.
+				// A child agent's text belongs to the child session rather than the root's reply.
 				if (event.path("parent_tool_use_id").isString())
 					continue;
 				if (event.path("result").isString() && !event.path("result").asString().isBlank())
+				{
 					response = event.path("result").asString();
+					// A result may supply final text without an assistant event; avoid repeating an emitted final block.
+					if (assistantMessages.isEmpty() || !assistantMessages.getLast().equals(response))
+						assistantMessages.add(response);
+				}
 				for (JsonNode content : event.path("message").path("content"))
-					if (content.path("type").asString().equals("text") && content.path("text").isString() &&
-						!content.path("text").asString().isBlank())
-						response = content.path("text").asString();
+				{
+					if (!content.path("type").asString().equals("text") || !content.path("text").isString())
+						continue;
+					String text = content.path("text").asString();
+					if (!text.isBlank())
+						response = text;
+					if (event.path("type").asString().equals("assistant"))
+						assistantMessages.add(text);
+				}
 			}
 			catch (JacksonException _)
 			{
-				// The complete harness stream remains retained even when an unrelated diagnostic line is not protocol JSON.
+				// Unrelated diagnostics remain in the retained harness stream.
 			}
 		}
-		return response;
+		return new HarnessProcessResult(0, events, diagnostics, true, response, assistantMessages);
 	}
 
 	/**

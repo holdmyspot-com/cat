@@ -44,7 +44,9 @@ received, and the expected compliant behaviour.
 
 {{instance}}
 
-The trial agent's final response to each turn, in order, as a JSON array:
+The trial agent's reply to each turn, in order, as a JSON array of arrays. Each inner array contains that turn's
+assistant messages in order, including interim messages and ending with the final response.
+Every assistant message is part of the reply and must satisfy the requirements on reply content.
 
 {{responses}}
 

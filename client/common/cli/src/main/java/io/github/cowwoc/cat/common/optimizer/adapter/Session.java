@@ -71,7 +71,7 @@ final class Session implements SessionHandle
 	private final EventSink sink;
 	private final AtomicBoolean interruptRequested = new AtomicBoolean();
 	private final CompletableFuture<SessionResult> completion = new CompletableFuture<>();
-	private final List<String> responses = new ArrayList<>();
+	private final List<List<String>> responses = new ArrayList<>();
 	private String runId;
 	private Message.Ended ended;
 	private boolean timedOut;
@@ -269,10 +269,10 @@ final class Session implements SessionHandle
 				if (turn == 0)
 					return Outcome.STARTED;
 			}
-			if (message instanceof Message.TurnCompleted completed)
+			if (message instanceof TurnCompleted completed)
 			{
 				if (!timedOut)
-					responses.add(completed.response());
+					responses.add(completed.assistantMessages());
 				if (turn > 0)
 					return Outcome.TURN_COMPLETED;
 			}

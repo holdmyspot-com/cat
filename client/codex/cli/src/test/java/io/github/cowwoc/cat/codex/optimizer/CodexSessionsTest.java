@@ -170,6 +170,7 @@ public final class CodexSessionsTest
 		// Requirement: R-E13
 		// Requirement: R-E16
 		// Requirement: R-E6
+		// Requirement: R-C12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
@@ -187,7 +188,7 @@ public final class CodexSessionsTest
 			requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses(), "responses").isEqualTo(List.of("first", "second"));
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
 			requireThat(completed.model(), "model").isEqualTo("gpt-6-luna");
 			requireThat(completed.reasoning(), "reasoning").isEqualTo("medium");
 			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(203_636, 148_992, 1_626, 531));

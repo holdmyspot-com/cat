@@ -15,8 +15,10 @@ import java.util.List;
  * @param instance the targeted copy of the instance that failed
  * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
  * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
+ * @param responses each turn's assistant messages in order, ending with its final response
  */
-public record Failure(TrialInstance instance, String rationale, List<DiagnosticRerun> reruns)
+public record Failure(TrialInstance instance, String rationale, List<DiagnosticRerun> reruns,
+	List<List<String>> responses)
 {
 	/**
 	 * Creates a failure.
@@ -24,14 +26,18 @@ public record Failure(TrialInstance instance, String rationale, List<DiagnosticR
 	 * @param instance the targeted copy of the instance that failed
 	 * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
 	 * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
-	 * @throws NullPointerException if any of the arguments are null or {@code reruns} contains null
+	 * @param responses each turn's assistant messages in order, ending with its final response
+	 * @throws NullPointerException if any argument, a rerun, a turn's messages or an assistant message is null
 	 */
 	public Failure
 	{
 		requireThat(instance, "instance").isNotNull();
 		requireThat(rationale, "rationale").isNotNull();
 		requireThat(reruns, "reruns").isNotNull();
+		requireThat(responses, "responses").isNotNull();
+
 		reruns = List.copyOf(reruns);
+		responses = responses.stream().map(List::copyOf).toList();
 	}
 
 	/**
@@ -46,6 +52,6 @@ public record Failure(TrialInstance instance, String rationale, List<DiagnosticR
 		requireThat(rerun, "rerun").isNotNull();
 		List<DiagnosticRerun> updated = new ArrayList<>(reruns);
 		updated.add(rerun);
-		return new Failure(instance, rationale, updated);
+		return new Failure(instance, rationale, updated, responses);
 	}
 }

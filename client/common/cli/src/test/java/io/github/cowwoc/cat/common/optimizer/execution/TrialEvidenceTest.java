@@ -33,15 +33,15 @@ public final class TrialEvidenceTest
 	 * @param replies the trial's replies
 	 * @return the evidence
 	 */
-	private static TrialEvidence evidence(Path effects, List<String> replies)
+	private static TrialEvidence evidence(Path effects, List<List<String>> replies)
 	{
 		return new TrialEvidence(new SessionResult.Completed(effects.resolveSibling("transcript"), replies, effects,
 			"model-a", null, null, List.of(), "none", List.of()));
 	}
 
 	/**
-	 * Verifies that the evidence holds the trial's final replies and the files of its project copy, and that a path
-	 * that names no file has no content.
+	 * Verifies that the evidence holds every assistant message of the trial's replies and the files of its
+	 * project copy, and that a path that names no file has no content.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -49,14 +49,16 @@ public final class TrialEvidenceTest
 	public void readsRepliesAndProjectFiles() throws IOException
 	{
 		// Requirement: R-C9
+		// Requirement: R-C12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path effects = cleanup.add(Files.createTempDirectory("trial-evidence"));
 			Files.createDirectories(effects.resolve("logs"));
 			Files.writeString(effects.resolve("logs/out.txt"), "done\n", UTF_8);
-			TrialEvidence evidence = evidence(effects, List.of("first", "second"));
+			TrialEvidence evidence = evidence(effects, List.of(List.of("interim", "final"), List.of("later final")));
 
-			requireThat(evidence.replies(), "replies").isEqualTo(List.of("first", "second"));
+			requireThat(evidence.replies(), "replies").
+				isEqualTo(List.of(List.of("interim", "final"), List.of("later final")));
 			requireThat(evidence.exists("logs"), "logsExists").isTrue();
 			requireThat(evidence.exists("cache"), "cacheExists").isFalse();
 			requireThat(evidence.content("logs/out.txt"), "content").isEqualTo(Optional.of("done\n"));
@@ -82,7 +84,7 @@ public final class TrialEvidenceTest
 			Path outside = Files.writeString(root.resolve("secret.txt"), "outside", UTF_8);
 			Files.createSymbolicLink(effects.resolve("link.txt"), outside);
 			Files.createSymbolicLink(effects.resolve("dangling.txt"), root.resolve("missing.txt"));
-			TrialEvidence evidence = evidence(effects, List.of("reply"));
+			TrialEvidence evidence = evidence(effects, List.of(List.of("reply")));
 
 			requireThat(evidence.exists("link.txt"), "linkExists").isTrue();
 			requireThat(evidence.exists("dangling.txt"), "danglingExists").isTrue();
@@ -104,7 +106,7 @@ public final class TrialEvidenceTest
 		{
 			Path effects = cleanup.add(Files.createTempDirectory("trial-evidence"));
 			Files.write(effects.resolve("data.bin"), new byte[]{'o', 'k', (byte) 0xFF});
-			TrialEvidence evidence = evidence(effects, List.of("reply"));
+			TrialEvidence evidence = evidence(effects, List.of(List.of("reply")));
 
 			requireThat(evidence.content("data.bin"), "content").isEqualTo(Optional.of("ok�"));
 		}
@@ -122,7 +124,8 @@ public final class TrialEvidenceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path effects = cleanup.add(Files.createTempDirectory("trial-evidence"));
-			requireThat(evidence(effects, List.of("reply")).toolCalls(), "toolCalls").isEqualTo(Optional.of(List.of()));
+			requireThat(evidence(effects, List.of(List.of("reply"))).toolCalls(), "toolCalls").
+				isEqualTo(Optional.of(List.of()));
 		}
 	}
 
@@ -135,7 +138,7 @@ public final class TrialEvidenceTest
 		// Requirement: R-C9
 		List<ToolCall> calls = List.of(new ToolCall("Bash", "true", 0), new ToolCall("Read", null, null),
 			new ToolCall("Bash", "false", 1), new ToolCall("Bash", "true", null));
-		SessionResult.Completed trial = new SessionResult.Completed(Path.of("transcript"), List.of("done"),
+		SessionResult.Completed trial = new SessionResult.Completed(Path.of("transcript"), List.of(List.of("done")),
 			Path.of("effects"), "model-a", null, null, List.of(), "none", calls);
 
 		requireThat(new TrialEvidence(trial).toolCalls(), "toolCalls").isEqualTo(Optional.of(calls));

@@ -15,8 +15,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The recorded evidence of a completed trial session that its deterministic checks decide from: the session's final
- * replies, the project copy that holds its file effects, and the root agent's tool calls in invocation order.
+ * The recorded evidence of a completed trial session that its deterministic checks decide from: every turn's ordered
+ * assistant messages, the project copy that holds its file effects, and the root agent's tool calls in invocation
+ * order.
  * <p>
  * Unreported commands and exit statuses remain null. A recorded list with no calls lets a tool-use check decide
  * that the trial never called a tool.
@@ -41,7 +42,7 @@ final class TrialEvidence implements CheckEvidence
 	}
 
 	@Override
-	public List<String> replies()
+	public List<List<String>> replies()
 	{
 		return trial.responses();
 	}

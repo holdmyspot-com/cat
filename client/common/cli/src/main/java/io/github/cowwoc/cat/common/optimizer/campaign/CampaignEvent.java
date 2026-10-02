@@ -107,8 +107,10 @@ public sealed interface CampaignEvent
 	 *   deterministic checks
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
+	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 */
-	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed, Long inputTokens)
+	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed, Long inputTokens,
+		List<List<String>> responses)
 		implements CampaignEvent
 	{
 		/**
@@ -120,8 +122,10 @@ public sealed interface CampaignEvent
 		 *   deterministic checks
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
-		 * @throws NullPointerException if an argument other than inputTokens is null
-		 * @throws IllegalArgumentException if inputTokens is negative
+		 * @param responses each completed turn's assistant messages in order, ending with its final response
+		 * @throws NullPointerException if an argument other than {@code inputTokens}, a turn's messages or an
+		 *   assistant message is null
+		 * @throws IllegalArgumentException if {@code inputTokens} is negative
 		 */
 		public Complete
 		{
@@ -129,8 +133,11 @@ public sealed interface CampaignEvent
 			requireThat(verdict, "verdict").isNotNull();
 			requireThat(rationale, "rationale").isNotNull();
 			requireThat(observed, "observed").isNotNull();
+			requireThat(responses, "responses").isNotNull();
 			if (inputTokens != null)
 				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
+
+			responses = responses.stream().map(List::copyOf).toList();
 		}
 	}
 

@@ -43,22 +43,22 @@ final class CheckSupport
 	}
 
 	/**
-	 * Returns the replies that a check examines.
+	 * Returns the replies that a check examines, joining each turn's messages with a newline.
 	 *
-	 * @param replies the final reply to each turn
+	 * @param replies every turn's ordered assistant messages, ending with its final response
 	 * @param turn the turn that the check examines, from 1, or {@code null} for every turn
 	 * @return the examined replies, empty if the trial gave none of them
 	 */
-	static List<Reply> examined(List<String> replies, Integer turn)
+	static List<Reply> examined(List<List<String>> replies, Integer turn)
 	{
 		List<Reply> examined = new ArrayList<>();
 		if (turn == null)
 		{
 			for (int i = 0; i < replies.size(); ++i)
-				examined.add(new Reply(i + 1, replies.get(i)));
+				examined.add(new Reply(i + 1, String.join("\n", replies.get(i))));
 		}
 		else if (turn <= replies.size())
-			examined.add(new Reply(turn, replies.get(turn - 1)));
+			examined.add(new Reply(turn, String.join("\n", replies.get(turn - 1))));
 		return examined;
 	}
 

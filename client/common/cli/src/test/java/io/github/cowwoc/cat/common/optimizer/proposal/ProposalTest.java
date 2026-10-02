@@ -104,8 +104,28 @@ public final class ProposalTest
 	private static SessionResult.Completed session(String response)
 	{
 		return new SessionResult.Completed(Path.of("/runs/deriver/artifacts/transcript.jsonl"),
-			List.of("I will inspect the prompt system.", response), Path.of("/runs/deriver/project"), "model", null,
+			List.of(List.of("I will inspect the prompt system.", response)), Path.of("/runs/deriver/project"), "model", null,
 			null, List.of(), OBSERVED, List.of());
+	}
+
+	/**
+	 * Verifies that only the final message of the last turn can supply a structured session result.
+	 */
+	@Test
+	public void structuredOutputUsesLastFinalMessage()
+	{
+		// Requirement: R-C12
+		JsonResponse responses = new JsonResponse(json);
+		SessionResult.Completed earlier = session("{\"answer\":1}");
+		SessionResult.Completed invalidFinal = new SessionResult.Completed(earlier.transcript(),
+			List.of(List.of("{\"answer\":1}"), List.of("{\"answer\":2}", "No structured output.")),
+			earlier.effects(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
+		requireThat(responses.parseFinalResponse(invalidFinal), "invalidFinal").isEmpty();
+		SessionResult.Completed validFinal = new SessionResult.Completed(earlier.transcript(),
+			List.of(List.of("{\"answer\":1}"), List.of("Working.", "{\"answer\":2}")), earlier.effects(),
+			earlier.model(), null, null, List.of(), OBSERVED, List.of());
+		requireThat(responses.parseFinalResponse(validFinal).orElseThrow().get("answer").asInt(), "finalAnswer").
+			isEqualTo(2);
 	}
 
 	/**

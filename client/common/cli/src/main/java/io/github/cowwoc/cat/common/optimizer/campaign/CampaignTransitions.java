@@ -398,7 +398,7 @@ public final class CampaignTransitions
 		{
 			draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
 				trial.allocation(), TrialState.ASSIGNED, null, null, trial.infrastructureFailures(),
-				trial.infrastructureAttempts(), trial.observations() + 1));
+				trial.infrastructureAttempts(), trial.observations() + 1, List.of()));
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
@@ -417,7 +417,7 @@ public final class CampaignTransitions
 		draft.throttle = draft.throttle.afterCompletion();
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), measured,
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(),
-			trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations()));
+			trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(), complete.responses()));
 	}
 
 	/**
@@ -477,7 +477,7 @@ public final class CampaignTransitions
 		List<InfrastructureAttempt> attempts = new ArrayList<>(trial.infrastructureAttempts());
 		attempts.add(new InfrastructureAttempt(fail.at(), fail.failure(), fail.detail()));
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
-			TrialState.ASSIGNED, null, null, infrastructureFailures, attempts, trial.observations()));
+			TrialState.ASSIGNED, null, null, infrastructureFailures, attempts, trial.observations(), List.of()));
 	}
 
 	/**

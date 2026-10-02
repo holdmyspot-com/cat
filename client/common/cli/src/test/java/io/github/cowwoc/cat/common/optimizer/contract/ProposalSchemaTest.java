@@ -30,6 +30,31 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that ordered interim and final messages are accepted in controls and decide the whole reply.
+	 *
+	 * @throws InvalidProposalException if the control shape is rejected
+	 */
+	@Test
+	public void controlsIncludeInterimMessages() throws InvalidProposalException
+	{
+		// Requirement: R-C12
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
+		ObjectNode check = (ObjectNode) json.readTree("""
+			{"requirement_id":"r1","kind":"forbidden_text","parameters":{"text":"forbidden"},
+			 "known_good":{"replies":[["Checking first.","Done."]],"files":[],"tool_calls":[],"choices":[]},
+			 "known_bad":{"replies":[["forbidden progress","Done."]],"files":[],"tool_calls":[],"choices":[]}}
+			""");
+		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
+
+		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain-list").orElseThrow();
+
+		requireThat(loaded.checks().size(), "checks.size()").isEqualTo(1);
+		requireThat(loaded.discardedChecks(), "discardedChecks").isEmpty();
+		requireThat(json.readTree(schema().toJson(schema().parse(json.writeValueAsString(stored)))), "roundTrip").
+			isEqualTo(stored);
+	}
+
+	/**
 	 * Returns the schema reader under test.
 	 *
 	 * @return the reader
@@ -574,7 +599,8 @@ public final class ProposalSchemaTest
 	public void loadingDiscardsACheckThatFailsAControl() throws InvalidProposalException
 	{
 		// Requirement: R-C9
-		ControlEvidence list = new ControlEvidence(List.of("- red\n- green\n- blue"), List.of(), List.of(), Map.of());
+		ControlEvidence list = new ControlEvidence(List.of(List.of("- red\n- green\n- blue")), List.of(), List.of(),
+			Map.of());
 		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), new PatternMatch(1, "red"),
 			list, list);
 		JsonNode stored = json.readTree(schema().toJson(ContractFixtures.contract()));
@@ -607,7 +633,7 @@ public final class ProposalSchemaTest
 		check.put("kind", "exact_text");
 		check.putObject("parameters").put("pattern", "x");
 		ObjectNode control = json.createObjectNode();
-		control.putArray("replies").add("x");
+		control.putArray("replies").addArray().add("x");
 		control.putArray("files");
 		control.putArray("tool_calls");
 		control.putArray("choices");

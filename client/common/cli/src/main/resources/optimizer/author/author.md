@@ -60,7 +60,9 @@ The development instances that failed for the working candidate, as JSON. Each o
 in `rationale`, and the targeted reruns of the same instance against the working candidate in `diagnostic_reruns`, each
 with its verdict and its `rationale`. A `rationale` is the judge's rationale or, when no judge ran, a record of
 deterministic checks that names, for each check, the requirement, the check and the value that it observed. No judge
-runs when a check failed; the record then lists only the failed checks:
+runs when a check failed; the record then lists only the failed checks. The `responses` array holds one ordered
+array of assistant messages per turn, including interim messages and ending with the final response; every message
+is part of the reply:
 
 {{failures}}
 
@@ -69,7 +71,7 @@ The development counts of the working candidate per cell, as JSON:
 {{development_counts}}
 
 The formal outcomes of the certification attempts that have ended, as JSON. Each formal failure carries its
-`rationale`, as above:
+`rationale` and `responses`, as above:
 
 {{ended_attempts}}
 

@@ -288,7 +288,7 @@ public final class DriverHarness
 	 */
 	public SessionResult.Completed judged(String response)
 	{
-		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(response),
+		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(List.of(response)),
 			directory.resolve("judge-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
 	}
 
@@ -371,7 +371,7 @@ public final class DriverHarness
 		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
 		Path effects = evidence.resolve("project");
 		judgments.put(effects, new Judgment(Verdict.PASS, "The trial met the requirements."));
-		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(response),
+		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(List.of(response)),
 			effects, model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}
 
@@ -448,7 +448,7 @@ public final class DriverHarness
 		entries.put(file, new RegularFile(Sha256.of(content), PERMISSIONS));
 		// The fake rejects an unprepared copy, so an author request cannot edit a project the driver did not supply
 		fakeWorkspace.editAuthoringCopy(request.source(), new FileInventory(effects, entries));
-		return new SessionResult.Completed(directory.resolve("author-transcript"), List.of("done"), effects, MODEL,
+		return new SessionResult.Completed(directory.resolve("author-transcript"), List.of(List.of("done")), effects, MODEL,
 			"reasoning-1", null, List.of(), PROMPT_SOURCES, List.of());
 	}
 

@@ -118,7 +118,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 7;
+	private static final int FORMAT_VERSION = 8;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -499,6 +499,7 @@ final class CampaignJson
 			node.put("rationale", outcome.rationale());
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
+			node.set("responses", writeResponses(outcome.responses()));
 		}
 		return root;
 	}
@@ -522,10 +523,51 @@ final class CampaignJson
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
 				text(outcomeNode, "rationale"), readIdentity(field(outcomeNode, "observed")),
-			nullableLong(outcomeNode, "input_tokens"));
+			nullableLong(outcomeNode, "input_tokens"), readResponses(outcomeNode));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome);
+	}
+
+	/**
+	 * Converts replies to arrays of assistant messages in turn order.
+	 *
+	 * @param responses each turn's messages in order, ending with its final response
+	 * @return the document
+	 */
+	private ArrayNode writeResponses(List<List<String>> responses)
+	{
+		ArrayNode node = json.createArrayNode();
+		for (List<String> messages : responses)
+		{
+			ArrayNode turn = node.addArray();
+			for (String message : messages)
+				turn.add(message);
+		}
+		return node;
+	}
+
+	/**
+	 * Reads the ordered assistant messages of each turn's reply.
+	 *
+	 * @param node the document that holds the replies
+	 * @return the replies in turn order
+	 * @throws IllegalArgumentException if a reply is not an array or a message is not a string
+	 */
+	private static List<List<String>> readResponses(JsonNode node)
+	{
+		List<List<String>> responses = new ArrayList<>();
+		for (JsonNode turn : elements(node, "responses"))
+		{
+			if (!turn.isArray())
+				throw new IllegalArgumentException("responses: each turn must be an array of assistant messages");
+
+			List<String> messages = new ArrayList<>();
+			for (JsonNode message : turn)
+				messages.add(stringValue(message, "responses"));
+			responses.add(List.copyOf(messages));
+		}
+		return List.copyOf(responses);
 	}
 
 	/**
@@ -1009,6 +1051,7 @@ final class CampaignJson
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
 		node.put("observations", trial.observations());
+		node.set("responses", writeResponses(trial.responses()));
 		return node;
 	}
 
@@ -1025,7 +1068,7 @@ final class CampaignJson
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
 			constant(node, "state", TrialState.class), verdict, rationale, integer(node, "infrastructure_failures"),
-			readInfrastructureAttempts(node), integer(node, "observations"));
+			readInfrastructureAttempts(node), integer(node, "observations"), readResponses(node));
 	}
 
 	/**
@@ -1370,6 +1413,7 @@ final class CampaignJson
 		{
 			ObjectNode element = writeInstance(failure.instance());
 			element.put("rationale", failure.rationale());
+			element.set("responses", writeResponses(failure.responses()));
 			ArrayNode reruns = element.putArray("reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -1397,7 +1441,7 @@ final class CampaignJson
 			List<DiagnosticRerun> reruns = new ArrayList<>();
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
-			failures.add(new Failure(readInstance(element), text(element, "rationale"), reruns));
+			failures.add(new Failure(readInstance(element), text(element, "rationale"), reruns, readResponses(element)));
 		}
 		return failures;
 	}

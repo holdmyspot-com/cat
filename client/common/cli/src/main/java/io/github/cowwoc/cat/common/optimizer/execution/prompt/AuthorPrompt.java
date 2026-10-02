@@ -178,6 +178,12 @@ public final class AuthorPrompt implements AuthorProtocol
 		node.put("id", id);
 		node.put("cell", failure.instance().cellId());
 		node.put("rationale", failure.rationale());
+		ArrayNode responses = node.putArray("responses");
+		for (List<String> turn : failure.responses())
+		{
+			ArrayNode messages = responses.addArray();
+			turn.forEach(messages::add);
+		}
 		return node;
 	}
 

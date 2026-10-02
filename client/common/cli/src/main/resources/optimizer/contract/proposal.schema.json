@@ -36,12 +36,12 @@
 			}
 		},
 		"control": {
-			"description": "The evidence of one trial, written to validate a check: the final reply to each turn, the project's files after the trial that the check reads, the tool calls in order, and the variation value drawn for each dimension that the check's parameters name.",
+			"description": "The evidence of one trial, written to validate a check: every turn's ordered assistant messages including interim messages and the final response, the project's files after the trial that the check reads, the tool calls in order, and the variation value drawn for each dimension that the check's parameters name.",
 			"type": "object",
 			"additionalProperties": false,
 			"required": ["replies", "files", "tool_calls", "choices"],
 			"properties": {
-				"replies": {"type": "array", "items": {"type": "string"}},
+				"replies": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
 				"files": {
 					"type": "array",
 					"items": {

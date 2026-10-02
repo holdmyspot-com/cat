@@ -344,7 +344,7 @@ public final class CampaignBuilder
 	 */
 	public CampaignBuilder failure(TrialInstance instance)
 	{
-		return failure(new Failure(instance, "", List.of()));
+		return failure(new Failure(instance, "", List.of(), List.of()));
 	}
 
 	/**
@@ -768,7 +768,7 @@ public final class CampaignBuilder
 		 */
 		public AttemptBuilder failure(TrialInstance instance)
 		{
-			return failure(new Failure(instance, "", List.of()));
+			return failure(new Failure(instance, "", List.of(), List.of()));
 		}
 
 		/**

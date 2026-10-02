@@ -189,7 +189,7 @@ public final class ClaudeSessionsTest
 			requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses(), "responses").isEqualTo(List.of("first", "second"));
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
 			requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
 				new ToolCall("Bash", "true", 0), new ToolCall("Bash", "false", 1),
 				new ToolCall("Read", null, null)));

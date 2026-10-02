@@ -1,12 +1,14 @@
 package io.github.cowwoc.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.runner.fakes.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
 
 import org.testng.annotations.Test;
@@ -47,7 +50,7 @@ public final class CodexProcessTest
 
 	/**
 	 * Verifies the turn's assistant response is the text of the root thread's last completed {@code agentMessage},
-	 * not a child thread's message that completed later.
+	 * while its reply contains every root message in order and excludes child messages that complete later.
 	 *
 	 * @throws IOException if the turn fails
 	 */
@@ -55,6 +58,7 @@ public final class CodexProcessTest
 	public void repliesWithLastRootAgentMessage() throws IOException
 	{
 		// Requirement: R-E13
+		// Requirement: R-C12
 		AppServer server = new AppServer(id -> List.of(turnStarted(id),
 			agentMessage(ROOT_THREAD, "I will read the evidence."),
 			agentMessage(CHILD_THREAD, "Child finding."),
@@ -68,6 +72,41 @@ public final class CodexProcessTest
 
 			requireThat(result.completed(), "completed").isTrue();
 			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("{\"verdict\":\"fail\"}");
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(
+				List.of("I will read the evidence.", "{\"verdict\":\"fail\"}"));
+		}
+	}
+
+	/**
+	 * Verifies that recorded root progress messages before a command and the final response are collected in order.
+	 * The recorded thread and turn identifiers are replaced with this fixture's controlled identifiers.
+	 *
+	 * @throws IOException if the recording cannot be read or the turn fails
+	 */
+	@Test(timeOut = 1000)
+	public void collectsRecordedReplyMessages() throws IOException
+	{
+		// Requirement: R-C12
+		String recording;
+		try (InputStream input = CodexProcessTest.class.getResourceAsStream("/optimizer/codex-reply-messages.jsonl"))
+		{
+			recording = new String(input.readAllBytes(), UTF_8).
+				replace("019fe761-2935-72b2-b815-52183463aec8", ROOT_THREAD).
+				replace("019fe761-29ef-7180-895a-1c731e998e6d", ROOT_TURN);
+		}
+		AppServer server = new AppServer(id -> List.of(turnStarted(id), recording), NO_ANSWER);
+		try (CodexProcess process = server.start())
+		{
+			HarnessProcessResult result = process.sendTurn("Implement the calculator.");
+
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of(
+				"I’ll inspect the project’s language and conventions, then add the checkout calculator and run the " +
+					"relevant tests.",
+				"The repository is a minimal Java 17 project with an existing `CheckoutPriceCalculator` stub. I’ll " +
+					"implement a single calculation method using decimal rates (for example, `0.10` for 10%); the " +
+					"shipping fee is added after the item discount and before tax.", result.assistantResponse()));
+			requireThat(result.assistantResponse(), "assistantResponse").startsWith(
+				"Implemented `CheckoutPriceCalculator.calculateTotal()`");
 		}
 	}
 
@@ -97,7 +136,8 @@ public final class CodexProcessTest
 
 	/**
 	 * Verifies an interrupt during a turn targets the active root turn. Given the supplied {@code interrupted}
-	 * completion notification, the bridge classifies the caller-interrupted turn as successful.
+	 * completion notification, the adapter classifies the caller-interrupted turn as successful and retains its
+	 * progress message.
 	 *
 	 * @throws IOException          if the turn fails
 	 * @throws InterruptedException if the test is interrupted while it waits
@@ -108,6 +148,7 @@ public final class CodexProcessTest
 	public void interruptsActiveTurn() throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E10
+		// Requirement: R-C12
 		AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "Working on it.")),
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
 		CountDownLatch working = new CountDownLatch(1);
@@ -128,6 +169,7 @@ public final class CodexProcessTest
 				ROOT_TURN));
 			requireThat(result.completed(), "completed").isTrue();
 			requireThat(result.exitCode(), "exitCode").isEqualTo(0);
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of("Working on it."));
 		}
 	}
 
@@ -166,7 +208,7 @@ public final class CodexProcessTest
 
 	/**
 	 * Verifies an interrupt after a supplied completion notification sends no interrupt request. A subsequent
-	 * supplied completion notification is still classified as a completed turn.
+	 * supplied completion notification is still classified as a completed turn with only that turn's messages.
 	 *
 	 * @throws IOException if a turn or the interrupt fails
 	 */
@@ -174,7 +216,11 @@ public final class CodexProcessTest
 	public void ignoresInterruptAfterTurnEnded() throws IOException
 	{
 		// Requirement: R-E10
-		AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "Done."),
+		// Requirement: R-C12
+		List<String> replies = List.of("First answer.", "Second answer.");
+		AtomicInteger nextReply = new AtomicInteger();
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, replies.get(nextReply.getAndIncrement())),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
 		try (CodexProcess process = server.start())
 		{
@@ -185,6 +231,7 @@ public final class CodexProcessTest
 			HarnessProcessResult next = process.sendTurn("Second task.");
 			requireThat(server.interruptRequests(), "interruptRequests").isEmpty();
 			requireThat(next.completed(), "completed").isTrue();
+			requireThat(next.assistantMessages(), "assistantMessages").isEqualTo(List.of("Second answer."));
 		}
 	}
 

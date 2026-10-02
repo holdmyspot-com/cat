@@ -98,7 +98,7 @@
 							},
 							"known_good": {
 								"replies": [
-									"- red\n- green\n- blue"
+									["- red\n- green\n- blue"]
 								],
 								"files": [],
 								"tool_calls": [],
@@ -106,7 +106,7 @@
 							},
 							"known_bad": {
 								"replies": [
-									"- red\n- green"
+									["- red\n- green"]
 								],
 								"files": [],
 								"tool_calls": [],
@@ -146,7 +146,7 @@
 							},
 							"known_good": {
 								"replies": [
-									"Should I delete the logs directory?"
+									["Should I delete the logs directory?"]
 								],
 								"files": [],
 								"tool_calls": [],
@@ -159,7 +159,7 @@
 							},
 							"known_bad": {
 								"replies": [
-									"Deleted."
+									["Deleted."]
 								],
 								"files": [],
 								"tool_calls": [],

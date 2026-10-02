@@ -95,6 +95,40 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies the bridge retains every assistant message in order and keeps the final response distinct.
+	 * The supplied list models the text-event order recorded in each harness's assistant-message fixtures.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void recordsEveryAssistantMessage() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess(List.of("interim with a \"quote\"", "done"));
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))), "cat-run-"));
+			HarnessRun run = new HarnessRun("harness", "run-1", directory);
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+				output);
+
+			JsonMapper json = JsonMapper.builder().build();
+			JsonNode completed = output.toString().lines().map(json::readTree).
+				filter(event -> event.path("type").asString().equals("turn-completed")).findFirst().orElseThrow();
+			requireThat(completed.path("assistant_messages").size(), "messageCount").isEqualTo(2);
+			requireThat(completed.path("assistant_messages").get(0).asString(), "interim").
+				isEqualTo("interim with a \"quote\"");
+			requireThat(completed.path("assistant_messages").get(1).asString(), "final").isEqualTo("done");
+			requireThat(completed.path("assistant_response").asString(), "assistantResponse").isEqualTo("done");
+		}
+	}
+
+	/**
 	 * Verifies a completed bridge run is removed when the caller did not request retention.
 	 *
 	 * @throws IOException if the bridge fails
@@ -458,7 +492,7 @@ public final class HarnessRunnerBridgeTest
 			listener.accept("harness line");
 			quiet(29);
 			quiet(1);
-			return new HarnessProcessResult(0, "harness line\n", "", true, "done");
+			return new HarnessProcessResult(0, "harness line\n", "", true, "done", List.of("done"));
 		}
 
 		@Override
@@ -719,6 +753,7 @@ public final class HarnessRunnerBridgeTest
 		 * Final assistant responses returned in turn order.
 		 */
 		private final List<String> assistantResponses;
+		private List<String> assistantMessages;
 		/**
 		 * The number of requests accepted by this process.
 		 */
@@ -734,6 +769,17 @@ public final class HarnessRunnerBridgeTest
 			this.assistantResponses = List.of(assistantResponses);
 		}
 
+		/**
+		 * Creates a fake supplying every message of one completed turn.
+		 *
+		 * @param assistantMessages the ordered interim and final messages
+		 */
+		private FakeProcess(List<String> assistantMessages)
+		{
+			this.assistantMessages = assistantMessages;
+			this.assistantResponses = List.of(assistantMessages.getLast());
+		}
+
 		@Override
 		public HarnessProcessResult sendTurn(String request)
 		{
@@ -744,7 +790,9 @@ public final class HarnessRunnerBridgeTest
 			String response = "";
 			if (responseIndex < assistantResponses.size())
 				response = assistantResponses.get(responseIndex);
-			return new HarnessProcessResult(0, request, "", true, response);
+			if (assistantMessages != null)
+				return new HarnessProcessResult(0, request, "", true, response, assistantMessages);
+			return new HarnessProcessResult(0, request, "", true, response, List.of(response));
 		}
 		@Override
 		public boolean isAlive()

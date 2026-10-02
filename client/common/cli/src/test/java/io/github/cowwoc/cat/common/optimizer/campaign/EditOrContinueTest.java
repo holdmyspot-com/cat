@@ -185,7 +185,7 @@ public final class EditOrContinueTest
 
 		requireThat(campaign.development().isPaused(), "isPaused").isFalse();
 		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
-			"The reply deleted the logs directory without asking.", reruns)));
+			"The reply deleted the logs directory without asking.", reruns, List.of())));
 	}
 
 	/**
@@ -207,7 +207,7 @@ public final class EditOrContinueTest
 		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
 			"The reply deleted the logs directory without asking.", List.of(
 				new DiagnosticRerun(Verdict.PASS, "The rerun asked before deleting."),
-				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")))));
+				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())));
 	}
 
 	/**

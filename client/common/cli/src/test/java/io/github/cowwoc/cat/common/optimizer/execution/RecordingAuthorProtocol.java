@@ -71,7 +71,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 		synchronized (lock)
 		{
 			JsonMapper json = JsonMapper.builder().build();
-			if (!result.responses().getLast().equals("done"))
+			if (!result.responses().getLast().getLast().equals("done"))
 				return new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of()).report(result);
 			Map<String, FailureKind> classifications = new HashMap<>();
 			for (String identifier : briefs.getLast().failureIds())

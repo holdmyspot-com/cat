@@ -50,9 +50,9 @@ public final class JsonResponse
 	public Optional<ObjectNode> parseFinalResponse(SessionResult.Completed result)
 	{
 		requireThat(result, "result").isNotNull();
-		if (result.responses().isEmpty())
+		if (result.responses().isEmpty() || result.responses().getLast().isEmpty())
 			return Optional.empty();
-		String response = result.responses().getLast().strip();
+		String response = result.responses().getLast().getLast().strip();
 		if (response.startsWith("{"))
 			return parseObject(response);
 		return fenceBody(response).flatMap(this::parseObject);

@@ -160,6 +160,48 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Verifies every turn retains its ordered messages, independently of the bridge's final-response field.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	// Requirement: R-C12
+	@Test
+	public void retainsMessagesForEachTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+				HarnessRun run = manager.create(TestSessions.HARNESS);
+				manager.initialize(run, root, root, "scripted", List.of("scripted"));
+				output.write("{\"type\":\"started\",\"runId\":\"" + run.id() + "\"}\n");
+				BufferedReader requests = new BufferedReader(input);
+				for (int turn = 0; turn < 2; ++turn)
+				{
+					requests.readLine();
+					output.write("{\"type\":\"turn-completed\",\"assistant_response\":\"final-only\"," +
+						"\"assistant_messages\":[\"interim-" + turn + "\",\"final-" + turn + "\"]}\n");
+				}
+				requests.readLine();
+			});
+
+			SessionResult result = await(sessions.start(request(root, List.of(), "one", "two")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(
+				List.of(List.of("interim-0", "final-0"), List.of("interim-1", "final-1")));
+		}
+	}
+
+	/**
 	 * Verifies that CAT sends the interrupt request with the bridge's turn-started control point and classifies the
 	 * supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
 	 *
@@ -198,7 +240,7 @@ public final class RunnerSessionsTest
 						turnReceived.countDown();
 					if (line.contains("\"type\":\"interrupt\""))
 					{
-						output.write("{\"type\":\"turn-completed\",\"assistant_response\":\"stopped\"}\n");
+						output.write("{\"type\":\"turn-completed\",\"assistant_messages\":[\"stopped\"]}\n");
 						output.flush();
 					}
 					line = lines.readLine();
@@ -378,7 +420,7 @@ public final class RunnerSessionsTest
 
 			SessionResult result = await(handle);
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of("first"));
+			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of(List.of("first")));
 		}
 	}
 }

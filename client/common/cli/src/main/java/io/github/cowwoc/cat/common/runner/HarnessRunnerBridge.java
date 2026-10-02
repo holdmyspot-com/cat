@@ -20,6 +20,7 @@ import java.util.concurrent.Future;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -32,7 +33,8 @@ public final class HarnessRunnerBridge
 {
 	/**
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
-	 * {@code harness-event} responses; the terminal response records only the final status and error.
+	 * {@code harness-event} responses; the terminal response records the status, error, final assistant response
+	 * and every assistant message in order.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -150,6 +152,9 @@ public final class HarnessRunnerBridge
 									response.put("exitCode", result.exitCode());
 									response.put("error", result.standardError());
 									response.put("assistant_response", result.assistantResponse());
+									ArrayNode reply = response.putArray("assistant_messages");
+									for (String message : result.assistantMessages())
+										reply.add(message);
 									client.completeTurn(response);
 									return null;
 								}

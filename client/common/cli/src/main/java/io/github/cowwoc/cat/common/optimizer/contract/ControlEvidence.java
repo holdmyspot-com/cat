@@ -17,20 +17,20 @@ import java.util.TreeMap;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param replies the final reply to each turn, in turn order
+ * @param replies every turn's ordered assistant messages, ending with its final response
  * @param files the files in the project after the trial
  * @param calls the tool calls that the trial made, in order
  * @param choices the label of the variation value that the trial drew for each dimension that the check names, by
  *   dimension. It iterates in dimension order, so that the contract's JSON form and its identity do not depend on
  *   the order in which the deriver listed them.
  */
-public record ControlEvidence(List<String> replies, List<EvidenceFile> files, List<ToolCall> calls,
+public record ControlEvidence(List<List<String>> replies, List<EvidenceFile> files, List<ToolCall> calls,
 	Map<String, String> choices) implements CheckEvidence
 {
 	/**
 	 * Creates the evidence of a control.
 	 *
-	 * @param replies the final reply to each turn, in turn order
+	 * @param replies every turn's ordered assistant messages, ending with its final response
 	 * @param files the files in the project after the trial
 	 * @param calls the tool calls that the trial made, in order
 	 * @param choices the label of the variation value that the trial drew for each dimension that the check names,
@@ -44,7 +44,7 @@ public record ControlEvidence(List<String> replies, List<EvidenceFile> files, Li
 		requireThat(files, "files").isNotNull();
 		requireThat(calls, "calls").isNotNull();
 		requireThat(choices, "choices").isNotNull();
-		replies = List.copyOf(replies);
+		replies = replies.stream().map(List::copyOf).toList();
 		files = List.copyOf(files);
 		calls = List.copyOf(calls);
 		choices = Collections.unmodifiableSortedMap(new TreeMap<>(choices));

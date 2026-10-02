@@ -709,7 +709,7 @@ public final class Driver implements AutoCloseable
 	{
 		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, observed,
-			trialInputTokens(trial));
+			trialInputTokens(trial), trial.responses());
 		if (campaign.identity().differences(observed).isEmpty())
 		{
 			context.store().writeOutcome(campaignId, complete);

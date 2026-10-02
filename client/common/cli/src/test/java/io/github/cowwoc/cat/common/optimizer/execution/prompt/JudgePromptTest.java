@@ -50,11 +50,29 @@ public final class JudgePromptTest
 		// Requirement: R-E13
 		JudgeProfile profile = profile();
 		SessionRequest request = prompt.request(profile, instance(),
-			completed(List.of("Earlier reply.", "Should I delete?")), List.of(REQUIREMENT), List.of());
+			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of());
 		requireThat(request.role(), "role").isEqualTo(SessionRole.JUDGE);
 		requireThat(request.profile(), "profile").isEqualTo(profile.profile());
 		requireThat(request.turns().size(), "turns.size()").isEqualTo(1);
 		requireThat(request.turns().getFirst(), "turn").contains("Should I delete?");
+	}
+
+	/**
+	 * Verifies that the judge treats interim messages as part of each reply.
+	 */
+	@Test
+	public void requestDefinesEveryMessageAsReply()
+	{
+		// Requirement: R-C12
+		List<List<String>> replies = List.of(List.of("Checking the directory.", "Should I delete?"),
+			List.of("Checking the backup.", "Backup retained."));
+		String turn = prompt.request(profile(), instance(), completed(replies), List.of(REQUIREMENT),
+			List.of()).turns().getFirst();
+		requireThat(turn, "turn").contains("Every assistant message is part of the reply");
+		int start = turn.indexOf("\n\n[", turn.indexOf("The trial agent's reply"));
+		int end = turn.indexOf("\n\nRead these paths", start);
+		JsonMapper json = JsonMapper.builder().build();
+		requireThat(json.readTree(turn.substring(start, end)), "responses").isEqualTo(json.valueToTree(replies));
 	}
 
 	/**
@@ -64,15 +82,15 @@ public final class JudgePromptTest
 	public void requestProtectsEvidence()
 	{
 		// Requirement: R-E13
-		SessionRequest request = prompt.request(profile(), instance(), completed(List.of("Should I delete?")),
+		SessionRequest request = prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))),
 			List.of(REQUIREMENT), List.of());
 		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
 		SessionRequest colocated = prompt.request(profile(), instance(),
-			completed(List.of("Should I delete?"), EFFECTS.resolve("transcript.jsonl"), EFFECTS),
+			completed(List.of(List.of("Should I delete?")), EFFECTS.resolve("transcript.jsonl"), EFFECTS),
 			List.of(REQUIREMENT), List.of());
 		requireThat(colocated.readOnly(), "colocated.readOnly").isEqualTo(List.of(EFFECTS));
 		SessionRequest parentless = prompt.request(profile(), instance(),
-			completed(List.of("Should I delete?"), Path.of("transcript.jsonl"), EFFECTS),
+			completed(List.of(List.of("Should I delete?")), Path.of("transcript.jsonl"), EFFECTS),
 			List.of(REQUIREMENT), List.of());
 		requireThat(parentless.readOnly(), "parentless.readOnly").isEqualTo(List.of(EFFECTS));
 	}
@@ -86,7 +104,7 @@ public final class JudgePromptTest
 		// Requirement: R-E13
 		JudgeProfile profile = profile();
 		SessionRequest request = prompt.request(profile, instance(),
-			completed(List.of("Earlier reply.", "Should I delete?")), List.of(REQUIREMENT), List.of());
+			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of());
 		requireThat(request.turns().getFirst(), "turn").contains(profile.rubric()).contains(profile.decisionRule()).
 			contains(REQUIREMENT.description()).contains("Earlier reply.").contains("Delete logs.");
 	}
@@ -98,7 +116,7 @@ public final class JudgePromptTest
 	public void requestIsolatesJudgeDirectory()
 	{
 		// Requirement: R-E13
-		SessionRequest request = prompt.request(profile(), instance(), completed(List.of("Should I delete?")),
+		SessionRequest request = prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))),
 			List.of(REQUIREMENT), List.of());
 		requireThat(request.source(), "source").isNotEqualTo(EFFECTS);
 	}
@@ -112,7 +130,7 @@ public final class JudgePromptTest
 	public void rejectsNoRequirements()
 	{
 		// Requirement: R-E13
-		prompt.request(profile(), instance(), completed(List.of("Should I delete?")), List.of(), List.of());
+		prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))), List.of(), List.of());
 	}
 
 	/**
@@ -123,8 +141,8 @@ public final class JudgePromptTest
 	{
 		// Requirement: R-E13
 		Judgment expected = new Judgment(Verdict.PASS, " It asked. ");
-		requireThat(prompt.judgment(completed(List.of(OUTPUT))), "bare").isEqualTo(Optional.of(expected));
-		requireThat(prompt.judgment(completed(List.of("```json\n" + OUTPUT + "\n```"))), "fenced").
+		requireThat(prompt.judgment(completed(List.of(List.of(OUTPUT)))), "bare").isEqualTo(Optional.of(expected));
+		requireThat(prompt.judgment(completed(List.of(List.of("```json\n" + OUTPUT + "\n```")))), "fenced").
 			isEqualTo(Optional.of(expected));
 	}
 
@@ -135,8 +153,8 @@ public final class JudgePromptTest
 	public void rejectsBareVerdicts()
 	{
 		// Requirement: R-E13
-		requireThat(prompt.judgment(completed(List.of("pass"))), "pass").isEmpty();
-		requireThat(prompt.judgment(completed(List.of("fail"))), "fail").isEmpty();
+		requireThat(prompt.judgment(completed(List.of(List.of("pass")))), "pass").isEmpty();
+		requireThat(prompt.judgment(completed(List.of(List.of("fail")))), "fail").isEmpty();
 	}
 
 	/**
@@ -149,7 +167,7 @@ public final class JudgePromptTest
 		for (String response : List.of("not JSON", "{", "{\"verdict\":\"partial\",\"rationale\":\"Half.\"}",
 			"{\"verdict\":\"pass\"}", "{\"verdict\":\"pass\",\"rationale\":\" \"}", "Here it is: " + OUTPUT))
 		{
-			requireThat(prompt.judgment(completed(List.of(response))), "judgment").isEmpty();
+			requireThat(prompt.judgment(completed(List.of(List.of(response)))), "judgment").isEmpty();
 		}
 	}
 
@@ -160,9 +178,10 @@ public final class JudgePromptTest
 	public void readsOnlyFinalResponse()
 	{
 		// Requirement: R-E13
+		// Requirement: R-C12
 		for (String earlier : List.of("pass", OUTPUT))
 		{
-			SessionResult.Completed result = completed(List.of(earlier, "No final verdict."));
+			SessionResult.Completed result = completed(List.of(List.of(OUTPUT), List.of(earlier, "No final verdict.")));
 			requireThat(prompt.judgment(result), "judgment").isEmpty();
 		}
 	}
@@ -205,7 +224,7 @@ public final class JudgePromptTest
 	 * @param responses the responses in turn order
 	 * @return the completed result
 	 */
-	private static SessionResult.Completed completed(List<String> responses)
+	private static SessionResult.Completed completed(List<List<String>> responses)
 	{
 		return completed(responses, TRANSCRIPT, EFFECTS);
 	}
@@ -218,7 +237,7 @@ public final class JudgePromptTest
 	 * @param effects the trial effects directory
 	 * @return the completed result
 	 */
-	private static SessionResult.Completed completed(List<String> responses, Path transcript, Path effects)
+	private static SessionResult.Completed completed(List<List<String>> responses, Path transcript, Path effects)
 	{
 		return new SessionResult.Completed(transcript, responses, effects, "model", null, null, List.of(), "none",
 			List.of());

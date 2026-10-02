@@ -345,15 +345,15 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
 				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of())).
+					failure(new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of(), List.of())).
 					build());
 			harness.authors(request ->
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
-				return new SessionResult.Completed(edited.transcript(), List.of("""
+				return new SessionResult.Completed(edited.transcript(), List.of(List.of("""
 					{"needed_edits": [], "classifications": [
 					  {"instance":"%s","classification":"guidance"}], "hunks": []}
-					""".formatted(harness.author().briefs().getLast().developmentId(0))), edited.effects(), edited.model(),
+					""".formatted(harness.author().briefs().getLast().developmentId(0)))), edited.effects(), edited.model(),
 					edited.reasoning(), edited.usage(), edited.windows(),
 					edited.promptSources(), edited.toolCalls());
 			});
@@ -428,7 +428,8 @@ public final class DriverTest
 					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
 					 "instances":["unknown"],"analogous":"related case","dissimilar":"unrelated case"}]}
 					""".formatted(harness.author().briefs().getLast().developmentId(0));
-				return new SessionResult.Completed(edited.transcript(), List.of(response), edited.effects(), edited.model(),
+				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.model(),
 					edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
 					edited.toolCalls());
 			});
@@ -1584,7 +1585,7 @@ public final class DriverTest
 	 */
 	private static ControlEvidence reply(String text)
 	{
-		return new ControlEvidence(List.of(text), List.of(), List.of(), Map.of());
+		return new ControlEvidence(List.of(List.of(text)), List.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -1613,7 +1614,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * A trial fails a deterministic check, no judge session runs, and the failed check's record, which names
+	 * A trial fails a deterministic check because forbidden text appears only in its interim message. No judge
+	 * session runs, and every message plus the failed check's record, which names
 	 * the check and its observed value, reaches the author brief in place of a judge rationale, for the failure and
 	 * for the rerun that reproduced it.
 	 *
@@ -1624,6 +1626,7 @@ public final class DriverTest
 	public void failedCheckRunsNoJudge() throws IOException, UndecidableCheckException
 	{
 		// Requirement: R-C9
+		// Requirement: R-C12
 		Contract contract = checkedContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1634,7 +1637,12 @@ public final class DriverTest
 			harness.trials(request ->
 			{
 				if (isPlainList(request) && harness.snapshot(request).equals(first))
-					return harness.completed(BROKEN, DriverHarness.MODEL);
+				{
+					SessionResult.Completed completed = harness.completed("red, green, blue", DriverHarness.MODEL);
+					return new SessionResult.Completed(completed.transcript(), List.of(List.of(BROKEN,
+						"red, green, blue")), completed.effects(), completed.model(), completed.reasoning(),
+						completed.usage(), completed.windows(), completed.promptSources(), completed.toolCalls());
+				}
 				return compliant(harness, request);
 			});
 			try (Driver driver = harness.open())
@@ -1643,12 +1651,14 @@ public final class DriverTest
 			}
 			TestDefinition plainList = contract.findTest("plain-list").orElseThrow();
 			String record = "Failed deterministic checks:\n- " +
-				plainList.decide(List.of(), reply(BROKEN)).getFirst().describe();
+				plainList.decide(List.of(), new ControlEvidence(List.of(List.of(BROKEN, "red, green, blue")), List.of(),
+					List.of(), Map.of())).getFirst().describe();
 			AuthorBrief brief = harness.author().briefs().getFirst();
 			requireThat(brief.category(), "category").isEqualTo("formatting");
 			Failure failure = brief.developmentFailures().getFirst();
 			requireThat(failure.instance().testId(), "testId").isEqualTo("plain-list");
 			requireThat(failure.rationale(), "rationale").isEqualTo(record);
+			requireThat(failure.responses(), "responses").isEqualTo(List.of(List.of(BROKEN, "red, green, blue")));
 			requireThat(failure.reruns(), "reruns").isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, record)));
 			for (FakeSession session : harness.sessions().sessions())
 			{
@@ -1656,12 +1666,15 @@ public final class DriverTest
 				if (request.role() == SessionRole.JUDGE)
 				{
 					String turn = request.turns().getFirst();
-					String responsesSection = turn.substring(turn.indexOf("The trial agent's final response"),
+					String responsesSection = turn.substring(turn.indexOf("The trial agent's reply to each turn"),
 						turn.indexOf("Read these paths"));
 					JsonNode responses = JsonMapper.builder().build().readTree(responsesSection.substring(
 						responsesSection.indexOf('[')));
 					for (JsonNode response : responses)
-						requireThat(response.asString(), "judgedResponse").isNotEqualTo(BROKEN);
+					{
+						for (JsonNode message : response)
+							requireThat(message.asString(), "judgedMessage").isNotEqualTo(BROKEN);
+					}
 				}
 			}
 		}
@@ -1744,7 +1757,7 @@ public final class DriverTest
 	{
 		String turn = request.turns().getFirst();
 		String instanceSection = turn.substring(turn.indexOf("### Evidence"),
-			turn.indexOf("The trial agent's final response"));
+			turn.indexOf("The trial agent's reply"));
 		String instance = instanceSection.substring(instanceSection.indexOf('{'));
 		return JsonMapper.builder().build().readTree(instance).get("test").asString();
 	}
@@ -1799,8 +1812,8 @@ public final class DriverTest
 	{
 		// Requirement: R-C9
 		ToolCall call = new ToolCall("Bash", "true", 0);
-		ControlEvidence good = new ControlEvidence(List.of("Done."), List.of(), List.of(call), Map.of());
-		ControlEvidence bad = new ControlEvidence(List.of("Done."), List.of(),
+		ControlEvidence good = new ControlEvidence(List.of(List.of("Done.")), List.of(), List.of(call), Map.of());
+		ControlEvidence bad = new ControlEvidence(List.of(List.of("Done.")), List.of(),
 			List.of(new ToolCall("Read", null, null), new ToolCall("Bash", "true", 1)), Map.of());
 		DeterministicCheck used = new DeterministicCheck("r1", new CheckCriterion.ToolUsed("Bash", true), good,
 			reply("Done."));
@@ -1919,11 +1932,11 @@ public final class DriverTest
 				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
-					isEqualTo(List.of(new Failure(developmentFailure, "", List.of())));
+					isEqualTo(List.of(new Failure(developmentFailure, "", List.of(), List.of())));
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
-					isEqualTo(List.of(new Failure(endedFailure, "", List.of())));
+					isEqualTo(List.of(new Failure(endedFailure, "", List.of(), List.of())));
 			}
 		}
 	}

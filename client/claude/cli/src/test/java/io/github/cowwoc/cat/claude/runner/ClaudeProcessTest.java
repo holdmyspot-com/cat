@@ -163,6 +163,117 @@ public final class ClaudeProcessTest
 	}
 
 	/**
+	 * Verifies recorded root text before a tool is preserved and the terminal result does not duplicate final text.
+	 *
+	 * @throws IOException if the recording or turn cannot be read
+	 */
+	// Requirement: R-C12
+	@Test
+	public void retainsRecordedAssistantMessages() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING);
+			claude.emit(recorded("assistant-messages.jsonl").toArray(String[]::new));
+			claude.emit(STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Run the recorded task.");
+
+			requireThat(result.assistantMessages().size(), "messageCount").isEqualTo(2);
+			requireThat(result.assistantMessages().getFirst(), "interim").isEqualTo(
+				"I’ll inspect the project conventions and required Java design rules, then add the checkout calculator " +
+				"with focused tests.");
+			requireThat(result.assistantMessages().getLast(), "final").isEqualTo(result.assistantResponse());
+			requireThat(result.assistantResponse(), "assistantResponse").startsWith("Implemented `CheckoutPriceCalculator`");
+		}
+	}
+
+	/**
+	 * Verifies each root text block keeps its exact bytes and a terminal-only reply remains available.
+	 * Assistant and result envelopes follow the neighboring Claude recordings; text values are controlled inputs.
+	 *
+	 * @throws IOException if either turn fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void retainsEveryRootTextBlock() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, """
+				{"type":"assistant","message":{"role":"assistant","content":[
+				{"type":"text","text":"interim"},{"type":"text","text":" "},{"type":"text","text":"LAUNCHED"}]},
+				"parent_tool_use_id":null,"session_id":"s"}
+				""".replace("\n", ""), ROOT_RESULT, STATE_IDLE);
+
+			HarnessProcessResult reply = process.sendTurn("Reply in multiple text blocks.");
+
+			requireThat(reply.assistantMessages(), "messages").isEqualTo(List.of("interim", " ", "LAUNCHED"));
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, SECOND_RESULT, STATE_IDLE);
+			HarnessProcessResult terminalOnly = process.sendTurn("Reply TWO.");
+			requireThat(terminalOnly.assistantMessages(), "terminalOnlyMessages").isEqualTo(List.of("TWO"));
+			requireThat(terminalOnly.assistantResponse(), "terminalOnlyResponse").isEqualTo("TWO");
+		}
+	}
+
+	/**
+	 * Verifies a final response supplied only by the terminal result follows the interim assistant text.
+	 * The controlled text uses assistant and result envelopes documented by the neighboring recordings.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void retainsTerminalTextAfterInterim() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, SECOND_RESULT, STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Reply TWO after the interim note.");
+
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of("LAUNCHED", "TWO"));
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("TWO");
+		}
+	}
+
+	/**
+	 * Verifies a follow-up reply remains in its turn, child text is excluded and a later turn starts a new list.
+	 *
+	 * @throws IOException if either turn fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void retainsRootFollowUpWithinTurn() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED,
+				ROOT_REPLY, ROOT_RESULT, CHILD_REPLY, CHILDREN_FINISHED, CHILD_NOTIFICATION, INIT, MESSAGE_START,
+				FOLLOW_UP_REPLY, FOLLOW_UP_RESULT, STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.");
+
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of("LAUNCHED", "FINISHED"));
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("FINISHED");
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, STATE_IDLE);
+			requireThat(process.sendTurn("Second turn.").assistantMessages(), "secondTurn").isEqualTo(List.of("TWO"));
+		}
+	}
+
+	/**
 	 * Feeds lines to the turn boundary of a process that has printed no session state yet.
 	 *
 	 * @param lines the lines Claude printed
@@ -297,6 +408,7 @@ public final class ClaudeProcessTest
 	public void reportsFollowUpThatArrivesAfterTurnEnded() throws IOException
 	{
 		// Requirement: R-E14
+		// Requirement: R-C12
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});
@@ -313,6 +425,7 @@ public final class ClaudeProcessTest
 
 			requireThat(next.completed(), "completed").isTrue();
 			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
+			requireThat(next.assistantMessages(), "assistantMessages").isEqualTo(List.of("TWO"));
 			requireThat(next.standardError(), "standardError").isEqualTo(ClaudeProcess.LATE_FOLLOW_UP);
 			requireThat(relayed, "relayed").isEqualTo(lines);
 		}

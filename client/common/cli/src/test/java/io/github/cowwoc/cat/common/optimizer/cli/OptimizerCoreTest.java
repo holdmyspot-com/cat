@@ -469,14 +469,14 @@ public final class OptimizerCoreTest
 				Path effects = Files.createTempDirectory(scratch, "effects");
 				return switch (request.role())
 				{
-					case DERIVER -> new SessionResult.Completed(transcript, List.of("working", deriver.apply(
-						derivers.getAndIncrement())), effects, "model", null, null, List.of(), "hook: none", List.of());
+					case DERIVER -> new SessionResult.Completed(transcript, List.of(List.of("working", deriver.apply(
+						derivers.getAndIncrement()))), effects, "model", null, null, List.of(), "hook: none", List.of());
 					case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
-						map(_ -> "answer").toList(), effects, "model", null, null, List.of(), "CLAUDE.md", List.of());
-					case JUDGE -> new SessionResult.Completed(transcript, List.of(
-						"{\"verdict\": \"pass\", \"rationale\": \"The answer follows the rubric.\"}"), effects,
+						map(_ -> List.of("answer")).toList(), effects, "model", null, null, List.of(), "CLAUDE.md", List.of());
+					case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(
+						"{\"verdict\": \"pass\", \"rationale\": \"The answer follows the rubric.\"}")), effects,
 						"model", null, null, List.of(), "CLAUDE.md", List.of());
-					case AUTHOR -> new SessionResult.Completed(transcript, List.of("{\"needed_edits\": []}"), effects,
+					case AUTHOR -> new SessionResult.Completed(transcript, List.of(List.of("{\"needed_edits\": []}")), effects,
 						"model", null, null, List.of(), "CLAUDE.md", List.of());
 				};
 			}

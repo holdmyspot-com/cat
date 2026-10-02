@@ -434,7 +434,11 @@ public final class ProposalSchema
 	private static void write(ControlEvidence control, ObjectNode node)
 	{
 		ArrayNode replies = node.putArray("replies");
-		control.replies().forEach(replies::add);
+		for (List<String> turn : control.replies())
+		{
+			ArrayNode messages = replies.addArray();
+			turn.forEach(messages::add);
+		}
 		ArrayNode files = node.putArray("files");
 		for (EvidenceFile file : control.files())
 		{
@@ -787,7 +791,10 @@ public final class ProposalSchema
 				if (choices.put(dimension, text(choiceNode, "label")) != null)
 					throw new IllegalArgumentException("The control chooses a value for '" + dimension + "' twice");
 			}
-			return new ControlEvidence(strings(node.get("replies")), files, calls, choices);
+			List<List<String>> replies = new ArrayList<>();
+			for (JsonNode turn : node.get("replies"))
+				replies.add(strings(turn));
+			return new ControlEvidence(replies, files, calls, choices);
 		}
 
 		/**

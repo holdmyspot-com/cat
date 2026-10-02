@@ -17,6 +17,8 @@ import java.io.OutputStreamWriter;
 import java.time.Duration;
 import java.time.Instant;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import tools.jackson.core.JacksonException;
@@ -158,9 +160,10 @@ public final class CodexProcess implements HarnessProcess
 	/**
 	 * Sends one text turn and reads through the root thread's turn completion.
 	 * <p>
-	 * The result's assistant response is the text of the last {@code agentMessage} item that the root thread completed
-	 * during the turn; messages from child threads are not part of it. A turn that ends because the caller interrupted
-	 * it through {@link #interrupt()} is a completed turn.
+	 * The result's assistant messages contain every {@code agentMessage} item that the root thread completed during
+	 * the turn, in completion order. Its assistant response is the last of those messages, or empty when none completed.
+	 * Messages from child threads are excluded. A turn that ends because the caller interrupted it through
+	 * {@link #interrupt()} is a completed turn.
 	 *
 	 * @param request the non-blank user prompt
 	 * @param listener receives each harness event line
@@ -191,7 +194,7 @@ public final class CodexProcess implements HarnessProcess
 		// The turn reads output without holding the input lock, so interrupt() can write a request while it waits.
 		try
 		{
-			String assistantResponse = "";
+			List<String> assistantMessages = new ArrayList<>();
 			String line = output.readLine();
 			while (line != null)
 			{
@@ -201,7 +204,7 @@ public final class CodexProcess implements HarnessProcess
 				identifyTurn(event, turnRequestId);
 				String rootMessage = rootAgentMessage(event);
 				if (rootMessage != null)
-					assistantResponse = rootMessage;
+					assistantMessages.add(rootMessage);
 				if (turnCompletedFor(line, threadId))
 				{
 					boolean interrupted;
@@ -210,7 +213,7 @@ public final class CodexProcess implements HarnessProcess
 						turnActive = false;
 						interrupted = interruptRequested;
 					}
-					return completedTurn(events.toString(), line, assistantResponse, interrupted);
+					return completedTurn(events.toString(), line, assistantMessages, interrupted);
 				}
 				line = output.readLine();
 			}
@@ -437,18 +440,23 @@ public final class CodexProcess implements HarnessProcess
 	 *
 	 * @param events the captured app-server event stream
 	 * @param notification the terminal turn notification
-	 * @param assistantResponse the root thread's last completed assistant message, or an empty string if none
+	 * @param assistantMessages every completed root-thread assistant message in completion order; read without mutation
 	 * @param interruptRequested whether the caller interrupted the turn
 	 * @return a successful result only when Codex completed the turn successfully, or ended it as {@code interrupted}
 	 *   after the caller interrupted it
 	 * @throws IOException if the notification is malformed
 	 */
-	private HarnessProcessResult completedTurn(String events, String notification, String assistantResponse,
+	private HarnessProcessResult completedTurn(String events, String notification, List<String> assistantMessages,
 		boolean interruptRequested) throws IOException
 	{
 		assert events != null;
 		assert notification != null;
-		assert assistantResponse != null;
+		assert assistantMessages != null;
+
+		String assistantResponse = "";
+		if (!assistantMessages.isEmpty())
+			assistantResponse = assistantMessages.getLast();
+
 		try
 		{
 			JsonNode turn = scope.json().readTree(notification).path("params").path("turn");
@@ -457,10 +465,10 @@ public final class CodexProcess implements HarnessProcess
 			{
 				if (verifyCatHookDelivery)
 					CodexHookDelivery.verifySubagentDelivery(events, scope.json());
-				return new HarnessProcessResult(0, events, "", true, assistantResponse);
+				return new HarnessProcessResult(0, events, "", true, assistantResponse, assistantMessages);
 			}
 			if (interruptRequested && "interrupted".equals(status))
-				return new HarnessProcessResult(0, events, "", true, assistantResponse);
+				return new HarnessProcessResult(0, events, "", true, assistantResponse, assistantMessages);
 			String diagnostic = "Codex turn finished with status " + status;
 			JsonNode error = turn.path("error").path("message");
 			if (error.isString() && !error.stringValue().isBlank())

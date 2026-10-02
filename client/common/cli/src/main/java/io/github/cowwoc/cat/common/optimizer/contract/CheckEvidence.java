@@ -12,11 +12,12 @@ import java.util.Optional;
 public interface CheckEvidence
 {
 	/**
-	 * Returns the final reply to each turn.
+	 * Returns every assistant message of each turn, in order, ending with its final response.
+	 * Reply-text checks join each turn's messages with a newline ({@code \n}).
 	 *
 	 * @return the replies, in turn order; a trial cut off by its time limit may have fewer replies than turns
 	 */
-	List<String> replies();
+	List<List<String>> replies();
 
 	/**
 	 * Indicates whether a file or directory exists in the project after the trial.

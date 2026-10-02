@@ -35,6 +35,47 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
+	 * Adopting a failure preserves every assistant message for both sampled development and formal trials.
+	 *
+	 * @param purpose the sampled trial's purpose
+	 */
+	@Test(dataProvider = "replyPurposes")
+	public void failuresKeepEveryMessage(Purpose purpose)
+	{
+		// Requirement: R-C12
+		CampaignBuilder builder = new CampaignBuilder().confirmed().working(1).readyBaseline();
+		if (purpose == Purpose.FORMAL)
+			builder.certificationAttempt(1);
+		Campaign campaign = TransitionSteps.assign(builder.build(), purpose, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		List<List<String>> responses = List.of(List.of("I'll delete it.", "Should I delete it?"));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL,
+			"Unasked deletion notice", campaign.identity(), null, responses));
+
+		List<Failure> failures;
+		if (purpose == Purpose.FORMAL)
+			failures = campaign.attempts().getFirst().failures();
+		else
+			failures = campaign.development().failures();
+		requireThat(failures.getFirst().responses(), "failureResponses").isEqualTo(responses);
+		Failure diagnosed = failures.getFirst().withRerun(new DiagnosticRerun(Verdict.PASS, "No notice"));
+		requireThat(diagnosed.responses(),
+			"diagnosedFailureResponses").isEqualTo(responses);
+	}
+
+	/**
+	 * Returns the sampled trial purposes whose failures reach the author.
+	 *
+	 * @return the purposes
+	 */
+	@DataProvider(name = "replyPurposes")
+	public static Object[][] replyPurposes()
+	{
+		return new Object[][] {{Purpose.DEVELOPMENT}, {Purpose.FORMAL}};
+	}
+
+	/**
 	 * Returns a commit event for a certification index.
 	 *
 	 * @param index the certification index
@@ -292,7 +333,8 @@ public final class CampaignTransitionsTest
 			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 		}
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", observed, null));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", observed,
+			null, List.of()));
 
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.state(), "state").isEqualTo(TrialState.ASSIGNED);
@@ -340,7 +382,8 @@ public final class CampaignTransitionsTest
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
 		MeasurementIdentity observed = changed(campaign, condition);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", observed, null));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", observed,
+			null, List.of()));
 
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
 			List.of(condition)));
@@ -376,7 +419,7 @@ public final class CampaignTransitionsTest
 		TrialKey running = campaign.trials().getFirst().key();
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(running, Verdict.PASS, "",
-			observed, null));
+			observed, null, List.of()));
 		requireThat(campaign.pending(), "first").isEqualTo(new PendingDecision.CheckpointReached("formatting", 200));
 
 		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.moreEvidence(300));
@@ -402,9 +445,10 @@ public final class CampaignTransitionsTest
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(first));
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(second));
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", observed, null));
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", observed,
+			null, List.of()));
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.PASS, "",
-			observed, null));
+			observed, null, List.of()));
 
 		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
 		requireThat(campaign.pending(), "pending").isNull();
@@ -490,7 +534,7 @@ public final class CampaignTransitionsTest
 		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, RunFailure.RATE_LIMITED,
 			"The provider returned HTTP 429"));
 		new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(), TrialState.ASSIGNED,
-			null, null, 1, attempts, 0);
+			null, null, 1, attempts, 0, List.of());
 	}
 
 	/**

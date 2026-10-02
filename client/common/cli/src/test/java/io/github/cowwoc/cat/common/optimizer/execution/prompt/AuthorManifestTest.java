@@ -48,7 +48,7 @@ public final class AuthorManifestTest
 		String response = """
 			{"needed_edits": [], "classifications": [], "hunks": []}
 			""";
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(response),
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.neededEdits(result).isPresent(), "accepted").isTrue();
 	}
@@ -101,7 +101,7 @@ public final class AuthorManifestTest
 			{"needed_edits":[{"requirement":"R1","path":"%s","operation":"create"}],
 			 "classifications":[],"hunks":[]}
 			""".formatted(path);
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(response),
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "reader").isEqualTo(accepted);
 		try (InputStream schema = AuthorPrompt.class.getResourceAsStream("/optimizer/author/report.schema.json"))
@@ -135,7 +135,7 @@ public final class AuthorManifestTest
 	public void separatesFailureOccurrences()
 	{
 		// Requirement: R-D10
-		Failure failure = new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of());
+		Failure failure = new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),
 				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of());

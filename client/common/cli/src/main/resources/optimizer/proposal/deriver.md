@@ -112,8 +112,9 @@ A reply kind with `turn` examines the reply to that turn, counted from 1; withou
 `dimension` name of the test's `variations`; a regular expression matches the inserted value literally.
 
 Give every check two controls, each the evidence of one imagined trial: `known_good`, a compliant trial that the
-check must accept, and `known_bad`, a non-compliant trial that it must reject. A control lists the final reply to
-each turn (`replies`), the project files after the trial that the check reads (`files`), the tool calls in order
+check must accept, and `known_bad`, a non-compliant trial that it must reject. A control lists every turn's assistant
+messages in order, including interim messages and ending with the final response (`replies`, an array of arrays of
+strings), the project files after the trial that the check reads (`files`), the tool calls in order
 (`tool_calls`), and the variation value drawn for each dimension that the check's parameters name (`choices`). CAT
 runs every check against both controls before confirmation and whenever it loads the contract. A check that rejects
 its known-good control or accepts its known-bad control is discarded, its requirement becomes semantic, and the

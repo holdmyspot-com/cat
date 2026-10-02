@@ -77,7 +77,11 @@ public final class JudgePrompt implements JudgeProtocol
 		requireThat(requirements, "requirements").isNotEmpty();
 		requireThat(results, "results").isNotNull();
 		ArrayNode responseArray = json.createArrayNode();
-		evidence.responses().forEach(responseArray::add);
+		for (List<String> turn : evidence.responses())
+		{
+			ArrayNode messages = responseArray.addArray();
+			turn.forEach(messages::add);
+		}
 		ArrayNode requirementArray = json.createArrayNode();
 		for (Requirement requirement : requirements)
 		{

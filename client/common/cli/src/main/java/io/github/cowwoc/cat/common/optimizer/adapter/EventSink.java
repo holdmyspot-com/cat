@@ -9,7 +9,9 @@ import java.io.IOException;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Function;
@@ -118,7 +120,7 @@ final class EventSink extends Writer
 	 * Handles one complete response line.
 	 *
 	 * @param line the line
-	 * @throws IOException if the transcript cannot be written
+	 * @throws IOException if the transcript cannot be written or the completed message list is malformed
 	 */
 	private void accept(String line) throws IOException
 	{
@@ -144,7 +146,19 @@ final class EventSink extends Writer
 					Files.writeString(transcript, event + "\n", UTF_8, CREATE, APPEND);
 			}
 			case "turn-completed" ->
-				messages.add(new Message.TurnCompleted(response.path("assistant_response").asString("")));
+			{
+				JsonNode values = response.path("assistant_messages");
+				if (!values.isArray())
+					throw new IOException("Runner turn-completed requires assistant_messages to be an array of strings");
+				List<String> assistantMessages = new ArrayList<>();
+				for (JsonNode message : values)
+				{
+					if (!message.isString())
+						throw new IOException("Runner assistant_messages must contain only strings");
+					assistantMessages.add(message.asString());
+				}
+				messages.add(new TurnCompleted(assistantMessages));
+			}
 			default ->
 			{
 			}

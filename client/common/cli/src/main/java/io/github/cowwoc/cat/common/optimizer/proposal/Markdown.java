@@ -286,7 +286,7 @@ final class Markdown
 		for (int i = 0; i < control.replies().size(); ++i)
 		{
 			text.append(indent).append("Reply to turn ").append(i + 1).append(": ").
-				append(quote(control.replies().get(i))).append('\n');
+				append(quote(String.join("\n", control.replies().get(i)))).append('\n');
 		}
 		for (EvidenceFile file : control.files())
 		{

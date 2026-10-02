@@ -277,12 +277,13 @@ public final class ScriptedHarness
 				turn.entered().countDown();
 			return switch (turn.kind())
 			{
-				case REPLIES -> new HarnessProcessResult(0, output.toString(), "", true, turn.response());
+				case REPLIES -> new HarnessProcessResult(0, output.toString(), "", true, turn.response(),
+					List.of(turn.response()));
 				case FAILS -> new HarnessProcessResult(1, output.toString(), "scripted failure", false);
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					await(interrupt);
-					yield new HarnessProcessResult(0, output.toString(), "", true, "");
+					yield new HarnessProcessResult(0, output.toString(), "", true, "", List.of());
 				}
 			};
 		}

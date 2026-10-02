@@ -66,7 +66,7 @@ public final class DeterministicCheckTest
 	 */
 	private static ControlEvidence replies(String... replies)
 	{
-		return new ControlEvidence(List.of(replies), List.of(), List.of(), Map.of());
+		return new ControlEvidence(List.of(replies).stream().map(List::of).toList(), List.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -77,7 +77,7 @@ public final class DeterministicCheckTest
 	 */
 	private static ControlEvidence files(EvidenceFile... files)
 	{
-		return new ControlEvidence(List.of("Done."), List.of(files), List.of(), Map.of());
+		return new ControlEvidence(List.of(List.of("Done.")), List.of(files), List.of(), Map.of());
 	}
 
 	/**
@@ -88,7 +88,7 @@ public final class DeterministicCheckTest
 	 */
 	private static ControlEvidence calls(ToolCall... calls)
 	{
-		return new ControlEvidence(List.of("Done."), List.of(), List.of(calls), Map.of());
+		return new ControlEvidence(List.of(List.of("Done.")), List.of(), List.of(calls), Map.of());
 	}
 
 	/**
@@ -133,6 +133,28 @@ public final class DeterministicCheckTest
 		requireThat(rejected.passed(), "rejected.passed()").isFalse();
 		requireThat(rejected.describe(), "rejected.describe()").contains("`r1`").contains(kind).
 			contains(rejected.observed());
+	}
+
+	/**
+	 * Verifies that reply checks see interim text, join messages in order, and keep the final response at the end.
+	 *
+	 * @throws IOException if evidence cannot be read
+	 * @throws UndecidableCheckException if evidence lacks a required effect
+	 */
+	@Test
+	public void checksReadEveryMessageOfEachTurn() throws IOException, UndecidableCheckException
+	{
+		// Requirement: R-C12
+		ControlEvidence evidence = new ControlEvidence(List.of(List.of("forbidden progress", "Done."),
+			List.of("Working.", "Later final.")), List.of(), List.of(), Map.of());
+		requireThat(new ForbiddenText(1, "forbidden").decide(evidence, Map.of()).passed(), "forbiddenPassed").
+			isFalse();
+		requireThat(new PatternMatch(1, "Done[.]$").decide(evidence, Map.of()).passed(), "suffixPassed").isTrue();
+		ExactText joined = new ExactText(1, "forbidden progress\nDone.");
+		requireThat(joined.decide(evidence, Map.of()).passed(),
+			"orderedJoinedReply").isTrue();
+		requireThat(new Count(null, "progress|Working", 2, 2).decide(evidence, Map.of()).passed(),
+			"interimCount").isTrue();
 	}
 
 	/**
@@ -198,8 +220,8 @@ public final class DeterministicCheckTest
 		List<VariationRule> variations = List.of(new VariationRule("version", List.of(
 			new VariationValue("old", "1.2", 0.5), new VariationValue("new", "2.0", 0.5))));
 		DeterministicCheck check = new DeterministicCheck("r1", new PatternMatch(1, "^Version {{version}}$"),
-			new ControlEvidence(List.of("Version 1.2"), List.of(), List.of(), Map.of("version", "old")),
-			new ControlEvidence(List.of("Version 1x2"), List.of(), List.of(), Map.of("version", "old")));
+			new ControlEvidence(List.of(List.of("Version 1.2")), List.of(), List.of(), Map.of("version", "old")),
+			new ControlEvidence(List.of(List.of("Version 1x2")), List.of(), List.of(), Map.of("version", "old")));
 		TestDefinition validated = test(variations, check).withValidatedControls();
 		requireThat(validated.checks(), "checks").isEqualTo(List.of(check));
 
@@ -313,9 +335,9 @@ public final class DeterministicCheckTest
 		// Requirement: R-C9
 		List<VariationRule> variations = List.of(new VariationRule("tone", List.of(
 			new VariationValue("formal", "Dear Sir", 1.0))));
-		ControlEvidence formal = new ControlEvidence(List.of("Dear Sir"), List.of(), List.of(),
+		ControlEvidence formal = new ControlEvidence(List.of(List.of("Dear Sir")), List.of(), List.of(),
 			Map.of("tone", "formal"));
-		ControlEvidence hi = new ControlEvidence(List.of("Hi"), List.of(), List.of(), Map.of("tone", "formal"));
+		ControlEvidence hi = new ControlEvidence(List.of(List.of("Hi")), List.of(), List.of(), Map.of("tone", "formal"));
 		DeterministicCheck valid = new DeterministicCheck("r1", new ExactText(1, "{{tone}}"), formal, hi);
 		List<Runnable> invalid = List.of(
 			() -> test(variations, new DeterministicCheck("r9", valid.criterion(), formal, hi)),
@@ -326,7 +348,7 @@ public final class DeterministicCheckTest
 			() -> test(variations, new DeterministicCheck("r1", new ExactText(1, "{{mood}}"), formal, hi)),
 			() -> test(variations, new DeterministicCheck("r1", valid.criterion(), formal, replies("Hi"))),
 			() -> test(variations, new DeterministicCheck("r1", valid.criterion(), formal,
-				new ControlEvidence(List.of("Hi"), List.of(), List.of(), Map.of("tone", "casual")))));
+				new ControlEvidence(List.of(List.of("Hi")), List.of(), List.of(), Map.of("tone", "casual")))));
 		requireThat(rejects(() -> test(variations, valid)), "validRejected").isFalse();
 		for (Runnable construction : invalid)
 			requireThat(rejects(construction), "rejected").isTrue();
@@ -360,11 +382,11 @@ public final class DeterministicCheckTest
 	 */
 	private static CheckEvidence trial(String... replies)
 	{
-		List<String> list = List.of(replies);
+		List<List<String>> list = List.of(replies).stream().map(List::of).toList();
 		return new CheckEvidence()
 		{
 			@Override
-			public List<String> replies()
+			public List<List<String>> replies()
 			{
 				return list;
 			}
