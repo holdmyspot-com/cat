@@ -3,11 +3,11 @@ description: Use when running on Claude Code and you need to examine past conver
 allowed-tools: [Bash]
 ---
 
-Resolve the installed `get-history` at `${CAT_PLUGIN_ROOT}/client/bin/get-history`. Pass the
-session ID whose history you need as its first argument. Without `--agent`, the launcher selects that session's main
-transcript. With `--agent <agent-id>`, it selects that subagent's transcript within the requested session. If the
-launcher does not exist, report that exact path before applying the shared source-checkout fallback. Do not derive or
-select a transcript path in Bash.
+Resolve the installed `get-history` at `client/bin/get-history` in CAT's installed plugin directory, two levels above
+this skill's directory. Pass the session ID whose history you need as its first argument. Without `--agent`, the
+launcher selects that session's main transcript. With `--agent <agent-id>`, it selects that subagent's transcript within
+the requested session. If the launcher does not exist, report that exact path before applying the shared source-checkout
+fallback. Do not derive or select a transcript path in Bash.
 
 For example:
 

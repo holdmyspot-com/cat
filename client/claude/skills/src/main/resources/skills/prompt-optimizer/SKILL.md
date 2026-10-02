@@ -3,7 +3,8 @@ description: Use when the user asks to improve, optimize or certify the complian
 allowed-tools: [Bash]
 ---
 
-The launcher is `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer`. Run each `run` command with a Bash timeout of 600000
-milliseconds; each `run` returns its status before that timeout.
+The launcher is `client/bin/prompt-optimizer` in CAT's installed plugin directory, two levels above this skill's
+directory; run it by its absolute path. Run each `run` command with a Bash timeout of 600000 milliseconds; each `run`
+returns its status before that timeout.
 
 <!-- cat:include ../shared-lazy-body.md -->

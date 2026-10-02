@@ -2,10 +2,11 @@
 description: Use when running on Codex and you need to examine past conversation, session logs, or raw chat history.
 ---
 
-Resolve the installed `get-history` at `${CAT_PLUGIN_ROOT}/client/bin/get-history`. Pass the
-thread ID whose rollout you need as its first argument; the launcher uses Codex's native home only to locate that one
-rollout JSONL. This can be the current thread ID or another known thread ID. If the launcher does not exist, report that
-exact path before applying the shared source-checkout fallback. Do not derive or select a transcript path in Bash.
+Resolve the installed `get-history` at `client/bin/get-history` in CAT's installed plugin directory, two levels above
+this skill's directory. Pass the thread ID whose rollout you need as its first argument; the launcher uses Codex's
+native home only to locate that one rollout JSONL. This can be the current thread ID or another known thread ID. If the
+launcher does not exist, report that exact path before applying the shared source-checkout fallback. Do not derive or
+select a transcript path in Bash.
 
 For example:
 

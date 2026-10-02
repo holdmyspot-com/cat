@@ -11,7 +11,7 @@
 ## Guidance
 
 In this session, CAT's installed plugin directory is `<!-- cat:plugin-root -->`. Claude Code tool shells do not define
-`CAT_PLUGIN_ROOT`. Wherever a skill or rule writes `${CAT_PLUGIN_ROOT}`, write that directory in its place in the
+`CAT_PLUGIN_ROOT`. Wherever a rule writes `${CAT_PLUGIN_ROOT}`, write that directory in its place in the
 shell command; never expand `${CAT_PLUGIN_ROOT}` from the environment.
 
 `CAT_TEMP` means the absolute `.cat/work/temp` directory below the current CAT project root. In the same shell
