@@ -917,11 +917,13 @@ never stand in for the items themselves. The proposal lists:
 The user gives feedback, and CAT regenerates and presents the complete proposal again. Only a confirmed proposal governs
 trials, and nothing runs before confirmation.
 
-CAT, not the deriver, does three things:
+CAT, not the deriver, does four things:
 
 - adds the core-task requirement to every test;
 - computes the profile sets;
-- runs each deterministic check against its controls.
+- runs each deterministic check against its controls;
+- refuses a proposal that omits a recorded regression scenario of a source in the prompt system
+  ([§8](#8-skill-and-command-interface)). The deriver turns each one into a test definition that cites the scenario.
 
 A check that accepts its known-bad control or rejects its known-good control is discarded. Its requirement is then
 judged semantically, and the proposal says why.
@@ -1113,6 +1115,15 @@ regression procedure instead of invoking `cat:prompt-optimizer` for every qualif
 campaign when the user wants certified compliance ([§13](#13-decision-records), D13). No `default-rules.md` route or
 test resource refers to the old procedure.
 
+**Regression scenarios:** the correction records the reported case, a meaningful analogous case and a dissimilar case
+as regression scenarios. Each is a Markdown file that holds the prewritten turns and the expected behaviour. A
+scenario for guidance under a rules directory, `<root>/.cat/rules/<path>.md` with `<root>` the project or `${HOME}`,
+lives in `<root>/.cat/tests/<path>/`; one for other guidance in the project, such as CAT's plugin rule sources, lives
+in `<project>/.cat/tests/<path relative to the project, without .md>/` (user ruling, 2026-10-02). Rule loading never
+reads them. Nothing runs
+a scenario outside a campaign, so a correction is recorded, not tested, until the user starts a campaign whose prompt
+system includes that guidance; its contract then holds every recorded scenario ([§6.1](#61-derivation-and-confirmation)).
+
 ## 9. Architecture
 
 The harness-neutral core lives in `client/common/cli` under `io.github.cowwoc.cat.common.optimizer`. Harness adapters
@@ -1280,7 +1291,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D10 | Replace links with copies of their targets in staged sources. | Teaching the runner to copy links breaks relative external links, and absolute links would let trials write live targets. | Trials cannot observe link metadata. This is warned before confirmation and recorded as a limitation. |
 | D11 | Report the exact minimum remaining trials, plus observed tokens per session and the candidate's prompt size and median trial input tokens against the incumbent's. | Token totals, time estimates and completion probabilities would be forecasts with no calibrated predictor. | Users estimate cost from the reported facts themselves. |
 | D12 | Nested sessions for the deriver, authors and judges. | The host agent cannot work while a slice runs, differs per harness, and cannot be tested with fakes. | Extra sessions, which count toward capacity and the volume warning. |
-| D13 | When an agent misapplies user-owned guidance, `failure-regression-promotion` corrects the guidance and adds its regression test itself instead of invoking the optimizer, and may suggest a campaign. | Invoking the optimizer for every such failure would halt the user's task: a campaign needs a clean worktree, a confirmed contract and hundreds of trials. Asking the user each time interrupts every incident with the same question. | A correction made this way is regression-tested but not certified until the user starts a campaign. |
+| D13 | When an agent misapplies user-owned guidance, `failure-regression-promotion` corrects the guidance and records its regression scenarios itself instead of invoking the optimizer, and may suggest a campaign. The scenarios become test definitions of the next campaign that covers the guidance (user ruling, 2026-10-02). | Invoking the optimizer for every such failure would halt the user's task: a campaign needs a clean worktree, a confirmed contract and hundreds of trials. Asking the user each time interrupts every incident with the same question. The scenario runner of the retired prompt-evaluation workflow is gone, so a campaign is the only executor. | A correction made this way is recorded but neither tested nor certified until the user starts a campaign. |
 | D14 | The incumbent's baseline is 50 trials per category, plus 50 more where it is below 95% but unproven. | Always running 100 costs about 50 extra trials per category. Using only the incumbent's development trials gives no deficiency proof when development replaces it early. | Up to 100 trials per category, run on spare capacity. |
 | D15 | At most one fresh judge session per trial. | Batched judging couples outcomes through judge memory (§2.6). | One extra session per trial that has semantic requirements and passed its deterministic checks. |
 | D16 | Rerun infrastructure failures as the same logical trial, up to 3 times, then pause. | Skipping a trial could hide failures that cause infrastructure errors. Unbounded retries hide outages. | An outage pauses the campaign until the user resumes it. |
@@ -1314,4 +1325,4 @@ a named end-to-end boundary.
 | G7 | **End-to-end in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A requirement with a deterministic check is decided without the judge, and a test with only deterministic requirements starts no judge session. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
 | G8 | **Unit:** allocation picks the riskiest category first; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the category limit and the ceilings. **Throttling:** it responds to utilization and rejections. **Volume warning:** the authentication warning appears for a subscription login. |
 | G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
-| G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, and rule tests pass. |
+| G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, every recorded regression scenario is in the location §8 names, and a proposal that omits one is refused. |
