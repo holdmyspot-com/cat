@@ -87,6 +87,9 @@ public final class JlinkImageBuilderTest
 
 	/**
 	 * Verifies concurrent Maven-wrapper JVMs retain HotSpot performance data without sharing its backing directory.
+	 * <p>
+	 * Starting and waiting for two Maven JVMs can take over one second. Both wrapper processes must run concurrently to
+	 * exercise performance-data directory collisions; a single process or in-process fake cannot reproduce that boundary.
 	 */
 	@Test
 	public void isolatesMavenWrapperPerformanceData() throws IOException

@@ -93,6 +93,10 @@ public final class GeneratorTest
 	/**
 	 * Verifies that sampled variation counts stay below their 0.001 chi-square cutoffs for the contract's fixed
 	 * probabilities. The fixed seed keeps the check repeatable.
+	 * <p>
+	 * The 40,000 production draws can exceed one second under full-build load; retaining that sample size preserves
+	 * the check's sensitivity to probability errors. Each draw exercises production selection, turn expansion and
+	 * validation, so replacing those operations with a faster sampler would no longer test the generator.
 	 */
 	@Test
 	public void samplesVariationsAtFrozenProbabilities()

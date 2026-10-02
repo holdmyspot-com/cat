@@ -34,6 +34,9 @@ public final class BundledRuleAudienceTest
 	 * Verifies a subagent receives CAT's default rule routing and request-execution rule in both harnesses, so it can
 	 * lazy load engineering rules such as TDD and testing and decide which gaps to escalate, while the rules about
 	 * interacting with the user stay with the main agent.
+	 * <p>
+	 * Copying and routing the complete bundled rule trees, then loading all four audience/harness combinations, can take
+	 * over one second. A smaller synthetic tree would miss regressions in shipped audience metadata and dependencies.
 	 */
 	@Test
 	public void subagentGetsRoutingNotUserRules() throws IOException, URISyntaxException

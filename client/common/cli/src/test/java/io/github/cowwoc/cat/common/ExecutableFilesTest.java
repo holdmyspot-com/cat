@@ -1,15 +1,17 @@
 package io.github.cowwoc.cat.common;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-
 /**
- * Verifies executable-file execution behavior.
+ * Verifies {@link ExecutableFiles} execution and retry behavior.
  */
 public final class ExecutableFilesTest
 {
@@ -35,22 +37,87 @@ public final class ExecutableFilesTest
 	}
 
 	/**
-	 * Verifies a text-file-busy failure is retried before a process starts.
+	 * Verifies a text-file-busy failure requests exponential backoff before a successful fourth start.
 	 *
 	 * @throws IOException if the simulated process start fails
 	 */
 	@Test public void retriesTextFileBusyStart() throws IOException
 	{
 		AtomicInteger attempts = new AtomicInteger();
+		List<Duration> delays = new ArrayList<>();
 
 		ExecutableFiles.run(() ->
 		{
 			if (attempts.getAndIncrement() < 3)
 				throw new IOException("error=26, Text file busy");
 			return null;
-		});
+		}, delays::add);
 
 		requireThat(attempts.get(), "attempts").isEqualTo(4);
+		requireThat(delays, "delays").isEqualTo(List.of(
+			Duration.ofMillis(125), Duration.ofMillis(250), Duration.ofMillis(500)));
+	}
+
+	/**
+	 * Verifies a persistent text-file-busy failure stops after four attempts and three backoff requests.
+	 *
+	 * @throws IOException if the simulated process start fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*ETXTBSY.*")
+	public void givesUpAfterTextFileBusyRetries() throws IOException
+	{
+		AtomicInteger attempts = new AtomicInteger();
+		List<Duration> delays = new ArrayList<>();
+		try
+		{
+			ExecutableFiles.run(() ->
+			{
+				attempts.incrementAndGet();
+				throw new IOException("ETXTBSY");
+			}, delays::add);
+		}
+		finally
+		{
+			requireThat(attempts.get(), "attempts").isEqualTo(4);
+			requireThat(delays, "delays").isEqualTo(List.of(
+				Duration.ofMillis(125), Duration.ofMillis(250), Duration.ofMillis(500)));
+		}
+	}
+
+	/**
+	 * Verifies an interrupted retry wait preserves interruption and stops further start attempts.
+	 *
+	 * @throws IOException if the simulated retry wait is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Interrupted while retrying a text-file-busy process start")
+	public void interruptedWaitStopsRetries() throws IOException
+	{
+		AtomicInteger attempts = new AtomicInteger();
+		InterruptedException interruption = new InterruptedException("retry interrupted");
+		try
+		{
+			ExecutableFiles.run(() ->
+			{
+				attempts.incrementAndGet();
+				throw new IOException("ETXTBSY");
+			}, delay ->
+			{
+				requireThat(delay, "delay").isEqualTo(Duration.ofMillis(125));
+				throw interruption;
+			});
+		}
+		catch (IOException failure)
+		{
+			requireThat(failure.getCause(), "cause").isEqualTo(interruption);
+			throw failure;
+		}
+		finally
+		{
+			boolean interrupted = Thread.interrupted();
+			requireThat(interrupted, "interrupted").isTrue();
+			requireThat(attempts.get(), "attempts").isEqualTo(1);
+		}
 	}
 
 	/**
@@ -69,6 +136,9 @@ public final class ExecutableFilesTest
 			{
 				attempts.incrementAndGet();
 				throw new IOException("Permission denied");
+			}, delay ->
+			{
+				throw new AssertionError("A non-transient failure must not request a retry wait");
 			});
 		}
 		finally
