@@ -205,6 +205,7 @@ requirement names.
 | WI-18 | Not started. |
 | WI-19 | Done 2026-10-01. `CellTier` derives the active set (bound cell, each model's lowest and highest effort in inventory order, any cell with an adopted failure other than a promotion run) from the contract and the persisted `failedCells`; `Scheduler` screens every cell with 3 trials of the incumbent in series 1, samples only active cells under the coverage floor with each model's lowest-effort cell first, and widens through a persisted `widened` latch once every active cell meets the readiness count conditions. Campaign format 3 (`failed_cells`, `development.widened`); format 2 refused. Status shows each category's active cells and the widened flag (`cellTier` in JSON). Trace 19 is `DriverTest.cellTiering`. Integrated build: 1297 tests, 0 failures; no test at or over 1 second in that run (the delegate's runs saw `GeneratorTest.samplesVariationsAtFrozenProbabilities` at 1.446 s and `FinalizationTest.rejectsUnresolvedChallengesBeforeReplay` at 1.059 s, both pre-existing); bats 32/32. |
 | WI-20 | Not started. |
+| Claude interrupt request (portability follow-up, user request 2026-10-01) | Done. `ClaudeProcess.interrupt()` writes a stream-json `control_request` with subtype `interrupt` to Claude's standard input instead of running `kill -INT`; the `InterruptSender` seam and `FakeHarnessCli`'s interrupt replay are removed (`design.md` §3.8, H29). `ClaudeProcessTest.interruptsThroughStandardInput` (R-E15): the in-memory Claude prints the recorded 2.1.287 post-interrupt lines only when it receives that request. The three native Claude interrupt tests passed against Claude 2.1.287 (3.2 s, 4.4 s, 5.2 s). |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -248,6 +249,7 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - §1 and §9 gate 8: the codebase never cites `design.md` or this plan, which are deleted after implementation; the
   requirement tags stay until the traceability gate passes, then a last commit removes them (user ruling, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
+- `design.md` §3.8: the Claude runner interrupts with a stream-json `control_request` (H29). §11: added H29.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.

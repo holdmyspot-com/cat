@@ -28,7 +28,8 @@ supports on every target system.
 In a test, replace an external program with a Java fake or an injected collaborator rather than a shell script. When a
 test needs an operating-system mechanism only to reach the behavior under test, inject that mechanism through the
 production seam instead. For example, a test that started its fake through `env --default-signal=INT`, a GNU extension
-that macOS `env` lacks, hung on macOS; injecting the interrupt sender removes the signal from the test.
+that macOS `env` lacks, hung on macOS; sending the interrupt as a request on the harness's input stream removed the
+signal from both the product and the test.
 
 A passing run on one operating system does not establish portability. Verify on each target system, for example
 through the CI platform matrix.

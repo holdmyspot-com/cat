@@ -23,8 +23,7 @@ import java.util.stream.Stream;
  * prints on standard output with {@link #emit(String...)} and ends the child with {@link #exit()}. Each line the
  * runner writes to the child's standard input is recorded and passed to a test-supplied handler, and closing that
  * input ends the child. The child has no operating-system process, so {@link #pid()} fails, which makes any attempt
- * to signal it fail the test. A runner whose interrupt sender calls {@link #interrupt()} instead delivers the
- * interrupt to the child, which then prints the lines the test supplied for it.
+ * to signal it fail the test.
  */
 public final class FakeHarnessCli extends Process
 {
@@ -34,10 +33,6 @@ public final class FakeHarnessCli extends Process
 	private final BlockingQueue<byte[]> standardOutput = new LinkedBlockingQueue<>();
 	private final List<String> requests = new ArrayList<>();
 	private final Consumer<String> requestHandler;
-	/**
-	 * The lines the child prints when it is interrupted, or {@code null} if the child accepts no interrupt.
-	 */
-	private final List<String> afterInterrupt;
 	private final CountDownLatch exited = new CountDownLatch(1);
 	private volatile boolean exitsWhenAwaited;
 	private final OutputStream standardInput = new ChildInput();
@@ -52,21 +47,6 @@ public final class FakeHarnessCli extends Process
 	public FakeHarnessCli(Consumer<String> requestHandler)
 	{
 		this.requestHandler = requestHandler;
-		this.afterInterrupt = null;
-	}
-
-	/**
-	 * Creates a running child that accepts an interrupt.
-	 *
-	 * @param requestHandler receives each line, without its line terminator, that the runner writes to the child's
-	 *   standard input; it may call {@link #emit(String...)} to answer
-	 * @param afterInterrupt the lines, without line terminators, that the child prints on standard output each time it
-	 *   is interrupted, such as a recorded segment that starts after the interrupt
-	 */
-	public FakeHarnessCli(Consumer<String> requestHandler, List<String> afterInterrupt)
-	{
-		this.requestHandler = requestHandler;
-		this.afterInterrupt = List.copyOf(afterInterrupt);
 	}
 
 	/**
@@ -78,19 +58,6 @@ public final class FakeHarnessCli extends Process
 	{
 		for (String line : lines)
 			standardOutput.add((line + "\n").getBytes(UTF_8));
-	}
-
-	/**
-	 * Interrupts the child, as the operating system delivers an interrupt signal to a harness CLI. The child prints
-	 * the lines that were supplied for an interrupt.
-	 *
-	 * @throws UnsupportedOperationException if the child was created without lines to print when interrupted
-	 */
-	public void interrupt()
-	{
-		if (afterInterrupt == null)
-			throw new UnsupportedOperationException("The in-memory child was created without an interrupt replay");
-		emit(afterInterrupt.toArray(String[]::new));
 	}
 
 	/**

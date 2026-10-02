@@ -43,10 +43,6 @@ public final class ClaudeProcess implements HarnessProcess
 		"not this turn's reply.";
 	private final HarnessRunnerScope scope;
 	private final Process process;
-	/**
-	 * Delivers an interrupt to {@link #process}.
-	 */
-	private final InterruptSender interruptSender;
 	private final OutputStreamWriter input;
 	/**
 	 * Claude's standard-output lines in arrival order, followed by one {@link OutputLine} that marks the end of the
@@ -55,7 +51,8 @@ public final class ClaudeProcess implements HarnessProcess
 	private final BlockingQueue<OutputLine> output = new LinkedBlockingQueue<>();
 	private final HarnessStandardError standardError;
 	/**
-	 * Guards {@link #turnActive} so an interrupt is signalled only while a turn is in progress.
+	 * Guards {@link #turnActive} and {@link #interruptsSent} so an interrupt is requested only while a turn is in
+	 * progress.
 	 */
 	private final Object turnLock = new Object();
 	/**
@@ -63,42 +60,29 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private boolean turnActive;
 	/**
+	 * How many interrupt requests have been written, which makes each request's identifier unique.
+	 */
+	private long interruptsSent;
+	/**
 	 * Whether Claude has printed a {@code session_state_changed} line since the process started. Turns run one at a
 	 * time, but not always on the same thread.
 	 */
 	private volatile boolean sessionStatePrinted;
 
 	/**
-	 * Wraps a started Claude process configured for stream-json input and output. An interrupt sends SIGINT to the
-	 * process.
+	 * Wraps a started Claude process configured for stream-json input and output.
 	 *
 	 * @param scope services shared for the runner process lifetime
 	 * @param process the started Claude process
 	 * @throws NullPointerException if {@code scope} or {@code process} are null
 	 */
-	public ClaudeProcess(HarnessRunnerScope scope, Process process)
-	{
-		this(scope, process, () -> sendSigint(process));
-	}
-
-	/**
-	 * Wraps a started Claude process configured for stream-json input and output.
-	 *
-	 * @param scope services shared for the runner process lifetime
-	 * @param process the started Claude process
-	 * @param interruptSender delivers an interrupt to {@code process} when {@link #interrupt()} interrupts an active
-	 *   turn
-	 * @throws NullPointerException if any of the arguments are null
-	 */
 	@SuppressWarnings("PMD.CloseResource")
-	public ClaudeProcess(HarnessRunnerScope scope, Process process, InterruptSender interruptSender)
+	public ClaudeProcess(HarnessRunnerScope scope, Process process)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(process, "process").isNotNull();
-		requireThat(interruptSender, "interruptSender").isNotNull();
 		this.scope = scope;
 		this.process = process;
-		this.interruptSender = interruptSender;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		standardError = new HarnessStandardError(process.getErrorStream());
 		// The output reader thread owns Claude's standard output and closes it when the stream ends.
@@ -358,12 +342,12 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Delivers an interrupt to Claude through the process's interrupt sender while a turn is in progress, because
-	 * stream-json has no documented interrupt message. The production sender sends SIGINT. Does nothing when no turn
-	 * is in progress, since the turn the caller meant to stop has already ended.
+	 * Asks Claude to interrupt the turn in progress by writing a stream-json interrupt request to its standard input.
+	 * Unlike terminating the process, the request lets Claude stop the turn's work, including background tasks, and
+	 * report that it is idle while keeping the session for later turns. Does nothing when no turn is in progress, since
+	 * the turn the caller meant to stop has already ended.
 	 *
-	 * @throws IOException if a turn is in progress but the process is no longer alive or the interrupt cannot be
-	 *   delivered
+	 * @throws IOException if a turn is in progress but the process is no longer alive or the request cannot be written
 	 */
 	@Override
 	public void interrupt() throws IOException
@@ -374,30 +358,12 @@ public final class ClaudeProcess implements HarnessProcess
 				return;
 			if (!process.isAlive())
 				throw new IOException("Claude process is no longer alive");
-			interruptSender.interrupt();
-		}
-	}
-
-	/**
-	 * Sends SIGINT to a Claude process. Claude stream-json provides user messages but no corresponding interrupt
-	 * request, and SIGINT, unlike terminating the process, lets Claude end the active turn without necessarily
-	 * discarding the session.
-	 *
-	 * @param process the Claude process
-	 * @throws IOException if the operating system rejects the signal or the wait is interrupted
-	 */
-	private static void sendSigint(Process process) throws IOException
-	{
-		assert process != null;
-		try (Process signal = new ProcessBuilder("kill", "-INT", Long.toString(process.pid())).start())
-		{
-			if (signal.waitFor() != 0)
-				throw new IOException("Unable to interrupt the active Claude turn");
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted while requesting Claude turn interruption", e);
+			++interruptsSent;
+			synchronized (input)
+			{
+				input.write(ClaudeStreamingProtocol.interrupt("cat-interrupt-" + interruptsSent));
+				input.flush();
+			}
 		}
 	}
 
@@ -604,20 +570,6 @@ public final class ClaudeProcess implements HarnessProcess
 			}
 			return LineEffect.NONE;
 		}
-	}
-
-	/**
-	 * Delivers an interrupt to a Claude process so that Claude ends its active turn.
-	 */
-	@FunctionalInterface
-	public interface InterruptSender
-	{
-		/**
-		 * Delivers an interrupt to the Claude process.
-		 *
-		 * @throws IOException if the interrupt cannot be delivered
-		 */
-		void interrupt() throws IOException;
 	}
 
 	/**

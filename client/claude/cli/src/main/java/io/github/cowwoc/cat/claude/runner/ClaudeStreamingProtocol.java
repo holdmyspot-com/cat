@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.claude.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Creates the JSON lines that Claude's stream-json CLI accepts as user-turn requests.
+ * Creates the JSON lines that Claude's stream-json CLI accepts as requests.
  */
 public final class ClaudeStreamingProtocol
 {
@@ -20,6 +20,22 @@ public final class ClaudeStreamingProtocol
 		requireThat(prompt, "prompt").isNotBlank();
 		return "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"" +
 			escape(prompt) + "\"}}\n";
+	}
+
+	/**
+	 * Frames a request to interrupt the turn in progress as a stream-json line. Claude answers it with a
+	 * {@code control_response} line that carries the same identifier.
+	 *
+	 * @param requestId the non-blank identifier of the request
+	 * @return the JSONL request line
+	 * @throws NullPointerException if {@code requestId} is null
+	 * @throws IllegalArgumentException if {@code requestId} is blank
+	 */
+	public static String interrupt(String requestId)
+	{
+		requireThat(requestId, "requestId").isNotBlank();
+		return "{\"type\":\"control_request\",\"request_id\":\"" + escape(requestId) +
+			"\",\"request\":{\"subtype\":\"interrupt\"}}\n";
 	}
 
 	/**
