@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
@@ -148,7 +148,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	public List<CampaignHeader> listHeaders() throws IOException
+	public List<Header> listHeaders() throws IOException
 	{
 		Path root = root(base);
 		if (Files.notExists(root))
@@ -158,13 +158,13 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		{
 			directories = entries.filter(Files::isDirectory).sorted().toList();
 		}
-		List<CampaignHeader> headers = new ArrayList<>();
+		List<Header> headers = new ArrayList<>();
 		for (Path directory : directories)
 		{
 			Path file = directory.resolve(SNAPSHOT);
 			if (Files.notExists(file))
 				continue;
-			CampaignHeader header = JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
+			Header header = JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
 			requireOwner(file, directory.getFileName().toString(), header);
 			headers.add(header);
 		}
@@ -198,7 +198,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private Path recordFile(String campaignId, TrialKey key)
 	{
 		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
-			key.category() + "\n" + key.sequence();
+			key.cell() + "\n" + key.sequence();
 		return directory(base, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
 			RECORD_SUFFIX);
 	}
@@ -211,7 +211,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 * @param header the snapshot's header
 	 * @throws IOException if the snapshot belongs to a different campaign
 	 */
-	private static void requireOwner(Path file, String campaignId, CampaignHeader header) throws IOException
+	private static void requireOwner(Path file, String campaignId, Header header) throws IOException
 	{
 		if (!header.id().equals(campaignId))
 		{

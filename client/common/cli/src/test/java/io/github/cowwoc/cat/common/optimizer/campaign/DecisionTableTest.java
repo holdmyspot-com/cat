@@ -1,11 +1,11 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.counts;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.Action;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.AttemptDecision;
-import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CategoryDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -51,14 +51,14 @@ public final class DecisionTableTest
 	{
 		return new Object[][]
 			{
-				{99, 0, CategoryDecision.UNDECIDED},
-				{100, 0, CategoryDecision.CERTIFIED},
-				{149, 1, CategoryDecision.UNDECIDED},
-				{150, 1, CategoryDecision.CERTIFIED},
-				{0, 4, CategoryDecision.UNDECIDED},
-				{0, 5, CategoryDecision.CLEARLY_BELOW},
-				{295, 4, CategoryDecision.UNDECIDED},
-				{296, 4, CategoryDecision.CAP_REACHED}
+				{99, 0, CellDecision.UNDECIDED},
+				{100, 0, CellDecision.CERTIFIED},
+				{149, 1, CellDecision.UNDECIDED},
+				{150, 1, CellDecision.CERTIFIED},
+				{0, 4, CellDecision.UNDECIDED},
+				{0, 5, CellDecision.CLEARLY_BELOW},
+				{295, 4, CellDecision.UNDECIDED},
+				{296, 4, CellDecision.CAP_REACHED}
 			};
 	}
 
@@ -70,10 +70,10 @@ public final class DecisionTableTest
 	 * @param expected the expected decision
 	 */
 	@Test(dataProvider = "categoryStates")
-	public void categoryDecisionOnBothSides(int passes, int failures, CategoryDecision expected)
+	public void cellDecisionOnBothSides(int passes, int failures, CellDecision expected)
 	{
 		// Requirement: R-F2
-		requireThat(DecisionTable.categoryDecision(Boundaries.standard(2), counts(passes, failures)), "decision").
+		requireThat(DecisionTable.cellDecision(Boundaries.standard(2), counts(passes, failures)), "decision").
 			isEqualTo(expected);
 	}
 
@@ -106,13 +106,13 @@ public final class DecisionTableTest
 	 * @param expected the expected decision
 	 */
 	@Test(dataProvider = "attemptStates")
-	public void attemptDecisionFromCategories(int formattingPasses, int formattingFailures, int safetyPasses,
+	public void attemptDecisionFromCells(int formattingPasses, int formattingFailures, int safetyPasses,
 		int safetyFailures, AttemptDecision expected)
 	{
 		// Requirement: R-F2
-		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
-			category("formatting", formattingPasses, formattingFailures).
-			category("safety", safetyPasses, safetyFailures).build().attempt(1);
+		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
+			cell("formatting", formattingPasses, formattingFailures).
+			cell("safety", safetyPasses, safetyFailures).build().attempt(1);
 		requireThat(DecisionTable.attemptDecision(attempt), "decision").isEqualTo(expected);
 	}
 
@@ -124,11 +124,11 @@ public final class DecisionTableTest
 	public void certifiedButWorseNeedsTradeOff()
 	{
 		// Requirement: R-F2, R-F3
-		CertificationAttempt worse = new CampaignBuilder().confirmed().certificationAttempt(1).boundaries(worseAtTwo()).
-			category("formatting", 100, 0).category("safety", 200, 2).build().attempt(1);
+		CertificationAttempt worse = new Builder().confirmed().certificationAttempt(1).boundaries(worseAtTwo()).
+			cell("formatting", 100, 0).cell("safety", 200, 2).build().attempt(1);
 		requireThat(DecisionTable.attemptDecision(worse), "worse").isEqualTo(AttemptDecision.CERTIFIED_PROVEN_WORSE);
-		CertificationAttempt notWorse = new CampaignBuilder().confirmed().certificationAttempt(1).
-			boundaries(worseAtTwo()).category("formatting", 100, 0).category("safety", 150, 1).build().attempt(1);
+		CertificationAttempt notWorse = new Builder().confirmed().certificationAttempt(1).
+			boundaries(worseAtTwo()).cell("formatting", 100, 0).cell("safety", 150, 1).build().attempt(1);
 		requireThat(DecisionTable.attemptDecision(notWorse), "notWorse").isEqualTo(AttemptDecision.CERTIFIED);
 	}
 
@@ -139,12 +139,12 @@ public final class DecisionTableTest
 	public void comparisonDecisionsOnBothSides()
 	{
 		// Requirement: R-F6
-		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
-			category("formatting", 60, 0).category("safety", 59, 0).build().attempt(1);
+		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
+			cell("formatting", 60, 0).cell("safety", 59, 0).build().attempt(1);
 		requireThat(DecisionTable.isProvenBetter(attempt, "formatting"), "better60").isTrue();
 		requireThat(DecisionTable.isProvenBetter(attempt, "safety"), "better59").isFalse();
-		CertificationAttempt failing = new CampaignBuilder().confirmed().certificationAttempt(1).
-			category("formatting", 0, 4).category("safety", 0, 3).build().attempt(1);
+		CertificationAttempt failing = new Builder().confirmed().certificationAttempt(1).
+			cell("formatting", 0, 4).cell("safety", 0, 3).build().attempt(1);
 		requireThat(DecisionTable.isProvenWorse(failing, "formatting"), "worse4").isTrue();
 		requireThat(DecisionTable.isProvenWorse(failing, "safety"), "worse3").isFalse();
 	}
@@ -157,10 +157,10 @@ public final class DecisionTableTest
 	public void missingConditionsBlockProofs()
 	{
 		// Requirement: R-M4, R-F6
-		CertificationAttempt better = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).category("formatting", 60, 0).build().attempt(1);
-		CertificationAttempt worse = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).category("formatting", 0, 4).build().attempt(1);
+		CertificationAttempt better = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).cell("formatting", 60, 0).build().attempt(1);
+		CertificationAttempt worse = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).cell("formatting", 0, 4).build().attempt(1);
 
 		requireThat(DecisionTable.isProvenBetter(better, "formatting"), "better").isFalse();
 		requireThat(DecisionTable.isProvenWorse(worse, "formatting"), "worse").isFalse();
@@ -173,8 +173,8 @@ public final class DecisionTableTest
 	public void differingConditionsBlockBetter()
 	{
 		// Requirement: R-M4, R-F6
-		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
-			baselineIdentity(CampaignBuilder.confirmedIdentity("model-b")).category("formatting", 60, 0).
+		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
+			baselineIdentity(Builder.confirmedIdentity("model-b")).cell("formatting", 60, 0).
 			build().attempt(1);
 
 		requireThat(DecisionTable.isProvenBetter(attempt, "formatting"), "better").isFalse();
@@ -187,11 +187,11 @@ public final class DecisionTableTest
 	public void unavailableConditionsBlockWorse()
 	{
 		// Requirement: R-M4, R-F6
-		CertificationAttempt differing = new CampaignBuilder().confirmed().certificationAttempt(1).
-			baselineIdentity(CampaignBuilder.confirmedIdentity("model-b")).category("formatting", 0, 4).
+		CertificationAttempt differing = new Builder().confirmed().certificationAttempt(1).
+			baselineIdentity(Builder.confirmedIdentity("model-b")).cell("formatting", 0, 4).
 			build().attempt(1);
-		CertificationAttempt missing = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).category("formatting", 0, 4).build().attempt(1);
+		CertificationAttempt missing = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).cell("formatting", 0, 4).build().attempt(1);
 
 		requireThat(DecisionTable.isProvenWorse(differing, "formatting"), "differing").isFalse();
 		requireThat(DecisionTable.isProvenWorse(missing, "formatting"), "missing").isFalse();
@@ -238,8 +238,8 @@ public final class DecisionTableTest
 	public void certifiedAttemptIsDelivered()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("formatting", 100, 0).category("safety", 99, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 100, 0).cell("safety", 99, 0).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.PASS);
 
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.CERTIFIED);
@@ -256,8 +256,8 @@ public final class DecisionTableTest
 	 */
 	private static Campaign certifiedButWorse()
 	{
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			boundaries(worseAtTwo()).category("formatting", 100, 0).category("safety", 199, 2).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			boundaries(worseAtTwo()).cell("formatting", 100, 0).cell("safety", 199, 2).build();
 		return TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.PASS);
 	}
 
@@ -276,12 +276,12 @@ public final class DecisionTableTest
 		requireThat(campaign.choices(), "choices").
 			containsExactly(List.of(Choice.ACCEPT_TRADE_OFF, Choice.RETAIN_INCUMBENT));
 
-		Campaign accepted = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_TRADE_OFF));
+		Campaign accepted = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_TRADE_OFF));
 		requireThat(accepted.lifecycle(), "accepted.lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(accepted.delivery(), "accepted.delivery").
 			isEqualTo(new DeliveryRequest(campaign.attempt(1).candidate(), 1, Outcome.CERTIFIED));
 
-		Campaign retained = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETAIN_INCUMBENT));
+		Campaign retained = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETAIN_INCUMBENT));
 		requireThat(retained.lifecycle(), "retained.lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(retained.delivery(), "retained.delivery").isNull();
 	}
@@ -294,12 +294,12 @@ public final class DecisionTableTest
 	public void belowMinimumReturnsToDevelopment()
 	{
 		// Requirement: R-F2
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 100, 0).
-			development("formatting", 100, 0).certificationAttempt(1).category("formatting", 30, 0).
-			category("safety", 20, 4).build();
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
+			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).
+			cell("safety", 20, 4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		campaign = TransitionSteps.complete(campaign, key, Verdict.FAIL, "The reply deleted the build directory.");
 
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_MINIMUM);
@@ -321,15 +321,15 @@ public final class DecisionTableTest
 	public void endedAttemptNeverReopens()
 	{
 		// Requirement: R-F2
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("formatting", 100, 0).category("safety", 295, 4).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 100, 0).cell("safety", 295, 4).build();
 		DecisionBoundaries frozen = campaign.attempt(1).procedure().boundaries();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey second = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(first));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(second));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(first));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 
 		// The first outcome reaches the cap of 300 undecided
 		campaign = TransitionSteps.complete(campaign, first, Verdict.PASS);
@@ -351,7 +351,7 @@ public final class DecisionTableTest
 	public void endedAttemptCannotEndAgain()
 	{
 		// Requirement: R-F2
-		new CampaignBuilder().confirmed().certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build().attempt(1).
+		new Builder().confirmed().certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build().attempt(1).
 			end(Outcome.CERTIFIED);
 	}
 
@@ -363,14 +363,14 @@ public final class DecisionTableTest
 	public void acceptanceWithoutCertificationIsExplicit()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new CampaignBuilder().confirmed().working(2).pending(new PendingDecision.PlateauReached()).
+		Campaign campaign = new Builder().confirmed().working(2).pending(new PendingDecision.PlateauReached()).
 			outcome(Outcome.PLATEAU).build();
 		requireThat(campaign.choices().contains(Choice.ACCEPT_WITHOUT_CERTIFICATION), "offered").isTrue();
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.NOT_CERTIFIED);
 		requireThat(campaign.delivery(), "delivery").isEqualTo(new DeliveryRequest(new Candidate(2,
-			CampaignBuilder.snapshot("candidate-2")), 0, Outcome.NOT_CERTIFIED));
+			Builder.snapshot("candidate-2")), 0, Outcome.NOT_CERTIFIED));
 	}
 
 	/**
@@ -380,9 +380,9 @@ public final class DecisionTableTest
 	public void incumbentCannotBeAccepted()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new CampaignBuilder().confirmed().pending(new PendingDecision.PlateauReached()).
+		Campaign campaign = new Builder().confirmed().pending(new PendingDecision.PlateauReached()).
 			outcome(Outcome.PLATEAU).build();
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
+		Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
 	}
 
 	/**
@@ -394,23 +394,23 @@ public final class DecisionTableTest
 	{
 		// Requirement: R-C11
 		Contract contract = ContractFixtures.twoCellContract();
-		CertificationAttempt certified = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
-			category(ContractFixtures.BIG_CELL, 100, 0).category(ContractFixtures.SMALL_CELL, 100, 0).
-			category("safety", 100, 0).build().attempt(1);
+		CertificationAttempt certified = new Builder().confirmed(contract, 1).certificationAttempt(1).
+			cell(ContractFixtures.BIG_CELL, 100, 0).cell(ContractFixtures.SMALL_CELL, 100, 0).
+			cell("safety", 100, 0).build().attempt(1);
 		requireThat(DecisionTable.attemptDecision(certified), "certified").isEqualTo(AttemptDecision.CERTIFIED);
 
-		CertificationAttempt split = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
-			category(ContractFixtures.BIG_CELL, 100, 0).category(ContractFixtures.SMALL_CELL, 0, 5).
-			category("safety", 100, 0).build().attempt(1);
+		CertificationAttempt split = new Builder().confirmed(contract, 1).certificationAttempt(1).
+			cell(ContractFixtures.BIG_CELL, 100, 0).cell(ContractFixtures.SMALL_CELL, 0, 5).
+			cell("safety", 100, 0).build().attempt(1);
 		DecisionBoundaries boundaries = split.procedure().boundaries();
-		requireThat(DecisionTable.categoryDecision(boundaries, split.count(ContractFixtures.BIG_CELL)), "big").
-			isEqualTo(CategoryDecision.CERTIFIED);
-		requireThat(DecisionTable.categoryDecision(boundaries, split.count(ContractFixtures.SMALL_CELL)), "small").
-			isEqualTo(CategoryDecision.CLEARLY_BELOW);
+		requireThat(DecisionTable.cellDecision(boundaries, split.count(ContractFixtures.BIG_CELL)), "big").
+			isEqualTo(CellDecision.CERTIFIED);
+		requireThat(DecisionTable.cellDecision(boundaries, split.count(ContractFixtures.SMALL_CELL)), "small").
+			isEqualTo(CellDecision.CLEARLY_BELOW);
 		requireThat(DecisionTable.attemptDecision(split), "split").isEqualTo(AttemptDecision.BELOW_MINIMUM);
 
-		CertificationAttempt undecided = new CampaignBuilder().confirmed(contract, 1).certificationAttempt(1).
-			category(ContractFixtures.BIG_CELL, 100, 0).category("safety", 100, 0).build().attempt(1);
+		CertificationAttempt undecided = new Builder().confirmed(contract, 1).certificationAttempt(1).
+			cell(ContractFixtures.BIG_CELL, 100, 0).cell("safety", 100, 0).build().attempt(1);
 		requireThat(DecisionTable.attemptDecision(undecided), "smallUntried").isEqualTo(AttemptDecision.UNDECIDED);
 	}
 }

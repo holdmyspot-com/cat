@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
@@ -56,6 +56,6 @@ final class MinimalityAdvancement
 			context.overlays().save(reduced);
 			snapshot = reduced.identity();
 		}
-		return CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
+		return Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
 	}
 }

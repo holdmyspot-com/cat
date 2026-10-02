@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.common.optimizer.execution;
+package io.github.cowwoc.cat.common.fakes;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 

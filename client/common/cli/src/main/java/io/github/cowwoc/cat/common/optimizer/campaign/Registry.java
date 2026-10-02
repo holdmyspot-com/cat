@@ -10,7 +10,7 @@ import java.util.List;
  * Decides whether to create or resume a campaign for a project root and prompt target. At most one active or
  * cancelled campaign may exist for that pair, and only its starting harness may advance it.
  */
-public final class CampaignRegistry
+public final class Registry
 {
 	/**
 	 * The decision to resume, refuse or create a campaign for a root and target.
@@ -24,7 +24,7 @@ public final class CampaignRegistry
 		 *
 		 * @param header the campaign
 		 */
-		record Resume(CampaignHeader header) implements Opening
+		record Resume(Header header) implements Opening
 		{
 			/**
 			 * Creates the result.
@@ -45,7 +45,7 @@ public final class CampaignRegistry
 		 *
 		 * @param owner the campaign, which names its starting harness
 		 */
-		record Refuse(CampaignHeader owner) implements Opening
+		record Refuse(Header owner) implements Opening
 		{
 			/**
 			 * Creates the result.
@@ -72,7 +72,7 @@ public final class CampaignRegistry
 	/**
 	 * Prevents instantiation.
 	 */
-	private CampaignRegistry()
+	private Registry()
 	{
 	}
 
@@ -87,7 +87,7 @@ public final class CampaignRegistry
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalStateException if more than one resumable campaign exists for the root and target
 	 */
-	public static Opening open(List<CampaignHeader> headers, Path root, Path target, Harness harness)
+	public static Opening open(List<Header> headers, Path root, Path target, Harness harness)
 	{
 		requireThat(headers, "headers").isNotNull();
 		requireThat(root, "root").isNotNull();
@@ -95,8 +95,8 @@ public final class CampaignRegistry
 		requireThat(harness, "harness").isNotNull();
 		Path normalizedRoot = root.normalize();
 		Path normalizedTarget = target.normalize();
-		List<CampaignHeader> resumable = new ArrayList<>();
-		for (CampaignHeader header : headers)
+		List<Header> resumable = new ArrayList<>();
+		for (Header header : headers)
 		{
 			if (header.lifecycle().isResumable() && header.root().normalize().equals(normalizedRoot) &&
 				header.target().normalize().equals(normalizedTarget))
@@ -111,7 +111,7 @@ public final class CampaignRegistry
 		}
 		if (resumable.isEmpty())
 			return new Opening.Create();
-		CampaignHeader header = resumable.getFirst();
+		Header header = resumable.getFirst();
 		if (header.harness() == harness)
 			return new Opening.Resume(header);
 		return new Opening.Refuse(header);

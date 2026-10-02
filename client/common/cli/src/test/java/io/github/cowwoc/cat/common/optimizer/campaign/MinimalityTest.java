@@ -38,9 +38,9 @@ public final class MinimalityTest
 	public void passingAttemptWaitsForReduction()
 	{
 		// Requirement: R-D11
-		TrialInstance failure = CampaignBuilder.targeted("safety", "cache");
-		Sha256 snapshot = CampaignBuilder.snapshot("attempt");
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).failure(failure).
+		TrialInstance failure = Builder.targeted("safety", "cache");
+		Sha256 snapshot = Builder.snapshot("attempt");
+		Campaign campaign = new Builder().confirmed().working(1).failure(failure).
 			round(new Round(Map.of("safety", 0))).build();
 		campaign = TransitionSteps.submit(campaign, "safety", snapshot, List.of(
 			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
@@ -66,10 +66,10 @@ public final class MinimalityTest
 		Overlay working = Overlay.of(new FileInventory(Path.of("/project"), Map.of(file.path(),
 			new RegularFile(file.before().hash(), file.permissions()))));
 		PromotionRun pass = new PromotionRun(PromotionRun.Role.TRIGGERING,
-			CampaignBuilder.targeted("safety", "cache"),
-			new TrialKey(Purpose.PROMOTION, 1, CampaignBuilder.snapshot("full"), "safety", 1), Verdict.PASS);
-		Minimality search = Minimality.start(List.of(file), CampaignBuilder.snapshot("full")).
-			advance(CampaignBuilder.snapshot("full"), List.of(pass), Promotion.Decision.PROMOTE);
+			Builder.targeted("safety", "cache"),
+			new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("full"), "safety", 1), Verdict.PASS);
+		Minimality search = Minimality.start(List.of(file), Builder.snapshot("full")).
+			advance(Builder.snapshot("full"), List.of(pass), Promotion.Decision.PROMOTE);
 		for (int iteration = 0; iteration < 20 && search.testing() != null; ++iteration)
 		{
 			Overlay reduced = Hunks.apply(working, search.files(), Set.copyOf(search.testing()));

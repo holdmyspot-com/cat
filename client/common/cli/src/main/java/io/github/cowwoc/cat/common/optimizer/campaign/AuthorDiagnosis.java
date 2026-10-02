@@ -13,20 +13,20 @@ import java.util.Map;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param category the round's cell
+ * @param cell the round's cell
  * @param snapshot the working snapshot the author received
  * @param classifications each received failure's diagnosis
  * @param rejections the rejection reasons, empty for a valid report
  * @param transcript the retained session archive
  * @param effects the retained attempted edits
  */
-public record AuthorDiagnosis(String category, Sha256 snapshot, Map<String, FailureKind> classifications,
+public record AuthorDiagnosis(String cell, Sha256 snapshot, Map<String, FailureKind> classifications,
 	List<String> rejections, Path transcript, Path effects)
 {
 	/**
 	 * Creates retained evidence.
 	 *
-	 * @param category the round's cell
+	 * @param cell the round's cell
 	 * @param snapshot the working snapshot
 	 * @param classifications the failure classifications
 	 * @param rejections the rejection reasons
@@ -37,7 +37,7 @@ public record AuthorDiagnosis(String category, Sha256 snapshot, Map<String, Fail
 	 */
 	public AuthorDiagnosis
 	{
-		requireThat(category, "category").isNotBlank();
+		requireThat(cell, "category").isNotBlank();
 		requireThat(snapshot, "snapshot").isNotNull();
 		classifications = Map.copyOf(classifications);
 		rejections = List.copyOf(rejections);

@@ -69,8 +69,8 @@ final class TrialAdoption
 		if (key.series() < 1 || key.series() > draft.attempts.size())
 			return true;
 		CertificationAttempt attempt = draft.attempt(key.series());
-		return !attempt.isRunning() || DecisionTable.categoryDecision(attempt.procedure().boundaries(),
-			attempt.count(key.category())) != DecisionTable.CategoryDecision.UNDECIDED;
+		return !attempt.isRunning() || DecisionTable.cellDecision(attempt.procedure().boundaries(),
+			attempt.count(key.cell())) != DecisionTable.CellDecision.UNDECIDED;
 	}
 
 	/**
@@ -142,7 +142,7 @@ final class TrialAdoption
 	private static void adopt(Draft draft, LogicalTrial trial)
 	{
 		if (trial.verdict() == Verdict.FAIL && trial.key().purpose() != Purpose.PROMOTION)
-			draft.failedCells.add(trial.key().category());
+			draft.failedCells.add(trial.key().cell());
 		switch (trial.key().purpose())
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
@@ -162,13 +162,13 @@ final class TrialAdoption
 	 */
 	private static void adoptDevelopment(Draft draft, LogicalTrial trial)
 	{
-		String category = trial.key().category();
+		String cell = trial.key().cell();
 		Verdict verdict = trial.verdict();
-		draft.developmentCounts.put(category, draft.developmentCount(category).add(verdict));
+		draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
 		if (!draft.widened)
 			draft.widened = CellTier.isActiveSetReady(draft.contract(), draft.failedCells, draft.developmentCounts);
 		if (draft.working.isIncumbent())
-			addBaseline(draft, category, verdict);
+			addBaseline(draft, cell, verdict);
 		recordWorkingVerdict(draft, trial.instance(), verdict);
 		if (verdict == Verdict.PASS)
 		{
@@ -204,7 +204,7 @@ final class TrialAdoption
 	 */
 	private static void adoptBaseline(Draft draft, LogicalTrial trial)
 	{
-		addBaseline(draft, trial.key().category(), trial.verdict());
+		addBaseline(draft, trial.key().cell(), trial.verdict());
 		if (trial.verdict() == Verdict.FAIL)
 		{
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
@@ -216,13 +216,13 @@ final class TrialAdoption
 	 * Adds an outcome to the incumbent baseline.
 	 *
 	 * @param draft the state
-	 * @param category the cell identifier used to update baseline counts
+	 * @param cell the cell identifier used to update baseline counts
 	 * @param verdict the outcome
 	 */
-	private static void addBaseline(Draft draft, String category, Verdict verdict)
+	private static void addBaseline(Draft draft, String cell, Verdict verdict)
 	{
-		CategoryCounts counts = draft.baselineCounts.getOrDefault(category, CategoryCounts.EMPTY);
-		draft.baselineCounts.put(category, counts.add(verdict));
+		CellCounts counts = draft.baselineCounts.getOrDefault(cell, CellCounts.EMPTY);
+		draft.baselineCounts.put(cell, counts.add(verdict));
 	}
 
 	/**
@@ -293,7 +293,7 @@ final class TrialAdoption
 	 * @param required a cell to address even without failures, or null
 	 * @return the round
 	 */
-	static Round failingRound(Map<String, CategoryCounts> counts, Contract contract, String required)
+	static Round failingRound(Map<String, CellCounts> counts, Contract contract, String required)
 	{
 		return failingRound(counts, counts, contract, required);
 	}
@@ -307,13 +307,13 @@ final class TrialAdoption
 	 * @param required a required cell, or null
 	 * @return the frozen round
 	 */
-	private static Round failingRound(Map<String, CategoryCounts> failures, Map<String, CategoryCounts> development,
+	private static Round failingRound(Map<String, CellCounts> failures, Map<String, CellCounts> development,
 		Contract contract, String required)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>();
 		for (String cell : contract.cellIds())
 		{
-			if (failures.getOrDefault(cell, CategoryCounts.EMPTY).failures() > 0 || cell.equals(required))
+			if (failures.getOrDefault(cell, CellCounts.EMPTY).failures() > 0 || cell.equals(required))
 				attempts.put(cell, 0);
 		}
 		boolean weak = AttemptSelection.isWeak(development, contract, List.copyOf(attempts.keySet()));
@@ -392,7 +392,7 @@ final class TrialAdoption
 				break;
 			}
 		}
-		draft.updateAuthor(new AuthorAttempt(author.number(), author.category(), author.snapshot(), runs,
+		draft.updateAuthor(new AuthorAttempt(author.number(), author.cell(), author.snapshot(), runs,
 			author.minimality()));
 		if (draft.round.weak() && draft.author == null)
 			decideWeakRound(draft);
@@ -425,7 +425,7 @@ final class TrialAdoption
 					return;
 				retainAttempt(draft, author, false, false);
 				draft.author = null;
-				rejectAuthorAttempt(draft, author.category());
+				rejectAuthorAttempt(draft, author.cell());
 			}
 		}
 	}
@@ -473,7 +473,7 @@ final class TrialAdoption
 	{
 		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
 		AttemptResult result = new AttemptResult(draft.round.number(), draft.working.snapshot(), attempt.number(),
-			attempt.category(), attempt.snapshot(), attempt.runs(), AttemptSelection.changedLines(attempt), accepted,
+			attempt.cell(), attempt.snapshot(), attempt.runs(), AttemptSelection.changedLines(attempt), accepted,
 			winner);
 		int index = -1;
 		for (int i = 0; i < results.size(); ++i)
@@ -542,12 +542,12 @@ final class TrialAdoption
 	 * used its attempts.
 	 *
 	 * @param draft the state
-	 * @param category the round category
+	 * @param cell the round category
 	 */
-	static void rejectAuthorAttempt(Draft draft, String category)
+	static void rejectAuthorAttempt(Draft draft, String cell)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>(draft.round.attempts());
-		attempts.put(category, attempts.get(category) + 1);
+		attempts.put(cell, attempts.get(cell) + 1);
 		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
 			draft.round.validationAttempts());
 		if (Plateau.isReached(draft.round))
@@ -566,9 +566,9 @@ final class TrialAdoption
 	private static void adoptFormal(Draft draft, LogicalTrial trial)
 	{
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
-		String category = trial.key().category();
-		Map<String, CategoryCounts> counts = new LinkedHashMap<>(attempt.counts());
-		counts.put(category, attempt.count(category).add(trial.verdict()));
+		String cell = trial.key().cell();
+		Map<String, CellCounts> counts = new LinkedHashMap<>(attempt.counts());
+		counts.put(cell, attempt.count(cell).add(trial.verdict()));
 		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)
 		{
@@ -670,8 +670,8 @@ final class TrialAdoption
 		Optional<String> due = ReviewCheckpoint.due(development, draft.contract());
 		if (due.isPresent())
 		{
-			String category = due.get();
-			draft.raise(new PendingDecision.CheckpointReached(category, draft.developmentCount(category).outcomes()));
+			String cell = due.get();
+			draft.raise(new PendingDecision.CheckpointReached(cell, draft.developmentCount(cell).outcomes()));
 		}
 	}
 }

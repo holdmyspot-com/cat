@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.counts;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.util.List;
@@ -27,13 +27,13 @@ public final class AdoptionTest
 	public void laterOutcomeWaitsForEarlier()
 	{
 		// Requirement: R-E5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey second = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(first));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(second));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(first));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 
 		campaign = TransitionSteps.complete(campaign, second, Verdict.PASS);
 		requireThat(campaign.development().count("safety"), "afterSecond").isEqualTo(counts(10, 0));
@@ -54,7 +54,7 @@ public final class AdoptionTest
 	public void eachGroupNumbersFromOne()
 	{
 		// Requirement: R-E5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey firstSafety = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
@@ -68,7 +68,7 @@ public final class AdoptionTest
 		campaign = TransitionSteps.run(campaign, secondSafety, Verdict.FAIL);
 		campaign = TransitionSteps.run(campaign, firstFormatting, Verdict.PASS);
 		requireThat(campaign.development().count("formatting"), "formatting").isEqualTo(counts(1, 0));
-		requireThat(campaign.development().count("safety"), "waiting").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.development().count("safety"), "waiting").isEqualTo(CellCounts.EMPTY);
 
 		campaign = TransitionSteps.run(campaign, firstSafety, Verdict.PASS);
 		requireThat(campaign.development().count("safety"), "safety").isEqualTo(counts(1, 1));
@@ -79,16 +79,16 @@ public final class AdoptionTest
 	 * Verifies that a development outcome in one cell does not wait for a running development trial in another cell.
 	 */
 	@Test
-	public void otherCategoryDoesNotWait()
+	public void otherCellDoesNotWait()
 	{
 		// Requirement: R-E5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey safety = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(safety));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(safety));
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 		requireThat(campaign.development().count("formatting"), "formatting").isEqualTo(counts(1, 0));
-		requireThat(campaign.development().count("safety"), "safety").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.development().count("safety"), "safety").isEqualTo(CellCounts.EMPTY);
 	}
 
 	/**
@@ -99,21 +99,21 @@ public final class AdoptionTest
 	public void postDecisionOutcomeIsIgnored()
 	{
 		// Requirement: R-E5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("formatting", 99, 0).category("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 99, 0).cell("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "formatting");
 		TrialKey deciding = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "formatting");
 		TrialKey late = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(deciding));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(late));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(deciding));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(late));
 		campaign = TransitionSteps.complete(campaign, late, Verdict.FAIL);
 		campaign = TransitionSteps.complete(campaign, deciding, Verdict.PASS);
 
 		CertificationAttempt attempt = campaign.attempt(1);
 		requireThat(attempt.count("formatting"), "formatting").isEqualTo(counts(100, 0));
-		requireThat(DecisionTable.categoryDecision(attempt.procedure().boundaries(), attempt.count("formatting")),
-			"decision").isEqualTo(DecisionTable.CategoryDecision.CERTIFIED);
+		requireThat(DecisionTable.cellDecision(attempt.procedure().boundaries(), attempt.count("formatting")),
+			"decision").isEqualTo(DecisionTable.CellDecision.CERTIFIED);
 		requireThat(attempt.failures(), "failures").isEmpty();
 		requireThat(campaign.trials(), "trials").isEmpty();
 	}
@@ -125,14 +125,14 @@ public final class AdoptionTest
 	public void replacedCandidateOutcomeIsDropped()
 	{
 		// Requirement: R-E5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey old = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(old));
-		Campaign replaced = new CampaignBuilder().confirmed().working(2).series(2).trial(campaign.trials().getFirst()).
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(old));
+		Campaign replaced = new Builder().confirmed().working(2).series(2).trial(campaign.trials().getFirst()).
 			build();
 		replaced = TransitionSteps.complete(replaced, old, Verdict.FAIL);
-		requireThat(replaced.development().count("safety"), "counts").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(replaced.development().count("safety"), "counts").isEqualTo(CellCounts.EMPTY);
 		requireThat(replaced.trials(), "trials").isEmpty();
 	}
 }

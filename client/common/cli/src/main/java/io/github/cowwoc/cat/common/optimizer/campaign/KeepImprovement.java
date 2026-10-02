@@ -62,16 +62,16 @@ public final class KeepImprovement
 			return false;
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		boolean provenBetter = false;
-		for (String category : attempt.procedure().categories())
+		for (String cell : attempt.procedure().cells())
 		{
-			if (DecisionTable.isProvenWorse(attempt, category))
+			if (DecisionTable.isProvenWorse(attempt, cell))
 				return false;
-			if (DecisionTable.isProvenBetter(attempt, category))
+			if (DecisionTable.isProvenBetter(attempt, cell))
 			{
 				provenBetter = true;
 				continue;
 			}
-			CategoryCounts counts = attempt.count(category);
+			CellCounts counts = attempt.count(cell);
 			if (!boundaries.certifies(counts.passes(), counts.failures()) &&
 				counts.outcomes() < REGRESSION_CHECK_OUTCOMES)
 			{
@@ -136,7 +136,7 @@ public final class KeepImprovement
 				return first;
 			return second;
 		}
-		if (provenBetterCategories(first) > provenBetterCategories(second))
+		if (provenBetterCells(first) > provenBetterCells(second))
 			return first;
 		return second;
 	}
@@ -150,9 +150,9 @@ public final class KeepImprovement
 	private static double weakestLowerBound(CertificationAttempt attempt)
 	{
 		double weakest = 1;
-		for (String category : attempt.procedure().categories())
+		for (String cell : attempt.procedure().cells())
 		{
-			CategoryCounts counts = attempt.count(category);
+			CellCounts counts = attempt.count(cell);
 			weakest = Math.min(weakest, ExploratoryBounds.wilson(counts.passes(), counts.outcomes()).lower());
 		}
 		return weakest;
@@ -164,12 +164,12 @@ public final class KeepImprovement
 	 * @param attempt the attempt
 	 * @return the number of cells
 	 */
-	private static int provenBetterCategories(CertificationAttempt attempt)
+	private static int provenBetterCells(CertificationAttempt attempt)
 	{
 		int count = 0;
-		for (String category : attempt.procedure().categories())
+		for (String cell : attempt.procedure().cells())
 		{
-			if (DecisionTable.isProvenBetter(attempt, category))
+			if (DecisionTable.isProvenBetter(attempt, cell))
 				++count;
 		}
 		return count;

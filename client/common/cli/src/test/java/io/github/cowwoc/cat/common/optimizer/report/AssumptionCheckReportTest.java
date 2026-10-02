@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck.LevelRate;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck.Observation;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
@@ -84,7 +84,7 @@ public final class AssumptionCheckReportTest
 	public void statusReportsInvalidAssumptions()
 	{
 		// Requirement: R-P2
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().build();
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build();
 		ReportEvidence dependent = evidence(List.of(new Observation(1, Verdict.PASS)),
 			List.of(Path.of("/project/.cat/work/optimizer/c1/x")));
 		StatusReport report = StatusReport.of(campaign, dependent);

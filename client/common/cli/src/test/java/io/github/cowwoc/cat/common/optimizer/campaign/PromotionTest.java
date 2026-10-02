@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.targeted;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.targeted;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun.Role;
@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
  */
 public final class PromotionTest
 {
-	private static final Sha256 ATTEMPT = CampaignBuilder.snapshot("attempt");
+	private static final Sha256 ATTEMPT = Builder.snapshot("attempt");
 
 	/**
 	 * Creates the test.
@@ -183,7 +183,7 @@ public final class PromotionTest
 	private static Campaign inRound()
 	{
 		TrialInstance logs = targeted("safety", "logs");
-		return new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
+		return new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			round(new Round(Map.of("safety", 0))).build();
 	}
@@ -203,13 +203,13 @@ public final class PromotionTest
 		TrialInstance logs = author.runs().getFirst().instance();
 
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs, Verdict.PASS);
-		requireThat(campaign.development().count("safety"), "counts").isEqualTo(CampaignBuilder.counts(60, 1));
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(Builder.counts(60, 1));
 		requireThat(campaign.development().working().number(), "working").isEqualTo(1);
 
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs, Verdict.PASS);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 		requireThat(campaign.development().working(), "promoted").isEqualTo(new Candidate(2, ATTEMPT));
-		requireThat(campaign.development().count("safety"), "newCounts").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.development().count("safety"), "newCounts").isEqualTo(CellCounts.EMPTY);
 		requireThat(campaign.development().round(), "round").isNull();
 		requireThat(campaign.lineage().regressionSet(), "regressionSet").
 			isEqualTo(List.of(new RegressionInstance(logs, Verdict.PASS)));
@@ -225,7 +225,7 @@ public final class PromotionTest
 		// Requirement: R-D3
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance formal = targeted("formatting", "formal");
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			regression(formal, Verdict.PASS).round(new Round(Map.of("safety", 0))).build();
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -287,7 +287,7 @@ public final class PromotionTest
 		TrialInstance logs = author.runs().getFirst().instance();
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs);
 		TrialKey slow = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(slow));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(slow));
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, logs, Verdict.FAIL);
 		requireThat(campaign.development().author(), "author").isNull();
 

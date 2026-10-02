@@ -54,24 +54,24 @@ public final class Promotion
 	/**
 	 * Plans the promotion runs of an author attempt.
 	 *
-	 * @param category the round cell that the attempt addresses
-	 * @param failures the failing instances that the author received; only those in {@code category} trigger runs
+	 * @param cell the round cell that the attempt addresses
+	 * @param failures the failing instances that the author received; only those in {@code cell} trigger runs
 	 * @param regressionSet the lineage's regression set
 	 * @param generator the contract's generator, which marks the instances targeted
 	 * @return the unassigned runs: the triggering runs, then the regression runs, then the working candidate's
 	 *   reference runs
 	 * @throws NullPointerException if any argument is null or either list contains null
 	 */
-	public static List<PromotionRun> plan(String category, List<TrialInstance> failures,
+	public static List<PromotionRun> plan(String cell, List<TrialInstance> failures,
 		List<RegressionInstance> regressionSet, Generator generator)
 	{
-		return plan(List.of(category), failures, regressionSet, generator);
+		return plan(List.of(cell), failures, regressionSet, generator);
 	}
 
 	/**
 	 * Plans promotion runs for all triggering cells of one addressed category.
 	 *
-	 * @param categories the triggering cells
+	 * @param cells the triggering cells
 	 * @param failures the received failures
 	 * @param regressionSet the regression set
 	 * @param generator the targeting generator
@@ -79,10 +79,10 @@ public final class Promotion
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if categories is empty
 	 */
-	public static List<PromotionRun> plan(List<String> categories, List<TrialInstance> failures,
+	public static List<PromotionRun> plan(List<String> cells, List<TrialInstance> failures,
 		List<RegressionInstance> regressionSet, Generator generator)
 	{
-		requireThat(categories, "categories").isNotEmpty();
+		requireThat(cells, "categories").isNotEmpty();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(generator, "generator").isNotNull();
@@ -90,7 +90,7 @@ public final class Promotion
 		List<TrialInstance> triggeringInstances = new ArrayList<>();
 		for (TrialInstance failure : failures)
 		{
-			if (!categories.contains(failure.cellId()))
+			if (!cells.contains(failure.cellId()))
 				continue;
 			TrialInstance instance = generator.markTargeted(failure);
 			triggeringInstances.add(instance);

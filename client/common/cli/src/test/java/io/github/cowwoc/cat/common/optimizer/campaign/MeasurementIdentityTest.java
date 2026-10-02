@@ -128,17 +128,17 @@ public final class MeasurementIdentityTest
 	{
 		// Requirement: R-M1
 		MeasurementIdentity partial = identity(MeasurementCondition.MODEL, "model-a");
-		Campaign campaign = new CampaignBuilder().confirmed().identity(partial).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
-			Purpose.DEVELOPMENT, 1, CampaignBuilder.INCUMBENT, "safety", null,
+		Campaign campaign = new Builder().confirmed().identity(partial).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+			Purpose.DEVELOPMENT, 1, Builder.INCUMBENT, "safety", null,
 			TransitionSteps.allocation(campaign, Purpose.DEVELOPMENT))));
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.identity(), "assigned.identity()").isEqualTo(partial);
 
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(trial.key()));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(trial.key()));
 		MeasurementIdentity observed = identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.REASONING,
 			"high");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "",
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "",
 			observed, null, List.of()));
 		requireThat(campaign.identity(), "campaign.identity()").isEqualTo(observed);
 	}
@@ -150,8 +150,8 @@ public final class MeasurementIdentityTest
 	public void attemptRecordsIdentity()
 	{
 		// Requirement: R-M1
-		Campaign campaign = new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(
 			new CapCalibration(ErrorBudget.certificationLevel(1), 262), 11));
 		requireThat(campaign.attempt(1).identity(), "attempt.identity()").isEqualTo(campaign.identity());
 	}

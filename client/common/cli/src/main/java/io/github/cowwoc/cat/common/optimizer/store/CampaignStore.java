@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.store;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 
 import java.io.IOException;
@@ -86,7 +86,7 @@ public interface CampaignStore
 	 * @return the headers, ordered by campaign identifier
 	 * @throws IOException if a snapshot cannot be read or is malformed
 	 */
-	List<CampaignHeader> listHeaders() throws IOException;
+	List<Header> listHeaders() throws IOException;
 
 	/**
 	 * Loads a campaign's delivery journal.

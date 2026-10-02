@@ -112,11 +112,11 @@ public final class CellTier
 	 * @return {@code true} if every active cell is ready
 	 * @throws NullPointerException if any argument is null
 	 */
-	static boolean isActiveSetReady(Contract contract, Set<String> failedCells, Map<String, CategoryCounts> counts)
+	static boolean isActiveSetReady(Contract contract, Set<String> failedCells, Map<String, CellCounts> counts)
 	{
 		for (Cell cell : activeCells(contract, failedCells))
 		{
-			if (!ReadinessGate.isReady(counts.getOrDefault(cell.id(), CategoryCounts.EMPTY)))
+			if (!ReadinessGate.isReady(counts.getOrDefault(cell.id(), CellCounts.EMPTY)))
 				return false;
 		}
 		return true;

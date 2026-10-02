@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
@@ -63,7 +63,7 @@ final class WorktreeCheck
 			if (decision instanceof PendingDecision.UnownedChange)
 				return campaign;
 		}
-		return CampaignTransitions.apply(campaign, new CampaignEvent.DetectUnownedChange(describe(worktree, working)));
+		return Transitions.apply(campaign, new CampaignEvent.DetectUnownedChange(describe(worktree, working)));
 	}
 
 	/**

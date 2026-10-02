@@ -10,24 +10,24 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param category the trials' cell identifier
+ * @param cell the trials' cell identifier
  * @param purpose why the trials run
  * @param snapshot the snapshot that the trials run
  */
-public record SequenceGroup(String category, Purpose purpose, Sha256 snapshot)
+public record SequenceGroup(String cell, Purpose purpose, Sha256 snapshot)
 {
 	/**
 	 * Creates a group.
 	 *
-	 * @param category the trials' cell identifier
+	 * @param cell the trials' cell identifier
 	 * @param purpose why the trials run
 	 * @param snapshot the snapshot that the trials run
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code category} is blank
+	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
 	public SequenceGroup
 	{
-		requireThat(category, "category").isNotBlank();
+		requireThat(cell, "category").isNotBlank();
 		requireThat(purpose, "purpose").isNotNull();
 		requireThat(snapshot, "snapshot").isNotNull();
 	}

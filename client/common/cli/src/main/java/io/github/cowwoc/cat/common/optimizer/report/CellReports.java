@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
@@ -93,7 +93,7 @@ final class CellReports
 	 */
 	private static CellReport development(Campaign campaign, String cell)
 	{
-		CategoryCounts counts = campaign.development().count(cell);
+		CellCounts counts = campaign.development().count(cell);
 		int trials = counts.outcomes();
 		CellReport.PassRate passRate = passRate(DEVELOPMENT_ESTIMATE, counts, "no adopted development outcomes");
 		List<CellReport.ErrorBar> errorBars = new ArrayList<>();
@@ -112,7 +112,7 @@ final class CellReports
 	 * @return the improvement
 	 */
 	private static CellReport.Improvement developmentImprovement(Campaign campaign, String cell,
-		CategoryCounts counts)
+		CellCounts counts)
 	{
 		if (campaign.development().working().isIncumbent())
 			return CellReport.Improvement.unavailable("The working candidate is the incumbent.");
@@ -122,7 +122,7 @@ final class CellReports
 		Comparability comparability = Comparability.of(campaign.identity(), baseline.identity());
 		if (!comparability.isComparable())
 			return CellReport.Improvement.unavailable(comparability.unavailable());
-		CategoryCounts incumbent = baseline.count(cell);
+		CellCounts incumbent = baseline.count(cell);
 		if (incumbent.outcomes() == 0)
 			return CellReport.Improvement.unavailable("The incumbent baseline has no outcomes.");
 		Interval candidate = ExploratoryBounds.wilson(counts.passes(), counts.outcomes());
@@ -139,7 +139,7 @@ final class CellReports
 	 * @param counts the cell's development counts
 	 * @return the comparison
 	 */
-	private static CellReport.Threshold developmentComparison(CategoryCounts counts)
+	private static CellReport.Threshold developmentComparison(CellCounts counts)
 	{
 		List<String> reasons = new ArrayList<>();
 		int trials = counts.outcomes();
@@ -149,7 +149,7 @@ final class CellReports
 			reasons.add("fewer than 99% passes");
 		List<Integer> batches = counts.completedBatchFailures();
 		if (batches.size() < 2)
-			reasons.add("fewer than two complete batches of " + CategoryCounts.BATCH_SIZE + " outcomes");
+			reasons.add("fewer than two complete batches of " + CellCounts.BATCH_SIZE + " outcomes");
 		else
 		{
 			int latest = batches.getLast();
@@ -176,12 +176,12 @@ final class CellReports
 	 */
 	private static CellReport formal(Campaign campaign, CertificationAttempt attempt, String cell)
 	{
-		CategoryCounts counts = attempt.count(cell);
+		CellCounts counts = attempt.count(cell);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		SignificanceLevel alpha = boundaries.level();
 		ConfidenceBound lower = ConfidenceBounds.lower(counts.passes(), counts.failures(), alpha);
 		ConfidenceBound upper = ConfidenceBounds.upper(counts.passes(), counts.failures(), alpha);
-		String state = switch (DecisionTable.categoryDecision(boundaries, counts))
+		String state = switch (DecisionTable.cellDecision(boundaries, counts))
 		{
 			case CERTIFIED -> "certified";
 			case CLEARLY_BELOW -> "clearly below";
@@ -211,7 +211,7 @@ final class CellReports
 	 * @return the improvement
 	 */
 	private static CellReport.Improvement formalImprovement(Campaign campaign, CertificationAttempt attempt,
-		String cell, CategoryCounts counts, ConfidenceBound lower, ConfidenceBound upper)
+		String cell, CellCounts counts, ConfidenceBound lower, ConfidenceBound upper)
 	{
 		Comparability comparability = Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity());
 		if (!comparability.isComparable())
@@ -226,9 +226,9 @@ final class CellReports
 		if (baseline != null && baseline.index() == attempt.procedure().baselineIndex() &&
 			Comparability.of(attempt.identity(), baseline.identity()).isComparable())
 		{
-			CategoryCounts incumbent = baseline.count(cell);
+			CellCounts incumbent = baseline.count(cell);
 			incumbentCounts = incumbentCounts(baseline, incumbent);
-			deficiency = deficiency(baseline, incumbent, attempt.procedure().categories().size());
+			deficiency = deficiency(baseline, incumbent, attempt.procedure().cells().size());
 			if (counts.outcomes() > 0 && incumbent.outcomes() > 0)
 				points = points(counts, incumbent);
 		}
@@ -246,7 +246,7 @@ final class CellReports
 	 */
 	static ComparisonBoundaries comparison(CertificationAttempt attempt, String cell)
 	{
-		int position = attempt.procedure().categories().indexOf(cell);
+		int position = attempt.procedure().cells().indexOf(cell);
 		requireThat(position, "position").withContext(cell, "cell").isNotNegative();
 		return attempt.procedure().boundaries().comparisons().get(position);
 	}
@@ -258,7 +258,7 @@ final class CellReports
 	 * @param counts the attempt's counts for the cell
 	 * @return {@code proven better}, {@code proven worse} or {@code undecided}
 	 */
-	static String improvementState(ComparisonBoundaries boundaries, CategoryCounts counts)
+	static String improvementState(ComparisonBoundaries boundaries, CellCounts counts)
 	{
 		if (boundaries.isProvenBetter(counts.passes(), counts.failures()))
 			return PROVEN_BETTER;
@@ -275,7 +275,7 @@ final class CellReports
 	 * @param missing the reason that there is no rate if there are no outcomes
 	 * @return the pass rate
 	 */
-	private static CellReport.PassRate passRate(String label, CategoryCounts counts, String missing)
+	private static CellReport.PassRate passRate(String label, CellCounts counts, String missing)
 	{
 		if (counts.outcomes() == 0)
 			return new CellReport.PassRate(label, null, missing);
@@ -288,7 +288,7 @@ final class CellReports
 	 * @param counts the counts, which hold at least one outcome
 	 * @return the error bar
 	 */
-	private static CellReport.ErrorBar wilson(CategoryCounts counts)
+	private static CellReport.ErrorBar wilson(CellCounts counts)
 	{
 		return new CellReport.ErrorBar(WILSON, false, null, true, counts.outcomes(),
 			ExploratoryBounds.wilson(counts.passes(), counts.outcomes()));
@@ -301,7 +301,7 @@ final class CellReports
 	 * @param incumbent the incumbent's counts, which hold at least one outcome
 	 * @return the difference
 	 */
-	private static double points(CategoryCounts candidate, CategoryCounts incumbent)
+	private static double points(CellCounts candidate, CellCounts incumbent)
 	{
 		return 100.0 * ((double) candidate.passes() / candidate.outcomes() -
 			(double) incumbent.passes() / incumbent.outcomes());
@@ -314,7 +314,7 @@ final class CellReports
 	 * @param counts the cell's counts
 	 * @return the counts
 	 */
-	private static CellReport.IncumbentCounts incumbentCounts(IncumbentBaseline baseline, CategoryCounts counts)
+	private static CellReport.IncumbentCounts incumbentCounts(IncumbentBaseline baseline, CellCounts counts)
 	{
 		return new CellReport.IncumbentCounts(baseline.index(), counts.passes(), counts.outcomes());
 	}
@@ -327,7 +327,7 @@ final class CellReports
 	 * @param cells the number of cells
 	 * @return {@code proven deficient} or {@code deficiency unproven}
 	 */
-	private static String deficiency(IncumbentBaseline baseline, CategoryCounts counts, int cells)
+	private static String deficiency(IncumbentBaseline baseline, CellCounts counts, int cells)
 	{
 		if (Baseline.isProvenDeficient(counts, baseline.index(), cells))
 			return "proven deficient";

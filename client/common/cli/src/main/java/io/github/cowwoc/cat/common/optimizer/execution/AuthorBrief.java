@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
@@ -29,7 +29,7 @@ import java.nio.charset.StandardCharsets;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
+ * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
  * @param contract the confirmed contract
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param developmentCounts the working candidate's development outcomes per cell
@@ -39,14 +39,14 @@ import java.nio.charset.StandardCharsets;
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
  *   keyed by the link's path; a link whose links form a cycle is absent
  */
-public record AuthorBrief(String category, Contract contract, List<Failure> developmentFailures,
-	Map<String, CategoryCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
+public record AuthorBrief(String cell, Contract contract, List<Failure> developmentFailures,
+	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
 	Map<Path, Path> links)
 {
 	/**
 	 * Creates a brief.
 	 *
-	 * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
+	 * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
 	 * @param contract the confirmed contract
 	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param developmentCounts the working candidate's development outcomes per cell
@@ -56,11 +56,11 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
 	 *   keyed by the link's path; a link whose links form a cycle is absent
 	 * @throws NullPointerException if any of the arguments are null or contain null
-	 * @throws IllegalArgumentException if {@code category} is blank
+	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
 	public AuthorBrief
 	{
-		requireThat(category, "category").isNotBlank();
+		requireThat(cell, "category").isNotBlank();
 		requireThat(contract, "contract").isNotNull();
 		requireThat(developmentFailures, "developmentFailures").isNotNull();
 		requireThat(developmentCounts, "developmentCounts").isNotNull();
@@ -139,11 +139,11 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 * Returns the brief of an author attempt.
 	 *
 	 * @param campaign a campaign with a confirmed contract
-	 * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
+	 * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
 	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
 	 * @return the brief
 	 */
-	static AuthorBrief of(Campaign campaign, String category, FileInventory fork)
+	static AuthorBrief of(Campaign campaign, String cell, FileInventory fork)
 	{
 		Development development = campaign.development();
 		List<EndedAttempt> ended = new ArrayList<>();
@@ -161,7 +161,7 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 			if (entry.getValue() instanceof FileEntry.SymbolicLink)
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
-		return new AuthorBrief(category, campaign.contract(), development.failures(), development.counts(), ended,
+		return new AuthorBrief(cell, campaign.contract(), development.failures(), development.counts(), ended,
 			campaign.authorizedTargets(), links);
 	}
 
@@ -175,7 +175,7 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 * @param counts the attempt's adopted certification outcomes per cell
 	 * @param failures the attempt's certification failures, in adoption order
 	 */
-	public record EndedAttempt(int index, Outcome outcome, Map<String, CategoryCounts> counts,
+	public record EndedAttempt(int index, Outcome outcome, Map<String, CellCounts> counts,
 		List<Failure> failures)
 	{
 		/**

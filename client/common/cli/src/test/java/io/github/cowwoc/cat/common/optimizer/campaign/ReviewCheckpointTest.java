@@ -28,13 +28,13 @@ public final class ReviewCheckpointTest
 	public void dueAtTwoHundredUnresolvedTrials()
 	{
 		// Requirement: R-D5
-		requireThat(ReviewCheckpoint.isDue(new CampaignBuilder().confirmed().
+		requireThat(ReviewCheckpoint.isDue(new Builder().confirmed().
 			development("formatting", 197, List.of(0, 0, 0, 2)).build().development(), "formatting"), "199").
 			isFalse();
-		requireThat(ReviewCheckpoint.isDue(new CampaignBuilder().confirmed().
+		requireThat(ReviewCheckpoint.isDue(new Builder().confirmed().
 			development("formatting", 198, List.of(0, 0, 0, 2)).build().development(), "formatting"), "200").
 			isTrue();
-		requireThat(ReviewCheckpoint.isDue(new CampaignBuilder().confirmed().
+		requireThat(ReviewCheckpoint.isDue(new Builder().confirmed().
 			development("formatting", 198, List.of(0, 0, 1, 1)).build().development(), "formatting"), "ready").
 			isFalse();
 	}
@@ -46,7 +46,7 @@ public final class ReviewCheckpointTest
 	public void extensionMovesCheckpoint()
 	{
 		// Requirement: R-D5
-		CampaignBuilder builder = new CampaignBuilder().confirmed().reviewPoint("formatting", 300);
+		Builder builder = new Builder().confirmed().reviewPoint("formatting", 300);
 		requireThat(ReviewCheckpoint.isDue(builder.development("formatting", 297, List.of(0, 0, 0, 0, 0, 2)).
 			build().development(), "formatting"), "299").isFalse();
 		requireThat(ReviewCheckpoint.isDue(builder.development("formatting", 298, List.of(0, 0, 0, 0, 0, 2)).
@@ -60,7 +60,7 @@ public final class ReviewCheckpointTest
 	 */
 	private static Campaign beforeCheckpoint()
 	{
-		return new CampaignBuilder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
+		return new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
 			development("safety", 150, 0).slowStart(new SlowStart(4, 0)).build();
 	}
 
@@ -90,7 +90,7 @@ public final class ReviewCheckpointTest
 		// Requirement: R-D5
 		Campaign campaign = TransitionSteps.adopt(beforeCheckpoint(), Purpose.DEVELOPMENT, "formatting",
 			Verdict.PASS);
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.moreEvidence(300));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.moreEvidence(300));
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().reviewPoint("formatting"), "reviewPoint").isEqualTo(300);
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
@@ -106,7 +106,7 @@ public final class ReviewCheckpointTest
 		// Requirement: R-D5
 		Campaign campaign = TransitionSteps.adopt(beforeCheckpoint(), Purpose.DEVELOPMENT, "formatting",
 			Verdict.PASS);
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.moreEvidence(200));
+		Transitions.apply(campaign, CampaignEvent.Choose.moreEvidence(200));
 	}
 
 	/**
@@ -118,7 +118,7 @@ public final class ReviewCheckpointTest
 		// Requirement: R-D5
 		Campaign campaign = TransitionSteps.adopt(beforeCheckpoint(), Purpose.DEVELOPMENT, "formatting",
 			Verdict.PASS);
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.TARGETED_OPTIMIZATION));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.TARGETED_OPTIMIZATION));
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("formatting", 0)));
 	}
@@ -127,14 +127,14 @@ public final class ReviewCheckpointTest
 	 * Verifies that a category at its review point is not scheduled while other categories are.
 	 */
 	@Test
-	public void checkpointStopsOnlyThatCategory()
+	public void checkpointStopsOnlyThatCell()
 	{
 		// Requirement: R-D5
-		Campaign campaign = new CampaignBuilder().confirmed().development("formatting", 198, List.of(0, 0, 0, 2)).
+		Campaign campaign = new Builder().confirmed().development("formatting", 198, List.of(0, 0, 0, 2)).
 			development("safety", 98, 0).slowStart(new SlowStart(4, 0)).build();
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
 		requireThat(plan.isEmpty(), "plan.isEmpty()").isFalse();
 		for (Admission admission : plan)
-			requireThat(admission.category(), "category").isEqualTo("safety");
+			requireThat(admission.cell(), "category").isEqualTo("safety");
 	}
 }

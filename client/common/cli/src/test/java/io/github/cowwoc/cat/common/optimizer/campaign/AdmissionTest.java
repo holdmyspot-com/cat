@@ -32,8 +32,8 @@ public final class AdmissionTest
 	public void calibrationFailureBlocksAdmission()
 	{
 		// Requirement: R-S6
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.CalibrationFailed("no cap below 10000"));
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.CalibrationFailed("no cap below 10000"));
 
 		requireThat(campaign.attempts(), "attempts").isEmpty();
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(1);
@@ -42,9 +42,9 @@ public final class AdmissionTest
 		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isFalse();
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.RETRY, Choice.STOP));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
 		requireThat(ReadinessGate.isCommitDue(campaign), "retried").isTrue();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(
+		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(
 			new CapCalibration(ErrorBudget.certificationLevel(1), 262), 5));
 		requireThat(campaign.attempt(1).index(), "index").isEqualTo(1);
 	}
@@ -56,7 +56,7 @@ public final class AdmissionTest
 	public void pendingCalibrationFailureBlocksAdmission()
 	{
 		// Requirement: R-S6
-		CampaignBuilder builder = new CampaignBuilder().confirmed().working(1).development("formatting", 10, 0).
+		Builder builder = new Builder().confirmed().working(1).development("formatting", 10, 0).
 			development("safety", 10, 0).baseline("safety", 10, 0);
 		requireThat(Scheduler.plan(builder.build(), NOW, 8).isEmpty(), "unblocked").isFalse();
 		Campaign blocked = builder.pending(new PendingDecision.CalibrationFailure("no cap below 10000")).build();
@@ -71,7 +71,7 @@ public final class AdmissionTest
 	public void baselineArmUsesRemainingCapacity()
 	{
 		// Requirement: R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 10, 0).
+		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 10, 0).
 			development("safety", 10, 0).baseline("formatting", 50, 0).baseline("safety", 47, 0).build();
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
 		List<Admission> baseline = new ArrayList<>();
@@ -80,7 +80,7 @@ public final class AdmissionTest
 			if (admission.purpose() == Purpose.BASELINE)
 				baseline.add(admission);
 		}
-		Admission arm = new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "safety", null,
+		Admission arm = new Admission.Assign(Purpose.BASELINE, 1, Builder.INCUMBENT, "safety", null,
 			new Allocation(AllocationRule.BASELINE_ARM, 0, NOW));
 		requireThat(baseline, "baseline").isEqualTo(List.of(arm, arm, arm));
 		requireThat(plan.size(), "size").isEqualTo(4);
@@ -94,12 +94,12 @@ public final class AdmissionTest
 	public void baselineArmStopsAtTarget()
 	{
 		// Requirement: R-D7
-		Campaign met = new CampaignBuilder().confirmed().working(1).development("formatting", 10, 0).
+		Campaign met = new Builder().confirmed().working(1).development("formatting", 10, 0).
 			development("safety", 10, 0).readyBaseline().build();
 		for (Admission admission : Scheduler.plan(met, NOW, 8))
 			requireThat(admission.purpose(), "met.purpose").isNotEqualTo(Purpose.BASELINE);
 
-		Campaign incumbent = new CampaignBuilder().confirmed().development("formatting", 10, 0).
+		Campaign incumbent = new Builder().confirmed().development("formatting", 10, 0).
 			development("safety", 10, 0).build();
 		for (Admission admission : Scheduler.plan(incumbent, NOW, 8))
 			requireThat(admission.purpose(), "incumbent.purpose").isEqualTo(Purpose.DEVELOPMENT);
@@ -112,10 +112,10 @@ public final class AdmissionTest
 	public void inFlightBaselineTrialsCount()
 	{
 		// Requirement: R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 10, 0).
+		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 10, 0).
 			development("safety", 10, 0).baseline("formatting", 50, 0).baseline("safety", 48, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.BASELINE, "safety");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
 		List<Admission> baseline = new ArrayList<>();
 		for (Admission admission : Scheduler.plan(campaign, NOW, 8))
 		{

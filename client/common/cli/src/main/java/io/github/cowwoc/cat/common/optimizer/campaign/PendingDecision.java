@@ -121,22 +121,22 @@ public sealed interface PendingDecision
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the cell's identifier
+	 * @param cell the cell's identifier
 	 * @param outcomes the cell's development outcomes included in evidence
 	 */
-	record CheckpointReached(String category, int outcomes) implements PendingDecision
+	record CheckpointReached(String cell, int outcomes) implements PendingDecision
 	{
 		/**
 		 * Creates the decision.
 		 *
-		 * @param category the cell's identifier
+		 * @param cell the cell's identifier
 		 * @param outcomes the cell's development outcomes included in evidence
-		 * @throws NullPointerException if {@code category} is null
-		 * @throws IllegalArgumentException if {@code category} is blank or {@code outcomes} is negative
+		 * @throws NullPointerException if {@code cell} is null
+		 * @throws IllegalArgumentException if {@code cell} is blank or {@code outcomes} is negative
 		 */
 		public CheckpointReached
 		{
-			requireThat(category, "category").isNotBlank();
+			requireThat(cell, "category").isNotBlank();
 			requireThat(outcomes, "outcomes").isNotNegative();
 		}
 	}

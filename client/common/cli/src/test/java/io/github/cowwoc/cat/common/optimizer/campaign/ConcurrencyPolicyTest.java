@@ -106,22 +106,22 @@ public final class ConcurrencyPolicyTest
 	 * cap and 0 at the cap.
 	 */
 	@Test
-	public void categoryLimitFollowsRequiredPasses()
+	public void cellLimitFollowsRequiredPasses()
 	{
 		// Requirement: R-E4
 		DecisionBoundaries boundaries = Boundaries.standard(2);
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(0, 0)), "empty").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(0, 0)), "empty").
 			isEqualTo(100);
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(97, 0)), "threeShort").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(97, 0)), "threeShort").
 			isEqualTo(3);
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(99, 0)), "oneShort").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(99, 0)), "oneShort").
 			isEqualTo(1);
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(140, 1)), "afterFailure").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(140, 1)), "afterFailure").
 			isEqualTo(10);
 		// From 295 passes and 4 failures, one trial remains below the cap of 300 even though one pass cannot certify.
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(295, 4)), "unreachable").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(295, 4)), "unreachable").
 			isEqualTo(1);
-		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(296, 4)), "atCap").
+		requireThat(ConcurrencyPolicy.cellLimit(boundaries, Builder.counts(296, 4)), "atCap").
 			isEqualTo(0);
 	}
 
@@ -151,7 +151,7 @@ public final class ConcurrencyPolicyTest
 	public void countsAboveCapAreRejected(int passes, int failures)
 	{
 		// Requirement: R-E4
-		ConcurrencyPolicy.categoryLimit(Boundaries.standard(2), CampaignBuilder.counts(passes, failures));
+		ConcurrencyPolicy.cellLimit(Boundaries.standard(2), Builder.counts(passes, failures));
 	}
 
 	/**
@@ -162,20 +162,20 @@ public final class ConcurrencyPolicyTest
 	public void campaignWindowCountsSameSnapshot()
 	{
 		// Requirement: R-E4
-		Campaign development = new CampaignBuilder().confirmed().development("formatting", 11, 0).
+		Campaign development = new Builder().confirmed().development("formatting", 11, 0).
 			slowStart(new SlowStart(16, 0)).build();
 		requireThat(ConcurrencyPolicy.window(development), "development").isEqualTo(2);
 
-		Campaign formal = new CampaignBuilder().confirmed().development("formatting", 11, 0).
+		Campaign formal = new Builder().confirmed().development("formatting", 11, 0).
 			development("safety", 11, 0).slowStart(new SlowStart(16, 0)).ceiling(16).
-			certificationAttempt(1).category("formatting", 12, 0).category("safety", 13, 0).build();
+			certificationAttempt(1).cell("formatting", 12, 0).cell("safety", 13, 0).build();
 		// 22 development and 25 formal outcomes without failures
 		requireThat(ConcurrencyPolicy.window(formal), "formal").isEqualTo(8);
 
-		Campaign otherSnapshot = new CampaignBuilder().confirmed().development("formatting", 11, 0).
+		Campaign otherSnapshot = new Builder().confirmed().development("formatting", 11, 0).
 			development("safety", 11, 0).slowStart(new SlowStart(16, 0)).ceiling(16).
-			certificationAttempt(1).candidate(new Candidate(3, CampaignBuilder.snapshot("other"))).
-			category("formatting", 12, 0).category("safety", 13, 0).build();
+			certificationAttempt(1).candidate(new Candidate(3, Builder.snapshot("other"))).
+			cell("formatting", 12, 0).cell("safety", 13, 0).build();
 		requireThat(ConcurrencyPolicy.window(otherSnapshot), "otherSnapshot").isEqualTo(4);
 	}
 
@@ -186,7 +186,7 @@ public final class ConcurrencyPolicyTest
 	public void adoptedFailureResetsCampaignWindow()
 	{
 		// Requirement: R-E4
-		Campaign campaign = new CampaignBuilder().confirmed().development("formatting", 100, 0).
+		Campaign campaign = new Builder().confirmed().development("formatting", 100, 0).
 			development("safety", 99, 0).slowStart(new SlowStart(8, 2)).build();
 		requireThat(ConcurrencyPolicy.window(campaign), "before").isEqualTo(8);
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);

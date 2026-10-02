@@ -15,7 +15,7 @@ import java.nio.file.Path;
  * @param harness the harness that started the campaign
  * @param lifecycle whether the campaign is active, cancelled, closed or finished
  */
-public record CampaignHeader(String id, Path root, Path target, Harness harness, Lifecycle lifecycle)
+public record Header(String id, Path root, Path target, Harness harness, Lifecycle lifecycle)
 {
 	/**
 	 * Creates a header.
@@ -28,7 +28,7 @@ public record CampaignHeader(String id, Path root, Path target, Harness harness,
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id} is blank
 	 */
-	public CampaignHeader
+	public Header
 	{
 		requireThat(id, "id").isNotBlank();
 		requireThat(root, "root").isNotNull();
@@ -44,8 +44,8 @@ public record CampaignHeader(String id, Path root, Path target, Harness harness,
 	 * @return the updated header
 	 * @throws NullPointerException if {@code state} is null
 	 */
-	public CampaignHeader withLifecycle(Lifecycle state)
+	public Header withLifecycle(Lifecycle state)
 	{
-		return new CampaignHeader(id, root, target, harness, state);
+		return new Header(id, root, target, harness, state);
 	}
 }

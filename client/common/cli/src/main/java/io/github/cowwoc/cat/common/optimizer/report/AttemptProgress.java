@@ -74,7 +74,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		for (AttemptResult result : campaign.optimization().attempts())
 		{
 			progress.put(result.number(), new AttemptProgress(result.round(), result.number(), result.working(),
-				result.category(), result.snapshot(), result.passingRuns(), result.totalRuns(), result.accepted(),
+				result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(), result.accepted(),
 				result.winner()));
 		}
 		Round round = campaign.development().round();

@@ -17,8 +17,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
 import io.github.cowwoc.cat.common.runner.fakes.ManualTicker;
 import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import org.testng.annotations.Test;

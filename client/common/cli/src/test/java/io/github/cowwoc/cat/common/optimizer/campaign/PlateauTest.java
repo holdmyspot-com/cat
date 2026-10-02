@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.targeted;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.targeted;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 public final class PlateauTest
 {
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
-	private static final Sha256 ATTEMPT = CampaignBuilder.snapshot("attempt");
+	private static final Sha256 ATTEMPT = Builder.snapshot("attempt");
 
 	/**
 	 * Creates the test.
@@ -63,7 +63,7 @@ public final class PlateauTest
 	private static Campaign lastAttempt()
 	{
 		TrialInstance logs = targeted("safety", "logs");
-		return new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
+		return new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 60, 1).failure(logs).regression(logs, Verdict.FAIL).round(round(2, 1)).
 			authorAttempts(3).build();
 	}
@@ -102,11 +102,11 @@ public final class PlateauTest
 		AuthorAttempt assigned = campaign.development().author();
 		Round beforeInterruption = campaign.development().round();
 		TrialKey key = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
 			"provider error", NOW, null));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED,
 			"slice ended", NOW, null));
 
 		requireThat(campaign.outcome(), "outcome").isNull();
@@ -129,7 +129,7 @@ public final class PlateauTest
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, run.instance(),
 				Verdict.PASS);
 		}
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().round(), "round").isNull();
@@ -140,7 +140,7 @@ public final class PlateauTest
 	 * Verifies that each category gets at most 2 author attempts per round.
 	 */
 	@Test(expectedExceptions = IllegalStateException.class)
-	public void categoryGetsTwoAttempts()
+	public void cellGetsTwoAttempts()
 	{
 		// Requirement: R-D6
 		TransitionSteps.submit(lastAttempt(), "formatting", ATTEMPT, List.of());

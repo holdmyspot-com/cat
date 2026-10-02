@@ -20,13 +20,13 @@ import java.util.List;
  * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
  * @param baselineIndex the incumbent baseline that the comparisons were frozen from
  * @param baselineIdentity the measurement conditions of that incumbent baseline
- * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
+ * @param cells the contract's cell identifiers, in the order of the boundaries' comparisons
  * @param boundaries the decision boundaries
  * @param bets the version of the bets and weights
  * @param allocationPolicy the version of the formal allocation policy
  */
 public record CertificationProcedure(SignificanceLevel improvementLevel, int baselineIndex,
-	MeasurementIdentity baselineIdentity, List<String> categories, DecisionBoundaries boundaries, String bets,
+	MeasurementIdentity baselineIdentity, List<String> cells, DecisionBoundaries boundaries, String bets,
 	String allocationPolicy)
 {
 	/**
@@ -46,12 +46,12 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	 * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
 	 * @param baselineIndex the incumbent baseline that the comparisons were frozen from
 	 * @param baselineIdentity the measurement conditions of that incumbent baseline
-	 * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
+	 * @param cells the contract's cell identifiers, in the order of the boundaries' comparisons
 	 * @param boundaries the decision boundaries
 	 * @param bets the version of the bets and weights
 	 * @param allocationPolicy the version of the formal allocation policy
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code baselineIndex} is not positive, {@code categories} is empty, the
+	 * @throws IllegalArgumentException if {@code baselineIndex} is not positive, {@code cells} is empty, the
 	 *   {@code boundaries} do not hold one comparison per cell, or {@code bets} or {@code allocationPolicy} are blank
 	 */
 	public CertificationProcedure
@@ -59,26 +59,26 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 		requireThat(improvementLevel, "improvementLevel").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
 		requireThat(baselineIdentity, "baselineIdentity").isNotNull();
-		requireThat(categories, "categories").isNotEmpty();
+		requireThat(cells, "categories").isNotEmpty();
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(boundaries.comparisons().size(), "boundaries.comparisons().size()").
-			isEqualTo(categories.size(), "categories.size()");
+			isEqualTo(cells.size(), "categories.size()");
 		requireThat(bets, "bets").isNotBlank();
 		requireThat(allocationPolicy, "allocationPolicy").isNotBlank();
-		categories = List.copyOf(categories);
+		cells = List.copyOf(cells);
 	}
 
 	/**
 	 * Returns the position of a cell in the boundaries' comparisons.
 	 *
-	 * @param category the cell's identifier
+	 * @param cell the cell's identifier
 	 * @return the position
-	 * @throws IllegalArgumentException if {@code category} is not one of the procedure's cell identifiers
+	 * @throws IllegalArgumentException if {@code cell} is not one of the procedure's cell identifiers
 	 */
-	int position(String category)
+	int position(String cell)
 	{
-		int position = categories.indexOf(category);
-		requireThat(position, "position").withContext(category, "category").isNotNegative();
+		int position = cells.indexOf(cell);
+		requireThat(position, "position").withContext(cell, "category").isNotNegative();
 		return position;
 	}
 }

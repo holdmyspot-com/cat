@@ -35,9 +35,9 @@ public final class CommitTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder ready()
+	private static Builder ready()
 	{
-		return new CampaignBuilder().confirmed().working(1).readyDevelopment().baseline("formatting", 50, 0).
+		return new Builder().confirmed().working(1).readyDevelopment().baseline("formatting", 50, 0).
 			baseline("safety", 48, 2);
 	}
 
@@ -61,7 +61,7 @@ public final class CommitTest
 	{
 		// Requirement: R-M4, R-F1
 		Campaign campaign = ready().identity(MeasurementIdentity.EMPTY).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
 		CertificationProcedure procedure = campaign.attempt(1).procedure();
 		Comparison unavailable = new Comparison(BigDecimal.ONE, BigDecimal.ZERO, procedure.improvementLevel());
 
@@ -76,9 +76,9 @@ public final class CommitTest
 	public void differingConditionsDisableBounds()
 	{
 		// Requirement: R-M4, R-F1
-		MeasurementIdentity baselineIdentity = CampaignBuilder.confirmedIdentity("model-b");
+		MeasurementIdentity baselineIdentity = Builder.confirmedIdentity("model-b");
 		Campaign campaign = ready().baselineIdentity(baselineIdentity).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
 		CertificationProcedure procedure = campaign.attempt(1).procedure();
 		Comparison unavailable = new Comparison(BigDecimal.ONE, BigDecimal.ZERO, procedure.improvementLevel());
 
@@ -96,7 +96,7 @@ public final class CommitTest
 	{
 		// Requirement: R-F1, R-M4
 		Campaign before = ready().build();
-		Campaign campaign = CampaignTransitions.apply(before, new CampaignEvent.Commit(calibration(1), 41));
+		Campaign campaign = Transitions.apply(before, new CampaignEvent.Commit(calibration(1), 41));
 		CertificationAttempt attempt = campaign.attempt(1);
 
 		requireThat(attempt.isRunning(), "isRunning").isTrue();
@@ -107,7 +107,7 @@ public final class CommitTest
 		requireThat(procedure.baselineIdentity(), "baselineIdentity").isEqualTo(before.baseline().identity());
 		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(improvement);
 		requireThat(procedure.baselineIndex(), "baselineIndex").isEqualTo(1);
-		requireThat(procedure.categories(), "categories").isEqualTo(List.of("formatting", "safety"));
+		requireThat(procedure.cells(), "categories").isEqualTo(List.of("formatting", "safety"));
 		requireThat(procedure.boundaries().level(), "level").isEqualTo(ErrorBudget.certificationLevel(1));
 		requireThat(procedure.boundaries().cap(), "cap").isEqualTo(262);
 		SignificanceLevel incumbent = ErrorBudget.incumbentLevel(1, 2);
@@ -130,7 +130,7 @@ public final class CommitTest
 	public void formalDrawsFollowFreeze()
 	{
 		// Requirement: R-F1
-		Campaign campaign = CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
+		Campaign campaign = Transitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialInstance instance = campaign.trials().getFirst().instance();
 		requireThat(instance.streamKind(), "streamKind").isEqualTo(DrawStream.Kind.FORMAL);
@@ -146,7 +146,7 @@ public final class CommitTest
 	{
 		// Requirement: R-F1
 		Campaign campaign = ready().build();
-		CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.FORMAL, 1,
+		Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.FORMAL, 1,
 			campaign.development().working().snapshot(), "safety", null,
 			TransitionSteps.allocation(campaign, Purpose.FORMAL))));
 	}
@@ -158,7 +158,7 @@ public final class CommitTest
 	public void calibrationMustMatchIndex()
 	{
 		// Requirement: R-F1
-		CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(2), 41));
+		Transitions.apply(ready().build(), new CampaignEvent.Commit(calibration(2), 41));
 	}
 
 	/**
@@ -168,7 +168,7 @@ public final class CommitTest
 	public void commitRequiresReadiness()
 	{
 		// Requirement: R-F1
-		CampaignTransitions.apply(ready().development("safety", 99, 0).build(),
+		Transitions.apply(ready().development("safety", 99, 0).build(),
 			new CampaignEvent.Commit(calibration(1), 41));
 	}
 
@@ -179,8 +179,8 @@ public final class CommitTest
 	public void runningAttemptIsNotRefrozen()
 	{
 		// Requirement: R-F4
-		Campaign campaign = CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
-		CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(2), 42));
+		Campaign campaign = Transitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
+		Transitions.apply(campaign, new CampaignEvent.Commit(calibration(2), 42));
 	}
 
 	/**
@@ -190,9 +190,9 @@ public final class CommitTest
 	public void noEditDuringAttempt()
 	{
 		// Requirement: R-F4
-		Campaign campaign = CampaignTransitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
+		Campaign campaign = Transitions.apply(ready().build(), new CampaignEvent.Commit(calibration(1), 41));
 		TransitionSteps.submit(campaign, "safety",
-			CampaignBuilder.snapshot("edit"), List.of());
+			Builder.snapshot("edit"), List.of());
 	}
 
 	/**
@@ -205,13 +205,13 @@ public final class CommitTest
 		// Requirement: R-F4
 		Campaign campaign = ready().build();
 		Candidate frozen = campaign.development().working();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 41));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 41));
 		for (int i = 0; i < 50 && campaign.attempt(1).isRunning(); ++i)
 			campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 		requireThat(campaign.development().round(), "round").isNotNull();
 
-		Sha256 edit = CampaignBuilder.snapshot("edit");
+		Sha256 edit = Builder.snapshot("edit");
 		campaign = TransitionSteps.submit(campaign, "safety", edit, List.of());
 		AuthorAttempt author = campaign.development().author();
 		for (PromotionRun run : author.runs())
@@ -222,7 +222,7 @@ public final class CommitTest
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), snapshot, run.instance(),
 				Verdict.PASS);
 		}
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(edit));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(edit));
 		requireThat(campaign.attempt(1).candidate(), "frozen").isEqualTo(frozen);
 		requireThat(campaign.development().working(), "working").isEqualTo(new Candidate(2, edit));
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(2);
@@ -237,13 +237,13 @@ public final class CommitTest
 	{
 		// Requirement: R-C11
 		Contract contract = ContractFixtures.twoCellContract();
-		CampaignBuilder ready = new CampaignBuilder().confirmed(contract, 1).working(1).readyDevelopment().
+		Builder ready = new Builder().confirmed(contract, 1).working(1).readyDevelopment().
 			baseline(ContractFixtures.BIG_CELL, 50, 0).baseline(ContractFixtures.SMALL_CELL, 48, 2).
 			baseline("safety", 50, 0);
-		Campaign campaign = CampaignTransitions.apply(ready.build(), new CampaignEvent.Commit(calibration(1), 41));
+		Campaign campaign = Transitions.apply(ready.build(), new CampaignEvent.Commit(calibration(1), 41));
 		CertificationProcedure procedure = campaign.attempt(1).procedure();
 
-		requireThat(procedure.categories(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
+		requireThat(procedure.cells(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
 			ContractFixtures.SMALL_CELL, "safety"));
 		SignificanceLevel improvement = ErrorBudget.improvementLevel(1, 3);
 		SignificanceLevel incumbent = ErrorBudget.incumbentLevel(1, 3);

@@ -37,7 +37,7 @@ public final class ReadinessGate
 	 * @return {@code true} if the cell is ready
 	 * @throws NullPointerException if {@code counts} is null
 	 */
-	public static boolean isReady(CategoryCounts counts)
+	public static boolean isReady(CellCounts counts)
 	{
 		requireThat(counts, "counts").isNotNull();
 		int outcomes = counts.outcomes();
@@ -58,7 +58,7 @@ public final class ReadinessGate
 	 * @return {@code true} if the cell meets the pass-rate threshold
 	 * @throws NullPointerException if {@code counts} is null
 	 */
-	public static boolean meetsPassRateThreshold(CategoryCounts counts)
+	public static boolean meetsPassRateThreshold(CellCounts counts)
 	{
 		requireThat(counts, "counts").isNotNull();
 		return 100L * counts.passes() >= 99L * counts.outcomes();

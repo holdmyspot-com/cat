@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
@@ -372,7 +372,7 @@ final class Markdown
 			append(ReadinessGate.MINIMUM_TRIALS).
 			append(" representative development trials with at least 99% observed passes, at most ").
 			append(ReadinessGate.BATCH_FAILURE_LIMIT).append(" failure in each of the latest two complete batches of ").
-			append(CategoryCounts.BATCH_SIZE).
+			append(CellCounts.BATCH_SIZE).
 			append(" trials, and no unresolved reproducible defect or known regression.\n").
 			append("- Review checkpoint: at ").append(Development.DEFAULT_REVIEW_POINT).
 			append(" representative trials in a cell for an unchanged candidate with the cell still " +

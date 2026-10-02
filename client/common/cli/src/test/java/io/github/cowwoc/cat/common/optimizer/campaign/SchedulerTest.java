@@ -35,7 +35,7 @@ import org.testng.annotations.Test;
 public final class SchedulerTest
 {
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
-	private static final Sha256 WORKING = CampaignBuilder.snapshot("candidate-1");
+	private static final Sha256 WORKING = Builder.snapshot("candidate-1");
 
 	/**
 	 * Creates the test.
@@ -59,35 +59,35 @@ public final class SchedulerTest
 	 * Returns a development admission for working candidate 1 in series 1, chosen by the lowest exploratory lower
 	 * bound.
 	 *
-	 * @param category the identifier of the cell receiving the trial
+	 * @param cell the identifier of the cell receiving the trial
 	 * @return the admission
 	 */
-	private static Admission development(String category)
+	private static Admission development(String cell)
 	{
-		return development(category, AllocationRule.LOWEST_EXPLORATORY_BOUND);
+		return development(cell, AllocationRule.LOWEST_EXPLORATORY_BOUND);
 	}
 
 	/**
 	 * Returns a development admission for working candidate 1 in series 1.
 	 *
-	 * @param category the identifier of the cell receiving the trial
+	 * @param cell the identifier of the cell receiving the trial
 	 * @param rule the allocation rule that chose the cell
 	 * @return the admission
 	 */
-	private static Admission development(String category, AllocationRule rule)
+	private static Admission development(String cell, AllocationRule rule)
 	{
-		return new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, category, null, allocation(rule));
+		return new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, cell, null, allocation(rule));
 	}
 
 	/**
 	 * Returns a formal admission for attempt 1 of working candidate 1.
 	 *
-	 * @param category the identifier of the cell receiving the trial
+	 * @param cell the identifier of the cell receiving the trial
 	 * @return the admission
 	 */
-	private static Admission formal(String category)
+	private static Admission formal(String cell)
 	{
-		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, category, null, allocation(AllocationRule.FORMAL));
+		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, cell, null, allocation(AllocationRule.FORMAL));
 	}
 
 	/**
@@ -96,9 +96,9 @@ public final class SchedulerTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder working()
+	private static Builder working()
 	{
-		return new CampaignBuilder().confirmed().working(1).readyBaseline();
+		return new Builder().confirmed().working(1).readyBaseline();
 	}
 
 	/**
@@ -111,7 +111,7 @@ public final class SchedulerTest
 	{
 		List<String> cells = new ArrayList<>();
 		for (Admission admission : plan)
-			cells.add(admission.category());
+			cells.add(admission.cell());
 		return cells;
 	}
 
@@ -122,7 +122,7 @@ public final class SchedulerTest
 	public void targetedWorkComesFirst()
 	{
 		// Requirement: R-E3
-		TrialInstance logs = CampaignBuilder.targeted("safety", "logs");
+		TrialInstance logs = Builder.targeted("safety", "logs");
 		Campaign campaign = working().development("formatting", 60, 0).
 			development("safety", 60, 1).failure(logs).diagnosis(new Diagnosis(List.of(logs), 0, null, false)).
 			slowStart(new SlowStart(4, 0)).build();
@@ -141,9 +141,9 @@ public final class SchedulerTest
 	public void promotionRunsAreAdmitted()
 	{
 		// Requirement: R-E3
-		TrialInstance logs = CampaignBuilder.targeted("safety", "logs");
-		TrialInstance formal = CampaignBuilder.targeted("formatting", "formal");
-		Sha256 attempt = CampaignBuilder.snapshot("attempt");
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		TrialInstance formal = Builder.targeted("formatting", "formal");
+		Sha256 attempt = Builder.snapshot("attempt");
 		Campaign campaign = working().failure(logs).regression(formal, null).
 			round(new Round(Map.of("safety", 0))).build();
 		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
@@ -190,14 +190,14 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E3, R-E1
 		Instant later = NOW.plusSeconds(90);
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 60, 0).
+		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 60, 0).
 			development("safety", 60, 1).evidenceRevision(173).build();
 		List<Admission> expected = List.of(
 			new Admission.Assign(Purpose.DEVELOPMENT, 1, WORKING, "safety", null,
 				new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 173, later)),
-			new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "formatting", null,
+			new Admission.Assign(Purpose.BASELINE, 1, Builder.INCUMBENT, "formatting", null,
 				new Allocation(AllocationRule.BASELINE_ARM, 173, later)),
-			new Admission.Assign(Purpose.BASELINE, 1, CampaignBuilder.INCUMBENT, "safety", null,
+			new Admission.Assign(Purpose.BASELINE, 1, Builder.INCUMBENT, "safety", null,
 				new Allocation(AllocationRule.BASELINE_ARM, 173, later)));
 		requireThat(Scheduler.plan(campaign, later, 3), "plan").isEqualTo(expected);
 	}
@@ -229,11 +229,11 @@ public final class SchedulerTest
 	public void equalRiskRanksFollowContractOrder()
 	{
 		// Requirement: R-E3
-		Campaign formattingFirst = new CampaignBuilder().confirmed(equalRisk("formatting", "safety"), 1).working(1).
+		Campaign formattingFirst = new Builder().confirmed(equalRisk("formatting", "safety"), 1).working(1).
 			readyBaseline().build();
 		requireThat(Scheduler.plan(formattingFirst, NOW, 8), "formattingFirst").
 			isEqualTo(List.of(development("formatting")));
-		Campaign safetyFirst = new CampaignBuilder().confirmed(equalRisk("safety", "formatting"), 1).working(1).
+		Campaign safetyFirst = new Builder().confirmed(equalRisk("safety", "formatting"), 1).working(1).
 			readyBaseline().build();
 		requireThat(Scheduler.plan(safetyFirst, NOW, 8), "safetyFirst").isEqualTo(List.of(development("safety")));
 	}
@@ -275,7 +275,7 @@ public final class SchedulerTest
 		Campaign campaign = working().development("formatting", 60, 0).
 			development("safety", 60, 1).slowStart(new SlowStart(2, 0)).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
 		requireThat(cellIds(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety"));
 	}
 
@@ -283,7 +283,7 @@ public final class SchedulerTest
 	 * Verifies that the formal phase first gives each category one trial.
 	 */
 	@Test
-	public void formalGivesEachCategoryOneTrial()
+	public void formalGivesEachCellOneTrial()
 	{
 		// Requirement: R-E3
 		Campaign campaign = working().slowStart(new SlowStart(1, 0)).
@@ -306,15 +306,15 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E3
 		Campaign lower = working().slowStart(new SlowStart(1, 0)).
-			certificationAttempt(1).category("formatting", 50, 0).category("safety", 50, 1).build();
+			certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 1).build();
 		requireThat(Scheduler.plan(lower, NOW, 8), "lowerBound").isEqualTo(List.of(formal("safety")));
 
 		Campaign fewer = working().slowStart(new SlowStart(1, 0)).
-			certificationAttempt(1).category("formatting", 0, 2).category("safety", 0, 1).build();
+			certificationAttempt(1).cell("formatting", 0, 2).cell("safety", 0, 1).build();
 		requireThat(Scheduler.plan(fewer, NOW, 8), "fewerOutcomes").isEqualTo(List.of(formal("safety")));
 
 		Campaign order = working().slowStart(new SlowStart(1, 0)).
-			certificationAttempt(1).category("formatting", 50, 0).category("safety", 50, 0).build();
+			certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 0).build();
 		requireThat(Scheduler.plan(order, NOW, 8), "categoryOrder").isEqualTo(List.of(formal("formatting")));
 	}
 
@@ -323,12 +323,12 @@ public final class SchedulerTest
 	 * certification limit its unadopted trials.
 	 */
 	@Test
-	public void formalRespectsDecisionsAndCategoryLimit()
+	public void formalRespectsDecisionsAndCellLimit()
 	{
 		// Requirement: R-E3
 		Campaign campaign = working().development("formatting", 200, 0).
 			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
-			category("formatting", 100, 0).category("safety", 97, 0).build();
+			cell("formatting", 100, 0).cell("safety", 97, 0).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(formal("safety"), formal("safety"),
 			formal("safety")));
 	}
@@ -340,10 +340,10 @@ public final class SchedulerTest
 	public void blockedCampaignAdmitsNothing()
 	{
 		// Requirement: R-E3
-		CampaignBuilder builder = working().development("formatting", 10, 0);
+		Builder builder = working().development("formatting", 10, 0);
 		requireThat(Scheduler.plan(builder.build(), NOW, 8).isEmpty(), "open").isFalse();
 		requireThat(Scheduler.plan(builder.build(), NOW, 0), "noCapacity").isEmpty();
-		requireThat(Scheduler.plan(new CampaignBuilder().working(1).build(), NOW, 8), "unconfirmed").isEmpty();
+		requireThat(Scheduler.plan(new Builder().working(1).build(), NOW, 8), "unconfirmed").isEmpty();
 		requireThat(Scheduler.plan(working().lifecycle(Lifecycle.CANCELLED).
 			build(), NOW, 8), "cancelled").isEmpty();
 		requireThat(Scheduler.plan(working().revisionRequested().build(), NOW, 8),
@@ -361,15 +361,15 @@ public final class SchedulerTest
 	{
 		// Requirement: R-C11
 		Contract contract = ContractFixtures.twoCellContract();
-		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+		Campaign development = new Builder().confirmed(contract, 1).working(1).readyBaseline().
 			development(ContractFixtures.BIG_CELL, 60, 0).development(ContractFixtures.SMALL_CELL, 60, 1).
 			development("safety", 100, 0).slowStart(new SlowStart(2, 0)).build();
 		requireThat(cellIds(Scheduler.plan(development, NOW, 8)), "development").
 			isEqualTo(List.of(ContractFixtures.SMALL_CELL, ContractFixtures.SMALL_CELL));
 
-		Campaign formal = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
-			slowStart(new SlowStart(1, 0)).certificationAttempt(1).category(ContractFixtures.BIG_CELL, 50, 0).
-			category("safety", 50, 0).build();
+		Campaign formal = new Builder().confirmed(contract, 1).working(1).readyBaseline().
+			slowStart(new SlowStart(1, 0)).certificationAttempt(1).cell(ContractFixtures.BIG_CELL, 50, 0).
+			cell("safety", 50, 0).build();
 		requireThat(cellIds(Scheduler.plan(formal, NOW, 8)), "formal").
 			isEqualTo(List.of(ContractFixtures.SMALL_CELL));
 	}
@@ -380,9 +380,9 @@ public final class SchedulerTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder tiered()
+	private static Builder tiered()
 	{
-		return new CampaignBuilder().confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline();
+		return new Builder().confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline();
 	}
 
 	/**
@@ -408,7 +408,7 @@ public final class SchedulerTest
 		Admission.Assign next = Scheduler.plan(campaign, NOW, 8).stream().
 			filter(admission -> admission instanceof Admission.Assign).map(Admission.Assign.class::cast).
 			findFirst().orElseThrow();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(next));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(next));
 		return TransitionSteps.run(campaign, TransitionSteps.last(campaign), verdict);
 	}
 
@@ -464,7 +464,7 @@ public final class SchedulerTest
 		List<String> active = List.of(BIG_LOW, BIG_XHIGH, SMALL_HIGH, SAFETY);
 		for (String cell : active)
 		{
-			CampaignBuilder builder = tiered().slowStart(new SlowStart(1, 0));
+			Builder builder = tiered().slowStart(new SlowStart(1, 0));
 			for (String other : active)
 				builder.development(other, 100, 0);
 			// The inactive cells are empty and would have the lowest bound
@@ -472,7 +472,7 @@ public final class SchedulerTest
 			requireThat(Scheduler.plan(campaign, NOW, 8), cell).isEqualTo(List.of(development(cell)));
 		}
 
-		CampaignBuilder failed = tiered().slowStart(new SlowStart(1, 0)).failedCell(BIG_MEDIUM);
+		Builder failed = tiered().slowStart(new SlowStart(1, 0)).failedCell(BIG_MEDIUM);
 		for (String cell : active)
 			failed.development(cell, 100, 0);
 		Campaign campaign = failed.development(BIG_MEDIUM, 60, 0).build();
@@ -489,7 +489,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E19
 		Contract contract = TierFixtures.tieredContract();
-		Campaign campaign = new CampaignBuilder().confirmed(contract, 1).build();
+		Campaign campaign = new Builder().confirmed(contract, 1).build();
 		for (int trial = 0; trial < 6 * CellTier.SCREEN_TRIALS; ++trial)
 			campaign = runNext(campaign, Verdict.PASS);
 		for (String cell : contract.cellIds())
@@ -501,37 +501,37 @@ public final class SchedulerTest
 		requireThat(campaign.development().count(BIG_HIGH).outcomes(), "bigHigh").isEqualTo(CellTier.SCREEN_TRIALS);
 
 		// The screen goes on while a cell has fewer than 3 trials, ahead of a weaker active cell
-		CampaignBuilder screening = new CampaignBuilder().confirmed(contract, 1).slowStart(new SlowStart(1, 0));
+		Builder screening = new Builder().confirmed(contract, 1).slowStart(new SlowStart(1, 0));
 		for (String cell : contract.cellIds())
 			screening.development(cell, 3, 0);
 		Campaign incomplete = screening.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
 		requireThat(cellIds(Scheduler.plan(incomplete, NOW, 8)), "incomplete").isEqualTo(List.of(BIG_MEDIUM));
 
 		// An unadopted trial counts toward the screen
-		CampaignBuilder inFlight = new CampaignBuilder().confirmed(contract, 1).slowStart(new SlowStart(2, 0));
+		Builder inFlight = new Builder().confirmed(contract, 1).slowStart(new SlowStart(2, 0));
 		for (String cell : contract.cellIds())
 			inFlight.development(cell, 3, 0);
 		Campaign started = TransitionSteps.assign(inFlight.development(BIG_MEDIUM, 2, 0).build(),
 			Purpose.DEVELOPMENT, BIG_MEDIUM);
-		started = CampaignTransitions.apply(started, new CampaignEvent.Start(TransitionSteps.last(started)));
+		started = Transitions.apply(started, new CampaignEvent.Start(TransitionSteps.last(started)));
 		requireThat(cellIds(Scheduler.plan(started, NOW, 8)), "inFlight").isEqualTo(List.of(SAFETY));
 
 		// Only the first working candidate is screened
-		CampaignBuilder later = tiered().slowStart(new SlowStart(1, 0));
+		Builder later = tiered().slowStart(new SlowStart(1, 0));
 		for (String cell : contract.cellIds())
 			later.development(cell, 3, 0);
 		Campaign second = later.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
 		requireThat(cellIds(Scheduler.plan(second, NOW, 8)), "laterCandidate").isEqualTo(List.of(SAFETY));
 
 		// The screen runs once per campaign: the incumbent's next series, after a contract revision, is not screened
-		CampaignBuilder revised = new CampaignBuilder().confirmed(contract, 1).series(2).slowStart(new SlowStart(1, 0));
+		Builder revised = new Builder().confirmed(contract, 1).series(2).slowStart(new SlowStart(1, 0));
 		for (String cell : contract.cellIds())
 			revised.development(cell, 3, 0);
 		Campaign nextSeries = revised.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
 		requireThat(cellIds(Scheduler.plan(nextSeries, NOW, 8)), "nextSeries").isEqualTo(List.of(SAFETY));
 
 		// A failure in the screen makes its cell active
-		Campaign screened = TransitionSteps.assign(new CampaignBuilder().confirmed(contract, 1).build(),
+		Campaign screened = TransitionSteps.assign(new Builder().confirmed(contract, 1).build(),
 			Purpose.DEVELOPMENT, BIG_HIGH);
 		screened = TransitionSteps.run(screened, TransitionSteps.last(screened), Verdict.FAIL);
 		requireThat(screened.failedCells(), "failedCells").isEqualTo(Set.of(BIG_HIGH));
@@ -567,7 +567,7 @@ public final class SchedulerTest
 	public void wideningAtCountConditions()
 	{
 		// Requirement: R-E19
-		CampaignBuilder builder = tiered().development(BIG_LOW, 100, 0).development(SMALL_HIGH, 100, 0).
+		Builder builder = tiered().development(BIG_LOW, 100, 0).development(SMALL_HIGH, 100, 0).
 			development(SAFETY, 100, 0).slowStart(new SlowStart(1, 0));
 		Campaign campaign = builder.development(BIG_XHIGH, 99, 0).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "before").isEqualTo(List.of(development(BIG_XHIGH)));
@@ -618,14 +618,14 @@ public final class SchedulerTest
 			development(BIG_XHIGH, 100, 0).development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).build();
 		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM,
-			CampaignBuilder.snapshot("attempt"), List.of());
+			Builder.snapshot("attempt"), List.of());
 		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet()) ==
 			Promotion.Decision.PENDING)
 		{
 			campaign = runNext(campaign, Verdict.PASS);
 		}
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(
-			CampaignBuilder.snapshot("attempt")));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(
+			Builder.snapshot("attempt")));
 		requireThat(campaign.development().working().number(), "working").isEqualTo(2);
 		requireThat(campaign.development().widened(), "widened").isFalse();
 		requireThat(campaign.development().counts(), "counts").isEmpty();
@@ -649,10 +649,10 @@ public final class SchedulerTest
 		// Requirement: R-E19
 		// Requirement: R-E3
 		Contract contract = TierFixtures.tieredContract();
-		CampaignBuilder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
+		Builder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
 		for (String cell : contract.cellIds())
-			attempt.category(cell, 50, 0);
-		Campaign formal = attempt.category(BIG_HIGH, 50, 1).build();
+			attempt.cell(cell, 50, 0);
+		Campaign formal = attempt.cell(BIG_HIGH, 50, 1).build();
 		Admission.Assign expected = new Admission.Assign(Purpose.FORMAL, 1, WORKING, BIG_HIGH, null,
 			allocation(AllocationRule.FORMAL));
 		requireThat(Scheduler.plan(formal, NOW, 8), "formal").isEqualTo(List.of(expected));
@@ -660,17 +660,17 @@ public final class SchedulerTest
 		formal = TransitionSteps.run(formal, TransitionSteps.last(formal), Verdict.FAIL);
 		requireThat(formal.failedCells(), "formalFailure").isEqualTo(Set.of(BIG_HIGH));
 
-		Campaign baseline = new CampaignBuilder().confirmed(contract, 1).working(1).development(BIG_LOW, 60, 0).
+		Campaign baseline = new Builder().confirmed(contract, 1).working(1).development(BIG_LOW, 60, 0).
 			build();
 		Set<String> baselineCells = new LinkedHashSet<>();
 		for (Admission admission : Scheduler.plan(baseline, NOW, 16))
 		{
 			if (admission instanceof Admission.Assign assign && assign.purpose() == Purpose.BASELINE)
-				baselineCells.add(assign.category());
+				baselineCells.add(assign.cell());
 		}
 		requireThat(baselineCells, "baseline").isEqualTo(Set.copyOf(contract.cellIds()));
 
-		CampaignBuilder ready = tiered().widened();
+		Builder ready = tiered().widened();
 		for (String cell : contract.cellIds())
 			ready.development(cell, 100, 0);
 		requireThat(ReadinessGate.isCommitDue(ready.build()), "ready").isTrue();

@@ -2,17 +2,17 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.execution.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -101,8 +101,8 @@ public final class OptimizerCoreTest
 		Files.createDirectory(root.resolve(".git"));
 		Path target = root.resolve("CLAUDE.md");
 		Files.writeString(target, "Be brief.\n");
-		CampaignHeader header = new CampaignHeader("campaign-1", root, target, owner, Lifecycle.ACTIVE);
-		Campaign campaign = new CampaignBuilder().header(header).confirmed().build();
+		Header header = new Header("campaign-1", root, target, owner, Lifecycle.ACTIVE);
+		Campaign campaign = new Builder().header(header).confirmed().build();
 		try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(owner, root))
 		{
 			command.store().replaceSnapshot(campaign);
@@ -1000,7 +1000,7 @@ public final class OptimizerCoreTest
 				c.candidates(), c.authorAttempts(), c.development(), c.failedCells(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(), c.authorizedTargets(),
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
-			Campaign warned = CampaignTransitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
+			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
 			String before = Files.readString(repository.directory(id).resolve("campaign.json"));
 

@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The saved state of one prompt-optimization campaign. {@link CampaignTransitions} derives each next state.
+ * The saved state of one prompt-optimization campaign. {@link Transitions} derives each next state.
  * A lineage is the evidence history under one confirmed contract.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
@@ -46,7 +46,7 @@ import java.util.Set;
  * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
  * @param optimization the retained author and minimality evidence
  */
-public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
+public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int authorAttempts, Development development, Set<String> failedCells,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
@@ -167,7 +167,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @throws IllegalArgumentException if the header is not active or {@code ceiling} is outside
 	 *   [1, {@value #MAXIMUM_CEILING}]
 	 */
-	public static Campaign start(CampaignHeader header, int ceiling, Sha256 incumbent, MeasurementIdentity identity)
+	public static Campaign start(Header header, int ceiling, Sha256 incumbent, MeasurementIdentity identity)
 	{
 		requireThat(header, "header").isNotNull();
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);

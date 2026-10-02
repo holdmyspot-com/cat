@@ -23,7 +23,7 @@ public final class CertificationAttemptTest
 	public void endingRequiresOutcome()
 	{
 		// Requirement: R-F2
-		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).build().attempt(1);
+		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).build().attempt(1);
 		attempt.end(null);
 	}
 
@@ -34,7 +34,7 @@ public final class CertificationAttemptTest
 	public void endingRecordsOutcome()
 	{
 		// Requirement: R-F2
-		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).build().attempt(1);
+		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).build().attempt(1);
 		CertificationAttempt ended = attempt.end(Outcome.INCONCLUSIVE);
 		requireThat(ended.outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
 		requireThat(ended.isRunning(), "running").isFalse();

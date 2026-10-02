@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -12,7 +13,6 @@ import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
-import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness.Turn;
 

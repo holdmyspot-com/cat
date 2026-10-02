@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork.Entry;
@@ -72,7 +72,7 @@ public final class RemainingWorkTest
 		// baseline met (50 and 50)          ->                                  0 + 0
 		// next attempt (i = 1): 93 per cell                                  -> 93 + 93 = 186
 		// total = 40 + 0 + 0 + 0 + 186 = 226
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 60, 0).
+		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 60, 0).
 			development("safety", 100, 0).readyBaseline().build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.phase(), "phase").isEqualTo(Phase.DEVELOPMENT);
@@ -95,7 +95,7 @@ public final class RemainingWorkTest
 		// max(0, max(100, 200) - 200) = 0, but the latest two complete batches hold 2 and 0 failures. After 50
 		// more passes batch 5 completes with 0 failures, so the latest two (0, 0) are within the limit and 248/250
 		// passes: 50 trials are needed. Smaller additions leave the latest two batches at (2, 0) or (0, partial).
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			development("formatting", 198, java.util.List.of(0, 0, 2, 0)).development("safety", 100, 0).
 			readyBaseline().build();
 		RemainingWork work = RemainingWork.of(campaign);
@@ -117,7 +117,7 @@ public final class RemainingWorkTest
 		//   20*48 = 960 >= 19*50 = 950, so the target stays 50 and 3 trials are needed
 		// next attempt (i = 1): 93 + 93 = 186
 		// total = 147 + 100 + 20 + 3 + 186 = 456
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 150, 3).
+		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 150, 3).
 			baseline("formatting", 30, 0).baseline("safety", 45, 2).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(trials(work, "formatting", Kind.READINESS), "formattingReadiness").isEqualTo(147);
@@ -136,7 +136,7 @@ public final class RemainingWorkTest
 		// Requirement: R-E12
 		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per cell.
 		// readiness and baseline are met, so total = 117 + 117 = 234
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.phase(), "phase").isEqualTo(Phase.DEVELOPMENT);
@@ -156,9 +156,9 @@ public final class RemainingWorkTest
 		// formatting: S = 60,  F = 0 -> undecided; certifies at S = 100 -> 100 - 60 = 40
 		// safety:     S = 140, F = 1 -> undecided; certifies at S = 150 -> 150 - 140 = 10
 		// total = 50
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).category("formatting", 60, 0).
-			category("safety", 140, 1).build();
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 60, 0).
+			cell("safety", 140, 1).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.phase(), "phase").isEqualTo(Phase.FORMAL);
 		requireThat(trials(work, "formatting", Kind.CERTIFICATION), "formatting").isEqualTo(40);
@@ -177,9 +177,9 @@ public final class RemainingWorkTest
 		// formatting: S = 100, F = 0 certifies (100 >= 100 + 50*0)
 		// safety:     S = 0,   F = 6 is clearly below (any S <= 294 at F = 6)
 		// no cell is unresolved, so the minimum is 0
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).category("formatting", 100, 0).
-			category("safety", 0, 6).build();
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).
+			cell("safety", 0, 6).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.entries(), "entries").isEmpty();
 		requireThat(work.total(), "total").isEqualTo(0);
@@ -194,9 +194,9 @@ public final class RemainingWorkTest
 		// Requirement: R-E12
 		// safety: S = 200, F = 5 (n = 205 < cap 300). Certifying needs 100 + 50*5 = 350 passes, which no state with
 		// 5 failures reaches within cap 300 (at most 295 passes), so it is not clearly below and not reachable.
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).category("formatting", 60, 0).
-			category("safety", 200, 5).build();
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 60, 0).
+			cell("safety", 200, 5).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		Entry safety = null;
 		for (Entry entry : work.entries())
@@ -218,12 +218,12 @@ public final class RemainingWorkTest
 	public void unavailableOutsideTheTrialPhases()
 	{
 		// Requirement: R-E12
-		RemainingWork unconfirmed = RemainingWork.of(new CampaignBuilder().build());
+		RemainingWork unconfirmed = RemainingWork.of(new Builder().build());
 		requireThat(unconfirmed.phase(), "unconfirmedPhase").isEqualTo(Phase.UNCONFIRMED);
 		requireThat(unconfirmed.total(), "unconfirmedTotal").isNull();
 		requireThat(unconfirmed.unavailable(), "unconfirmedReason").isNotNull();
 
-		RemainingWork finished = RemainingWork.of(new CampaignBuilder().confirmed().working(1).readyDevelopment().
+		RemainingWork finished = RemainingWork.of(new Builder().confirmed().working(1).readyDevelopment().
 			readyBaseline().lifecycle(Lifecycle.FINISHED).build());
 		requireThat(finished.total(), "finishedTotal").isNull();
 		requireThat(finished.unavailable(), "finishedReason").isNotNull();

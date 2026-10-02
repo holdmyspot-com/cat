@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -379,7 +379,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.TrialFailures _ -> "a trial ran without an outcome and needs a retry";
 			case PendingDecision.CalibrationFailure failure -> "calibration failed: " + failure.detail();
 			case PendingDecision.CheckpointReached checkpoint ->
-				"review checkpoint reached in cell " + checkpoint.category() + " after " + checkpoint.outcomes() +
+				"review checkpoint reached in cell " + checkpoint.cell() + " after " + checkpoint.outcomes() +
 					" outcomes";
 			case PendingDecision.ImprovementProven proven ->
 				"attempt " + proven.attempt() + " proved an improvement without certifying";
@@ -561,9 +561,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
 			double weakest = 1.0;
 			List<KeepOffer.CellEvidence> cells = new ArrayList<>();
-			for (String cell : attempt.procedure().categories())
+			for (String cell : attempt.procedure().cells())
 			{
-				CategoryCounts counts = attempt.count(cell);
+				CellCounts counts = attempt.count(cell);
 				weakest = Math.min(weakest, ExploratoryBounds.wilson(counts.passes(), counts.outcomes()).lower());
 				ComparisonBoundaries comparison = CellReports.comparison(attempt, cell);
 				Comparison frozen = comparison.comparison();

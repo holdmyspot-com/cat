@@ -65,10 +65,10 @@ public final class AuthorityWarningsTest
 	public void warningAwaitsTheUser()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		List<AuthorityWarning> warnings = List.of(readOnly("shared.md", TARGET));
 
-		Campaign warned = CampaignTransitions.apply(campaign, new CampaignEvent.WarnAuthority(warnings));
+		Campaign warned = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(warnings));
 
 		requireThat(warned.pending(), "pending").isEqualTo(new PendingDecision.AuthorityWarnings(warnings));
 		requireThat(warned.choices(), "choices").
@@ -83,7 +83,7 @@ public final class AuthorityWarningsTest
 	public void structuralWarningOffersNoAuthorization()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			pending(new PendingDecision.AuthorityWarnings(List.of(structural("shared.md", TARGET)))).build();
 
 		requireThat(campaign.choices(), "choices").
@@ -97,10 +97,10 @@ public final class AuthorityWarningsTest
 	public void authorizeRecordsTheTarget()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			pending(new PendingDecision.AuthorityWarnings(List.of(readOnly("shared.md", TARGET)))).build();
 
-		Campaign authorized = CampaignTransitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
+		Campaign authorized = Transitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
 
 		requireThat(authorized.authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(TARGET));
 		requireThat(authorized.pending(), "pending").isNull();
@@ -115,10 +115,10 @@ public final class AuthorityWarningsTest
 	{
 		// Requirement: R-W4
 		AuthorityWarning other = readOnly("other.md", OTHER_TARGET);
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			pending(new PendingDecision.AuthorityWarnings(List.of(readOnly("shared.md", TARGET), other))).build();
 
-		Campaign authorized = CampaignTransitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
+		Campaign authorized = Transitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
 
 		requireThat(authorized.authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(TARGET));
 		requireThat(authorized.pending(), "pending").isEqualTo(new PendingDecision.AuthorityWarnings(List.of(other)));
@@ -131,10 +131,10 @@ public final class AuthorityWarningsTest
 	public void authorizeRefusesUnwarnedTarget()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			pending(new PendingDecision.AuthorityWarnings(List.of(readOnly("shared.md", TARGET)))).build();
 
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.authorize(OTHER_TARGET));
+		Transitions.apply(campaign, CampaignEvent.Choose.authorize(OTHER_TARGET));
 	}
 
 	/**
@@ -145,14 +145,14 @@ public final class AuthorityWarningsTest
 	public void reauthorizingKeepsStructureFixed()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).authorizedTarget(TARGET).
+		Campaign campaign = new Builder().confirmed().working(1).authorizedTarget(TARGET).
 			pending(new PendingDecision.AuthorityWarnings(List.of(structural("shared.md", TARGET)))).build();
 		requireThat(campaign.choices(), "choices").doesNotContain(Choice.AUTHORIZE_TARGET);
 
 		IllegalArgumentException refusal = null;
 		try
 		{
-			CampaignTransitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
+			Transitions.apply(campaign, CampaignEvent.Choose.authorize(TARGET));
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -168,11 +168,11 @@ public final class AuthorityWarningsTest
 	public void useAuthorizedSourceContinuesUnchanged()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
-		Campaign warned = CampaignTransitions.apply(campaign,
+		Campaign campaign = new Builder().confirmed().working(1).build();
+		Campaign warned = Transitions.apply(campaign,
 			new CampaignEvent.WarnAuthority(List.of(readOnly("shared.md", TARGET))));
 
-		Campaign answered = CampaignTransitions.apply(warned, CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
+		Campaign answered = Transitions.apply(warned, CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 
 		requireThat(answered, "answered").isEqualTo(campaign);
 	}
@@ -186,13 +186,13 @@ public final class AuthorityWarningsTest
 		// Requirement: R-W4
 		PendingDecision.AuthorityWarnings pending = new PendingDecision.AuthorityWarnings(
 			List.of(readOnly("shared.md", TARGET)));
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).pending(pending).build();
+		Campaign campaign = new Builder().confirmed().working(1).pending(pending).build();
 
-		Campaign stopped = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
+		Campaign stopped = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
 		requireThat(stopped.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 		requireThat(stopped.pending(), "stopped.pending").isEqualTo(pending);
 
-		Campaign revised = CampaignTransitions.apply(campaign, new CampaignEvent.Revise());
+		Campaign revised = Transitions.apply(campaign, new CampaignEvent.Revise());
 		requireThat(revised.revisionRequested(), "revisionRequested").isTrue();
 		requireThat(revised.pending(), "revised.pending").isNull();
 	}
@@ -231,8 +231,8 @@ public final class AuthorityWarningsTest
 	public void warningRequiresNoPendingRevision()
 	{
 		// Requirement: R-W4
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).revisionRequested().build();
+		Campaign campaign = new Builder().confirmed().working(1).revisionRequested().build();
 
-		CampaignTransitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(readOnly("shared.md", TARGET))));
+		Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(readOnly("shared.md", TARGET))));
 	}
 }

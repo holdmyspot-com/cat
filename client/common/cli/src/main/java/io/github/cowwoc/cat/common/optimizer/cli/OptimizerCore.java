@@ -6,8 +6,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignRegistry;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
+import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -151,13 +151,13 @@ public final class OptimizerCore implements Core
 		if (!absolute.startsWith(root) || absolute.equals(root))
 			throw new CommandRefusedException("The target must be inside the project " + root + ": " + absolute);
 		CampaignStore store = scope.store();
-		CampaignRegistry.Opening opening = CampaignRegistry.open(store.listHeaders(), root, absolute,
+		Registry.Opening opening = Registry.open(store.listHeaders(), root, absolute,
 			scope.harness());
 		return switch (opening)
 		{
-			case CampaignRegistry.Opening.Refuse refuse -> throw refused(refuse.owner());
-			case CampaignRegistry.Opening.Resume resume -> resume(root, store, resume.header());
-			case CampaignRegistry.Opening.Create _ -> create(root, store, absolute);
+			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
+			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
+			case Registry.Opening.Create _ -> create(root, store, absolute);
 		};
 	}
 
@@ -167,7 +167,7 @@ public final class OptimizerCore implements Core
 	 * @param header the campaign
 	 * @return the exception to throw
 	 */
-	private static CommandRefusedException refused(CampaignHeader header)
+	private static CommandRefusedException refused(Header header)
 	{
 		String owner = header.harness().commandName();
 		return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() +
@@ -186,7 +186,7 @@ public final class OptimizerCore implements Core
 	 * @throws IOException if the store or the workspace fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult resume(Path root, CampaignStore store, CampaignHeader header)
+	private CommandResult resume(Path root, CampaignStore store, Header header)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Campaign campaign = require(store, header.id(), true);
@@ -229,7 +229,7 @@ public final class OptimizerCore implements Core
 		FileInventory inventory = fork.inventory();
 		Overlay incumbent = Overlay.of(inventory);
 		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
-		CampaignHeader header = new CampaignHeader(id, root, target, scope.harness(), Lifecycle.ACTIVE);
+		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE);
 		Campaign campaign = Campaign.start(header, scope.ceiling(), incumbent.identity(), environment(inventory));
 		store.replaceSnapshot(campaign);
 		CommandResult result = derive(root, campaign, fork, null, null);

@@ -45,17 +45,17 @@ public final class Baseline
 	 *
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
-	 * @param categories the contract's number of cells {@code K}
+	 * @param cells the contract's number of cells {@code K}
 	 * @return {@code true} if the incumbent is proven deficient
 	 * @throws NullPointerException if {@code counts} is null
-	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code categories} are not positive
+	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
 	 */
-	public static boolean isProvenDeficient(CategoryCounts counts, int baselineIndex, int categories)
+	public static boolean isProvenDeficient(CellCounts counts, int baselineIndex, int cells)
 	{
 		requireThat(counts, "counts").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
-		requireThat(categories, "categories").isPositive();
-		SignificanceLevel level = ErrorBudget.incumbentLevel(baselineIndex, categories);
+		requireThat(cells, "categories").isPositive();
+		SignificanceLevel level = ErrorBudget.incumbentLevel(baselineIndex, cells);
 		return DEFICIENCY.exceeds(counts.passes(), counts.failures(), level);
 	}
 
@@ -64,20 +64,20 @@ public final class Baseline
 	 *
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
-	 * @param categories the contract's number of cells {@code K}
+	 * @param cells the contract's number of cells {@code K}
 	 * @return {@value #TARGET} or {@value #EXTENDED_TARGET}
 	 * @throws NullPointerException if {@code counts} is null
-	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code categories} are not positive
+	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
 	 */
-	public static int target(CategoryCounts counts, int baselineIndex, int categories)
+	public static int target(CellCounts counts, int baselineIndex, int cells)
 	{
 		requireThat(counts, "counts").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
-		requireThat(categories, "categories").isPositive();
+		requireThat(cells, "categories").isPositive();
 		int outcomes = counts.outcomes();
 		if (outcomes < TARGET)
 			return TARGET;
-		if (20L * counts.passes() >= 19L * outcomes || isProvenDeficient(counts, baselineIndex, categories))
+		if (20L * counts.passes() >= 19L * outcomes || isProvenDeficient(counts, baselineIndex, cells))
 			return TARGET;
 		return EXTENDED_TARGET;
 	}
@@ -97,7 +97,7 @@ public final class Baseline
 		List<String> cells = contract.cellIds();
 		for (String cell : cells)
 		{
-			CategoryCounts counts = baseline.count(cell);
+			CellCounts counts = baseline.count(cell);
 			if (counts.outcomes() < target(counts, baseline.index(), cells.size()))
 				return false;
 		}

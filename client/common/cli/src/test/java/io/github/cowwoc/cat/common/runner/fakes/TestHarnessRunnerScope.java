@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner.fakes;
 
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
 import java.time.Instant;

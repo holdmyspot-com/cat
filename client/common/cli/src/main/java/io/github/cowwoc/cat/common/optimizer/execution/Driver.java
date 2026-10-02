@@ -10,7 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
@@ -251,7 +251,7 @@ public final class Driver implements AutoCloseable
 			default -> throw new IllegalArgumentException("Only the driver applies " + event);
 		}
 		Campaign before = campaign;
-		Campaign after = CampaignTransitions.apply(before, event);
+		Campaign after = Transitions.apply(before, event);
 		if (event instanceof CampaignEvent.Choose choose && choose.choice() == Choice.RESUME &&
 			before.pending() instanceof PendingDecision.UnownedChange && after.lifecycle() == Lifecycle.ACTIVE)
 		{
@@ -436,7 +436,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private void record(CampaignEvent event) throws IOException
 	{
-		campaign = CampaignTransitions.apply(campaign, event);
+		campaign = Transitions.apply(campaign, event);
 		context.store().replaceSnapshot(campaign);
 	}
 
@@ -716,7 +716,7 @@ public final class Driver implements AutoCloseable
 			evidence.observe(new AssumptionCheck.Observation(concurrency, verdict));
 		}
 		Candidate previous = campaign.development().working();
-		Campaign next = CampaignTransitions.apply(campaign, complete);
+		Campaign next = Transitions.apply(campaign, complete);
 		if (next.lifecycle() == Lifecycle.ACTIVE && !next.development().working().equals(previous))
 			next = WorktreeCheck.verify(context, next, previous);
 		campaign = next;
@@ -820,11 +820,11 @@ public final class Driver implements AutoCloseable
 			if (!isAuthorRunning(entry.getKey()))
 				return Optional.of(entry);
 		}
-		Optional<String> category = round.nextCategory();
-		if (category.isEmpty())
+		Optional<String> cell = round.nextCell();
+		if (cell.isEmpty())
 			return Optional.empty();
 
-		record(new CampaignEvent.StartAuthorAttempt(category.get()));
+		record(new CampaignEvent.StartAuthorAttempt(cell.get()));
 		return campaign.development().round().pendingAuthorAttempts().entrySet().stream().
 			filter(entry -> !isAuthorRunning(entry.getKey())).findFirst();
 	}
@@ -845,10 +845,10 @@ public final class Driver implements AutoCloseable
 	 * Launches an already persisted author reservation from the unchanged working candidate and its frozen evidence.
 	 *
 	 * @param number the reserved attempt number
-	 * @param category the addressed cell
+	 * @param cell the addressed cell
 	 * @throws IOException if the workspace or overlay cannot be read or written
 	 */
-	private void startAuthorSession(int number, String category) throws IOException
+	private void startAuthorSession(int number, String cell) throws IOException
 	{
 		Candidate working = campaign.development().working();
 		Overlay overlay = context.overlays().require(working.snapshot());
@@ -856,10 +856,10 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
-			AuthorBrief brief = AuthorBrief.of(campaign, category, overlay.fork());
+			AuthorBrief brief = AuthorBrief.of(campaign, cell, overlay.fork());
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
-			register(new InFlight.Author(number, category, working, overlay, copy, before, brief, handle));
+			register(new InFlight.Author(number, cell, working, overlay, copy, before, brief, handle));
 		}
 		catch (IOException e)
 		{
@@ -986,7 +986,7 @@ public final class Driver implements AutoCloseable
 		List<Hunk> hunks = changes.get().stream().flatMap(change -> Hunks.between(change).stream()).toList();
 		Set<String> received = author.brief().failureIds();
 		List<String> violations = report.get().manifest().violations(received, hunks);
-		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.category(),
+		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.cell(),
 			author.working().snapshot(), report.get().manifest().classifications(), violations, completed.transcript(),
 			completed.effects())));
 		if (!violations.isEmpty())
@@ -1002,7 +1002,7 @@ public final class Driver implements AutoCloseable
 				context.overlays().save(candidate.get());
 				snapshot = candidate.get().identity();
 			}
-			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.category(), snapshot, changes.get()));
+			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.cell(), snapshot, changes.get()));
 		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
@@ -1053,7 +1053,7 @@ public final class Driver implements AutoCloseable
 		Development development = campaign.development();
 		Round round = development.round();
 		return round != null && development.author() == null && development.working().equals(author.working()) &&
-			author.category().equals(round.pendingAuthorAttempts().get(author.number()));
+			author.cell().equals(round.pendingAuthorAttempts().get(author.number()));
 	}
 
 	/**
@@ -1095,7 +1095,7 @@ public final class Driver implements AutoCloseable
 				case Admission.Rerun rerun -> Reconciler.find(campaign, rerun.key()).orElseThrow();
 				case Admission.Assign assign ->
 				{
-					next = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(assign));
+					next = Transitions.apply(campaign, new CampaignEvent.Assign(assign));
 					yield next.trials().getLast();
 				}
 			};
@@ -1103,7 +1103,7 @@ public final class Driver implements AutoCloseable
 			if (now.plus(expected).isAfter(deadline))
 				break;
 			context.store().writeAssignment(campaignId, trial);
-			campaign = CampaignTransitions.apply(next, new CampaignEvent.Start(trial.key()));
+			campaign = Transitions.apply(next, new CampaignEvent.Start(trial.key()));
 			admitted.add(trial);
 		}
 		if (admitted.isEmpty())
@@ -1254,7 +1254,7 @@ public final class Driver implements AutoCloseable
 		for (TrialKey key : abandoned)
 		{
 			if (findRunningTrial(key).isPresent())
-				campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, reason,
+				campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, reason,
 					now, null));
 		}
 		if (campaign != before)

@@ -120,12 +120,12 @@ public final class ThrottleTest
 	public void rejectedTrialRerunsAfterWait()
 	{
 		// Requirement: R-E6
-		Campaign campaign = new CampaignBuilder().confirmed().slowStart(new SlowStart(4, 1)).build();
+		Campaign campaign = new Builder().confirmed().slowStart(new SlowStart(4, 1)).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		Instant reset = NOW.plusSeconds(60);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED,
 			"rate limit reached", NOW, reset));
 
 		LogicalTrial trial = campaign.trials().getFirst();
@@ -144,14 +144,14 @@ public final class ThrottleTest
 	public void observedUtilizationReachesCampaign()
 	{
 		// Requirement: R-E6
-		Campaign campaign = new CampaignBuilder().confirmed().development("formatting", 50, 0).
+		Campaign campaign = new Builder().confirmed().development("formatting", 50, 0).
 			slowStart(new SlowStart(4, 0)).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.85)),
+		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.85)),
 			NOW));
 		requireThat(campaign.throttle().windowCap(), "windowCap").isEqualTo(4);
 
 		Instant reset = NOW.plusSeconds(30);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ObserveRateLimit(
+		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(
 			List.of(new RateLimitWindow(0.97, reset)), NOW));
 		requireThat(campaign.throttle().holdUntil(), "holdUntil").isEqualTo(reset);
 		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);

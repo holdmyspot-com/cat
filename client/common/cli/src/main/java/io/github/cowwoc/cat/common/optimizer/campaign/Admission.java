@@ -29,7 +29,7 @@ public sealed interface Admission
 	 *
 	 * @return the category
 	 */
-	String category();
+	String cell();
 
 	/**
 	 * Reruns an assigned trial with the same instance, purpose and snapshot.
@@ -64,9 +64,9 @@ public sealed interface Admission
 		}
 
 		@Override
-		public String category()
+		public String cell()
 		{
-			return key.category();
+			return key.cell();
 		}
 	}
 
@@ -79,11 +79,11 @@ public sealed interface Admission
 	 * @param purpose why the trial runs
 	 * @param series the series that the trial belongs to, as {@link TrialKey#series()} describes
 	 * @param snapshot the snapshot that the trial runs
-	 * @param category the trial's cell identifier
+	 * @param cell the trial's cell identifier
 	 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
 	 * @param allocation the allocation decision that chose the trial
 	 */
-	record Assign(Purpose purpose, int series, Sha256 snapshot, String category, TrialInstance instance,
+	record Assign(Purpose purpose, int series, Sha256 snapshot, String cell, TrialInstance instance,
 		Allocation allocation) implements Admission
 	{
 		/**
@@ -92,12 +92,12 @@ public sealed interface Admission
 		 * @param purpose why the trial runs
 		 * @param series the series that the trial belongs to
 		 * @param snapshot the snapshot that the trial runs
-		 * @param category the trial's non-blank cell identifier
+		 * @param cell the trial's non-blank cell identifier
 		 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
 		 * @param allocation the allocation decision that chose the trial
-		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code category} or {@code allocation}
+		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code cell} or {@code allocation}
 		 *   are null
-		 * @throws IllegalArgumentException if {@code series} is negative, {@code category} is blank,
+		 * @throws IllegalArgumentException if {@code series} is negative, {@code cell} is blank,
 		 *   {@code instance} is missing for a targeted purpose or supplied for a representative purpose,
 		 *   {@code instance} is not marked targeted or belongs to another cell, or the allocation rule does not assign
 		 *   the purpose
@@ -107,7 +107,7 @@ public sealed interface Admission
 			requireThat(purpose, "purpose").isNotNull();
 			requireThat(series, "series").isNotNegative();
 			requireThat(snapshot, "snapshot").isNotNull();
-			requireThat(category, "category").isNotBlank();
+			requireThat(cell, "category").isNotBlank();
 			requireThat(allocation, "allocation").isNotNull();
 			requireThat(allocation.rule().assigns(purpose), "allocation.rule().assigns(purpose)").isTrue();
 			boolean targeted = instance != null;
@@ -115,7 +115,7 @@ public sealed interface Admission
 			if (instance != null)
 			{
 				requireThat(instance.targeted(), "instance.targeted()").isTrue();
-				requireThat(instance.cellId(), "instance.cellId()").isEqualTo(category, "category");
+				requireThat(instance.cellId(), "instance.cellId()").isEqualTo(cell, "category");
 			}
 		}
 	}

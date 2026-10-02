@@ -21,13 +21,13 @@ public final class OptimizationEvidenceTest
 	public void tokenSamplesStayWithTheirIdentity()
 	{
 		// Requirement: R-M4, R-E18
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		MeasurementIdentity earlier = campaign.identity();
 		campaign = completeTokens(campaign, Purpose.DEVELOPMENT, 10L);
 		campaign = completeTokens(campaign, Purpose.BASELINE, 20L);
-		campaign = CampaignTransitions.apply(campaign,
-			new CampaignEvent.ChangeMeasurement(CampaignBuilder.confirmedIdentity("model-b")));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		campaign = Transitions.apply(campaign,
+			new CampaignEvent.ChangeMeasurement(Builder.confirmedIdentity("model-b")));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 		campaign = completeTokens(campaign, Purpose.DEVELOPMENT, 100L);
 		campaign = completeTokens(campaign, Purpose.BASELINE, 200L);
 
@@ -38,7 +38,7 @@ public final class OptimizationEvidenceTest
 		requireThat(comparison.incumbentOutcomes(), "incumbentOutcomes").isEqualTo(1);
 		requireThat(comparison.unavailable(), "unavailable").isNull();
 
-		Campaign historical = new CampaignBuilder().confirmed().working(1).identity(earlier).
+		Campaign historical = new Builder().confirmed().working(1).identity(earlier).
 			optimization(campaign.optimization()).build();
 		InputComparison historicalComparison = findSafety(OptimizationReport.of(historical));
 		requireThat(historicalComparison.workingMedian(), "historicalWorkingMedian").isEqualTo(10L);
@@ -54,9 +54,9 @@ public final class OptimizationEvidenceTest
 		// Requirement: R-M4, R-E18
 		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
 			MeasurementIdentity.EMPTY, Map.of(
-				CampaignBuilder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(1, List.of(10L))),
-				CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(1, List.of(20L))))));
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).identity(MeasurementIdentity.EMPTY).
+				Builder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(1, List.of(10L))),
+				Builder.INCUMBENT, Map.of("safety", new TrialInputs(1, List.of(20L))))));
+		Campaign campaign = new Builder().confirmed().working(1).identity(MeasurementIdentity.EMPTY).
 			optimization(evidence).build();
 
 		InputComparison comparison = findSafety(OptimizationReport.of(campaign));
@@ -75,13 +75,13 @@ public final class OptimizationEvidenceTest
 	public void differingConditionsBlockTokenComparison()
 	{
 		// Requirement: R-M4, R-E18
-		MeasurementIdentity current = CampaignBuilder.confirmedIdentity("model-a");
-		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-b").replaceWith(
+		MeasurementIdentity current = Builder.confirmedIdentity("model-a");
+		MeasurementIdentity earlier = Builder.confirmedIdentity("model-b").replaceWith(
 			new MeasurementIdentity(Map.of(MeasurementCondition.REASONING, "different-reasoning")));
 		OptimizationEvidence evidence = OptimizationEvidence.EMPTY.
-			addTrial(current, CampaignBuilder.snapshot("candidate-1"), "safety", 10L).
-			addTrial(earlier, CampaignBuilder.INCUMBENT, "safety", 20L);
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).identity(current).
+			addTrial(current, Builder.snapshot("candidate-1"), "safety", 10L).
+			addTrial(earlier, Builder.INCUMBENT, "safety", 20L);
+		Campaign campaign = new Builder().confirmed().working(1).identity(current).
 			baselineIdentity(earlier).optimization(evidence).build();
 
 		InputComparison comparison = findSafety(OptimizationReport.of(campaign));
@@ -105,8 +105,8 @@ public final class OptimizationEvidenceTest
 	{
 		Campaign assigned = TransitionSteps.assign(campaign, purpose, "safety");
 		TrialKey key = TransitionSteps.last(assigned);
-		Campaign started = CampaignTransitions.apply(assigned, new CampaignEvent.Start(key));
-		return CampaignTransitions.apply(started, new CampaignEvent.Complete(key, Verdict.PASS, "",
+		Campaign started = Transitions.apply(assigned, new CampaignEvent.Start(key));
+		return Transitions.apply(started, new CampaignEvent.Complete(key, Verdict.PASS, "",
 			started.identity(), tokens, List.of()));
 	}
 

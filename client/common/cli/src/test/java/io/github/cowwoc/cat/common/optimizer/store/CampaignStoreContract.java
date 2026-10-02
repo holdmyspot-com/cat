@@ -8,9 +8,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
@@ -158,12 +158,12 @@ public abstract class CampaignStoreContract
 					MeasurementCondition.REASONING, "high"));
 			MeasurementIdentity identity = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "judge-model"),
 				cells);
-			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, CampaignBuilder.snapshot("candidate-1"),
+			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Builder.snapshot("candidate-1"),
 				ContractFixtures.SMALL_CELL, 3);
 			TrialInstance instance = new TrialInstance(ContractFixtures.SMALL_CELL, "formatting", "test-3",
 				List.of(), List.of("A turn"), "Answers in the house style", "generator-1",
 				DrawStream.Kind.DEVELOPMENT, 3, false);
-			Campaign campaign = new CampaignBuilder().header(header("campaign-cells")).identity(identity).
+			Campaign campaign = new Builder().header(header("campaign-cells")).identity(identity).
 				confirmed(ContractFixtures.twoCellContract(), 1).working(1).
 				development(ContractFixtures.BIG_CELL, 100, 0).
 				development(ContractFixtures.SMALL_CELL, 30, 2).
@@ -195,7 +195,7 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			Contract contract = TierFixtures.tieredContract();
-			Campaign campaign = new CampaignBuilder().header(header("campaign-tier")).confirmed(contract, 1).
+			Campaign campaign = new Builder().header(header("campaign-tier")).confirmed(contract, 1).
 				working(1).widened().failedCell(TierFixtures.BIG_MEDIUM).development(TierFixtures.BIG_LOW, 100, 0).
 				development(TierFixtures.BIG_MEDIUM, 4, 1).build();
 			fixture.store().replaceSnapshot(campaign);
@@ -255,7 +255,7 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = populated("campaign-full");
-			Campaign fresh = new CampaignBuilder().header(header("campaign-new")).confirmed().build();
+			Campaign fresh = new Builder().header(header("campaign-new")).confirmed().build();
 			fixture.store().replaceSnapshot(campaign);
 			fixture.store().replaceSnapshot(fresh);
 
@@ -278,7 +278,7 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = Campaign.start(header("campaign-draft"), Campaign.DEFAULT_CEILING,
-				CampaignBuilder.INCUMBENT, CampaignBuilder.OBSERVED);
+				Builder.INCUMBENT, Builder.OBSERVED);
 			fixture.store().replaceSnapshot(campaign);
 
 			requireThat(fixture.reopen().load("campaign-draft"), "loaded").isEqualTo(Optional.of(campaign));
@@ -299,7 +299,7 @@ public abstract class CampaignStoreContract
 			for (Lifecycle lifecycle : Lifecycle.values())
 			{
 				String id = "campaign-" + lifecycle.name().toLowerCase(Locale.ROOT);
-				Campaign campaign = new CampaignBuilder().header(header(id)).lifecycle(lifecycle).build();
+				Campaign campaign = new Builder().header(header(id)).lifecycle(lifecycle).build();
 				fixture.store().replaceSnapshot(campaign);
 				requireThat(fixture.reopen().load(id), "loaded").withContext(lifecycle, "lifecycle").
 					isEqualTo(Optional.of(campaign));
@@ -332,8 +332,8 @@ public abstract class CampaignStoreContract
 		// Requirement: R-E1
 		try (StoreFixture fixture = open())
 		{
-			Campaign first = new CampaignBuilder().header(header("campaign-1")).confirmed().build();
-			Campaign second = new CampaignBuilder().header(header("campaign-1")).confirmed().working(2).
+			Campaign first = new Builder().header(header("campaign-1")).confirmed().build();
+			Campaign second = new Builder().header(header("campaign-1")).confirmed().working(2).
 				development("safety", 3, 1).build();
 			fixture.store().replaceSnapshot(first);
 			fixture.store().replaceSnapshot(second);
@@ -360,7 +360,7 @@ public abstract class CampaignStoreContract
 			LogicalTrial noOutcome = trial(3, TrialState.RUNNING);
 			LogicalTrial noRecord = trial(4, TrialState.ASSIGNED);
 			LogicalTrial judged = trial(5, TrialState.JUDGED);
-			Campaign campaign = new CampaignBuilder().header(header("campaign-1")).confirmed().working(1).
+			Campaign campaign = new Builder().header(header("campaign-1")).confirmed().working(1).
 				trial(assigned).trial(running).trial(noOutcome).trial(noRecord).trial(judged).build();
 			CampaignEvent.Complete runningOutcome = complete(running.key(), Verdict.FAIL);
 			CampaignEvent.Complete assignedOutcome = complete(assigned.key(), Verdict.PASS);
@@ -424,7 +424,7 @@ public abstract class CampaignStoreContract
 		{
 			CampaignStore store = fixture.store();
 			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
-			Campaign campaign = new CampaignBuilder().header(header("campaign-1")).confirmed().working(1).trial(trial).
+			Campaign campaign = new Builder().header(header("campaign-1")).confirmed().working(1).trial(trial).
 				build();
 			CampaignEvent.Complete outcome = complete(trial.key(), Verdict.FAIL);
 			store.writeAssignment("campaign-1", trial);
@@ -511,7 +511,7 @@ public abstract class CampaignStoreContract
 			store.writeAssignment("campaign-1", trial);
 			CampaignEvent.Complete outcome = complete(trial.key(), Verdict.PASS);
 			store.writeOutcome("campaign-1", outcome);
-			Campaign campaign = new CampaignBuilder().header(header("campaign-1")).confirmed().working(1).trial(trial).
+			Campaign campaign = new Builder().header(header("campaign-1")).confirmed().working(1).trial(trial).
 				build();
 			store.replaceSnapshot(campaign);
 
@@ -562,8 +562,8 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			CampaignStore store = fixture.store();
-			Campaign second = new CampaignBuilder().header(header("campaign-b")).lifecycle(Lifecycle.CLOSED).build();
-			Campaign first = new CampaignBuilder().header(header("campaign-a")).build();
+			Campaign second = new Builder().header(header("campaign-b")).lifecycle(Lifecycle.CLOSED).build();
+			Campaign first = new Builder().header(header("campaign-a")).build();
 			store.replaceSnapshot(second);
 			store.replaceSnapshot(first);
 			store.writeAssignment("campaign-c", trial(1, TrialState.ASSIGNED));
@@ -601,7 +601,7 @@ public abstract class CampaignStoreContract
 	{
 		try (StoreFixture fixture = open())
 		{
-			fixture.store().replaceSnapshot(new CampaignBuilder().header(header("campaign-1")).build());
+			fixture.store().replaceSnapshot(new Builder().header(header("campaign-1")).build());
 
 			requireThat(fixture.store().loadJournal("campaign-1"), "loaded").isEmpty();
 		}
@@ -683,7 +683,7 @@ public abstract class CampaignStoreContract
 				new FileContent("edited\n".getBytes(UTF_8)), readWrite),
 			new DeliveryChange.Create(2, Path.of("rules/new.sh"), new FileContent(new byte[]{0, 1, 2, -1}),
 				executable));
-		return new DeliveryJournal(CampaignBuilder.snapshot(candidate), changes, applied);
+		return new DeliveryJournal(Builder.snapshot(candidate), changes, applied);
 	}
 
 	/**
@@ -692,9 +692,9 @@ public abstract class CampaignStoreContract
 	 * @param id the campaign's identifier
 	 * @return the header
 	 */
-	static CampaignHeader header(String id)
+	static Header header(String id)
 	{
-		return new CampaignHeader(id, Path.of("/project"), Path.of("/project/AGENTS.md"), Harness.CODEX,
+		return new Header(id, Path.of("/project"), Path.of("/project/AGENTS.md"), Harness.CODEX,
 			Lifecycle.ACTIVE);
 	}
 
@@ -707,7 +707,7 @@ public abstract class CampaignStoreContract
 	 */
 	static LogicalTrial trial(long sequence, TrialState state)
 	{
-		TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, CampaignBuilder.snapshot("candidate-1"), "safety",
+		TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Builder.snapshot("candidate-1"), "safety",
 			sequence);
 		Verdict verdict = null;
 		String rationale = null;
@@ -717,7 +717,7 @@ public abstract class CampaignStoreContract
 			rationale = "The reply answered without deleting files.";
 		}
 		return new LogicalTrial(key, instance("safety", "test-" + sequence, sequence, false),
-			CampaignBuilder.confirmedIdentity("model-a"), allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, sequence),
+			Builder.confirmedIdentity("model-a"), allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, sequence),
 			state, verdict, rationale, 0, List.of(), 0, List.of());
 	}
 
@@ -755,21 +755,21 @@ public abstract class CampaignStoreContract
 	static CampaignEvent.Complete complete(TrialKey key, Verdict verdict)
 	{
 		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
-			CampaignBuilder.confirmedIdentity("model-a"), null, List.of());
+			Builder.confirmedIdentity("model-a"), null, List.of());
 	}
 
 	/**
 	 * Returns a trial instance.
 	 *
-	 * @param category the category
+	 * @param cell the category
 	 * @param test the test definition
 	 * @param position the draw position
 	 * @param targeted {@code true} for a targeted instance
 	 * @return the instance
 	 */
-	static TrialInstance instance(String category, String test, long position, boolean targeted)
+	static TrialInstance instance(String cell, String test, long position, boolean targeted)
 	{
-		return new TrialInstance(category, category, test, List.of(new VariationChoice("tone", "formal", 0.25),
+		return new TrialInstance(cell, cell, test, List.of(new VariationChoice("tone", "formal", 0.25),
 			new VariationChoice("length", "short", 1.0 / 3)), List.of("First turn with \"quotes\"", "Second\nturn"),
 			"Answers without deleting files", "generator-1", DrawStream.Kind.DEVELOPMENT, position, targeted);
 	}
@@ -786,17 +786,17 @@ public abstract class CampaignStoreContract
 		roundAttempts.put("safety", 1);
 		roundAttempts.put("formatting", 0);
 		Map<MeasurementCondition, String> otherModel = new LinkedHashMap<>(
-			CampaignBuilder.confirmedIdentity("model-b").values());
-		TrialKey diagnostic = new TrialKey(Purpose.DIAGNOSTIC, 3, CampaignBuilder.snapshot("candidate-3"), "safety",
+			Builder.confirmedIdentity("model-b").values());
+		TrialKey diagnostic = new TrialKey(Purpose.DIAGNOSTIC, 3, Builder.snapshot("candidate-3"), "safety",
 			2);
-		TrialKey promotion = new TrialKey(Purpose.PROMOTION, 2, CampaignBuilder.snapshot("author-2"), "safety", 1);
-		TrialKey baselineKey = new TrialKey(Purpose.BASELINE, 2, CampaignBuilder.INCUMBENT, "formatting", 7);
-		TrialKey formalKey = new TrialKey(Purpose.FORMAL, 2, CampaignBuilder.snapshot("candidate-3"), "safety", 4);
-		TrialKey developmentKey = new TrialKey(Purpose.DEVELOPMENT, 4, CampaignBuilder.snapshot("candidate-3"),
+		TrialKey promotion = new TrialKey(Purpose.PROMOTION, 2, Builder.snapshot("author-2"), "safety", 1);
+		TrialKey baselineKey = new TrialKey(Purpose.BASELINE, 2, Builder.INCUMBENT, "formatting", 7);
+		TrialKey formalKey = new TrialKey(Purpose.FORMAL, 2, Builder.snapshot("candidate-3"), "safety", 4);
+		TrialKey developmentKey = new TrialKey(Purpose.DEVELOPMENT, 4, Builder.snapshot("candidate-3"),
 			"safety", 12);
-		MeasurementIdentity identity = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity identity = Builder.confirmedIdentity("model-a");
 
-		Campaign built = new CampaignBuilder().
+		Campaign built = new Builder().
 			header(header(id)).
 			confirmed(ContractFixtures.contract(), 2).
 			ceiling(12).
@@ -810,12 +810,12 @@ public abstract class CampaignStoreContract
 			failure(instance("safety", "deletion", 15, true)).
 			diagnosis(new Diagnosis(List.of(instance("safety", "deletion", 4, false)), 2, diagnostic, true)).
 			round(new Round(roundAttempts)).
-			author(new AuthorAttempt(2, "safety", CampaignBuilder.snapshot("author-2"), List.of(
+			author(new AuthorAttempt(2, "safety", Builder.snapshot("author-2"), List.of(
 				new PromotionRun(PromotionRun.Role.TRIGGERING, instance("safety", "deletion", 5, true), promotion,
 					Verdict.PASS),
 				new PromotionRun(PromotionRun.Role.REGRESSION, instance("formatting", "tone", 6, true), null, null),
 				new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, instance("safety", "deletion", 7, true),
-					null, null)), Minimality.start(List.of(), CampaignBuilder.snapshot("author-2")))).
+					null, null)), Minimality.start(List.of(), Builder.snapshot("author-2")))).
 			authorAttempts(3).
 			reviewPoint("safety", 250).
 			baselineIndex(2).
@@ -843,7 +843,7 @@ public abstract class CampaignStoreContract
 						"invalid judge result")), 0, List.of())).
 			trial(new LogicalTrial(diagnostic, instance("safety", "deletion", 4, true), identity,
 				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, null, 0, List.of(), 0, List.of())).
-			trial(new LogicalTrial(new TrialKey(Purpose.DEVELOPMENT, 4, CampaignBuilder.snapshot("candidate-3"),
+			trial(new LogicalTrial(new TrialKey(Purpose.DEVELOPMENT, 4, Builder.snapshot("candidate-3"),
 				"formatting", 3), instance("formatting", "tone", 14, false), identity,
 				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, null, 0, List.of(),
 				0, List.of())).
@@ -872,19 +872,19 @@ public abstract class CampaignStoreContract
 			authorizedTarget(Path.of("/external/also-authorized.md")).
 			revisionRequested().
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
-			delivery(new DeliveryRequest(new Candidate(3, CampaignBuilder.snapshot("candidate-3")), 1,
+			delivery(new DeliveryRequest(new Candidate(3, Builder.snapshot("candidate-3")), 1,
 				Outcome.IMPROVED_NOT_CERTIFIED)).
 			certificationAttempt(1).
 			lineage(1).
-			candidate(new Candidate(2, CampaignBuilder.snapshot("candidate-2"))).
-			category("formatting", 60, 2).
-			category("safety", 55, 0).
+			candidate(new Candidate(2, Builder.snapshot("candidate-2"))).
+			cell("formatting", 60, 2).
+			cell("safety", 55, 0).
 			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.", List.of(), List.of())).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			campaign().
 			certificationAttempt(2).
-			identity(CampaignBuilder.confirmedIdentity("model-a")).
-			category("safety", 30, 1).
+			identity(Builder.confirmedIdentity("model-a")).
+			cell("safety", 30, 1).
 			build();
 
 		List<Lineage> lineages = new ArrayList<>();

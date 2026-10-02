@@ -8,7 +8,7 @@ import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 
 import java.io.IOException;
 import java.nio.file.Files;

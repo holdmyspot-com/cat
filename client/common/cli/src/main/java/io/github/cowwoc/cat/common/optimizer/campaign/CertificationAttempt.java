@@ -23,7 +23,7 @@ import java.util.Map;
  * @param outcome the attempt's outcome, or {@code null} while it runs
  */
 public record CertificationAttempt(int index, int lineage, Candidate candidate, MeasurementIdentity identity,
-	CertificationProcedure procedure, Map<String, CategoryCounts> counts, List<Failure> failures,
+	CertificationProcedure procedure, Map<String, CellCounts> counts, List<Failure> failures,
 	DrawStream.State formalStream, Outcome outcome)
 {
 	/**
@@ -55,7 +55,7 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 		requireThat(formalStream.kind(), "formalStream.kind()").isEqualTo(DrawStream.Kind.FORMAL);
 		requireThat(formalStream.open(), "formalStream.open()").isTrue();
 		int cap = procedure.boundaries().cap();
-		for (Map.Entry<String, CategoryCounts> entry : counts.entrySet())
+		for (Map.Entry<String, CellCounts> entry : counts.entrySet())
 		{
 			requireThat(entry.getValue().outcomes(), "counts[" + entry.getKey() + "].outcomes()").
 				isLessThanOrEqualTo(cap, "cap");
@@ -67,14 +67,14 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	/**
 	 * Returns a cell's outcomes included in certification evidence.
 	 *
-	 * @param category the cell's identifier
+	 * @param cell the cell's identifier
 	 * @return the counts, empty if the cell has no outcomes
-	 * @throws NullPointerException if {@code category} is null
+	 * @throws NullPointerException if {@code cell} is null
 	 */
-	public CategoryCounts count(String category)
+	public CellCounts count(String cell)
 	{
-		requireThat(category, "category").isNotNull();
-		return counts.getOrDefault(category, CategoryCounts.EMPTY);
+		requireThat(cell, "category").isNotNull();
+		return counts.getOrDefault(cell, CellCounts.EMPTY);
 	}
 
 	/**

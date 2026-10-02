@@ -38,7 +38,7 @@ public final class AttemptSelection
 	 * @param addressed the representative cells of the addressed categories
 	 * @return whether any relevant development Wilson lower bound is below {@link #WEAK_ESTIMATE}
 	 */
-	public static boolean isWeak(Map<String, CategoryCounts> counts, Contract contract, List<String> addressed)
+	public static boolean isWeak(Map<String, CellCounts> counts, Contract contract, List<String> addressed)
 	{
 		requireThat(counts, "counts").isNotNull();
 		requireThat(contract, "contract").isNotNull();
@@ -48,7 +48,7 @@ public final class AttemptSelection
 			Cell selected = contract.findCell(representative).orElseThrow();
 			for (Cell cell : contract.profiles().cellsOf(selected.categoryId()))
 			{
-				CategoryCounts outcomes = counts.getOrDefault(cell.id(), CategoryCounts.EMPTY);
+				CellCounts outcomes = counts.getOrDefault(cell.id(), CellCounts.EMPTY);
 				if (ExploratoryBounds.wilson(outcomes.passes(), outcomes.outcomes()).lower() < WEAK_ESTIMATE)
 					return true;
 			}

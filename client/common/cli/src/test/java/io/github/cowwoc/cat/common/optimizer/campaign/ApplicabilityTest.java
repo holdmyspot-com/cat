@@ -57,7 +57,7 @@ public final class ApplicabilityTest
 	private static MeasurementIdentity changed(MeasurementCondition condition)
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.putAll(CampaignBuilder.confirmedIdentity("model-a").values());
+		values.putAll(Builder.confirmedIdentity("model-a").values());
 		values.put(condition, "changed");
 		return new MeasurementIdentity(values);
 	}
@@ -69,9 +69,9 @@ public final class ApplicabilityTest
 	public void unchangedResultIsCurrent()
 	{
 		// Requirement: R-M2
-		Sha256 snapshot = CampaignBuilder.snapshot("candidate");
-		Applicability applicability = Applicability.of(snapshot, CampaignBuilder.OBSERVED, snapshot,
-			CampaignBuilder.observed("model-a"));
+		Sha256 snapshot = Builder.snapshot("candidate");
+		Applicability applicability = Applicability.of(snapshot, Builder.OBSERVED, snapshot,
+			Builder.observed("model-a"));
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
 		requireThat(applicability.promptContentChanged(), "promptContentChanged").isFalse();
 		requireThat(applicability.changed(), "changed").isEmpty();
@@ -86,8 +86,8 @@ public final class ApplicabilityTest
 	public void conditionChangeMakesResultHistorical(MeasurementCondition condition)
 	{
 		// Requirement: R-M2
-		Sha256 snapshot = CampaignBuilder.snapshot("candidate");
-		Applicability applicability = Applicability.of(snapshot, CampaignBuilder.confirmedIdentity("model-a"),
+		Sha256 snapshot = Builder.snapshot("candidate");
+		Applicability applicability = Applicability.of(snapshot, Builder.confirmedIdentity("model-a"),
 			snapshot, changed(condition));
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
 		requireThat(applicability.changed(), "changed").containsExactly(List.of(condition));
@@ -101,8 +101,8 @@ public final class ApplicabilityTest
 	public void promptContentChangeMakesResultHistorical()
 	{
 		// Requirement: R-M2
-		Applicability applicability = Applicability.of(CampaignBuilder.snapshot("candidate"),
-			CampaignBuilder.OBSERVED, CampaignBuilder.snapshot("edited"), CampaignBuilder.OBSERVED);
+		Applicability applicability = Applicability.of(Builder.snapshot("candidate"),
+			Builder.OBSERVED, Builder.snapshot("edited"), Builder.OBSERVED);
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
 		requireThat(applicability.promptContentChanged(), "promptContentChanged").isTrue();
 		requireThat(applicability.changed(), "changed").isEmpty();
@@ -116,10 +116,10 @@ public final class ApplicabilityTest
 	{
 		// Requirement: R-M2
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.putAll(CampaignBuilder.OBSERVED.values());
+		values.putAll(Builder.OBSERVED.values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
-		Sha256 snapshot = CampaignBuilder.snapshot("candidate");
-		Applicability applicability = Applicability.of(snapshot, CampaignBuilder.OBSERVED, snapshot,
+		Sha256 snapshot = Builder.snapshot("candidate");
+		Applicability applicability = Applicability.of(snapshot, Builder.OBSERVED, snapshot,
 			new MeasurementIdentity(values));
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
 	}
@@ -131,12 +131,12 @@ public final class ApplicabilityTest
 	public void historicalAttemptIsKept()
 	{
 		// Requirement: R-M2
-		Campaign campaign = new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).category("formatting", 100, 0).category("safety", 100, 0).
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
+			certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).
 			outcome(Outcome.CERTIFIED).build();
 		MeasurementIdentity observed = changed(MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 
 		CertificationAttempt attempt = campaign.attempt(1);
 		requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);

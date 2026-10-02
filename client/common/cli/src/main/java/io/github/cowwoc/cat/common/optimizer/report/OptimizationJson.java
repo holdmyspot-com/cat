@@ -53,7 +53,7 @@ final class OptimizationJson
 		for (AuthorDiagnosis diagnosis : report.authors())
 		{
 			ObjectNode author = authors.addObject();
-			author.put("cell", diagnosis.category());
+			author.put("cell", diagnosis.cell());
 			author.put("snapshot", diagnosis.snapshot().hex());
 			author.put("transcript", diagnosis.transcript().toString());
 			author.put("effects", diagnosis.effects().toString());

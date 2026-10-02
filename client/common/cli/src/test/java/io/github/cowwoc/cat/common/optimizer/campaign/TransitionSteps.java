@@ -29,17 +29,17 @@ final class TransitionSteps
 	 * Reserves and submits one valid author report using the same durable transitions as the driver.
 	 *
 	 * @param campaign the campaign
-	 * @param category the addressed cell
+	 * @param cell the addressed cell
 	 * @param snapshot the authored snapshot
 	 * @param changes the authored changes
 	 * @return the updated campaign
 	 */
-	static Campaign submit(Campaign campaign, String category, Sha256 snapshot, List<FileDelta> changes)
+	static Campaign submit(Campaign campaign, String cell, Sha256 snapshot, List<FileDelta> changes)
 	{
-		Campaign reserved = CampaignTransitions.apply(campaign, new CampaignEvent.StartAuthorAttempt(category));
+		Campaign reserved = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt(cell));
 		int number = reserved.development().round().reservations().keySet().stream().mapToInt(Integer::intValue).
 			max().orElseThrow();
-		return CampaignTransitions.apply(reserved, new CampaignEvent.SubmitAuthorAttempt(number, category, snapshot,
+		return Transitions.apply(reserved, new CampaignEvent.SubmitAuthorAttempt(number, cell, snapshot,
 			changes));
 	}
 
@@ -68,22 +68,22 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's cell identifier
+	 * @param cell the trial's cell identifier
 	 * @return the admission
 	 */
-	static Admission.Assign admission(Campaign campaign, Purpose purpose, String category)
+	static Admission.Assign admission(Campaign campaign, Purpose purpose, String cell)
 	{
 		Allocation allocation = allocation(campaign, purpose);
 		return switch (purpose)
 		{
 			case DEVELOPMENT -> new Admission.Assign(purpose, campaign.development().series(),
-				campaign.development().working().snapshot(), category, null, allocation);
+				campaign.development().working().snapshot(), cell, null, allocation);
 			case BASELINE -> new Admission.Assign(purpose, campaign.baseline().index(),
-				campaign.incumbent().snapshot(), category, null, allocation);
+				campaign.incumbent().snapshot(), cell, null, allocation);
 			case FORMAL ->
 			{
 				CertificationAttempt attempt = campaign.runningAttempt().orElseThrow();
-				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), category, null,
+				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), cell, null,
 					allocation);
 			}
 			case DIAGNOSTIC, PROMOTION -> throw new IllegalArgumentException("Targeted purpose: " + purpose);
@@ -95,12 +95,12 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's cell identifier
+	 * @param cell the trial's cell identifier
 	 * @return the updated campaign
 	 */
-	static Campaign assign(Campaign campaign, Purpose purpose, String category)
+	static Campaign assign(Campaign campaign, Purpose purpose, String cell)
 	{
-		return CampaignTransitions.apply(campaign, new CampaignEvent.Assign(admission(campaign, purpose, category)));
+		return Transitions.apply(campaign, new CampaignEvent.Assign(admission(campaign, purpose, cell)));
 	}
 
 	/**
@@ -115,7 +115,7 @@ final class TransitionSteps
 	 */
 	static Campaign assign(Campaign campaign, Purpose purpose, int series, Sha256 snapshot, TrialInstance instance)
 	{
-		return CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(purpose, series,
+		return Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(purpose, series,
 			snapshot, instance.cellId(), instance, allocation(campaign, purpose))));
 	}
 
@@ -142,7 +142,7 @@ final class TransitionSteps
 	 */
 	static Campaign run(Campaign campaign, TrialKey key, Verdict verdict)
 	{
-		Campaign started = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		Campaign started = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		return complete(started, key, verdict);
 	}
 
@@ -170,7 +170,7 @@ final class TransitionSteps
 	 */
 	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict, String rationale)
 	{
-		return CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale,
+		return Transitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale,
 			campaign.identity(), null, List.of()));
 	}
 
@@ -179,13 +179,13 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's cell identifier
+	 * @param cell the trial's cell identifier
 	 * @param verdict the judged outcome
 	 * @return the updated campaign
 	 */
-	static Campaign adopt(Campaign campaign, Purpose purpose, String category, Verdict verdict)
+	static Campaign adopt(Campaign campaign, Purpose purpose, String cell, Verdict verdict)
 	{
-		Campaign assigned = assign(campaign, purpose, category);
+		Campaign assigned = assign(campaign, purpose, cell);
 		return run(assigned, last(assigned), verdict);
 	}
 

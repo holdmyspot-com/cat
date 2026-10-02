@@ -10,7 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
@@ -21,7 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
@@ -58,7 +58,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Tests {@link StatusReport}. Every campaign state comes from {@link CampaignBuilder}; hand-computed values are shown
+ * Tests {@link StatusReport}. Every campaign state comes from {@link Builder}; hand-computed values are shown
  * in comments.
  */
 public final class StatusReportTest
@@ -70,23 +70,23 @@ public final class StatusReportTest
 	public void reportsEachAttemptAndWinner()
 	{
 		// Requirement: R-D12
-		TrialInstance trigger = CampaignBuilder.targeted("safety", "cache");
+		TrialInstance trigger = Builder.targeted("safety", "cache");
 		List<PromotionRun> passed = List.of(
 			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
-				CampaignBuilder.snapshot("author-1"), "safety", 1), Verdict.PASS),
+				Builder.snapshot("author-1"), "safety", 1), Verdict.PASS),
 			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
-				CampaignBuilder.snapshot("author-1"), "safety", 2), Verdict.PASS));
+				Builder.snapshot("author-1"), "safety", 2), Verdict.PASS));
 		List<PromotionRun> failed = List.of(
 			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
-				CampaignBuilder.snapshot("author-2"), "safety", 1), Verdict.PASS),
+				Builder.snapshot("author-2"), "safety", 1), Verdict.PASS),
 			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
-				CampaignBuilder.snapshot("author-2"), "safety", 2), Verdict.FAIL));
-		Sha256 working = CampaignBuilder.snapshot("candidate-1");
+				Builder.snapshot("author-2"), "safety", 2), Verdict.FAIL));
+		Sha256 working = Builder.snapshot("candidate-1");
 		List<AttemptResult> results = List.of(
-			new AttemptResult(1, working, 1, "safety", CampaignBuilder.snapshot("author-1"), passed, 4, true, true),
-			new AttemptResult(1, working, 2, "safety", CampaignBuilder.snapshot("author-2"), failed, 2, false, false));
+			new AttemptResult(1, working, 1, "safety", Builder.snapshot("author-1"), passed, 4, true, true),
+			new AttemptResult(1, working, 2, "safety", Builder.snapshot("author-2"), failed, 2, false, false));
 		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), results);
-		StatusReport report = StatusReport.of(new CampaignBuilder().confirmed().working(1).
+		StatusReport report = StatusReport.of(new Builder().confirmed().working(1).
 			optimization(evidence).build(), ReportEvidence.NONE);
 		JsonNode attempts = report.toJson(JsonMapper.builder().build()).get("author_attempts");
 
@@ -114,7 +114,7 @@ public final class StatusReportTest
 	public void reportsPendingAttempt()
 	{
 		// Requirement: R-D12
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			round(new Round(Map.of("safety", 0), true, Map.of(1, "safety"), List.of())).build();
 		JsonNode attempts = StatusReport.of(campaign, ReportEvidence.NONE).
 			toJson(JsonMapper.builder().build()).get("author_attempts");
@@ -148,7 +148,7 @@ public final class StatusReportTest
 	public void explainsUnavailablePromptSizes()
 	{
 		// Requirement: R-E18
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		ObjectNode output = report.toJson(JsonMapper.builder().build());
 		requireThat(output.has("prompt_size"), "promptSize").isTrue();
@@ -180,15 +180,15 @@ public final class StatusReportTest
 			FileInventory fork = new FileInventory(project, Map.of(DriverHarness.PROMPT,
 				new RegularFile(Sha256.of("fork".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
 			DriverHarness harness = new DriverHarness(root.resolve("driver"),
-				new CampaignBuilder().confirmed().working(1).build(), fork, project);
-			Sha256 working = CampaignBuilder.snapshot("candidate-1");
+				new Builder().confirmed().working(1).build(), fork, project);
+			Sha256 working = Builder.snapshot("candidate-1");
 			harness.overlays().put(working, harness.candidate("short prompt\n"));
 			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
 			harness.trials(request ->
 			{
 				SessionResult.Completed trial = harness.passed();
 				long input = 30;
-				if (harness.snapshot(request).equals(CampaignBuilder.INCUMBENT))
+				if (harness.snapshot(request).equals(Builder.INCUMBENT))
 					input = 70;
 				return new SessionResult.Completed(trial.transcript(), trial.responses(), trial.effects(), trial.model(),
 					trial.reasoning(), new TokenUsage(input, 10, 1, 0), trial.windows(),
@@ -198,8 +198,8 @@ public final class StatusReportTest
 			{
 				harness.runUntil(driver, state -> state.baseline().count("safety").outcomes() > 0 &&
 					state.baseline().count("formatting").outcomes() > 0 &&
-					state.development().counts().getOrDefault("safety", CategoryCounts.EMPTY).outcomes() > 0 &&
-					state.development().counts().getOrDefault("formatting", CategoryCounts.EMPTY).outcomes() > 0);
+					state.development().counts().getOrDefault("safety", CellCounts.EMPTY).outcomes() > 0 &&
+					state.development().counts().getOrDefault("formatting", CellCounts.EMPTY).outcomes() > 0);
 				harness.clock().set(harness.clock().instant().plus(Duration.ofHours(1)));
 				StatusReport report = harness.runSlice(driver).status();
 				ObjectNode output = report.toJson(JsonMapper.builder().build());
@@ -227,10 +227,10 @@ public final class StatusReportTest
 	{
 		// Requirement: R-E18
 		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
-			CampaignBuilder.confirmedIdentity("model-a"), Map.of(
-				CampaignBuilder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(5, List.of(100L, 10L, 50L, 30L))),
-				CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(100L, 0L))))));
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).optimization(evidence).build();
+			Builder.confirmedIdentity("model-a"), Map.of(
+				Builder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(5, List.of(100L, 10L, 50L, 30L))),
+				Builder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(100L, 0L))))));
+		Campaign campaign = new Builder().confirmed().working(1).optimization(evidence).build();
 		JsonNode cells = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
 			get("trial_input_tokens");
 		for (JsonNode cell : cells)
@@ -253,9 +253,9 @@ public final class StatusReportTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder confirmed()
+	private static Builder confirmed()
 	{
-		return new CampaignBuilder().confirmed().working(1).readyBaseline();
+		return new Builder().confirmed().working(1).readyBaseline();
 	}
 
 	/**
@@ -341,7 +341,7 @@ public final class StatusReportTest
 	public void developmentNeedsCompleteConditions()
 	{
 		// Requirement: R-M4, R-P1
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
 			development("formatting", 90, 10).build();
@@ -360,11 +360,11 @@ public final class StatusReportTest
 	public void formalNeedsCompleteConditions()
 	{
 		// Requirement: R-M4, R-P1
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
-			boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
-			category("safety", 60, 1).build();
+			boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
+			cell("safety", 60, 1).build();
 		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
 		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("INDETERMINATE").
 			contains("HOST_TOOLS");
@@ -380,11 +380,11 @@ public final class StatusReportTest
 	public void incompleteAttemptHasNoKeepOffer()
 	{
 		// Requirement: R-M4, R-F6
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
-			boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
-			category("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).build();
+			boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
+			cell("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(StatusReport.of(campaign, ReportEvidence.NONE).keepOffers(), "offers").isEmpty();
 	}
 
@@ -395,9 +395,9 @@ public final class StatusReportTest
 	public void developmentNamesDifferentConditions()
 	{
 		// Requirement: R-M4, R-P1
-		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a").replaceWith(
+		MeasurementIdentity earlier = Builder.confirmedIdentity("model-a").replaceWith(
 			new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "earlier-judge")));
-		Campaign campaign = confirmed().identity(CampaignBuilder.confirmedIdentity("model-b")).
+		Campaign campaign = confirmed().identity(Builder.confirmedIdentity("model-b")).
 			baselineIdentity(earlier).development("formatting", 90, 10).build();
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
@@ -414,11 +414,11 @@ public final class StatusReportTest
 	public void formalNamesDifferentConditions()
 	{
 		// Requirement: R-M4, R-P1
-		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a").replaceWith(
+		MeasurementIdentity earlier = Builder.confirmedIdentity("model-a").replaceWith(
 			new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "earlier-judge")));
-		Campaign campaign = confirmed().certificationAttempt(1).identity(CampaignBuilder.confirmedIdentity("model-b")).
-			baselineIdentity(earlier).boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
-			category("safety", 60, 1).build();
+		Campaign campaign = confirmed().certificationAttempt(1).identity(Builder.confirmedIdentity("model-b")).
+			baselineIdentity(earlier).boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
+			cell("safety", 60, 1).build();
 		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
 		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("NOT_COMPARABLE").
 			contains("JUDGE").contains("MODEL");
@@ -435,7 +435,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-P1
 		// safety has no development outcomes; formatting is the incumbent when the working candidate is 0
-		Campaign campaign = new CampaignBuilder().confirmed().readyBaseline().development("formatting", 100, 0).
+		Campaign campaign = new Builder().confirmed().readyBaseline().development("formatting", 100, 0).
 			build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		CellReport safety = cell(report, "safety");
@@ -460,7 +460,7 @@ public final class StatusReportTest
 		// formatting: S = 120, F = 0 -> certified (120 >= 100) and proven better (120 >= 60)
 		// safety:     S = 60,  F = 1 -> undecided (60 < 150) and undecided against the incumbent (60 < 100)
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			category("formatting", 120, 0).category("safety", 60, 1).build();
+			cell("formatting", 120, 0).cell("safety", 60, 1).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.phase(), "phase").isEqualTo(Phase.FORMAL);
 		requireThat(report.attempt(), "attempt").isEqualTo(1);
@@ -509,7 +509,7 @@ public final class StatusReportTest
 		// formatting: S = 295, F = 5 reaches the cap of 300 without certifying (needs 296) and without being clearly
 		// below (needs 6 failures). safety: S = 0, F = 8 is clearly below and proven worse (needs 8 failures).
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			category("formatting", 295, 5).category("safety", 0, 8).build();
+			cell("formatting", 295, 5).cell("safety", 0, 8).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(cell(report, "formatting").comparison().state(), "capReached").isEqualTo("inconclusive");
 		requireThat(cell(report, "safety").comparison().state(), "clearlyBelow").isEqualTo("clearly below");
@@ -525,7 +525,7 @@ public final class StatusReportTest
 		// Requirement: R-P1
 		// The attempt froze baseline 1; the campaign now holds baseline 2.
 		Campaign frozen = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			category("formatting", 120, 0).category("safety", 120, 0).build();
+			cell("formatting", 120, 0).cell("safety", 120, 0).build();
 		Campaign campaign = new Campaign(frozen.header(), frozen.ceiling(), frozen.lineages(), frozen.identity(),
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
 			frozen.failedCells(), new IncumbentBaseline(2, frozen.baseline().identity(), frozen.baseline().counts()),
@@ -552,7 +552,7 @@ public final class StatusReportTest
 		// formatting has 2 tests (weight 1/2 each), safety has 1 (weight 1). Adaptive allocation gave formatting 120
 		// outcomes and safety 61. The pooled fraction (120 + 60) / 181 = 0.9945 must not appear.
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			category("formatting", 120, 0).category("safety", 60, 1).build();
+			cell("formatting", 120, 0).cell("safety", 60, 1).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.allocation().get("formatting"), "formattingAllocation").isEqualTo(120);
 		requireThat(report.allocation().get("safety"), "safetyAllocation").isEqualTo(61);
@@ -622,7 +622,7 @@ public final class StatusReportTest
 	public void deliveryIsLabelled()
 	{
 		// Requirement: R-P3
-		Candidate candidate = new Candidate(1, CampaignBuilder.snapshot("candidate-1"));
+		Candidate candidate = new Candidate(1, Builder.snapshot("candidate-1"));
 		Campaign campaign = confirmed().readyDevelopment().lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).
 			delivery(new DeliveryRequest(candidate, 0, Outcome.NOT_CERTIFIED)).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
@@ -639,7 +639,7 @@ public final class StatusReportTest
 	public void conditionsNameEachCellsValue()
 	{
 		// Requirement: R-E17
-		MeasurementIdentity campaignWide = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity campaignWide = Builder.confirmedIdentity("model-a");
 		MeasurementIdentity identity = new MeasurementIdentity(campaignWide.values(),
 			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "model-c")));
 		StatusReport report = StatusReport.of(confirmed().identity(identity).readyDevelopment().build(),
@@ -705,7 +705,7 @@ public final class StatusReportTest
 		// F = 5 (100 outcomes) is not proven better (needs 260), not proven worse (needs 8 failures) and not
 		// certified (needs 296), so it qualifies through its 100 outcomes.
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			category("formatting", 120, 0).category("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).campaign().
+			cell("formatting", 120, 0).cell("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).campaign().
 			pending(new PendingDecision.ImprovementProven(1)).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.status().label(), "status").isEqualTo("awaiting-user");
@@ -749,8 +749,8 @@ public final class StatusReportTest
 	{
 		// Requirement: R-F6
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			identity(CampaignBuilder.confirmedIdentity("model-b")).category("formatting", 120, 0).
-			category("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).campaign().
+			identity(Builder.confirmedIdentity("model-b")).cell("formatting", 120, 0).
+			cell("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).campaign().
 			pending(new PendingDecision.ImprovementProven(1)).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		KeepOffer offer = report.keepOffers().getFirst();
@@ -784,10 +784,10 @@ public final class StatusReportTest
 			ReportEvidence.NONE).status().label(), "closed").isEqualTo("not certified: plateau");
 		requireThat(StatusReport.of(confirmed().readyDevelopment().lifecycle(Lifecycle.CANCELLED).build(),
 			ReportEvidence.NONE).status().label(), "cancelled").isEqualTo("awaiting-user");
-		requireThat(StatusReport.of(new CampaignBuilder().build(), ReportEvidence.NONE).status().label(),
+		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).status().label(),
 			"unconfirmedStatus").
 			isEqualTo("awaiting-user");
-		requireThat(StatusReport.of(new CampaignBuilder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
+		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
 			isEqualTo(Phase.UNCONFIRMED);
 	}
 
@@ -898,7 +898,7 @@ public final class StatusReportTest
 		// Requirement: R-C11
 		// Requirement: R-C10
 		Contract contract = ContractFixtures.twoCellContract();
-		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+		Campaign development = new Builder().confirmed(contract, 1).working(1).readyBaseline().
 			development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 60, 1).build();
 		StatusReport report = StatusReport.of(development, ReportEvidence.NONE);
 		requireThat(report.cells().stream().map(CellReport::cell).toList(), "cells").
@@ -925,10 +925,10 @@ public final class StatusReportTest
 		requireThat(small.path("effort").asString(), "small.effort").isEqualTo("high");
 
 		// Each cell is decided on its own counts: big certifies, small is clearly below, safety is undecided
-		Campaign formal = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+		Campaign formal = new Builder().confirmed(contract, 1).working(1).readyBaseline().
 			certificationAttempt(1).boundaries(ReportBoundaries.boundaries(3)).
-			category(ContractFixtures.BIG_CELL, 120, 0).category(ContractFixtures.SMALL_CELL, 0, 8).
-			category("safety", 60, 1).build();
+			cell(ContractFixtures.BIG_CELL, 120, 0).cell(ContractFixtures.SMALL_CELL, 0, 8).
+			cell("safety", 60, 1).build();
 		StatusReport formalReport = StatusReport.of(formal, ReportEvidence.NONE);
 		requireThat(cell(formalReport, ContractFixtures.BIG_CELL).comparison().state(), "big").
 			isEqualTo("certified");
@@ -947,7 +947,7 @@ public final class StatusReportTest
 		// Requirement: R-C11
 		// Requirement: R-E12
 		Contract contract = ContractFixtures.twoCellContract();
-		Campaign campaign = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).readyBaseline().
 			development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 60, 1).build();
 		ObjectNode json = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build());
 		List<String> cells = List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety");
@@ -974,7 +974,7 @@ public final class StatusReportTest
 	public void cellTierIsShown()
 	{
 		// Requirement: R-E19
-		CampaignBuilder builder = new CampaignBuilder().confirmed(TierFixtures.tieredContract(), 1).working(1).
+		Builder builder = new Builder().confirmed(TierFixtures.tieredContract(), 1).working(1).
 			readyBaseline().failedCell(TierFixtures.BIG_MEDIUM);
 		List<String> formatting = List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM, TierFixtures.BIG_XHIGH,
 			TierFixtures.SMALL_HIGH);
@@ -997,7 +997,7 @@ public final class StatusReportTest
 		requireThat(widened.toJson(JsonMapper.builder().build()).path("cellTier").path("widened").asBoolean(),
 			"widenedJson").isTrue();
 
-		StatusReport unconfirmed = StatusReport.of(new CampaignBuilder().build(), ReportEvidence.NONE);
+		StatusReport unconfirmed = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
 		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cellTier").isNull(), "unconfirmed").
 			isTrue();
 	}

@@ -33,7 +33,7 @@ public final class EditOrContinueTest
 	 */
 	private static Development development(int safetyFailures, Diagnosis diagnosis)
 	{
-		return new CampaignBuilder().confirmed().development("safety", 60, safetyFailures).diagnosis(diagnosis).
+		return new Builder().confirmed().development("safety", 60, safetyFailures).diagnosis(diagnosis).
 			build().development();
 	}
 
@@ -55,7 +55,7 @@ public final class EditOrContinueTest
 	public void reproducedFailureEdits()
 	{
 		// Requirement: R-D2
-		TrialInstance failure = CampaignBuilder.targeted("safety", "logs");
+		TrialInstance failure = Builder.targeted("safety", "logs");
 		requireThat(EditOrContinue.decide(development(1, new Diagnosis(List.of(failure), 1, null, true))),
 			"reproduced").isEqualTo(EditOrContinue.Decision.EDIT);
 		requireThat(EditOrContinue.decide(development(1, new Diagnosis(List.of(failure), 1, null, false))),
@@ -69,7 +69,7 @@ public final class EditOrContinueTest
 	public void moreThanTwoFailuresEdit()
 	{
 		// Requirement: R-D2
-		TrialInstance failure = CampaignBuilder.targeted("safety", "logs");
+		TrialInstance failure = Builder.targeted("safety", "logs");
 		requireThat(EditOrContinue.decide(development(3, new Diagnosis(List.of(failure), 0, null, false))), "three").
 			isEqualTo(EditOrContinue.Decision.EDIT);
 		requireThat(EditOrContinue.decide(development(2, new Diagnosis(List.of(failure), 0, null, false))), "two").
@@ -95,11 +95,11 @@ public final class EditOrContinueTest
 	public void failurePausesAndReruns()
 	{
 		// Requirement: R-D2
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
 			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey inFlight = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(inFlight));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 
 		requireThat(campaign.development().isPaused(), "isPaused").isTrue();
@@ -120,7 +120,7 @@ public final class EditOrContinueTest
 	public void threePassingRerunsContinueAtOne()
 	{
 		// Requirement: R-D2
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
 			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		TrialInstance failed = campaign.development().failures().getFirst().instance();
@@ -134,7 +134,7 @@ public final class EditOrContinueTest
 		requireThat(campaign.development().isPaused(), "isPaused").isFalse();
 		requireThat(instances(campaign.development()), "failures").containsExactly(List.of(failed));
 		requireThat(campaign.development().count("safety"), "counts").isEqualTo(
-			CampaignBuilder.counts(60, 0).add(Verdict.FAIL));
+			Builder.counts(60, 0).add(Verdict.FAIL));
 		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").size().isEqualTo(1);
 	}
@@ -146,7 +146,7 @@ public final class EditOrContinueTest
 	public void failingRerunStartsRound()
 	{
 		// Requirement: R-D2
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
 			development("formatting", 60, 0).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		TrialInstance failed = campaign.development().failures().getFirst().instance();
@@ -160,7 +160,7 @@ public final class EditOrContinueTest
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
 		requireThat(instances(campaign.development()), "failures").containsExactly(List.of(failed));
 		requireThat(campaign.development().count("safety"), "counts").isEqualTo(
-			CampaignBuilder.counts(60, 0).add(Verdict.FAIL));
+			Builder.counts(60, 0).add(Verdict.FAIL));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
 	}
 
@@ -171,7 +171,7 @@ public final class EditOrContinueTest
 	public void continuedFailureKeepsItsDiagnosis()
 	{
 		// Requirement: R-D2
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).build();
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).build();
 		campaign = judgeLast(TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety"), Verdict.FAIL,
 			"The reply deleted the logs directory without asking.");
 		TrialInstance failed = campaign.development().failures().getFirst().instance();
@@ -196,7 +196,7 @@ public final class EditOrContinueTest
 	public void editedFailureKeepsItsDiagnosis()
 	{
 		// Requirement: R-D2
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 60, 0).build();
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).build();
 		campaign = judgeLast(TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety"), Verdict.FAIL,
 			"The reply deleted the logs directory without asking.");
 		TrialInstance failed = campaign.development().failures().getFirst().instance();
@@ -235,7 +235,7 @@ public final class EditOrContinueTest
 	private static Campaign judgeLast(Campaign campaign, Verdict verdict, String rationale)
 	{
 		TrialKey key = TransitionSteps.last(campaign);
-		Campaign started = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		Campaign started = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		return TransitionSteps.complete(started, key, verdict, rationale);
 	}
 }

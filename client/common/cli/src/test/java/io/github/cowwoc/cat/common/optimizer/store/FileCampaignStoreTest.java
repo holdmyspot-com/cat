@@ -20,10 +20,10 @@ import java.nio.file.attribute.PosixFilePermissions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -120,14 +120,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			FileDelta file = new FileDelta(Path.of("CLAUDE.md"), new FileContent("first\nseparator\nlast\n".
 				getBytes(UTF_8)), new FileContent("needed\nseparator\nunneeded\n".getBytes(UTF_8)),
 				PosixFilePermissions.fromString("rw-r--r--"));
-			TrialKey key = new TrialKey(Purpose.PROMOTION, 1, CampaignBuilder.snapshot("author"), "safety", 1);
+			TrialKey key = new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("author"), "safety", 1);
 			PromotionRun passed = new PromotionRun(PromotionRun.Role.TRIGGERING,
-				CampaignBuilder.targeted("safety", "cache"), key, Verdict.PASS);
+				Builder.targeted("safety", "cache"), key, Verdict.PASS);
 			Minimality search = Minimality.start(List.of(file), key.snapshot()).advance(key.snapshot(), List.of(passed),
 				Promotion.Decision.PROMOTE);
-			Campaign campaign = new CampaignBuilder().confirmed().working(1).
+			Campaign campaign = new Builder().confirmed().working(1).
 				round(new Round(Map.of("safety", 0))).author(new AuthorAttempt(1, "safety",
-					CampaignBuilder.snapshot("reduction"), List.of(), search)).build();
+					Builder.snapshot("reduction"), List.of(), search)).build();
 			store.replaceSnapshot(campaign);
 			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
 			requireThat(loaded.development().author().minimality(), "search").isEqualTo(search);
@@ -148,14 +148,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign-batch")), JSON);
-			Campaign campaign = new CampaignBuilder().confirmed().working(1).
-				failure(CampaignBuilder.targeted("safety", "cache")).
+			Campaign campaign = new Builder().confirmed().working(1).
+				failure(Builder.targeted("safety", "cache")).
 				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
 			for (int attempt = 0; attempt < 3; ++attempt)
-				campaign = CampaignTransitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(3, "safety",
-				CampaignBuilder.snapshot("contender"), List.of()));
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(2, "safety",
+				campaign = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
+			campaign = Transitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(3, "safety",
+				Builder.snapshot("contender"), List.of()));
+			campaign = Transitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(2, "safety",
 				campaign.development().working().snapshot(), List.of()));
 			store.replaceSnapshot(campaign);
 			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
@@ -182,10 +182,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON);
 			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(),
-				Map.of(CampaignBuilder.INCUMBENT, new PromptSize(4L, 1L, null)),
-				Map.of(CampaignBuilder.confirmedIdentity("model-a"),
-					Map.of(CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L))))));
-			Campaign campaign = new CampaignBuilder().confirmed().optimization(evidence).build();
+				Map.of(Builder.INCUMBENT, new PromptSize(4L, 1L, null)),
+				Map.of(Builder.confirmedIdentity("model-a"),
+					Map.of(Builder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L))))));
+			Campaign campaign = new Builder().confirmed().optimization(evidence).build();
 			store.replaceSnapshot(campaign);
 			requireThat(store.load(campaign.header().id()).orElseThrow().optimization(), "measurements").
 				isEqualTo(evidence);
@@ -201,14 +201,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	public void preservesComparisonIdentities() throws IOException
 	{
 		// Requirement: R-M4, R-L5
-		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a");
-		MeasurementIdentity current = CampaignBuilder.confirmedIdentity("model-b");
+		MeasurementIdentity earlier = Builder.confirmedIdentity("model-a");
+		MeasurementIdentity current = Builder.confirmedIdentity("model-b");
 		OptimizationEvidence evidence = OptimizationEvidence.EMPTY.
-			addTrial(earlier, CampaignBuilder.INCUMBENT, "safety", 10L).
-			addTrial(current, CampaignBuilder.INCUMBENT, "safety", 100L);
-		Campaign campaign = new CampaignBuilder().confirmed().identity(current).baselineIdentity(earlier).
+			addTrial(earlier, Builder.INCUMBENT, "safety", 10L).
+			addTrial(current, Builder.INCUMBENT, "safety", 100L);
+		Campaign campaign = new Builder().confirmed().identity(current).baselineIdentity(earlier).
 			readyBaseline().optimization(evidence).certificationAttempt(1).baselineIdentity(earlier).
-			category("safety", 100, 0).build();
+			cell("safety", 100, 0).build();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("comparison-identities")),
@@ -236,13 +236,13 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("input-usage"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			Campaign campaign = start();
-			Campaign assigned = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
 				Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
 				"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
 					Instant.parse("2026-10-01T12:00:00Z")))));
 			LogicalTrial trial = assigned.trials().getLast();
 			store.writeAssignment(ID, trial);
-			Campaign running = CampaignTransitions.apply(assigned, new CampaignEvent.Start(trial.key()));
+			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
 			store.replaceSnapshot(running);
 			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", running.identity(), 0L,
 				List.of()));
@@ -358,11 +358,11 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			reconcile(restarted);
 
 			Campaign end = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
-			CategoryCounts expected;
+			CellCounts expected;
 			if (crashAfter >= OUTCOME_RENAME)
-				expected = CampaignBuilder.counts(0, 1);
+				expected = Builder.counts(0, 1);
 			else
-				expected = CampaignBuilder.counts(1, 0);
+				expected = Builder.counts(1, 0);
 			requireThat(end.development().count("safety"), "counts").withContext(crashAfter, "crashAfter").
 				isEqualTo(expected);
 			requireThat(end.trials(), "unadopted").withContext(crashAfter, "crashAfter").isEmpty();
@@ -454,7 +454,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeAssignment(ID, first);
 			store.writeAssignment(ID, second);
 			store.writeOutcome(ID, complete(first.key(), Verdict.PASS));
-			store.replaceSnapshot(new CampaignBuilder().header(header(ID)).confirmed().working(1).trial(first).
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).trial(first).
 				trial(second).build());
 
 			Path directory = campaignDirectory(base);
@@ -554,18 +554,18 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path base = cleanup.add(Files.createTempDirectory("campaign-reply-evidence"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
-			Campaign assigned = CampaignTransitions.apply(start(), new CampaignEvent.Assign(new Admission.Assign(
+			Campaign assigned = Transitions.apply(start(), new CampaignEvent.Assign(new Admission.Assign(
 				Purpose.DEVELOPMENT, 1, start().development().working().snapshot(), "safety", null,
 				new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 0, Instant.parse("2026-10-01T12:00:00Z")))));
 			LogicalTrial earlier = assigned.trials().getFirst();
-			assigned = CampaignTransitions.apply(assigned, new CampaignEvent.Assign(new Admission.Assign(
+			assigned = Transitions.apply(assigned, new CampaignEvent.Assign(new Admission.Assign(
 				Purpose.DEVELOPMENT, 1, assigned.development().working().snapshot(), "safety", null,
 				new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 0, Instant.parse("2026-10-01T12:00:01Z")))));
 			LogicalTrial trial = assigned.trials().getLast();
 			store.writeAssignment(ID, earlier);
 			store.writeAssignment(ID, trial);
-			Campaign running = CampaignTransitions.apply(assigned, new CampaignEvent.Start(earlier.key()));
-			running = CampaignTransitions.apply(running, new CampaignEvent.Start(trial.key()));
+			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(earlier.key()));
+			running = Transitions.apply(running, new CampaignEvent.Start(trial.key()));
 			List<List<String>> responses = List.of(List.of("I'll inspect the directory.", "Should I delete it?"),
 				List.of("I'll keep it.", "The directory is unchanged."));
 			CampaignEvent.Complete outcome = new CampaignEvent.Complete(trial.key(), Verdict.FAIL, "Unasked narration",
@@ -576,12 +576,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			FileCampaignStore restarted = new FileCampaignStore(base, JSON);
 			Campaign recovered = restarted.load(ID).orElseThrow();
 			requireThat(restarted.listUnadoptedOutcomes(recovered), "unadoptedOutcomes").isEqualTo(List.of(outcome));
-			Campaign judged = CampaignTransitions.apply(recovered, outcome);
+			Campaign judged = Transitions.apply(recovered, outcome);
 			requireThat(judged.trials().getLast().responses(), "judgedResponses").isEqualTo(responses);
 			store.replaceSnapshot(judged);
 			Campaign loadedJudged = restarted.load(ID).orElseThrow();
 			requireThat(loadedJudged.trials().getLast().responses(), "loadedJudgedResponses").isEqualTo(responses);
-			Campaign adopted = CampaignTransitions.apply(loadedJudged, new CampaignEvent.Complete(earlier.key(),
+			Campaign adopted = Transitions.apply(loadedJudged, new CampaignEvent.Complete(earlier.key(),
 				Verdict.PASS, "Earlier trial passed",
 				loadedJudged.identity(), null, List.of()));
 			store.replaceSnapshot(adopted);
@@ -671,7 +671,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-rationale-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
-			store.replaceSnapshot(new CampaignBuilder().header(header(ID)).confirmed().working(1).
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).
 				trial(trial(2, TrialState.JUDGED)).
 				failure(new Failure(instance("safety", "deletion", 3, true),
 					"The reply deleted the directory unasked.",
@@ -857,7 +857,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	private static Campaign start()
 	{
-		return new CampaignBuilder().header(header(ID)).confirmed().working(1).build();
+		return new Builder().header(header(ID)).confirmed().working(1).build();
 	}
 
 	/**
@@ -915,14 +915,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	private static void runTrial(CampaignStore store, Campaign campaign, Verdict verdict) throws IOException
 	{
-		Campaign assigned = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+		Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
 			Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
 			"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
 			Instant.parse("2026-10-01T12:00:00Z")))));
 		LogicalTrial trial = assigned.trials().getLast();
 		store.writeAssignment(ID, trial);
 		store.replaceSnapshot(assigned);
-		Campaign running = CampaignTransitions.apply(assigned, new CampaignEvent.Start(trial.key()));
+		Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
 		store.replaceSnapshot(running);
 		finish(store, running, trial.key(), verdict);
 	}
@@ -941,7 +941,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	{
 		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", running.identity(), null, List.of());
 		store.writeOutcome(ID, outcome);
-		store.replaceSnapshot(CampaignTransitions.apply(running, outcome));
+		store.replaceSnapshot(Transitions.apply(running, outcome));
 	}
 
 	/**
@@ -958,7 +958,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		if (!outcomes.isEmpty())
 		{
 			for (CampaignEvent.Complete outcome : outcomes)
-				loaded = CampaignTransitions.apply(loaded, outcome);
+				loaded = Transitions.apply(loaded, outcome);
 			store.replaceSnapshot(loaded);
 			return;
 		}
@@ -972,7 +972,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		Campaign running = loaded;
 		if (trial.state() == TrialState.ASSIGNED)
 		{
-			running = CampaignTransitions.apply(loaded, new CampaignEvent.Start(trial.key()));
+			running = Transitions.apply(loaded, new CampaignEvent.Start(trial.key()));
 			store.replaceSnapshot(running);
 		}
 		finish(store, running, trial.key(), Verdict.PASS);

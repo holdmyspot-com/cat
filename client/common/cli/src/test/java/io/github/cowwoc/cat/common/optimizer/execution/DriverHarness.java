@@ -2,8 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -78,7 +79,7 @@ public final class DriverHarness
 	/**
 	 * The prompt sources that every session observes loading, as the campaign recorded them.
 	 */
-	public static final String PROMPT_SOURCES = CampaignBuilder.OBSERVED.values().get(
+	public static final String PROMPT_SOURCES = Builder.OBSERVED.values().get(
 		MeasurementCondition.PROMPT_SOURCES);
 	/**
 	 * The permissions of every prompt file.
@@ -154,9 +155,9 @@ public final class DriverHarness
 		this.directory = directory;
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
-		overlays.put(CampaignBuilder.INCUMBENT, Overlay.of(fork));
+		overlays.put(Builder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
-			overlays.put(CampaignBuilder.snapshot("candidate-" + number), candidate("candidate-" + number));
+			overlays.put(Builder.snapshot("candidate-" + number), candidate("candidate-" + number));
 		FileInventory working = overlays.require(campaign.development().working().snapshot()).snapshot();
 		if (project == null)
 			this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"), working);
@@ -184,7 +185,7 @@ public final class DriverHarness
 	public DriverContext context()
 	{
 		Map<MeasurementCondition, String> environment = new EnumMap<>(MeasurementCondition.class);
-		environment.putAll(CampaignBuilder.OBSERVED.values());
+		environment.putAll(Builder.OBSERVED.values());
 		environment.remove(MeasurementCondition.MODEL);
 		environment.remove(MeasurementCondition.REASONING);
 		environment.remove(MeasurementCondition.JUDGE);
@@ -381,7 +382,7 @@ public final class DriverHarness
 	 * @param request the session's request
 	 * @return {@code safety} or {@code formatting}
 	 */
-	public static String category(SessionRequest request)
+	public static String cell(SessionRequest request)
 	{
 		if (request.turns().getFirst().startsWith("Delete"))
 			return "safety";

@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.counts;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
@@ -39,7 +39,7 @@ public final class BaselineTest
 	 * Verifies that every category needs 50 trials.
 	 */
 	@Test
-	public void everyCategoryNeedsFifty()
+	public void everyCellNeedsFifty()
 	{
 		// Requirement: R-D7
 		requireThat(Baseline.target(counts(0, 0), 1, 2), "empty").isEqualTo(50);
@@ -66,10 +66,10 @@ public final class BaselineTest
 	 * Verifies that the baseline is met only when every category reaches its target.
 	 */
 	@Test
-	public void metWhenEveryCategoryReachesTarget()
+	public void metWhenEveryCellReachesTarget()
 	{
 		// Requirement: R-D7
-		MeasurementIdentity identity = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity identity = Builder.confirmedIdentity("model-a");
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
 			counts(50, 0))), ContractFixtures.contract()), "both").isTrue();
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
@@ -89,7 +89,7 @@ public final class BaselineTest
 	public void baselineTrialRecordsIdentity()
 	{
 		// Requirement: R-M4, R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+		Campaign campaign = new Builder().confirmed().working(1).
 			baselineIdentity(MeasurementIdentity.EMPTY).build();
 		MeasurementIdentity observed = campaign.identity();
 		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "formatting", Verdict.PASS);
@@ -105,10 +105,10 @@ public final class BaselineTest
 	public void developmentKeepsBaselineIdentity()
 	{
 		// Requirement: R-M4, R-D7
-		Campaign incumbent = new CampaignBuilder().confirmed().baselineIdentity(MeasurementIdentity.EMPTY).build();
+		Campaign incumbent = new Builder().confirmed().baselineIdentity(MeasurementIdentity.EMPTY).build();
 		MeasurementIdentity observed = incumbent.identity();
 		incumbent = TransitionSteps.adopt(incumbent, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
-		Campaign candidate = new CampaignBuilder().confirmed().working(1).
+		Campaign candidate = new Builder().confirmed().working(1).
 			baselineIdentity(MeasurementIdentity.EMPTY).build();
 		candidate = TransitionSteps.adopt(candidate, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 
@@ -123,9 +123,9 @@ public final class BaselineTest
 	public void commitRequiresBaseline()
 	{
 		// Requirement: R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().readyDevelopment().baseline("formatting", 50, 0).
+		Campaign campaign = new Builder().confirmed().readyDevelopment().baseline("formatting", 50, 0).
 			baseline("safety", 47, 3).build();
-		CampaignTransitions.apply(campaign, new CampaignEvent.Commit(
+		Transitions.apply(campaign, new CampaignEvent.Commit(
 			new CapCalibration(ErrorBudget.certificationLevel(1), 262), 3));
 	}
 
@@ -136,14 +136,14 @@ public final class BaselineTest
 	public void incumbentDevelopmentTrialsAreBaseline()
 	{
 		// Requirement: R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().build();
+		Campaign campaign = new Builder().confirmed().build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 		requireThat(campaign.baseline().count("formatting"), "baseline").isEqualTo(counts(1, 0));
 		requireThat(campaign.development().count("formatting"), "development").isEqualTo(counts(1, 0));
 
-		Campaign promoted = new CampaignBuilder().confirmed().working(1).build();
+		Campaign promoted = new Builder().confirmed().working(1).build();
 		promoted = TransitionSteps.adopt(promoted, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
-		requireThat(promoted.baseline().count("formatting"), "promotedBaseline").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(promoted.baseline().count("formatting"), "promotedBaseline").isEqualTo(CellCounts.EMPTY);
 	}
 
 	/**
@@ -154,15 +154,15 @@ public final class BaselineTest
 	public void newIdentityStartsNewBaseline()
 	{
 		// Requirement: R-D7
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyBaseline().build();
+		Campaign campaign = new Builder().confirmed().working(1).readyBaseline().build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "safety", Verdict.PASS);
 		requireThat(campaign.baseline().index(), "index").isEqualTo(1);
 		requireThat(campaign.baseline().count("safety"), "reused").isEqualTo(counts(51, 0));
 
-		campaign = CampaignTransitions.apply(campaign,
-			new CampaignEvent.ChangeMeasurement(CampaignBuilder.observed("model-b")));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		campaign = Transitions.apply(campaign,
+			new CampaignEvent.ChangeMeasurement(Builder.observed("model-b")));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 		requireThat(campaign.baseline().index(), "newIndex").isEqualTo(2);
-		requireThat(campaign.baseline().count("safety"), "newCounts").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.baseline().count("safety"), "newCounts").isEqualTo(CellCounts.EMPTY);
 	}
 }

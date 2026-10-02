@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
@@ -113,7 +113,7 @@ public final class SliceTest
 	private static DriverHarness developing(TemporaryDirectories cleanup) throws IOException
 	{
 		DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("slice")),
-			new CampaignBuilder().confirmed(withTimeLimit(TIME_LIMIT), 1).working(1).readyBaseline().
+			new Builder().confirmed(withTimeLimit(TIME_LIMIT), 1).working(1).readyBaseline().
 				development("formatting", 50, 0).development("safety", 50, 0).build());
 		harness.settings(SETTINGS);
 		return harness;

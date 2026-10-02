@@ -4,9 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
@@ -165,7 +165,7 @@ public final class ProposalTest
 	private Proposal proposal(LinkReport links, HostLogin login) throws InvalidProposalException
 	{
 		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
-		return Proposal.of(derived, new CampaignBuilder().build(), links, login,
+		return Proposal.of(derived, new Builder().build(), links, login,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 	}
 
@@ -391,7 +391,7 @@ public final class ProposalTest
 
 		String revised = changedDerivation(root -> ((ObjectNode) root.get("requirements").get(1)).
 			put("description", "Never delete a directory or a file without asking."));
-		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES), new CampaignBuilder().build(),
+		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES), new Builder().build(),
 			noLinks(), HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
 			contains("styled-summary").contains("delete-directory").contains("## Statistical procedure");
@@ -486,7 +486,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-C1
 		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
-		Proposal proposal = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			level ->
 			{
 				throw new CapCalibrationException("The calibration found no cap");
@@ -528,7 +528,7 @@ public final class ProposalTest
 	private int minimumTrials(Proposal proposal)
 	{
 		Contract contract = proposal.contract();
-		Campaign confirmed = CampaignTransitions.apply(new CampaignBuilder().build(),
+		Campaign confirmed = Transitions.apply(new Builder().build(),
 			new CampaignEvent.Confirm(contract, ContractIdentity.of(schema, contract), 0));
 		return RemainingWork.of(confirmed).total();
 	}
@@ -635,9 +635,9 @@ public final class ProposalTest
 		requireThat(events, "events").isEqualTo(List.of(
 			new CampaignEvent.Confirm(contract, ContractIdentity.of(schema, contract), 7),
 			new CampaignEvent.ReportUnavailable(Outcome.UNSUPPORTED_OUTPUT)));
-		Campaign campaign = new CampaignBuilder().build();
+		Campaign campaign = new Builder().build();
 		for (CampaignEvent event : events)
-			campaign = CampaignTransitions.apply(campaign, event);
+			campaign = Transitions.apply(campaign, event);
 		requireThat(campaign.contract().judge(), "judge").isEqualTo(expectedContract().judge());
 		requireThat(campaign.lineage().unavailable(), "unavailable").isEqualTo(Set.of(Outcome.UNSUPPORTED_OUTPUT));
 	}
@@ -668,7 +668,7 @@ public final class ProposalTest
 		requireThat(derived.contract().findCell("safety").orElseThrow().profile(), "safety.profile").
 			isEqualTo(ContractFixtures.BIG);
 
-		String text = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+		String text = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 		requireThat(text, "text").contains("## Trial profiles").
 			contains("Trial profile inventory (" + ContractFixtures.TWO_PROFILES.source() + "): big/high, small/high").
@@ -696,7 +696,7 @@ public final class ProposalTest
 			new ProfileEvidence(inventory, Map.of()));
 		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(6);
 
-		String text = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+		String text = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 		requireThat(text, "text").
 			contains("  - categories formatting, safety (3 cells each, named `<category>@<profile>`): big/high, " +
@@ -820,7 +820,7 @@ public final class ProposalTest
 	private String rendered(String derivation) throws InvalidProposalException
 	{
 		DerivedProposal derived = deriver.proposal(session(derivation), PROFILES);
-		return Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+		return Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 	}
 
@@ -863,7 +863,7 @@ public final class ProposalTest
 		DerivedProposal proposal = regressionDeriver().proposal(session(output), PROFILES);
 		requireThat(proposal.contract().findTest("styled-summary").orElseThrow().regressionScenarios(), "citations").
 			isEqualTo(List.of("reported.md", "analogous.md"));
-		requireThat(Proposal.of(proposal, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+		requireThat(Proposal.of(proposal, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "render").
 			contains("- Recorded regression scenarios:\n  - reported.md\n  - analogous.md\n");
 	}

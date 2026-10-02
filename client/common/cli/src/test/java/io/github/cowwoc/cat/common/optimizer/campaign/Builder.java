@@ -26,12 +26,12 @@ import java.util.Set;
 /**
  * Builds campaign states without running predecessor transitions.
  * <p>
- * For example, {@code new CampaignBuilder().confirmed().certificationAttempt(1).category("safety", 250, 2).build()}
+ * For example, {@code new Builder().confirmed().certificationAttempt(1).cell("safety", 250, 2).build()}
  * returns a campaign whose first certification attempt has 250 passes and 2 failures in {@code safety}.
  * <p>
  * Cell counts that a test gives as {@code (passes, failures)} place the failures in the earliest batches.
  */
-public final class CampaignBuilder
+public final class Builder
 {
 	/**
 	 * The incumbent's snapshot.
@@ -42,7 +42,7 @@ public final class CampaignBuilder
 	 */
 	public static final MeasurementIdentity OBSERVED = observed("model-a");
 
-	private CampaignHeader header = new CampaignHeader("campaign-1", Path.of("/project"),
+	private Header header = new Header("campaign-1", Path.of("/project"),
 		Path.of("/project/CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE);
 	private int ceiling = Campaign.DEFAULT_CEILING;
 	private Contract contract;
@@ -52,7 +52,7 @@ public final class CampaignBuilder
 	private int candidates;
 	private int authorAttempts;
 	private int series = 1;
-	private final Map<String, CategoryCounts> development = new LinkedHashMap<>();
+	private final Map<String, CellCounts> development = new LinkedHashMap<>();
 	private final List<Failure> failures = new ArrayList<>();
 	private Diagnosis diagnosis;
 	private Round round;
@@ -62,7 +62,7 @@ public final class CampaignBuilder
 	private final Set<String> failedCells = new LinkedHashSet<>();
 	private int baselineIndex = 1;
 	private MeasurementIdentity baselineIdentity;
-	private final Map<String, CategoryCounts> baseline = new LinkedHashMap<>();
+	private final Map<String, CellCounts> baseline = new LinkedHashMap<>();
 	private final List<AttemptBuilder> attempts = new ArrayList<>();
 	private final List<LogicalTrial> trials = new ArrayList<>();
 	private final List<RegressionInstance> regressionSet = new ArrayList<>();
@@ -84,7 +84,7 @@ public final class CampaignBuilder
 	 * @param evidence the measurements
 	 * @return this builder
 	 */
-	public CampaignBuilder optimization(OptimizationEvidence evidence)
+	public Builder optimization(OptimizationEvidence evidence)
 	{
 		optimization = evidence;
 		return this;
@@ -93,7 +93,7 @@ public final class CampaignBuilder
 	/**
 	 * Creates a builder for an active campaign that has no confirmed contract.
 	 */
-	public CampaignBuilder()
+	public Builder()
 	{
 	}
 
@@ -166,35 +166,35 @@ public final class CampaignBuilder
 	 * Returns the first representative instance of a fixture-contract category, drawn from a fixed development
 	 * stream, whose turns contain a text.
 	 *
-	 * @param category the category
+	 * @param cell the category
 	 * @param text the text that the instance's turns contain, for example {@code "logs"} for the {@code safety}
 	 *   instance that deletes the {@code logs} directory
 	 * @return the instance
 	 * @throws IllegalArgumentException if the first 1000 draws contain no such instance
 	 */
-	public static TrialInstance instance(String category, String text)
+	public static TrialInstance instance(String cell, String text)
 	{
 		Generator generator = new Generator(ContractFixtures.contract());
 		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1);
 		for (int draw = 0; draw < 1000; ++draw)
 		{
-			TrialInstance instance = generator.draw(category, stream);
+			TrialInstance instance = generator.draw(cell, stream);
 			if (String.join("\n", instance.turns()).contains(text))
 				return instance;
 		}
-		throw new IllegalArgumentException("No instance of " + category + " contains: " + text);
+		throw new IllegalArgumentException("No instance of " + cell + " contains: " + text);
 	}
 
 	/**
 	 * Returns the targeted copy of {@link #instance(String, String)}.
 	 *
-	 * @param category the category
+	 * @param cell the category
 	 * @param text the text that the instance's turns contain
 	 * @return the instance
 	 */
-	public static TrialInstance targeted(String category, String text)
+	public static TrialInstance targeted(String cell, String text)
 	{
-		return new Generator(ContractFixtures.contract()).markTargeted(instance(category, text));
+		return new Generator(ContractFixtures.contract()).markTargeted(instance(cell, text));
 	}
 
 	/**
@@ -202,7 +202,7 @@ public final class CampaignBuilder
 	 *
 	 * @return this builder
 	 */
-	public CampaignBuilder confirmed()
+	public Builder confirmed()
 	{
 		return confirmed(ContractFixtures.contract(), 1);
 	}
@@ -214,7 +214,7 @@ public final class CampaignBuilder
 	 * @param number the lineage number
 	 * @return this builder
 	 */
-	public CampaignBuilder confirmed(Contract confirmedContract, int number)
+	public Builder confirmed(Contract confirmedContract, int number)
 	{
 		this.contract = confirmedContract;
 		this.lineage = number;
@@ -228,7 +228,7 @@ public final class CampaignBuilder
 	 * @param value the header
 	 * @return this builder
 	 */
-	public CampaignBuilder header(CampaignHeader value)
+	public Builder header(Header value)
 	{
 		this.header = value;
 		return this;
@@ -240,7 +240,7 @@ public final class CampaignBuilder
 	 * @param state the state
 	 * @return this builder
 	 */
-	public CampaignBuilder lifecycle(Lifecycle state)
+	public Builder lifecycle(Lifecycle state)
 	{
 		this.header = header.withLifecycle(state);
 		return this;
@@ -252,7 +252,7 @@ public final class CampaignBuilder
 	 * @param value the ceiling
 	 * @return this builder
 	 */
-	public CampaignBuilder ceiling(int value)
+	public Builder ceiling(int value)
 	{
 		this.ceiling = value;
 		return this;
@@ -264,7 +264,7 @@ public final class CampaignBuilder
 	 * @param value the identity
 	 * @return this builder
 	 */
-	public CampaignBuilder identity(MeasurementIdentity value)
+	public Builder identity(MeasurementIdentity value)
 	{
 		this.identity = value;
 		return this;
@@ -276,7 +276,7 @@ public final class CampaignBuilder
 	 * @param number the candidate's number, at least 1
 	 * @return this builder
 	 */
-	public CampaignBuilder working(int number)
+	public Builder working(int number)
 	{
 		this.working = new Candidate(number, snapshot("candidate-" + number));
 		this.candidates = Math.max(candidates, number);
@@ -289,7 +289,7 @@ public final class CampaignBuilder
 	 * @param value the series
 	 * @return this builder
 	 */
-	public CampaignBuilder series(int value)
+	public Builder series(int value)
 	{
 		this.series = value;
 		return this;
@@ -298,29 +298,29 @@ public final class CampaignBuilder
 	/**
 	 * Sets a cell's development counts.
 	 *
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @param passes the passes
 	 * @param failures the failures, placed in the earliest batches
 	 * @return this builder
 	 */
-	public CampaignBuilder development(String category, int passes, int failures)
+	public Builder development(String cell, int passes, int failures)
 	{
-		development.put(category, counts(passes, failures));
+		development.put(cell, counts(passes, failures));
 		return this;
 	}
 
 	/**
 	 * Sets a cell's development counts with explicit batches.
 	 *
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @param passes the passes
 	 * @param batchFailures the failures of each started batch
 	 * @return this builder
 	 */
-	public CampaignBuilder development(String category, int passes, List<Integer> batchFailures)
+	public Builder development(String cell, int passes, List<Integer> batchFailures)
 	{
 		int failureCount = batchFailures.stream().mapToInt(Integer::intValue).sum();
-		development.put(category, new CategoryCounts(passes, failureCount, batchFailures));
+		development.put(cell, new CellCounts(passes, failureCount, batchFailures));
 		return this;
 	}
 
@@ -329,7 +329,7 @@ public final class CampaignBuilder
 	 *
 	 * @return this builder
 	 */
-	public CampaignBuilder readyDevelopment()
+	public Builder readyDevelopment()
 	{
 		for (String cell : contract.cellIds())
 			development(cell, 100, 0);
@@ -342,7 +342,7 @@ public final class CampaignBuilder
 	 * @param instance the instance that failed
 	 * @return this builder
 	 */
-	public CampaignBuilder failure(TrialInstance instance)
+	public Builder failure(TrialInstance instance)
 	{
 		return failure(new Failure(instance, "", List.of(), List.of()));
 	}
@@ -353,7 +353,7 @@ public final class CampaignBuilder
 	 * @param failure the failure
 	 * @return this builder
 	 */
-	public CampaignBuilder failure(Failure failure)
+	public Builder failure(Failure failure)
 	{
 		failures.add(failure);
 		return this;
@@ -365,7 +365,7 @@ public final class CampaignBuilder
 	 * @param value the diagnosis
 	 * @return this builder
 	 */
-	public CampaignBuilder diagnosis(Diagnosis value)
+	public Builder diagnosis(Diagnosis value)
 	{
 		this.diagnosis = value;
 		return this;
@@ -377,7 +377,7 @@ public final class CampaignBuilder
 	 * @param value the round
 	 * @return this builder
 	 */
-	public CampaignBuilder round(Round value)
+	public Builder round(Round value)
 	{
 		this.round = value;
 		return this;
@@ -389,13 +389,13 @@ public final class CampaignBuilder
 	 * @param value the attempt
 	 * @return this builder
 	 */
-	public CampaignBuilder author(AuthorAttempt value)
+	public Builder author(AuthorAttempt value)
 	{
 		this.author = value;
 		if (round != null)
 		{
 			if (!round.reservations().containsKey(value.number()))
-				round = round.reserve(value.number(), value.category());
+				round = round.reserve(value.number(), value.cell());
 			round = round.withAttempt(value);
 		}
 		this.authorAttempts = Math.max(authorAttempts, value.number());
@@ -408,7 +408,7 @@ public final class CampaignBuilder
 	 * @param value the number
 	 * @return this builder
 	 */
-	public CampaignBuilder authorAttempts(int value)
+	public Builder authorAttempts(int value)
 	{
 		this.authorAttempts = value;
 		return this;
@@ -417,13 +417,13 @@ public final class CampaignBuilder
 	/**
 	 * Sets the development-outcome threshold at which a cell is reviewed.
 	 *
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @param point the number of adopted development outcomes that triggers review
 	 * @return this builder
 	 */
-	public CampaignBuilder reviewPoint(String category, int point)
+	public Builder reviewPoint(String cell, int point)
 	{
-		reviewPoints.put(category, point);
+		reviewPoints.put(cell, point);
 		return this;
 	}
 
@@ -432,7 +432,7 @@ public final class CampaignBuilder
 	 *
 	 * @return this builder
 	 */
-	public CampaignBuilder widened()
+	public Builder widened()
 	{
 		widened = true;
 		return this;
@@ -444,7 +444,7 @@ public final class CampaignBuilder
 	 * @param cell the cell's identifier
 	 * @return this builder
 	 */
-	public CampaignBuilder failedCell(String cell)
+	public Builder failedCell(String cell)
 	{
 		failedCells.add(cell);
 		return this;
@@ -456,7 +456,7 @@ public final class CampaignBuilder
 	 * @param index the index
 	 * @return this builder
 	 */
-	public CampaignBuilder baselineIndex(int index)
+	public Builder baselineIndex(int index)
 	{
 		this.baselineIndex = index;
 		return this;
@@ -468,7 +468,7 @@ public final class CampaignBuilder
 	 * @param value the conditions under which the baseline was measured
 	 * @return this builder
 	 */
-	public CampaignBuilder baselineIdentity(MeasurementIdentity value)
+	public Builder baselineIdentity(MeasurementIdentity value)
 	{
 		this.baselineIdentity = value;
 		return this;
@@ -477,14 +477,14 @@ public final class CampaignBuilder
 	/**
 	 * Sets a cell's baseline counts.
 	 *
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @param passes the passes
 	 * @param failures the failures, placed in the earliest batches
 	 * @return this builder
 	 */
-	public CampaignBuilder baseline(String category, int passes, int failures)
+	public Builder baseline(String cell, int passes, int failures)
 	{
-		baseline.put(category, counts(passes, failures));
+		baseline.put(cell, counts(passes, failures));
 		return this;
 	}
 
@@ -493,7 +493,7 @@ public final class CampaignBuilder
 	 *
 	 * @return this builder
 	 */
-	public CampaignBuilder readyBaseline()
+	public Builder readyBaseline()
 	{
 		for (String cell : contract.cellIds())
 			baseline(cell, 50, 0);
@@ -507,7 +507,7 @@ public final class CampaignBuilder
 	 * @param workingVerdict the working candidate's latest outcome on it, or {@code null} if none
 	 * @return this builder
 	 */
-	public CampaignBuilder regression(TrialInstance instance, Verdict workingVerdict)
+	public Builder regression(TrialInstance instance, Verdict workingVerdict)
 	{
 		regressionSet.add(new RegressionInstance(instance, workingVerdict));
 		return this;
@@ -519,7 +519,7 @@ public final class CampaignBuilder
 	 * @param value the outcome
 	 * @return this builder
 	 */
-	public CampaignBuilder unavailable(Outcome value)
+	public Builder unavailable(Outcome value)
 	{
 		unavailable.add(value);
 		return this;
@@ -531,7 +531,7 @@ public final class CampaignBuilder
 	 * @param trial the trial
 	 * @return this builder
 	 */
-	public CampaignBuilder trial(LogicalTrial trial)
+	public Builder trial(LogicalTrial trial)
 	{
 		trials.add(trial);
 		sequences.merge(trial.key().sequenceGroup(), trial.key().sequence(), Math::max);
@@ -544,7 +544,7 @@ public final class CampaignBuilder
 	 * @param value the evidence revision
 	 * @return this builder
 	 */
-	public CampaignBuilder evidenceRevision(long value)
+	public Builder evidenceRevision(long value)
 	{
 		this.evidenceRevision = value;
 		return this;
@@ -556,7 +556,7 @@ public final class CampaignBuilder
 	 * @param value the state
 	 * @return this builder
 	 */
-	public CampaignBuilder slowStart(SlowStart value)
+	public Builder slowStart(SlowStart value)
 	{
 		this.slowStart = value;
 		return this;
@@ -568,7 +568,7 @@ public final class CampaignBuilder
 	 * @param value the state
 	 * @return this builder
 	 */
-	public CampaignBuilder throttle(Throttle value)
+	public Builder throttle(Throttle value)
 	{
 		this.throttle = value;
 		return this;
@@ -580,7 +580,7 @@ public final class CampaignBuilder
 	 * @param value the target's absolute path
 	 * @return this builder
 	 */
-	public CampaignBuilder authorizedTarget(Path value)
+	public Builder authorizedTarget(Path value)
 	{
 		authorizedTargets.add(value);
 		return this;
@@ -592,7 +592,7 @@ public final class CampaignBuilder
 	 * @param value the decision
 	 * @return this builder
 	 */
-	public CampaignBuilder pending(PendingDecision value)
+	public Builder pending(PendingDecision value)
 	{
 		pendingDecisions.add(value);
 		return this;
@@ -603,7 +603,7 @@ public final class CampaignBuilder
 	 *
 	 * @return this builder
 	 */
-	public CampaignBuilder revisionRequested()
+	public Builder revisionRequested()
 	{
 		this.revisionRequested = true;
 		return this;
@@ -615,7 +615,7 @@ public final class CampaignBuilder
 	 * @param value the outcome
 	 * @return this builder
 	 */
-	public CampaignBuilder outcome(Outcome value)
+	public Builder outcome(Outcome value)
 	{
 		this.outcome = value;
 		return this;
@@ -627,7 +627,7 @@ public final class CampaignBuilder
 	 * @param value the request
 	 * @return this builder
 	 */
-	public CampaignBuilder delivery(DeliveryRequest value)
+	public Builder delivery(DeliveryRequest value)
 	{
 		this.delivery = value;
 		return this;
@@ -662,19 +662,19 @@ public final class CampaignBuilder
 	 * @param failures the failures
 	 * @return the counts
 	 */
-	public static CategoryCounts counts(int passes, int failures)
+	public static CellCounts counts(int passes, int failures)
 	{
 		int outcomes = passes + failures;
 		List<Integer> batches = new ArrayList<>();
 		int remaining = failures;
-		for (int start = 0; start < outcomes; start += CategoryCounts.BATCH_SIZE)
+		for (int start = 0; start < outcomes; start += CellCounts.BATCH_SIZE)
 		{
-			int size = Math.min(CategoryCounts.BATCH_SIZE, outcomes - start);
+			int size = Math.min(CellCounts.BATCH_SIZE, outcomes - start);
 			int batch = Math.min(size, remaining);
 			batches.add(batch);
 			remaining -= batch;
 		}
-		return new CategoryCounts(passes, failures, batches);
+		return new CellCounts(passes, failures, batches);
 	}
 
 	/**
@@ -727,7 +727,7 @@ public final class CampaignBuilder
 	public final class AttemptBuilder
 	{
 		private final int index;
-		private final Map<String, CategoryCounts> counts = new LinkedHashMap<>();
+		private final Map<String, CellCounts> counts = new LinkedHashMap<>();
 		private final List<Failure> attemptFailures = new ArrayList<>();
 		private Integer attemptLineage;
 		private Candidate candidate;
@@ -749,14 +749,14 @@ public final class CampaignBuilder
 		/**
 		 * Sets a cell's certification counts.
 		 *
-		 * @param category the cell identifier
+		 * @param cell the cell identifier
 		 * @param passes the passes
 		 * @param failures the failures, placed in the earliest batches
 		 * @return this builder
 		 */
-		public AttemptBuilder category(String category, int passes, int failures)
+		public AttemptBuilder cell(String cell, int passes, int failures)
 		{
-			counts.put(category, counts(passes, failures));
+			counts.put(cell, counts(passes, failures));
 			return this;
 		}
 
@@ -861,9 +861,9 @@ public final class CampaignBuilder
 		 *
 		 * @return the campaign builder
 		 */
-		public CampaignBuilder campaign()
+		public Builder campaign()
 		{
-			return CampaignBuilder.this;
+			return Builder.this;
 		}
 
 		/**
@@ -873,7 +873,7 @@ public final class CampaignBuilder
 		 */
 		public Campaign build()
 		{
-			return CampaignBuilder.this.build();
+			return Builder.this.build();
 		}
 
 		/**
@@ -883,10 +883,10 @@ public final class CampaignBuilder
 		 */
 		private CertificationAttempt toAttempt()
 		{
-			List<String> categories = contract.cellIds();
+			List<String> cells = contract.cellIds();
 			DecisionBoundaries frozen = boundaries;
 			if (frozen == null)
-				frozen = Boundaries.standard(categories.size());
+				frozen = Boundaries.standard(cells.size());
 			int number = lineage;
 			if (attemptLineage != null)
 				number = attemptLineage;
@@ -900,8 +900,8 @@ public final class CampaignBuilder
 			if (frozenBaselineIdentity == null)
 				frozenBaselineIdentity = frozenIdentity;
 			CertificationProcedure procedure = new CertificationProcedure(
-				ErrorBudget.improvementLevel(index, categories.size()), baselineIndex, frozenBaselineIdentity,
-				categories, frozen, CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
+				ErrorBudget.improvementLevel(index, cells.size()), baselineIndex, frozenBaselineIdentity,
+				cells, frozen, CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
 			return new CertificationAttempt(index, number, frozenCandidate, frozenIdentity, procedure, counts,
 				attemptFailures, new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true), attemptOutcome);
 		}

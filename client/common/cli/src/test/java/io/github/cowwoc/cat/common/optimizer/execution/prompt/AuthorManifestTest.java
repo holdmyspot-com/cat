@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
@@ -118,7 +118,7 @@ public final class AuthorManifestTest
 	public void citationIdentityPreservesTurnBoundaries()
 	{
 		// Requirement: R-D10
-		TrialInstance original = CampaignBuilder.targeted("safety", "cache");
+		TrialInstance original = Builder.targeted("safety", "cache");
 		TrialInstance one = new TrialInstance(original.cellId(), original.categoryId(), original.testId(),
 			original.choices(), List.of("a, b"), original.expectedBehaviour(), original.generator(),
 			original.streamKind(), original.streamPosition(), original.targeted());
@@ -135,7 +135,7 @@ public final class AuthorManifestTest
 	public void separatesFailureOccurrences()
 	{
 		// Requirement: R-D10
-		Failure failure = new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of(), List.of());
+		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),
 				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of());

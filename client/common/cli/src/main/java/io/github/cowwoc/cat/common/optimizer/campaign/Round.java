@@ -69,7 +69,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 		for (AuthorAttempt attempt : validationAttempts)
 		{
 			requireThat(attempt.number(), "attemptNumber").isGreaterThan(previous);
-			requireThat(attempt.category(), "cell").isEqualTo(reservations.get(attempt.number()));
+			requireThat(attempt.cell(), "cell").isEqualTo(reservations.get(attempt.number()));
 			previous = attempt.number();
 		}
 	}
@@ -101,7 +101,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 *
 	 * @return the cell identifier, or empty once all slots are reserved
 	 */
-	public Optional<String> nextCategory()
+	public Optional<String> nextCell()
 	{
 		if (!weak && !pendingAuthorAttempts().isEmpty())
 		{
@@ -145,13 +145,13 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 * Reserves a session before the driver launches it.
 	 *
 	 * @param number the campaign's next author attempt number
-	 * @param category the addressed cell
+	 * @param cell the addressed cell
 	 * @return the updated round
 	 */
-	Round reserve(int number, String category)
+	Round reserve(int number, String cell)
 	{
 		Map<Integer, String> updated = new LinkedHashMap<>(reservations);
-		updated.put(number, category);
+		updated.put(number, cell);
 		return new Round(attempts, weak, updated, validationAttempts);
 	}
 
@@ -169,7 +169,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 		updated.sort(Comparator.comparingInt(AuthorAttempt::number));
 		Map<String, Integer> counts = new LinkedHashMap<>(attempts);
 		if (weak && !received)
-			counts.merge(attempt.category(), 1, Integer::sum);
+			counts.merge(attempt.cell(), 1, Integer::sum);
 		return new Round(counts, weak, reservations, updated);
 	}
 }

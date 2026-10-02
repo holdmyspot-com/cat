@@ -312,7 +312,7 @@ final class ReportSummary
 		{
 			List<String> classifications = author.classifications().values().stream().map(FailureKind::label).
 				distinct().sorted().toList();
-			lines.add("Author diagnosis in cell " + author.category() + ": " + String.join(", ", classifications) +
+			lines.add("Author diagnosis in cell " + author.cell() + ": " + String.join(", ", classifications) +
 				"; evidence " + author.transcript());
 			for (String rejection : author.rejections())
 				lines.add("  Rejected: " + rejection);

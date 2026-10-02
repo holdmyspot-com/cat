@@ -13,7 +13,7 @@ import java.util.Map;
  * @param identity the conditions under which the incumbent outcomes were measured
  * @param counts the incumbent's sampled outcomes included in evidence per cell (category and trial profile)
  */
-public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<String, CategoryCounts> counts)
+public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<String, CellCounts> counts)
 {
 	/**
 	 * Creates a baseline.
@@ -35,13 +35,13 @@ public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<Str
 	/**
 	 * Returns a cell's outcomes included in incumbent evidence.
 	 *
-	 * @param category the cell's identifier
+	 * @param cell the cell's identifier
 	 * @return the counts, empty if the cell has no outcomes
-	 * @throws NullPointerException if {@code category} is null
+	 * @throws NullPointerException if {@code cell} is null
 	 */
-	public CategoryCounts count(String category)
+	public CellCounts count(String cell)
 	{
-		requireThat(category, "category").isNotNull();
-		return counts.getOrDefault(category, CategoryCounts.EMPTY);
+		requireThat(cell, "category").isNotNull();
+		return counts.getOrDefault(cell, CellCounts.EMPTY);
 	}
 }

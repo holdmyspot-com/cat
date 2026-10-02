@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * An input to {@link CampaignTransitions#apply(Campaign, CampaignEvent)} that requests a campaign state change.
+ * An input to {@link Transitions#apply(Campaign, CampaignEvent)} that requests a campaign state change.
  */
 public sealed interface CampaignEvent
 {
@@ -205,20 +205,20 @@ public sealed interface CampaignEvent
 	/**
 	 * Reserves an author session's stable number before it starts.
 	 *
-	 * @param category the optimization round's addressed cell
+	 * @param cell the optimization round's addressed cell
 	 */
-	record StartAuthorAttempt(String category) implements CampaignEvent
+	record StartAuthorAttempt(String cell) implements CampaignEvent
 	{
 		/**
 		 * Creates a reservation request.
 		 *
-		 * @param category the addressed cell
+		 * @param cell the addressed cell
 		 * @throws NullPointerException if category is null
 		 * @throws IllegalArgumentException if category is blank
 		 */
 		public StartAuthorAttempt
 		{
-			requireThat(category, "category").isNotBlank();
+			requireThat(cell, "category").isNotBlank();
 		}
 	}
 
@@ -229,18 +229,18 @@ public sealed interface CampaignEvent
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param number the reserved attempt number
-	 * @param category the optimization round's cell identifier that the attempt addresses
+	 * @param cell the optimization round's cell identifier that the attempt addresses
 	 * @param snapshot the attempt's snapshot
 	 * @param changes the captured original file changes
 	 */
-	record SubmitAuthorAttempt(int number, String category, Sha256 snapshot, List<FileDelta> changes)
+	record SubmitAuthorAttempt(int number, String cell, Sha256 snapshot, List<FileDelta> changes)
 		implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param number the reserved attempt number
-		 * @param category the optimization round's cell identifier that the attempt addresses
+		 * @param cell the optimization round's cell identifier that the attempt addresses
 		 * @param snapshot the attempt's snapshot
 		 * @param changes the captured original file changes
 		 * @throws NullPointerException if any argument is null
@@ -249,7 +249,7 @@ public sealed interface CampaignEvent
 		public SubmitAuthorAttempt
 		{
 			requireThat(number, "number").isPositive();
-			requireThat(category, "category").isNotBlank();
+			requireThat(cell, "category").isNotBlank();
 			requireThat(snapshot, "snapshot").isNotNull();
 			changes = List.copyOf(changes);
 		}

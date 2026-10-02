@@ -4,8 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
@@ -48,9 +48,9 @@ public final class FixtureCampaignTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path root = scope.add(Files.createTempDirectory("fixture-campaign"));
-			CampaignHeader header = new CampaignHeader(ID, Path.of("/project"), Path.of("/project/CLAUDE.md"),
+			Header header = new Header(ID, Path.of("/project"), Path.of("/project/CLAUDE.md"),
 				Harness.CLAUDE, Lifecycle.ACTIVE);
-			Campaign campaign = new CampaignBuilder().header(header).confirmed().build();
+			Campaign campaign = new Builder().header(header).confirmed().build();
 			new FileCampaignStore(root, JsonMapper.builder().build()).replaceSnapshot(campaign);
 			Path written = root.resolve(".cat/work/optimizer").resolve(ID).resolve("campaign.json");
 			String fresh = Files.readString(written, StandardCharsets.UTF_8);

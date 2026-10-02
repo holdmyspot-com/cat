@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -66,7 +66,7 @@ final class Reconciler
 			reconciled = WorktreeCheck.verify(context, reconciled, previous);
 		if (reconciled.lifecycle() == Lifecycle.ACTIVE)
 		{
-			reconciled = CampaignTransitions.apply(reconciled,
+			reconciled = Transitions.apply(reconciled,
 				new CampaignEvent.ChangeMeasurement(context.environment()));
 		}
 		context.store().replaceSnapshot(reconciled);
@@ -91,8 +91,8 @@ final class Reconciler
 			if (trial.isEmpty())
 				continue;
 			if (trial.get().state() == TrialState.ASSIGNED)
-				adopted = CampaignTransitions.apply(adopted, new CampaignEvent.Start(outcome.key()));
-			adopted = CampaignTransitions.apply(adopted, outcome);
+				adopted = Transitions.apply(adopted, new CampaignEvent.Start(outcome.key()));
+			adopted = Transitions.apply(adopted, outcome);
 		}
 		return adopted;
 	}
@@ -115,7 +115,7 @@ final class Reconciler
 		Campaign requeued = campaign;
 		for (TrialKey key : running)
 		{
-			requeued = CampaignTransitions.apply(requeued,
+			requeued = Transitions.apply(requeued,
 				new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, ABANDONED, now, null));
 		}
 		return requeued;

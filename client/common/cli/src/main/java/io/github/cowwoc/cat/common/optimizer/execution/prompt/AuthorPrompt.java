@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
@@ -154,7 +154,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("loader_configuration", loaderConfiguration),
 			Map.entry("authorized_targets", list(brief.authorizedTargets())),
 			Map.entry("links", links(brief.links())),
-			Map.entry("cell", brief.category()),
+			Map.entry("cell", brief.cell()),
 			Map.entry("contract", schema.toJson(brief.contract())),
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
@@ -193,14 +193,14 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * @param counts the trial passes and failures to show the author, keyed by cell identifier
 	 * @return an object with one {@code passes}, {@code failures} pair per cell, in cell identifier order
 	 */
-	private ObjectNode encodeCounts(Map<String, CategoryCounts> counts)
+	private ObjectNode encodeCounts(Map<String, CellCounts> counts)
 	{
 		ObjectNode node = json.createObjectNode();
-		for (Map.Entry<String, CategoryCounts> entry : new TreeMap<>(counts).entrySet())
+		for (Map.Entry<String, CellCounts> entry : new TreeMap<>(counts).entrySet())
 		{
-			ObjectNode category = node.putObject(entry.getKey());
-			category.put("passes", entry.getValue().passes());
-			category.put("failures", entry.getValue().failures());
+			ObjectNode cell = node.putObject(entry.getKey());
+			cell.put("passes", entry.getValue().passes());
+			cell.put("failures", entry.getValue().failures());
 		}
 		return node;
 	}

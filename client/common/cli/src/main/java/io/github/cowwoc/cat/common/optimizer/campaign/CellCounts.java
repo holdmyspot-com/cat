@@ -18,7 +18,7 @@ import java.util.List;
  * @param failures the number of adopted failures {@code F}
  * @param batchFailures the number of failures in each started batch, in adoption order
  */
-public record CategoryCounts(int passes, int failures, List<Integer> batchFailures)
+public record CellCounts(int passes, int failures, List<Integer> batchFailures)
 {
 	/**
 	 * The number of outcomes in a complete batch.
@@ -27,7 +27,7 @@ public record CategoryCounts(int passes, int failures, List<Integer> batchFailur
 	/**
 	 * No outcomes.
 	 */
-	public static final CategoryCounts EMPTY = new CategoryCounts(0, 0, List.of());
+	public static final CellCounts EMPTY = new CellCounts(0, 0, List.of());
 
 	/**
 	 * Creates counts.
@@ -39,7 +39,7 @@ public record CategoryCounts(int passes, int failures, List<Integer> batchFailur
 	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative, the number of batches differs
 	 *   from the number started, a batch has more failures than outcomes, or the batches do not sum to {@code failures}
 	 */
-	public CategoryCounts
+	public CellCounts
 	{
 		requireThat(passes, "passes").isNotNegative();
 		requireThat(failures, "failures").isNotNegative();
@@ -86,15 +86,15 @@ public record CategoryCounts(int passes, int failures, List<Integer> batchFailur
 	 * @return the updated counts
 	 * @throws NullPointerException if {@code verdict} is null
 	 */
-	public CategoryCounts add(Verdict verdict)
+	public CellCounts add(Verdict verdict)
 	{
 		requireThat(verdict, "verdict").isNotNull();
 		List<Integer> batches = new ArrayList<>(batchFailures);
 		if (outcomes() % BATCH_SIZE == 0)
 			batches.add(0);
 		if (verdict == Verdict.PASS)
-			return new CategoryCounts(passes + 1, failures, batches);
+			return new CellCounts(passes + 1, failures, batches);
 		batches.set(batches.size() - 1, batches.getLast() + 1);
-		return new CategoryCounts(passes, failures + 1, batches);
+		return new CellCounts(passes, failures + 1, batches);
 	}
 }

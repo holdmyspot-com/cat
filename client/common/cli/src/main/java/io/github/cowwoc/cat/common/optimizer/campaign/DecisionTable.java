@@ -16,7 +16,7 @@ public final class DecisionTable
 	/**
 	 * The decision for one cell of a certification attempt.
 	 */
-	public enum CategoryDecision
+	public enum CellDecision
 	{
 		/**
 		 * No decision yet.
@@ -106,17 +106,17 @@ public final class DecisionTable
 	 * @throws NullPointerException if {@code boundaries} or {@code counts} are null
 	 * @throws IllegalArgumentException if {@code counts} exceed the boundaries' outcome cap
 	 */
-	public static CategoryDecision categoryDecision(DecisionBoundaries boundaries, CategoryCounts counts)
+	public static CellDecision cellDecision(DecisionBoundaries boundaries, CellCounts counts)
 	{
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(counts, "counts").isNotNull();
 		if (boundaries.certifies(counts.passes(), counts.failures()))
-			return CategoryDecision.CERTIFIED;
+			return CellDecision.CERTIFIED;
 		if (boundaries.isClearlyBelow(counts.passes(), counts.failures()))
-			return CategoryDecision.CLEARLY_BELOW;
+			return CellDecision.CLEARLY_BELOW;
 		if (counts.outcomes() >= boundaries.cap())
-			return CategoryDecision.CAP_REACHED;
-		return CategoryDecision.UNDECIDED;
+			return CellDecision.CAP_REACHED;
+		return CellDecision.UNDECIDED;
 	}
 
 	/**
@@ -133,9 +133,9 @@ public final class DecisionTable
 		boolean capReached = false;
 		boolean allCertified = true;
 		boolean provenWorse = false;
-		for (String category : attempt.procedure().categories())
+		for (String cell : attempt.procedure().cells())
 		{
-			CategoryDecision decision = categoryDecision(boundaries, attempt.count(category));
+			CellDecision decision = cellDecision(boundaries, attempt.count(cell));
 			switch (decision)
 			{
 				case CLEARLY_BELOW ->
@@ -150,7 +150,7 @@ public final class DecisionTable
 				case UNDECIDED -> allCertified = false;
 				case CERTIFIED ->
 				{
-					if (isProvenWorse(attempt, category))
+					if (isProvenWorse(attempt, cell))
 						provenWorse = true;
 				}
 			}
@@ -194,17 +194,17 @@ public final class DecisionTable
 	 * level.
 	 *
 	 * @param attempt the attempt
-	 * @param category the identifier of the cell whose formal counts are compared
+	 * @param cell the identifier of the cell whose formal counts are compared
 	 * @return {@code true} if the measurement conditions are comparable and the cell is proven better
-	 * @throws NullPointerException if {@code attempt} or {@code category} are null
-	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
+	 * @throws NullPointerException if {@code attempt} or {@code cell} are null
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code cell}
 	 */
-	public static boolean isProvenBetter(CertificationAttempt attempt, String category)
+	public static boolean isProvenBetter(CertificationAttempt attempt, String cell)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		requireThat(category, "category").isNotNull();
-		CategoryCounts counts = attempt.count(category);
-		ComparisonBoundaries comparison = comparison(attempt, category);
+		requireThat(cell, "category").isNotNull();
+		CellCounts counts = attempt.count(cell);
+		ComparisonBoundaries comparison = comparison(attempt, cell);
 		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&
 			comparison.isProvenBetter(counts.passes(), counts.failures());
 	}
@@ -214,17 +214,17 @@ public final class DecisionTable
 	 * level.
 	 *
 	 * @param attempt the attempt
-	 * @param category the identifier of the cell whose formal counts are compared
+	 * @param cell the identifier of the cell whose formal counts are compared
 	 * @return {@code true} if the measurement conditions are comparable and the cell is proven worse
-	 * @throws NullPointerException if {@code attempt} or {@code category} are null
-	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
+	 * @throws NullPointerException if {@code attempt} or {@code cell} are null
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code cell}
 	 */
-	public static boolean isProvenWorse(CertificationAttempt attempt, String category)
+	public static boolean isProvenWorse(CertificationAttempt attempt, String cell)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		requireThat(category, "category").isNotNull();
-		CategoryCounts counts = attempt.count(category);
-		ComparisonBoundaries comparison = comparison(attempt, category);
+		requireThat(cell, "category").isNotNull();
+		CellCounts counts = attempt.count(cell);
+		ComparisonBoundaries comparison = comparison(attempt, cell);
 		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&
 			comparison.isProvenWorse(counts.passes(), counts.failures());
 	}
@@ -233,13 +233,13 @@ public final class DecisionTable
 	 * Returns a cell's comparison boundaries.
 	 *
 	 * @param attempt the attempt
-	 * @param category the cell identifier selecting the comparison boundaries
+	 * @param cell the cell identifier selecting the comparison boundaries
 	 * @return the boundaries
-	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code cell}
 	 */
-	private static ComparisonBoundaries comparison(CertificationAttempt attempt, String category)
+	private static ComparisonBoundaries comparison(CertificationAttempt attempt, String cell)
 	{
 		CertificationProcedure procedure = attempt.procedure();
-		return procedure.boundaries().comparisons().get(procedure.position(category));
+		return procedure.boundaries().comparisons().get(procedure.position(cell));
 	}
 }

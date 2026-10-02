@@ -25,7 +25,7 @@ final class Draft
 	/**
 	 * The campaign's header.
 	 */
-	CampaignHeader header;
+	Header header;
 	/**
 	 * The most nested sessions that may run at once.
 	 */
@@ -77,7 +77,7 @@ final class Draft
 	/**
 	 * The working candidate's development outcomes included in evidence per cell (category and trial profile).
 	 */
-	Map<String, CategoryCounts> developmentCounts;
+	Map<String, CellCounts> developmentCounts;
 	/**
 	 * The failures that the next author attempt receives.
 	 */
@@ -121,7 +121,7 @@ final class Draft
 	/**
 	 * The current incumbent baseline's counts per cell.
 	 */
-	Map<String, CategoryCounts> baselineCounts = new LinkedHashMap<>();
+	Map<String, CellCounts> baselineCounts = new LinkedHashMap<>();
 	/**
 	 * Every certification attempt, in index order.
 	 */
@@ -360,12 +360,12 @@ final class Draft
 	/**
 	 * Returns a cell's development counts.
 	 *
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @return the counts
 	 */
-	CategoryCounts developmentCount(String category)
+	CellCounts developmentCount(String cell)
 	{
-		return developmentCounts.getOrDefault(category, CategoryCounts.EMPTY);
+		return developmentCounts.getOrDefault(cell, CellCounts.EMPTY);
 	}
 
 	/**

@@ -6,10 +6,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
@@ -51,9 +51,9 @@ public final class ReconciliationTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder developing()
+	private static Builder developing()
 	{
-		return new CampaignBuilder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
+		return new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
 			development("safety", 50, 0);
 	}
 
@@ -70,7 +70,7 @@ public final class ReconciliationTest
 		List<Admission> admissions = Scheduler.plan(campaign, DriverHarness.START, count);
 		requireThat(admissions.size(), "admissions").isEqualTo(count);
 		for (Admission admission : admissions)
-			assigned = CampaignTransitions.apply(assigned, new CampaignEvent.Assign((Admission.Assign) admission));
+			assigned = Transitions.apply(assigned, new CampaignEvent.Assign((Admission.Assign) admission));
 		return assigned;
 	}
 
@@ -84,7 +84,7 @@ public final class ReconciliationTest
 	{
 		Campaign started = campaign;
 		for (LogicalTrial trial : campaign.trials())
-			started = CampaignTransitions.apply(started, new CampaignEvent.Start(trial.key()));
+			started = Transitions.apply(started, new CampaignEvent.Start(trial.key()));
 		return started;
 	}
 
@@ -109,7 +109,7 @@ public final class ReconciliationTest
 	private static int developmentOutcomes(Campaign campaign)
 	{
 		int outcomes = 0;
-		for (CategoryCounts counts : campaign.development().counts().values())
+		for (CellCounts counts : campaign.development().counts().values())
 			outcomes += counts.outcomes();
 		return outcomes;
 	}
@@ -217,7 +217,7 @@ public final class ReconciliationTest
 			Campaign assigned = assign(developing().build(), 1);
 			LogicalTrial trial = assigned.trials().getFirst();
 			Campaign started = start(assigned);
-			Campaign adopted = CampaignTransitions.apply(started, passed(started, trial.key()));
+			Campaign adopted = Transitions.apply(started, passed(started, trial.key()));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")), adopted);
 			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
 			harness.store().writeOutcome(DriverHarness.CAMPAIGN, passed(started, trial.key()));
@@ -280,10 +280,10 @@ public final class ReconciliationTest
 	private static DriverHarness crashAtPromotion(Path directory) throws IOException
 	{
 		DriverHarness harness = new DriverHarness(directory, developing().build());
-		Sha256 first = CampaignBuilder.snapshot("candidate-1");
+		Sha256 first = Builder.snapshot("candidate-1");
 		harness.trials(request ->
 		{
-			if (DriverHarness.category(request).equals("safety") && harness.snapshot(request).equals(first))
+			if (DriverHarness.cell(request).equals("safety") && harness.snapshot(request).equals(first))
 				return harness.failed();
 			return harness.passed();
 		});
@@ -349,7 +349,7 @@ public final class ReconciliationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = crashAtPromotion(cleanup.add(Files.createTempDirectory("reconcile")));
-			harness.workspace().changeWorktree(harness.overlays().require(CampaignBuilder.snapshot("candidate-1")).
+			harness.workspace().changeWorktree(harness.overlays().require(Builder.snapshot("candidate-1")).
 				snapshot());
 			try (Driver _ = harness.open())
 			{

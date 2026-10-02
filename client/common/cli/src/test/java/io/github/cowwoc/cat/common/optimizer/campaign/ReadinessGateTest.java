@@ -10,7 +10,7 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link ReadinessGate} and the batches of {@link CategoryCounts}.
+ * Tests {@link ReadinessGate} and the batches of {@link CellCounts}.
  */
 public final class ReadinessGateTest
 {
@@ -28,12 +28,12 @@ public final class ReadinessGateTest
 	 * @param batches the failures of each started batch
 	 * @return the counts
 	 */
-	private static CategoryCounts counts(int passes, Integer... batches)
+	private static CellCounts counts(int passes, Integer... batches)
 	{
 		int failures = 0;
 		for (int batch : batches)
 			failures += batch;
-		return new CategoryCounts(passes, failures, List.of(batches));
+		return new CellCounts(passes, failures, List.of(batches));
 	}
 
 	/**
@@ -43,7 +43,7 @@ public final class ReadinessGateTest
 	public void outcomesFillBatchesOfFifty()
 	{
 		// Requirement: R-D1
-		CategoryCounts counts = CategoryCounts.EMPTY.add(Verdict.FAIL);
+		CellCounts counts = CellCounts.EMPTY.add(Verdict.FAIL);
 		requireThat(counts, "first").isEqualTo(counts(0, 1));
 		for (int i = 1; i < 50; ++i)
 			counts = counts.add(Verdict.PASS);
@@ -97,16 +97,16 @@ public final class ReadinessGateTest
 	 * Verifies that the gate holds only when every category is ready and the baseline is met.
 	 */
 	@Test
-	public void gateRequiresEveryCategoryAndBaseline()
+	public void gateRequiresEveryCellAndBaseline()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			build()), "ready").isTrue();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			development("safety", 99, 0).build()), "categoryShort").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			baseline("safety", 49, 0).build()), "baselineShort").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().development("formatting", 100, 0).
+		requireThat(ReadinessGate.isMet(new Builder().development("formatting", 100, 0).
 			development("safety", 100, 0).build()), "unconfirmed").
 			isFalse();
 	}
@@ -118,15 +118,15 @@ public final class ReadinessGateTest
 	public void gateRequiresNoUnresolvedDefect()
 	{
 		// Requirement: R-D1
-		Diagnosis diagnosis = new Diagnosis(List.of(CampaignBuilder.targeted("safety", "logs")), 0, null, false);
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		Diagnosis diagnosis = new Diagnosis(List.of(Builder.targeted("safety", "logs")), 0, null, false);
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			diagnosis(diagnosis).build()), "diagnosis").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			round(new Round(Map.of("safety", 0))).build()), "round").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
-			regression(CampaignBuilder.targeted("safety", "logs"), Verdict.FAIL).build()), "regression").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
-			regression(CampaignBuilder.targeted("safety", "logs"), Verdict.PASS).build()), "fixedRegression").
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+			regression(Builder.targeted("safety", "logs"), Verdict.FAIL).build()), "regression").isFalse();
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+			regression(Builder.targeted("safety", "logs"), Verdict.PASS).build()), "fixedRegression").
 			isTrue();
 	}
 
@@ -155,9 +155,9 @@ public final class ReadinessGateTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder ready()
+	private static Builder ready()
 	{
-		return new CampaignBuilder().confirmed().readyDevelopment().readyBaseline();
+		return new Builder().confirmed().readyDevelopment().readyBaseline();
 	}
 
 	/**
@@ -169,11 +169,11 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-C11
 		Contract contract = ContractFixtures.twoCellContract();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().build()), "ready").isTrue();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().development(ContractFixtures.SMALL_CELL, 99, 0).build()), "smallCellShort").isFalse();
-		requireThat(ReadinessGate.isMet(new CampaignBuilder().confirmed(contract, 1).readyDevelopment().
+		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().baseline(ContractFixtures.BIG_CELL, 49, 0).build()), "bigBaselineShort").isFalse();
 	}
 }

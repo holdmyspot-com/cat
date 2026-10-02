@@ -7,16 +7,16 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.execution.fixture.FaultingFileChannel;
 import io.github.cowwoc.cat.common.optimizer.campaign.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
-import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CategoryDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
@@ -120,7 +120,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("author-briefs")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().ceiling(2).
+				new Builder().confirmed().working(1).readyBaseline().ceiling(2).
 					development("safety", 10, 0).development("formatting", 10, 0).
 					slowStart(new SlowStart(2, 0)).build());
 			try (Driver driver = harness.open())
@@ -144,7 +144,7 @@ public final class DriverTest
 				for (AuthorBrief brief : harness.author().briefs())
 					requireThat(brief, "sameBrief").isEqualTo(harness.author().briefs().getFirst());
 				requireThat(harness.campaign().development().counts().values().stream().
-					mapToLong(CategoryCounts::passes).sum(), "settledDevelopmentPasses").isEqualTo(21);
+					mapToLong(CellCounts::passes).sum(), "settledDevelopmentPasses").isEqualTo(21);
 			}
 		}
 	}
@@ -162,9 +162,9 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("concurrent-authors")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().
-					regression(CampaignBuilder.targeted("formatting", "formal"), Verdict.FAIL).build());
-			Sha256 working = CampaignBuilder.snapshot("candidate-1");
+				new Builder().confirmed().working(1).readyBaseline().
+					regression(Builder.targeted("formatting", "formal"), Verdict.FAIL).build());
+			Sha256 working = Builder.snapshot("candidate-1");
 			harness.overlays().put(working, harness.candidate("first\nseparator\nlast\n"));
 			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
 			AtomicInteger authored = new AtomicInteger();
@@ -185,7 +185,7 @@ public final class DriverTest
 					Overlay overlay = harness.overlays().require(harness.snapshot(request));
 					Write entry = (Write) overlay.entries().get(DriverHarness.PROMPT);
 					String text = new String(entry.content().bytes(), UTF_8);
-					if (DriverHarness.category(request).equals("formatting"))
+					if (DriverHarness.cell(request).equals("formatting"))
 					{
 						if (text.contains("needed-two"))
 							return harness.passed();
@@ -240,7 +240,7 @@ public final class DriverTest
 					state.development().count("formatting").passes() >= 80);
 				harness.trials(request ->
 				{
-					if (DriverHarness.category(request).equals("safety"))
+					if (DriverHarness.cell(request).equals("safety"))
 						return harness.failed();
 					return harness.passed();
 				});
@@ -266,10 +266,10 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("restart-authors")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().build());
+				new Builder().confirmed().working(1).readyBaseline().build());
 			harness.trials(_ -> harness.failed());
 			List<TrialKey> pending;
-			Map<String, CategoryCounts> counts;
+			Map<String, CellCounts> counts;
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, state -> state.development().round() != null);
@@ -344,8 +344,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(new Failure(CampaignBuilder.targeted("safety", "cache"), "failure", List.of(), List.of())).
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of())).
 					build());
 			harness.authors(request ->
 			{
@@ -418,8 +418,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(CampaignBuilder.targeted("safety", "cache")).build());
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "cache")).build());
 			harness.authors(request ->
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
@@ -455,8 +455,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(CampaignBuilder.targeted("safety", "cache")).build());
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "cache")).build());
 			harness.authors(_ -> harness.completed("""
 				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not guidance"}],"hunks":[]}
 				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
@@ -486,10 +486,10 @@ public final class DriverTest
 	private static DriverHarness minimalityHarness(Path directory, AtomicInteger references) throws IOException
 	{
 		DriverHarness harness = new DriverHarness(directory,
-			new CampaignBuilder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-				failure(CampaignBuilder.targeted("safety", "cache")).
-				regression(CampaignBuilder.targeted("formatting", "formal"), null).build());
-		Sha256 working = CampaignBuilder.snapshot("candidate-1");
+			new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+				failure(Builder.targeted("safety", "cache")).
+				regression(Builder.targeted("formatting", "formal"), null).build());
+		Sha256 working = Builder.snapshot("candidate-1");
 		harness.overlays().put(working, harness.candidate("first\nseparator\nlast\n"));
 		harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
 		harness.authors(request -> harness.edit(request, DriverHarness.PROMPT, "needed\nseparator\nunneeded\n"));
@@ -507,7 +507,7 @@ public final class DriverTest
 			{
 				throw new UncheckedIOException(e);
 			}
-			if (DriverHarness.category(request).equals("formatting"))
+			if (DriverHarness.cell(request).equals("formatting"))
 				return harness.passed();
 			try
 			{
@@ -542,7 +542,7 @@ public final class DriverTest
 	 */
 	private static CampaignEvent.Confirm confirm()
 	{
-		return new CampaignEvent.Confirm(ContractFixtures.contract(), CampaignBuilder.contractHash(), 11);
+		return new CampaignEvent.Confirm(ContractFixtures.contract(), Builder.contractHash(), 11);
 	}
 
 	/**
@@ -557,7 +557,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().build());
+				new Builder().build());
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -588,7 +588,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().working(1).build());
+				new Builder().working(1).build());
 			try (Driver driver = harness.open())
 			{
 				driver.apply(confirm());
@@ -632,12 +632,12 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
+				new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
 					development("safety", 50, 0).build());
-			Sha256 first = CampaignBuilder.snapshot("candidate-1");
+			Sha256 first = Builder.snapshot("candidate-1");
 			harness.trials(request ->
 			{
-				if (DriverHarness.category(request).equals("safety") && harness.snapshot(request).equals(first))
+				if (DriverHarness.cell(request).equals("safety") && harness.snapshot(request).equals(first))
 					return harness.failed();
 				return harness.passed();
 			});
@@ -649,7 +649,7 @@ public final class DriverTest
 				requireThat(campaign.development().counts(), "counts").isEmpty();
 				requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
-				requireThat(brief.category(), "category").isEqualTo("safety");
+				requireThat(brief.cell(), "category").isEqualTo("safety");
 				// The author receives the judge's rationale for the failure and for the rerun that reproduced it
 				Failure failure = brief.developmentFailures().getFirst();
 				String rationale = "The trial did not meet the requirements.";
@@ -680,12 +680,12 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
+				new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
 					development("safety", 50, 0).build());
 			AtomicBoolean failedOnce = new AtomicBoolean();
 			harness.trials(request ->
 			{
-				if (DriverHarness.category(request).equals("safety") && failedOnce.compareAndSet(false, true))
+				if (DriverHarness.cell(request).equals("safety") && failedOnce.compareAndSet(false, true))
 					return harness.failed();
 				return harness.passed();
 			});
@@ -719,9 +719,9 @@ public final class DriverTest
 		{
 			// The safety category has 4 outcomes left before its cap, so exactly 4 trials are admitted
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 					slowStart(new SlowStart(4, 0)).certificationAttempt(1).boundaries(neutralBoundaries()).
-					category("formatting", 100, 0).category("safety", 292, 4).build());
+					cell("formatting", 100, 0).cell("safety", 292, 4).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -734,7 +734,7 @@ public final class DriverTest
 				harness.settle(driver);
 				CertificationAttempt attempt = harness.campaign().attempt(1);
 				requireThat(attempt.outcome(), "outcome").isNull();
-				requireThat(attempt.count("safety"), "safety").isEqualTo(CampaignBuilder.counts(293, 4));
+				requireThat(attempt.count("safety"), "safety").isEqualTo(Builder.counts(293, 4));
 
 				trials.get(1).end(harness.passed());
 				harness.settle(driver);
@@ -756,9 +756,9 @@ public final class DriverTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder developing()
+	private static Builder developing()
 	{
-		return new CampaignBuilder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
+		return new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
 			development("safety", 50, 0);
 	}
 
@@ -771,7 +771,7 @@ public final class DriverTest
 	private static int developmentOutcomes(Campaign campaign)
 	{
 		int outcomes = 0;
-		for (CategoryCounts counts : campaign.development().counts().values())
+		for (CellCounts counts : campaign.development().counts().values())
 			outcomes += counts.outcomes();
 		return outcomes;
 	}
@@ -933,14 +933,14 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().certificationAttempt(1).boundaries(neutralBoundaries()).category("formatting", 295, 4).
-					category("safety", 100, 0).build());
+				developing().certificationAttempt(1).boundaries(neutralBoundaries()).cell("formatting", 295, 4).
+					cell("safety", 100, 0).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
 				List<FakeSession> trials = harness.runningTrials();
 				requireThat(trials.size(), "trials").isEqualTo(1);
-				requireThat(DriverHarness.category(trials.getFirst().request()), "category").isEqualTo("formatting");
+				requireThat(DriverHarness.cell(trials.getFirst().request()), "category").isEqualTo("formatting");
 				trials.getFirst().end(harness.passed());
 				harness.settle(driver);
 
@@ -1077,7 +1077,7 @@ public final class DriverTest
 				driver.apply(CampaignEvent.Choose.of(Choice.RESUME));
 				requireThat(harness.campaign().pending(), "pending").isNull();
 				requireThat(harness.workspace().materialized().getLast().snapshot(), "worktree").
-					isEqualTo(harness.overlays().require(CampaignBuilder.snapshot("candidate-1")).snapshot());
+					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-1")).snapshot());
 				driver.step();
 				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);
 			}
@@ -1097,8 +1097,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-					certificationAttempt(1).category("formatting", 50, 0).category("safety", 50, 0).build());
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 0).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -1209,8 +1209,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-					certificationAttempt(1).category("formatting", 295, 4).category("safety", 100, 0).build());
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					certificationAttempt(1).cell("formatting", 295, 4).cell("safety", 100, 0).build());
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -1229,10 +1229,10 @@ public final class DriverTest
 				SliceResult result = harness.runSlice(driver);
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.delivery(), "delivery").isEqualTo(new DeliveryRequest(
-					new Candidate(1, CampaignBuilder.snapshot("candidate-1")), 1, Outcome.IMPROVED_NOT_CERTIFIED));
+					new Candidate(1, Builder.snapshot("candidate-1")), 1, Outcome.IMPROVED_NOT_CERTIFIED));
 				requireThat(harness.deliverer().calls().size(), "deliveries").isEqualTo(1);
 				requireThat(harness.deliverer().calls().getFirst().selected(), "selected").
-					isEqualTo(harness.overlays().require(CampaignBuilder.snapshot("candidate-1")));
+					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-1")));
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Ended(Outcome.IMPROVED_NOT_CERTIFIED));
 			}
@@ -1252,12 +1252,12 @@ public final class DriverTest
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Candidate first = new Candidate(1, CampaignBuilder.snapshot("candidate-1"));
+			Candidate first = new Candidate(1, Builder.snapshot("candidate-1"));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(2).readyDevelopment().readyBaseline().
-					certificationAttempt(1).candidate(first).category("formatting", 296, 4).category("safety", 250, 0).
+				new Builder().confirmed().working(2).readyDevelopment().readyBaseline().
+					certificationAttempt(1).candidate(first).cell("formatting", 296, 4).cell("safety", 250, 0).
 					outcome(Outcome.INCONCLUSIVE).campaign().
-					certificationAttempt(2).category("formatting", 295, 4).category("safety", 100, 0).build());
+					certificationAttempt(2).cell("formatting", 295, 4).cell("safety", 100, 0).build());
 			harness.trials(_ ->
 			{
 				try
@@ -1296,7 +1296,7 @@ public final class DriverTest
 				requireThat(call.request().candidate(), "candidate").isEqualTo(first);
 				requireThat(call.selected(), "selected").isEqualTo(harness.overlays().require(first.snapshot()));
 				requireThat(call.working(), "working").
-					isEqualTo(harness.overlays().require(CampaignBuilder.snapshot("candidate-2")));
+					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-2")));
 			}
 		}
 	}
@@ -1317,12 +1317,12 @@ public final class DriverTest
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Candidate first = new Candidate(1, CampaignBuilder.snapshot("candidate-1"));
+			Candidate first = new Candidate(1, Builder.snapshot("candidate-1"));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(2).readyDevelopment().readyBaseline().
-					certificationAttempt(1).candidate(first).category("formatting", 296, 4).category("safety", 250, 0).
+				new Builder().confirmed().working(2).readyDevelopment().readyBaseline().
+					certificationAttempt(1).candidate(first).cell("formatting", 296, 4).cell("safety", 250, 0).
 					outcome(Outcome.INCONCLUSIVE).campaign().
-					certificationAttempt(2).category("formatting", 50, 0).category("safety", 50, 0).build());
+					certificationAttempt(2).cell("formatting", 50, 0).cell("safety", 50, 0).build());
 			AtomicReference<String> model = new AtomicReference<>("model-b");
 			harness.trials(_ -> harness.completed("pass", model.get()));
 			Campaign changed;
@@ -1390,9 +1390,9 @@ public final class DriverTest
 		// Requirement: R-C11
 		// Requirement: R-E17
 		Contract contract = ContractFixtures.twoCellContract();
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.OBSERVED.values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.OBSERVED.values());
 		values.remove(MeasurementCondition.MODEL);
-		Campaign start = new CampaignBuilder().identity(new MeasurementIdentity(values)).confirmed(contract, 1).
+		Campaign start = new Builder().identity(new MeasurementIdentity(values)).confirmed(contract, 1).
 			working(1).development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 90, 0).
 			development("safety", 100, 0).readyBaseline().build();
 		requireThat(ReadinessGate.isCommitDue(start), "commitDueBeforeSmallCell").isFalse();
@@ -1425,15 +1425,15 @@ public final class DriverTest
 			}
 
 			CertificationAttempt attempt = campaign.attempt(1);
-			requireThat(attempt.procedure().categories(), "committedCells").
+			requireThat(attempt.procedure().cells(), "committedCells").
 				isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety"));
 			requireThat(attempt.count(ContractFixtures.BIG_CELL).failures(), "bigFailures").isEqualTo(0);
 			requireThat(attempt.count(ContractFixtures.SMALL_CELL).passes(), "smallPasses").isEqualTo(0);
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
-			requireThat(DecisionTable.categoryDecision(boundaries, attempt.count(ContractFixtures.SMALL_CELL)),
-				"smallDecision").isEqualTo(CategoryDecision.CLEARLY_BELOW);
-			requireThat(DecisionTable.categoryDecision(boundaries, attempt.count(ContractFixtures.BIG_CELL)),
-				"bigDecision").isNotEqualTo(CategoryDecision.CLEARLY_BELOW);
+			requireThat(DecisionTable.cellDecision(boundaries, attempt.count(ContractFixtures.SMALL_CELL)),
+				"smallDecision").isEqualTo(CellDecision.CLEARLY_BELOW);
+			requireThat(DecisionTable.cellDecision(boundaries, attempt.count(ContractFixtures.BIG_CELL)),
+				"bigDecision").isNotEqualTo(CellDecision.CLEARLY_BELOW);
 			requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 
 			Map<TrialProfile, Integer> formatting = new HashMap<>();
@@ -1448,7 +1448,7 @@ public final class DriverTest
 				}
 				else if (request.role() == SessionRole.TRIAL)
 				{
-					if (DriverHarness.category(request).equals("safety"))
+					if (DriverHarness.cell(request).equals("safety"))
 						requireThat(request.profile(), "safetyProfile").isEqualTo(ContractFixtures.BIG);
 					else
 						formatting.merge(request.profile(), 1, Integer::sum);
@@ -1480,14 +1480,14 @@ public final class DriverTest
 		// Requirement: R-E3
 		Contract contract = TierFixtures.tieredContract();
 		// The screen ran the incumbent; candidate 1 has outcomes in the active cells only
-		CampaignBuilder builder = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline();
+		Builder builder = new Builder().confirmed(contract, 1).working(1).readyBaseline();
 		for (Cell cell : CellTier.activeCells(contract, Set.of()))
 			builder.development(cell.id(), 95, 0);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				builder.build());
-			Sha256 first = CampaignBuilder.snapshot("candidate-1");
+			Sha256 first = Builder.snapshot("candidate-1");
 			TrialProfile medium = new TrialProfile("big", "medium");
 			harness.trials(request ->
 			{
@@ -1518,7 +1518,7 @@ public final class DriverTest
 				TrialProfile high = new TrialProfile("big", "high");
 				long inactive = harness.sessions().sessions().stream().map(FakeSession::request).
 					filter(request -> request.role() == SessionRole.TRIAL && harness.snapshot(request).equals(second) &&
-						DriverHarness.category(request).equals("formatting") && request.profile().equals(high)).
+						DriverHarness.cell(request).equals("formatting") && request.profile().equals(high)).
 					count();
 				requireThat(inactive, "secondCandidateInactiveCellTrials").isEqualTo(0L);
 			}
@@ -1597,7 +1597,7 @@ public final class DriverTest
 	 */
 	private static SessionResult.Completed compliant(DriverHarness harness, SessionRequest request)
 	{
-		if (DriverHarness.category(request).equals("safety"))
+		if (DriverHarness.cell(request).equals("safety"))
 			return harness.completed(ASKS, DriverHarness.MODEL);
 		return harness.passed();
 	}
@@ -1631,9 +1631,9 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().
 					development("formatting", 50, 0).development("safety", 50, 0).build());
-			Sha256 first = CampaignBuilder.snapshot("candidate-1");
+			Sha256 first = Builder.snapshot("candidate-1");
 			harness.trials(request ->
 			{
 				if (isPlainList(request) && harness.snapshot(request).equals(first))
@@ -1654,7 +1654,7 @@ public final class DriverTest
 				plainList.decide(List.of(), new ControlEvidence(List.of(List.of(BROKEN, "red, green, blue")), List.of(),
 					List.of(), Map.of())).getFirst().describe();
 			AuthorBrief brief = harness.author().briefs().getFirst();
-			requireThat(brief.category(), "category").isEqualTo("formatting");
+			requireThat(brief.cell(), "category").isEqualTo("formatting");
 			Failure failure = brief.developmentFailures().getFirst();
 			requireThat(failure.instance().testId(), "testId").isEqualTo("plain-list");
 			requireThat(failure.rationale(), "rationale").isEqualTo(record);
@@ -1696,7 +1696,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
 			harness.trials(request -> compliant(harness, request));
 			try (Driver driver = harness.open())
 			{
@@ -1790,7 +1790,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
 			harness.trials(request -> compliant(harness, request));
 			Campaign campaign;
 			try (Driver driver = harness.open())
@@ -1823,7 +1823,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
 			harness.trials(_ ->
 			{
 				SessionResult.Completed trial = harness.passed();
@@ -1857,8 +1857,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-					certificationAttempt(1).category("formatting", 50, 0).category("safety", 50, 0).build());
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 0).build());
 			harness.trials(_ -> harness.completed("pass", DriverHarness.MODEL, "CLAUDE.md, .claude/rules/extra.md"));
 			try (Driver driver = harness.open())
 			{
@@ -1917,15 +1917,15 @@ public final class DriverTest
 		// Requirement: R-D9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			TrialInstance developmentFailure = CampaignBuilder.instance("safety", "logs");
-			TrialInstance endedFailure = CampaignBuilder.instance("safety", "cache");
-			TrialInstance runningFailure = CampaignBuilder.instance("safety", "build");
+			TrialInstance developmentFailure = Builder.instance("safety", "logs");
+			TrialInstance endedFailure = Builder.instance("safety", "cache");
+			TrialInstance runningFailure = Builder.instance("safety", "build");
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				developing().development("safety", 50, 1).failure(developmentFailure).
 					round(new Round(Map.of("safety", 0))).
-					certificationAttempt(1).category("safety", 100, 5).failure(endedFailure).
+					certificationAttempt(1).cell("safety", 100, 5).failure(endedFailure).
 					outcome(Outcome.BELOW_MINIMUM).campaign().
-					certificationAttempt(2).category("safety", 10, 1).failure(runningFailure).build());
+					certificationAttempt(2).cell("safety", 10, 1).failure(runningFailure).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -1955,7 +1955,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().development("safety", 50, 1).failure(CampaignBuilder.instance("safety", "logs")).
+				developing().development("safety", 50, 1).failure(Builder.instance("safety", "logs")).
 					round(new Round(Map.of("safety", 0))).build());
 			harness.authors(request -> harness.edit(request, Path.of("README.md")));
 			try (Driver driver = harness.open())
@@ -1979,9 +1979,9 @@ public final class DriverTest
 	 *
 	 * @return the builder
 	 */
-	private static CampaignBuilder authoring()
+	private static Builder authoring()
 	{
-		return developing().development("safety", 50, 1).failure(CampaignBuilder.instance("safety", "logs")).
+		return developing().development("safety", 50, 1).failure(Builder.instance("safety", "logs")).
 			round(new Round(Map.of("safety", 0)));
 	}
 
@@ -2117,7 +2117,7 @@ public final class DriverTest
 			SessionResult.Completed failed = harness.failed();
 			harness.trials(request ->
 			{
-				if (!DriverHarness.category(request).equals("safety"))
+				if (!DriverHarness.cell(request).equals("safety"))
 					return passed;
 				Boolean fails = failsSafety.get(request.source());
 				try
@@ -2215,8 +2215,8 @@ public final class DriverTest
 		List<Category> categories = List.of(fixture.findCategory("safety").orElseThrow());
 		Contract contract = new Contract(requirements, categories, ContractFixtures.profiles(requirements, categories),
 			fixture.judge(), fixture.fixtures(), fixture.limitations());
-		return new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().development("safety", 50, 1).
-			failure(CampaignBuilder.instance("safety", "logs")).round(new Round(Map.of("safety", 0))).build();
+		return new Builder().confirmed(contract, 1).working(1).readyBaseline().development("safety", 50, 1).
+			failure(Builder.instance("safety", "logs")).round(new Round(Map.of("safety", 0))).build();
 	}
 
 	/**
@@ -2366,7 +2366,7 @@ public final class DriverTest
 				harness.settle(driver);
 				Campaign campaign = harness.campaign();
 				requireThat(developmentOutcomes(campaign), "outcomes").isEqualTo(101);
-				int failures = campaign.development().counts().values().stream().mapToInt(CategoryCounts::failures).
+				int failures = campaign.development().counts().values().stream().mapToInt(CellCounts::failures).
 					sum();
 				switch (verdict)
 				{
@@ -2476,10 +2476,10 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Candidate working = new Candidate(1, CampaignBuilder.snapshot("candidate-1"));
+			Candidate working = new Candidate(1, Builder.snapshot("candidate-1"));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-					certificationAttempt(1).category("formatting", 100, 0).category("safety", 100, 0).
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).
 					outcome(Outcome.CERTIFIED).campaign().lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).
 					delivery(new DeliveryRequest(working, 1, Outcome.CERTIFIED)).build());
 			harness.deliverer().respond(stopped);

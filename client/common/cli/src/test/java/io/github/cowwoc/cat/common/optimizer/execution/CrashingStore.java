@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
@@ -134,7 +134,7 @@ public final class CrashingStore implements CampaignStore
 	}
 
 	@Override
-	public List<CampaignHeader> listHeaders() throws IOException
+	public List<Header> listHeaders() throws IOException
 	{
 		return delegate.listHeaders();
 	}

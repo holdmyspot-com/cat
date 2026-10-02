@@ -18,10 +18,10 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
  *   index for {@link Purpose#BASELINE}, the certification index for {@link Purpose#FORMAL}, or the author attempt
  *   number for {@link Purpose#PROMOTION}
  * @param snapshot the snapshot that the trial runs
- * @param category the trial's cell identifier
+ * @param cell the trial's cell identifier
  * @param sequence the trial's number within its sequence group, starting at 1
  */
-public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String category, long sequence)
+public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String cell, long sequence)
 {
 	/**
 	 * Creates a key.
@@ -29,18 +29,18 @@ public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String cate
 	 * @param purpose why the trial runs
 	 * @param series the series that the trial belongs to
 	 * @param snapshot the snapshot that the trial runs
-	 * @param category the trial's cell identifier
+	 * @param cell the trial's cell identifier
 	 * @param sequence the trial's number within its sequence group, starting at 1
-	 * @throws NullPointerException if {@code purpose}, {@code snapshot} or {@code category} are null
+	 * @throws NullPointerException if {@code purpose}, {@code snapshot} or {@code cell} are null
 	 * @throws IllegalArgumentException if {@code series} is negative, {@code sequence} is not positive, or
-	 *   {@code category} is blank
+	 *   {@code cell} is blank
 	 */
 	public TrialKey
 	{
 		requireThat(purpose, "purpose").isNotNull();
 		requireThat(series, "series").isNotNegative();
 		requireThat(snapshot, "snapshot").isNotNull();
-		requireThat(category, "category").isNotBlank();
+		requireThat(cell, "category").isNotBlank();
 		requireThat(sequence, "sequence").isPositive();
 	}
 
@@ -51,7 +51,7 @@ public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String cate
 	 */
 	public SequenceGroup sequenceGroup()
 	{
-		return new SequenceGroup(category, purpose, snapshot);
+		return new SequenceGroup(cell, purpose, snapshot);
 	}
 
 	/**
@@ -64,6 +64,6 @@ public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String cate
 	public boolean isSameGroup(TrialKey other)
 	{
 		return purpose == other.purpose && series == other.series && snapshot.equals(other.snapshot) &&
-			category.equals(other.category);
+			cell.equals(other.cell);
 	}
 }

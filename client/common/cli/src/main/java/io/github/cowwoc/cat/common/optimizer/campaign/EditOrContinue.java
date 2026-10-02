@@ -54,7 +54,7 @@ public final class EditOrContinue
 		Diagnosis diagnosis = development.diagnosis();
 		if (diagnosis.reproduced())
 			return Decision.EDIT;
-		for (CategoryCounts counts : development.counts().values())
+		for (CellCounts counts : development.counts().values())
 		{
 			if (counts.failures() > FAILURE_LIMIT)
 				return Decision.EDIT;

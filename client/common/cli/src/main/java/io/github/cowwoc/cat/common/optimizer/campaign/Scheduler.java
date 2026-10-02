@@ -153,7 +153,7 @@ public final class Scheduler
 		{
 			TrialKey key = trial.key();
 			if (key.purpose() == purpose && key.series() == series)
-				inFlight.merge(key.category(), 1, Integer::sum);
+				inFlight.merge(key.cell(), 1, Integer::sum);
 		}
 		return inFlight;
 	}
@@ -191,17 +191,17 @@ public final class Scheduler
 		while (slots > 0 && plan.size() < freeCapacity)
 		{
 			String best = null;
-			for (String category : attempt.procedure().categories())
+			for (String cell : attempt.procedure().cells())
 			{
-				CategoryCounts counts = attempt.count(category);
-				int assigned = inFlight.getOrDefault(category, 0);
-				if (DecisionTable.categoryDecision(boundaries, counts) != DecisionTable.CategoryDecision.UNDECIDED ||
-					ConcurrencyPolicy.categoryLimit(boundaries, counts) - assigned <= 0)
+				CellCounts counts = attempt.count(cell);
+				int assigned = inFlight.getOrDefault(cell, 0);
+				if (DecisionTable.cellDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
+					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0)
 				{
 					continue;
 				}
-				if (best == null || hasFormalPriority(attempt, inFlight, category, best))
-					best = category;
+				if (best == null || hasFormalPriority(attempt, inFlight, cell, best))
+					best = cell;
 			}
 			if (best == null)
 				return;
@@ -218,16 +218,16 @@ public final class Scheduler
 	 *
 	 * @param attempt the running attempt
 	 * @param inFlight the unadopted trials per cell
-	 * @param category the identifier of a cell that comes after {@code other} in contract order
+	 * @param cell the identifier of a cell that comes after {@code other} in contract order
 	 * @param other the identifier of the highest-priority cell so far
-	 * @return {@code true} if {@code category} comes first
+	 * @return {@code true} if {@code cell} comes first
 	 */
 	private static boolean hasFormalPriority(CertificationAttempt attempt, Map<String, Integer> inFlight,
-		String category, String other)
+		String cell, String other)
 	{
-		CategoryCounts counts = attempt.count(category);
-		CategoryCounts otherCounts = attempt.count(other);
-		boolean untried = counts.outcomes() == 0 && inFlight.getOrDefault(category, 0) == 0;
+		CellCounts counts = attempt.count(cell);
+		CellCounts otherCounts = attempt.count(other);
+		boolean untried = counts.outcomes() == 0 && inFlight.getOrDefault(cell, 0) == 0;
 		boolean otherUntried = otherCounts.outcomes() == 0 && inFlight.getOrDefault(other, 0) == 0;
 		if (untried != otherUntried)
 			return untried;
@@ -270,7 +270,7 @@ public final class Scheduler
 			List<Cell> eligible = new ArrayList<>();
 			for (Cell cell : selectDevelopmentCells(campaign, inFlight))
 			{
-				CategoryCounts counts = development.count(cell.id());
+				CellCounts counts = development.count(cell.id());
 				if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
 					eligible.add(cell);
 			}
@@ -377,8 +377,8 @@ public final class Scheduler
 	 */
 	private static boolean isWeaker(Contract contract, Development development, Cell cell, Cell other)
 	{
-		CategoryCounts counts = development.count(cell.id());
-		CategoryCounts otherCounts = development.count(other.id());
+		CellCounts counts = development.count(cell.id());
+		CellCounts otherCounts = development.count(other.id());
 		int byBound = Double.compare(ExploratoryBounds.wilson(counts.passes(), counts.outcomes()).lower(),
 			ExploratoryBounds.wilson(otherCounts.passes(), otherCounts.outcomes()).lower());
 		if (byBound != 0)
@@ -408,7 +408,7 @@ public final class Scheduler
 		Map<String, Integer> needed = new HashMap<>();
 		for (String cell : cells)
 		{
-			CategoryCounts counts = baseline.count(cell);
+			CellCounts counts = baseline.count(cell);
 			int target = Baseline.target(counts, baseline.index(), cells.size());
 			needed.put(cell, target - counts.outcomes() - inFlight.getOrDefault(cell, 0));
 		}

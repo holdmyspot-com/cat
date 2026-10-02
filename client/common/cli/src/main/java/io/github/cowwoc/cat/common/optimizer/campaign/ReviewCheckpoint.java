@@ -26,16 +26,16 @@ public final class ReviewCheckpoint
 	 * Indicates whether a cell's review checkpoint is due.
 	 *
 	 * @param development the development state
-	 * @param category the cell identifier
+	 * @param cell the cell identifier
 	 * @return {@code true} if the cell reached its review point and is not ready
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static boolean isDue(Development development, String category)
+	public static boolean isDue(Development development, String cell)
 	{
 		requireThat(development, "development").isNotNull();
-		requireThat(category, "category").isNotNull();
-		CategoryCounts counts = development.count(category);
-		return counts.outcomes() >= development.reviewPoint(category) && !ReadinessGate.isReady(counts);
+		requireThat(cell, "category").isNotNull();
+		CellCounts counts = development.count(cell);
+		return counts.outcomes() >= development.reviewPoint(cell) && !ReadinessGate.isReady(counts);
 	}
 
 	/**

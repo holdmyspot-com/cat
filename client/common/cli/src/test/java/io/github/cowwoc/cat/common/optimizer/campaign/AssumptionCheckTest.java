@@ -64,9 +64,9 @@ public final class AssumptionCheckTest
 	public void dependenceInvalidatesAttempt()
 	{
 		// Requirement: R-P2
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("safety", 30, 0).build();
-		campaign = CampaignTransitions.apply(campaign,
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("safety", 30, 0).build();
+		campaign = Transitions.apply(campaign,
 			new CampaignEvent.ReportUnavailable(Outcome.INVALID_STATISTICAL_ASSUMPTIONS));
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INVALID_STATISTICAL_ASSUMPTIONS);
 		requireThat(campaign.outcome().label(), "label").

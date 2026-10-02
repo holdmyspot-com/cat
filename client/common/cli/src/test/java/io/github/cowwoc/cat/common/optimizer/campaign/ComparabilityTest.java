@@ -27,8 +27,8 @@ public final class ComparabilityTest
 	public void equalConditionsAreComparable()
 	{
 		// Requirement: R-M4
-		Comparability comparability = Comparability.of(CampaignBuilder.confirmedIdentity("model-a"),
-			CampaignBuilder.confirmedIdentity("model-a"));
+		Comparability comparability = Comparability.of(Builder.confirmedIdentity("model-a"),
+			Builder.confirmedIdentity("model-a"));
 		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
 		requireThat(comparability.isComparable(), "isComparable").isTrue();
 		requireThat(comparability.differing(), "differing").isEmpty();
@@ -42,7 +42,7 @@ public final class ComparabilityTest
 	public void differingConditionsAreNamed()
 	{
 		// Requirement: R-M4
-		MeasurementIdentity first = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
 		MeasurementIdentity second = first.replaceWith(identity(MeasurementCondition.MODEL, "model-b",
 			MeasurementCondition.JUDGE, "j2"));
 		Comparability comparability = Comparability.of(first, second);
@@ -59,7 +59,7 @@ public final class ComparabilityTest
 	public void missingConditionIsIndeterminate()
 	{
 		// Requirement: R-M4
-		MeasurementIdentity first = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
 		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
 		values.remove(MeasurementCondition.JUDGE);
 		MeasurementIdentity second = new MeasurementIdentity(values);
@@ -76,7 +76,7 @@ public final class ComparabilityTest
 	public void missingDataKeepsDifferences()
 	{
 		// Requirement: R-M4
-		MeasurementIdentity first = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
 		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
 		values.remove(MeasurementCondition.JUDGE);
 		values.put(MeasurementCondition.MODEL, "model-b");
@@ -94,7 +94,7 @@ public final class ComparabilityTest
 	public void absentOnBothIsIndeterminate()
 	{
 		// Requirement: R-M4
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		MeasurementIdentity partial = new MeasurementIdentity(values);
 		Comparability comparability = Comparability.of(partial, partial);
@@ -110,7 +110,7 @@ public final class ComparabilityTest
 	public void cellValuesSupplyRequiredConditions()
 	{
 		// Requirement: R-M4, R-E17
-		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.MODEL);
 		MeasurementIdentity identity = new MeasurementIdentity(values,
 			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "observed")));

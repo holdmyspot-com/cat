@@ -36,7 +36,7 @@ public final class AttemptSelectionTest
 	public void weakRoundReceivesThreeAttempts()
 	{
 		// Requirement: R-D12
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), campaign.development().diagnosis().pending().getFirst(),
@@ -45,7 +45,7 @@ public final class AttemptSelectionTest
 		for (int attempt = 0; attempt < 2; ++attempt)
 			campaign = TransitionSteps.submit(campaign, "safety", working, List.of());
 		requireThat(campaign.outcome(), "roundOutcome").isNull();
-		requireThat(campaign.development().round().nextCategory().orElseThrow(), "thirdAttempt").isEqualTo("safety");
+		requireThat(campaign.development().round().nextCell().orElseThrow(), "thirdAttempt").isEqualTo("safety");
 	}
 
 	/**
@@ -55,9 +55,9 @@ public final class AttemptSelectionTest
 	public void strongRoundKeepsSequentialAttempts()
 	{
 		// Requirement: R-D12
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 100, 0).round(TrialAdoption.failingRound(
-				Map.of("safety", CampaignBuilder.counts(60, 1), "formatting", CampaignBuilder.counts(100, 0)),
+				Map.of("safety", Builder.counts(60, 1), "formatting", Builder.counts(100, 0)),
 				ContractFixtures.contract(), null)).build();
 		for (int attempt = 0; attempt < 2; ++attempt)
 			campaign = TransitionSteps.submit(campaign, "safety",
@@ -72,8 +72,8 @@ public final class AttemptSelectionTest
 	public void cellWithoutOutcomeMakesRoundWeak()
 	{
 		// Requirement: R-D12
-		Map<String, CategoryCounts> counts = Map.of(ContractFixtures.BIG_CELL, CampaignBuilder.counts(100, 1));
-		Campaign campaign = new CampaignBuilder().confirmed(ContractFixtures.twoCellContract(), 1).working(1).
+		Map<String, CellCounts> counts = Map.of(ContractFixtures.BIG_CELL, Builder.counts(100, 1));
+		Campaign campaign = new Builder().confirmed(ContractFixtures.twoCellContract(), 1).working(1).
 			development(ContractFixtures.BIG_CELL, 100, 1).round(TrialAdoption.failingRound(counts,
 				ContractFixtures.twoCellContract(), null)).build();
 		for (int attempt = 0; attempt < 2; ++attempt)
@@ -123,11 +123,11 @@ public final class AttemptSelectionTest
 	public void referenceRunsDoNotCountForAttempt()
 	{
 		// Requirement: R-D12
-		Sha256 snapshot = CampaignBuilder.snapshot("attempt1");
+		Sha256 snapshot = Builder.snapshot("attempt1");
 		AuthorAttempt attempt = new AuthorAttempt(1, "safety", snapshot, List.of(
-			new PromotionRun(PromotionRun.Role.TRIGGERING, CampaignBuilder.targeted("safety", "cache"),
+			new PromotionRun(PromotionRun.Role.TRIGGERING, Builder.targeted("safety", "cache"),
 				new TrialKey(Purpose.PROMOTION, 1, snapshot, "safety", 1), Verdict.PASS),
-			new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, CampaignBuilder.targeted("safety", "logs"),
+			new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, Builder.targeted("safety", "logs"),
 				new TrialKey(Purpose.PROMOTION, 1, snapshot, "safety", 2), Verdict.PASS)),
 			Minimality.start(List.of(), snapshot));
 		requireThat(AttemptSelection.passingRuns(attempt.runs()), "passingRuns").isEqualTo(1L);
@@ -145,10 +145,10 @@ public final class AttemptSelectionTest
 		{
 			for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
-					CampaignBuilder.snapshot("attempt" + attempt), CampaignBuilder.targeted("safety", "cache"),
+					Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "cache"),
 					Verdict.FAIL);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
-				CampaignBuilder.snapshot("attempt" + attempt), CampaignBuilder.targeted("safety", "logs"), Verdict.PASS);
+				Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "logs"), Verdict.PASS);
 			if (attempt < 3)
 				requireThat(campaign.outcome(), "incompleteRound").isNull();
 		}
@@ -163,7 +163,7 @@ public final class AttemptSelectionTest
 	public void unaddressedEmptyCellIsNotWeak()
 	{
 		// Requirement: R-D12
-		Round round = TrialAdoption.failingRound(Map.of("safety", CampaignBuilder.counts(60, 1)),
+		Round round = TrialAdoption.failingRound(Map.of("safety", Builder.counts(60, 1)),
 			ContractFixtures.contract(), null);
 		requireThat(round.weak(), "weak").isFalse();
 		requireThat(round.maxAttempts(), "attempts").isEqualTo(2);
@@ -176,8 +176,8 @@ public final class AttemptSelectionTest
 	public void failingProfilesShareThreeAttempts()
 	{
 		// Requirement: R-D12
-		Round round = TrialAdoption.failingRound(Map.of(ContractFixtures.BIG_CELL, CampaignBuilder.counts(0, 1),
-			ContractFixtures.SMALL_CELL, CampaignBuilder.counts(100, 1)), ContractFixtures.twoCellContract(), null);
+		Round round = TrialAdoption.failingRound(Map.of(ContractFixtures.BIG_CELL, Builder.counts(0, 1),
+			ContractFixtures.SMALL_CELL, Builder.counts(100, 1)), ContractFixtures.twoCellContract(), null);
 		requireThat(round.attempts().keySet(), "addressedCategories").containsExactly(List.of(ContractFixtures.BIG_CELL));
 		requireThat(round.maxAttempts(), "attemptsPerCategory").isEqualTo(3);
 	}
@@ -190,20 +190,20 @@ public final class AttemptSelectionTest
 	 */
 	private static Campaign contenders(List<Integer> sizes)
 	{
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).build();
+		Campaign campaign = new Builder().confirmed().working(1).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		TrialInstance failure = campaign.development().diagnosis().pending().getFirst();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), failure, Verdict.FAIL);
-		campaign = new CampaignBuilder().confirmed().working(1).development("safety", 0, 1).
-			failure(CampaignBuilder.targeted("safety", "cache")).regression(CampaignBuilder.targeted("safety", "logs"),
+		campaign = new Builder().confirmed().working(1).development("safety", 0, 1).
+			failure(Builder.targeted("safety", "cache")).regression(Builder.targeted("safety", "logs"),
 				Verdict.FAIL).round(campaign.development().round()).build();
 		for (int index = 0; index < sizes.size(); ++index)
 		{
 			String original = "old\n".repeat(sizes.get(index));
 			String edited = "new\n".repeat(sizes.get(index));
 			campaign = TransitionSteps.submit(campaign, "safety",
-				CampaignBuilder.snapshot("attempt" + (index + 1)), List.of(new FileDelta(Path.of("CLAUDE.md"),
+				Builder.snapshot("attempt" + (index + 1)), List.of(new FileDelta(Path.of("CLAUDE.md"),
 					new FileContent(original.getBytes(UTF_8)), new FileContent(edited.getBytes(UTF_8)),
 					PosixFilePermissions.fromString("rw-r--r--"))));
 		}
@@ -222,12 +222,12 @@ public final class AttemptSelectionTest
 		Campaign campaign = contenders(sizes);
 		for (int attempt = 3; attempt >= 1; --attempt)
 		{
-			Sha256 snapshot = CampaignBuilder.snapshot("attempt" + attempt);
+			Sha256 snapshot = Builder.snapshot("attempt" + attempt);
 			for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
-					CampaignBuilder.targeted("safety", "cache"), Verdict.PASS);
+					Builder.targeted("safety", "cache"), Verdict.PASS);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
-				CampaignBuilder.targeted("safety", "logs"), regressions.get(attempt - 1));
+				Builder.targeted("safety", "logs"), regressions.get(attempt - 1));
 		}
 		return campaign;
 	}

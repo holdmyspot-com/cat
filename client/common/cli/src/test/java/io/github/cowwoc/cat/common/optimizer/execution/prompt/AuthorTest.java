@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
@@ -73,8 +73,8 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"), Path.of("rules")),
 			Set.of(Path.of(".claude/settings.json")));
 		AuthorBrief brief = new AuthorBrief("safety", contract, List.of(failure()),
-			Map.of("safety", new CategoryCounts(40, 2, List.of(2))),
-			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CategoryCounts(30, 1, List.of(1))),
+			Map.of("safety", new CellCounts(40, 2, List.of(2))),
+			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
 				List.of(failure()))), Set.of(Path.of("/shared/rules.md")),
 			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")));
 

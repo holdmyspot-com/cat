@@ -56,7 +56,7 @@ final class UserChoices
 			{
 				PendingDecision.CheckpointReached checkpoint = (PendingDecision.CheckpointReached) pending;
 				draft.round = TrialAdoption.failingRound(draft.developmentCounts, draft.contract(),
-					checkpoint.category());
+					checkpoint.cell());
 				draft.resolve();
 			}
 			case KEEP_IMPROVEMENT -> keepImprovement(draft, campaign, choose.attempt());
@@ -171,14 +171,14 @@ final class UserChoices
 	private static void moreEvidence(Draft draft, PendingDecision.CheckpointReached checkpoint,
 		int reviewPoint)
 	{
-		String category = checkpoint.category();
-		int outcomes = draft.developmentCount(category).outcomes();
+		String cell = checkpoint.cell();
+		int outcomes = draft.developmentCount(cell).outcomes();
 		if (reviewPoint <= outcomes)
 		{
-			throw new IllegalArgumentException("The next review point of " + category + " must exceed its " +
+			throw new IllegalArgumentException("The next review point of " + cell + " must exceed its " +
 				outcomes + " outcomes: " + reviewPoint);
 		}
-		draft.reviewPoints.put(category, reviewPoint);
+		draft.reviewPoints.put(cell, reviewPoint);
 		draft.resolve();
 	}
 

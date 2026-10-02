@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 
 import java.util.ArrayList;
@@ -57,9 +57,9 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	public List<CampaignHeader> listHeaders()
+	public List<Header> listHeaders()
 	{
-		List<CampaignHeader> headers = new ArrayList<>();
+		List<Header> headers = new ArrayList<>();
 		for (Campaign campaign : snapshots.values())
 			headers.add(campaign.header());
 		return headers;

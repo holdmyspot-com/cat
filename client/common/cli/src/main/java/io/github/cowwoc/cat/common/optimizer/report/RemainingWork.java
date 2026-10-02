@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
@@ -160,7 +160,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		int total = 0;
 		for (String id : cells)
 		{
-			CategoryCounts counts = campaign.development().count(id);
+			CellCounts counts = campaign.development().count(id);
 			int readiness = readinessRemaining(counts);
 			int baseline = baselineRemaining(campaign.baseline(), id, cells.size());
 			entries.add(new Entry(id, Kind.READINESS, readiness, null));
@@ -178,7 +178,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 * @param counts the cell's development counts
 	 * @return the trials
 	 */
-	private static int readinessRemaining(CategoryCounts counts)
+	private static int readinessRemaining(CellCounts counts)
 	{
 		int trials = 0;
 		while (!ReadinessGate.isReady(counts))
@@ -199,7 +199,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 */
 	private static int baselineRemaining(IncumbentBaseline baseline, String cell, int cells)
 	{
-		CategoryCounts counts = baseline.count(cell);
+		CellCounts counts = baseline.count(cell);
 		int trials = 0;
 		while (counts.outcomes() < Baseline.target(counts, baseline.index(), cells))
 		{
@@ -221,10 +221,10 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		boolean available = true;
-		for (String cell : attempt.procedure().categories())
+		for (String cell : attempt.procedure().cells())
 		{
-			CategoryCounts counts = attempt.count(cell);
-			if (DecisionTable.categoryDecision(boundaries, counts) != DecisionTable.CategoryDecision.UNDECIDED)
+			CellCounts counts = attempt.count(cell);
+			if (DecisionTable.cellDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED)
 				continue;
 			int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
 			if (minimum > boundaries.cap() - counts.failures())

@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -50,7 +50,7 @@ public final class CommandsTest
 	private static final class FakeCore implements Core
 	{
 		private final List<String> calls = new ArrayList<>();
-		private final StatusReport status = StatusReport.of(new CampaignBuilder().confirmed().build(),
+		private final StatusReport status = StatusReport.of(new Builder().confirmed().build(),
 			ReportEvidence.NONE);
 		private CommandResult result = CommandResult.of(status, Harness.CLAUDE);
 		private Exception failure;

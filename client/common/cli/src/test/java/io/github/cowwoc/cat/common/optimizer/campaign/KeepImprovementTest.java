@@ -49,8 +49,8 @@ public final class KeepImprovementTest
 	private static CertificationAttempt attempt(int formattingPasses, int formattingFailures, int safetyPasses,
 		int safetyFailures)
 	{
-		return new CampaignBuilder().confirmed().certificationAttempt(1).boundaries(boundaries()).
-			category("formatting", formattingPasses, formattingFailures).category("safety", safetyPasses,
+		return new Builder().confirmed().certificationAttempt(1).boundaries(boundaries()).
+			cell("formatting", formattingPasses, formattingFailures).cell("safety", safetyPasses,
 				safetyFailures).outcome(Outcome.INCONCLUSIVE).build().attempt(1);
 	}
 
@@ -58,7 +58,7 @@ public final class KeepImprovementTest
 	 * Verifies that an attempt qualifies only with at least one category proven better.
 	 */
 	@Test
-	public void requiresProvenBetterCategory()
+	public void requiresProvenBetterCell()
 	{
 		// Requirement: R-F6
 		requireThat(KeepImprovement.qualifies(attempt(60, 0, 100, 0), 1), "better").isTrue();
@@ -73,10 +73,10 @@ public final class KeepImprovementTest
 	public void incompleteIdentitiesAreExcluded()
 	{
 		// Requirement: R-M4, R-F6
-		Campaign campaign = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).boundaries(boundaries()).category("formatting", 60, 0).
-			category("safety", 100, 0).outcome(Outcome.INCONCLUSIVE).campaign().certificationAttempt(2).
-			boundaries(boundaries()).category("formatting", 200, 0).category("safety", 200, 0).
+		Campaign campaign = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).boundaries(boundaries()).cell("formatting", 60, 0).
+			cell("safety", 100, 0).outcome(Outcome.INCONCLUSIVE).campaign().certificationAttempt(2).
+			boundaries(boundaries()).cell("formatting", 200, 0).cell("safety", 200, 0).
 			outcome(Outcome.INCONCLUSIVE).build();
 
 		requireThat(KeepImprovement.qualifies(campaign.attempt(1), 1), "qualifies").isFalse();
@@ -87,7 +87,7 @@ public final class KeepImprovementTest
 	 * Verifies that an attempt with a category proven worse does not qualify.
 	 */
 	@Test
-	public void rejectsProvenWorseCategory()
+	public void rejectsProvenWorseCell()
 	{
 		// Requirement: R-F6
 		requireThat(KeepImprovement.qualifies(attempt(60, 0, 93, 7), 1), "notWorse").isTrue();
@@ -115,8 +115,8 @@ public final class KeepImprovementTest
 	{
 		// Requirement: R-F6
 		requireThat(KeepImprovement.qualifies(attempt(60, 0, 100, 0), 2), "earlierLineage").isFalse();
-		Campaign campaign = new CampaignBuilder().confirmed(ContractFixtures.contract(), 2).certificationAttempt(1).
-			lineage(1).boundaries(boundaries()).category("formatting", 60, 0).category("safety", 100, 0).
+		Campaign campaign = new Builder().confirmed(ContractFixtures.contract(), 2).certificationAttempt(1).
+			lineage(1).boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).
 			outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(KeepImprovement.offers(campaign), "offers").isEmpty();
 	}
@@ -131,20 +131,20 @@ public final class KeepImprovementTest
 		for (Outcome outcome : List.of(Outcome.BELOW_MINIMUM, Outcome.INCONCLUSIVE, Outcome.PLATEAU,
 			Outcome.TESTING_ENVIRONMENT_CHANGED, Outcome.STOPPED_FOR_CONTRACT_REVISION, Outcome.UNSUPPORTED_OUTPUT))
 		{
-			CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
-				boundaries(boundaries()).category("formatting", 60, 0).category("safety", 100, 0).outcome(outcome).
+			CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
+				boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).outcome(outcome).
 				build().attempt(1);
 			requireThat(KeepImprovement.qualifies(attempt, 1), outcome.name()).isTrue();
 		}
 		for (Outcome outcome : List.of(Outcome.CERTIFIED, Outcome.INVALID_STATISTICAL_ASSUMPTIONS))
 		{
-			CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
-				boundaries(boundaries()).category("formatting", 60, 0).category("safety", 100, 0).outcome(outcome).
+			CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
+				boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).outcome(outcome).
 				build().attempt(1);
 			requireThat(KeepImprovement.qualifies(attempt, 1), outcome.name()).isFalse();
 		}
-		CertificationAttempt running = new CampaignBuilder().confirmed().certificationAttempt(1).
-			boundaries(boundaries()).category("formatting", 60, 0).category("safety", 100, 0).build().attempt(1);
+		CertificationAttempt running = new Builder().confirmed().certificationAttempt(1).
+			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).build().attempt(1);
 		requireThat(KeepImprovement.qualifies(running, 1), "running").isFalse();
 	}
 
@@ -155,13 +155,13 @@ public final class KeepImprovementTest
 	 * @param second the passes of attempt 2 in {@code formatting} and {@code safety}
 	 * @return the builder
 	 */
-	private static CampaignBuilder twoAttempts(int[] first, int[] second)
+	private static Builder twoAttempts(int[] first, int[] second)
 	{
-		CampaignBuilder builder = new CampaignBuilder().confirmed();
-		builder.certificationAttempt(1).boundaries(boundaries()).category("formatting", first[0], 0).
-			category("safety", first[1], 0).outcome(Outcome.INCONCLUSIVE);
-		builder.certificationAttempt(2).boundaries(boundaries()).category("formatting", second[0], 0).
-			category("safety", second[1], 0).outcome(Outcome.INCONCLUSIVE);
+		Builder builder = new Builder().confirmed();
+		builder.certificationAttempt(1).boundaries(boundaries()).cell("formatting", first[0], 0).
+			cell("safety", first[1], 0).outcome(Outcome.INCONCLUSIVE);
+		builder.certificationAttempt(2).boundaries(boundaries()).cell("formatting", second[0], 0).
+			cell("safety", second[1], 0).outcome(Outcome.INCONCLUSIVE);
 		return builder;
 	}
 
@@ -170,7 +170,7 @@ public final class KeepImprovementTest
 	 * recency.
 	 */
 	@Test
-	public void bestHasStrongestWeakestCategory()
+	public void bestHasStrongestWeakestCell()
 	{
 		// Requirement: R-F6
 		Campaign campaign = twoAttempts(new int[]{80, 100}, new int[]{60, 100}).build();
@@ -182,7 +182,7 @@ public final class KeepImprovementTest
 	 * Verifies that ties on the weakest category go to more categories proven better, regardless of recency.
 	 */
 	@Test
-	public void tieGoesToMoreProvenBetterCategories()
+	public void tieGoesToMoreProvenBetterCells()
 	{
 		// Requirement: R-F6
 		Campaign campaign = twoAttempts(new int[]{60, 150}, new int[]{60, 100}).build();
@@ -210,10 +210,10 @@ public final class KeepImprovementTest
 	public void identitiesAreOfferedSeparately()
 	{
 		// Requirement: R-F6, R-M4
-		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a");
-		MeasurementIdentity current = CampaignBuilder.confirmedIdentity("model-b");
-		CampaignBuilder builder = twoAttempts(new int[]{200, 200}, new int[]{60, 100}).identity(
-			CampaignBuilder.observed("model-b")).confirmed();
+		MeasurementIdentity earlier = Builder.confirmedIdentity("model-a");
+		MeasurementIdentity current = Builder.confirmedIdentity("model-b");
+		Builder builder = twoAttempts(new int[]{200, 200}, new int[]{60, 100}).identity(
+			Builder.observed("model-b")).confirmed();
 		builder.certificationAttempt(1).identity(earlier);
 		builder.certificationAttempt(2).identity(current);
 		Campaign campaign = builder.build();
@@ -231,21 +231,21 @@ public final class KeepImprovementTest
 	public void qualifyingAttemptStaysAvailable()
 	{
 		// Requirement: R-F6
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			boundaries(boundaries()).category("formatting", 60, 0).category("safety", 94, 5).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 94, 5).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.ImprovementProven(1));
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.KEEP_IMPROVEMENT,
 			Choice.OPTIMIZE_FURTHER, Choice.STOP));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.OPTIMIZE_FURTHER));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.OPTIMIZE_FURTHER));
 		requireThat(campaign.pending(), "afterOptimize").isNull();
 		requireThat(campaign.development().round(), "round").isNotNull();
 		requireThat(KeepImprovement.offers(campaign), "offers").size().isEqualTo(1);
 
-		Campaign checkpoint = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			boundaries(boundaries()).category("formatting", 60, 0).category("safety", 94, 6).
+		Campaign checkpoint = new Builder().confirmed().working(1).certificationAttempt(1).
+			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 94, 6).
 			outcome(Outcome.BELOW_MINIMUM).campaign().development("formatting", 198, List.of(0, 0, 0, 2)).
 			pending(new PendingDecision.CheckpointReached("formatting", 200)).build();
 		requireThat(checkpoint.choices(), "checkpointChoices").containsExactly(List.of(Choice.MORE_EVIDENCE,
@@ -260,15 +260,15 @@ public final class KeepImprovementTest
 	public void keepDeliversChosenSnapshot()
 	{
 		// Requirement: R-F6
-		Candidate frozen = new Candidate(1, CampaignBuilder.snapshot("candidate-1"));
-		Campaign campaign = new CampaignBuilder().confirmed().working(2).certificationAttempt(1).candidate(frozen).
-			boundaries(boundaries()).category("formatting", 60, 0).category("safety", 100, 0).
+		Candidate frozen = new Candidate(1, Builder.snapshot("candidate-1"));
+		Campaign campaign = new Builder().confirmed().working(2).certificationAttempt(1).candidate(frozen).
+			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).
 			outcome(Outcome.INCONCLUSIVE).campaign().pending(new PendingDecision.PlateauReached()).
 			outcome(Outcome.PLATEAU).build();
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.KEEP_IMPROVEMENT,
 			Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.keep(1));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.keep(1));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.IMPROVED_NOT_CERTIFIED);
 		requireThat(campaign.outcome().label(), "label").isEqualTo("improved, not certified");
@@ -285,6 +285,6 @@ public final class KeepImprovementTest
 		// Requirement: R-F6
 		Campaign campaign = twoAttempts(new int[]{80, 100}, new int[]{60, 100}).
 			pending(new PendingDecision.PlateauReached()).build();
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.keep(2));
+		Transitions.apply(campaign, CampaignEvent.Choose.keep(2));
 	}
 }

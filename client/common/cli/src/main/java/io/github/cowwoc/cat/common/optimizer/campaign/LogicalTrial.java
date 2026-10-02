@@ -65,7 +65,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 		requireThat(infrastructureAttempts, "infrastructureAttempts").isNotNull();
 		requireThat(observations, "observations").isNotNegative();
 		requireThat(responses, "responses").isNotNull();
-		requireThat(instance.cellId(), "instance.cellId()").isEqualTo(key.category(), "key.category()");
+		requireThat(instance.cellId(), "instance.cellId()").isEqualTo(key.cell(), "key.category()");
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
 		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");

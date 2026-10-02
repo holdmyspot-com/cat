@@ -32,20 +32,20 @@ public final class Boundaries
 	}
 
 	/**
-	 * Returns the boundaries that {@link CampaignBuilder} uses by default.
+	 * Returns the boundaries that {@link Builder} uses by default.
 	 * <p>
 	 * With a cap of {@value #STANDARD_CAP} outcomes, a cell certifies at {@code 100 + 50 * failures} passes when that
 	 * count is reachable within the cap, and is clearly below once it has 5 failures. It is proven better at
 	 * {@code 60 + 40 * failures} passes when reachable, and proven worse at 4 or more failures only if its pass count
 	 * is below the proven-better minimum.
 	 *
-	 * @param categories the number of cells requiring comparison boundaries
+	 * @param cells the number of cells requiring comparison boundaries
 	 * @return the boundaries
 	 */
-	public static DecisionBoundaries standard(int categories)
+	public static DecisionBoundaries standard(int cells)
 	{
 		List<ComparisonBoundaries> comparisons = new ArrayList<>();
-		for (int i = 0; i < categories; ++i)
+		for (int i = 0; i < cells; ++i)
 			comparisons.add(comparison(STANDARD_CAP, 60, 40, 4));
 		return decision(STANDARD_CAP, 100, 50, 5, comparisons);
 	}

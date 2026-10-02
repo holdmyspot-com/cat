@@ -77,7 +77,7 @@ public final class ConcurrencyPolicy
 		if (running.isPresent())
 		{
 			CertificationAttempt attempt = running.get();
-			for (CategoryCounts counts : attempt.counts().values())
+			for (CellCounts counts : attempt.counts().values())
 			{
 				outcomes += counts.outcomes();
 				failures += counts.failures();
@@ -86,7 +86,7 @@ public final class ConcurrencyPolicy
 		}
 		if (countDevelopment)
 		{
-			for (CategoryCounts counts : development.counts().values())
+			for (CellCounts counts : development.counts().values())
 			{
 				outcomes += counts.outcomes();
 				failures += counts.failures();
@@ -105,7 +105,7 @@ public final class ConcurrencyPolicy
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if the counts exceed the cap
 	 */
-	public static int categoryLimit(DecisionBoundaries boundaries, CategoryCounts counts)
+	public static int cellLimit(DecisionBoundaries boundaries, CellCounts counts)
 	{
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(counts, "counts").isNotNull();

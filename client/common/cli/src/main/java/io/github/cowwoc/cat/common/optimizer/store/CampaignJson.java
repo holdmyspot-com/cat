@@ -27,9 +27,9 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Base64;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
-import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
@@ -119,7 +119,7 @@ final class CampaignJson
 	 * The version of the layout that this class writes and reads.
 	 */
 	private static final int FORMAT_VERSION = 8;
-	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
+	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
 	private final ProposalSchema schema;
@@ -183,7 +183,7 @@ final class CampaignJson
 		for (Entry<SequenceGroup, Long> entry : sortedSequences.entrySet())
 		{
 			ObjectNode node = sequences.addObject();
-			node.put("cell", entry.getKey().category());
+			node.put("cell", entry.getKey().cell());
 			node.put("purpose", entry.getKey().purpose().name());
 			node.put("snapshot", entry.getKey().snapshot().hex());
 			node.put("last_sequence", entry.getValue());
@@ -302,7 +302,7 @@ final class CampaignJson
 		for (AuthorDiagnosis diagnosis : evidence.authors())
 		{
 			ObjectNode author = authors.addObject();
-			author.put("cell", diagnosis.category());
+			author.put("cell", diagnosis.cell());
 			author.put("snapshot", diagnosis.snapshot().hex());
 			author.put("transcript", diagnosis.transcript().toString());
 			author.put("effects", diagnosis.effects().toString());
@@ -351,7 +351,7 @@ final class CampaignJson
 			attempt.put("round", result.round());
 			attempt.put("working", result.working().hex());
 			attempt.put("number", result.number());
-			attempt.put("cell", result.category());
+			attempt.put("cell", result.cell());
 			attempt.put("snapshot", result.snapshot().hex());
 			attempt.set("runs", writePromotionRuns(result.runs()));
 			attempt.put("changed_lines", result.changedLines());
@@ -468,7 +468,7 @@ final class CampaignJson
 	 *   header
 	 * @throws NullPointerException if a required value is missing
 	 */
-	CampaignHeader readSnapshotHeader(JsonNode root)
+	Header readSnapshotHeader(JsonNode root)
 	{
 		requireVersion(root);
 		return readHeader(field(root, "header"));
@@ -576,7 +576,7 @@ final class CampaignJson
 	 * @param header the header
 	 * @return the document
 	 */
-	private ObjectNode writeHeader(CampaignHeader header)
+	private ObjectNode writeHeader(Header header)
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("id", header.id());
@@ -593,9 +593,9 @@ final class CampaignJson
 	 * @param node the document
 	 * @return the header
 	 */
-	private static CampaignHeader readHeader(JsonNode node)
+	private static Header readHeader(JsonNode node)
 	{
-		return new CampaignHeader(text(node, "id"), Path.of(text(node, "root")), Path.of(text(node, "target")),
+		return new Header(text(node, "id"), Path.of(text(node, "root")), Path.of(text(node, "target")),
 			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class));
 	}
 
@@ -731,7 +731,7 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("number", attempt.number());
-		node.put("cell", attempt.category());
+		node.put("cell", attempt.cell());
 		node.put("snapshot", attempt.snapshot().hex());
 		node.set("minimality", writeMinimality(attempt.minimality()));
 		node.set("runs", writePromotionRuns(attempt.runs()));
@@ -951,7 +951,7 @@ final class CampaignJson
 		procedureNode.put("baseline_index", procedure.baselineIndex());
 		procedureNode.set("baseline_identity", writeIdentity(procedure.baselineIdentity()));
 		ArrayNode cells = procedureNode.putArray("cells");
-		for (String cell : procedure.categories())
+		for (String cell : procedure.cells())
 			cells.add(cell);
 		procedureNode.set("boundaries", writeBoundaries(procedure.boundaries()));
 		procedureNode.put("bets", procedure.bets());
@@ -1171,7 +1171,7 @@ final class CampaignJson
 			case PendingDecision.CheckpointReached checkpoint ->
 			{
 				node.put("type", "CHECKPOINT_REACHED");
-				node.put("cell", checkpoint.category());
+				node.put("cell", checkpoint.cell());
 				node.put("outcomes", checkpoint.outcomes());
 			}
 			case PendingDecision.ImprovementProven proven ->
@@ -1268,7 +1268,7 @@ final class CampaignJson
 		node.put("purpose", key.purpose().name());
 		node.put("series", key.series());
 		node.put("snapshot", key.snapshot().hex());
-		node.put("cell", key.category());
+		node.put("cell", key.cell());
 		node.put("sequence", key.sequence());
 		return node;
 	}
@@ -1572,10 +1572,10 @@ final class CampaignJson
 	 * @param counts the counts
 	 * @return the document
 	 */
-	private ObjectNode writeCounts(Map<String, CategoryCounts> counts)
+	private ObjectNode writeCounts(Map<String, CellCounts> counts)
 	{
 		ObjectNode node = json.createObjectNode();
-		for (Entry<String, CategoryCounts> entry : new TreeMap<>(counts).entrySet())
+		for (Entry<String, CellCounts> entry : new TreeMap<>(counts).entrySet())
 		{
 			ObjectNode element = node.putObject(entry.getKey());
 			element.put("passes", entry.getValue().passes());
@@ -1591,14 +1591,14 @@ final class CampaignJson
 	 * @param node the document
 	 * @return the counts
 	 */
-	private static Map<String, CategoryCounts> readCounts(JsonNode node)
+	private static Map<String, CellCounts> readCounts(JsonNode node)
 	{
 		requireObject(node, "counts");
-		Map<String, CategoryCounts> counts = new LinkedHashMap<>();
+		Map<String, CellCounts> counts = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : node.properties())
 		{
 			JsonNode element = entry.getValue();
-			counts.put(entry.getKey(), new CategoryCounts(integer(element, "passes"), integer(element, "failures"),
+			counts.put(entry.getKey(), new CellCounts(integer(element, "passes"), integer(element, "failures"),
 				readIntegers(element, "batch_failures")));
 		}
 		return counts;

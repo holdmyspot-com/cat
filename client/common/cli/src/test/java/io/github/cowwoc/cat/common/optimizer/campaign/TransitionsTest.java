@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.counts;
+import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -20,17 +20,17 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link CampaignTransitions}.
+ * Tests {@link Transitions}.
  */
-public final class CampaignTransitionsTest
+public final class TransitionsTest
 {
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
-	private static final Sha256 REVISED = CampaignBuilder.snapshot("revised contract");
+	private static final Sha256 REVISED = Builder.snapshot("revised contract");
 
 	/**
 	 * Creates the test.
 	 */
-	public CampaignTransitionsTest()
+	public TransitionsTest()
 	{
 	}
 
@@ -43,14 +43,14 @@ public final class CampaignTransitionsTest
 	public void failuresKeepEveryMessage(Purpose purpose)
 	{
 		// Requirement: R-C12
-		CampaignBuilder builder = new CampaignBuilder().confirmed().working(1).readyBaseline();
+		Builder builder = new Builder().confirmed().working(1).readyBaseline();
 		if (purpose == Purpose.FORMAL)
 			builder.certificationAttempt(1);
 		Campaign campaign = TransitionSteps.assign(builder.build(), purpose, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		List<List<String>> responses = List.of(List.of("I'll delete it.", "Should I delete it?"));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL,
 			"Unasked deletion notice", campaign.identity(), null, responses));
 
 		List<Failure> failures;
@@ -125,16 +125,16 @@ public final class CampaignTransitionsTest
 	public void confirmationCreatesLineage()
 	{
 		// Requirement: R-L2
-		Campaign campaign = Campaign.start(new CampaignBuilder().build().header(), 8, CampaignBuilder.INCUMBENT,
-			CampaignBuilder.OBSERVED);
+		Campaign campaign = Campaign.start(new Builder().build().header(), 8, Builder.INCUMBENT,
+			Builder.OBSERVED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "unconfirmed").isEmpty();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
-			CampaignBuilder.contractHash(), 17));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+			Builder.contractHash(), 17));
 
 		requireThat(campaign.lineage().number(), "lineage").isEqualTo(1);
-		requireThat(campaign.lineage().contractHash(), "contractHash").isEqualTo(CampaignBuilder.contractHash());
+		requireThat(campaign.lineage().contractHash(), "contractHash").isEqualTo(Builder.contractHash());
 		requireThat(campaign.baseline().index(), "baseline").isEqualTo(1);
-		requireThat(campaign.identity(), "identity").isEqualTo(CampaignBuilder.confirmedIdentity("model-a"));
+		requireThat(campaign.identity(), "identity").isEqualTo(Builder.confirmedIdentity("model-a"));
 		requireThat(campaign.development().series(), "series").isEqualTo(1);
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "confirmed").isFalse();
 	}
@@ -150,14 +150,14 @@ public final class CampaignTransitionsTest
 		Generator generator = new Generator(contract);
 		TrialInstance instance = generator.markTargeted(generator.draw(ContractFixtures.BIG_CELL,
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1)));
-		Campaign campaign = new CampaignBuilder().confirmed(contract, 1).
+		Campaign campaign = new Builder().confirmed(contract, 1).
 			diagnosis(new Diagnosis(List.of(instance), 0, null, false)).build();
 
 		Campaign assigned = TransitionSteps.assign(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), instance);
 
 		LogicalTrial trial = assigned.trials().getFirst();
-		requireThat(trial.key().category(), "cell").isEqualTo(ContractFixtures.BIG_CELL);
+		requireThat(trial.key().cell(), "cell").isEqualTo(ContractFixtures.BIG_CELL);
 		requireThat(trial.instance(), "instance").isEqualTo(instance);
 	}
 
@@ -169,31 +169,31 @@ public final class CampaignTransitionsTest
 	public void certificationIndexIsPermanent()
 	{
 		// Requirement: R-S9
-		Campaign campaign = makeReady(new CampaignBuilder().confirmed().build());
+		Campaign campaign = makeReady(new Builder().confirmed().build());
 		requireThat(campaign.nextCertificationIndex(), "beforeCommit").isEqualTo(1);
-		campaign = CampaignTransitions.apply(campaign, commit(1));
+		campaign = Transitions.apply(campaign, commit(1));
 		requireThat(campaign.attempt(1).index(), "first").isEqualTo(1);
 
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Revise());
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
 			REVISED, 18));
 		requireThat(campaign.nextCertificationIndex(), "afterRevision").isEqualTo(2);
 
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
 			MeasurementCondition.MODEL)));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Cancel());
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Cancel());
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.nextCertificationIndex(), "afterResume").isEqualTo(2);
 
 		campaign = makeReady(campaign);
-		campaign = CampaignTransitions.apply(campaign, commit(2));
+		campaign = Transitions.apply(campaign, commit(2));
 		requireThat(campaign.attempt(2).index(), "second").isEqualTo(2);
 		requireThat(campaign.attempt(2).procedure().boundaries().level(), "level").
 			isEqualTo(ErrorBudget.certificationLevel(2));
 
 		Campaign fresh = Campaign.start(campaign.header().withLifecycle(Lifecycle.ACTIVE), 8,
-			CampaignBuilder.INCUMBENT, CampaignBuilder.OBSERVED);
+			Builder.INCUMBENT, Builder.OBSERVED);
 		requireThat(fresh.nextCertificationIndex(), "newCampaign").isEqualTo(1);
 	}
 
@@ -205,21 +205,21 @@ public final class CampaignTransitionsTest
 	public void newCandidateStartsNewCounts()
 	{
 		// Requirement: R-D4
-		TrialInstance logs = CampaignBuilder.targeted("safety", "logs");
-		Sha256 attempt = CampaignBuilder.snapshot("attempt");
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("safety", 60, 1).
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		Sha256 attempt = Builder.snapshot("attempt");
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			round(new Round(Map.of("safety", 0))).build();
 		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
 		for (int run = 0; run < 2; ++run)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, attempt, logs, Verdict.PASS);
 
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.AdvanceMinimality(attempt));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(attempt));
 
 		requireThat(campaign.development().working(), "working").isEqualTo(new Candidate(2, attempt));
 		requireThat(campaign.development().series(), "series").isEqualTo(2);
-		requireThat(campaign.development().count("safety"), "safety").isEqualTo(CategoryCounts.EMPTY);
-		requireThat(campaign.development().count("formatting"), "formatting").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.development().count("safety"), "safety").isEqualTo(CellCounts.EMPTY);
+		requireThat(campaign.development().count("formatting"), "formatting").isEqualTo(CellCounts.EMPTY);
 		requireThat(campaign.lineage().regressionSet().getFirst().instance(), "retained").isEqualTo(logs);
 	}
 
@@ -249,8 +249,8 @@ public final class CampaignTransitionsTest
 	public void scopeConditionBlocksCommit(Outcome outcome)
 	{
 		// Requirement: R-C6
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ReportUnavailable(outcome));
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ReportUnavailable(outcome));
 
 		requireThat(campaign.attempts(), "attempts").isEmpty();
 		requireThat(campaign.outcome(), "outcome").isEqualTo(outcome);
@@ -271,12 +271,12 @@ public final class CampaignTransitionsTest
 	public void scopeConditionEndsAttempt(Outcome outcome)
 	{
 		// Requirement: R-C6, R-F5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("formatting", 40, 0).category("safety", 30, 1).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 40, 0).cell("safety", 30, 1).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey inFlight = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(inFlight));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ReportUnavailable(outcome));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ReportUnavailable(outcome));
 
 		CertificationAttempt attempt = campaign.attempt(1);
 		requireThat(attempt.outcome(), "attempt.outcome").isEqualTo(outcome);
@@ -298,12 +298,12 @@ public final class CampaignTransitionsTest
 	public void unavailabilitySurvivesResume()
 	{
 		// Requirement: R-F5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).category("safety", 30, 1).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ReportUnavailable(
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).cell("safety", 30, 1).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ReportUnavailable(
 			Outcome.INELIGIBLE_TRIAL_EFFECT));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INELIGIBLE_TRIAL_EFFECT);
 		requireThat(campaign.lineage().unavailable(), "unavailable").
@@ -321,19 +321,19 @@ public final class CampaignTransitionsTest
 	public void changedConditionsYieldNoOutcome()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		TrialInstance instance = campaign.trials().getFirst().instance();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1; ++failure)
 		{
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
 				"provider error", NOW, null));
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		}
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", observed,
 			null, List.of()));
 
 		LogicalTrial trial = campaign.trials().getFirst();
@@ -347,7 +347,7 @@ public final class CampaignTransitionsTest
 			containsExactly(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.STOP));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "paused").isEmpty();
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
 		requireThat(Scheduler.plan(campaign, NOW, 8).getFirst(), "rerun").isEqualTo(new Admission.Rerun(key));
 		requireThat(campaign.trials().getFirst().instance(), "instance").isEqualTo(instance);
 	}
@@ -377,12 +377,12 @@ public final class CampaignTransitionsTest
 	public void versionChangeIsMeasurementChange(MeasurementCondition condition)
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		MeasurementIdentity observed = changed(campaign, condition);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", observed,
 			null, List.of()));
 
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
@@ -398,10 +398,10 @@ public final class CampaignTransitionsTest
 	 */
 	private static Campaign checkpointWhileRunning()
 	{
-		Campaign campaign = new CampaignBuilder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
+		Campaign campaign = new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
 			development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 		requireThat(campaign.pending(), "checkpoint").isEqualTo(new PendingDecision.CheckpointReached("formatting",
 			200));
@@ -418,11 +418,11 @@ public final class CampaignTransitionsTest
 		Campaign campaign = checkpointWhileRunning();
 		TrialKey running = campaign.trials().getFirst().key();
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(running, Verdict.PASS, "",
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(running, Verdict.PASS, "",
 			observed, null, List.of()));
 		requireThat(campaign.pending(), "first").isEqualTo(new PendingDecision.CheckpointReached("formatting", 200));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.moreEvidence(300));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.moreEvidence(300));
 		requireThat(campaign.pending(), "second").isEqualTo(new PendingDecision.MeasurementChanged(observed,
 			List.of(MeasurementCondition.MODEL)));
 		requireThat(campaign.choices(), "choices").
@@ -437,20 +437,20 @@ public final class CampaignTransitionsTest
 	public void equalDecisionIsAskedOnce()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 10, 0).build();
+		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey second = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(first));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(second));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(first));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", observed,
 			null, List.of()));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.PASS, "",
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.PASS, "",
 			observed, null, List.of()));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
 		requireThat(campaign.pending(), "pending").isNull();
 	}
 
@@ -462,18 +462,18 @@ public final class CampaignTransitionsTest
 	public void thirdInfrastructureFailurePauses()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().build();
+		Campaign campaign = new Builder().confirmed().build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT; ++failure)
 		{
 			requireThat(campaign.pending(), "pending[" + failure + "]").isNull();
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
 				"provider error", NOW, null));
 		}
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
 		requireThat(campaign.pending(), "retried").isNull();
 		requireThat(campaign.trials().getFirst().infrastructureFailures(), "reset").isEqualTo(0);
 	}
@@ -485,9 +485,9 @@ public final class CampaignTransitionsTest
 	public void assignmentRecordsAllocation()
 	{
 		// Requirement: R-E1
-		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
+		Campaign campaign = new Builder().confirmed().evidenceRevision(5).build();
 		Admission.Assign admission = (Admission.Assign) Scheduler.plan(campaign, NOW, 1).getFirst();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Assign(admission));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(admission));
 
 		requireThat(campaign.trials().getFirst().allocation(), "allocation").
 			isEqualTo(new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 5, NOW));
@@ -501,9 +501,9 @@ public final class CampaignTransitionsTest
 	public void rejectsUnadoptedEvidenceRevision()
 	{
 		// Requirement: R-E1
-		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
-		CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT, 1,
-			CampaignBuilder.INCUMBENT, "safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 6,
+		Campaign campaign = new Builder().confirmed().evidenceRevision(5).build();
+		Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT, 1,
+			Builder.INCUMBENT, "safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 6,
 			NOW))));
 	}
 
@@ -515,7 +515,7 @@ public final class CampaignTransitionsTest
 	public void allocationRuleMustAssignPurpose()
 	{
 		// Requirement: R-E1
-		new Admission.Assign(Purpose.DEVELOPMENT, 1, CampaignBuilder.INCUMBENT, "safety", null,
+		new Admission.Assign(Purpose.DEVELOPMENT, 1, Builder.INCUMBENT, "safety", null,
 			new Allocation(AllocationRule.BASELINE_ARM, 0, NOW));
 	}
 
@@ -528,7 +528,7 @@ public final class CampaignTransitionsTest
 	public void failureCountNeedsRecordedAttempts()
 	{
 		// Requirement: R-E1
-		Campaign campaign = TransitionSteps.assign(new CampaignBuilder().confirmed().build(), Purpose.DEVELOPMENT,
+		Campaign campaign = TransitionSteps.assign(new Builder().confirmed().build(), Purpose.DEVELOPMENT,
 			"safety");
 		LogicalTrial trial = campaign.trials().getFirst();
 		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, RunFailure.RATE_LIMITED,
@@ -545,7 +545,7 @@ public final class CampaignTransitionsTest
 	public void adoptionAdvancesEvidenceRevision()
 	{
 		// Requirement: R-E1
-		Campaign campaign = new CampaignBuilder().confirmed().evidenceRevision(5).build();
+		Campaign campaign = new Builder().confirmed().evidenceRevision(5).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
@@ -565,7 +565,7 @@ public final class CampaignTransitionsTest
 	public void failedRunsAreInfrastructureAttempts()
 	{
 		// Requirement: R-E1
-		Campaign campaign = new CampaignBuilder().confirmed().build();
+		Campaign campaign = new Builder().confirmed().build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		List<InfrastructureAttempt> expected = List.of(
@@ -576,8 +576,8 @@ public final class CampaignTransitionsTest
 			new InfrastructureAttempt(NOW.plusSeconds(40), RunFailure.INFRASTRUCTURE, "invalid judge result"));
 		for (InfrastructureAttempt attempt : expected)
 		{
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, attempt.failure(),
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, attempt.failure(),
 				attempt.detail(), attempt.endedAt(), null));
 		}
 		LogicalTrial trial = campaign.trials().getFirst();
@@ -585,7 +585,7 @@ public final class CampaignTransitionsTest
 		requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(3);
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
 
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
 		trial = campaign.trials().getFirst();
 		requireThat(trial.infrastructureFailures(), "retried").isEqualTo(0);
 		requireThat(trial.infrastructureAttempts(), "kept").isEqualTo(expected);
@@ -599,12 +599,12 @@ public final class CampaignTransitionsTest
 	public void newIdentityEndsAttempt()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("safety", 30, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("safety", 30, 0).build();
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.JUDGE);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
 		requireThat(campaign.runningAttempt().isPresent(), "pausedAttemptRuns").isTrue();
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.TESTING_ENVIRONMENT_CHANGED);
 		requireThat(campaign.attempt(1).count("safety"), "kept").isEqualTo(counts(30, 0));
@@ -623,11 +623,11 @@ public final class CampaignTransitionsTest
 	public void restoreContinuesAttempt()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("safety", 30, 0).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("safety", 30, 0).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
 			MeasurementCondition.MODEL)));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
 		requireThat(campaign.runningAttempt().isPresent(), "isPresent").isTrue();
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "plan.isEmpty()").isFalse();
 	}
@@ -639,12 +639,12 @@ public final class CampaignTransitionsTest
 	public void loaderChangeOffersNewCampaign()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
+		Campaign campaign = new Builder().confirmed().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
 			MeasurementCondition.LOADER_CONFIGURATION)));
 		requireThat(campaign.choices(), "choices").
 			containsExactly(List.of(Choice.RESTORE, Choice.NEW_CAMPAIGN, Choice.STOP));
-		Campaign closed = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_CAMPAIGN));
+		Campaign closed = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_CAMPAIGN));
 		requireThat(closed.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CLOSED);
 	}
 
@@ -655,10 +655,10 @@ public final class CampaignTransitionsTest
 	public void loaderChangeRefusesNewIdentity()
 	{
 		// Requirement: R-M5
-		Campaign campaign = new CampaignBuilder().confirmed().build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
+		Campaign campaign = new Builder().confirmed().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
 			MeasurementCondition.LOADER_CONFIGURATION)));
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
+		Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 	}
 
 	/**
@@ -669,12 +669,12 @@ public final class CampaignTransitionsTest
 	public void revisionCreatesLineage()
 	{
 		// Requirement: R-L2
-		Campaign campaign = new CampaignBuilder().confirmed().readyDevelopment().readyBaseline().
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
 			certificationAttempt(1).outcome(Outcome.BELOW_MINIMUM).build();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Revise());
+		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
 		requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
 			REVISED, 23));
 
 		requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
@@ -682,8 +682,8 @@ public final class CampaignTransitionsTest
 		requireThat(campaign.identity().values().get(MeasurementCondition.CONTRACT), "contract").
 			isEqualTo(REVISED.hex());
 		requireThat(campaign.baseline().index(), "baseline").isEqualTo(2);
-		requireThat(campaign.baseline().count("safety"), "baselineCounts").isEqualTo(CategoryCounts.EMPTY);
-		requireThat(campaign.development().count("safety"), "developmentCounts").isEqualTo(CategoryCounts.EMPTY);
+		requireThat(campaign.baseline().count("safety"), "baselineCounts").isEqualTo(CellCounts.EMPTY);
+		requireThat(campaign.development().count("safety"), "developmentCounts").isEqualTo(CellCounts.EMPTY);
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(2);
 		requireThat(campaign.revisionRequested(), "revised").isFalse();
 	}
@@ -695,7 +695,7 @@ public final class CampaignTransitionsTest
 	public void confirmationRequiresRevision()
 	{
 		// Requirement: R-L2
-		CampaignTransitions.apply(new CampaignBuilder().confirmed().build(),
+		Transitions.apply(new Builder().confirmed().build(),
 			new CampaignEvent.Confirm(ContractFixtures.contract(), REVISED, 23));
 	}
 
@@ -707,19 +707,19 @@ public final class CampaignTransitionsTest
 	public void revisionStopsAttemptAtSafeCheckpoint()
 	{
 		// Requirement: R-L3
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).certificationAttempt(1).
-			category("safety", 30, 0).build();
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("safety", 30, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey inFlight = TransitionSteps.last(campaign);
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(inFlight));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Revise());
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 
 		Campaign unsafe = campaign;
 		boolean refused = false;
 		try
 		{
-			CampaignTransitions.apply(unsafe, new CampaignEvent.Confirm(ContractFixtures.contract(), REVISED, 3));
+			Transitions.apply(unsafe, new CampaignEvent.Confirm(ContractFixtures.contract(), REVISED, 3));
 		}
 		catch (IllegalStateException _)
 		{
@@ -729,7 +729,7 @@ public final class CampaignTransitionsTest
 
 		campaign = TransitionSteps.complete(campaign, inFlight, Verdict.PASS);
 		requireThat(campaign.attempt(1).count("safety"), "counts").isEqualTo(counts(30, 0));
-		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
 			REVISED, 3));
 		requireThat(campaign.attempt(1).outcome(), "stillStopped").isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 		requireThat(campaign.runningAttempt().isEmpty(), "runningAttempt.isEmpty()").isTrue();
@@ -742,13 +742,13 @@ public final class CampaignTransitionsTest
 	public void cancelAndResume()
 	{
 		// Requirement: R-L4
-		Campaign campaign = new CampaignBuilder().confirmed().development("safety", 40, 1).build();
-		Campaign cancelled = CampaignTransitions.apply(campaign, new CampaignEvent.Cancel());
+		Campaign campaign = new Builder().confirmed().development("safety", 40, 1).build();
+		Campaign cancelled = Transitions.apply(campaign, new CampaignEvent.Cancel());
 		requireThat(cancelled.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 		requireThat(Scheduler.plan(cancelled, NOW, 8), "plan").isEmpty();
 		requireThat(cancelled.choices(), "choices").containsExactly(List.of(Choice.RESUME));
 
-		Campaign resumed = CampaignTransitions.apply(cancelled, CampaignEvent.Choose.of(Choice.RESUME));
+		Campaign resumed = Transitions.apply(cancelled, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(resumed, "resumed").isEqualTo(campaign);
 	}
 
@@ -760,11 +760,11 @@ public final class CampaignTransitionsTest
 	{
 		// Requirement: R-L4
 		PendingDecision unowned = new PendingDecision.UnownedChange("edited CLAUDE.md");
-		Campaign campaign = new CampaignBuilder().confirmed().pending(unowned).build();
+		Campaign campaign = new Builder().confirmed().pending(unowned).build();
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.RESUME, Choice.STOP));
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.lifecycle(), "resumed").isEqualTo(Lifecycle.ACTIVE);
 		requireThat(campaign.pending(), "pending").isEqualTo(unowned);
 	}
@@ -777,9 +777,9 @@ public final class CampaignTransitionsTest
 	{
 		// Requirement: R-L4
 		PendingDecision unowned = new PendingDecision.UnownedChange("edited CLAUDE.md");
-		Campaign campaign = new CampaignBuilder().confirmed().working(1).pending(unowned).
+		Campaign campaign = new Builder().confirmed().working(1).pending(unowned).
 			lifecycle(Lifecycle.CANCELLED).build();
-		campaign = CampaignTransitions.apply(campaign,
+		campaign = Transitions.apply(campaign,
 			CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(campaign.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(unowned));
@@ -792,10 +792,10 @@ public final class CampaignTransitionsTest
 	public void closedCampaignCannotResume()
 	{
 		// Requirement: R-L4
-		Campaign campaign = CampaignTransitions.apply(new CampaignBuilder().confirmed().build(),
+		Campaign campaign = Transitions.apply(new Builder().confirmed().build(),
 			new CampaignEvent.Close());
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CLOSED);
-		CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 	}
 
 	/**
@@ -805,10 +805,10 @@ public final class CampaignTransitionsTest
 	public void unownedChangePauses()
 	{
 		// Requirement: R-L4
-		Campaign campaign = CampaignTransitions.apply(new CampaignBuilder().confirmed().build(),
+		Campaign campaign = Transitions.apply(new Builder().confirmed().build(),
 			new CampaignEvent.DetectUnownedChange("edited CLAUDE.md"));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
-		campaign = CampaignTransitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "resumed").isFalse();
 	}

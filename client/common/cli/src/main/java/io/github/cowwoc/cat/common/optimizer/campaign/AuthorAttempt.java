@@ -12,29 +12,29 @@ import java.util.List;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param number the attempt's number within the campaign, from 1
- * @param category the failing cell that the attempt addresses
+ * @param cell the failing cell that the attempt addresses
  * @param snapshot the attempt's snapshot
  * @param runs the promotion runs
  * @param minimality the original changes and reduction progress
  */
-public record AuthorAttempt(int number, String category, Sha256 snapshot, List<PromotionRun> runs,
+public record AuthorAttempt(int number, String cell, Sha256 snapshot, List<PromotionRun> runs,
 	Minimality minimality)
 {
 	/**
 	 * Creates an author attempt.
 	 *
 	 * @param number the attempt's number within the campaign, from 1
-	 * @param category the failing cell that the attempt addresses
+	 * @param cell the failing cell that the attempt addresses
 	 * @param snapshot the attempt's snapshot
 	 * @param runs the promotion runs
 	 * @param minimality the original changes and reduction progress
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code number} is not positive or {@code category} is blank
+	 * @throws IllegalArgumentException if {@code number} is not positive or {@code cell} is blank
 	 */
 	public AuthorAttempt
 	{
 		requireThat(number, "number").isPositive();
-		requireThat(category, "category").isNotBlank();
+		requireThat(cell, "category").isNotBlank();
 		requireThat(snapshot, "snapshot").isNotNull();
 		requireThat(runs, "runs").isNotNull();
 		requireThat(minimality, "minimality").isNotNull();

@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignTransitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -107,7 +107,7 @@ public final class Proposal
 			proposed.judge(), proposed.fixtures(), limitations);
 		Sha256 contractHash = ContractIdentity.of(schema, contract);
 		// The seed changes only the draw streams, which neither the remaining work nor the caps depend on
-		Campaign confirmed = CampaignTransitions.apply(campaign, new CampaignEvent.Confirm(contract, contractHash, 0));
+		Campaign confirmed = Transitions.apply(campaign, new CampaignEvent.Confirm(contract, contractHash, 0));
 
 		List<String> caps = new ArrayList<>();
 		int first = confirmed.nextCertificationIndex();
