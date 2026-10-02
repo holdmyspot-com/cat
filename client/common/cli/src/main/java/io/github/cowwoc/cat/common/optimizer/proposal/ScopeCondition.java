@@ -12,8 +12,8 @@ import java.util.List;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param outcome the matching {@code certification unavailable} outcome
- * @param requirementIds the requirements that the condition affects
- * @param evidence the file and the text that show the condition
+ * @param requirementIds a non-empty list of the requirement identifiers affected by the condition
+ * @param evidence non-blank text identifying the file and instructions that show the condition
  */
 public record ScopeCondition(Outcome outcome, List<String> requirementIds, String evidence)
 {
@@ -21,8 +21,8 @@ public record ScopeCondition(Outcome outcome, List<String> requirementIds, Strin
 	 * Creates a condition.
 	 *
 	 * @param outcome the matching {@code certification unavailable} outcome
-	 * @param requirementIds the requirements that the condition affects
-	 * @param evidence the file and the text that show the condition
+	 * @param requirementIds a non-empty list of the requirement identifiers affected by the condition
+	 * @param evidence non-blank text identifying the file and instructions that show the condition
 	 * @throws NullPointerException if any of the arguments are null, or {@code requirementIds} contains null
 	 * @throws IllegalArgumentException if {@code outcome} does not report unavailability, {@code requirementIds} is
 	 *   empty, or {@code evidence} is blank

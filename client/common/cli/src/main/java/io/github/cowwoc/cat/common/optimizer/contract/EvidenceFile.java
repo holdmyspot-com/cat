@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * One file in a control's project.
+ * One file recorded in a supplied trial example that a check must accept or reject.
  *
  * @param path the normalized project-relative path, which uses {@code /} as the separator
  * @param content the file's text

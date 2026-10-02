@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * A harness's profile inventory: every model that it offers the user, each with every reasoning effort that the
- * model accepts, and where the list came from (design &sect;6.6).
+ * Every model and reasoning-effort combination that a harness offers the user, with the source of that list. CAT
+ * uses this list, called the profile inventory, to derive trial profiles (design &sect;6.6).
  * <p>
  * A model whose effort support is undocumented is listed once, with an empty effort, so that its sessions run under
  * the harness's default effort.
@@ -44,7 +44,7 @@ public record ProfileCatalog(String source, List<TrialProfile> profiles)
 	}
 
 	/**
-	 * Indicates whether a bound value is outside the inventory.
+	 * Indicates whether no inventory profile matches every model and effort selected by a binding.
 	 *
 	 * @param binding a profile whose empty dimensions are unbound
 	 * @return {@code true} if no inventory profile matches every bound dimension

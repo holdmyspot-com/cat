@@ -12,7 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The fields of every judge profile that CAT owns: the role profile, the judge prompt and the result schema.
+ * The fields of every judge profile that CAT supplies: the model and effort used by deriver, judge and author
+ * sessions (the role profile), the judge prompt and the result schema.
  * <p>
  * The deriver proposes only the rubric and the decision rule. CAT adds its own fields before it validates the
  * proposal, so a prompt system cannot choose how it is judged, and confirmation freezes the complete profile in the

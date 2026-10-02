@@ -399,7 +399,7 @@ public final class ProposalTest
 		{
 			requireThat(text, "text").contains("### Category `" + category.id() + "`").
 				contains("Risk rank: " + category.riskRank().position()).
-				contains("Why it needs its own claim: " + category.rationale());
+				contains("Why this category is measured separately: " + category.rationale());
 			for (TestDefinition test : category.tests())
 			{
 				requireThat(text, "text").contains("#### Test `" + test.id() + "`").
@@ -450,7 +450,7 @@ public final class ProposalTest
 			contains("at least 100 representative development trials").
 			contains("at least 99% observed passes").
 			contains("Review checkpoint: at 200 representative trials").
-			contains("50 representative trials in every category").
+			contains("50 representative trials in every cell").
 			contains("ending at 100");
 	}
 
@@ -823,14 +823,14 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that confirmation runs each proposed check against its controls: a check that holds decides its
+	 * Verifies that reading the derivation runs each proposed check against its controls: a check that holds decides its
 	 * requirement, while a check that rejects its known-good control is discarded, its requirement becomes semantic
 	 * and the proposal says why. The deriver cannot report discarded checks itself.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
 	@Test
-	public void confirmationDiscardsFailingCheck() throws InvalidProposalException
+	public void derivationDiscardsFailingCheck() throws InvalidProposalException
 	{
 		// Requirement: R-C9
 		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES).contract();

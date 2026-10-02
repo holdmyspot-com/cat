@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -31,11 +32,11 @@ final class CheckSupport
 	record Reply(int turn, String text)
 	{
 		/**
-		 * Returns the reply's position for an observed value.
+		 * Describes the turn that the reply answered.
 		 *
 		 * @return the description
 		 */
-		String where()
+		String describeTurn()
 		{
 			return "the reply to turn " + turn;
 		}
@@ -88,7 +89,8 @@ final class CheckSupport
 	}
 
 	/**
-	 * Quotes evidence for an observed value, shortening it to {@value #QUOTE_LIMIT} characters.
+	 * Quotes evidence for an observed value. If it exceeds {@value #QUOTE_LIMIT} characters, quotes that prefix and
+	 * appends the number of omitted characters.
 	 *
 	 * @param text the evidence
 	 * @return the quotation
@@ -161,8 +163,7 @@ final class CheckSupport
 	 */
 	static void requireText(String text, String name)
 	{
-		if (text == null)
-			throw new NullPointerException(name + " may not be null");
+		Objects.requireNonNull(text, name + " may not be null");
 		if (text.isBlank())
 			throw new IllegalArgumentException(name + " may not be blank");
 	}

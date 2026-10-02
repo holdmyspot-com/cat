@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * The result of one deterministic check on one trial's evidence: which check ran, whether it passed, and the value
- * it observed (design &sect;6.4).
+ * The result of one check that CAT decides directly from trial evidence: which check ran, whether it passed, and
+ * the value it observed (design &sect;6.4).
  *
  * @param check the check
  * @param passed {@code true} if the evidence satisfied the check

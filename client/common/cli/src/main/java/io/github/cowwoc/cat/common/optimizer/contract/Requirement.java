@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * An obligation that the prompt system must meet, and where it was found.
+ * An obligation that an agent receiving the prompt files must meet, and its source.
  *
  * @param id the identifier that is unique within the contract
  * @param description what the prompt system must do

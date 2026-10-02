@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import java.util.List;
 
 /**
- * Thrown when deriver output is not a valid proposal. The caller treats this as an infrastructure failure, not as
- * evidence.
+ * Thrown when the agent that derives the contract returns an invalid proposal. The caller records a failure to
+ * derive the contract rather than evidence of noncompliance.
  */
 public final class InvalidProposalException extends Exception
 {
@@ -15,6 +15,7 @@ public final class InvalidProposalException extends Exception
 	 * Creates an exception.
 	 *
 	 * @param problems every violation found, each naming the JSON location it concerns
+	 * @throws NullPointerException if {@code problems} is null
 	 */
 	public InvalidProposalException(List<String> problems)
 	{

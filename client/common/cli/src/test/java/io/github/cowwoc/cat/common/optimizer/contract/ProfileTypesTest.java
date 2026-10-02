@@ -84,7 +84,7 @@ public final class ProfileTypesTest
 	 * Verifies that an inventory lists each profile once and names a model in each.
 	 */
 	@Test
-	public void inventoryListsDistinctModels()
+	public void inventoryListsDistinctProfiles()
 	{
 		// Requirement: R-C10
 		requireThat(rejection(() -> new ProfileCatalog("source", List.of(BIG_LOW, BIG_LOW))), "twice").

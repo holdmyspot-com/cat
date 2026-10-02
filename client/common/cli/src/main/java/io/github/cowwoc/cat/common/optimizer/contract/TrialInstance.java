@@ -5,9 +5,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * One concrete trial that a generator drew, with everything an assignment record keeps.
+ * One trial that a generator drew, recording its test, selected variation values, expanded turns and draw source.
  *
- * @param cellId the cell that the trial belongs to, which is its statistical unit
+ * @param cellId the combination of category and trial profile whose compliance measurement the trial belongs to
  * @param categoryId the category that the trial belongs to
  * @param testId the test definition that the trial instantiates
  * @param choices the selected value of each of the test's dimensions, in the test's dimension order
@@ -26,7 +26,7 @@ public record TrialInstance(String cellId, String categoryId, String testId, Lis
 	/**
 	 * Creates an instance.
 	 *
-	 * @param cellId the cell that the trial belongs to, which is its statistical unit
+	 * @param cellId the combination of category and trial profile whose compliance measurement the trial belongs to
 	 * @param categoryId the category that the trial belongs to
 	 * @param testId the test definition that the trial instantiates
 	 * @param choices the selected value of each of the test's dimensions, in the test's dimension order
@@ -35,7 +35,8 @@ public record TrialInstance(String cellId, String categoryId, String testId, Lis
 	 * @param generator the identity of the generator that drew the instance
 	 * @param streamKind the stream that supplied the draw
 	 * @param streamPosition the stream position at which the draw began
-	 * @param targeted {@code true} if the trial is targeted
+	 * @param targeted {@code true} for a rerun, promotion run or regression run that cannot count as representative
+	 *   or formal evidence
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if a text is blank, {@code turns} is empty, or {@code streamPosition} is
 	 *   negative
@@ -56,7 +57,7 @@ public record TrialInstance(String cellId, String categoryId, String testId, Lis
 	}
 
 	/**
-	 * Indicates whether the trial counts toward representative and formal evidence.
+	 * Indicates whether the trial is not a rerun, promotion run or regression run.
 	 *
 	 * @return {@code true} if the instance is not targeted
 	 */

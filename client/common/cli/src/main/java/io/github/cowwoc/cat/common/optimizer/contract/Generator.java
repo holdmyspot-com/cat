@@ -8,11 +8,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Draws trial instances from a contract and rejects any instance that its test definition does not permit.
- *
+ * Draws a test and variation values from a contract to produce a trial instance: its concrete turns, expected
+ * result and draw identity. Rejects instances that their test definition does not permit.
  * <p>
- * A draw picks one test of the chosen category with equal probability, then picks each variation value at its frozen
- * probability. The draw depends only on the stream's position, never on candidate identity or outcomes.
+ * A category groups tests; a cell pairs that group with a model and reasoning-effort profile. A draw picks one test
+ * of the chosen cell's category with equal probability, then picks each variation value at its probability fixed
+ * by the contract. The draw depends only on the stream's kind, seed and position, never on candidate identity or
+ * outcomes.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Concurrent draws from one stream are serialized and use
  * consecutive positions.
@@ -39,9 +41,9 @@ public final class Generator
 	}
 
 	/**
-	 * Draws one representative instance of a cell's category.
+	 * Draws one randomly sampled instance of a cell's category, eligible to measure compliance.
 	 *
-	 * @param cellId the cell, which the caller chose before the draw
+	 * @param cellId the identifier of the category/profile pair chosen before the draw
 	 * @param stream the stream to draw from
 	 * @return the validated instance
 	 * @throws NullPointerException if any argument is null
@@ -101,7 +103,8 @@ public final class Generator
 	}
 
 	/**
-	 * Marks an instance as targeted work, without drawing.
+	 * Marks an instance for a selected rerun, without drawing. Such targeted work is excluded from the randomly
+	 * sampled evidence used to measure compliance.
 	 *
 	 * @param instance an instance that was drawn earlier
 	 * @return the same instance, marked targeted

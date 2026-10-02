@@ -34,12 +34,10 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Writes a {@link Proposal} as Markdown, listing every item of design &sect;6.1 itself rather than a count of the
- * items.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
+ * Writes a {@link Proposal} as Markdown, listing its requirements, tests, measurement procedure and
+ * confirmation conditions (design &sect;6.1).
  */
-final class ProposalText
+final class Markdown
 {
 	private static final MathContext PERCENT_DIGITS = new MathContext(3);
 	/**
@@ -65,7 +63,7 @@ final class ProposalText
 	 * @param confirmed the campaign as it would be after confirmation
 	 * @param caps the level and cap of each of the first attempts, as text
 	 */
-	ProposalText(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, Campaign confirmed,
+	Markdown(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, Campaign confirmed,
 		List<String> caps)
 	{
 		this.derived = derived;
@@ -158,7 +156,7 @@ final class ProposalText
 		{
 			text.append("\n### Category `").append(category.id()).append("`\n\n").
 				append("Risk rank: ").append(category.riskRank().position()).append(" (1 is the riskiest)\n").
-				append("Why it needs its own claim: ").append(category.rationale()).append('\n');
+				append("Why this category is measured separately: ").append(category.rationale()).append('\n');
 			for (TestDefinition test : category.tests())
 				test(test, category.tests().size());
 		}
@@ -171,9 +169,15 @@ final class ProposalText
 	private void trialProfiles()
 	{
 		heading("Trial profiles");
-		text.append("Each category runs once per cell: under every inventory profile that the files supplying its " +
-			"requirements allow. Every cell needs its own readiness gate, baseline and certification trials. " +
-			"Confirmation freezes the profile set. In revision feedback, you may restrict it to part of the " +
+		text.append("A trial profile records model and effort choices; an unspecified choice uses the harness default. " +
+			"A cell pairs a category with one allowed trial " +
+			"profile. A file's binding selects a model, an effort, or both. CAT computes each category's profiles " +
+			"from the bindings of its requirements' source files, excluding CAT's core-task requirement. When those " +
+			"files share a complete profile, CAT uses it as written. Otherwise, CAT selects inventory profiles " +
+			"matching their shared bound dimensions, or uses those bindings as written if none match. Every cell " +
+			"needs its own readiness " +
+			"gate, baseline and certification trials. Confirmation freezes the profile set. In revision feedback, " +
+			"you may restrict it to part of the " +
 			"inventory.\n\n");
 		for (String line : contract.profiles().describe())
 			text.append(line).append('\n');
@@ -321,8 +325,8 @@ final class ProposalText
 	{
 		heading("Judge");
 		JudgeProfile judge = contract.judge();
-		text.append("- Role profile: ").append(judge.profile().label()).append(" (the `optimize-xhigh` binding, " +
-			"which the deriver, judge and author sessions run under)\n").
+		text.append("- Role profile: ").append(judge.profile().label()).append(" (used by the deriver, judge and " +
+			"author sessions)\n").
 			append("- Prompt: CAT's judge prompt, which states the judge's authority and output rules; the prompt " +
 				"system cannot change it\n").
 			append("- Rubric: ").append(judge.rubric()).append('\n').
@@ -353,24 +357,24 @@ final class ProposalText
 			toPlainString() + "%";
 		text.append("- Joint error budget: 0.05, split into 0.04 for certification, 0.005 for improvement claims " +
 			"and 0.005 for the incumbent's bounds. Certification attempt i uses α_i = 0.04/(i(i + 1)).\n").
-			append("- Certification: every category must show a pass rate above ").append(requiredRate).
+			append("- Certification: every cell must show a pass rate above ").append(requiredRate).
 			append(". Bets: ").append(CertificationProcedure.BETS).append(".\n").
-			append("- Caps of the first attempts, in formal trials per category:\n");
+			append("- Caps of the first attempts, in formal trials per cell:\n");
 		for (String cap : caps)
 			text.append("  - ").append(cap).append('\n');
-		text.append("- Readiness gate: a category is ready for a certification attempt after at least ").
+		text.append("- Readiness gate: a cell is ready for a certification attempt after at least ").
 			append(ReadinessGate.MINIMUM_TRIALS).
 			append(" representative development trials with at least 99% observed passes, at most ").
 			append(ReadinessGate.BATCH_FAILURE_LIMIT).append(" failure in each of the latest two complete batches of ").
 			append(CategoryCounts.BATCH_SIZE).
 			append(" trials, and no unresolved reproducible defect or known regression.\n").
 			append("- Review checkpoint: at ").append(Development.DEFAULT_REVIEW_POINT).
-			append(" representative trials in a category for an unchanged candidate with the category still " +
-				"unresolved, CAT stops scheduling the category and asks you how to continue.\n").
+			append(" representative trials in a cell for an unchanged candidate with the cell still " +
+				"unresolved, CAT stops scheduling that cell and asks you how to continue.\n").
 			append("- Baseline targets: the incumbent runs ").append(Baseline.TARGET).
-			append(" representative trials in every category, and ").
+			append(" representative trials in every cell, and ").
 			append(Baseline.EXTENDED_TARGET - Baseline.TARGET).
-			append(" more in a category whose observed rate is below 95% but not yet proven deficient, ending at ").
+			append(" more in a cell whose observed rate is below 95% but not yet proven deficient, ending at ").
 			append(Baseline.EXTENDED_TARGET).append(". A commit requires these targets.\n");
 	}
 
@@ -441,7 +445,7 @@ final class ProposalText
 	{
 		text.append("Warning: ").append(reason).append(" This campaign needs at least ").append(sessions).
 			append(" nested sessions, and a provider may flag automated volume on a consumer subscription. Use an " +
-				"API key for campaign-scale use.\n");
+				"API key for this campaign.\n");
 	}
 
 	/**

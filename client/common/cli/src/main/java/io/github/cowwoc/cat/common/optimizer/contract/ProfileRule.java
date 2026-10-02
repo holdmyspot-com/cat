@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import java.util.List;
 
 /**
- * Computes the trial profiles of a proposal from its requirements and categories, which CAT does instead of the
- * deriver (design &sect;6.1).
+ * Computes a proposal's model and reasoning-effort combinations from its requirements and categories. CAT performs
+ * this computation instead of the agent that derives the proposal (design &sect;6.1).
  */
 @FunctionalInterface
 public interface ProfileRule

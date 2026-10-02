@@ -29,11 +29,11 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Turns a prompt system into a deriver session, and the deriver's output into a validated proposal (design
- * &sect;6.1).
+ * Creates requests for the session that reads a prompt system and proposes its requirements and tests (the
+ * deriver), and validates that session's output (design &sect;6.1).
  * <p>
  * The deriver's output follows the proposal schema without the judge fields, the trial profiles and the discarded
- * checks that CAT owns, plus the deriver's findings that the contract does not hold: the prompt files whose loading no
+ * checks that CAT owns, plus the deriver's additional findings: the prompt files whose loading no
  * harness event reports, the user's profile restriction, and the conditions that make certification unavailable.
  * CAT adds its judge fields and the core-task requirement, which every test checks, computes the trial profiles, and
  * runs each deterministic check against its controls before validating the proposal (design &sect;6.1). It rejects
@@ -66,7 +66,7 @@ public final class DeriverProtocol
 	private final String outputTurn;
 
 	/**
-	 * Creates a protocol.
+	 * Creates the deriver request builder and response validator.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schema the proposal schema
@@ -118,7 +118,7 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Returns the session that derives the first proposal.
+	 * Returns the request for deriving the first proposal.
 	 *
 	 * @param promptSystem the directory that holds the prompt system, which the session works in so that the harness
 	 *   loads it as it would in production
@@ -134,7 +134,7 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Returns the session that regenerates the complete proposal from the user's feedback.
+	 * Returns the request for regenerating the complete proposal from the user's feedback.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
 	 * @param inventory the harness's profile inventory, which a profile restriction selects from
@@ -155,7 +155,7 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Returns a deriver session.
+	 * Returns a deriver session request.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
 	 * @param inventory the harness's profile inventory
@@ -204,12 +204,12 @@ public final class DeriverProtocol
 		String derivation = json.writerWithDefaultPrettyPrinter().writeValueAsString(output);
 
 		List<String> problems = new ArrayList<>();
-		DeriverFindings findings = new DeriverFindings(problems);
-		JsonNode scopeNode = output.remove(DeriverFindings.SCOPE_CONDITIONS);
-		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(DeriverFindings.DERIVED_SOURCES));
+		Findings findings = new Findings(problems);
+		JsonNode scopeNode = output.remove(Findings.SCOPE_CONDITIONS);
+		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(Findings.DERIVED_SOURCES));
 		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
 		List<TrialProfile> restriction = findings.profileRestriction(
-			output.remove(DeriverFindings.PROFILE_RESTRICTION));
+			output.remove(Findings.PROFILE_RESTRICTION));
 		if (output.remove(ProposalSchema.TRIAL_PROFILES) != null)
 		{
 			problems.add("$." + ProposalSchema.TRIAL_PROFILES + ": CAT computes the trial profiles, so the deriver " +

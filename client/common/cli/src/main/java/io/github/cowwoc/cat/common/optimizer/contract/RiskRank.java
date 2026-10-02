@@ -3,8 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Orders a category by how risky its failure is, so that allocation ties go to the riskier category.
- *
+ * Orders a category by how risky its failure is, so that ties when allocating trials go to the riskier category.
  * <p>
  * Position 1 is the riskiest. Two categories may share a position; allocation then falls back to category order.
  *

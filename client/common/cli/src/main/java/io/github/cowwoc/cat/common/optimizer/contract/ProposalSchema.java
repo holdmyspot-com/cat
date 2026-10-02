@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import tools.jackson.core.JacksonException;
@@ -29,14 +30,15 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The JSON form of a proposed contract, and the validation of deriver output against it.
- *
+ * Reads and writes the JSON form of a proposed contract, validating the output of the agent that proposes its
+ * requirements and tests (the deriver).
  * <p>
  * The shape of the proposal is defined once, in {@code optimizer/contract/proposal.schema.json}. Validation first
  * checks the shape, which rejects a missing item, an unknown item and an aggregate count in place of a list. It then
  * builds the contract, whose constructors enforce the rules that a schema cannot express, such as probabilities that
- * sum to 1 and references that name a listed requirement. Last, it runs every deterministic check against its
- * controls and discards each check that fails one (design &sect;6.1, &sect;6.4). Both the confirmation of deriver
+ * sum to 1 and references that name a listed requirement. Last, it runs each condition evaluated directly from trial
+ * evidence (a deterministic check) against evidence it must accept and evidence it must reject (its controls), and
+ * discards each check that fails one (design &sect;6.1, &sect;6.4). Both the confirmation of deriver
  * output and the loading of a stored contract parse through this class, so both validate the controls.
  */
 public final class ProposalSchema
@@ -212,7 +214,8 @@ public final class ProposalSchema
 	 * Writes a contract in the proposal schema.
 	 *
 	 * @param contract the contract
-	 * @return the JSON text, which {@link #parse(String)} converts back to an equal contract
+	 * @return the contract's JSON text; {@link #parse(String)} revalidates controls and may discard a check that
+	 *   fails one
 	 * @throws NullPointerException if {@code contract} is null
 	 */
 	public String toJson(Contract contract)
@@ -241,8 +244,7 @@ public final class ProposalSchema
 		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		JudgeProfile judge = contract.judge();
 		ObjectNode judgeNode = root.putObject("judge");
-		judgeNode.put("model", judge.profile().model());
-		judgeNode.put("effort", judge.profile().effort());
+		write(judge.profile(), judgeNode);
 		judgeNode.put("prompt", judge.prompt());
 		judgeNode.put("rubric", judge.rubric());
 		judgeNode.put("decision_rule", judge.decisionRule());
@@ -453,9 +455,7 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Builds the contract from a proposal that already satisfies the schema, and reports every rule that the model's
-	 * constructors reject.
-	 *
+	 * Builds a contract from a proposal that satisfies the schema, reporting rejected model values.
 	 * <p>
 	 * A node whose child failed is not built, so a failure is reported once, at the innermost object that is wrong.
 	 * A builder method returns null after it adds a problem.
@@ -809,12 +809,12 @@ public final class ProposalSchema
 		 * @param builder builds one item from its node and location
 		 * @return the items that could be built
 		 */
-		private <T> List<T> list(JsonNode array, String location, ItemBuilder<T> builder)
+		private <T> List<T> list(JsonNode array, String location, BiFunction<JsonNode, String, T> builder)
 		{
 			List<T> items = new ArrayList<>();
 			for (int i = 0; i < array.size(); ++i)
 			{
-				T item = builder.build(array.get(i), location + "[" + i + "]");
+				T item = builder.apply(array.get(i), location + "[" + i + "]");
 				if (item != null)
 					items.add(item);
 			}
@@ -822,12 +822,12 @@ public final class ProposalSchema
 		}
 
 		/**
-		 * Runs a constructor and reports its rejection.
+		 * Runs a model-building operation and records its argument rejection.
 		 *
 		 * @param <T> the type of object
 		 * @param location the location of the object
-		 * @param construction the constructor call
-		 * @return the object, or null if the constructor rejected its arguments
+		 * @param construction builds the model value
+		 * @return the value, or null if the operation rejected its arguments
 		 */
 		private <T> T attempt(String location, Supplier<T> construction)
 		{
@@ -864,23 +864,5 @@ public final class ProposalSchema
 		{
 			return array.valueStream().map((Function<JsonNode, String>) JsonNode::asString).toList();
 		}
-	}
-
-	/**
-	 * Builds one item of an array.
-	 *
-	 * @param <T> the type of item
-	 */
-	@FunctionalInterface
-	private interface ItemBuilder<T>
-	{
-		/**
-		 * Builds an item.
-		 *
-		 * @param node the item's JSON
-		 * @param location the location of the item
-		 * @return the item, or null if a problem was added
-		 */
-		T build(JsonNode node, String location);
 	}
 }

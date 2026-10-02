@@ -6,8 +6,9 @@ import java.io.IOException;
 import java.util.Map;
 
 /**
- * Code that decides one requirement of one test from a trial's evidence, validated against a known-good and a
- * known-bad control (design &sect;1.2, &sect;6.4).
+ * A condition that decides one test requirement directly from trial evidence, without a judge. Its known-good
+ * control supplies evidence it must accept; its known-bad control supplies evidence it must reject (design
+ * &sect;1.2, &sect;6.4).
  * <p>
  * The check belongs to the test that lists it, so its identity within the contract is the test and the requirement.
  *

@@ -13,7 +13,6 @@ import tools.jackson.databind.JsonNode;
 /**
  * Checks a JSON value against the subset of JSON Schema that {@code proposal.schema.json} uses, including references
  * to the root schema's {@code $defs}.
- *
  * <p>
  * The proposal schema is the single definition of the proposal's shape, so the validator reads it rather than repeating
  * it. A keyword outside the subset is an error, because ignoring it would make the schema promise a check that never
@@ -31,6 +30,7 @@ final class SchemaValidator
 	 * Creates a validator.
 	 *
 	 * @param rootSchema the schema that every value is checked against
+	 * @throws NullPointerException if {@code rootSchema} is null
 	 */
 	SchemaValidator(JsonNode rootSchema)
 	{
@@ -39,7 +39,7 @@ final class SchemaValidator
 	}
 
 	/**
-	 * Finds every way in which a value violates the schema.
+	 * Reports violations of the supported schema constraints.
 	 *
 	 * @param value the value to check
 	 * @return one message per violation, each beginning with the location of the offending value, such as
@@ -79,9 +79,9 @@ final class SchemaValidator
 					number -> number <= argument.asDouble());
 				case "minItems" -> checkMinItems(argument.asInt(), value, location, violations);
 				case "required" -> checkRequired(argument, value, location, violations);
+				// Both keywords are checked together below, because additionalProperties depends on properties.
 				case "properties", "additionalProperties" ->
 				{
-					// Both keywords are checked together below, because additionalProperties depends on properties.
 				}
 				case "items" ->
 				{
@@ -92,9 +92,9 @@ final class SchemaValidator
 					}
 				}
 				case "$ref" -> check(definition(argument.asString(), location), value, location, violations);
+				// Definitions constrain a value only where a $ref names them.
 				case "$defs" ->
 				{
-					// Definitions constrain a value only where a $ref names them.
 				}
 				default ->
 				{

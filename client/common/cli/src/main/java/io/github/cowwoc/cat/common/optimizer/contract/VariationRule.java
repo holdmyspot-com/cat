@@ -8,10 +8,10 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * A dimension along which the instances of a test definition vary, with the probability of each value.
+ * One named input varied between trials, called a dimension, with its permitted values and their probabilities.
  *
- * @param dimension the placeholder name that turns use as {@code {{dimension}}}
- * @param values the permitted values, whose probabilities sum to 1
+ * @param dimension the placeholder name used in turns and check parameters as {@code {{dimension}}}
+ * @param values the permitted values; reject their probability sum when it differs from 1 by more than 1e-9
  */
 public record VariationRule(String dimension, List<VariationValue> values)
 {
@@ -20,18 +20,18 @@ public record VariationRule(String dimension, List<VariationValue> values)
 	 */
 	static final Pattern DIMENSION_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
 	/**
-	 * How far the probabilities may sum from 1, which absorbs the rounding of decimal probabilities.
+	 * Reject a probability sum when its distance from 1 exceeds this boundary, allowing for decimal rounding.
 	 */
 	private static final double SUM_TOLERANCE = 1e-9;
 
 	/**
 	 * Creates a variation rule.
 	 *
-	 * @param dimension the placeholder name that turns use as {@code {{dimension}}}
-	 * @param values the permitted values, whose probabilities sum to 1
+	 * @param dimension the placeholder name used in turns and check parameters as {@code {{dimension}}}
+	 * @param values the permitted values; reject their probability sum when it differs from 1 by more than 1e-9
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code dimension} is not an identifier, {@code values} is empty, two
-	 *   values share a label, or the probabilities do not sum to 1
+	 *   values share a label, or the probability sum differs from 1 by more than 1e-9
 	 */
 	public VariationRule
 	{

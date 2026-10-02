@@ -14,14 +14,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * What a deterministic check decides: one kind from the closed set that CAT implements, with the parameters that the
- * deriver chose (design &sect;6.4). The deriver never writes code.
+ * A condition that CAT evaluates directly from recorded trial evidence, without asking a judge. The agent that
+ * derives the proposal selects one of CAT's implemented conditions and supplies its parameters; it never writes
+ * check code (design &sect;6.4).
  * <p>
- * A string parameter may contain {@code {{dimension}}} placeholders, which a trial's variation values fill. A
- * regular expression matches the inserted value literally.
+ * A string parameter may contain {@code {{dimension}}} placeholders, replaced by the text selected for that
+ * variation dimension. An inserted value in a regular expression is matched literally.
  * <p>
- * A reply kind examines the reply to its {@code turn}, or every reply when {@code turn} is {@code null}. A trial
- * that gave no examined reply fails it.
+ * A reply condition examines the reply to its {@code turn}, or every reply when {@code turn} is {@code null}. A
+ * trial that gave no examined reply fails it.
  */
 public sealed interface CheckCriterion
 {
@@ -60,9 +61,9 @@ public sealed interface CheckCriterion
 	}
 
 	/**
-	 * Decides the check from evidence.
+	 * Decides whether the recorded evidence satisfies the condition.
 	 *
-	 * @param evidence the evidence
+	 * @param evidence the recorded replies, files and tool calls to examine
 	 * @param textByDimension the text of the variation value that the evidence drew for each dimension that the
 	 *   parameters name
 	 * @return the decision
@@ -95,7 +96,7 @@ public sealed interface CheckCriterion
 	}
 
 	/**
-	 * A kind that examines the replies.
+	 * A condition that examines the replies.
 	 */
 	sealed interface ReplyCriterion extends CheckCriterion
 	{
@@ -108,7 +109,7 @@ public sealed interface CheckCriterion
 	}
 
 	/**
-	 * Every examined reply, without leading and trailing whitespace, is exactly a text.
+	 * Every examined reply equals the expected text after leading and trailing whitespace is removed from both.
 	 *
 	 * @param turn the turn whose reply the check examines, from 1, or {@code null} for every turn
 	 * @param text the text
@@ -158,10 +159,10 @@ public sealed interface CheckCriterion
 			for (Reply reply : replies)
 			{
 				if (!reply.text().strip().equals(expected))
-					return new Decision(false, reply.where() + " is " + CheckSupport.quote(reply.text()));
+					return new Decision(false, reply.describeTurn() + " is " + CheckSupport.quote(reply.text()));
 				if (!observed.isEmpty())
 					observed.append("; ");
-				observed.append(reply.where()).append(" is ").append(CheckSupport.quote(reply.text()));
+				observed.append(reply.describeTurn()).append(" is ").append(CheckSupport.quote(reply.text()));
 			}
 			return new Decision(true, observed.toString());
 		}
@@ -220,7 +221,7 @@ public sealed interface CheckCriterion
 			{
 				if (reply.text().contains(forbidden))
 				{
-					return new Decision(false, reply.where() + " contains " + CheckSupport.quote(forbidden) + ": " +
+					return new Decision(false, reply.describeTurn() + " contains " + CheckSupport.quote(forbidden) + ": " +
 						CheckSupport.quote(reply.text()));
 				}
 			}
@@ -285,12 +286,12 @@ public sealed interface CheckCriterion
 				Matcher matcher = compiled.matcher(reply.text());
 				if (!matcher.find())
 				{
-					return new Decision(false, reply.where() + " has no match: " +
+					return new Decision(false, reply.describeTurn() + " has no match: " +
 						CheckSupport.quote(reply.text()));
 				}
 				if (!observed.isEmpty())
 					observed.append("; ");
-				observed.append(reply.where()).append(" matches ").append(CheckSupport.quote(matcher.group()));
+				observed.append(reply.describeTurn()).append(" matches ").append(CheckSupport.quote(matcher.group()));
 			}
 			return new Decision(true, observed.toString());
 		}
@@ -439,8 +440,8 @@ public sealed interface CheckCriterion
 	}
 
 	/**
-	 * A file in the project after the trial holds exactly a text. Line endings are compared as {@code \n}, and
-	 * trailing whitespace at the end of the file is ignored.
+	 * A file in the project after the trial equals the expected text after CRLF line endings become {@code \n} and
+	 * trailing whitespace is removed from both.
 	 *
 	 * @param path the normalized project-relative path, which uses {@code /} as the separator
 	 * @param text the file's expected content

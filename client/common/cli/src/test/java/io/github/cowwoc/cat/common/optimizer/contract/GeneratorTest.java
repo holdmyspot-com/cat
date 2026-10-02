@@ -15,14 +15,6 @@ import org.testng.annotations.Test;
 public final class GeneratorTest
 {
 	private static final long SEED = 7_001L;
-	/**
-	 * The chi-square value that a correct sampler exceeds with probability 0.001, for 1 degree of freedom.
-	 */
-	private static final double CHI_SQUARE_1_DF = 10.828;
-	/**
-	 * The chi-square value that a correct sampler exceeds with probability 0.001, for 2 degrees of freedom.
-	 */
-	private static final double CHI_SQUARE_2_DF = 13.816;
 
 	/**
 	 * Creates the test fixture.
@@ -47,26 +39,6 @@ public final class GeneratorTest
 				return instance;
 		}
 		throw new AssertionError("No styled-summary instance in 100 draws");
-	}
-
-	/**
-	 * Computes the chi-square statistic of observed counts against expected probabilities.
-	 *
-	 * @param observed the count of each label
-	 * @param probabilities the expected probability of each label
-	 * @param total the number of observations
-	 * @return the statistic
-	 */
-	private static double chiSquare(Map<String, Integer> observed, Map<String, Double> probabilities, int total)
-	{
-		double statistic = 0;
-		for (Map.Entry<String, Double> entry : probabilities.entrySet())
-		{
-			double expected = total * entry.getValue();
-			double difference = observed.getOrDefault(entry.getKey(), 0) - expected;
-			statistic += difference * difference / expected;
-		}
-		return statistic;
 	}
 
 	/**
@@ -119,9 +91,8 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that each variation value is sampled at its frozen probability. The seed is fixed, so the outcome is
-	 * deterministic. The check uses chi-square tests at the 0.001 level, which a correct sampler fails once in a
-	 * thousand seeds.
+	 * Verifies that sampled variation counts stay below their 0.001 chi-square cutoffs for the contract's fixed
+	 * probabilities. The fixed seed keeps the check repeatable.
 	 */
 	@Test
 	public void samplesVariationsAtFrozenProbabilities()
@@ -142,26 +113,25 @@ public final class GeneratorTest
 			audiences.merge(instance.choices().get(1).label(), 1, Integer::sum);
 		}
 
-		double toneStatistic = chiSquare(tones, Map.of("formal", 0.5, "casual", 0.3, "terse", 0.2), styled);
-		double audienceStatistic = chiSquare(audiences, Map.of("expert", 0.7, "novice", 0.3), styled);
+		double toneStatistic = ChiSquare.statistic(tones, Map.of("formal", 0.5, "casual", 0.3, "terse", 0.2), styled);
+		double audienceStatistic = ChiSquare.statistic(audiences, Map.of("expert", 0.7, "novice", 0.3), styled);
 
-		requireThat(toneStatistic, "toneStatistic").isLessThan(CHI_SQUARE_2_DF);
-		requireThat(audienceStatistic, "audienceStatistic").isLessThan(CHI_SQUARE_1_DF);
+		requireThat(toneStatistic, "toneStatistic").isLessThan(ChiSquare.TWO_DEGREES_CUTOFF);
+		requireThat(audienceStatistic, "audienceStatistic").isLessThan(ChiSquare.ONE_DEGREE_CUTOFF);
 	}
 
 	/**
-	 * Verifies that the sampler is sensitive: counts drawn at the wrong probabilities fail the same chi-square
-	 * check, so the check in {@link #samplesVariationsAtFrozenProbabilities()} can detect a faulty generator.
+	 * Verifies that the chi-square calculation rejects counts that differ from the expected probabilities.
 	 */
 	@Test
-	public void chiSquareCheckDetectsWrongProbabilities()
+	public void chiSquareRejectsMismatchedProbabilities()
 	{
 		// Requirement: R-C4
 		Map<String, Integer> observed = Map.of("formal", 5_000, "casual", 3_000, "terse", 2_000);
 
-		double statistic = chiSquare(observed, Map.of("formal", 0.45, "casual", 0.30, "terse", 0.25), 10_000);
+		double statistic = ChiSquare.statistic(observed, Map.of("formal", 0.45, "casual", 0.30, "terse", 0.25), 10_000);
 
-		requireThat(statistic, "statistic").isGreaterThan(CHI_SQUARE_2_DF);
+		requireThat(statistic, "statistic").isGreaterThan(ChiSquare.TWO_DEGREES_CUTOFF);
 	}
 
 	/**
@@ -244,11 +214,12 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that a draw from a category that the contract does not define is rejected.
+	 * Verifies that a draw from a cell that the contract does not define is rejected.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*unknown.*")
-	public void drawRejectsUnknownCategory()
+	public void drawRejectsUnknownCell()
 	{
+		// Requirement: R-C4
 		new Generator(ContractFixtures.contract()).draw("unknown",
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED));
 	}
@@ -375,11 +346,10 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that every drawn instance passes validation, so the generator never emits an out-of-contract
-	 * instance of its own.
+	 * Verifies that instances drawn from both fixture categories pass validation.
 	 */
 	@Test
-	public void drawnInstancesAreInsideContract()
+	public void drawnInstancesPassValidation()
 	{
 		// Requirement: R-C4
 		Generator generator = new Generator(ContractFixtures.contract());

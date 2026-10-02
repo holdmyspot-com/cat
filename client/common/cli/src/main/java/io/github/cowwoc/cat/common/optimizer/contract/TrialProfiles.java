@@ -14,8 +14,9 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The trial profiles of a contract: the harness's profile inventory, the prompt files that bind a profile, the user's
- * restriction and the resulting cells (design &sect;6.6).
+ * The model and reasoning-effort combinations used to measure a contract's compliance. It records the combinations
+ * available from the harness, the choices selected by prompt files, the user's restriction and the resulting pairs
+ * of category and trial profile, called cells (design &sect;6.6).
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -190,12 +191,13 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 					files.add(source);
 				}
 			}
-			List<TrialProfile> set = restrict(profileSet(inventory, files, bound), restriction);
+			List<TrialProfile> available = profileSet(inventory, files, bound);
+			List<TrialProfile> set = restrict(available, restriction);
 			if (set.isEmpty())
 			{
 				throw new IllegalArgumentException("The profile restriction leaves the category '" + category.id() +
 					"' with no trial profile. Its profile set is " +
-					profileSet(inventory, files, bound).stream().map(TrialProfile::label).toList());
+					available.stream().map(TrialProfile::label).toList());
 			}
 			if (set.size() == 1)
 				cells.add(new Cell(category.id(), category.id(), set.getFirst()));
@@ -214,7 +216,8 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 	 * @param inventory the harness's profile inventory
 	 * @param files the files
 	 * @param bound the profile that each binding file binds
-	 * @return the profiles, in inventory order
+	 * @return the matching profiles in inventory order, or the files' shared selections when no inventory profile
+	 *   matches
 	 */
 	private static List<TrialProfile> profileSet(ProfileCatalog inventory, Set<String> files,
 		Map<String, TrialProfile> bound)
@@ -263,7 +266,7 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 	 *
 	 * @param set the profile set
 	 * @param restriction the restriction patterns, or empty for no restriction
-	 * @return the profiles of {@code set} that match a pattern
+	 * @return {@code set} when unrestricted, otherwise its profiles that match a pattern
 	 */
 	private static List<TrialProfile> restrict(List<TrialProfile> set, List<TrialProfile> restriction)
 	{

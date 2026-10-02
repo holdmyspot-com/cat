@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * A proposed check that failed one of its controls. CAT keeps it in the contract so that the proposal can say why
- * its requirement is judged semantically (design &sect;6.1).
+ * A proposed check that rejected its example of compliant evidence or accepted its example of noncompliant
+ * evidence. CAT keeps it in the contract to explain why a judge must decide that requirement (design &sect;6.1).
  *
  * @param check the check
  * @param reason which control it failed, and what it observed

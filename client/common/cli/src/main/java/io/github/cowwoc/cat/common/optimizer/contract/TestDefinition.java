@@ -12,13 +12,15 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * One kind of trial that checks one or more requirements.
+ * One kind of trial that checks one or more requirements. CAT evaluates deterministic checks directly from trial
+ * evidence; a judge decides the remaining requirements, called semantic requirements.
  *
  * @param id the identifier that is unique within the contract
  * @param requirementIds the identifiers of the requirements that this test checks
  * @param applicability the conditions under which the checked requirements apply to a trial
  * @param turns the complete prewritten user turns, which may contain {@code {{dimension}}} placeholders
- * @param timeLimit the time that one trial may run before it is judged on the behaviour it has shown
+ * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
+ *   shown
  * @param expectedBehaviour what a compliant response does
  * @param uncoveredInteractions the material interactions that this test cannot cover
  * @param variations the dimensions along which instances vary
@@ -37,7 +39,8 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	 * @param requirementIds the identifiers of the requirements that this test checks
 	 * @param applicability the conditions under which the checked requirements apply to a trial
 	 * @param turns the complete prewritten user turns, which may contain {@code {{dimension}}} placeholders
-	 * @param timeLimit the time that one trial may run before it is judged on the behaviour it has shown
+	 * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
+	 *   shown
 	 * @param expectedBehaviour what a compliant response does
 	 * @param uncoveredInteractions the material interactions that this test cannot cover
 	 * @param variations the dimensions along which instances vary
@@ -45,8 +48,9 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	 * @param discardedChecks the proposed checks that failed a control, with the reason
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if a text is blank, a list that must not be empty is empty, {@code timeLimit}
-	 *   is not positive, two variation rules share a dimension, a turn or a check parameter names a placeholder that
-	 *   no variation rule defines, a check decides a requirement that the test does not check, two checks decide the
+	 *   is not positive or includes fractional seconds, two variation rules share a dimension, a turn or a check
+	 *   parameter names a placeholder that no variation rule defines, a check decides a requirement that the test
+	 *   does not check, two checks decide the
 	 *   same requirement, a check examines a turn that the test does not have, or a control does not choose a
 	 *   permitted value for every dimension that its check names
 	 */
@@ -76,13 +80,14 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		for (String interaction : uncoveredInteractions)
 			requireThat(interaction, "uncoveredInteraction").isNotBlank();
 
-		Set<String> dimensions = new HashSet<>();
+		Map<String, VariationRule> ruleByDimension = new HashMap<>();
 		for (VariationRule rule : variations)
 		{
-			if (!dimensions.add(rule.dimension()))
+			if (ruleByDimension.putIfAbsent(rule.dimension(), rule) != null)
 				throw new IllegalArgumentException("Test '" + id + "' defines the dimension '" + rule.dimension() +
 					"' twice");
 		}
+		Set<String> dimensions = ruleByDimension.keySet();
 		for (String turn : turns)
 		{
 			for (String name : Placeholders.names(turn))
@@ -112,7 +117,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 				throw new IllegalArgumentException("Test '" + id + "' has two checks for the requirement '" +
 					requirementId + "', but a requirement has at most one check per test");
 			}
-			requireValid(id, turns.size(), variations, check);
+			requireValid(id, turns.size(), ruleByDimension, check);
 		}
 	}
 
@@ -122,11 +127,11 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	 *
 	 * @param id the test's identifier
 	 * @param turnCount the number of turns that the test has
-	 * @param variations the test's variation rules
+	 * @param ruleByDimension the test's variation rule for each defined dimension
 	 * @param check the check
 	 * @throws IllegalArgumentException if the check does not fit the test
 	 */
-	private static void requireValid(String id, int turnCount, List<VariationRule> variations,
+	private static void requireValid(String id, int turnCount, Map<String, VariationRule> ruleByDimension,
 		DeterministicCheck check)
 	{
 		String requirementId = check.requirementId();
@@ -136,9 +141,6 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 			throw new IllegalArgumentException("The check for '" + requirementId + "' in test '" + id +
 				"' examines turn " + reply.turn() + ", but the test has " + turnCount + " turns");
 		}
-		Map<String, VariationRule> ruleByDimension = new HashMap<>();
-		for (VariationRule rule : variations)
-			ruleByDimension.put(rule.dimension(), rule);
 		Set<String> named = check.criterion().dimensions();
 		for (String dimension : named)
 		{

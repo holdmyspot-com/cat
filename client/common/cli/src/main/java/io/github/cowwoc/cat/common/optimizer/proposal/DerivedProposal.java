@@ -7,16 +7,17 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import java.util.List;
 
 /**
- * What one deriver session proposed, after validation.
+ * The validated contract and findings from the session that reads the prompt system and proposes its requirements
+ * and tests (the deriver).
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param contract the proposed contract, with CAT's judge fields
+ * @param contract the proposed contract, with the judge model, effort, prompt and result schema that CAT supplies
  * @param derivedSources the prompt files that load although no harness event reports them
  * @param scopeConditions the conditions that make certification unavailable
- * @param observedSources the prompt sources that the deriver session's harness events showed loading, one per line,
- *   or {@code none}
- * @param derivation the deriver's output as JSON, which a revision sends back to the deriver with the user's
+ * @param observedSources non-blank text listing the prompt sources reported loading by the deriver session's
+ *   harness events, one per line, or {@code none}
+ * @param derivation the deriver's non-blank output as JSON, which a revision sends back to the deriver with the user's
  *   feedback
  */
 public record DerivedProposal(Contract contract, List<DerivedSource> derivedSources,
@@ -25,11 +26,12 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	/**
 	 * Creates a derived proposal.
 	 *
-	 * @param contract the proposed contract, with CAT's judge fields
+	 * @param contract the proposed contract, with the judge model, effort, prompt and result schema that CAT supplies
 	 * @param derivedSources the prompt files that load although no harness event reports them
 	 * @param scopeConditions the conditions that make certification unavailable
-	 * @param observedSources the prompt sources that the deriver session's harness events showed loading
-	 * @param derivation the deriver's output as JSON
+	 * @param observedSources non-blank text listing the prompt sources reported loading by the deriver session's
+	 *   harness events
+	 * @param derivation the deriver's non-blank output as JSON
 	 * @throws NullPointerException if any of the arguments are null, or a list contains null
 	 * @throws IllegalArgumentException if {@code observedSources} or {@code derivation} are blank
 	 */

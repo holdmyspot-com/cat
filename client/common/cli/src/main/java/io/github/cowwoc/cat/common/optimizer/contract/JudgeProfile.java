@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * The frozen identity of the judge that decides semantic compliance.
- *
+ * The model, effort and instructions of the judge that decides whether a trial meets requirements without a
+ * validated deterministic check. These requirements are called semantic requirements.
  * <p>
  * The judge decides only a test's semantic requirements. Deterministic checks decide the mechanical requirements
  * first; the judge receives their results as evidence but cannot override them, and no judge runs when a check failed
@@ -28,7 +28,8 @@ public record JudgeProfile(TrialProfile profile, String prompt, String rubric, S
 	 * @param decisionRule how the judge turns its findings into a pass or a failure
 	 * @param resultSchema the JSON schema, as JSON text, that a judge result must satisfy
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code profile} binds nothing or any other argument is blank
+	 * @throws IllegalArgumentException if {@code profile} selects neither a model nor an effort, or any other
+	 *   argument is blank
 	 */
 	public JudgeProfile
 	{

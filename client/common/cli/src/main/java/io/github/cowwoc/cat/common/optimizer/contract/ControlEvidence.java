@@ -11,8 +11,9 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The evidence of a check's control: a trial, written by the deriver, that the check must accept or reject (design
- * &sect;6.4). A control records everything that a check can observe, including its tool calls.
+ * A supplied trial example that a check must accept or reject. The agent that derives the proposal writes these
+ * examples, called controls, to test its proposed checks (design &sect;6.4). A control records everything that a
+ * check can observe, including its tool calls.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -34,7 +35,7 @@ public record ControlEvidence(List<String> replies, List<EvidenceFile> files, Li
 	 * @param calls the tool calls that the trial made, in order
 	 * @param choices the label of the variation value that the trial drew for each dimension that the check names,
 	 *   by dimension
-	 * @throws NullPointerException if any argument is null, or {@code replies} or {@code choices} holds a null
+	 * @throws NullPointerException if any argument is null or any list or {@code choices} contains a null
 	 * @throws IllegalArgumentException if two files share a path, or a dimension or label is blank
 	 */
 	public ControlEvidence
@@ -76,9 +77,9 @@ public record ControlEvidence(List<String> replies, List<EvidenceFile> files, Li
 	}
 
 	/**
-	 * {@inheritDoc}
-	 * <p>
-	 * A control always records its tool calls.
+	 * Returns the tool calls recorded by the control, including an empty list when it called no tools.
+	 *
+	 * @return the recorded calls, always present
 	 */
 	@Override
 	public Optional<List<ToolCall>> toolCalls()

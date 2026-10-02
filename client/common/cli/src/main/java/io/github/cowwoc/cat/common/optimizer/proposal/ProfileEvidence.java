@@ -16,8 +16,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * What CAT read about trial profiles when the deriver ran: the harness's profile inventory and the profile that each
- * binding file of the prompt system binds (design &sect;6.6).
+ * The available model and effort combinations (trial profiles), and the model or effort that each prompt file
+ * selects (its binding), recorded when the deriver ran (design &sect;6.6).
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -52,13 +52,14 @@ public record ProfileEvidence(ProfileCatalog inventory, Map<String, TrialProfile
 	/**
 	 * Returns the bindings of the files that requirements name as their source.
 	 * <p>
-	 * A source that names a link and its resolved target, as {@code link -> target}, binds what the target binds,
-	 * since the harness runs the target's content.
+	 * A source written as {@code link -> target} uses the target's recorded binding when available. Otherwise, it
+	 * uses the binding recorded at the link path, where staging copied the target's content. If neither path has a
+	 * recorded binding, the source yields none.
 	 *
-	 * @param requirements the requirements
+	 * @param requirements the requirements whose source files are searched, in result order
 	 * @return one binding per distinct source that binds a profile, named as the requirements name it, in requirement
 	 *   order
-	 * @throws NullPointerException if {@code requirements} is null
+	 * @throws NullPointerException if {@code requirements} is null or contains null
 	 */
 	public List<ProfileBinding> bindingsOf(List<Requirement> requirements)
 	{

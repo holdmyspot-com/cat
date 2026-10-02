@@ -8,12 +8,13 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The confirmed definition of compliance that every trial measures.
+ * The requirements and test definitions used to measure trial compliance. Categories group the tests; each cell
+ * pairs a category with a model and reasoning-effort profile and keeps its trial counts and decisions separate.
  *
  * @param requirements every requirement and its source, including CAT's {@link Requirement#CORE_TASK}
- * @param categories the categories, in the order that breaks allocation ties last
+ * @param categories the category order used to break otherwise equal allocation choices
  * @param profiles the trial profiles and the cells, which are the statistical units
- * @param judge the frozen judge profile
+ * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
  * @param fixtures the ignored files that trials need
  * @param limitations the material interactions and conditions that the contract does not cover
  */
@@ -24,9 +25,9 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 * Creates a contract.
 	 *
 	 * @param requirements every requirement and its source
-	 * @param categories the categories, in the order that breaks allocation ties last
+	 * @param categories the category order used to break otherwise equal allocation choices
 	 * @param profiles the trial profiles and the cells, which are the statistical units
-	 * @param judge the frozen judge profile
+	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
 	 * @param fixtures the ignored files that trials need
 	 * @param limitations the material interactions and conditions that the contract does not cover
 	 * @throws NullPointerException if any argument is null
@@ -126,7 +127,7 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
-	 * Returns the cells, which are the statistical units (design &sect;2.1).
+	 * Returns the category/profile pairs whose trial counts and decisions are kept separately (design &sect;2.1).
 	 *
 	 * @return every cell, grouped by category in category order
 	 */
@@ -150,6 +151,7 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 *
 	 * @param id a cell identifier
 	 * @return the cell with that identifier, or empty if the contract has none
+	 * @throws NullPointerException if {@code id} is null
 	 */
 	public Optional<Cell> findCell(String id)
 	{

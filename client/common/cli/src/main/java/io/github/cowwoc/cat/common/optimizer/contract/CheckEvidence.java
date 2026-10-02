@@ -5,15 +5,16 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The recorded evidence of one trial, or of a check's control, that a {@link DeterministicCheck} decides from. A
- * check never runs a command or changes a file: it reads only what the evidence recorded (design &sect;1.2).
+ * The recorded evidence that a {@link DeterministicCheck} examines. It comes from a trial or from a control: a
+ * supplied example that the check must accept or reject. A check never runs a command or changes a file; it reads
+ * only what the evidence recorded (design &sect;1.2).
  */
 public interface CheckEvidence
 {
 	/**
 	 * Returns the final reply to each turn.
 	 *
-	 * @return the replies, in turn order. A trial that its time limit cut off has fewer replies than turns.
+	 * @return the replies, in turn order; a trial cut off by its time limit may have fewer replies than turns
 	 */
 	List<String> replies();
 

@@ -12,11 +12,6 @@ import org.testng.annotations.Test;
 public final class DistributionTest
 {
 	/**
-	 * The chi-square value that a correct sampler exceeds with probability 0.001, for 1 degree of freedom.
-	 */
-	private static final double CHI_SQUARE_1_DF = 10.828;
-
-	/**
 	 * Creates the test fixture.
 	 */
 	public DistributionTest()
@@ -24,8 +19,7 @@ public final class DistributionTest
 	}
 
 	/**
-	 * Verifies that a category gives every test the same probability, and that the contract has no way to give a
-	 * test another weight.
+	 * Verifies that each fixture category gives its tests a probability of 1 divided by its test count.
 	 */
 	@Test
 	public void categoryWeightsTestsEqually()
@@ -54,13 +48,10 @@ public final class DistributionTest
 		for (int i = 0; i < draws; ++i)
 			counts.merge(generator.draw("formatting", stream).testId(), 1, Integer::sum);
 
-		double expected = draws / 2.0;
-		double statistic = 0;
-		for (int count : counts.values())
-			statistic += (count - expected) * (count - expected) / expected;
+		double statistic = ChiSquare.statistic(counts, Map.of("styled-summary", 0.5, "plain-list", 0.5), draws);
 
 		requireThat(counts.keySet(), "tests").isEqualTo(java.util.Set.of("styled-summary", "plain-list"));
-		requireThat(statistic, "statistic").isLessThan(CHI_SQUARE_1_DF);
+		requireThat(statistic, "statistic").isLessThan(ChiSquare.ONE_DEGREE_CUTOFF);
 	}
 
 	/**

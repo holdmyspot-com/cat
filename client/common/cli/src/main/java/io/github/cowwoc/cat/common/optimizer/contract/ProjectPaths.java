@@ -17,7 +17,12 @@ final class ProjectPaths
 	{
 		for (String segment : path.split("/", -1))
 		{
-			if (segment.isEmpty() || segment.equals(".") || segment.equals("..") || segment.contains("\\"))
+			boolean plain = switch (segment)
+			{
+				case "", ".", ".." -> false;
+				default -> !segment.contains("\\");
+			};
+			if (!plain)
 				return false;
 		}
 		return true;

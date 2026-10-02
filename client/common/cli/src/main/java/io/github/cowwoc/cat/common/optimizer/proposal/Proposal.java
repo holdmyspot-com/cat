@@ -123,7 +123,7 @@ public final class Proposal
 			{
 				cap = "unavailable: " + e.getMessage();
 			}
-			caps.add("Attempt " + index + ": α = " + ProposalText.level(level) + ", cap " + cap);
+			caps.add("Attempt " + index + ": α = " + Markdown.level(level) + ", cap " + cap);
 		}
 		return new Proposal(derived, contract, contractHash, links, login, confirmed, caps);
 	}
@@ -156,7 +156,7 @@ public final class Proposal
 	 */
 	public String render()
 	{
-		return new ProposalText(derived, contract, links, login, confirmed, caps).render();
+		return new Markdown(derived, contract, links, login, confirmed, caps).render();
 	}
 
 	/**

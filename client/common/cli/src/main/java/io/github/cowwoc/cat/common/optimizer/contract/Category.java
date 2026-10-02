@@ -7,12 +7,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * A group of tests that needs its own claim, because averaging it with other categories could hide a weak area.
+ * A group of tests whose compliance is measured separately because averaging it with other groups could hide
+ * failures in this group.
  *
  * @param id the identifier that is unique within the contract
- * @param rationale why this group needs a separate claim
+ * @param rationale why this group needs a separate compliance measurement
  * @param riskRank the rank that breaks allocation ties
- * @param tests the tests in this category, which the benchmark weights equally
+ * @param tests the tests in this category, each drawn with equal probability
  */
 public record Category(String id, String rationale, RiskRank riskRank, List<TestDefinition> tests)
 {
@@ -20,11 +21,12 @@ public record Category(String id, String rationale, RiskRank riskRank, List<Test
 	 * Creates a category.
 	 *
 	 * @param id the identifier that is unique within the contract
-	 * @param rationale why this group needs a separate claim
+	 * @param rationale why this group needs a separate compliance measurement
 	 * @param riskRank the rank that breaks allocation ties
-	 * @param tests the tests in this category, which the benchmark weights equally
+	 * @param tests the tests in this category, each drawn with equal probability
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if a text is blank, {@code tests} is empty, or two tests share an identifier
+	 * @throws IllegalArgumentException if {@code id} or {@code rationale} are blank, {@code tests} is empty, or two
+	 *   tests share an identifier
 	 */
 	public Category
 	{
@@ -43,7 +45,7 @@ public record Category(String id, String rationale, RiskRank riskRank, List<Test
 	}
 
 	/**
-	 * Returns the probability that the benchmark draws each test of this category.
+	 * Returns the probability that the generator draws each test in this category.
 	 *
 	 * @return one divided by the number of tests
 	 */

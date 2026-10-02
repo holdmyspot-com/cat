@@ -16,14 +16,12 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Reads the deriver's findings that the contract does not hold: {@code derived_sources},
+ * Validates {@link DeriverProtocol}'s additional findings alongside the proposed contract: {@code derived_sources},
  * {@code profile_restriction} and {@code scope_conditions}, as {@code deriver-findings.schema.json} describes them.
  * <p>
  * Each violation is reported at its location in the deriver's output, in the form that the proposal schema uses.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
-final class DeriverFindings
+final class Findings
 {
 	/**
 	 * The property that lists the derived prompt sources.
@@ -40,21 +38,20 @@ final class DeriverFindings
 	/**
 	 * The outcome that each scope condition reports (design &sect;6.5).
 	 */
-	private static final Map<String, Outcome> CONDITIONS = Map.of(
-		"unsupported_instruction_source", Outcome.UNSUPPORTED_INSTRUCTION_SOURCE,
-		"unsupported_output", Outcome.UNSUPPORTED_OUTPUT,
-		"ineligible_trial_effect", Outcome.INELIGIBLE_TRIAL_EFFECT,
-		"unsupported_test_interaction", Outcome.UNSUPPORTED_TEST_INTERACTION);
-	private static final String CONDITION_NAMES = "unsupported_instruction_source, unsupported_output, " +
-		"ineligible_trial_effect, unsupported_test_interaction";
+	private static final List<Outcome> CONDITIONS = List.of(Outcome.UNSUPPORTED_INSTRUCTION_SOURCE,
+		Outcome.UNSUPPORTED_OUTPUT, Outcome.INELIGIBLE_TRIAL_EFFECT, Outcome.UNSUPPORTED_TEST_INTERACTION);
+	private static final Map<String, Outcome> CONDITIONS_BY_NAME = CONDITIONS.stream().
+		collect(Collectors.toUnmodifiableMap(Findings::conditionName, outcome -> outcome));
+	private static final String CONDITION_NAMES = CONDITIONS.stream().map(Findings::conditionName).
+		collect(Collectors.joining(", "));
 	private final List<String> problems;
 
 	/**
-	 * Creates a reader.
+	 * Creates a reader that appends violations to the supplied list.
 	 *
 	 * @param problems receives one message per violation
 	 */
-	DeriverFindings(List<String> problems)
+	Findings(List<String> problems)
 	{
 		this.problems = problems;
 	}
@@ -166,7 +163,7 @@ final class DeriverFindings
 			String condition = text(item, "condition", itemLocation);
 			if (condition != null)
 			{
-				outcome = CONDITIONS.get(condition);
+				outcome = CONDITIONS_BY_NAME.get(condition);
 				if (outcome == null)
 					problems.add(itemLocation + ".condition: must be one of " + CONDITION_NAMES);
 			}
@@ -180,7 +177,7 @@ final class DeriverFindings
 	}
 
 	/**
-	 * Reports each requirement that a scope condition names but the contract does not hold.
+	 * Reports each requirement identifier in a scope condition that the contract does not contain.
 	 *
 	 * @param node the {@code scope_conditions} value, or null if the output omits it
 	 * @param contract the proposed contract
@@ -237,7 +234,7 @@ final class DeriverFindings
 	}
 
 	/**
-	 * Checks that a value is an array.
+	 * Indicates whether the value is an array, and reports a missing value or another JSON type.
 	 *
 	 * @param node the value, or null if it is missing
 	 * @param location the location of the value
@@ -259,7 +256,7 @@ final class DeriverFindings
 	}
 
 	/**
-	 * Checks that a value is an object with no property outside a set.
+	 * Indicates whether the value is an object, and reports another JSON type or unexpected properties.
 	 *
 	 * @param node the value
 	 * @param location the location of the value
@@ -321,6 +318,17 @@ final class DeriverFindings
 			return null;
 		}
 		return value.asString();
+	}
+
+	/**
+	 * Returns the JSON condition name for an unavailability outcome.
+	 *
+	 * @param outcome the outcome
+	 * @return the lowercase name used by the deriver findings schema
+	 */
+	private static String conditionName(Outcome outcome)
+	{
+		return outcome.name().toLowerCase(Locale.ROOT);
 	}
 
 	/**

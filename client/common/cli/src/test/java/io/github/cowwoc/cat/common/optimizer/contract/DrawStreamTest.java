@@ -59,12 +59,10 @@ public final class DrawStreamTest
 	}
 
 	/**
-	 * Verifies that the sequence depends only on the stream's kind, seed and position: a draw sequence is the same
-	 * whatever happens to the drawn instances between draws, such as targeted marking or outcomes that other code
-	 * records, and the same for any candidate.
+	 * Verifies that marking drawn instances for targeted reruns leaves the following random draws unchanged.
 	 */
 	@Test
-	public void independentOfOutcomes()
+	public void targetedMarkingDoesNotChangeDraws()
 	{
 		// Requirement: R-C4
 		Generator generator = new Generator(ContractFixtures.contract());
@@ -77,7 +75,7 @@ public final class DrawStreamTest
 			passingRun.add(generator.draw("formatting", passing));
 
 			TrialInstance failed = generator.draw("formatting", failing);
-			// A failed trial triggers three targeted reruns of the same instance. They draw nothing.
+			// Model three targeted reruns by marking the same instance; no trial outcome is recorded here.
 			for (int rerun = 0; rerun < 3; ++rerun)
 				generator.markTargeted(failed);
 			failingRun.add(failed);

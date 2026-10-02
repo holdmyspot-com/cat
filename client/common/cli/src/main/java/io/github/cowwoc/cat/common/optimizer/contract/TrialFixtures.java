@@ -7,16 +7,16 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The files that trials need but Git ignores.
+ * Project files and directories that Git ignores but trials need copied into their project before they run.
  *
- * @param ignoredPaths the project-relative paths of ignored files or directories to stage for every trial
+ * @param ignoredPaths the project-relative paths of ignored files or directories to copy into every trial project
  */
 public record TrialFixtures(List<String> ignoredPaths)
 {
 	/**
 	 * Creates the fixtures.
 	 *
-	 * @param ignoredPaths the project-relative paths of ignored files or directories to stage for every trial
+	 * @param ignoredPaths the project-relative paths of ignored files or directories to copy into every trial project
 	 * @throws NullPointerException if {@code ignoredPaths} is null
 	 * @throws IllegalArgumentException if a path is blank, absolute, not normalized, escapes the project, or is listed
 	 *   twice

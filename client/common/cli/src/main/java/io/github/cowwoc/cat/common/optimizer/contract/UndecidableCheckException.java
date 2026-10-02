@@ -1,9 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 /**
- * Thrown when a check's kind needs evidence that the trial's evidence does not record, such as tool calls from a
- * harness whose adapter does not report them. The caller treats this as an infrastructure failure, never as a pass
- * or a fail.
+ * Thrown when a check needs evidence that was not recorded, such as tool calls from a harness whose adapter does not
+ * report them. The caller records a failure to measure compliance rather than a compliance pass or failure.
  */
 public final class UndecidableCheckException extends Exception
 {

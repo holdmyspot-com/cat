@@ -136,19 +136,10 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Names a location in a proposal.
-	 *
-	 * @param steps the property names and array indexes
-	 * @return the steps
-	 */
-	private static String[] path(String... steps)
-	{
-		return steps;
-	}
-
-	/**
 	 * Verifies that the valid fixture proposal is accepted and becomes the contract that it describes, with every
 	 * item that the design requires the proposal to list.
+	 *
+	 * @throws InvalidProposalException if the fixture proposal is rejected
 	 */
 	@Test
 	public void parsesValidProposal() throws InvalidProposalException
@@ -165,8 +156,9 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that writing a contract and reading it back yields an equal contract, so a persisted contract keeps
-	 * every frozen item.
+	 * Verifies that writing the valid fixture contract and reading it back preserves its confirmed values.
+	 *
+	 * @throws InvalidProposalException if the written fixture contract is rejected
 	 */
 	@Test
 	public void writtenContractParsesBackEqual() throws InvalidProposalException
@@ -208,37 +200,37 @@ public final class ProposalSchemaTest
 	{
 		return new Object[][]
 			{
-				{"requirements", path("requirements")},
-				{"requirement id", path("requirements", "0", "id")},
-				{"requirement description", path("requirements", "0", "description")},
-				{"requirement source", path("requirements", "0", "source")},
-				{"categories", path("categories")},
-				{"category id", path("categories", "0", "id")},
-				{"category rationale", path("categories", "0", "rationale")},
-				{"category risk rank", path("categories", "0", "risk_rank")},
-				{"category tests", path("categories", "0", "tests")},
-				{"test id", path("categories", "0", "tests", "0", "id")},
-				{"test requirements", path("categories", "0", "tests", "0", "requirement_ids")},
-				{"test applicability", path("categories", "0", "tests", "0", "applicability")},
-				{"test turns", path("categories", "0", "tests", "0", "turns")},
-				{"test time limit", path("categories", "0", "tests", "0", "time_limit_seconds")},
-				{"test expected behavior", path("categories", "0", "tests", "0", "expected_behavior")},
-				{"test uncovered interactions", path("categories", "0", "tests", "0", "uncovered_interactions")},
-				{"test variations", path("categories", "0", "tests", "0", "variations")},
-				{"test checks", path("categories", "0", "tests", "0", "checks")},
-				{"test discarded checks", path("categories", "0", "tests", "0", "discarded_checks")},
-				{"variation dimension", path("categories", "0", "tests", "0", "variations", "0", "dimension")},
-				{"variation values", path("categories", "0", "tests", "0", "variations", "0", "values")},
-				{"variation value label", path("categories", "0", "tests", "0", "variations", "0", "values", "0",
-					"label")},
-				{"variation value text", path("categories", "0", "tests", "0", "variations", "0", "values", "0",
-					"text")},
-				{"variation value probability", path("categories", "0", "tests", "0", "variations", "0", "values",
-					"0", "probability")},
-				{"judge", path("judge")},
-				{"fixtures", path("fixtures")},
-				{"ignored paths", path("fixtures", "ignored_paths")},
-				{"limitations", path("limitations")}
+				{"requirements", new String[]{"requirements"}},
+				{"requirement id", new String[]{"requirements", "0", "id"}},
+				{"requirement description", new String[]{"requirements", "0", "description"}},
+				{"requirement source", new String[]{"requirements", "0", "source"}},
+				{"categories", new String[]{"categories"}},
+				{"category id", new String[]{"categories", "0", "id"}},
+				{"category rationale", new String[]{"categories", "0", "rationale"}},
+				{"category risk rank", new String[]{"categories", "0", "risk_rank"}},
+				{"category tests", new String[]{"categories", "0", "tests"}},
+				{"test id", new String[]{"categories", "0", "tests", "0", "id"}},
+				{"test requirements", new String[]{"categories", "0", "tests", "0", "requirement_ids"}},
+				{"test applicability", new String[]{"categories", "0", "tests", "0", "applicability"}},
+				{"test turns", new String[]{"categories", "0", "tests", "0", "turns"}},
+				{"test time limit", new String[]{"categories", "0", "tests", "0", "time_limit_seconds"}},
+				{"test expected behavior", new String[]{"categories", "0", "tests", "0", "expected_behavior"}},
+				{"test uncovered interactions", new String[]{"categories", "0", "tests", "0", "uncovered_interactions"}},
+				{"test variations", new String[]{"categories", "0", "tests", "0", "variations"}},
+				{"test checks", new String[]{"categories", "0", "tests", "0", "checks"}},
+				{"test discarded checks", new String[]{"categories", "0", "tests", "0", "discarded_checks"}},
+				{"variation dimension", new String[]{"categories", "0", "tests", "0", "variations", "0", "dimension"}},
+				{"variation values", new String[]{"categories", "0", "tests", "0", "variations", "0", "values"}},
+				{"variation value label", new String[]{"categories", "0", "tests", "0", "variations", "0", "values", "0",
+					"label"}},
+				{"variation value text", new String[]{"categories", "0", "tests", "0", "variations", "0", "values", "0",
+					"text"}},
+				{"variation value probability", new String[]{"categories", "0", "tests", "0", "variations", "0", "values",
+					"0", "probability"}},
+				{"judge", new String[]{"judge"}},
+				{"fixtures", new String[]{"fixtures"}},
+				{"ignored paths", new String[]{"fixtures", "ignored_paths"}},
+				{"limitations", new String[]{"limitations"}}
 			};
 	}
 
@@ -267,9 +259,9 @@ public final class ProposalSchemaTest
 	public void rejectsAggregateSummaries()
 	{
 		// Requirement: R-C1
-		InvalidProposalException countInsteadOfList = rejection(number(path("requirements"), 12));
-		InvalidProposalException countBesideList = rejection(number(path("requirement_count"), 2));
-		InvalidProposalException countInsideCategory = rejection(number(path("categories", "0", "test_count"), 2));
+		InvalidProposalException countInsteadOfList = rejection(number(new String[]{"requirements"}, 12));
+		InvalidProposalException countBesideList = rejection(number(new String[]{"requirement_count"}, 2));
+		InvalidProposalException countInsideCategory = rejection(number(new String[]{"categories", "0", "test_count"}, 2));
 
 		requireThat(String.join(" | ", countInsteadOfList.problems()), "countInsteadOfList").contains("$.requirements");
 		requireThat(String.join(" | ", countBesideList.problems()), "countBesideList").
@@ -288,25 +280,25 @@ public final class ProposalSchemaTest
 		ArrayNode empty = json.createArrayNode();
 		String[][] locations =
 			{
-				path("requirements"),
-				path("categories"),
-				path("categories", "0", "tests"),
-				path("categories", "0", "tests", "0", "turns"),
-				path("categories", "0", "tests", "0", "requirement_ids"),
-				path("categories", "0", "tests", "0", "variations", "0", "values")
+				new String[]{"requirements"},
+				new String[]{"categories"},
+				new String[]{"categories", "0", "tests"},
+				new String[]{"categories", "0", "tests", "0", "turns"},
+				new String[]{"categories", "0", "tests", "0", "requirement_ids"},
+				new String[]{"categories", "0", "tests", "0", "variations", "0", "values"}
 			};
 		for (String[] location : locations)
 			rejection(changed(location, empty));
 	}
 
 	/**
-	 * Verifies that the rejection reports every violation, so that a deriver can fix them in one revision.
+	 * Verifies that rejection reports two independent violations together, so the deriver can correct both.
 	 */
 	@Test
-	public void reportsEveryViolation()
+	public void reportsIndependentViolations()
 	{
 		// Requirement: R-C1
-		String proposal = text(path("requirements", "0", "source"), "");
+		String proposal = text(new String[]{"requirements", "0", "source"}, "");
 		proposal = proposal.replace("\"risk_rank\":2", "\"risk_rank\":0");
 
 		InvalidProposalException e = rejection(proposal);
@@ -338,7 +330,8 @@ public final class ProposalSchemaTest
 	public void rejectsProbabilitiesThatDoNotSumToOne()
 	{
 		// Requirement: R-C3
-		String[] probability = path("categories", "0", "tests", "0", "variations", "0", "values", "0", "probability");
+		String[] probability = {
+			"categories", "0", "tests", "0", "variations", "0", "values", "0", "probability"};
 
 		InvalidProposalException e = rejection(number(probability, 0.6));
 
@@ -352,7 +345,8 @@ public final class ProposalSchemaTest
 	public void rejectsProbabilityOutOfRange()
 	{
 		// Requirement: R-C3
-		String[] probability = path("categories", "0", "tests", "0", "variations", "0", "values", "0", "probability");
+		String[] probability = {
+			"categories", "0", "tests", "0", "variations", "0", "values", "0", "probability"};
 
 		rejection(number(probability, 0.0));
 		rejection(number(probability, 1.5));
@@ -366,7 +360,7 @@ public final class ProposalSchemaTest
 	public void rejectsUnknownRequirementReference()
 	{
 		// Requirement: R-C1
-		String[] ids = path("categories", "0", "tests", "0", "requirement_ids");
+		String[] ids = {"categories", "0", "tests", "0", "requirement_ids"};
 		ArrayNode unknown = json.createArrayNode().add("r99");
 
 		InvalidProposalException e = rejection(changed(ids, unknown));
@@ -382,7 +376,7 @@ public final class ProposalSchemaTest
 	public void rejectsUndefinedPlaceholder()
 	{
 		// Requirement: R-C1
-		String[] turns = path("categories", "0", "tests", "1", "turns");
+		String[] turns = {"categories", "0", "tests", "1", "turns"};
 		ArrayNode placeholder = json.createArrayNode().add("List three {{things}}.");
 
 		InvalidProposalException e = rejection(changed(turns, placeholder));
@@ -398,16 +392,16 @@ public final class ProposalSchemaTest
 	public void rejectsInvalidScalars()
 	{
 		// Requirement: R-C1
-		String[] timeLimit = path("categories", "0", "tests", "0", "time_limit_seconds");
+		String[] timeLimit = {"categories", "0", "tests", "0", "time_limit_seconds"};
 		rejection(integer(timeLimit, 0));
 		rejection(integer(timeLimit, -5));
 		rejection(number(timeLimit, 1.5));
 		rejection(text(timeLimit, "300"));
-		String[] rank = path("categories", "0", "risk_rank");
+		String[] rank = {"categories", "0", "risk_rank"};
 		rejection(integer(rank, 0));
 		rejection(integer(rank, -1));
 		rejection(number(rank, 1.5));
-		String[] ignored = path("fixtures", "ignored_paths");
+		String[] ignored = {"fixtures", "ignored_paths"};
 		rejection(changed(ignored, json.createArrayNode().add("../outside")));
 		rejection(changed(ignored, json.createArrayNode().add("/etc/passwd")));
 		rejection(changed(ignored, json.createArrayNode().add("a").add("a")));
@@ -420,17 +414,17 @@ public final class ProposalSchemaTest
 	public void rejectsDuplicateIdentifiers()
 	{
 		// Requirement: R-C1
-		rejection(text(path("requirements", "1", "id"), "r1"));
-		rejection(text(path("categories", "1", "id"), "formatting"));
-		rejection(text(path("categories", "1", "tests", "0", "id"), "plain-list"));
+		rejection(text(new String[]{"requirements", "1", "id"}, "r1"));
+		rejection(text(new String[]{"categories", "1", "id"}, "formatting"));
+		rejection(text(new String[]{"categories", "1", "tests", "0", "id"}, "plain-list"));
 	}
 
 	/**
-	 * Verifies that the judge profile of a proposal must name its model, prompt, rubric, decision rule and result
-	 * schema, and that none may be blank.
+	 * Verifies that a judge profile requires a model, prompt, rubric and decision rule as non-blank text and a result
+	 * schema as a JSON object, and rejects unexpected properties.
 	 */
 	@Test
-	public void judgeProfileRequiresEveryField()
+	public void judgeProfileRequiresModelAndInstructions()
 	{
 		// Requirement: R-C5
 		for (String field : new String[]
@@ -438,21 +432,23 @@ public final class ProposalSchemaTest
 				"model", "prompt", "rubric", "decision_rule", "result_schema"
 			})
 		{
-			InvalidProposalException omitted = rejection(changed(path("judge", field), null));
+			InvalidProposalException omitted = rejection(changed(new String[]{"judge", field}, null));
 			requireThat(String.join(" | ", omitted.problems()), "problems").contains("$.judge");
 		}
 		for (String field : new String[]
 			{
 				"model", "prompt", "rubric", "decision_rule"
 			})
-			rejection(text(path("judge", field), "  "));
-		rejection(text(path("judge", "result_schema"), "{}"));
-		rejection(changed(path("judge", "unexpected"), json.getNodeFactory().stringNode("x")));
+			rejection(text(new String[]{"judge", field}, "  "));
+		rejection(text(new String[]{"judge", "result_schema"}, "{}"));
+		rejection(changed(new String[]{"judge", "unexpected"}, json.getNodeFactory().stringNode("x")));
 	}
 
 	/**
-	 * Verifies that the parsed judge profile carries the five frozen fields, and that the result schema is kept as
-	 * JSON text.
+	 * Verifies that the parsed judge profile preserves its model, effort and judging instructions, and keeps the
+	 * result schema as JSON text.
+	 *
+	 * @throws InvalidProposalException if the fixture proposal is rejected
 	 */
 	@Test
 	public void judgeProfileCarriesFrozenFields() throws InvalidProposalException
@@ -574,7 +570,7 @@ public final class ProposalSchemaTest
 		check.set("known_bad", control.deepCopy());
 		ArrayNode checks = json.createArrayNode().add(check);
 
-		InvalidProposalException e = rejection(changed(path("categories", "0", "tests", "1", "checks"), checks));
+		InvalidProposalException e = rejection(changed(new String[]{"categories", "0", "tests", "1", "checks"}, checks));
 
 		requireThat(String.join(" | ", e.problems()), "problems").
 			contains("$.categories[0].tests[1].checks[0].parameters").

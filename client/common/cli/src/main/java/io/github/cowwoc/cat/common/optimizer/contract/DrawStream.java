@@ -7,7 +7,6 @@ import java.util.random.RandomGenerator;
 
 /**
  * A seeded source of random draws whose seed and position survive a restart.
- *
  * <p>
  * Development, formal and baseline draws each come from their own stream, so that one stream's use never moves
  * another's position. A stream has no input from candidate identity or outcomes: its values depend only on its kind,
@@ -23,15 +22,15 @@ public final class DrawStream implements RandomGenerator
 	public enum Kind
 	{
 		/**
-		 * Representative trials for the working candidate while it is being developed.
+		 * Randomly sampled trials for the prompt-system version being developed.
 		 */
 		DEVELOPMENT(0x5DEECE66DA3C4F17L),
 		/**
-		 * Trials of a certification attempt, which may start only after the attempt's candidate is frozen.
+		 * Trials used to certify compliance, after the prompt-system version and measurement procedure are fixed.
 		 */
 		FORMAL(0x2545F4914F6CDD1DL),
 		/**
-		 * Trials of the incumbent's baseline arm.
+		 * Trials that measure compliance of the currently retained prompt-system version for comparison.
 		 */
 		BASELINE(0x6A09E667F3BCC909L);
 
@@ -49,7 +48,7 @@ public final class DrawStream implements RandomGenerator
 	}
 
 	/**
-	 * The plain values from which a stream resumes.
+	 * The values needed to resume a stream.
 	 *
 	 * @param kind the purpose of the stream
 	 * @param seed the seed that the stream was created with
@@ -129,7 +128,7 @@ public final class DrawStream implements RandomGenerator
 	/**
 	 * Returns the values to persist.
 	 *
-	 * @return the kind, seed, position and openness
+	 * @return the kind, seed, position and whether draws are allowed
 	 */
 	public State state()
 	{

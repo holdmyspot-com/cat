@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * The text of a nested session's prompt, with {@code {{name}}} placeholders for the values that CAT inserts.
+ * A session's prompt text, with {@code {{name}}} placeholders for the values that CAT inserts.
  * <p>
  * Filling replaces each placeholder whose name has a value in one pass, so a value that itself contains
  * {@code {{name}}} text is inserted unchanged. A placeholder without a value stays as written, because a prompt may
@@ -24,7 +24,7 @@ public final class PromptTemplate
 	/**
 	 * Creates a template.
 	 *
-	 * @param text the prompt text
+	 * @param text non-blank prompt text
 	 * @throws NullPointerException if {@code text} is null
 	 * @throws IllegalArgumentException if {@code text} is blank
 	 */
@@ -81,7 +81,7 @@ public final class PromptTemplate
 	}
 
 	/**
-	 * Fills the placeholders.
+	 * Returns the prompt with the supplied placeholder values inserted once.
 	 *
 	 * @param values the text that replaces each {@code {{name}}} placeholder, by name
 	 * @return the prompt
@@ -94,6 +94,7 @@ public final class PromptTemplate
 		requireThat(values, "values").isNotNull();
 		for (Map.Entry<String, String> entry : values.entrySet())
 		{
+			requireThat(entry.getKey(), "values.key").isNotNull();
 			requireThat(entry.getValue(), "values.get(" + entry.getKey() + ")").isNotNull();
 			requireThat(text, "text").contains(placeholder(entry.getKey()));
 		}

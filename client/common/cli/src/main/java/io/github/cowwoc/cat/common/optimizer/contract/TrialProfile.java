@@ -5,8 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * One model and reasoning-effort combination that a session runs under (design &sect;6.6).
  * <p>
- * An empty dimension is unbound: the session starts without selecting it, so the harness applies its default. As a
- * restriction pattern, an empty dimension matches every value.
+ * An empty model or effort is unbound: the session starts without selecting that value, so the harness applies its
+ * default. When this profile restricts another profile, an empty value matches every value.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

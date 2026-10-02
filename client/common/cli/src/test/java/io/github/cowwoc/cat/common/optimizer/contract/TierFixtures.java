@@ -1,13 +1,14 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Builds contracts whose categories have several cells per model, for tests of development cell tiering.
+ * Builds contracts with several reasoning efforts per model for tests of trial scheduling during development.
  */
 public final class TierFixtures
 {
@@ -48,7 +49,8 @@ public final class TierFixtures
 		List.of(new TrialProfile("big", "low"), new TrialProfile("big", "medium"), new TrialProfile("big", "high"),
 			new TrialProfile("big", "xhigh"), new TrialProfile("small", "high")));
 	/**
-	 * The reasoning efforts that each model of the recorded Codex inventory lists, in listing order.
+	 * The reasoning efforts that each model of the recorded Codex inventory lists, in listing order. The map and
+	 * lists cannot be changed by tests that share the fixture.
 	 * <p>
 	 * This copies the inventory that {@code CodexProfileInventoryTest.keepsListedModelsWithTheirEfforts} reads from
 	 * the recorded output of {@code codex debug models} of codex-cli 0.159.1, which the common module cannot read.
@@ -63,7 +65,7 @@ public final class TierFixtures
 	/**
 	 * Returns the efforts of each model of the recorded Codex inventory.
 	 *
-	 * @return the efforts, in listing order
+	 * @return an unmodifiable map of efforts, in listing order
 	 */
 	private static Map<String, List<String>> codexEfforts()
 	{
@@ -78,7 +80,7 @@ public final class TierFixtures
 		efforts.put("gpt-5.6-terra", ultra);
 		efforts.put("gpt-5.6-luna", max);
 		efforts.put("gpt-5.5", List.of("low", "medium", "high", "xhigh"));
-		return efforts;
+		return Collections.unmodifiableMap(efforts);
 	}
 
 	/**

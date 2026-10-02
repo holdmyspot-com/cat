@@ -7,7 +7,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The {@code {{dimension}}} placeholders that a test's turns and check parameters use to name a variation value.
+ * Replaces {@code {{dimension}}} placeholders in turns and check parameters with the text selected for that named
+ * input in a trial.
  */
 final class Placeholders
 {
