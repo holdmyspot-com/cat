@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import java.util.List;
 
 /**
- * A condition of design &sect;6.5 that makes certification unavailable, as the deriver found it in the prompt system.
+ * A condition that makes certification unavailable, as the deriver found it in the prompt system.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

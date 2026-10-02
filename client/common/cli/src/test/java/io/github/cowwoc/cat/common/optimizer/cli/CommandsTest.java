@@ -366,7 +366,7 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that the default slice leaves room under the skill's 10-minute tool timeout (design §3.8, P10).
+	 * Verifies that the default slice leaves room under the skill's 10-minute tool timeout.
 	 */
 	@Test
 	public void defaultSliceFitsToolTimeout()

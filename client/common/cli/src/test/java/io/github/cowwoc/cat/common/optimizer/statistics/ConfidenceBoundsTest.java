@@ -12,7 +12,7 @@ import java.math.BigInteger;
 /**
  * Tests {@link ConfidenceBounds}.
  * <p>
- * This class checks no {@code design.md} &sect;2.4, &sect;2.5 or &sect;13 numbers. Its reference values come from an
+ * Its reference values come from an
  * independent script that bisects the same e-values:
  * <table>
  *   <caption>Reference bounds checked by this class</caption>

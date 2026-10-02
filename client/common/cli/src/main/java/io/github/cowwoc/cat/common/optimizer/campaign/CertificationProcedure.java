@@ -27,12 +27,12 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	DecisionBoundaries boundaries, String bets, String allocationPolicy)
 {
 	/**
-	 * The bets and weights of {@code design.md} section 2.3.
+	 * The fixed bets and weights for certification and below-minimum tests.
 	 */
 	public static final String BETS = "certification (0.4, 0.1) (0.6, 0.2) (0.8, 0.5) (1.0, 0.2); " +
 		"below minimum 9/19 3/19 1/19 with equal weights";
 	/**
-	 * The formal allocation policy of {@code design.md} section 3.3.
+	 * The policy for prioritizing formal trials and limiting in-flight trials.
 	 */
 	public static final String ALLOCATION_POLICY = "one trial per category, then the lowest lower bound at " +
 		"alpha_i, ties to fewer outcomes then category order; in-flight trials limited by the passes still required";

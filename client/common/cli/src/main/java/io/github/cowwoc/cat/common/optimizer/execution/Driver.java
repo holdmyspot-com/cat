@@ -71,11 +71,11 @@ import java.util.Set;
 import java.util.concurrent.CompletionException;
 
 /**
- * Advances one campaign during one bounded run, called a slice (design §3.7 and §3.8).
+ * Advances one campaign during one bounded run, called a slice.
  * <p>
  * {@link #open(DriverContext, String) Opening} a driver takes the campaign's write lock and reconciles what an earlier
  * driver left behind. Each {@link #step()} then consumes the sessions that ended, judges and adopts their outcomes,
- * and starts the work that the campaign admits, in the write-ahead order of design §3.8: an assignment is persisted
+ * and starts the work that the campaign admits, in write-ahead order: an assignment is persisted
  * before its session starts, and an outcome before it is adopted. A step never blocks; {@link SliceRunner} waits
  * between steps.
  */
@@ -500,7 +500,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Runs a completed trial's deterministic checks first (design &sect;6.4). A failed check fails the trial with the
+	 * Runs a completed trial's deterministic checks first. A failed check fails the trial with the
 	 * record of each failed check, and a trial whose checks decide every requirement passes with the record of its
 	 * checks; neither runs a judge. Otherwise the trial waits for a judge of its semantic requirements, which
 	 * receives the check results as evidence. A check that the evidence cannot decide makes the run an
@@ -839,7 +839,7 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
 	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
-	 * malformed report contributes no candidate and counts as an infrastructure failure (design §4.3, §4.6). A needed
+	 * malformed report contributes no candidate and counts as an infrastructure failure. A needed
 	 * edit outside the authority raises an {@code awaiting-user} decision that holds the warnings.
 	 *
 	 * @param author the session

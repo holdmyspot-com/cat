@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The development cell tier of a confirmed campaign ({@code design.md} section 6.6): each category's active cells and
+ * The development cell tier of a confirmed campaign: each category's active cells and
  * whether development has widened to every cell.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.

@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 
 /**
- * A judge's output for one trial: the verdict and the evidence that decided it (design &sect;3.1).
+ * A judge's output for one trial: the verdict and the evidence that decided it.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

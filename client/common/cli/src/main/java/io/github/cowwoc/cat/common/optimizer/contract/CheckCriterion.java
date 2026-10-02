@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 /**
  * A condition that CAT evaluates directly from recorded trial evidence, without asking a judge. The agent that
  * derives the proposal selects one of CAT's implemented conditions and supplies its parameters; it never writes
- * check code (design &sect;6.4).
+ * check code.
  * <p>
  * A string parameter may contain {@code {{dimension}}} placeholders, replaced by the text selected for that
  * variation dimension. An inserted value in a regular expression is matched literally.

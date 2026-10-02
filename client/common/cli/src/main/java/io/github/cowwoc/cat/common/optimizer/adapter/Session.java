@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>the provider rejected a request for a rate limit: {@link SessionResult.RateLimited};</li>
  *   <li>the harness failed or ended early: {@link SessionResult.Failed};</li>
  *   <li>otherwise {@link SessionResult.Completed}. A session that exceeded its time limit is completed with the
- *   replies it had, because design &sect;3.2 judges such a trial on its behavior instead of retrying it.</li>
+ *   replies it had, because exceeding the time limit is trial behavior to judge rather than retry.</li>
  * </ol>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.

@@ -42,8 +42,9 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The status of a campaign: the JSON that the driver emits and the human summary that the user reads.
  * <p>
- * The report shows the four outputs of {@code design.md} section 2.9 for every cell, the trial profiles, the
- * development cell tier, the outcome names, the claim and its limitations, the minimum remaining trials, token
+ * The report shows each cell's estimated pass rate, improvement over the incumbent, comparison with 95% and error
+ * bars, the trial profiles, the development cell tier, the outcome names, the claim and its limitations, the minimum
+ * remaining trials, token
  * statistics, the descriptive check by concurrency level and the choices that the user may give now, with the
  * evidence of a keep-improvement choice. It never shows a pooled pass fraction, a token total, a time estimate or a
  * completion probability.
@@ -225,11 +226,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * Returns every outcome label that a campaign can report: the labels of {@code design.md} section 1.
+	 * Returns every outcome label that a campaign can report.
 	 * <p>
-	 * The {@code not certified} label of an uncertified delivery is not an outcome of the table, so it is absent.
+	 * The {@code not certified} label describes an uncertified delivery rather than a campaign outcome, so it is absent.
 	 *
-	 * @return the labels, in the order of the design
+	 * @return the labels, in campaign outcome order
 	 */
 	public static List<String> outcomeLabels()
 	{

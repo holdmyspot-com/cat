@@ -14,8 +14,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Derives the {@code PROMPT_SOURCES} measurement value from what a session was observed loading (design &sect;5,
- * H21).
+ * Derives the {@code PROMPT_SOURCES} measurement value from what a session was observed loading.
  * <p>
  * The value lists the sources that the harness's events report, one entry per line in sorted order. A subclass
  * reads one harness's event format and adds an entry for each source. A path inside one of the supplied directories

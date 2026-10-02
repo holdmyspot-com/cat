@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import java.util.List;
 
 /**
- * The four outputs of {@code design.md} section 2.9 for one cell: the estimated pass rate, the improvement over
+ * The four outputs for one cell: the estimated pass rate, the improvement over
  * the incumbent, the comparison with 95%, and the error bars.
  * <p>
  * Every output that cannot be shown carries the reason.

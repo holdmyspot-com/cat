@@ -8,9 +8,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * The judge decides only a test's semantic requirements. Deterministic checks decide the mechanical requirements
  * first; the judge receives their results as evidence but cannot override them, and no judge runs when a check failed
- * or no semantic requirement remains (design &sect;6.4).
+ * or no semantic requirement remains.
  *
- * @param profile the role profile that the judge session runs under (design &sect;3.1)
+ * @param profile the role profile that the judge session runs under
  * @param prompt the instructions that the judge session receives
  * @param rubric what the judge checks in a trial's text, file effects and tool effects
  * @param decisionRule how the judge turns its findings into a pass or a failure
@@ -22,7 +22,7 @@ public record JudgeProfile(TrialProfile profile, String prompt, String rubric, S
 	/**
 	 * Creates a judge profile.
 	 *
-	 * @param profile the role profile that the judge session runs under (design &sect;3.1)
+	 * @param profile the role profile that the judge session runs under
 	 * @param prompt the instructions that the judge session receives
 	 * @param rubric what the judge checks in a trial's text, file effects and tool effects
 	 * @param decisionRule how the judge turns its findings into a pass or a failure

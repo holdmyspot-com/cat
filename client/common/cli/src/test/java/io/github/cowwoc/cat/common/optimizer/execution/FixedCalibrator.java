@@ -14,7 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 public record FixedCalibrator(int cap) implements CapCalibrator
 {
 	/**
-	 * The {@code design.md} &sect;2.4 cap of the first attempt.
+	 * The first attempt's cap of 262 trials, calibrated for 90% certification power at a 99% pass rate.
 	 */
 	public static final int STANDARD_CAP = 262;
 

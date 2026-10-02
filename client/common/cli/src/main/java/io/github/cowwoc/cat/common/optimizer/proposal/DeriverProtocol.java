@@ -30,13 +30,13 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Creates requests for the session that reads a prompt system and proposes its requirements and tests (the
- * deriver), and validates that session's output (design &sect;6.1).
+ * deriver), and validates that session's output.
  * <p>
  * The deriver's output follows the proposal schema without the judge fields, the trial profiles and the discarded
  * checks that CAT owns, plus the deriver's additional findings: the prompt files whose loading no
  * harness event reports, the user's profile restriction, and the conditions that make certification unavailable.
  * CAT adds its judge fields and the core-task requirement, which every test checks, computes the trial profiles, and
- * runs each deterministic check against its controls before validating the proposal (design &sect;6.1). It rejects
+ * runs each deterministic check against its controls before validating the proposal. It rejects
  * output that supplies a field that CAT owns or a requirement with the core-task requirement's identifier.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.

@@ -18,8 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Brings a campaign that an earlier driver left behind to a consistent state before a new driver advances it
- * (design §3.8).
+ * Brings a campaign that an earlier driver left behind to a consistent state before a new driver advances it.
  */
 final class Reconciler
 {

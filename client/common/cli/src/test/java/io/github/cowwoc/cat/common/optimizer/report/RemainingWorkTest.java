@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
  * Tests {@link RemainingWork} with hand-computed values for both phases.
  * <p>
  * The fixture contract has the categories {@code formatting} and {@code safety}, each with one cell of the same
- * identifier, so {@code K = 2}. The all-pass minimum of the next attempt comes from {@code design.md} section 2.4: 93
+ * identifier, so {@code K = 2}. The all-pass minimum of the next attempt is 93
  * trials per cell for attempt 1, 117 for attempt 2 and 132 for attempt 3.
  */
 public final class RemainingWorkTest
@@ -56,7 +56,7 @@ public final class RemainingWorkTest
 	public void allPassMinimumOfAttemptOne()
 	{
 		// Requirement: R-E12
-		// design.md section 2.4: attempt 1 needs 93 all-pass trials per cell.
+		// Attempt 1 needs 93 all-pass trials per cell.
 		requireThat(FirstAttemptBoundaries.get().minimumCertifyingPasses().get(0), "minimum").isEqualTo(93);
 	}
 
@@ -134,7 +134,7 @@ public final class RemainingWorkTest
 	public void developmentNextAttemptUsesNextIndex()
 	{
 		// Requirement: R-E12
-		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per cell (design.md 2.4).
+		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per cell.
 		// readiness and baseline are met, so total = 117 + 117 = 234
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build();

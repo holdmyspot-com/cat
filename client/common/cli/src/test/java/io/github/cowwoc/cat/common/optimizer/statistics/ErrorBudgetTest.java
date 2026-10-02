@@ -9,18 +9,18 @@ import java.math.BigInteger;
 /**
  * Tests {@link ErrorBudget}.
  * <p>
- * The tests check these {@code design.md} numbers:
+ * The tests check these reference values:
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked threshold</th></tr>
- *   <tr><td>&sect;2.2</td><td>alpha_1, alpha_2, alpha_3</td><td>2%, 0.667%, 0.333%</td><td>50, 150, 300</td></tr>
- *   <tr><td>&sect;2.4</td><td>alpha_4, alpha_5</td><td>0.200%, 0.133%</td><td>500, 750</td></tr>
- *   <tr><td>&sect;2.4</td><td>alpha_10, alpha_50, alpha_100</td><td>0.0364%, 0.00157%, 0.000396%</td>
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked threshold</th></tr>
+ *   <tr><td>alpha_1, alpha_2, alpha_3</td><td>2%, 0.667%, 0.333%</td><td>50, 150, 300</td></tr>
+ *   <tr><td>alpha_4, alpha_5</td><td>0.200%, 0.133%</td><td>500, 750</td></tr>
+ *   <tr><td>alpha_10, alpha_50, alpha_100</td><td>0.0364%, 0.00157%, 0.000396%</td>
  *     <td>2750, 63750, 252500</td></tr>
- *   <tr><td>&sect;2.2</td><td>beta_1 / 3</td><td>0.005 / 2 / 3</td><td>1200</td></tr>
- *   <tr><td>&sect;2.2</td><td>gamma_1 / 1, gamma_1 / 8, gamma_2 / 2</td><td>0.005 / 2, 0.005 / 16,
+ *   <tr><td>beta_1 / 3</td><td>0.005 / 2 / 3</td><td>1200</td></tr>
+ *   <tr><td>gamma_1 / 1, gamma_1 / 8, gamma_2 / 2</td><td>0.005 / 2, 0.005 / 16,
  *     0.005 / 6 / 2</td><td>400, 3200, 2400</td></tr>
- *   <tr><td>&sect;2.2</td><td>total over any number of attempts and baselines</td><td>at most 0.05</td>
+ *   <tr><td>total over any number of attempts and baselines</td><td>at most 0.05</td>
  *     <td>0.05 &middot; N / (N + 1) after N</td></tr>
  * </table>
  */
@@ -34,8 +34,7 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that certification attempt {@code i} receives {@code alpha_i = 0.04 / (i(i + 1))}, matching the
-	 * {@code design.md} &sect;2.4 table.
+	 * Verifies that certification attempt {@code i} receives {@code alpha_i = 0.04 / (i(i + 1))}.
 	 */
 	@Test
 	public void certificationLevelsFollowSeries()
@@ -54,7 +53,7 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that the displayed probabilities round to the percentages in the {@code design.md} &sect;2.4 table.
+	 * Verifies that the displayed certification probabilities round to the reference percentages per attempt.
 	 */
 	@Test
 	public void certificationProbabilitiesMatchTable()

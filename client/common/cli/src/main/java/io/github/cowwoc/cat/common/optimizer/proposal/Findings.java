@@ -36,7 +36,7 @@ final class Findings
 	 */
 	static final String SCOPE_CONDITIONS = "scope_conditions";
 	/**
-	 * The outcome that each scope condition reports (design &sect;6.5).
+	 * The outcome that each scope condition reports.
 	 */
 	private static final List<Outcome> CONDITIONS = List.of(Outcome.UNSUPPORTED_INSTRUCTION_SOURCE,
 		Outcome.UNSUPPORTED_OUTPUT, Outcome.INELIGIBLE_TRIAL_EFFECT, Outcome.UNSUPPORTED_TEST_INTERACTION);

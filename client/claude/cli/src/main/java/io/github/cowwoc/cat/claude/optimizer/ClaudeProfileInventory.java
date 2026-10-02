@@ -24,11 +24,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The Claude Code profile inventory and bindings (design &sect;6.6).
+ * The Claude Code profile inventory and bindings.
  * <p>
  * The Claude CLI offers no command that lists its models, so the inventory is the resource
  * {@code claude-profiles.json} next to this class: the documented model aliases, the efforts each one accepts and the
- * documentation each entry came from (premise P12). An alias whose effort support is undocumented has no effort
+ * documentation each entry came from. An alias whose effort support is undocumented has no effort
  * dimension.
  * <p>
  * A binding is the {@code model} and {@code effort} frontmatter of a skill's {@code SKILL.md} or of a subagent's

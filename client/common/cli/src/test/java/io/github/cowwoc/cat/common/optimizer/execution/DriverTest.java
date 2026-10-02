@@ -96,7 +96,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Covers the use-case traces of {@code plan.md} &sect;7, each from builder state, through the in-memory store, the
+ * Covers campaign scenarios from builder state, through the in-memory store, the
  * fake session and workspace ports and a manual clock.
  */
 public final class DriverTest
@@ -149,7 +149,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 1: confirmation, development to readiness, commit, an all-pass formal attempt, certification and
+	 * Confirmation, development to readiness, commit, an all-pass formal attempt, certification and
 	 * delivery.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -190,7 +190,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 2: a development failure, a rerun that reproduces it, an author's edit, promotion runs, and a new working
+	 * A development failure, a rerun that reproduces it, an author's edit, promotion runs, and a new working
 	 * candidate whose counts start at zero with the concurrency window back to 1. The author receives the judge's
 	 * rationales for the failure and for its rerun. The optimization worktree holds the new working candidate.
 	 *
@@ -240,7 +240,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 3: a development failure, three passing reruns, and a continuation whose concurrency window starts at 1
+	 * A development failure, three passing reruns, and a continuation whose concurrency window starts at 1
 	 * and doubles after each window of passes.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -278,7 +278,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 4: in a formal attempt, a later trial's failure completes before an earlier trial; the decision waits for
+	 * In a formal attempt, a later trial's failure completes before an earlier trial; the decision waits for
 	 * the earlier trial, and an outcome adopted after the decision does not change it.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -361,7 +361,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 5: the process crashes after an outcome is recorded but before the snapshot that adopts it is replaced.
+	 * The process crashes after an outcome is recorded but before the snapshot that adopts it is replaced.
 	 * The next driver's reconciliation adopts the outcome exactly once.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -457,7 +457,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 6: a host interrupt mid-slice stops admissions, interrupts every session and persists the interrupted
+	 * A host interrupt mid-slice stops admissions, interrupts every session and persists the interrupted
 	 * trials for a rerun.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -493,7 +493,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 7: a certification attempt reaches its cap without a decision, ends inconclusive, and the campaign returns
+	 * A certification attempt reaches its cap without a decision, ends inconclusive, and the campaign returns
 	 * to development.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -527,7 +527,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 8: a rate-limit rejection drops the window to 1 and holds admissions, including judges, until the
+	 * A rate-limit rejection drops the window to 1 and holds admissions, including judges, until the
 	 * provider's reset; then the same logical trial reruns. A rejection is not an infrastructure failure.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -619,7 +619,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 9: an unowned change in the optimization worktree pauses the campaign before any session starts, until
+	 * An unowned change in the optimization worktree pauses the campaign before any session starts, until
 	 * the user decides; resuming restores the working candidate.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -657,7 +657,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 10: a contract revision requested mid-attempt lets the running trials drain, stops the attempt, and waits
+	 * A contract revision requested mid-attempt lets the running trials drain, stops the attempt, and waits
 	 * for confirmation; the stopped attempt never resumes.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -708,7 +708,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 11: while one driver holds a campaign, a second one changes nothing and reports the campaign busy.
+	 * While one driver holds a campaign, a second one changes nothing and reports the campaign busy.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -735,7 +735,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 12: a certification attempt reaches its cap with one category proven better and the other certified.
+	 * A certification attempt reaches its cap with one category proven better and the other certified.
 	 * The campaign pauses with {@code keep improvement}, {@code optimize further} and {@code stop}; the choice is
 	 * still pending after a restart, and keeping the improvement delivers the attempt's candidate labelled
 	 * {@code improved, not certified}.
@@ -780,7 +780,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 13: an attempt qualifies for keep improvement, the user optimizes further, a later candidate's attempt
+	 * An attempt qualifies for keep improvement, the user optimizes further, a later candidate's attempt
 	 * also qualifies with a lower bound on its weakest category, and a third attempt fails. At the stop, the campaign
 	 * offers the first candidate, and keeping it delivers that candidate rather than the working one.
 	 *
@@ -842,7 +842,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 14: mid-attempt, a run reports a different model. Its record holds no outcome and the campaign pauses.
+	 * Mid-attempt, a run reports a different model. Its record holds no outcome and the campaign pauses.
 	 * Restoring reruns the same instance and the attempt continues. A second change followed by a new measurement
 	 * identity ends the attempt, returns to development and starts a new incumbent baseline; the qualifying attempt
 	 * from before the change is offered as historical.
@@ -918,7 +918,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 15: a category whose file is unbound runs under two profiles. Each cell has its own counts, readiness,
+	 * A category whose file is unbound runs under two profiles. Each cell has its own counts, readiness,
 	 * commit and decision; a trial runs under its cell's profile while the judge runs under the role profile, and
 	 * each cell records the model its trials observed.
 	 *
@@ -1007,7 +1007,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 19: after the screen, development samples only the active cells; once they meet the readiness count
+	 * After the screen, development samples only the active cells; once they meet the readiness count
 	 * conditions it widens to every cell, a failure in a newly sampled cell activates it, and the next candidate
 	 * restarts in the enlarged active set.
 	 *
@@ -1154,7 +1154,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 16: a trial fails a deterministic check, no judge session runs, and the failed check's record, which names
+	 * A trial fails a deterministic check, no judge session runs, and the failed check's record, which names
 	 * the check and its observed value, reaches the author brief in place of a judge rationale, for the failure and
 	 * for the rerun that reproduced it.
 	 *
@@ -1204,7 +1204,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 16: a trial whose checks pass runs its judge, which receives only the test's semantic requirements and,
+	 * A trial whose checks pass runs its judge, which receives only the test's semantic requirements and,
 	 * as evidence, the deterministic results. A test without checks gives the judge every requirement.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -1263,7 +1263,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace 16: a trial of a test whose checks decide every requirement completes from its checks without a judge
+	 * A trial of a test whose checks decide every requirement completes from its checks without a judge
 	 * session.
 	 *
 	 * @throws IOException if the test directory cannot be used

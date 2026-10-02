@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
  * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
- * loading (design &sect;5, H21). When a session ends, the run's isolated home, which holds a copy of the login, is
+ * loading. When a session ends, the run's isolated home, which holds a copy of the login, is
  * deleted.
  * <p>
  * A subclass supplies its harness's event parsers, its read-only evidence options and its login classification.

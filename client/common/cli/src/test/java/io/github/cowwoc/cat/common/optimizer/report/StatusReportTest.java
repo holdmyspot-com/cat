@@ -284,7 +284,7 @@ public final class StatusReportTest
 	public void outcomeLabelsMatchTheDesign()
 	{
 		// Requirement: R-P3
-		// design.md section 1, in table order
+		// The campaign outcome labels, in declaration order
 		List<String> expected = List.of("certified", "improved, not certified", "not certified: below minimum",
 			"not certified: inconclusive", "not certified: plateau",
 			"not certified: stopped for contract revision", "not certified: testing environment changed",

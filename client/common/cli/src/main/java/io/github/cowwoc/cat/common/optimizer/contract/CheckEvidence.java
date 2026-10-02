@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * The recorded evidence that a {@link DeterministicCheck} examines. It comes from a trial or from a control: a
  * supplied example that the check must accept or reject. A check never runs a command or changes a file; it reads
- * only what the evidence recorded (design &sect;1.2).
+ * only what the evidence recorded.
  */
 public interface CheckEvidence
 {

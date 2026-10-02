@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Computes a proposal's model and reasoning-effort combinations from its requirements and categories. CAT performs
- * this computation instead of the agent that derives the proposal (design &sect;6.1).
+ * this computation instead of the agent that derives the proposal.
  */
 @FunctionalInterface
 public interface ProfileRule

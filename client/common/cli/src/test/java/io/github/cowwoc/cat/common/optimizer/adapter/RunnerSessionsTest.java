@@ -202,7 +202,7 @@ public final class RunnerSessionsTest
 
 	/**
 	 * Verifies that a harness that fails after CAT asked it to stop still yields an interruption, because the failure
-	 * is a consequence of the interrupt (design &sect;11, H10).
+	 * is a consequence of the interrupt.
 	 *
 	 * @throws Exception if the session fails
 	 */
@@ -369,7 +369,7 @@ public final class RunnerSessionsTest
 
 	/**
 	 * Verifies that a session that exceeds its time limit is completed with the replies that it had, because CAT
-	 * judges such a trial on its behavior instead of retrying it (design &sect;3.2).
+	 * judges such a trial on its behavior instead of retrying it.
 	 *
 	 * @throws Exception if the session fails
 	 */

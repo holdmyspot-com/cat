@@ -8,7 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import java.util.List;
 
 /**
- * The statistical assumption review that a status shows, from {@code design.md} section 2.6.
+ * The statistical assumption review that a status shows.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * One side of an anytime-valid betting test of the pass probability {@code p} of a cell, one category under one
- * trial profile, against a null rate {@code t}, with the design's fixed bets and weights.
+ * trial profile, against a null rate {@code t}, with the fixed bets and weights.
  * <p>
  * With {@code S} adopted passes and {@code F} adopted failures:
  * <ul>

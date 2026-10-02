@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds the four outputs of {@code design.md} section 2.9 for each cell.
+ * Builds the estimated pass rate, improvement over the incumbent, comparison with 95% and error bars for each cell.
  */
 final class CellReports
 {

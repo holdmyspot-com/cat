@@ -9,7 +9,7 @@ public enum HostLogin
 {
 	/**
 	 * A subscription login. Nested sessions draw on the subscription's usage allowance, so CAT warns the user and
-	 * states the minimum number of sessions that a campaign needs (design &sect;3.5).
+	 * states the minimum number of sessions that a campaign needs.
 	 */
 	SUBSCRIPTION,
 	/**

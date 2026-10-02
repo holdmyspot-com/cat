@@ -127,7 +127,7 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
-	 * Returns the category/profile pairs whose trial counts and decisions are kept separately (design &sect;2.1).
+	 * Returns the category/profile pairs whose trial counts and decisions are kept separately.
 	 *
 	 * @return every cell, grouped by category in category order
 	 */

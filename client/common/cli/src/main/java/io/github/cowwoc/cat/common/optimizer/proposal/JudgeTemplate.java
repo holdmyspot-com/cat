@@ -17,7 +17,7 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * The deriver proposes only the rubric and the decision rule. CAT adds its own fields before it validates the
  * proposal, so a prompt system cannot choose how it is judged, and confirmation freezes the complete profile in the
- * contract (design &sect;6.4).
+ * contract.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */

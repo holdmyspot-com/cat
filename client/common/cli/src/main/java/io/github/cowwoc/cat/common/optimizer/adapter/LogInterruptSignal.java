@@ -15,7 +15,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reports a user interrupt that the host harness recorded in the host session's JSONL log (design &sect;3.8).
+ * Reports a user interrupt that the host harness recorded in the host session's JSONL log.
  * <p>
  * The signal reads the records that the log gained since the previous poll. A subclass recognizes its harness's
  * interrupt record. A record is dated by its {@code timestamp}, or by the clock if it has none.

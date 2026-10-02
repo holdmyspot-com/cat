@@ -13,15 +13,15 @@ import java.util.List;
 /**
  * Tests {@link DecisionBoundaries} and {@link ComparisonBoundaries}.
  * <p>
- * The tests check these {@code design.md} numbers. The other boundary pairs come from an independent script that
+ * The tests check these reference values. The other boundary pairs come from an independent script that
  * compares exact rationals.
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;2.4</td><td>attempt 1's all-pass minimum</td><td>93</td><td>93</td></tr>
- *   <tr><td>&sect;2.4</td><td>attempt 2's all-pass minimum</td><td>117</td><td>117</td></tr>
- *   <tr><td>&sect;2.4</td><td>attempt 3's all-pass minimum</td><td>132</td><td>132</td></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells</td>
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked value</th></tr>
+ *   <tr><td>attempt 1's all-pass minimum</td><td>93</td><td>93</td></tr>
+ *   <tr><td>attempt 2's all-pass minimum</td><td>117</td><td>117</td></tr>
+ *   <tr><td>attempt 3's all-pass minimum</td><td>132</td><td>132</td></tr>
+ *   <tr><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells</td>
  *     <td>79</td><td>79</td></tr>
  * </table>
  */

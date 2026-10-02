@@ -7,8 +7,7 @@ import java.util.Map;
 
 /**
  * A condition that decides one test requirement directly from trial evidence, without a judge. Its known-good
- * control supplies evidence it must accept; its known-bad control supplies evidence it must reject (design
- * &sect;1.2, &sect;6.4).
+ * control supplies evidence it must accept; its known-bad control supplies evidence it must reject.
  * <p>
  * The check belongs to the test that lists it, so its identity within the contract is the test and the requirement.
  *

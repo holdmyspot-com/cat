@@ -23,8 +23,8 @@ public sealed interface SessionResult
 	/**
 	 * The session ran to the end of its turns, or to its time limit.
 	 * <p>
-	 * A session that the time limit cut off is completed with the replies it gave so far, because design &sect;3.2
-	 * judges such a trial on its behaviour rather than retrying it. {@code responses} then holds fewer entries than
+	 * A session that the time limit cut off is completed with the replies it gave so far, because CAT judges the
+	 * timeout evidence instead of retrying the trial. {@code responses} then holds fewer entries than
 	 * the request had turns.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
@@ -37,8 +37,8 @@ public sealed interface SessionResult
 	 *   name one
 	 * @param usage the reported token usage, or {@code null} if the harness did not report it
 	 * @param windows the rate-limit windows that the harness reported during the session
-	 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading (design
-	 *   &sect;5), normalized so that staged paths do not appear in it, or {@code none} if the events showed nothing
+	 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading,
+	 *   normalized so that staged paths do not appear in it, or {@code none} if the events showed nothing
 	 *   loading
 	 */
 	record Completed(Path transcript, List<String> responses, Path effects, String model, String reasoning,

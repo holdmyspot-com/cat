@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * One model and reasoning-effort combination that a session runs under (design &sect;6.6).
+ * One model and reasoning-effort combination that a session runs under.
  * <p>
  * An empty model or effort is unbound: the session starts without selecting that value, so the harness applies its
  * default. When this profile restricts another profile, an empty value matches every value.

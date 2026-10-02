@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * A proposed check that rejected its example of compliant evidence or accepted its example of noncompliant
- * evidence. CAT keeps it in the contract to explain why a judge must decide that requirement (design &sect;6.1).
+ * evidence. CAT keeps it in the contract to explain why a judge must decide that requirement.
  *
  * @param check the check
  * @param reason which control it failed, and what it observed

@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * One category under one model and reasoning-effort combination. CAT measures compliance separately for each
- * such combination, called a cell (design &sect;2.1).
+ * such combination, called a cell.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

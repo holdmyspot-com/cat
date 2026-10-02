@@ -14,7 +14,7 @@ import java.util.Optional;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Reports a user interrupt that Claude Code recorded in the host session's transcript (design &sect;3.8, H13).
+ * Reports a user interrupt that Claude Code recorded in the host session's transcript.
  * <p>
  * The transcript is {@code <configuration directory>/projects/<project>/<session>.jsonl}. Claude Code records an
  * interrupt as a user message whose text starts with {@value #PREFIX}. The wording after the prefix differs between

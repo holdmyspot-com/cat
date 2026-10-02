@@ -33,7 +33,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 	/**
 	 * The largest cap that calibration considers.
 	 * <p>
-	 * The design's caps grow roughly with the logarithm of the attempt's threshold: attempt 100 has a cap of 712, and an
+ * The caps grow roughly with the logarithm of the attempt's threshold: attempt 100 has a cap of 712, and an
 	 * attempt index near the largest {@code int} would need a cap of about 2,500.
 	 */
 	public static final int MAXIMUM_CAP = 10_000;

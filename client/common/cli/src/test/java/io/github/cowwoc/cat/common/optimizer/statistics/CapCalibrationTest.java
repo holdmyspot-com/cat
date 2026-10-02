@@ -11,29 +11,29 @@ import java.util.List;
 /**
  * Tests {@link CapCalibration}. This is the only test class that runs calibration.
  * <p>
- * The tests check these {@code design.md} numbers. The probabilities were also computed by an independent script.
+ * The tests check these reference values. The probabilities were also computed by an independent script.
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;2.4</td><td>cap for attempts 1, 2, 3, 4, 5</td><td>262, 328, 384, 398, 409</td>
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked value</th></tr>
+ *   <tr><td>cap for attempts 1, 2, 3, 4, 5</td><td>262, 328, 384, 398, 409</td>
  *     <td>262, 328, 384, 398, 409</td></tr>
- *   <tr><td>&sect;2.4</td><td>cap for attempts 10, 50, 100</td><td>481, 638, 712</td><td>481, 638, 712</td></tr>
- *   <tr><td>&sect;2.4</td><td>P(certify within 600) at 98% for attempts 1, 2, 3, 4, 5</td>
+ *   <tr><td>cap for attempts 10, 50, 100</td><td>481, 638, 712</td><td>481, 638, 712</td></tr>
+ *   <tr><td>P(certify within 600) at 98% for attempts 1, 2, 3, 4, 5</td>
  *     <td>0.854, 0.759, 0.677, 0.601, 0.568</td><td>0.854071, 0.758677, 0.676640, 0.600894, 0.568500</td></tr>
- *   <tr><td>&sect;2.4</td><td>P(certify within 600) at 98% for attempts 10, 50, 100</td><td>0.433, 0.183, 0.108</td>
+ *   <tr><td>P(certify within 600) at 98% for attempts 10, 50, 100</td><td>0.433, 0.183, 0.108</td>
  *     <td>0.432912, 0.182988, 0.108498</td></tr>
- *   <tr><td>&sect;2.7</td><td>P(certify within attempt 1's cap of 262) at 99%, 98%, 97%</td><td>0.90, 0.49, 0.17</td>
+ *   <tr><td>P(certify within attempt 1's cap of 262) at 99%, 98%, 97%</td><td>0.90, 0.49, 0.17</td>
  *     <td>0.903856, 0.486035, 0.173554</td></tr>
- *   <tr><td>&sect;13 D1</td><td>attempt 1's cap with an unsplit 5% ({@code alpha_1 = 0.025})</td><td>255</td>
+ *   <tr><td>attempt 1's cap with an unsplit 5% ({@code alpha_1 = 0.025})</td><td>255</td>
  *     <td>255</td></tr>
- *   <tr><td>&sect;13 D1</td><td>attempt 1's cap with a certification budget of 0.025</td><td>311</td><td>311</td></tr>
- *   <tr><td>&sect;13 D19</td><td>caps of attempts 1 and 100 under {@code 0.4 / ((i + 9)(i + 10))}</td>
+ *   <tr><td>attempt 1's cap with a certification budget of 0.025</td><td>311</td><td>311</td></tr>
+ *   <tr><td>caps of attempts 1 and 100 under {@code 0.4 / ((i + 9)(i + 10))}</td>
  *     <td>382, 619</td><td>382, 619</td></tr>
- *   <tr><td>&sect;13 D19</td><td>cap under an equal split over 100 attempts</td><td>478</td><td>478</td></tr>
- *   <tr><td>&sect;13 D3</td><td>P(certify) for a true 97% candidate</td><td>about 15%</td><td>0.1736 within attempt
- *     1's cap of 262 (0.1172 within attempt 2's cap of 328); &sect;2.7 states 0.17 for attempt 1</td></tr>
+ *   <tr><td>cap under an equal split over 100 attempts</td><td>478</td><td>478</td></tr>
+ *   <tr><td>P(certify) for a true 97% candidate</td><td>about 15%</td><td>0.1736 within attempt
+ *     1's cap of 262 (0.1172 within attempt 2's cap of 328); rounded to 0.17 for attempt 1</td></tr>
  * </table>
- * The {@code design.md} &sect;13 D2 alternatives use different bets, which {@link BettingProcess} fixes, so this
+ * The single 99% bet and equal-weight mixture use different bets, which {@link BettingProcess} fixes, so this
  * class does not check them.
  */
 public final class CapCalibrationTest
@@ -46,7 +46,7 @@ public final class CapCalibrationTest
 	}
 
 	/**
-	 * Returns the rows of the {@code design.md} &sect;2.4 table.
+	 * Returns the certification caps and probabilities per attempt.
 	 *
 	 * @return the certification index, the cap and the probability of certifying within 600 outcomes at a 98% pass
 	 *   rate, as computed by the independent script
@@ -68,7 +68,7 @@ public final class CapCalibrationTest
 	}
 
 	/**
-	 * Verifies one row of the {@code design.md} &sect;2.4 table: the cap, and the probability of certifying within 600
+	 * Verifies each attempt's cap and probability of certifying within 600
 	 * outcomes at a 98% pass rate.
 	 *
 	 * @param certificationIndex          the certification index
@@ -94,10 +94,10 @@ public final class CapCalibrationTest
 	}
 
 	/**
-	 * Verifies the certification probabilities within attempt 1's cap that {@code design.md} &sect;2.7 states.
+	 * Verifies the certification probabilities within attempt 1's cap at 99%, 98% and 97% pass rates.
 	 */
 	@Test
-	public void firstAttemptProbabilitiesMatchDesign()
+	public void firstAttemptProbabilitiesMatchReference()
 	{
 		// Requirement: R-S6
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
@@ -110,12 +110,12 @@ public final class CapCalibrationTest
 	}
 
 	/**
-	 * Verifies the caps of the alternative budget splits in {@code design.md} &sect;13 D1 and D19.
+	 * Verifies the caps under alternative budget shares, a flatter spending series and an equal split.
 	 *
 	 * @throws CapCalibrationException if calibration fails
 	 */
 	@Test
-	public void alternativeBudgetCapsMatchDesign() throws CapCalibrationException
+	public void alternativeBudgetCapsMatchReference() throws CapCalibrationException
 	{
 		// Requirement: R-S6
 		requireThat(CapCalibration.calibrate(level(40)).cap(), "unsplit").isEqualTo(255);

@@ -7,8 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Lists the current harness's trial profiles with their source, and reads the profile that a prompt file binds
- * (design &sect;6.6).
+ * Lists the current harness's trial profiles with their source, and reads the profile that a prompt file binds.
  * <p>
  * A file binds a profile only through a field that its harness applies whenever it runs the file: {@code model} and
  * {@code effort} in Claude skill and subagent frontmatter, where {@code inherit} binds nothing, and {@code model} and
@@ -46,7 +45,7 @@ public interface ProfileInventory
 
 	/**
 	 * Returns the harness's role profile, which the deriver, judge and author sessions run under: the profile that
-	 * the installed definition of CAT's highest implementer tier, {@code optimize-xhigh}, binds (design &sect;3.1).
+	 * the installed definition of CAT's highest implementer tier, {@code optimize-xhigh}, binds.
 	 *
 	 * @return the role profile
 	 * @throws IOException if the installed agent definition is missing or binds no profile

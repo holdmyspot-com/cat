@@ -1,17 +1,18 @@
 # End-to-end optimizer fixtures
 
-Each directory is a small prompt system that the end-to-end runs of work item WI-15 in `plan.md` copy into a fresh Git
+Each directory is a small prompt system that the end-to-end acceptance runs copy into a fresh Git
 project and optimize through the installed `prompt-optimizer` skill. The fixtures are data for those runs; no Java test
-reads them. Each entry names the end-to-end scenarios of `plan.md` (E1 to E8) that use it.
+reads them. Each entry describes the acceptance scenarios that use it.
 
 - `deficient/`: `AGENTS.md` asks every reply to close with the handbook motto but also forbids slogans and sign-offs.
   Before optimization, Codex closed 0 of 6 replies with the motto and Claude 4 of 6; resolving the contradiction raised
-  Codex to 6 of 6. E1 expects the campaign to find that correction and certify it.
-- `easy/`: one rule that a model already follows; used where a run needs cheap, passing trials (E2, E5, E8).
+  Codex to 6 of 6. The delivery scenario expects the campaign to find that correction, certify it and deliver a Git diff.
+- `easy/`: one rule that a model already follows; used for interruption and resumption, host tools and child subagents,
+  and shared capacity across concurrent CAT processes, where a run needs cheap, passing trials.
 - `link/`: `docs/handbook.md` is an in-project symbolic link to `shared/handbook.md`. The run copies `external/` outside
   the project and links `docs/reply-rules.md` to it, so the deficient rule lives in an external target that the
-  campaign may edit only after the user authorizes it (E7).
-- `unsupported/`: one prompt system per case in `design.md` §6.5, each expected to end in its
-  `certification unavailable` outcome or refusal (E4): `remote-instruction` (a remote response supplies governing
+  campaign may edit only after the user authorizes it. The scenario checks the link report and delivery of that edit.
+- `unsupported/`: one prompt system per unsupported case, each expected to end in its
+  `certification unavailable` outcome or refusal: `remote-instruction` (a remote response supplies governing
   instructions), `image-output` (a material requirement produces an image), `response-contingent` (an obligation needs
   a follow-up turn chosen from the reply) and `persistent-write` (a required write outside the trial copy).

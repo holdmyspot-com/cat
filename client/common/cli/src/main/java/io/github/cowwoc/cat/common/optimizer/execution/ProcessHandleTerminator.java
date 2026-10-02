@@ -33,7 +33,7 @@ public final class ProcessHandleTerminator implements ProcessTerminator
 		if (match.isEmpty() || !match.get().isAlive() || match.get().equals(ProcessHandle.current()))
 			return false;
 		ProcessHandle process = match.get();
-		// A runner's child processes can outlive a killed driver (H20), so request termination of descendants too
+		// A runner's child processes can outlive a killed driver, so request termination of descendants too
 		process.descendants().forEach(ProcessHandle::destroy);
 		process.destroy();
 		return true;

@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Reads what a session's Codex app-server notifications say about the model, token usage, rate limits and errors.
  * <p>
- * The parser follows the notifications that the runner captured (design &sect;11, H14 and H15):
+ * The parser follows the notifications that the runner captured:
  * <ul>
  *   <li>the first {@code thread/started} notification names the root thread, its model and its reasoning effort;</li>
  *   <li>{@code thread/tokenUsage/updated} carries each thread's cumulative {@code total}, and the session's usage is

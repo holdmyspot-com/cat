@@ -16,7 +16,7 @@ import tools.jackson.core.JsonToken;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads the shape of a harness's JSON credential file without reading a credential value (design &sect;11, H16).
+ * Reads the shape of a harness's JSON credential file without reading a credential value.
  * <p>
  * The file is streamed and never held in memory as a tree.
  */

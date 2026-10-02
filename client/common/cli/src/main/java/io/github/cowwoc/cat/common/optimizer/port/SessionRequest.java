@@ -19,7 +19,7 @@ import java.util.List;
  * @param readOnly paths that the session may read but never write, such as a judge's evidence
  * @param timeLimit how long the session may run before its remaining turns are abandoned
  * @param profile the model and reasoning effort that the session starts under: a trial's cell profile, or the role
- *   profile for the deriver, judge and author (design &sect;3.1). An empty dimension starts the session without
+ *   profile for the deriver, judge and author. An empty dimension starts the session without
  *   selecting it.
  */
 public record SessionRequest(SessionRole role, Path source, List<String> turns, List<Path> readOnly,

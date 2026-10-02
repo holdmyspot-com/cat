@@ -16,7 +16,7 @@ import java.util.Optional;
  * <p>
  * The driver supplies the contract's frozen judge profile; the protocol writes the prompt. The driver requests a
  * judge only after every deterministic check of the trial passed and a requirement that needs the judge's
- * interpretation remains (design &sect;6.4).
+ * interpretation remains.
  */
 public interface JudgeProtocol
 {

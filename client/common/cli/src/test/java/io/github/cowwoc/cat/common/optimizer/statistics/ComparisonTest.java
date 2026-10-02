@@ -12,14 +12,14 @@ import java.math.BigInteger;
 /**
  * Tests {@link Comparison}.
  * <p>
- * The tests check these {@code design.md} numbers. The other boundary pairs come from an independent script that
+ * The tests check these reference values. The other boundary pairs come from an independent script that
  * compares exact rationals.
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked value</th></tr>
+ *   <tr><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells
  *     ({@code beta_1 / 3}, threshold 1200)</td><td>79</td><td>79</td></tr>
- *   <tr><td>&sect;13 D1</td><td>the same with the full {@code alpha_1 = 2%} (threshold 50)</td><td>45</td>
+ *   <tr><td>the same with the full {@code alpha_1 = 2%} (threshold 50)</td><td>45</td>
  *     <td>45</td></tr>
  * </table>
  */
@@ -92,7 +92,7 @@ public final class ComparisonTest
 
 	/**
 	 * Verifies both sides of the proven-better threshold against {@code UI = 0.9566} at threshold 1200, and the
-	 * {@code design.md} &sect;13 D1 counts against {@code UI = 0.90}.
+	 * all-pass counts against {@code UI = 0.90} under joint and per-cell improvement budgets.
 	 */
 	@Test
 	public void provenBetterBoundaryPairs()

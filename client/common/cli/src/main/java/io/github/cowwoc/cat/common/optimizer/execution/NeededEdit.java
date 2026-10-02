@@ -9,7 +9,7 @@ import java.nio.file.Path;
 
 /**
  * An edit that an author reported a requirement needs but that it did not make, because the edit seemed to lie
- * outside its edit authority (design &sect;4.3). The driver checks each one against the authority.
+ * outside its edit authority. The driver checks each one against the authority.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

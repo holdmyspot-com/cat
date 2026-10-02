@@ -7,19 +7,19 @@ import org.testng.annotations.Test;
 /**
  * Tests {@link ExploratoryBounds}.
  * <p>
- * The tests check these {@code design.md} numbers, where the risk ceiling is {@code floor(1 / (2u))} for the
+ * The tests check these reference values, where the risk ceiling is {@code floor(1 / (2u))} for the
  * Clopper&ndash;Pearson upper bound {@code u} on the failure rate. The reference bounds come from an independent
  * script.
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;3.3</td><td>risk ceiling at 12, 24 and 48 outcomes without failures</td><td>2, 4, 8</td>
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked value</th></tr>
+ *   <tr><td>risk ceiling at 12, 24 and 48 outcomes without failures</td><td>2, 4, 8</td>
  *     <td>2, 4, 8 ({@code u} = 0.220922, 0.117346, 0.060503)</td></tr>
- *   <tr><td>&sect;3.3</td><td>risk ceiling with 1 failure in 100</td><td>10</td><td>10 ({@code u} = 0.046560)</td>
+ *   <tr><td>risk ceiling with 1 failure in 100</td><td>10</td><td>10 ({@code u} = 0.046560)</td>
  *     </tr>
- *   <tr><td>&sect;13 D8</td><td>adopted outcomes without failures before the risk ceiling first permits 8</td>
+ *   <tr><td>adopted outcomes without failures before the risk ceiling first permits 8</td>
  *     <td>48</td><td>47 ({@code u} = 0.061750 gives 8; at 46, {@code u} = 0.063049 gives 7). The ceiling first
- *     permits 2 at 11 and 4 at 23; &sect;3.3's "2 at 12, 4 at 24, 8 at 48" holds, but D8's "takes 48" is one
+ *     permits 2 at 11 and 4 at 23; "2 at 12, 4 at 24, 8 at 48" holds, but the earlier estimate "takes 48" is one
  *     too many.</td></tr>
  * </table>
  */
@@ -74,7 +74,7 @@ public final class ExploratoryBoundsTest
 	}
 
 	/**
-	 * Verifies one-sided 95% Clopper&ndash;Pearson upper bounds and the risk ceilings of {@code design.md} &sect;3.3.
+	 * Verifies one-sided 95% Clopper&ndash;Pearson upper bounds and their concurrency risk ceilings.
 	 */
 	@Test
 	public void clopperPearsonMatchesReference()

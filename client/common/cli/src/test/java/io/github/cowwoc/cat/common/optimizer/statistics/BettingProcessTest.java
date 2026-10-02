@@ -13,29 +13,29 @@ import java.math.BigInteger;
 /**
  * Tests {@link BettingProcess}.
  * <p>
- * The tests check these {@code design.md} numbers. The boundary pairs come from an independent script that compares
+ * The tests check these reference values. The boundary pairs come from an independent script that compares
  * exact rationals.
  * <table>
- *   <caption>Design numbers checked by this class</caption>
- *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;2.4</td><td>all-pass minimum for attempts 1, 2, 3, 4, 5</td><td>93, 117, 132, 143, 152</td>
+ *   <caption>Reference values checked by this class</caption>
+ *   <tr><th>Quantity</th><th>Reference value</th><th>Checked value</th></tr>
+ *   <tr><td>all-pass minimum for attempts 1, 2, 3, 4, 5</td><td>93, 117, 132, 143, 152</td>
  *     <td>93, 117, 132, 143, 152</td></tr>
- *   <tr><td>&sect;2.4</td><td>all-pass minimum for attempts 10, 50, 100</td><td>179, 244, 271</td>
+ *   <tr><td>all-pass minimum for attempts 10, 50, 100</td><td>179, 244, 271</td>
  *     <td>179, 244, 271</td></tr>
- *   <tr><td>&sect;2.5</td><td>fewest failures of 50 proving deficiency, {@code b = 1}, {@code K} = 1, 2, 3, 5, 8</td>
+ *   <tr><td>fewest failures of 50 proving deficiency, {@code b = 1}, {@code K} = 1, 2, 3, 5, 8</td>
  *     <td>10, 11, 11, 12, 12</td><td>10, 11, 11, 12, 12</td></tr>
- *   <tr><td>&sect;2.5</td><td>fewest failures of 100 proving deficiency, {@code b = 1}, {@code K} = 1, 2, 3, 5, 8</td>
+ *   <tr><td>fewest failures of 100 proving deficiency, {@code b = 1}, {@code K} = 1, 2, 3, 5, 8</td>
  *     <td>16, 16, 17, 17, 17</td><td>16, 16, 17, 17, 17</td></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass minimum with an unsplit 5% ({@code alpha_1 = 0.025})</td><td>88</td>
+ *   <tr><td>all-pass minimum with an unsplit 5% ({@code alpha_1 = 0.025})</td><td>88</td>
  *     <td>88</td></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass minimum with a certification budget of 0.025 ({@code alpha_1 = 0.0125})</td>
+ *   <tr><td>all-pass minimum with a certification budget of 0.025 ({@code alpha_1 = 0.0125})</td>
  *     <td>103</td><td>103</td></tr>
- *   <tr><td>&sect;13 D1</td><td>extra failures to prove deficiency when the incumbent share halves from 0.01 to
+ *   <tr><td>extra failures to prove deficiency when the incumbent share halves from 0.01 to
  *     0.005</td><td>at most 1</td><td>0 or 1 (50 trials: 10, 10, 11, 11, 11; 100 trials: 15, 16, 16, 16, 17
  *     at 0.01)</td></tr>
- *   <tr><td>&sect;13 D19</td><td>attempt 1's all-pass minimum under {@code 0.4 / ((i + 9)(i + 10))}</td><td>130</td>
+ *   <tr><td>attempt 1's all-pass minimum under {@code 0.4 / ((i + 9)(i + 10))}</td><td>130</td>
  *     <td>130</td></tr>
- *   <tr><td>&sect;13 D19</td><td>all-pass minimum under an equal split over 100 attempts</td><td>177</td>
+ *   <tr><td>all-pass minimum under an equal split over 100 attempts</td><td>177</td>
  *     <td>177</td></tr>
  * </table>
  */
@@ -79,10 +79,10 @@ public final class BettingProcessTest
 	}
 
 	/**
-	 * Verifies the all-pass minimums of the {@code design.md} &sect;2.4 table and of the &sect;13 alternatives.
+	 * Verifies the all-pass minimums per attempt and under alternative budget splits.
 	 */
 	@Test
-	public void allPassMinimumsMatchDesign()
+	public void allPassMinimumsMatchReference()
 	{
 		// Requirement: R-S2
 		int[] indexes = {1, 2, 3, 4, 5, 10, 50, 100};
@@ -92,10 +92,10 @@ public final class BettingProcessTest
 			SignificanceLevel level = ErrorBudget.certificationLevel(indexes[row]);
 			requireAllPassMinimum(level, minimums[row], "i" + indexes[row]);
 		}
-		// D1: an unsplit 5% gives alpha_1 = 0.025; a certification budget of 0.025 gives alpha_1 = 0.0125
+		// An unsplit 5% gives alpha_1 = 0.025; a certification budget of 0.025 gives alpha_1 = 0.0125
 		requireAllPassMinimum(level(40), 88, "unsplit");
 		requireAllPassMinimum(level(80), 103, "smallerShare");
-		// D19: 0.4 / ((1 + 9)(1 + 10)) = 1 / 275; an equal split gives 0.04 / 100 = 1 / 2500
+		// 0.4 / ((1 + 9)(1 + 10)) = 1 / 275; an equal split gives 0.04 / 100 = 1 / 2500
 		requireAllPassMinimum(level(275), 130, "flatterSeries");
 		requireAllPassMinimum(level(2500), 177, "equalSplit");
 	}
@@ -207,10 +207,10 @@ public final class BettingProcessTest
 	}
 
 	/**
-	 * Verifies the fewest failures that prove the first baseline's incumbent deficient in {@code design.md} &sect;2.5.
+	 * Verifies the fewest failures that prove the first baseline's incumbent deficient at 50 and 100 trials.
 	 */
 	@Test
-	public void deficiencyThresholdsMatchDesign()
+	public void deficiencyThresholdsMatchReference()
 	{
 		// Requirement: R-S4
 		int[] cellCounts = {1, 2, 3, 5, 8};
@@ -219,8 +219,7 @@ public final class BettingProcessTest
 	}
 
 	/**
-	 * Verifies that halving the incumbent share from 0.01 to 0.005 adds at most one failure to a deficiency proof
-	 * ({@code design.md} &sect;13 D1).
+	 * Verifies that halving the incumbent share from 0.01 to 0.005 adds at most one failure to a deficiency proof.
 	 */
 	@Test
 	public void halvingIncumbentShareCostsOneFailure()

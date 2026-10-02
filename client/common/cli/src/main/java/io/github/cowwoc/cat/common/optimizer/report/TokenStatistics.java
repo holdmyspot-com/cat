@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.function.ToLongFunction;
 
 /**
- * The observed token usage per nested session of each role, from {@code design.md} section 3.9.
+ * The observed token usage per nested session of each role.
  * <p>
  * The statistics describe sessions that already ran. They are not a total, a forecast or a bound on future trials.
  * <p>

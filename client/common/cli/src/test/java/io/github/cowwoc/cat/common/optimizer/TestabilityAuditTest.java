@@ -18,8 +18,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Audits the optimizer and harness capacity sources for the {@code design.md} &sect;9 and &sect;10 properties that a
- * source scan can establish.
+ * Audits the optimizer and harness capacity sources for isolation and testability properties that a source scan
+ * can establish.
  * <p>
  * The scan covers the production and test sources of {@code io.github.cowwoc.cat.common.optimizer},
  * {@code io.github.cowwoc.cat.claude.optimizer} and {@code io.github.cowwoc.cat.codex.optimizer}, including their
@@ -29,15 +29,15 @@ import java.util.stream.Stream;
  * <p>
  * The audit checks:
  * <ul>
- *   <li>T4: no static field is non-final;</li>
- *   <li>T4: a test class has only final fields;</li>
- *   <li>T5: no code sleeps;</li>
- *   <li>T4: only a class that declares {@code main}, or a harness adapter's production scope, reads {@code HOME},
+ *   <li>no static field is non-final;</li>
+ *   <li>a test class has only final fields;</li>
+ *   <li>no code sleeps;</li>
+ *   <li>only a class that declares {@code main}, or a harness adapter's production scope, reads {@code HOME},
  *   {@code user.home} or the process environment;</li>
- *   <li>&sect;9: the harness-neutral core references no Claude or Codex package;</li>
- *   <li>&sect;9: production sources reference no type from a test source tree.</li>
+ *   <li>the harness-neutral core references no Claude or Codex package;</li>
+ *   <li>production sources reference no type from a test source tree.</li>
  * </ul>
- * This class checks no {@code design.md} &sect;2.4, &sect;2.5 or &sect;13 numbers.
+ * This class does not check statistical thresholds, caps or probabilities.
  */
 public final class TestabilityAuditTest
 {

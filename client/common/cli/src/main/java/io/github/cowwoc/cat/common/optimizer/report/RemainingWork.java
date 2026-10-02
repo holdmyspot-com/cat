@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The minimum remaining trials of {@code design.md} section 3.9: the number still required if every remaining trial
+ * The minimum remaining trials: the number still required if every remaining trial
  * passes.
  * <p>
  * The count is a lower bound on the work that remains. It is never a token total, a time estimate or a completion

@@ -37,7 +37,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds requests for sessions that edit prompt files, and reads their reports of needed edits outside the allowed
- * paths and operations (design &sect;2.7, &sect;3.1, &sect;4.3).
+ * paths and operations.
  * <p>
  * <b>Thread Safety:</b> Callers may build requests and read reports concurrently.
  */

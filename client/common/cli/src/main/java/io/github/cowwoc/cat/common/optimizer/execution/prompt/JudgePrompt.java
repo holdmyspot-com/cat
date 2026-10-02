@@ -29,7 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds requests that evaluate one trial against the confirmed rubric and decision rule, and reads the verdict
- * from the judge's final response (design &sect;3.1, &sect;6.4).
+ * from the judge's final response.
  * <p>
  * <b>Thread Safety:</b> Callers may build requests and read verdicts concurrently.
  */

@@ -8,8 +8,6 @@ import java.math.BigInteger;
 
 /**
  * Tests {@link SignificanceLevel}.
- * <p>
- * This class checks no {@code design.md} &sect;2.4, &sect;2.5 or &sect;13 numbers.
  */
 public final class SignificanceLevelTest
 {

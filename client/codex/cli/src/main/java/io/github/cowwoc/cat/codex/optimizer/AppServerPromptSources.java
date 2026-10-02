@@ -9,10 +9,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Observes the prompt sources that a Codex session's app-server notifications report (design &sect;5, H21).
+ * Observes the prompt sources that a Codex session's app-server notifications report.
  * <p>
  * The value lists the hooks that ran, with their source and source path. Codex does not report the instruction files
- * ({@code AGENTS.md}) that it loaded (H21), so they are not part of the value.
+ * ({@code AGENTS.md}) that it loaded, so they are not part of the value.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

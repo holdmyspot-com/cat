@@ -15,7 +15,7 @@ import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Reports a user interrupt that Codex recorded in the host thread's rollout (design &sect;3.8, H11).
+ * Reports a user interrupt that Codex recorded in the host thread's rollout.
  * <p>
  * The rollout is {@code $CODEX_HOME/sessions/**}{@code /rollout-*-$CODEX_THREAD_ID.jsonl}. Codex records an
  * interrupt as an {@code event_msg} record whose payload type is {@code turn_aborted}. The conversation item that

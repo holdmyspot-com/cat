@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Runs nested sessions through the Claude runner.
  * <p>
  * Evidence in {@link SessionRequest#readOnly()} is passed to the runner as read-only evidence. The runner exposes it
- * as an added directory, which Claude treats as advisory (design &sect;11, H23).
+ * as an added directory, which Claude treats as advisory.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

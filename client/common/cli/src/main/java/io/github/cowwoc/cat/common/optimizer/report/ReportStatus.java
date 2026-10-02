@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 /**
  * What the host agent does next, or how the campaign ended.
  * <p>
- * The values are exactly those of {@code design.md} section 3.7: {@code running}, {@code awaiting-user},
+ * The values are: {@code running}, {@code awaiting-user},
  * {@code busy}, or the label of a terminal outcome.
  * <p>
  * <b>Thread Safety:</b> Implementations are immutable and thread-safe.

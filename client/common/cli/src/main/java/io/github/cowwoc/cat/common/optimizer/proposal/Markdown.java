@@ -35,7 +35,7 @@ import java.util.Map;
 
 /**
  * Writes a {@link Proposal} as Markdown, listing its requirements, tests, measurement procedure and
- * confirmation conditions (design &sect;6.1).
+ * confirmation conditions.
  */
 final class Markdown
 {
@@ -163,8 +163,7 @@ final class Markdown
 	}
 
 	/**
-	 * Lists the trial profiles: the inventory and its source, the bindings, the restriction and each category's cells
-	 * (design &sect;6.6).
+	 * Lists the trial profiles: the inventory and its source, the bindings, the restriction and each category's cells.
 	 */
 	private void trialProfiles()
 	{
@@ -229,7 +228,7 @@ final class Markdown
 
 	/**
 	 * Marks each requirement of a test as deterministic, with its check and controls, or semantic, and lists the
-	 * checks that CAT discarded with the reason (design &sect;6.1).
+	 * checks that CAT discarded with the reason.
 	 *
 	 * @param test the test definition
 	 */
@@ -436,7 +435,7 @@ final class Markdown
 	}
 
 	/**
-	 * Warns that the campaign's volume may be flagged on a consumer subscription (design &sect;3.5).
+	 * Warns that the campaign's volume may be flagged on a consumer subscription.
 	 *
 	 * @param reason why the warning applies, as a sentence
 	 * @param sessions the minimum number of nested sessions that the campaign needs

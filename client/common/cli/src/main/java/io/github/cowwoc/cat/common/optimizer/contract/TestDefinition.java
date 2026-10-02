@@ -199,7 +199,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	}
 
 	/**
-	 * Runs every check against its controls (design &sect;6.1). A check that rejects its known-good control or
+	 * Runs every check against its controls. A check that rejects its known-good control or
 	 * accepts its known-bad control is discarded, so its requirement is judged semantically.
 	 *
 	 * @return the test with each failing check moved to {@link #discardedChecks()}

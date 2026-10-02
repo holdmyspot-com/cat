@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * A prompt file that selects a model, a reasoning effort or both. These selections bind the profile values used to
- * derive the file's trial profiles (design &sect;6.6).
+ * derive the file's trial profiles.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

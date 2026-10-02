@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.nio.file.Path;
 
 /**
- * Locates the files of a harness artifact that bind a trial profile (design &sect;6.6).
+ * Locates the files of a harness artifact that bind a trial profile.
  */
 public final class BindingFiles
 {

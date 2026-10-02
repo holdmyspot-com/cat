@@ -38,7 +38,7 @@ import tools.jackson.databind.node.ObjectNode;
  * builds the contract, whose constructors enforce the rules that a schema cannot express, such as probabilities that
  * sum to 1 and references that name a listed requirement. Last, it runs each condition evaluated directly from trial
  * evidence (a deterministic check) against evidence it must accept and evidence it must reject (its controls), and
- * discards each check that fails one (design &sect;6.1, &sect;6.4). Both the confirmation of deriver
+ * discards each check that fails one. Both the confirmation of deriver
  * output and the loading of a stored contract parse through this class, so both validate the controls.
  */
 public final class ProposalSchema

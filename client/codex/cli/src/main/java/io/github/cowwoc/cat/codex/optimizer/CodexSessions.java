@@ -24,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The runner's bridge sends the request's model as {@code thread/start}'s {@code model} and its reasoning effort as
  * {@code turn/start}'s {@code effort}.
  * <p>
- * The Codex runner has no option for read-only evidence (design &sect;11, H23), so {@link SessionRequest#readOnly()}
+ * The Codex runner has no option for read-only evidence, so {@link SessionRequest#readOnly()}
  * is not passed to it. A judge reads the evidence by path, and only file permissions protect it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.

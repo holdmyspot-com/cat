@@ -14,7 +14,7 @@ import tools.jackson.core.JsonToken;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Classifies the host's Claude login without reading a credential value (design &sect;11, H16).
+ * Classifies the host's Claude login without reading a credential value.
  * <p>
  * The classification uses only the names of environment variables and the names and JSON types of the credential
  * file's top-level keys. It never reads a variable's or key's value, and the credential file is never held in

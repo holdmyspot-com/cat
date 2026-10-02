@@ -16,7 +16,7 @@ import java.util.function.Function;
 /**
  * The model and reasoning-effort combinations used to measure a contract's compliance. It records the combinations
  * available from the harness, the choices selected by prompt files, the user's restriction and the resulting pairs
- * of category and trial profile, called cells (design &sect;6.6).
+ * of category and trial profile, called cells.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

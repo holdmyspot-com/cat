@@ -20,7 +20,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests each kind of deterministic check against its controls and a trial's evidence (design &sect;6.4).
+ * Tests each kind of deterministic check against its controls and a trial's evidence.
  */
 public final class DeterministicCheckTest
 {

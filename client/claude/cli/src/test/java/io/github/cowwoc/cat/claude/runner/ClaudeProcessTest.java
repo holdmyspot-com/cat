@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Tests how {@link ClaudeProcess} decides that a turn has ended. Each test plays the Claude CLI with a
  * {@link FakeHarnessCli} that prints stream-json lines shaped like those Claude Code 2.1.286 printed for a root
  * session that launched background child agents. The recorded timelines under {@code runner/turn-boundary} are trimmed
- * copies of the 2026-10-01 probes (design H24). The timelines whose names start with {@code s-} were recorded with
+ * copies of the 2026-10-01 probes. The timelines whose names start with {@code s-} were recorded with
  * {@code CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1}, so Claude printed its {@code session_state_changed} events; the
  * others were recorded without it and show a Claude that does not report its session state.
  */

@@ -9,7 +9,7 @@ import java.math.BigInteger;
  * {@code threshold}.
  * <p>
  * By Ville's inequality, a valid e-value process ever exceeds {@code threshold} with probability at most
- * {@code 1 / threshold}, so the level's error probability is {@code 1 / threshold}. Every level in the design is the
+ * {@code 1 / threshold}, so the level's error probability is {@code 1 / threshold}. Every campaign level is the
  * reciprocal of an integer, which lets decisions compare exact integers.
  *
  * @param threshold the value that an e-value must exceed

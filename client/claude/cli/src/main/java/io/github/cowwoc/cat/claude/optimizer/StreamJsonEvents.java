@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Reads what a session's Claude {@code stream-json} records say about the model, token usage, rate limits and
  * errors.
  * <p>
- * The parser follows the records that the runner captured (design &sect;11, H14 and H15):
+ * The parser follows the records that the runner captured:
  * <ul>
  *   <li>the {@code init} record names the resolved model, and its {@code effort} when it has one. Claude Code
  *   2.1.286 reports the effort as {@code null};</li>

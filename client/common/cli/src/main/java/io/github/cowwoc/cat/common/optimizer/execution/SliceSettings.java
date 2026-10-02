@@ -16,7 +16,7 @@ import java.time.Duration;
 public record SliceSettings(Duration budget, Duration grace, Duration pollInterval)
 {
 	/**
-	 * The settings of {@code design.md} section 3.7: an 8-minute budget and a 1-minute grace period, checking for a
+	 * The default settings: an 8-minute budget and a 1-minute grace period, checking for a
 	 * host interrupt every second.
 	 */
 	public static final SliceSettings DEFAULT = new SliceSettings(Duration.ofMinutes(8), Duration.ofMinutes(1),

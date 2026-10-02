@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Verifies the reconciliation that every driver runs first (design &sect;3.8), from campaign states that represent
+ * Verifies the reconciliation that every driver runs first, from campaign states that represent
  * each crash point of the write-ahead order: assignment record, snapshot with the started trial, session, outcome
  * record, adoption.
  */

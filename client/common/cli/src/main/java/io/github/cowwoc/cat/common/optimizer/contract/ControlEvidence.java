@@ -12,7 +12,7 @@ import java.util.TreeMap;
 
 /**
  * A supplied trial example that a check must accept or reject. The agent that derives the proposal writes these
- * examples, called controls, to test its proposed checks (design &sect;6.4). A control records everything that a
+ * examples, called controls, to test its proposed checks. A control records everything that a
  * check can observe, including its tool calls.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.

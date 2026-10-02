@@ -8,7 +8,7 @@ import java.util.Set;
 
 /**
  * Every model and reasoning-effort combination that a harness offers the user, with the source of that list. CAT
- * uses this list, called the profile inventory, to derive trial profiles (design &sect;6.6).
+ * uses this list, called the profile inventory, to derive trial profiles.
  * <p>
  * A model whose effort support is undocumented is listed once, with an empty effort, so that its sessions run under
  * the harness's default effort.

@@ -9,10 +9,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Observes the prompt sources that a Claude session's {@code stream-json} records report (design &sect;5, H21).
+ * Observes the prompt sources that a Claude session's {@code stream-json} records report.
  * <p>
  * The value lists the skills, agents and plugins that the {@code init} record names and the hooks that ran. Claude
- * does not report the instruction files ({@code CLAUDE.md}) that it loaded (H21), so they are not part of the value.
+ * does not report the instruction files ({@code CLAUDE.md}) that it loaded, so they are not part of the value.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

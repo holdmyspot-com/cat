@@ -22,7 +22,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The Codex profile inventory and bindings (design &sect;6.6).
+ * The Codex profile inventory and bindings.
  * <p>
  * The inventory is every model that {@code codex debug models} lists with visibility {@code list}, each with its
  * supported reasoning levels; hidden models are not offered. A binding is the top-level {@code model} and

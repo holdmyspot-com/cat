@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The contract proposal that the user confirms or answers with feedback (design &sect;6.1).
+ * The contract proposal that the user confirms or answers with feedback.
  * <p>
  * It combines the deriver's proposal with the items that CAT computes: the statistical procedure, the
  * symbolic-link report, the authentication and volume warning, and the minimum session count.
@@ -34,7 +34,7 @@ public final class Proposal
 {
 	/**
 	 * The limitation that every confirmed contract records: no harness names the instruction files it loaded, so
-	 * their loading is derived from documented rules rather than observed (design &sect;6.1, H21).
+	 * their loading is derived from documented rules rather than observed.
 	 */
 	public static final String DERIVED_LOADING_LIMIT = "Prompt files that no harness event reports loading were " +
 		"identified from documented loading rules rather than observed, so trials can load a different set of " +

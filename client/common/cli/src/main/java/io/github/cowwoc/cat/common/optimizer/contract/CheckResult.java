@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * The result of one check that CAT decides directly from trial evidence: which check ran, whether it passed, and
- * the value it observed (design &sect;6.4).
+ * the value it observed.
  *
  * @param check the check
  * @param passed {@code true} if the evidence satisfied the check

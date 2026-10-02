@@ -14,7 +14,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Extracts the JSON object that a judge or deriver session returns (design &sect;3.1, H23).
+ * Extracts the JSON object that a judge or deriver session returns. Claude was observed wrapping judge JSON in
+ * Markdown code fences, while Codex returned bare objects.
  * <p>
  * The output is the session's final response when that response is exactly one JSON object, either bare or alone
  * inside one Markdown code fence. Any other final response has no output: prose around the object, two objects, an

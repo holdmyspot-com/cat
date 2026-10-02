@@ -6,7 +6,7 @@ import java.util.List;
  * Supplies the {@link DecisionBoundaries} of certification attempt 1, without comparisons, to tests in this module
  * and in modules that use its test JAR.
  * <p>
- * The table uses {@code alpha_1} and the {@code design.md} &sect;2.4 cap of 262, which {@code CapCalibrationTest}
+ * The table uses {@code alpha_1} and the first-attempt cap of 262, which {@code CapCalibrationTest}
  * verifies; tests receive it without running calibration. It is computed once per JVM, on first use.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.

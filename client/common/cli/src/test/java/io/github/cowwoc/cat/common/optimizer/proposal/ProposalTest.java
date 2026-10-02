@@ -377,7 +377,8 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the rendered proposal lists every item of design section 6.1 itself, not a count of the items.
+	 * Verifies that the rendered proposal lists each requirement, category, profile, test, expected behavior,
+	 * variation, procedure and warning.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -475,7 +476,7 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a subscription login, and a login whose kind CAT cannot tell (premise P6's fallback), produce the
+	 * Verifies that a subscription login, and a login whose kind CAT cannot tell, produce the
 	 * warning with the minimum session count and the API key recommendation, and that an API key produces no warning.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected

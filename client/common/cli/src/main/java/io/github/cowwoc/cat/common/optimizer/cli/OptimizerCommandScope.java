@@ -143,7 +143,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 
 	/**
 	 * Returns the slice's time budget: the 8-minute budget plus the 1-minute grace period that fits the skill's
-	 * 10-minute tool timeout (design &sect;3.8).
+	 * 10-minute tool timeout.
 	 *
 	 * @return the budget
 	 * @throws IllegalStateException if this scope is closed

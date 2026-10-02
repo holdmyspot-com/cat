@@ -16,7 +16,7 @@ import java.util.Optional;
 
 /**
  * The recorded evidence of a completed trial session that its deterministic checks decide from: the session's final
- * replies and the project copy that holds its file effects (design &sect;6.4).
+ * replies and the project copy that holds its file effects.
  * <p>
  * The session results that the harness adapters produce do not record tool calls, so a check that observes tool
  * calls cannot be decided from this evidence.
