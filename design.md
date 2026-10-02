@@ -411,13 +411,14 @@ requires the readiness gate.
 **Revert.** A promoted candidate that does clearly worse than its predecessor is withdrawn (user ruling, 2026-10-02).
 While a promoted candidate has not been edited, CAT checks each cell that the promoting round addressed after every
 adopted representative outcome there. When the candidate's development 95% Wilson upper bound in that cell falls below
-the predecessor's observed pass rate in the same cell, CAT reverts: the predecessor becomes the working candidate
-again with its retained counts, the withdrawn candidate's outcomes stay available for diagnosis, and the round that
-promoted it counts as having produced no promotable attempt. The check runs before edit-or-continue, so a revert
-replaces an edit. A predecessor with no representative outcome in the cell gives no basis and is never reverted to
-there. The working candidate's result on an instance is its latest outcome there. An instance that
-failed only in the incumbent's baseline arm may have none; the promotion runs then also run the working candidate on
-it once.
+the predecessor's observed pass rate in the same cell, CAT reverts: the predecessor becomes the working candidate again
+with its retained counts, the withdrawn candidate's outcomes stay available for diagnosis, and the round that promoted
+it counts as having produced no promotable attempt. The check runs before edit-or-continue, so a revert replaces an
+edit. A predecessor with no representative outcome in the cell gives no basis and is never reverted to there. A revert
+goes back one promotion: the restored predecessor is not checked against its own predecessor, because its check ended
+when it was edited (user ruling, 2026-10-02). The working candidate's result on an instance is its latest outcome there.
+An instance that failed only in the incumbent's baseline arm may have none; the promotion runs then also run the working
+candidate on it once.
 
 **Several attempts while the candidate is weak.** While the working candidate is weak, a round's author attempts run
 independently and at the same time (user ruling, 2026-10-01). The candidate is weak when, in any cell of a category the
@@ -1378,7 +1379,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D32 | A conflict found during a campaign is the author's to resolve if a campaign edit introduced it, and pauses the campaign for the user's resolution, with options and a recommendation, if the confirmed prompt system already held it (user ruling, 2026-10-02). | The user decides which of their own requirements prevails; a conflict that the campaign created is a candidate defect. Checking the quoted text against the confirmed snapshot tells the two apart without trusting the author's account. | A *conflict* classification in the author's manifest, a pause whose choices are the resolutions, and a revision built from the chosen one. |
 | D33 | Promote an attempt that fixes at least one triggering instance without a regression, rather than only one that fixes them all (user ruling, 2026-10-02). | Requiring every triggering run to pass rejected improvements whose remaining failures were left for later: in E1 under `gpt-6-luna`/low, the best attempt passed 12 of 14 promotion runs, failed one instance twice, and the campaign reached a plateau after one round. Promotion only sets the next working candidate; the readiness gate still decides certification. | Minimality must keep every fix, so a reduction must fix every instance that its attempt fixed. A lucky streak on an intermittent instance could promote an attempt that is no better; D35 limits that. |
 | D34 | Give the attempts of one round different approaches: correct the stated instruction, rewrite existing text, then add missing guidance (user ruling, 2026-10-02). | Identical briefs produced three variations of one edit in one file, so a round tested one idea three times. | An approach can be a poor fit for a failure; another attempt of the round covers it. Sequential rounds use the first two. |
-| D35 | Count an instance as fixed only when the attempt's streak of passes there would be unlikely (below 10%) for the working candidate, extending to up to 4 runs, and revert a promoted candidate whose development upper bound in an addressed cell falls below its predecessor's observed pass rate (user ruling, 2026-10-02). | Two passes prove little on an instance the working candidate already passes half the time: they occur by chance 25% of the time. A fixed run count high enough for such instances wastes runs on instances that fail reliably. The working candidate's representative failure and diagnostic reruns already estimate how often it passes each instance. | Up to 2 extra targeted runs per intermittent instance. An instance that the working candidate passes 3 of 4 times can never count as fixed. A revert discards the withdrawn candidate's representative trials and ends the round without a promotion, which can establish a plateau. |
+| D35 | Count an instance as fixed only when the attempt's streak of passes there would be unlikely (below 10%) for the working candidate, extending to up to 4 runs, and revert a promoted candidate whose development upper bound in an addressed cell falls below its predecessor's observed pass rate (user ruling, 2026-10-02). | Two passes prove little on an instance the working candidate already passes half the time: they occur by chance 25% of the time. A fixed run count high enough for such instances wastes runs on instances that fail reliably. The working candidate's representative failure and diagnostic reruns already estimate how often it passes each instance. | Up to 2 extra targeted runs per intermittent instance. An instance that the working candidate passes 3 of 4 times can never count as fixed. A revert discards the withdrawn candidate's representative trials and ends the round without a promotion, which can establish a plateau. A revert goes back only one promotion, so the stored state holds one predecessor rather than a chain. |
 
 ## 14. Acceptance evidence
 
