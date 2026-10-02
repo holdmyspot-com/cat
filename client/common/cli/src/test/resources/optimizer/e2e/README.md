@@ -6,7 +6,9 @@ reads them. Each entry describes the acceptance scenarios that use it.
 
 - `deficient/`: `AGENTS.md` asks every reply to close with the handbook motto but also forbids slogans and sign-offs.
   Before optimization, Codex closed 0 of 6 replies with the motto and Claude 4 of 6; resolving the contradiction raised
-  Codex to 6 of 6. The delivery scenario expects the campaign to find that correction, certify it and deliver a Git diff.
+  Codex to 6 of 6. The delivery scenario expects the proposal to list the conflict with its resolutions, confirmation
+  to be refused until the user chooses one, and the campaign then to raise compliance with the resolved contract,
+  certify the candidate and deliver a Git diff.
 - `easy/`: one rule that a model already follows; used for interruption and resumption, host tools and child subagents,
   and shared capacity across concurrent CAT processes, where a run needs cheap, passing trials.
 - `link/`: `docs/handbook.md` is an in-project symbolic link to `shared/handbook.md`. The run copies `external/` outside

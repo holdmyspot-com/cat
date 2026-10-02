@@ -911,7 +911,8 @@ The riskiest pure code, built first.
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
-  - **E1:** a dirty base is refused; a deficient fixture improves to `certified` and is delivered as a Git diff, with a
+  - **E1:** a dirty base is refused; the deficient fixture's proposal lists its conflict, confirmation is refused
+    until a resolution is chosen, and the fixture then improves to `certified` and is delivered as a Git diff, with a
     disjoint base edit surviving. Its receipt also shows, per harness: the deriver's proposal is schema-valid, has
     requirements and names the instruction file as a derived source; each judge verdict is schema-valid, carries a
     rationale and leaves the evidence unchanged; each author attempt changes only prompt sources; and the per-trial
