@@ -60,6 +60,26 @@ platform=${expected_platform}" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
+@test "Claude installation runs each pending data migration before replacing the marketplace" {
+	create_fake_engine_command claude
+	artifact="$(create_test_artifact claude)"
+	data_directory="${TEST_ROOT}/claude data"
+	mkdir -p "${data_directory}"
+	printf '0.9\n' > "${data_directory}/migration-version"
+	migration_record='printf "%s\\n" "${CAT_MIGRATION_FROM_VERSION}->${CAT_MIGRATION_TO_VERSION}" >> "${COMMAND_LOG}"'
+	add_test_migration "${artifact}" "0.10" "${migration_record}"
+	add_test_migration "${artifact}" "1.0" "${migration_record}"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
+		CAT_CLAUDE_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-claude.sh" "${artifact}"
+
+	[ "${status}" -eq 0 ]
+	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
+	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
+	[ "$(cat "${data_directory}/migration-version")" = "1.0" ]
+	grep -F "claude plugin marketplace add ${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${COMMAND_LOG}"
+}
+
 @test "Claude removal delegates to claude plugin uninstall" {
 	create_fake_engine_command claude
 	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace"
@@ -70,6 +90,44 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "claude plugin uninstall cat@cat" ]
 	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
+}
+
+@test "release bootstrap installs the Claude archive for the current platform after verifying its checksum" {
+	create_fake_engine_command claude
+	archive="$(create_fake_release claude)"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
+		sh "${INSTALL_DIRECTORY}/install-claude.sh" v1.0
+
+	[ "${status}" -eq 0 ]
+	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/${archive}" "${COMMAND_LOG}"
+	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
+	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json" ]
+}
+
+@test "release bootstrap rejects a Claude archive whose checksum does not match before installing it" {
+	create_fake_engine_command claude
+	archive="$(create_fake_release claude)"
+	printf '%064d  %s\n' 0 "${archive}" > "${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
+		sh "${INSTALL_DIRECTORY}/install-claude.sh" v1.0
+
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"FAILED"* ]]
+	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
+	! grep -q '^claude ' "${COMMAND_LOG}"
+}
+
+@test "generated Claude launchers work when the runtime path contains spaces" {
+	runtime="${TEST_ROOT}/generated runtime"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/claude" "${runtime}"
+	create_fake_bwrap
+
+	run env PATH="${FAKE_BIN}:${PATH}" "${runtime}/client/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == "harness=claude"$'\n'* ]]
 }
 
 @test "generated Claude SessionStart launcher injects bundled routing and project rules" {

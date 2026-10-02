@@ -275,6 +275,55 @@ public final class InvocationDirectoryTest
 	}
 
 	/**
+	 * Verifies {@code create} rejects a workflow name that is not lowercase, creating nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void createRejectsInvalidWorkflowName() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
+			Path temporaryRoot = project.resolve(".cat/work/temp");
+			Output output = new Output();
+
+			int status = InvocationDirectory.run(new String[]{"create", "Uppercase"}, temporaryRoot, output.out,
+				output.err);
+
+			requireThat(status, "status").isNotEqualTo(0);
+			requireThat(output.out(), "out").isEmpty();
+			requireThat(output.err(), "err").contains("Workflow name must match");
+			requireThat(Files.exists(temporaryRoot), "temporaryRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies {@code delete} refuses to delete the CAT temporary root itself.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void deleteRejectsTheTemporaryRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("workflow-temp-test-"));
+			Path temporaryRoot = project.resolve(".cat/work/temp");
+			Path directory = InvocationDirectory.create(temporaryRoot, "mutation-transaction");
+			Output output = new Output();
+
+			int status = InvocationDirectory.run(new String[]{"delete", temporaryRoot.toString()}, temporaryRoot,
+				output.out, output.err);
+
+			requireThat(status, "status").isNotEqualTo(0);
+			requireThat(output.out(), "out").isEmpty();
+			requireThat(output.err(), "err").contains("must be below");
+			requireThat(directory, "directory").isDirectory();
+		}
+	}
+
+	/**
 	 * Captures a command's standard output and standard error.
 	 */
 	private static final class Output

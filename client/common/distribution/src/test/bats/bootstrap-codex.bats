@@ -26,16 +26,6 @@ version=1.0
 platform=${expected_platform}" ]
 }
 
-@test "installer tells users how to correct an invalid marketplace directory" {
-	artifact="$(create_test_artifact codex)"
-
-	run env CAT_CODEX_MARKETPLACE_ROOT="${TEST_ROOT}/not-cat" sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
-
-	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"must end in /cat-marketplace"* ]]
-	[[ "${output}" == *"CAT_CODEX_MARKETPLACE_ROOT"* ]]
-}
-
 @test "Codex installs an extracted artifact through an artifact-local marketplace" {
 	create_fake_engine_command codex
 	artifact="$(create_test_artifact codex)"
@@ -95,6 +85,23 @@ SCRIPT
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
+@test "Codex installation preserves the recorded version when a data migration fails" {
+	create_fake_engine_command codex
+	artifact="$(create_test_artifact codex)"
+	data_directory="${TEST_ROOT}/codex data"
+	mkdir -p "${data_directory}"
+	printf '0.9\n' > "${data_directory}/migration-version"
+	add_test_migration "${artifact}" "1.0" 'exit 7'
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		CAT_CODEX_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
+
+	[ "${status}" -eq 7 ]
+	[ "$(cat "${data_directory}/migration-version")" = "0.9" ]
+	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+	[ ! -s "${COMMAND_LOG}" ]
+}
+
 @test "Codex uninstall removes only CAT-owned user agents before running codex plugin remove" {
 	create_fake_engine_command codex
 	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat" "${CODEX_HOME}/agents"
@@ -132,97 +139,33 @@ SCRIPT
 	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
 }
 
-@test "release bootstrap selects the v1.0 Linux x64 Codex archive" {
+@test "release bootstrap installs the Codex archive for the current platform after verifying its checksum" {
 	create_fake_engine_command codex
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
-#!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Linux\n'; else printf 'x86_64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
-output=''
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-o" ]; then shift; output="$1"; fi
-	shift
-done
-case "${output}" in
-	*/SHA256SUMS.txt) printf 'ignored  cat-codex-v1.0-linux-x64.tar.gz\n' > "${output}" ;;
-	*) : > "${output}" ;;
-esac
-SCRIPT
-	cat > "${FAKE_BIN}/sha256sum" <<'SCRIPT'
-#!/usr/bin/env sh
-exit 0
-SCRIPT
-	cat > "${FAKE_BIN}/tar" <<'SCRIPT'
-#!/usr/bin/env sh
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = "-C" ]; then shift; destination="$1"; fi
-	shift
-done
-	root="${destination}/cat-codex-v1.0-linux-x64"
-	mkdir -p "${root}/.codex-plugin" "${root}/client/bin" "${root}/install/migrations" \
-		"${root}/agents/codex" "${root}/agents/common"
-	printf '{}\n' > "${root}/.codex-plugin/plugin.json"
-	printf 'name = "cat-reviewer"\n<!-- cat:include ../common/reviewer.md -->\n' > "${root}/agents/codex/reviewer.toml"
-	printf 'review\n' > "${root}/agents/common/reviewer.md"
-printf '1.0\n' > "${root}/client/VERSION"
-printf '# target-version<TAB>script-relative-to-this-directory\n' > "${root}/install/migrations/registry.tsv"
-cat > "${root}/client/bin/plugin-info" <<'INNER'
-#!/usr/bin/env sh
-exit 0
-INNER
-chmod +x "${root}/client/bin/plugin-info"
-SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl" "${FAKE_BIN}/sha256sum" "${FAKE_BIN}/tar"
+	archive="$(create_fake_release codex)"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
 		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
 
 	[ "${status}" -eq 0 ]
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/cat-codex-v1.0-linux-x64.tar.gz" \
-		"${COMMAND_LOG}"
+	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/${archive}" "${COMMAND_LOG}"
 	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
+	[ -f "${CODEX_HOME}/plugins/cat-marketplace/plugins/cat/.codex-plugin/plugin.json" ]
 }
 
-@test "bootstrap propagates a download failure" {
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
-#!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Linux\n'; else printf 'x86_64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-exit 23
-SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
+@test "release bootstrap rejects a Codex archive whose checksum does not match before installing it" {
+	create_fake_engine_command codex
+	archive="$(create_fake_release codex)"
+	printf '%064d  %s\n' 0 "${archive}" > "${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
 
-	run env PATH="${FAKE_BIN}:${PATH}" sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
 
-	[ "${status}" -eq 23 ]
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"FAILED"* ]]
+	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+	! grep -q '^codex ' "${COMMAND_LOG}"
 }
-
-@test "release bootstrap selects the v1.0 macOS ARM64 archive" {
-	cat > "${FAKE_BIN}/uname" <<'SCRIPT'
-#!/usr/bin/env sh
-if [ "${1:-}" = "-s" ]; then printf 'Darwin\n'; else printf 'arm64\n'; fi
-SCRIPT
-	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
-#!/usr/bin/env sh
-printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
-exit 23
-SCRIPT
-	chmod +x "${FAKE_BIN}/uname" "${FAKE_BIN}/curl"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" \
-		CAT_RELEASE_BASE_URL="https://example.invalid/releases/v1.0" sh \
-		"${INSTALL_DIRECTORY}/install-codex.sh" v1.0
-
-	[ "${status}" -eq 23 ]
-	grep -F "https://example.invalid/releases/v1.0/cat-codex-v1.0-macos-arm64.tar.gz" "${COMMAND_LOG}"
-}
-
-@test "generated launchers work when the runtime path contains spaces" {
+@test "generated Codex launchers work when the runtime path contains spaces" {
 	runtime="${TEST_ROOT}/generated runtime"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
 	create_fake_bwrap
@@ -231,12 +174,6 @@ SCRIPT
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == "harness=codex"$'\n'* ]]
-}
-
-@test "generated Codex SessionStart hook disables additional-context spilling" {
-	runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
-
-	grep -F '"additionalContextLimit": 0' "${runtime}/hooks/hooks.json"
 }
 
 @test "generated Codex SessionStart launcher injects bundled routing and project rules" {

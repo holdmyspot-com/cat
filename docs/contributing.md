@@ -44,7 +44,7 @@ Run the external launcher and installer boundary tests:
 bats client/common/distribution/src/test/bats/bootstrap-common.bats \
   client/common/distribution/src/test/bats/bootstrap-claude.bats \
   client/common/distribution/src/test/bats/bootstrap-codex.bats \
-  client/common/distribution/src/test/bats/artifact-runners.bats \
+  client/common/distribution/src/test/bats/workflow-temp.bats \
   client/common/distribution/src/test/bats/prompt-optimizer.bats
 ```
 

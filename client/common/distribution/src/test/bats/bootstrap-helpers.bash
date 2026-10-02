@@ -12,6 +12,7 @@ setup()
 	export CODEX_INSTALL_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../../codex/lifecycle/src/main/resources/install"
 	export INSTALL_DIRECTORY="${TEST_ROOT}/install"
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
+	export FAKE_RELEASE_DIRECTORY="${TEST_ROOT}/release"
 	mkdir -p "${FAKE_BIN}" "${HOME}" "${INSTALL_DIRECTORY}"
 	cp -R "${COMMON_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CLAUDE_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
@@ -92,4 +93,51 @@ current_platform()
 		Darwin:aarch64|Darwin:arm64) printf '%s\n' macos-arm64 ;;
 		*) return 1 ;;
 	esac
+}
+
+# Publishes a release archive of a minimal CAT artifact for the current platform with its checksum list, and creates a
+# fake curl that serves the release's files by name and appends each invocation to the test command log.
+#
+# Arguments:
+#   $1 - Harness identifier, such as claude or codex.
+#
+# Output:
+#   Writes the archive's file name to standard output.
+#
+# Side effects:
+#   Creates FAKE_RELEASE_DIRECTORY and FAKE_BIN/curl.
+create_fake_release()
+{
+	harness="$1"
+	archive_directory="cat-${harness}-v1.0-$(current_platform)"
+	mkdir -p "${FAKE_RELEASE_DIRECTORY}/staging"
+	cp -R "$(create_test_artifact "${harness}")" "${FAKE_RELEASE_DIRECTORY}/staging/${archive_directory}"
+	tar -czf "${FAKE_RELEASE_DIRECTORY}/${archive_directory}.tar.gz" -C "${FAKE_RELEASE_DIRECTORY}/staging" \
+		"${archive_directory}"
+	if command -v sha256sum >/dev/null 2>&1; then
+		(cd "${FAKE_RELEASE_DIRECTORY}" && sha256sum "${archive_directory}.tar.gz") > \
+			"${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
+	else
+		(cd "${FAKE_RELEASE_DIRECTORY}" && shasum -a 256 "${archive_directory}.tar.gz") > \
+			"${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
+	fi
+	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
+#!/usr/bin/env sh
+printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
+output=''
+url=''
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-o) shift; output="$1" ;;
+		-*) ;;
+		*) url="$1" ;;
+	esac
+	shift
+done
+source="${FAKE_RELEASE_DIRECTORY}/${url##*/}"
+[ -f "${source}" ] || exit 22
+cp "${source}" "${output}"
+SCRIPT
+	chmod +x "${FAKE_BIN}/curl"
+	printf '%s\n' "${archive_directory}.tar.gz"
 }

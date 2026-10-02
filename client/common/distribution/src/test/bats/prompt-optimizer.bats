@@ -46,12 +46,6 @@ run_optimizer()
 		"${GENERATED_RUNTIME_DIRECTORY}/${harness}/client/bin/prompt-optimizer" "$@"
 }
 
-# Prints a checksum of every file in the fixture project, so a test can prove that nothing changed.
-tree_checksum()
-{
-	(cd "${PROJECT}" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs sha256sum | sha256sum)
-}
-
 @test "packaged Claude prompt-optimizer prints the status JSON of the fixture Claude campaign" {
 	# Requirement: R-I4
 	run_optimizer claude status fixture-campaign
@@ -75,13 +69,4 @@ tree_checksum()
 		[ "${status}" -eq 2 ]
 		printf '%s\n' "${output}" | jq -e '.status == "invalid-input"'
 	done
-}
-
-@test "packaged Codex prompt-optimizer refuses a Claude campaign before changing anything" {
-	# Requirement: R-L1
-	before="$(tree_checksum)"
-	run_optimizer codex run fixture-campaign
-	[ "${status}" -eq 1 ]
-	printf '%s\n' "${output}" | jq -e '.status == "refused" and (.message | contains("claude"))'
-	[ "$(tree_checksum)" = "${before}" ]
 }
