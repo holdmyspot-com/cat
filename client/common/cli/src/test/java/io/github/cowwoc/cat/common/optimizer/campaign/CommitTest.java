@@ -9,9 +9,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.util.List;
 import org.testng.annotations.Test;
 
@@ -51,13 +53,48 @@ public final class CommitTest
 	}
 
 	/**
+	 * Verifies that a commit cannot freeze informative incumbent bounds when both observations omit a required
+	 * measurement condition.
+	 */
+	@Test
+	public void missingConditionsDisableBounds()
+	{
+		// Requirement: R-M4, R-F1
+		Campaign campaign = ready().identity(MeasurementIdentity.EMPTY).build();
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
+		CertificationProcedure procedure = campaign.attempt(1).procedure();
+		Comparison unavailable = new Comparison(BigDecimal.ONE, BigDecimal.ZERO, procedure.improvementLevel());
+
+		for (ComparisonBoundaries boundary : procedure.boundaries().comparisons())
+			requireThat(boundary.comparison(), "comparison").isEqualTo(unavailable);
+	}
+
+	/**
+	 * Verifies that a commit cannot freeze informative incumbent bounds under a differing model.
+	 */
+	@Test
+	public void differingConditionsDisableBounds()
+	{
+		// Requirement: R-M4, R-F1
+		MeasurementIdentity baselineIdentity = CampaignBuilder.confirmedIdentity("model-b");
+		Campaign campaign = ready().baselineIdentity(baselineIdentity).build();
+		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
+		CertificationProcedure procedure = campaign.attempt(1).procedure();
+		Comparison unavailable = new Comparison(BigDecimal.ONE, BigDecimal.ZERO, procedure.improvementLevel());
+
+		for (ComparisonBoundaries boundary : procedure.boundaries().comparisons())
+			requireThat(boundary.comparison(), "comparison").isEqualTo(unavailable);
+		requireThat(procedure.baselineIdentity(), "baselineIdentity").isEqualTo(baselineIdentity);
+	}
+
+	/**
 	 * Verifies that a commit freezes the candidate, the levels, the incumbent bounds, the bets, the cap and the
 	 * allocation policy, and opens the formal stream at its start.
 	 */
 	@Test
 	public void commitFreezesProcedure()
 	{
-		// Requirement: R-F1
+		// Requirement: R-F1, R-M4
 		Campaign before = ready().build();
 		Campaign campaign = CampaignTransitions.apply(before, new CampaignEvent.Commit(calibration(1), 41));
 		CertificationAttempt attempt = campaign.attempt(1);
@@ -67,6 +104,7 @@ public final class CommitTest
 		requireThat(attempt.candidate(), "candidate").isEqualTo(before.development().working());
 		CertificationProcedure procedure = attempt.procedure();
 		SignificanceLevel improvement = ErrorBudget.improvementLevel(1, 2);
+		requireThat(procedure.baselineIdentity(), "baselineIdentity").isEqualTo(before.baseline().identity());
 		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(improvement);
 		requireThat(procedure.baselineIndex(), "baselineIndex").isEqualTo(1);
 		requireThat(procedure.categories(), "categories").isEqualTo(List.of("formatting", "safety"));

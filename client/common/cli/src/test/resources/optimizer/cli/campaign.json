@@ -1,5 +1,5 @@
 {
-  "format_version" : 5,
+  "format_version" : 6,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -220,12 +220,30 @@
     "authors" : [ ],
     "removed" : [ ],
     "prompt_sizes" : { },
-    "trial_inputs" : { },
+    "trial_inputs" : [ ],
     "attempts" : [ ]
   },
   "failed_cells" : [ ],
   "baseline" : {
     "index" : 1,
+    "identity" : {
+      "conditions" : {
+        "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+        "GENERATOR" : "contract-generator/1",
+        "JUDGE" : "judge-1",
+        "MODEL" : "model-a",
+        "REASONING" : "reasoning-1",
+        "PROVIDER" : "provider-1",
+        "HARNESS_VERSION" : "harness_version-1",
+        "RUNNER_VERSION" : "runner_version-1",
+        "CAT_VERSION" : "cat_version-1",
+        "LOADER_CONFIGURATION" : "loader_configuration-1",
+        "PROMPT_SOURCES" : "prompt_sources-1",
+        "HOST_TOOLS" : "host_tools-1",
+        "EXTERNAL_SOURCES" : "external_sources-1"
+      },
+      "cells" : { }
+    },
     "counts" : { }
   },
   "attempts" : [ ],

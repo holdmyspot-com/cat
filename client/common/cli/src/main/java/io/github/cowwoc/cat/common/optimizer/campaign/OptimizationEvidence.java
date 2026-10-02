@@ -16,11 +16,12 @@ import java.util.HashMap;
  * @param authors the retained author diagnoses
  * @param removed the hunks removed from promoted attempts
  * @param promptSizes measured prompt sizes by snapshot
- * @param trialInputs completed trial input observations by snapshot and cell
+ * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
  * @param attempts retained original promotion results in launch order
  */
 public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
-	Map<Sha256, PromptSize> promptSizes, Map<Sha256, Map<String, TrialInputs>> trialInputs,
+	Map<Sha256, PromptSize> promptSizes,
+	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
 	List<AttemptResult> attempts)
 {
 	/**
@@ -34,7 +35,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	 * @param authors the retained author diagnoses
 	 * @param removed the removed hunks
 	 * @param promptSizes measured prompt sizes by snapshot
-	 * @param trialInputs completed trial input observations by snapshot and cell
+	 * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
 	 * @param attempts retained original promotion results in launch order
 	 * @throws NullPointerException if an argument or element is null
 	 */
@@ -43,9 +44,14 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		authors = List.copyOf(authors);
 		removed = List.copyOf(removed);
 		promptSizes = Map.copyOf(promptSizes);
-		Map<Sha256, Map<String, TrialInputs>> copied = new HashMap<>();
-		for (Map.Entry<Sha256, Map<String, TrialInputs>> entry : trialInputs.entrySet())
-			copied.put(entry.getKey(), Map.copyOf(entry.getValue()));
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> copied = new HashMap<>();
+		for (Map.Entry<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> identity : trialInputs.entrySet())
+		{
+			Map<Sha256, Map<String, TrialInputs>> snapshots = new HashMap<>();
+			for (Map.Entry<Sha256, Map<String, TrialInputs>> entry : identity.getValue().entrySet())
+				snapshots.put(entry.getKey(), Map.copyOf(entry.getValue()));
+			copied.put(identity.getKey(), Map.copyOf(snapshots));
+		}
 		trialInputs = Map.copyOf(copied);
 		attempts = List.copyOf(attempts);
 	}
@@ -59,7 +65,8 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	 * @param trialInputs the trial observations
 	 */
 	public OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
-		Map<Sha256, PromptSize> promptSizes, Map<Sha256, Map<String, TrialInputs>> trialInputs)
+		Map<Sha256, PromptSize> promptSizes,
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs)
 	{
 		this(authors, removed, promptSizes, trialInputs, List.of());
 	}
@@ -67,21 +74,26 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	/**
 	 * Records one completed trial's input usage without changing compliance evidence.
 	 *
-	 * @param snapshot the trial snapshot
-	 * @param cell the trial cell
+	 * @param identity the observed conditions under which the tokens were measured
+	 * @param snapshot the trial prompt-system snapshot
+	 * @param cell the non-blank trial cell identifier
 	 * @param input the input tokens, or {@code null} when unavailable
 	 * @return the updated descriptive evidence
-	 * @throws NullPointerException if snapshot or cell is null
-	 * @throws IllegalArgumentException if input is negative or cell is blank
+	 * @throws NullPointerException if {@code identity}, {@code snapshot} or {@code cell} are null
+	 * @throws IllegalArgumentException if {@code input} is negative or {@code cell} is blank
 	 */
-	public OptimizationEvidence addTrial(Sha256 snapshot, String cell, Long input)
+	public OptimizationEvidence addTrial(MeasurementIdentity identity, Sha256 snapshot, String cell, Long input)
 	{
+		requireThat(identity, "identity").isNotNull();
 		requireThat(snapshot, "snapshot").isNotNull();
 		requireThat(cell, "cell").isNotBlank();
-		Map<Sha256, Map<String, TrialInputs>> updated = new HashMap<>(trialInputs);
-		Map<String, TrialInputs> cells = new HashMap<>(trialInputs.getOrDefault(snapshot, Map.of()));
+
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> updated = new HashMap<>(trialInputs);
+		Map<Sha256, Map<String, TrialInputs>> snapshots = new HashMap<>(trialInputs.getOrDefault(identity, Map.of()));
+		Map<String, TrialInputs> cells = new HashMap<>(snapshots.getOrDefault(snapshot, Map.of()));
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
-		updated.put(snapshot, cells);
+		snapshots.put(snapshot, cells);
+		updated.put(identity, snapshots);
 		return new OptimizationEvidence(authors, removed, promptSizes, updated, attempts);
 	}
 }

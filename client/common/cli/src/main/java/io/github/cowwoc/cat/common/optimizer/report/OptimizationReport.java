@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
@@ -120,15 +121,29 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		List<InputComparison> comparisons = new ArrayList<>();
 		if (campaign.isConfirmed())
 		{
+			Comparability comparability = Comparability.of(campaign.identity(), campaign.baseline().identity());
 			for (Cell cell : campaign.contract().cells())
 			{
-				TrialInputs workingInputs = evidence.trialInputs().getOrDefault(working, Map.of()).
+				TrialInputs workingInputs = evidence.trialInputs().getOrDefault(campaign.identity(), Map.of()).
+					getOrDefault(working, Map.of()).
 					getOrDefault(cell.id(), TrialInputs.EMPTY);
-				TrialInputs incumbentInputs = evidence.trialInputs().getOrDefault(incumbent, Map.of()).
+				TrialInputs incumbentInputs = evidence.trialInputs().getOrDefault(campaign.baseline().identity(), Map.of()).
+					getOrDefault(incumbent, Map.of()).
 					getOrDefault(cell.id(), TrialInputs.EMPTY);
-				comparisons.add(new InputComparison(cell.id(), median(workingInputs), median(incumbentInputs),
+
+				Long workingMedian = null;
+				Long incumbentMedian = null;
+				String unavailable = comparability.unavailable();
+				if (comparability.isComparable())
+				{
+					workingMedian = median(workingInputs);
+					incumbentMedian = median(incumbentInputs);
+					unavailable = unavailable(workingInputs, incumbentInputs);
+				}
+
+				comparisons.add(new InputComparison(cell.id(), workingMedian, incumbentMedian,
 					workingInputs.outcomes(), incumbentInputs.outcomes(), workingInputs.tokens().size(),
-					incumbentInputs.tokens().size(), unavailable(workingInputs, incumbentInputs)));
+					incumbentInputs.tokens().size(), unavailable));
 			}
 		}
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),

@@ -30,10 +30,10 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Indicates whether an attempt qualifies to be kept without certification: it ended without certification or
-	 * invalid statistical assumptions under the current contract revision, some cell is proven better, none is proven
+	 * Indicates whether an attempt qualifies to be kept without certification: it ended under the current contract
+	 * revision with neither certification nor invalid statistical assumptions, some cell is proven better, none is proven
 	 * worse, and each cell not proven better is certified or has at least {@value #REGRESSION_CHECK_OUTCOMES} counted
-	 * outcomes.
+	 * outcomes. The attempt and the frozen incumbent baseline must record every required condition with equal values.
 	 *
 	 * @param attempt the attempt
 	 * @param currentLineage the current contract revision's number, which an eligible attempt must match
@@ -44,11 +44,22 @@ public final class KeepImprovement
 	{
 		requireThat(attempt, "attempt").isNotNull();
 		Outcome outcome = attempt.outcome();
-		if (attempt.lineage() != currentLineage || outcome == null || outcome == Outcome.CERTIFIED ||
-			outcome == Outcome.INVALID_STATISTICAL_ASSUMPTIONS)
+		if (attempt.lineage() != currentLineage || outcome == null)
 		{
 			return false;
 		}
+		switch (outcome)
+		{
+			case CERTIFIED, INVALID_STATISTICAL_ASSUMPTIONS ->
+			{
+				return false;
+			}
+			default ->
+			{
+			}
+		}
+		if (!Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable())
+			return false;
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		boolean provenBetter = false;
 		for (String category : attempt.procedure().categories())

@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
@@ -182,11 +183,42 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON);
 			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(),
 				Map.of(CampaignBuilder.INCUMBENT, new PromptSize(4L, 1L, null)),
-				Map.of(CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L)))));
+				Map.of(CampaignBuilder.confirmedIdentity("model-a"),
+					Map.of(CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L))))));
 			Campaign campaign = new CampaignBuilder().confirmed().optimization(evidence).build();
 			store.replaceSnapshot(campaign);
 			requireThat(store.load(campaign.header().id()).orElseThrow().optimization(), "measurements").
 				isEqualTo(evidence);
+		}
+	}
+
+	/**
+	 * Verifies that reload preserves the identities of baseline counts, frozen bounds, and separate token samples.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void preservesComparisonIdentities() throws IOException
+	{
+		// Requirement: R-M4, R-L5
+		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a");
+		MeasurementIdentity current = CampaignBuilder.confirmedIdentity("model-b");
+		OptimizationEvidence evidence = OptimizationEvidence.EMPTY.
+			addTrial(earlier, CampaignBuilder.INCUMBENT, "safety", 10L).
+			addTrial(current, CampaignBuilder.INCUMBENT, "safety", 100L);
+		Campaign campaign = new CampaignBuilder().confirmed().identity(current).baselineIdentity(earlier).
+			readyBaseline().optimization(evidence).certificationAttempt(1).baselineIdentity(earlier).
+			category("safety", 100, 0).build();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("comparison-identities")),
+				JSON);
+			store.replaceSnapshot(campaign);
+			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
+			requireThat(loaded.baseline().identity(), "baselineIdentity").isEqualTo(earlier);
+			requireThat(loaded.attempt(1).procedure().baselineIdentity(), "frozenBaselineIdentity").isEqualTo(earlier);
+			requireThat(loaded.identity(), "currentIdentity").isEqualTo(current);
+			requireThat(loaded.optimization(), "tokenEvidence").isEqualTo(evidence);
 		}
 	}
 
@@ -215,11 +247,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", running.identity(), 0L));
 			reconcile(new FileCampaignStore(base, JSON));
 			Campaign recovered = store.load(ID).orElseThrow();
-			TrialInputs inputs = recovered.optimization().trialInputs().get(trial.key().snapshot()).get("safety");
+			TrialInputs inputs = recovered.optimization().trialInputs().get(recovered.identity()).
+				get(trial.key().snapshot()).get("safety");
 			requireThat(inputs, "inputs").isEqualTo(new TrialInputs(1, List.of(0L)));
 			reconcile(new FileCampaignStore(base, JSON));
-			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(trial.key().snapshot()).
-				get("safety"), "inputs").isEqualTo(inputs);
+			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(recovered.identity()).
+				get(trial.key().snapshot()).get("safety"), "inputs").isEqualTo(inputs);
 		}
 	}
 
@@ -432,10 +465,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(5);
+					"recordVersion").isEqualTo(6);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(5);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(6);
 		}
 	}
 
@@ -457,6 +490,29 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 4);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			store.load(ID);
+		}
+	}
+
+	/**
+	 * Verifies that a campaign without measurement identities for comparison evidence is refused.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 5 campaign.*[Ss]tart a new campaign.*")
+	public void refusesUnidentifiedComparisonFormat() throws IOException
+	{
+		// Requirement: R-M4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-unidentified-format"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 5);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 			store.load(ID);
 		}
@@ -591,7 +647,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 6);
+			root.put("format_version", 7);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

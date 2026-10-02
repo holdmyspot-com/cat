@@ -61,6 +61,7 @@ public final class CampaignBuilder
 	private boolean widened;
 	private final Set<String> failedCells = new LinkedHashSet<>();
 	private int baselineIndex = 1;
+	private MeasurementIdentity baselineIdentity;
 	private final Map<String, CategoryCounts> baseline = new LinkedHashMap<>();
 	private final List<AttemptBuilder> attempts = new ArrayList<>();
 	private final List<LogicalTrial> trials = new ArrayList<>();
@@ -462,6 +463,18 @@ public final class CampaignBuilder
 	}
 
 	/**
+	 * Sets the incumbent baseline's measurement conditions, overriding the current identity used by default.
+	 *
+	 * @param value the conditions under which the baseline was measured
+	 * @return this builder
+	 */
+	public CampaignBuilder baselineIdentity(MeasurementIdentity value)
+	{
+		this.baselineIdentity = value;
+		return this;
+	}
+
+	/**
 	 * Sets a cell's baseline counts.
 	 *
 	 * @param category the cell identifier
@@ -678,7 +691,10 @@ public final class CampaignBuilder
 			for (int number = 1; number < lineage; ++number)
 				lineages.add(lineage(number, List.of(), Set.of()));
 			lineages.add(lineage(lineage, regressionSet, unavailable));
-			incumbentBaseline = new IncumbentBaseline(baselineIndex, baseline);
+			MeasurementIdentity measuredIdentity = baselineIdentity;
+			if (measuredIdentity == null)
+				measuredIdentity = identity;
+			incumbentBaseline = new IncumbentBaseline(baselineIndex, measuredIdentity, baseline);
 		}
 		Development state = new Development(working, series, development, failures, diagnosis, round, author,
 			reviewPoints, widened);
@@ -716,6 +732,7 @@ public final class CampaignBuilder
 		private Integer attemptLineage;
 		private Candidate candidate;
 		private MeasurementIdentity attemptIdentity;
+		private MeasurementIdentity incumbentIdentity;
 		private DecisionBoundaries boundaries;
 		private Outcome attemptOutcome;
 
@@ -803,6 +820,19 @@ public final class CampaignBuilder
 		}
 
 		/**
+		 * Sets the measurement conditions of the frozen incumbent bounds, overriding the attempt identity used by
+		 * default.
+		 *
+		 * @param value the conditions under which the frozen baseline was measured
+		 * @return this builder
+		 */
+		public AttemptBuilder baselineIdentity(MeasurementIdentity value)
+		{
+			this.incumbentIdentity = value;
+			return this;
+		}
+
+		/**
 		 * Sets the attempt's boundaries.
 		 *
 		 * @param value the boundaries
@@ -857,9 +887,6 @@ public final class CampaignBuilder
 			DecisionBoundaries frozen = boundaries;
 			if (frozen == null)
 				frozen = Boundaries.standard(categories.size());
-			CertificationProcedure procedure = new CertificationProcedure(
-				ErrorBudget.improvementLevel(index, categories.size()), baselineIndex, categories, frozen,
-				CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
 			int number = lineage;
 			if (attemptLineage != null)
 				number = attemptLineage;
@@ -869,6 +896,12 @@ public final class CampaignBuilder
 			MeasurementIdentity frozenIdentity = attemptIdentity;
 			if (frozenIdentity == null)
 				frozenIdentity = identity;
+			MeasurementIdentity frozenBaselineIdentity = incumbentIdentity;
+			if (frozenBaselineIdentity == null)
+				frozenBaselineIdentity = frozenIdentity;
+			CertificationProcedure procedure = new CertificationProcedure(
+				ErrorBudget.improvementLevel(index, categories.size()), baselineIndex, frozenBaselineIdentity,
+				categories, frozen, CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
 			return new CertificationAttempt(index, number, frozenCandidate, frozenIdentity, procedure, counts,
 				attemptFailures, new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true), attemptOutcome);
 		}

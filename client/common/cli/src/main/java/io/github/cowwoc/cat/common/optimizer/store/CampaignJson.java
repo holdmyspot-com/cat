@@ -123,7 +123,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 5;
+	private static final int FORMAT_VERSION = 6;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -173,6 +173,7 @@ final class CampaignJson
 		{
 			ObjectNode node = root.putObject("baseline");
 			node.put("index", baseline.index());
+			node.set("identity", writeIdentity(baseline.identity()));
 			node.set("counts", writeCounts(baseline.counts()));
 		}
 		ArrayNode attempts = root.putArray("attempts");
@@ -241,7 +242,7 @@ final class CampaignJson
 		if (baselineNode != null)
 		{
 			baseline = new IncumbentBaseline(integer(baselineNode, "index"),
-				readCounts(field(baselineNode, "counts")));
+				readIdentity(field(baselineNode, "identity")), readCounts(field(baselineNode, "counts")));
 		}
 		List<CertificationAttempt> attempts = new ArrayList<>();
 		for (JsonNode node : elements(root, "attempts"))
@@ -328,17 +329,24 @@ final class CampaignJson
 			size.put("words", entry.getValue().words());
 			size.put("unavailable", entry.getValue().unavailable());
 		}
-		ObjectNode inputs = node.putObject("trial_inputs");
-		for (Map.Entry<Sha256, Map<String, TrialInputs>> snapshot : orderedSnapshots(evidence.trialInputs()).entrySet())
+		ArrayNode inputs = node.putArray("trial_inputs");
+		for (Map.Entry<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> identity :
+			evidence.trialInputs().entrySet())
 		{
-			ObjectNode cells = inputs.putObject(snapshot.getKey().hex());
-			for (Map.Entry<String, TrialInputs> entry : new TreeMap<>(snapshot.getValue()).entrySet())
+			ObjectNode observation = inputs.addObject();
+			observation.set("identity", writeIdentity(identity.getKey()));
+			ObjectNode snapshots = observation.putObject("snapshots");
+			for (Map.Entry<Sha256, Map<String, TrialInputs>> snapshot : orderedSnapshots(identity.getValue()).entrySet())
 			{
-				ObjectNode cell = cells.putObject(entry.getKey());
-				cell.put("outcomes", entry.getValue().outcomes());
-				ArrayNode tokens = cell.putArray("tokens");
-				for (long token : entry.getValue().tokens())
-					tokens.add(token);
+				ObjectNode cells = snapshots.putObject(snapshot.getKey().hex());
+				for (Map.Entry<String, TrialInputs> entry : new TreeMap<>(snapshot.getValue()).entrySet())
+				{
+					ObjectNode cell = cells.putObject(entry.getKey());
+					cell.put("outcomes", entry.getValue().outcomes());
+					ArrayNode tokens = cell.putArray("tokens");
+					for (long token : entry.getValue().tokens())
+						tokens.add(token);
+				}
 			}
 		}
 		ArrayNode results = node.putArray("attempts");
@@ -382,19 +390,24 @@ final class CampaignJson
 			sizes.put(new Sha256(entry.getKey()), new PromptSize(nullableLong(size, "bytes"),
 				nullableLong(size, "words"), nullableText(size, "unavailable")));
 		}
-		Map<Sha256, Map<String, TrialInputs>> inputs = new HashMap<>();
-		for (Entry<String, JsonNode> snapshot : object(node, "trial_inputs").properties())
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> inputs = new HashMap<>();
+		for (JsonNode observation : elements(node, "trial_inputs"))
 		{
-			requireThat(snapshot.getValue().isObject(), "trial_inputs").isTrue();
-			Map<String, TrialInputs> cells = new HashMap<>();
-			for (Entry<String, JsonNode> entry : snapshot.getValue().properties())
+			Map<Sha256, Map<String, TrialInputs>> snapshots = new HashMap<>();
+			for (Entry<String, JsonNode> snapshot : object(observation, "snapshots").properties())
 			{
-				List<Long> tokens = new ArrayList<>();
-				for (JsonNode token : elements(entry.getValue(), "tokens"))
-					tokens.add(longValue(token, "token"));
-				cells.put(entry.getKey(), new TrialInputs(longInteger(entry.getValue(), "outcomes"), tokens));
+				requireThat(snapshot.getValue().isObject(), "trial_inputs").isTrue();
+				Map<String, TrialInputs> cells = new HashMap<>();
+				for (Entry<String, JsonNode> entry : snapshot.getValue().properties())
+				{
+					List<Long> tokens = new ArrayList<>();
+					for (JsonNode token : elements(entry.getValue(), "tokens"))
+						tokens.add(longValue(token, "token"));
+					cells.put(entry.getKey(), new TrialInputs(longInteger(entry.getValue(), "outcomes"), tokens));
+				}
+				snapshots.put(new Sha256(snapshot.getKey()), cells);
 			}
-			inputs.put(new Sha256(snapshot.getKey()), cells);
+			inputs.put(readIdentity(field(observation, "identity")), snapshots);
 		}
 		List<AttemptResult> results = new ArrayList<>();
 		for (JsonNode attempt : elements(node, "attempts"))
@@ -899,6 +912,7 @@ final class CampaignJson
 		ObjectNode procedureNode = node.putObject("procedure");
 		procedureNode.put("improvement_level", procedure.improvementLevel().threshold().toString());
 		procedureNode.put("baseline_index", procedure.baselineIndex());
+		procedureNode.set("baseline_identity", writeIdentity(procedure.baselineIdentity()));
 		ArrayNode cells = procedureNode.putArray("cells");
 		for (String cell : procedure.categories())
 			cells.add(cell);
@@ -925,7 +939,8 @@ final class CampaignJson
 		for (JsonNode cell : elements(procedureNode, "cells"))
 			cellIds.add(stringValue(cell, "cells"));
 		CertificationProcedure procedure = new CertificationProcedure(level(procedureNode, "improvement_level"),
-			integer(procedureNode, "baseline_index"), cellIds, readBoundaries(field(procedureNode, "boundaries")),
+			integer(procedureNode, "baseline_index"), readIdentity(field(procedureNode, "baseline_identity")), cellIds,
+			readBoundaries(field(procedureNode, "boundaries")),
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,

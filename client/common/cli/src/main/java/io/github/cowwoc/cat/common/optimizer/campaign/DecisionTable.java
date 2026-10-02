@@ -195,7 +195,7 @@ public final class DecisionTable
 	 *
 	 * @param attempt the attempt
 	 * @param category the identifier of the cell whose formal counts are compared
-	 * @return {@code true} if the cell is proven better
+	 * @return {@code true} if the measurement conditions are comparable and the cell is proven better
 	 * @throws NullPointerException if {@code attempt} or {@code category} are null
 	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
 	 */
@@ -204,7 +204,9 @@ public final class DecisionTable
 		requireThat(attempt, "attempt").isNotNull();
 		requireThat(category, "category").isNotNull();
 		CategoryCounts counts = attempt.count(category);
-		return comparison(attempt, category).isProvenBetter(counts.passes(), counts.failures());
+		ComparisonBoundaries comparison = comparison(attempt, category);
+		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&
+			comparison.isProvenBetter(counts.passes(), counts.failures());
 	}
 
 	/**
@@ -213,7 +215,7 @@ public final class DecisionTable
 	 *
 	 * @param attempt the attempt
 	 * @param category the identifier of the cell whose formal counts are compared
-	 * @return {@code true} if the cell is proven worse
+	 * @return {@code true} if the measurement conditions are comparable and the cell is proven worse
 	 * @throws NullPointerException if {@code attempt} or {@code category} are null
 	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
 	 */
@@ -222,7 +224,9 @@ public final class DecisionTable
 		requireThat(attempt, "attempt").isNotNull();
 		requireThat(category, "category").isNotNull();
 		CategoryCounts counts = attempt.count(category);
-		return comparison(attempt, category).isProvenWorse(counts.passes(), counts.failures());
+		ComparisonBoundaries comparison = comparison(attempt, category);
+		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&
+			comparison.isProvenWorse(counts.passes(), counts.failures());
 	}
 
 	/**

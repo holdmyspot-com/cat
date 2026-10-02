@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.ImprovementOffer;
@@ -555,6 +556,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		for (ImprovementOffer offer : KeepImprovement.offers(campaign))
 		{
 			CertificationAttempt attempt = campaign.attempt(offer.attempt());
+			if (!Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable())
+				continue;
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
 			double weakest = 1.0;
 			List<KeepOffer.CellEvidence> cells = new ArrayList<>();

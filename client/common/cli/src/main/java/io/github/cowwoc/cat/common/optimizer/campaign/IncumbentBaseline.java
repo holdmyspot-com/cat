@@ -10,21 +10,24 @@ import java.util.Map;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param index the baseline's number within the campaign, from 1
+ * @param identity the conditions under which the incumbent outcomes were measured
  * @param counts the incumbent's sampled outcomes included in evidence per cell (category and trial profile)
  */
-public record IncumbentBaseline(int index, Map<String, CategoryCounts> counts)
+public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<String, CategoryCounts> counts)
 {
 	/**
 	 * Creates a baseline.
 	 *
 	 * @param index the baseline's number within the campaign, from 1
+	 * @param identity the conditions under which the incumbent outcomes were measured
 	 * @param counts the incumbent's sampled outcomes included in evidence per cell (category and trial profile)
-	 * @throws NullPointerException if {@code counts} is null
+	 * @throws NullPointerException if {@code identity} or {@code counts} are null
 	 * @throws IllegalArgumentException if {@code index} is not positive
 	 */
 	public IncumbentBaseline
 	{
 		requireThat(index, "index").isPositive();
+		requireThat(identity, "identity").isNotNull();
 		requireThat(counts, "counts").isNotNull();
 		counts = Map.copyOf(counts);
 	}

@@ -161,7 +161,7 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * @return the cell's value, the campaign-wide value if the cell records none, or {@code null} if neither is
 	 *   recorded
 	 */
-	private String valueOf(String cell, MeasurementCondition condition)
+	String valueOf(String cell, MeasurementCondition condition)
 	{
 		return cells.getOrDefault(cell, Map.of()).getOrDefault(condition, values.get(condition));
 	}

@@ -2,20 +2,24 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Whether two observations record equal measurement conditions, and which conditions prevent comparison.
  * <p>
  * Compares campaign-wide values and values for the same cell, the requirement category under a runner profile.
- * A cell uses its recorded value when present, otherwise the campaign-wide value. A condition absent from both
- * observations does not block comparison.
+ * A cell uses its recorded value when present, otherwise the campaign-wide value. Every required condition must be
+ * recorded in both observations, including conditions absent from both.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param status whether the observations are comparable
  * @param differing the conditions with different recorded values campaign-wide or for the same cell
- * @param missing the conditions recorded by only one observation campaign-wide or for the same cell
+ * @param missing the conditions missing from either observation campaign-wide or for the same cell
  */
 public record Comparability(Status status, List<MeasurementCondition> differing, List<MeasurementCondition> missing)
 {
@@ -25,7 +29,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	public enum Status
 	{
 		/**
-		 * The recorded conditions are equal; no compared condition is recorded by only one observation.
+		 * Every required condition is recorded and equal.
 		 */
 		COMPARABLE,
 		/**
@@ -33,7 +37,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 		 */
 		NOT_COMPARABLE,
 		/**
-		 * No recorded condition differs, but some is recorded by only one observation; comparison is unavailable.
+		 * Some required condition is missing from either observation; comparison is unavailable.
 		 */
 		INDETERMINATE
 	}
@@ -43,7 +47,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	 *
 	 * @param status whether the observations are comparable
 	 * @param differing the conditions with different recorded values campaign-wide or for the same cell
-	 * @param missing the conditions recorded by only one observation campaign-wide or for the same cell
+	 * @param missing the conditions missing from either observation campaign-wide or for the same cell
 	 * @throws NullPointerException if any argument is null or either list contains null
 	 */
 	public Comparability
@@ -68,14 +72,14 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 		requireThat(first, "first").isNotNull();
 		requireThat(second, "second").isNotNull();
 		List<MeasurementCondition> differing = first.differences(second);
-		List<MeasurementCondition> missing = first.missing(second);
+		List<MeasurementCondition> missing = findMissing(first, second);
 		Status status;
-		if (!differing.isEmpty())
-			status = Status.NOT_COMPARABLE;
-		else if (missing.isEmpty())
-			status = Status.COMPARABLE;
-		else
+		if (!missing.isEmpty())
 			status = Status.INDETERMINATE;
+		else if (!differing.isEmpty())
+			status = Status.NOT_COMPARABLE;
+		else
+			status = Status.COMPARABLE;
 		return new Comparability(status, differing, missing);
 	}
 
@@ -87,5 +91,52 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	public boolean isComparable()
 	{
 		return status == Status.COMPARABLE;
+	}
+
+	/**
+	 * Returns the unavailable comparison's status and conditions, or {@code null} when comparison is available.
+	 *
+	 * @return the status and conditions that prevent comparison, or {@code null}
+	 */
+	public String unavailable()
+	{
+		if (isComparable())
+			return null;
+		Set<MeasurementCondition> conditions = EnumSet.noneOf(MeasurementCondition.class);
+		conditions.addAll(differing);
+		conditions.addAll(missing);
+		return status + ": " + conditions;
+	}
+
+	/**
+	 * Returns required conditions absent from either observation, using campaign-wide values for cells that
+	 * record none of their own.
+	 *
+	 * @param first the first observation
+	 * @param second the second observation
+	 * @return missing conditions in declaration order
+	 */
+	private static List<MeasurementCondition> findMissing(MeasurementIdentity first, MeasurementIdentity second)
+	{
+		Set<String> cells = new HashSet<>(first.cells().keySet());
+		cells.addAll(second.cells().keySet());
+		List<MeasurementCondition> missing = new ArrayList<>();
+		for (MeasurementCondition condition : MeasurementCondition.values())
+		{
+			boolean absent = false;
+			if (cells.isEmpty())
+				absent = first.values().get(condition) == null || second.values().get(condition) == null;
+			for (String cell : cells)
+			{
+				if (first.valueOf(cell, condition) == null || second.valueOf(cell, condition) == null)
+				{
+					absent = true;
+					break;
+				}
+			}
+			if (absent)
+				missing.add(condition);
+		}
+		return missing;
 	}
 }

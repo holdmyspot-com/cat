@@ -150,6 +150,54 @@ public final class DecisionTableTest
 	}
 
 	/**
+	 * Verifies that missing measurement conditions make both improvement decisions unavailable, even when the
+	 * frozen count boundaries would otherwise prove a difference.
+	 */
+	@Test
+	public void missingConditionsBlockProofs()
+	{
+		// Requirement: R-M4, R-F6
+		CertificationAttempt better = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).category("formatting", 60, 0).build().attempt(1);
+		CertificationAttempt worse = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).category("formatting", 0, 4).build().attempt(1);
+
+		requireThat(DecisionTable.isProvenBetter(better, "formatting"), "better").isFalse();
+		requireThat(DecisionTable.isProvenWorse(worse, "formatting"), "worse").isFalse();
+	}
+
+	/**
+	 * Verifies that a model differing from the frozen incumbent's model cannot prove a candidate better.
+	 */
+	@Test
+	public void differingConditionsBlockBetter()
+	{
+		// Requirement: R-M4, R-F6
+		CertificationAttempt attempt = new CampaignBuilder().confirmed().certificationAttempt(1).
+			baselineIdentity(CampaignBuilder.confirmedIdentity("model-b")).category("formatting", 60, 0).
+			build().attempt(1);
+
+		requireThat(DecisionTable.isProvenBetter(attempt, "formatting"), "better").isFalse();
+	}
+
+	/**
+	 * Verifies that differing or missing incumbent measurement conditions cannot prove a candidate worse.
+	 */
+	@Test
+	public void unavailableConditionsBlockWorse()
+	{
+		// Requirement: R-M4, R-F6
+		CertificationAttempt differing = new CampaignBuilder().confirmed().certificationAttempt(1).
+			baselineIdentity(CampaignBuilder.confirmedIdentity("model-b")).category("formatting", 0, 4).
+			build().attempt(1);
+		CertificationAttempt missing = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).category("formatting", 0, 4).build().attempt(1);
+
+		requireThat(DecisionTable.isProvenWorse(differing, "formatting"), "differing").isFalse();
+		requireThat(DecisionTable.isProvenWorse(missing, "formatting"), "missing").isFalse();
+	}
+
+	/**
 	 * Returns each attempt decision with each keep-improvement qualification and the expected action.
 	 *
 	 * @return the rows

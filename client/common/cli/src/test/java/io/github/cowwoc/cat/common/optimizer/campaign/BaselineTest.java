@@ -69,16 +69,51 @@ public final class BaselineTest
 	public void metWhenEveryCategoryReachesTarget()
 	{
 		// Requirement: R-D7
-		requireThat(Baseline.isMet(new IncumbentBaseline(1, Map.of("formatting", counts(50, 0), "safety",
+		MeasurementIdentity identity = CampaignBuilder.confirmedIdentity("model-a");
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
 			counts(50, 0))), ContractFixtures.contract()), "both").isTrue();
-		requireThat(Baseline.isMet(new IncumbentBaseline(1, Map.of("formatting", counts(50, 0), "safety",
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
 			counts(49, 0))), ContractFixtures.contract()), "short").isFalse();
-		requireThat(Baseline.isMet(new IncumbentBaseline(1, Map.of("formatting", counts(50, 0))),
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0))),
 			ContractFixtures.contract()), "missing").isFalse();
-		requireThat(Baseline.isMet(new IncumbentBaseline(1, Map.of("formatting", counts(50, 0), "safety",
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
 			counts(95, 5))), ContractFixtures.contract()), "extendedMet").isTrue();
-		requireThat(Baseline.isMet(new IncumbentBaseline(1, Map.of("formatting", counts(50, 0), "safety",
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
 			counts(94, 5))), ContractFixtures.contract()), "extendedShort").isFalse();
+	}
+
+	/**
+	 * Verifies that an incumbent baseline trial supplies its observed measurement identity to the baseline evidence.
+	 */
+	@Test
+	public void baselineTrialRecordsIdentity()
+	{
+		// Requirement: R-M4, R-D7
+		Campaign campaign = new CampaignBuilder().confirmed().working(1).
+			baselineIdentity(MeasurementIdentity.EMPTY).build();
+		MeasurementIdentity observed = campaign.identity();
+		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "formatting", Verdict.PASS);
+
+		requireThat(campaign.baseline().identity(), "baselineIdentity").isEqualTo(observed);
+	}
+
+	/**
+	 * Verifies that incumbent development trials supply measurement conditions to their shared baseline, while a
+	 * promoted candidate's development trials do not fill missing incumbent conditions.
+	 */
+	@Test
+	public void developmentKeepsBaselineIdentity()
+	{
+		// Requirement: R-M4, R-D7
+		Campaign incumbent = new CampaignBuilder().confirmed().baselineIdentity(MeasurementIdentity.EMPTY).build();
+		MeasurementIdentity observed = incumbent.identity();
+		incumbent = TransitionSteps.adopt(incumbent, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
+		Campaign candidate = new CampaignBuilder().confirmed().working(1).
+			baselineIdentity(MeasurementIdentity.EMPTY).build();
+		candidate = TransitionSteps.adopt(candidate, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
+
+		requireThat(incumbent.baseline().identity(), "incumbentBaseline").isEqualTo(observed);
+		requireThat(candidate.baseline().identity(), "candidateBaseline").isEqualTo(MeasurementIdentity.EMPTY);
 	}
 
 	/**

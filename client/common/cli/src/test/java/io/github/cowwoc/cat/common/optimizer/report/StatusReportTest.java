@@ -49,6 +49,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -226,8 +227,9 @@ public final class StatusReportTest
 	{
 		// Requirement: R-E18
 		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
-			CampaignBuilder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(5, List.of(100L, 10L, 50L, 30L))),
-			CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(100L, 0L)))));
+			CampaignBuilder.confirmedIdentity("model-a"), Map.of(
+				CampaignBuilder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(5, List.of(100L, 10L, 50L, 30L))),
+				CampaignBuilder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(100L, 0L))))));
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).optimization(evidence).build();
 		JsonNode cells = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
 			get("trial_input_tokens");
@@ -333,6 +335,99 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that missing measurement data makes development improvement unavailable.
+	 */
+	@Test
+	public void developmentNeedsCompleteConditions()
+	{
+		// Requirement: R-M4, R-P1
+		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
+			development("formatting", 90, 10).build();
+		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
+			"formatting").improvement();
+		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("INDETERMINATE").
+			contains("HOST_TOOLS");
+		requireThat(improvement.points(), "points").isNull();
+		requireThat(improvement.difference(), "difference").isNull();
+	}
+
+	/**
+	 * Verifies that missing measurement data makes formal improvement unavailable without hiding certification.
+	 */
+	@Test
+	public void formalNeedsCompleteConditions()
+	{
+		// Requirement: R-M4, R-P1
+		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
+			boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
+			category("safety", 60, 1).build();
+		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
+		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("INDETERMINATE").
+			contains("HOST_TOOLS");
+		requireThat(formatting.improvement().state(), "state").isNull();
+		requireThat(formatting.improvement().difference(), "difference").isNull();
+		requireThat(formatting.comparison().state(), "certification").isEqualTo("certified");
+	}
+
+	/**
+	 * Verifies that an incomplete identity cannot produce a keep-improvement offer from frozen bounds.
+	 */
+	@Test
+	public void incompleteAttemptHasNoKeepOffer()
+	{
+		// Requirement: R-M4, R-F6
+		Map<MeasurementCondition, String> values = new EnumMap<>(CampaignBuilder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
+			boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
+			category("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).build();
+		requireThat(StatusReport.of(campaign, ReportEvidence.NONE).keepOffers(), "offers").isEmpty();
+	}
+
+	/**
+	 * Verifies that every differing baseline condition is named instead of a development comparison.
+	 */
+	@Test
+	public void developmentNamesDifferentConditions()
+	{
+		// Requirement: R-M4, R-P1
+		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a").replaceWith(
+			new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "earlier-judge")));
+		Campaign campaign = confirmed().identity(CampaignBuilder.confirmedIdentity("model-b")).
+			baselineIdentity(earlier).development("formatting", 90, 10).build();
+		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
+			"formatting").improvement();
+		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("NOT_COMPARABLE").
+			contains("JUDGE").contains("MODEL");
+		requireThat(improvement.points(), "points").isNull();
+		requireThat(improvement.difference(), "difference").isNull();
+	}
+
+	/**
+	 * Verifies that every differing condition of frozen incumbent bounds is named instead of a formal comparison.
+	 */
+	@Test
+	public void formalNamesDifferentConditions()
+	{
+		// Requirement: R-M4, R-P1
+		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a").replaceWith(
+			new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "earlier-judge")));
+		Campaign campaign = confirmed().certificationAttempt(1).identity(CampaignBuilder.confirmedIdentity("model-b")).
+			baselineIdentity(earlier).boundaries(ReportBoundaries.boundaries()).category("formatting", 120, 0).
+			category("safety", 60, 1).build();
+		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
+		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("NOT_COMPARABLE").
+			contains("JUDGE").contains("MODEL");
+		requireThat(formatting.improvement().state(), "state").isNull();
+		requireThat(formatting.improvement().difference(), "difference").isNull();
+		requireThat(formatting.comparison().state(), "certification").isEqualTo("certified");
+	}
+
+	/**
 	 * Verifies that every output that cannot be shown carries its reason.
 	 */
 	@Test
@@ -433,7 +528,8 @@ public final class StatusReportTest
 			category("formatting", 120, 0).category("safety", 120, 0).build();
 		Campaign campaign = new Campaign(frozen.header(), frozen.ceiling(), frozen.lineages(), frozen.identity(),
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
-			frozen.failedCells(), new IncumbentBaseline(2, frozen.baseline().counts()), frozen.attempts(),
+			frozen.failedCells(), new IncumbentBaseline(2, frozen.baseline().identity(), frozen.baseline().counts()),
+			frozen.attempts(),
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),

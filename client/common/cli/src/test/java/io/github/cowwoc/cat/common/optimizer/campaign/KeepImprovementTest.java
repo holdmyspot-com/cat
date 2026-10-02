@@ -66,6 +66,24 @@ public final class KeepImprovementTest
 	}
 
 	/**
+	 * Verifies that equal incomplete measurement identities do not qualify or enter the ranking of improvement
+	 * offers, even when the formal counts otherwise satisfy every improvement condition.
+	 */
+	@Test
+	public void incompleteIdentitiesAreExcluded()
+	{
+		// Requirement: R-M4, R-F6
+		Campaign campaign = new CampaignBuilder().confirmed().identity(MeasurementIdentity.EMPTY).
+			certificationAttempt(1).boundaries(boundaries()).category("formatting", 60, 0).
+			category("safety", 100, 0).outcome(Outcome.INCONCLUSIVE).campaign().certificationAttempt(2).
+			boundaries(boundaries()).category("formatting", 200, 0).category("safety", 200, 0).
+			outcome(Outcome.INCONCLUSIVE).build();
+
+		requireThat(KeepImprovement.qualifies(campaign.attempt(1), 1), "qualifies").isFalse();
+		requireThat(KeepImprovement.offers(campaign), "offers").isEmpty();
+	}
+
+	/**
 	 * Verifies that an attempt with a category proven worse does not qualify.
 	 */
 	@Test
@@ -191,7 +209,7 @@ public final class KeepImprovementTest
 	@Test
 	public void identitiesAreOfferedSeparately()
 	{
-		// Requirement: R-F6
+		// Requirement: R-F6, R-M4
 		MeasurementIdentity earlier = CampaignBuilder.confirmedIdentity("model-a");
 		MeasurementIdentity current = CampaignBuilder.confirmedIdentity("model-b");
 		CampaignBuilder builder = twoAttempts(new int[]{200, 200}, new int[]{60, 100}).identity(

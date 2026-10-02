@@ -12,19 +12,22 @@ import java.util.List;
  * <p>
  * The boundaries use the attempt's certification error limit {@code α_i} and trial cap. Each cell (category and
  * trial profile) is compared with the incumbent's upper and lower compliance bounds, {@code UI(k)} and {@code LI(k)},
- * using the improvement error limit {@code β_i / K}.
+ * using the improvement error limit {@code β_i / K}. A comparison is unavailable unless the attempt and frozen
+ * baseline record every required measurement condition with equal values.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
  * @param baselineIndex the incumbent baseline that the comparisons were frozen from
+ * @param baselineIdentity the measurement conditions of that incumbent baseline
  * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
  * @param boundaries the decision boundaries
  * @param bets the version of the bets and weights
  * @param allocationPolicy the version of the formal allocation policy
  */
-public record CertificationProcedure(SignificanceLevel improvementLevel, int baselineIndex, List<String> categories,
-	DecisionBoundaries boundaries, String bets, String allocationPolicy)
+public record CertificationProcedure(SignificanceLevel improvementLevel, int baselineIndex,
+	MeasurementIdentity baselineIdentity, List<String> categories, DecisionBoundaries boundaries, String bets,
+	String allocationPolicy)
 {
 	/**
 	 * The fixed bets and weights for certification and below-minimum tests.
@@ -42,6 +45,7 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	 *
 	 * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
 	 * @param baselineIndex the incumbent baseline that the comparisons were frozen from
+	 * @param baselineIdentity the measurement conditions of that incumbent baseline
 	 * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
 	 * @param boundaries the decision boundaries
 	 * @param bets the version of the bets and weights
@@ -54,6 +58,7 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	{
 		requireThat(improvementLevel, "improvementLevel").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
+		requireThat(baselineIdentity, "baselineIdentity").isNotNull();
 		requireThat(categories, "categories").isNotEmpty();
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(boundaries.comparisons().size(), "boundaries.comparisons().size()").

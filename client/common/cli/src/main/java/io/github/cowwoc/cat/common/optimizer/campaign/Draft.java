@@ -115,6 +115,10 @@ final class Draft
 	 */
 	int baselineIndex;
 	/**
+	 * The current incumbent baseline's observed measurement conditions.
+	 */
+	MeasurementIdentity baselineIdentity;
+	/**
 	 * The current incumbent baseline's counts per cell.
 	 */
 	Map<String, CategoryCounts> baselineCounts = new LinkedHashMap<>();
@@ -195,6 +199,7 @@ final class Draft
 		if (baseline != null)
 		{
 			baselineIndex = baseline.index();
+			baselineIdentity = baseline.identity();
 			baselineCounts = new LinkedHashMap<>(baseline.counts());
 		}
 		attempts = new ArrayList<>(campaign.attempts());
@@ -348,6 +353,7 @@ final class Draft
 	void startBaseline()
 	{
 		++baselineIndex;
+		baselineIdentity = identity;
 		baselineCounts = new LinkedHashMap<>();
 	}
 
@@ -489,7 +495,7 @@ final class Draft
 		if (!builtLineages.isEmpty())
 		{
 			builtLineages.set(builtLineages.size() - 1, buildCurrentLineage());
-			baseline = new IncumbentBaseline(baselineIndex, baselineCounts);
+			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
 			diagnosis, round, author, reviewPoints, widened);

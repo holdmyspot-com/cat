@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -401,11 +402,20 @@ public final class CampaignTransitions
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
-		draft.optimization = draft.optimization.addTrial(complete.key().snapshot(), complete.key().category(),
-			complete.inputTokens());
+		MeasurementIdentity measured = trial.identity().extendWith(observed);
+		draft.optimization = draft.optimization.addTrial(measured,
+			complete.key().snapshot(), complete.key().category(), complete.inputTokens());
+		boolean measuresIncumbent = switch (trial.key().purpose())
+		{
+			case BASELINE -> true;
+			case DEVELOPMENT -> trial.key().snapshot().equals(draft.incumbent.snapshot());
+			default -> false;
+		};
+		if (measuresIncumbent)
+			draft.baselineIdentity = draft.baselineIdentity.extendWith(measured);
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
-		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity().extendWith(observed),
+		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), measured,
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(),
 			trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations()));
 	}
@@ -598,15 +608,22 @@ public final class CampaignTransitions
 		int categoryCount = categories.size();
 		SignificanceLevel improvementLevel = ErrorBudget.improvementLevel(index, categoryCount);
 		SignificanceLevel incumbentLevel = ErrorBudget.incumbentLevel(draft.baselineIndex, categoryCount);
+		boolean comparable = Comparability.of(draft.identity, draft.baselineIdentity).isComparable();
 		List<Comparison> comparisons = new ArrayList<>();
 		for (String category : categories)
 		{
-			CategoryCounts counts = draft.baselineCounts.getOrDefault(category, CategoryCounts.EMPTY);
-			comparisons.add(Comparison.freeze(counts.passes(), counts.failures(), incumbentLevel, improvementLevel));
+			if (comparable)
+			{
+				CategoryCounts counts = draft.baselineCounts.getOrDefault(category, CategoryCounts.EMPTY);
+				comparisons.add(Comparison.freeze(counts.passes(), counts.failures(), incumbentLevel, improvementLevel));
+			}
+			else
+				comparisons.add(new Comparison(BigDecimal.ONE, BigDecimal.ZERO, improvementLevel));
 		}
 		DecisionBoundaries boundaries = DecisionBoundaries.compute(level, calibration.cap(), comparisons);
 		CertificationProcedure procedure = new CertificationProcedure(improvementLevel, draft.baselineIndex,
-			categories, boundaries, CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
+			draft.baselineIdentity, categories, boundaries, CertificationProcedure.BETS,
+			CertificationProcedure.ALLOCATION_POLICY);
 		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, commit.formalSeed());
 		formal.open();
 		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working, draft.identity,

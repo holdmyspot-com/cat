@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CategoryCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
@@ -118,6 +119,9 @@ final class CellReports
 		if (counts.outcomes() == 0)
 			return CellReport.Improvement.unavailable("The working candidate has no development outcomes.");
 		IncumbentBaseline baseline = campaign.baseline();
+		Comparability comparability = Comparability.of(campaign.identity(), baseline.identity());
+		if (!comparability.isComparable())
+			return CellReport.Improvement.unavailable(comparability.unavailable());
 		CategoryCounts incumbent = baseline.count(cell);
 		if (incumbent.outcomes() == 0)
 			return CellReport.Improvement.unavailable("The incumbent baseline has no outcomes.");
@@ -209,6 +213,9 @@ final class CellReports
 	private static CellReport.Improvement formalImprovement(Campaign campaign, CertificationAttempt attempt,
 		String cell, CategoryCounts counts, ConfidenceBound lower, ConfidenceBound upper)
 	{
+		Comparability comparability = Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity());
+		if (!comparability.isComparable())
+			return CellReport.Improvement.unavailable(comparability.unavailable());
 		ComparisonBoundaries boundaries = comparison(attempt, cell);
 		Comparison frozen = boundaries.comparison();
 		String state = improvementState(boundaries, counts);
@@ -216,7 +223,8 @@ final class CellReports
 		CellReport.IncumbentCounts incumbentCounts = null;
 		String deficiency = null;
 		IncumbentBaseline baseline = campaign.baseline();
-		if (baseline != null && baseline.index() == attempt.procedure().baselineIndex())
+		if (baseline != null && baseline.index() == attempt.procedure().baselineIndex() &&
+			Comparability.of(attempt.identity(), baseline.identity()).isComparable())
 		{
 			CategoryCounts incumbent = baseline.count(cell);
 			incumbentCounts = incumbentCounts(baseline, incumbent);
