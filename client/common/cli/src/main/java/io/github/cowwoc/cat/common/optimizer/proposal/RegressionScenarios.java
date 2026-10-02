@@ -8,8 +8,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -28,6 +31,10 @@ import java.util.stream.Stream;
  */
 public record RegressionScenarios(Path project, List<Scenario> scenarios)
 {
+	private static final String SCENARIO = "scenario.md";
+	private static final Path TEST_RESOURCES = Path.of("src/test/resources");
+	private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
+
 	/**
 	 * One recorded scenario and the guidance whose contract requires it.
 	 *
@@ -71,9 +78,12 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Reads scenarios beside existing project guidance and user rules. Markdown files directly in a guidance's
-	 * scenario directory and {@code scenario.md} files in child directories are scenarios; other nested Markdown
-	 * files may hold their fixtures.
+	 * Reads the scenarios of existing project guidance, user rules and guidance packaged as a module resource.
+	 * <p>
+	 * A {@code .cat/tests} scenario directory holds its scenarios as Markdown files directly in it or as
+	 * {@code scenario.md} files in its child directories. Guidance packaged as a module resource,
+	 * {@code <module>/src/main/resources/<top>/<path>.md}, keeps its scenarios in
+	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold fixtures.
 	 *
 	 * @param project the project root
 	 * @param home the user home resolved at the environment boundary
@@ -89,6 +99,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		Path user = home.toAbsolutePath().normalize();
 		List<Scenario> scenarios = new ArrayList<>();
 		readRoot(root, root, true, scenarios);
+		readModules(root, scenarios);
 		if (!user.equals(root))
 			readRoot(root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
@@ -139,20 +150,106 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	{
 		try (Stream<Path> children = Files.walk(directory))
 		{
+			// A scenario.md deeper than a child directory belongs to the nested guidance that names its parent's parent
 			for (Path file : children.filter(Files::isRegularFile).
 				filter(path -> path.getFileName().toString().endsWith(".md") &&
-					(path.getParent().equals(directory) || path.getFileName().toString().equals("scenario.md"))).
+					(path.getParent().equals(directory) || isCaseScenario(directory, path))).
 				sorted().toList())
 			{
-				String citation;
-				if (file.startsWith(project))
-					citation = project.relativize(file).toString();
-				else
-					citation = file.toString();
-				// The complete scenario is needed together to construct its fixed turns and expected behaviour.
-				scenarios.add(new Scenario(source, citation, Files.readString(file)));
+				addScenario(project, source, file, scenarios);
 			}
 		}
+	}
+
+	/**
+	 * Reads the scenarios of guidance packaged as a module resource from each module's test resources. Hidden
+	 * directories, such as {@code .git} and {@code .cat}, hold no modules.
+	 *
+	 * @param project the project root
+	 * @param scenarios receives the discovered scenarios
+	 * @throws IOException if a module tree cannot be read
+	 */
+	private static void readModules(Path project, List<Scenario> scenarios) throws IOException
+	{
+		List<Path> testResources = new ArrayList<>();
+		Files.walkFileTree(project, new SimpleFileVisitor<>()
+		{
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+			{
+				if (!directory.equals(project) && directory.getFileName().toString().startsWith("."))
+					return FileVisitResult.SKIP_SUBTREE;
+				if (directory.endsWith(TEST_RESOURCES))
+				{
+					testResources.add(directory);
+					return FileVisitResult.SKIP_SUBTREE;
+				}
+				return FileVisitResult.CONTINUE;
+			}
+		});
+		for (Path tests : testResources)
+		{
+			Path main = tests.getParent().getParent().getParent().resolve(MAIN_RESOURCES);
+			if (!Files.isDirectory(main))
+				continue;
+			List<Path> tops;
+			try (Stream<Path> children = Files.list(main))
+			{
+				tops = children.filter(Files::isDirectory).sorted().toList();
+			}
+			try (Stream<Path> files = Files.walk(tests))
+			{
+				for (Path file : files.filter(path -> path.getFileName().toString().equals(SCENARIO)).sorted().toList())
+				{
+					// <path>/<case>/scenario.md names the guidance <top>/<path>.md
+					Path relative = tests.relativize(file.getParent().getParent());
+					if (relative.toString().isEmpty())
+						continue;
+					for (Path top : tops)
+					{
+						Path source = top.resolve(relative + ".md");
+						if (Files.isRegularFile(source))
+						{
+							addScenario(project, source, file, scenarios);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether a file is the {@code scenario.md} of a case directory directly inside a scenario directory.
+	 *
+	 * @param directory the scenario directory
+	 * @param file a file below it
+	 * @return whether {@code file} is {@code <directory>/<case>/scenario.md}
+	 */
+	private static boolean isCaseScenario(Path directory, Path file)
+	{
+		return file.getFileName().toString().equals(SCENARIO) && file.getParent().getParent().equals(directory);
+	}
+
+	/**
+	 * Adds one scenario, cited relative to the project when it lies inside it.
+	 *
+	 * @param project the project used to render citations
+	 * @param source the guidance file
+	 * @param file the scenario file
+	 * @param scenarios receives the scenario
+	 * @throws IOException if the scenario cannot be read
+	 */
+	private static void addScenario(Path project, Path source, Path file, List<Scenario> scenarios)
+		throws IOException
+	{
+		String citation;
+		if (file.startsWith(project))
+			citation = project.relativize(file).toString();
+		else
+			citation = file.toString();
+		// The complete scenario is needed together to construct its fixed turns and expected behaviour.
+		scenarios.add(new Scenario(source, citation, Files.readString(file)));
 	}
 
 	/**

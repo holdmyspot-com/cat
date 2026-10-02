@@ -1128,9 +1128,11 @@ test resource refers to the old procedure.
 **Regression scenarios:** the correction records the reported case, a meaningful analogous case and a dissimilar case
 as regression scenarios. Each is a Markdown file that holds the prewritten turns and the expected behaviour. A
 scenario for guidance under a rules directory, `<root>/.cat/rules/<path>.md` with `<root>` the project or `${HOME}`,
-lives in `<root>/.cat/tests/<path>/`; one for other guidance in the project, such as CAT's plugin rule sources, lives
-in `<project>/.cat/tests/<path relative to the project, without .md>/` (user ruling, 2026-10-02). Rule loading never
-reads them. Nothing runs
+lives in `<root>/.cat/tests/<path>/<case>.md`. One for guidance packaged as a module resource,
+`<module>/src/main/resources/<top>/<path>.md`, such as CAT's plugin rules, skills and optimizer prompts, lives with
+the module's tests in `<module>/src/test/resources/<path>/<case>/scenario.md`. One for other guidance in the project
+lives in `<project>/.cat/tests/<path relative to the project, without .md>/<case>.md` (user rulings, 2026-10-02).
+Rule loading never reads them. Nothing runs
 a scenario outside a campaign, so a correction is recorded, not tested, until the user starts a campaign whose prompt
 system includes that guidance; its contract then holds every recorded scenario ([§6.1](#61-derivation-and-confirmation)).
 

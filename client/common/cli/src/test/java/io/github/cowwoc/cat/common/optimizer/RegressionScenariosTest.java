@@ -20,50 +20,106 @@ import java.util.stream.Stream;
 public final class RegressionScenariosTest
 {
 	/**
-	 * Verifies that the rules module contains neither scenarios nor retired suite manifests.
+	 * Verifies that discovery finds every recorded scenario of the repository, so that each one names existing
+	 * guidance.
 	 *
-	 * @throws IOException if the rules module cannot be listed
+	 * @throws IOException if the scenario trees cannot be listed
 	 */
 	@Test
-	public void scenariosLiveUnderTests() throws IOException
+	public void everyScenarioNamesGuidance() throws IOException
 	{
 		// Requirement: R-I3
 		Path root = project();
-		try (Stream<Path> paths = Files.walk(root.resolve("client/common/rules")))
+		List<String> recorded = new ArrayList<>();
+		try (Stream<Path> paths = Files.walk(root.resolve("client")))
 		{
-			List<Path> misplaced = paths.filter(Files::isRegularFile).filter(path ->
-				path.getFileName().toString().equals("scenario.md") ||
-					path.getFileName().toString().equals("suite.json")).toList();
-			requireThat(misplaced, "misplaced").isEmpty();
+			for (Path file : paths.filter(path -> path.getFileName().toString().equals("scenario.md")).toList())
+			{
+				String citation = root.relativize(file).toString();
+				if (citation.contains("/src/test/resources/"))
+					recorded.add(citation);
+			}
+		}
+		Path tests = root.resolve(".cat/tests");
+		if (Files.isDirectory(tests))
+		{
+			try (Stream<Path> paths = Files.walk(tests))
+			{
+				for (Path file : paths.filter(path -> path.toString().endsWith(".md")).toList())
+					recorded.add(root.relativize(file).toString());
+			}
+		}
+		requireThat(recorded, "recorded").isNotEmpty();
+		requireThat(citations(root), "citations").containsAll(recorded);
+	}
+
+	/**
+	 * Verifies that no scenario of guidance packaged as a module resource lies under {@code .cat/tests}.
+	 *
+	 * @throws IOException if the scenarios cannot be read
+	 */
+	@Test
+	public void moduleGuidanceScenariosStayInModule() throws IOException
+	{
+		// Requirement: R-I3
+		Path root = project();
+		List<String> misplaced = RegressionScenarios.read(root, root.resolve("client/target/no-home")).scenarios().
+			stream().filter(scenario -> scenario.source().toString().contains("/src/main/resources/") &&
+				scenario.citation().startsWith(".cat/tests/")).map(RegressionScenarios.Scenario::citation).toList();
+		requireThat(misplaced, "misplaced").isEmpty();
+	}
+
+	/**
+	 * Verifies that discovery reads a module guidance's scenarios from the module's test resources and leaves out the
+	 * fixture Markdown beside them.
+	 *
+	 * @throws IOException if the module tree cannot be created or read
+	 */
+	@Test
+	public void readsModuleScenario() throws IOException
+	{
+		// Requirement: R-I3
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"module-scenarios"));
+			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+				resolve("wording.md");
+			Files.writeString(guidance, "Be brief.");
+			Path scenario = Files.createDirectories(root.resolve("plugin/src/test/resources/common/wording/reported"));
+			Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
+			Files.writeString(scenario.getParent().resolve("context.md"), "Fixture context");
+			RegressionScenarios found = RegressionScenarios.read(root, root.resolve("home"));
+			requireThat(found.scenarios(), "scenarios").isEqualTo(List.of(new RegressionScenarios.Scenario(guidance,
+				"plugin/src/test/resources/common/wording/reported/scenario.md",
+				"Turn: Summarize.\nExpected: Be brief.")));
 		}
 	}
 
 	/**
-	 * Verifies that each scenario directory names existing guidance, allowing its fixture subdirectories.
+	 * Verifies that a scenario of nested guidance belongs to that guidance alone, not to the guidance that encloses its
+	 * directory.
 	 *
-	 * @throws IOException if the scenario directories cannot be listed
+	 * @throws IOException if the scenario tree cannot be created or read
 	 */
 	@Test
-	public void directoriesNameExistingGuidance() throws IOException
+	public void nestedGuidanceKeepsItsScenarios() throws IOException
 	{
 		// Requirement: R-I3
-		Path root = project();
-		Path tests = root.resolve(".cat/tests");
-		requireThat(tests, "tests").isDirectory();
-		List<Path> directories;
-		try (Stream<Path> paths = Files.walk(tests))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			directories = paths.filter(Files::isDirectory).filter(path -> !path.equals(tests)).toList();
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"nested-scenarios"));
+			Path rules = Files.createDirectories(root.resolve(".cat/rules/common/testing"));
+			Files.writeString(rules.getParent().resolve("testing.md"), "Test behaviour.");
+			Path doubles = rules.resolve("doubles.md");
+			Files.writeString(doubles, "Prefer real collaborators.");
+			Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/testing/doubles/reported"));
+			Files.writeString(scenario.resolve("scenario.md"), "Turn: Mock the clock.");
+			RegressionScenarios found = RegressionScenarios.read(root, root.resolve("home"));
+			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::source).toList(), "sources").
+				isEqualTo(List.of(doubles.normalize()));
 		}
-		List<Path> owners = directories.stream().filter(path -> hasGuidance(root, tests.relativize(path))).toList();
-		requireThat(owners, "owners").isNotEmpty();
-		List<Path> orphaned = new ArrayList<>();
-		for (Path directory : directories)
-		{
-			if (owners.stream().noneMatch(owner -> directory.startsWith(owner) || owner.startsWith(directory)))
-				orphaned.add(directory);
-		}
-		requireThat(orphaned, "orphaned").isEmpty();
 	}
 
 	/**
@@ -92,16 +148,16 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Indicates whether a scenario directory maps to a project rule or another project guidance file.
+	 * Returns the citation of every scenario that discovery finds in the repository.
 	 *
-	 * @param root the project root
-	 * @param relative the directory relative to the tests root
-	 * @return whether a matching guidance file exists
+	 * @param root the repository root
+	 * @return the citations
+	 * @throws IOException if the scenarios cannot be read
 	 */
-	private static boolean hasGuidance(Path root, Path relative)
+	private static List<String> citations(Path root) throws IOException
 	{
-		return Files.isRegularFile(root.resolve(relative + ".md")) ||
-			Files.isRegularFile(root.resolve(".cat/rules").resolve(relative + ".md"));
+		return RegressionScenarios.read(root, root.resolve("client/target/no-home")).scenarios().stream().
+			map(RegressionScenarios.Scenario::citation).toList();
 	}
 
 	/**

@@ -31,8 +31,10 @@ For every correction to user-owned prompt, rule, or workflow guidance, record re
 dependent work: the reported case, a meaningful analogous case, and a dissimilar case that must not receive unrelated
 guidance. Each scenario is one Markdown file holding the prewritten turns and the expected behaviour. Store it in the
 corrected guidance's scenario directory: for `<root>/.cat/rules/<path>.md`, where `<root>` is the project or `${HOME}`,
-use `<root>/.cat/tests/<path>/`; for other guidance in the project, such as CAT's plugin rule sources, use
-`<project>/.cat/tests/<path relative to the project, without .md>/`. Extend an existing scenario that already makes the
+use `<root>/.cat/tests/<path>/<case>.md`; for guidance packaged as a module resource,
+`<module>/src/main/resources/<top>/<path>.md`, such as a plugin's rules and skills, use
+`<module>/src/test/resources/<path>/<case>/scenario.md`; for other guidance in the project, use
+`<project>/.cat/tests/<path relative to the project, without .md>/<case>.md`. Extend an existing scenario that already makes the
 same reader decision under the same observable trigger instead of adding one; add a new scenario only when none can
 express that decision.
 
