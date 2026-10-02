@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
@@ -49,6 +50,79 @@ public final class AuthorTest
 	}
 
 	/**
+	 * Verifies that authors receive their approach and correct a misapplied instruction in the file that states it.
+	 *
+	 * @param approach the assigned approach
+	 * @param expected its exact instruction
+	 */
+	// Requirement: R-D3
+	@Test(dataProvider = "approaches")
+	public void requestStatesApproachAndInstructionOwner(AuthorApproach approach, String expected)
+	{
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", approach, ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Set.of(), Map.of(), "");
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("### Your approach\n\n" +
+			"Other attempts for this cell may follow other approaches. Follow this one in every edit you make:\n\n" +
+			expected + "\n\n### How to edit").
+			contains("When the failing replies\n" +
+				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
+				"`CLAUDE.md` included:").
+			doesNotContain("{{approach}}");
+	}
+
+	/**
+	 * Returns each assigned approach and its exact author instruction.
+	 *
+	 * @return the approaches and instructions
+	 */
+	@DataProvider
+	public Object[][] approaches()
+	{
+		return new Object[][]
+			{
+				{AuthorApproach.CORRECT_INSTRUCTION, "Correct the instruction where it is stated: edit the file " +
+					"that states the instruction the failing replies violated or misapplied, `AGENTS.md` or " +
+					"`CLAUDE.md` included."},
+				{AuthorApproach.REWRITE_INSTRUCTIONS, "Rewrite rather than add: reword, merge or remove existing " +
+					"instructions, adding new text only where no existing instruction covers the failing case."},
+				{AuthorApproach.ADD_GUIDANCE, "Add the missing guidance where the failing sessions make the decision, " +
+					"in an existing or new file."}
+			};
+	}
+
+	/**
+	 * A brief rejects an absent approach before an author request can be constructed.
+	 */
+	// Requirement: R-D3
+	@Test(expectedExceptions = NullPointerException.class)
+	public void briefRejectsMissingApproach()
+	{
+		new AuthorBrief("safety", null, ContractFixtures.contract(), List.of(), Map.of(), List.of(), Set.of(),
+			Map.of(), "");
+	}
+
+	/**
+	 * The rendered editing instructions direct correction to the file that states a misapplied instruction.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void requestNamesTheInstructionOwner()
+	{
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Set.of(), Map.of(), "");
+		requireThat(prompt.request(brief, COPY).turns().getFirst(), "editingInstructions").
+			contains("When the failing replies\n" +
+				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
+				"`CLAUDE.md` included:");
+	}
+
+	/**
 	 * Returns a development failure of the {@code safety} category.
 	 *
 	 * @return the failure
@@ -65,6 +139,7 @@ public final class AuthorTest
 	 * Verifies that the request selects the candidate copy as the author session's source and states the allowed edits,
 	 * confirmed contract, failures, counts and ended attempts in its prompt.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void requestStatesTheAuthorityAndTheBrief()
 	{
@@ -72,7 +147,7 @@ public final class AuthorTest
 		Contract contract = ContractFixtures.contract();
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"), Path.of("rules")),
 			Set.of(Path.of(".claude/settings.json")));
-		AuthorBrief brief = new AuthorBrief("safety", contract, List.of(failure()),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION, contract, List.of(failure()),
 			Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
 				List.of(failure()))), Set.of(Path.of("/shared/rules.md")),
@@ -102,12 +177,14 @@ public final class AuthorTest
 	/**
 	 * Verifies that author failure records supply the reply evidence alongside the rationale.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void failureRecordsIncludeReplyEvidence()
 	{
 		// Requirement: R-C12
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure()), Map.of(),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(failure()), Map.of(),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(failure()))), Set.of(), Map.of(), "");
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
@@ -115,7 +192,7 @@ public final class AuthorTest
 		requireThat(failures.get(0).get("responses"), "responses").
 			isEqualTo(json.valueToTree(failure().responses()));
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\n### How to edit"));
+			"\n\n### Your approach"));
 		requireThat(ended.get(0).get("failures").get(0).get("responses"), "ended.responses").
 			isEqualTo(json.valueToTree(failure().responses()));
 	}
@@ -123,12 +200,14 @@ public final class AuthorTest
 	/**
 	 * Verifies that an empty authority list is stated as {@code none} rather than left blank.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void statesAnEmptyAuthorityListAsNone()
 	{
 		// Requirement: R-E13
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
 			Set.of(), Map.of(), "");
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
@@ -143,6 +222,7 @@ public final class AuthorTest
 	 * failed deterministic check, the check's record, and the diagnostic reruns of each development failure with
 	 * their rationales.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void requestIncludesRationalesAndReruns()
 	{
@@ -157,7 +237,8 @@ public final class AuthorTest
 		Failure checked = new Failure(failure().instance(), checkRecord, List.of(), List.of());
 		Failure formal = new Failure(failure().instance(), "The formal reply deleted the cache directory.",
 			List.of(), List.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(development, checked),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(development, checked),
 			Map.of(), List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))), Set.of(),
 			Map.of(), "");
 
@@ -174,7 +255,7 @@ public final class AuthorTest
 			add(json.createObjectNode().put("verdict", "fail").put("rationale", checkRecord)));
 		requireThat(failures.get(1).get("rationale").asString(), "checked.rationale").isEqualTo(checkRecord);
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\n### How to edit"));
+			"\n\n### Your approach"));
 		requireThat(ended.get(0).get("failures").get(0).get("rationale").asString(), "ended.rationale").
 			isEqualTo("The formal reply deleted the cache directory.");
 	}
@@ -182,6 +263,7 @@ public final class AuthorTest
 	/**
 	 * Verifies that the author receives the campaign's prompt-file diff, including an empty diff.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void requestIncludesCampaignEdits()
 	{
@@ -189,7 +271,8 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		for (String diff : List.of("", "--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ -1,1 +1,1 @@\n-old\n+new\n"))
 		{
-			AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+				ContractFixtures.contract(), List.of(), Map.of(), List.of(),
 				Set.of(), Map.of(), diff);
 			String turn = prompt.request(brief, COPY).turns().getFirst();
 			requireThat(turn, "diff").contains("It is empty when there are none:\n\n" + diff + "\n");

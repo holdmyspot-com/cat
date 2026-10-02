@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
-import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +25,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * An {@link AuthorProtocol} that records each brief and asks the author to improve the brief's category. By default,
- * each author reports that it needed no edit outside its authority.
+ * An {@link AuthorProtocol} that records each brief and renders the production author prompt. By default, each author
+ * reports that it needed no edit outside its authority.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -52,8 +50,9 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 		synchronized (lock)
 		{
 			briefs.add(brief);
-			return new SessionRequest(SessionRole.AUTHOR, copy, List.of("Improve " + brief.cell()), List.of(),
-				Duration.ofMinutes(10), brief.contract().judge().profile());
+			JsonMapper json = JsonMapper.builder().build();
+			return new AuthorPrompt(json, new ProposalSchema(json), Set.of(DriverHarness.PROMPT), Set.of()).
+				request(brief, copy);
 		}
 	}
 

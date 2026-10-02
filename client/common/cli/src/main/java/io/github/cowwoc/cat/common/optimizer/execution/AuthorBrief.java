@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
+ * @param approach the editing approach selected by the reservation's position within its cell's round
  * @param contract the confirmed contract
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param developmentCounts the working candidate's development outcomes per cell
@@ -40,7 +42,7 @@ import java.nio.charset.StandardCharsets;
  *   keyed by the link's path; a link whose links form a cycle is absent
  * @param campaignEdits the unified diff of prompt files from confirmation to the working candidate
  */
-public record AuthorBrief(String cell, Contract contract, List<Failure> developmentFailures,
+public record AuthorBrief(String cell, AuthorApproach approach, Contract contract, List<Failure> developmentFailures,
 	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
 	Map<Path, Path> links, String campaignEdits)
 {
@@ -48,6 +50,7 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 	 * Creates a brief.
 	 *
 	 * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
+	 * @param approach the editing approach assigned to the reserved attempt
 	 * @param contract the confirmed contract
 	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param developmentCounts the working candidate's development outcomes per cell
@@ -63,6 +66,7 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 	public AuthorBrief
 	{
 		requireThat(cell, "category").isNotBlank();
+		requireThat(approach, "approach").isNotNull();
 		requireThat(contract, "contract").isNotNull();
 		requireThat(developmentFailures, "developmentFailures").isNotNull();
 		requireThat(developmentCounts, "developmentCounts").isNotNull();
@@ -142,12 +146,12 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 	 * Returns the brief of an author attempt.
 	 *
 	 * @param campaign a campaign with a confirmed contract
-	 * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
+	 * @param number the attempt reserved in the campaign's round, which determines its cell and approach
 	 * @param campaignEdits the unified diff since confirmation, restricted to prompt files
 	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
 	 * @return the brief
 	 */
-	static AuthorBrief of(Campaign campaign, String cell, FileInventory fork, String campaignEdits)
+	static AuthorBrief of(Campaign campaign, int number, FileInventory fork, String campaignEdits)
 	{
 		Development development = campaign.development();
 		List<EndedAttempt> ended = new ArrayList<>();
@@ -165,7 +169,8 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 			if (entry.getValue() instanceof FileEntry.SymbolicLink)
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
-		return new AuthorBrief(cell, campaign.contract(), development.failures(), development.counts(), ended,
+		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
+			campaign.contract(), development.failures(), development.counts(), ended,
 			campaign.authorizedTargets(), links, campaignEdits);
 	}
 

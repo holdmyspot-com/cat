@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
@@ -84,6 +85,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param limitations what the claim does not cover
  * @param conditions the measurement conditions that the claim holds under
  * @param optimization descriptive snapshot comparisons and retained author diagnoses
+ * @param reverts withdrawn working candidates and the estimates that triggered their replacement
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -94,7 +96,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	TokenStatistics tokens,
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
-	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization)
+	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts)
 {
 	/**
 	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
@@ -191,6 +193,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param limitations what the claim does not cover
 	 * @param conditions the measurement conditions that the claim holds under
 	 * @param optimization descriptive snapshot comparisons and retained author diagnoses
+	 * @param reverts withdrawn working candidates and the estimates that triggered their replacement
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
 	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
@@ -227,6 +230,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		keepOffers = List.copyOf(keepOffers);
 		limitations = List.copyOf(limitations);
 		conditions = Map.copyOf(conditions);
+		reverts = List.copyOf(reverts);
 	}
 
 	/**
@@ -319,18 +323,17 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		return new StatusReport(status(campaign), campaign.header().id(), campaign.lifecycle(),
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
-			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), cells, allocation,
+			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
-			OptimizationReport.of(campaign));
+			OptimizationReport.of(campaign), campaign.development().reverts());
 	}
 
 	/**
 	 * Returns what the host agent does next, or how a campaign that ended finished.
 	 * <p>
-	 * An ended campaign without a recorded outcome reports its delivery label, or {@code interrupted} if it
-	 * delivered nothing.
+	 * An inactive campaign reports its recorded outcome or delivery label, or {@code interrupted} if neither exists.
 	 *
 	 * @param campaign the campaign
 	 * @return the status
@@ -339,7 +342,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	{
 		return switch (campaign.lifecycle())
 		{
-			case FINISHED, CLOSED ->
+			case FINISHED, CLOSED, CANCELLED ->
 			{
 				if (campaign.outcome() != null)
 					yield new ReportStatus.Ended(campaign.outcome());
@@ -347,7 +350,6 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 					yield new ReportStatus.Ended(campaign.delivery().label());
 				yield new ReportStatus.Interrupted();
 			}
-			case CANCELLED -> new ReportStatus.Active(Status.AWAITING_USER);
 			case ACTIVE ->
 			{
 				if (!campaign.isConfirmed() || campaign.pending() != null)
@@ -360,11 +362,14 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	/**
 	 * Describes the decision that a campaign waits for.
 	 *
-	 * @param pending the decision, or {@code null} if none
-	 * @return the description, or {@code null} if there is no decision
+	 * @param campaign the campaign
+	 * @return the description, or {@code null} if the campaign is inactive or has no pending decision
 	 */
-	private static String describe(PendingDecision pending)
+	private static String describe(Campaign campaign)
 	{
+		if (campaign.lifecycle() != Lifecycle.ACTIVE)
+			return null;
+		PendingDecision pending = campaign.pending();
 		if (pending == null)
 			return null;
 		return switch (pending)

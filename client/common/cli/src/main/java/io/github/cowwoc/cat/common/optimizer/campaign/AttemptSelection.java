@@ -62,16 +62,18 @@ public final class AttemptSelection
 	 * @param attempts the fully tested contenders
 	 * @param working the unchanged working snapshot
 	 * @param regressionSet the existing working-candidate regression evidence
+	 * @param workingOutcomes the working candidate's adopted records by trial content
 	 * @return the winner, or empty when no edited attempt is accepted
 	 */
 	public static Optional<AuthorAttempt> select(List<AuthorAttempt> attempts, Sha256 working,
-		List<RegressionInstance> regressionSet)
+		List<RegressionInstance> regressionSet, List<InstanceOutcomes> workingOutcomes)
 	{
 		requireThat(attempts, "attempts").isNotNull();
 		requireThat(working, "working").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
+		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 		return attempts.stream().filter(attempt -> !attempt.snapshot().equals(working) &&
-			Promotion.decide(attempt, regressionSet) == Promotion.Decision.PROMOTE).min(
+			Promotion.decide(attempt, regressionSet, workingOutcomes) == Promotion.Decision.PROMOTE).min(
 				Comparator.comparingLong((AuthorAttempt attempt) -> passingRuns(attempt.runs())).reversed().
 					thenComparingInt(AttemptSelection::changedLines).thenComparingInt(AuthorAttempt::number));
 	}

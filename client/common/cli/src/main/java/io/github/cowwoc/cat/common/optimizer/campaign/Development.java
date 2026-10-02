@@ -20,10 +20,14 @@ import java.util.Map;
  * @param reviewPoints the outcome count that triggers another review for each cell the user extended
  * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series, which
  *   makes every cell eligible for representative trials ({@link CellTier})
+ * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
+ * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
+ * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
  */
 public record Development(Candidate working, int series, Map<String, CellCounts> counts,
 	List<Failure> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
-	Map<String, Integer> reviewPoints, boolean widened)
+	Map<String, Integer> reviewPoints, boolean widened, List<InstanceOutcomes> instanceOutcomes,
+	Predecessor predecessor, List<Revert> reverts)
 {
 	/**
 	 * The adopted-outcome count that triggers a cell's review unless the user extends it.
@@ -42,8 +46,12 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
 	 * @param reviewPoints the outcome count that triggers another review for each cell the user extended
 	 * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series
+	 * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
+	 * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
+	 * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
 	 * @throws NullPointerException if {@code working}, {@code counts}, {@code failures} or {@code reviewPoints} are
 	 *   null
+	 * @throws NullPointerException if {@code instanceOutcomes} or {@code reverts} are null or contain null
 	 * @throws NullPointerException if {@code author} is non-null while {@code round} is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
@@ -59,6 +67,30 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		counts = Map.copyOf(counts);
 		failures = List.copyOf(failures);
 		reviewPoints = Map.copyOf(reviewPoints);
+		instanceOutcomes = List.copyOf(instanceOutcomes);
+		reverts = List.copyOf(reverts);
+	}
+
+	/**
+	 * Creates development state with the recorded failures and diagnostic reruns as its instance evidence.
+	 *
+	 * @param working the working candidate
+	 * @param series the development count series
+	 * @param counts the representative counts per cell
+	 * @param failures the retained failing instances and diagnostic reruns
+	 * @param diagnosis the diagnosis in progress, or {@code null}
+	 * @param round the round in progress, or {@code null}
+	 * @param author the author under validation, or {@code null}
+	 * @param reviewPoints the outcome counts that trigger cell reviews
+	 * @param widened whether every cell is eligible for representative trials
+	 * @throws NullPointerException if a required argument or collection element is null
+	 * @throws IllegalArgumentException if {@code series} is negative
+	 */
+	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
+		Diagnosis diagnosis, Round round, AuthorAttempt author, Map<String, Integer> reviewPoints, boolean widened)
+	{
+		this(working, series, counts, failures, diagnosis, round, author, reviewPoints, widened,
+			InstanceOutcomes.fromFailures(failures), null, List.of());
 	}
 
 	/**

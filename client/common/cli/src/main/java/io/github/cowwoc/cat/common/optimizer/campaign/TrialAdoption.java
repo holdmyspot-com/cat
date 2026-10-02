@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -51,6 +52,8 @@ final class TrialAdoption
 				!key.equals(draft.diagnosis.rerun());
 			case PROMOTION ->
 			{
+				if (draft.isWorkingReference(trial))
+					yield false;
 				AuthorAttempt author = draft.findAuthor(key.series());
 				yield author == null || author.runs().stream().noneMatch(run -> key.equals(run.trial()));
 			}
@@ -141,6 +144,11 @@ final class TrialAdoption
 	 */
 	private static void adopt(Draft draft, LogicalTrial trial)
 	{
+		if (trial.key().snapshot().equals(draft.working.snapshot()))
+		{
+			draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, trial.instance(), trial.verdict());
+			recordWorkingVerdict(draft, trial.instance(), trial.verdict());
+		}
 		if (trial.verdict() == Verdict.FAIL && trial.key().purpose() != Purpose.PROMOTION)
 			draft.failedCells.add(trial.key().cell());
 		switch (trial.key().purpose())
@@ -169,7 +177,6 @@ final class TrialAdoption
 			draft.widened = CellTier.isActiveSetReady(draft.contract(), draft.failedCells, draft.developmentCounts);
 		if (draft.working.isIncumbent())
 			addBaseline(draft, cell, verdict);
-		recordWorkingVerdict(draft, trial.instance(), verdict);
 		if (verdict == Verdict.PASS)
 		{
 			draft.slowStart = draft.slowStart.afterPass();
@@ -193,7 +200,113 @@ final class TrialAdoption
 				}
 			}
 		}
-		resolveDiagnosis(draft);
+		if (!revertIfWorse(draft, cell))
+			resolveDiagnosis(draft);
+	}
+
+	/**
+	 * Restores a promoted candidate's predecessor when its Wilson upper bound in an addressed cell is below the
+	 * predecessor's observed representative pass rate. The withdrawn evidence stays available for diagnosis and the
+	 * selected attempt becomes an unproductive round attempt before the plateau policy runs.
+	 *
+	 * @param draft the campaign state after adopting a representative development outcome
+	 * @param cell the outcome's cell
+	 * @return {@code true} if the predecessor was restored
+	 */
+	private static boolean revertIfWorse(Draft draft, String cell)
+	{
+		Predecessor predecessor = draft.predecessor;
+		if (predecessor == null || !isAddressed(draft, predecessor.round(), cell))
+			return false;
+		CellCounts retained = predecessor.development().count(cell);
+		if (retained.outcomes() == 0)
+			return false;
+		CellCounts current = draft.developmentCount(cell);
+		// An all-pass sample has Wilson upper bound 1, which cannot be below an observed pass rate
+		if (current.failures() == 0)
+			return false;
+		double upperBound = ExploratoryBounds.wilson(current.passes(), current.outcomes()).upper();
+		double predecessorRate = (double) retained.passes() / retained.outcomes();
+		if (upperBound >= predecessorRate)
+			return false;
+
+		draft.reverts.add(new Revert(draft.working, cell, upperBound, predecessorRate, snapshotDevelopment(draft)));
+		Development restored = predecessor.development();
+		draft.startDevelopment(restored.working());
+		draft.developmentCounts = new LinkedHashMap<>(restored.counts());
+		draft.developmentFailures = new ArrayList<>(restored.failures());
+		draft.instanceOutcomes = restored.instanceOutcomes();
+		draft.reviewPoints = new LinkedHashMap<>(restored.reviewPoints());
+		draft.widened = restored.widened();
+		restoreRegressionVerdicts(draft, predecessor.regressionSet());
+		draft.round = predecessor.round();
+		draft.slowStart = SlowStart.INITIAL;
+		if (draft.round.weak())
+		{
+			if (Plateau.isReached(draft.round))
+			{
+				draft.outcome = Outcome.PLATEAU;
+				draft.raise(new PendingDecision.PlateauReached());
+			}
+		}
+		else
+			rejectAuthorAttempt(draft, predecessor.cell());
+		return true;
+	}
+
+	/**
+	 * Indicates whether the promoting round addressed a cell, including all profiles of a weak round's category.
+	 *
+	 * @param draft the campaign state
+	 * @param round the promoting round
+	 * @param cell the outcome's cell
+	 * @return {@code true} if the round addressed the cell
+	 */
+	private static boolean isAddressed(Draft draft, Round round, String cell)
+	{
+		if (round.attempts().containsKey(cell))
+			return true;
+		if (!round.weak())
+			return false;
+		String category = draft.contract().findCell(cell).orElseThrow().categoryId();
+		return round.attempts().keySet().stream().anyMatch(addressed ->
+			draft.contract().findCell(addressed).orElseThrow().categoryId().equals(category));
+	}
+
+	/**
+	 * Captures a candidate's retained evidence without pending work, another predecessor or the shared revert history.
+	 *
+	 * @param draft the current candidate state
+	 * @return the retained development evidence
+	 */
+	private static Development snapshotDevelopment(Draft draft)
+	{
+		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
+			null, null, null, draft.reviewPoints, draft.widened, draft.instanceOutcomes, null, List.of());
+	}
+
+	/**
+	 * Restores known predecessor verdicts while retaining newly discovered regression instances without a verdict.
+	 *
+	 * @param draft the campaign state
+	 * @param retained the predecessor's regression verdicts
+	 */
+	private static void restoreRegressionVerdicts(Draft draft, List<RegressionInstance> retained)
+	{
+		for (int index = 0; index < draft.regressionSet.size(); ++index)
+		{
+			RegressionInstance regression = draft.regressionSet.get(index);
+			Verdict verdict = null;
+			for (RegressionInstance prior : retained)
+			{
+				if (Promotion.isSameContent(prior.instance(), regression.instance()))
+				{
+					verdict = prior.working();
+					break;
+				}
+			}
+			draft.regressionSet.set(index, new RegressionInstance(regression.instance(), verdict));
+		}
 	}
 
 	/**
@@ -382,6 +495,12 @@ final class TrialAdoption
 	private static void adoptPromotion(Draft draft, LogicalTrial trial)
 	{
 		AuthorAttempt author = draft.findAuthor(trial.key().series());
+		if (author == null)
+		{
+			if (draft.author != null)
+				decidePromotion(draft);
+			return;
+		}
 		List<PromotionRun> runs = new ArrayList<>(author.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
@@ -407,8 +526,10 @@ final class TrialAdoption
 	 */
 	static void decidePromotion(Draft draft)
 	{
+		if (Promotion.decide(draft.author, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PENDING)
+			draft.author = Promotion.extend(draft.author, draft.instanceOutcomes);
 		AuthorAttempt author = draft.author;
-		switch (Promotion.decide(author, draft.regressionSet))
+		switch (Promotion.decide(author, draft.regressionSet, draft.instanceOutcomes))
 		{
 			case PENDING ->
 			{
@@ -437,20 +558,25 @@ final class TrialAdoption
 	 */
 	static void decideWeakRound(Draft draft)
 	{
+		for (AuthorAttempt attempt : draft.round.validationAttempts())
+		{
+			if (Promotion.decide(attempt, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PENDING)
+				draft.round = draft.round.withAttempt(Promotion.extend(attempt, draft.instanceOutcomes));
+		}
 		Round round = draft.round;
 		for (AuthorAttempt attempt : round.validationAttempts())
 		{
 			if (attempt.runs().stream().allMatch(run -> run.verdict() != null))
 			{
 				boolean accepted = !attempt.snapshot().equals(draft.working.snapshot()) &&
-					Promotion.decide(attempt, draft.regressionSet) == Promotion.Decision.PROMOTE;
+					Promotion.decide(attempt, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PROMOTE;
 				retainAttempt(draft, attempt, accepted, false);
 			}
 		}
 		if (!Plateau.isReached(round))
 			return;
 		Optional<AuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
-			draft.working.snapshot(), draft.regressionSet);
+			draft.working.snapshot(), draft.regressionSet, draft.instanceOutcomes);
 		if (winner.isPresent())
 		{
 			draft.author = winner.get();
@@ -502,6 +628,8 @@ final class TrialAdoption
 	 */
 	static void promote(Draft draft, AuthorAttempt author)
 	{
+		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft), draft.round, author.cell(),
+			draft.regressionSet);
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
 			RegressionInstance regression = draft.regressionSet.get(i);
@@ -510,6 +638,12 @@ final class TrialAdoption
 		}
 		++draft.candidates;
 		draft.startDevelopment(new Candidate(draft.candidates, author.snapshot()));
+		draft.predecessor = predecessor;
+		for (PromotionRun run : author.runs())
+		{
+			if (run.role() != PromotionRun.Role.WORKING_REFERENCE && run.verdict() != null)
+				draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, run.instance(), run.verdict());
+		}
 		draft.slowStart = SlowStart.INITIAL;
 	}
 

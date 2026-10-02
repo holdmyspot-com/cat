@@ -35,6 +35,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.InstanceOutcomes;
+import io.github.cowwoc.cat.common.optimizer.campaign.Predecessor;
+import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
@@ -109,7 +112,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Formats 9 and 10 are readable; unsupported format versions are refused.
+ * round-trip exactly. Formats 9 to 11 are readable: format 9 records input counts without full session usage, and
+ * formats 9 and 10 hold no retained promotion state. Unsupported format versions are refused.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -121,7 +125,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 10;
+	private static final int FORMAT_VERSION = 11;
 	/**
 	 * The readable format whose records contain input counts without full session usage.
 	 */
@@ -289,7 +293,8 @@ final class CampaignJson
 		return new Campaign(readHeader(field(root, "header")), integer(root, "ceiling"), lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
-			readDevelopment(field(root, "development")), failedCells, baseline, attempts, trials, sequences,
+			readDevelopment(field(root, "development"), integer(root, VERSION) == FORMAT_VERSION),
+			failedCells, baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
@@ -770,27 +775,7 @@ final class CampaignJson
 		if (round == null)
 			node.putNull("round");
 		else
-		{
-			ObjectNode roundNode = node.putObject("round");
-			roundNode.put("weak", round.weak());
-			ArrayNode attempts = roundNode.putArray("attempts");
-			for (Entry<String, Integer> entry : round.attempts().entrySet())
-			{
-				ObjectNode element = attempts.addObject();
-				element.put("cell", entry.getKey());
-				element.put("attempts", entry.getValue());
-			}
-			ArrayNode reservations = roundNode.putArray("reservations");
-			for (Entry<Integer, String> entry : round.reservations().entrySet())
-			{
-				ObjectNode reservation = reservations.addObject();
-				reservation.put("number", entry.getKey());
-				reservation.put("cell", entry.getValue());
-			}
-			ArrayNode contenders = roundNode.putArray("contenders");
-			for (AuthorAttempt attempt : round.validationAttempts())
-				contenders.add(writeAuthorAttempt(attempt));
-		}
+			node.set("round", writeRound(round));
 		AuthorAttempt author = development.author();
 		if (author == null)
 			node.putNull("author");
@@ -800,6 +785,71 @@ final class CampaignJson
 		for (Entry<String, Integer> entry : new TreeMap<>(development.reviewPoints()).entrySet())
 			reviewPoints.put(entry.getKey(), entry.getValue());
 		node.put("widened", development.widened());
+		ArrayNode outcomes = node.putArray("instance_outcomes");
+		for (InstanceOutcomes outcome : development.instanceOutcomes())
+		{
+			ObjectNode element = outcomes.addObject();
+			element.set("instance", writeInstance(outcome.instance()));
+			element.put("passes", outcome.passes());
+			element.put("outcomes", outcome.outcomes());
+		}
+		Predecessor predecessor = development.predecessor();
+		if (predecessor == null)
+			node.putNull("predecessor");
+		else
+		{
+			ObjectNode element = node.putObject("predecessor");
+			element.set("development", writeDevelopment(predecessor.development()));
+			element.set("round", writeRound(predecessor.round()));
+			element.put("cell", predecessor.cell());
+			ArrayNode regressions = element.putArray("regression_set");
+			for (RegressionInstance regression : predecessor.regressionSet())
+			{
+				ObjectNode instance = regressions.addObject();
+				instance.set("instance", writeInstance(regression.instance()));
+				putConstant(instance, "working_verdict", regression.working());
+			}
+		}
+		ArrayNode reverts = node.putArray("reverts");
+		for (Revert revert : development.reverts())
+		{
+			ObjectNode element = reverts.addObject();
+			element.set("withdrawn", writeCandidate(revert.withdrawn()));
+			element.put("cell", revert.cell());
+			element.put("upper_bound", revert.upperBound());
+			element.put("predecessor_rate", revert.predecessorRate());
+			element.set("development", writeDevelopment(revert.development()));
+		}
+		return node;
+	}
+
+	/**
+	 * Writes the frozen author policy and all reserved or validated attempts of a round.
+	 *
+	 * @param round the round
+	 * @return its document
+	 */
+	private ObjectNode writeRound(Round round)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("weak", round.weak());
+		ArrayNode attempts = node.putArray("attempts");
+		for (Entry<String, Integer> entry : round.attempts().entrySet())
+		{
+			ObjectNode element = attempts.addObject();
+			element.put("cell", entry.getKey());
+			element.put("attempts", entry.getValue());
+		}
+		ArrayNode reservations = node.putArray("reservations");
+		for (Entry<Integer, String> entry : round.reservations().entrySet())
+		{
+			ObjectNode reservation = reservations.addObject();
+			reservation.put("number", entry.getKey());
+			reservation.put("cell", entry.getValue());
+		}
+		ArrayNode contenders = node.putArray("contenders");
+		for (AuthorAttempt attempt : round.validationAttempts())
+			contenders.add(writeAuthorAttempt(attempt));
 		return node;
 	}
 
@@ -968,9 +1018,10 @@ final class CampaignJson
 	 * Converts a document to the development state.
 	 *
 	 * @param node the document
+	 * @param retained whether the document records promotion state and instance outcomes
 	 * @return the state
 	 */
-	private static Development readDevelopment(JsonNode node)
+	private static Development readDevelopment(JsonNode node, boolean retained)
 	{
 		Diagnosis diagnosis = null;
 		JsonNode diagnosisNode = nullable(node, "diagnosis");
@@ -982,26 +1033,7 @@ final class CampaignJson
 		Round round = null;
 		JsonNode roundNode = nullable(node, "round");
 		if (roundNode != null)
-		{
-			Map<String, Integer> attempts = new LinkedHashMap<>();
-			for (JsonNode element : elements(roundNode, "attempts"))
-			{
-				String cell = text(element, "cell");
-				if (attempts.put(cell, integer(element, "attempts")) != null)
-					throw new IllegalArgumentException("round: duplicate cell " + cell);
-			}
-			Map<Integer, String> reservations = new LinkedHashMap<>();
-			for (JsonNode reservation : elements(roundNode, "reservations"))
-			{
-				int number = integer(reservation, "number");
-				if (reservations.put(number, text(reservation, "cell")) != null)
-					throw new IllegalArgumentException("round: duplicate reservation " + number);
-			}
-			List<AuthorAttempt> contenders = new ArrayList<>();
-			for (JsonNode contender : elements(roundNode, "contenders"))
-				contenders.add(readAuthorAttempt(contender));
-			round = new Round(attempts, bool(roundNode, "weak"), reservations, contenders);
-		}
+			round = readRound(roundNode);
 		AuthorAttempt author = null;
 		JsonNode authorNode = nullable(node, "author");
 		if (authorNode != null)
@@ -1009,9 +1041,68 @@ final class CampaignJson
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
+		List<Failure> failures = readFailures(node, "failures");
+		List<InstanceOutcomes> outcomes = InstanceOutcomes.fromFailures(failures);
+		Predecessor predecessor = null;
+		List<Revert> reverts = new ArrayList<>();
+		if (retained)
+		{
+			outcomes = new ArrayList<>();
+			for (JsonNode outcome : elements(node, "instance_outcomes"))
+			{
+				outcomes.add(new InstanceOutcomes(readInstance(field(outcome, "instance")), integer(outcome, "passes"),
+					integer(outcome, "outcomes")));
+			}
+			JsonNode predecessorNode = nullable(node, "predecessor");
+			if (predecessorNode != null)
+			{
+				List<RegressionInstance> regressions = new ArrayList<>();
+				for (JsonNode regression : elements(predecessorNode, "regression_set"))
+				{
+					regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
+						nullableConstant(regression, "working_verdict", Verdict.class)));
+				}
+				predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development"), true),
+					readRound(field(predecessorNode, "round")), text(predecessorNode, "cell"), regressions);
+			}
+			for (JsonNode revert : elements(node, "reverts"))
+			{
+				reverts.add(new Revert(readCandidate(field(revert, "withdrawn")), text(revert, "cell"),
+					floating(revert, "upper_bound"), floating(revert, "predecessor_rate"),
+					readDevelopment(field(revert, "development"), true)));
+			}
+		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
-			readCounts(field(node, "counts")), readFailures(node, "failures"), diagnosis, round, author,
-			reviewPoints, bool(node, "widened"));
+			readCounts(field(node, "counts")), failures, diagnosis, round, author,
+			reviewPoints, bool(node, "widened"), outcomes, predecessor, reverts);
+	}
+
+	/**
+	 * Reads a round's frozen author policy and durable attempt reservations.
+	 *
+	 * @param node the round document
+	 * @return the round
+	 */
+	private static Round readRound(JsonNode node)
+	{
+		Map<String, Integer> attempts = new LinkedHashMap<>();
+		for (JsonNode element : elements(node, "attempts"))
+		{
+			String cell = text(element, "cell");
+			if (attempts.put(cell, integer(element, "attempts")) != null)
+				throw new IllegalArgumentException("round: duplicate cell " + cell);
+		}
+		Map<Integer, String> reservations = new LinkedHashMap<>();
+		for (JsonNode reservation : elements(node, "reservations"))
+		{
+			int number = integer(reservation, "number");
+			if (reservations.put(number, text(reservation, "cell")) != null)
+				throw new IllegalArgumentException("round: duplicate reservation " + number);
+		}
+		List<AuthorAttempt> contenders = new ArrayList<>();
+		for (JsonNode contender : elements(node, "contenders"))
+			contenders.add(readAuthorAttempt(contender));
+		return new Round(attempts, bool(node, "weak"), reservations, contenders);
 	}
 
 	/**
@@ -1805,10 +1896,10 @@ final class CampaignJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
-		if (version != FORMAT_VERSION && version != INPUT_ONLY_FORMAT_VERSION)
+		if (version < INPUT_ONLY_FORMAT_VERSION || version > FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
-				" campaign file, but this version of CAT reads versions " + INPUT_ONLY_FORMAT_VERSION + " and " +
+				" campaign file, but this version of CAT reads versions " + INPUT_ONLY_FORMAT_VERSION + " to " +
 				FORMAT_VERSION + ". Start a new " +
 				"campaign.");
 		}

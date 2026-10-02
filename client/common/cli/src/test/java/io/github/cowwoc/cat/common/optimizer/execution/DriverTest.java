@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.execution.fixture.FaultingFileChannel;
 import io.github.cowwoc.cat.common.optimizer.campaign.Boundaries;
+import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -29,6 +30,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -240,10 +242,10 @@ public final class DriverTest
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
+	// Requirement: R-D3
 	@Test
 	public void weakAuthorsWaitForDevelopment() throws IOException
 	{
-		// Requirement: R-D12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("author-briefs")),
@@ -269,7 +271,20 @@ public final class DriverTest
 				requireThat(harness.running().size(), "sharedCapacity").isLessThanOrEqualTo(2);
 				harness.runUntil(driver, _ -> harness.author().briefs().size() == 3);
 				for (AuthorBrief brief : harness.author().briefs())
-					requireThat(brief, "sameBrief").isEqualTo(harness.author().briefs().getFirst());
+				{
+					requireThat(brief.developmentFailures(), "sameFailures").
+						isEqualTo(harness.author().briefs().getFirst().developmentFailures());
+					requireThat(brief.developmentCounts(), "sameCounts").
+						isEqualTo(harness.author().briefs().getFirst().developmentCounts());
+				}
+				List<SessionRequest> authors = harness.sessions().sessions().stream().map(FakeSession::request).
+					filter(request -> request.role() == SessionRole.AUTHOR).toList();
+				requireThat(authors.get(0).turns().getFirst(), "firstApproach").
+					contains("Correct the instruction where it is stated:");
+				requireThat(authors.get(1).turns().getFirst(), "secondApproach").
+					contains("Rewrite rather than add:");
+				requireThat(authors.get(2).turns().getFirst(), "thirdApproach").
+					contains("Add the missing guidance where the failing sessions make the decision,");
 				requireThat(harness.campaign().development().counts().values().stream().
 					mapToLong(CellCounts::passes).sum(), "settledDevelopmentPasses").isEqualTo(21);
 			}
@@ -282,10 +297,10 @@ public final class DriverTest
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
+	// Requirement: R-D3
 	@Test
 	public void weakRoundSelectsBestThenRunsSequentially() throws IOException
 	{
-		// Requirement: R-D12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("concurrent-authors")),
@@ -332,8 +347,10 @@ public final class DriverTest
 			{
 				harness.runUntil(driver, state -> state.development().round() != null);
 				requireThat(harness.author().briefs().size(), "concurrentAttempts").isEqualTo(3);
-				requireThat(harness.author().briefs().get(1), "sameBrief").isEqualTo(harness.author().briefs().get(0));
-				requireThat(harness.author().briefs().get(2), "sameBrief").isEqualTo(harness.author().briefs().get(0));
+				requireThat(harness.author().briefs().get(1).developmentFailures(), "sameFailures").
+					isEqualTo(harness.author().briefs().get(0).developmentFailures());
+				requireThat(harness.author().briefs().get(2).developmentCounts(), "sameCounts").
+					isEqualTo(harness.author().briefs().get(0).developmentCounts());
 				requireThat(harness.running().stream().filter(session ->
 					session.request().role() == SessionRole.AUTHOR).count(), "runningAuthors").isEqualTo(3);
 
@@ -423,6 +440,361 @@ public final class DriverTest
 				requireThat(promoted.development().counts(), "newCandidateCounts").isEmpty();
 				requireThat(promoted.attempts(), "allowance").isEmpty();
 				requireThat(harness.author().briefs().size(), "noRepeatedAuthors").isEqualTo(3);
+			}
+		}
+	}
+
+	/**
+	 * All three weak attempts use one working reference's verdict, and that run does not count as their own evidence.
+	 *
+	 * @param referenceVerdict the working candidate's verdict on the regression instance
+	 * @param accepted whether every attempt fixes the failure without introducing a regression
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D12
+	@Test(dataProvider = "workingReferenceVerdicts")
+	public void weakRoundSharesWorkingReference(Verdict referenceVerdict, boolean accepted) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = workingReferenceHarness(
+				cleanup.add(Files.createTempDirectory("shared-reference")), referenceVerdict);
+			try (Driver driver = harness.open())
+			{
+				Campaign planned = harness.runUntil(driver, state ->
+					state.development().round().validationAttempts().size() == 3);
+				requireThat(planned.development().round().validationAttempts().stream().
+					flatMap(attempt -> attempt.runs().stream()).
+					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).count(), "referencePlans").
+					isEqualTo(1);
+				requireThat(harness.sessions().sessions().stream().map(FakeSession::request).
+					filter(request -> request.role() == SessionRole.TRIAL &&
+						harness.snapshot(request).equals(Builder.snapshot("candidate-1")) &&
+						DriverHarness.cell(request).equals("formatting")).count(), "referenceSessions").isEqualTo(1);
+				TrialKey reference = planned.development().round().validationAttempts().stream().
+					flatMap(attempt -> attempt.runs().stream()).
+					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).
+					map(PromotionRun::trial).findFirst().orElseThrow();
+
+				Campaign decided = harness.runUntil(driver, state ->
+				{
+					if (state.development().author() != null)
+					{
+						for (PromotionRun run : state.development().author().runs())
+						{
+							if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+								requireThat(run.trial(), "reductionReferenceIdentity").isEqualTo(reference);
+						}
+					}
+					return state.development().working().number() == 2 ||
+						state.pending() instanceof PendingDecision.PlateauReached;
+				});
+				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
+				for (AttemptResult attempt : decided.optimization().attempts())
+				{
+					requireThat(attempt.accepted(), "sharedReferenceDecision").isEqualTo(accepted);
+					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
+					requireThat(attempt.totalRuns(), "ownPlannedRuns").isEqualTo(3);
+				}
+				requireThat(decided.attempts(), "certificationAllowance").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns the reference verdicts that reject or accept the same three failed regression runs.
+	 *
+	 * @return the reference verdict and expected acceptance for all attempts
+	 */
+	@DataProvider
+	public static Object[][] workingReferenceVerdicts()
+	{
+		return new Object[][] {{Verdict.PASS, false}, {Verdict.FAIL, true}};
+	}
+
+	/**
+	 * A restart resumes the weak round's unfinished working reference once under the same logical identity.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D12
+	@Test
+	public void weakRoundResumesOneWorkingReference() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = workingReferenceHarness(
+				cleanup.add(Files.createTempDirectory("resume-reference")), Verdict.PASS);
+			TrialKey reference;
+			try (Driver driver = harness.open())
+			{
+				Campaign saved = harness.runUntil(driver, state ->
+					state.development().round().validationAttempts().size() == 3 && state.trials().stream().
+						anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION &&
+							trial.key().snapshot().equals(Builder.snapshot("candidate-1")) &&
+							trial.state() == TrialState.RUNNING));
+				reference = saved.trials().stream().filter(trial -> trial.key().purpose() == Purpose.PROMOTION &&
+					trial.key().snapshot().equals(Builder.snapshot("candidate-1"))).
+					map(LogicalTrial::key).findFirst().orElseThrow();
+			}
+
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				requireThat(harness.campaign().trials().stream().
+					filter(trial -> trial.key().purpose() == Purpose.PROMOTION &&
+						trial.key().snapshot().equals(Builder.snapshot("candidate-1"))).
+					map(LogicalTrial::key).toList(), "resumedReferenceIdentity").isEqualTo(List.of(reference));
+				requireThat(harness.runningTrials().stream().filter(session ->
+					harness.snapshot(session.request()).equals(Builder.snapshot("candidate-1"))).count(),
+					"runningReferenceSessions").isEqualTo(1);
+				requireThat(harness.sessions().sessions().stream().map(FakeSession::request).
+					filter(request -> request.role() == SessionRole.TRIAL &&
+						harness.snapshot(request).equals(Builder.snapshot("candidate-1"))).count(),
+					"referenceStartsIncludingResume").isEqualTo(2);
+
+				Campaign decided = harness.runUntil(driver, state ->
+					state.pending() instanceof PendingDecision.PlateauReached);
+				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
+				for (AttemptResult attempt : decided.optimization().attempts())
+				{
+					requireThat(attempt.accepted(), "sharedReferenceDecision").isFalse();
+					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
+					requireThat(attempt.totalRuns(), "ownPlannedRuns").isEqualTo(3);
+				}
+				requireThat(harness.author().briefs().size(), "unchangedAuthorAttempts").isEqualTo(3);
+			}
+		}
+	}
+
+	/**
+	 * Creates a weak round whose three edits fix its triggering failure but fail an instance with no working outcome.
+	 *
+	 * @param directory the fixture directory owned by the calling test
+	 * @param referenceVerdict the working candidate's verdict on the failed regression instance
+	 * @return the harness with scripted trial outcomes
+	 * @throws IOException if the fixture cannot be used
+	 */
+	private static DriverHarness workingReferenceHarness(Path directory, Verdict referenceVerdict) throws IOException
+	{
+		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure",
+			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of());
+		DriverHarness harness = new DriverHarness(directory,
+			new Builder().confirmed().working(1).readyBaseline().ceiling(16).slowStart(new SlowStart(16, 0)).
+				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).failure(failure).
+				regression(Builder.targeted("formatting", "formal"), null).build());
+		harness.trials(request ->
+		{
+			if (DriverHarness.cell(request).equals("formatting"))
+			{
+				if (harness.snapshot(request).equals(Builder.snapshot("candidate-1")) && referenceVerdict == Verdict.PASS)
+					return harness.passed();
+				return harness.failed();
+			}
+			return harness.passed();
+		});
+		return harness;
+	}
+
+
+	/**
+	 * The second sequential reservation uses the rewrite approach, including when its author session is resumed.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D3
+	@Test
+	public void sequentialApproachSurvivesRestart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("approach-resume")),
+				authoring().build());
+			harness.trials(_ -> harness.failed());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> harness.author().briefs().size() == 2);
+				SessionRequest second = harness.sessions().sessions().getLast().request();
+				requireThat(second.role(), "role").isEqualTo(SessionRole.AUTHOR);
+				requireThat(second.turns().getFirst(), "secondApproach").contains("Rewrite rather than add:");
+			}
+
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				requireThat(harness.author().briefs().size(), "resumedAuthor").isEqualTo(3);
+				SessionRequest resumed = harness.sessions().sessions().getLast().request();
+				requireThat(resumed.role(), "role").isEqualTo(SessionRole.AUTHOR);
+				requireThat(resumed.turns().getFirst(), "resumedApproach").contains("Rewrite rather than add:");
+				requireThat(harness.campaign().development().round().reservations().size(), "reservations").
+					isEqualTo(2);
+			}
+		}
+	}
+
+	/**
+	 * An attempt fixing one of two triggering instances becomes the working candidate after unnecessary hunks
+	 * are removed, and its original partial promotion result is reported as accepted.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D11
+	// Requirement: R-D3
+	@Test
+	public void partialFixBecomesWorkingCandidate() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("partial-fix")),
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "logs")).failure(Builder.targeted("safety", "cache")).build());
+			Sha256 working = Builder.snapshot("candidate-1");
+			harness.overlays().put(working, harness.candidate("first\nseparator\nlast\n"));
+			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
+			harness.authors(request -> harness.edit(request, DriverHarness.PROMPT, "needed\nseparator\nunneeded\n"));
+			harness.trials(request ->
+			{
+				if (String.join("\n", request.turns()).contains("cache"))
+					return harness.failed();
+				try
+				{
+					Write entry = (Write) harness.overlays().require(harness.snapshot(request)).entries().
+						get(DriverHarness.PROMPT);
+					if (entry != null && new String(entry.content().bytes(), UTF_8).lines().
+						anyMatch(line -> line.equals("needed")))
+						return harness.passed();
+					return harness.failed();
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			});
+
+			try (Driver driver = harness.open())
+			{
+				Campaign result = harness.runUntil(driver, state -> state.development().working().number() == 2 ||
+					state.pending() instanceof PendingDecision.PlateauReached);
+				requireThat(result.development().working().number(), "workingCandidate").isEqualTo(2);
+				Write entry = (Write) harness.overlays().require(result.development().working().snapshot()).
+					entries().get(DriverHarness.PROMPT);
+				requireThat(new String(entry.content().bytes(), UTF_8), "minimalPrompt").
+					isEqualTo("needed\nseparator\nlast\n");
+				requireThat(result.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				JsonNode attempts = StatusReport.of(result, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
+					get("author_attempts");
+				requireThat(attempts.get(0).get("accepted").asBoolean(), "accepted").isTrue();
+				requireThat(attempts.get(0).get("passing_runs").asInt(), "passingRuns").isEqualTo(3);
+				requireThat(attempts.get(0).get("total_runs").asInt(), "totalRuns").isEqualTo(5);
+			}
+		}
+	}
+
+	/**
+	 * A driver restart retains two passing outcomes and reruns the assigned third promotion run under the same key.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D3
+	@Test
+	public void extendedPromotionResumes() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(
+				new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("extended-resume")),
+				new Builder().confirmed().working(1).readyBaseline().ceiling(1).development("safety", 60, 1).
+					round(new Round(Map.of("safety", 0))).failure(failure).build());
+			TrialKey extension;
+			try (Driver driver = harness.open())
+			{
+				Campaign saved = harness.runUntil(driver, state -> state.development().author() != null &&
+					state.development().author().runs().size() == 3 &&
+					state.development().author().runs().getLast().trial() != null);
+				extension = saved.development().author().runs().getLast().trial();
+				requireThat(extension.purpose(), "purpose").isEqualTo(Purpose.PROMOTION);
+				requireThat(saved.development().author().runs().stream().filter(run -> run.verdict() == Verdict.PASS).
+					count(), "retainedPasses").isEqualTo(2);
+			}
+
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				Campaign resumed = harness.campaign();
+				requireThat(resumed.trials().stream().map(LogicalTrial::key).toList(), "resumedKey").contains(extension);
+				requireThat(resumed.development().count("safety"), "unchangedCounts").isEqualTo(Builder.counts(60, 1));
+				Campaign accepted = harness.runUntil(driver, state -> state.development().author() != null &&
+					!state.development().author().minimality().acceptedRuns().isEmpty());
+				List<PromotionRun> runs = accepted.development().author().minimality().acceptedRuns();
+				requireThat(runs.size(), "acceptedStreak").isEqualTo(3);
+				requireThat(runs.getLast().trial(), "completedExtension").isEqualTo(extension);
+				requireThat(runs.getLast().verdict(), "extensionVerdict").isEqualTo(Verdict.PASS);
+				requireThat(accepted.attempts(), "allowance").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * A partial fix is withdrawn after its representative estimate falls below its predecessor, restoring the
+	 * predecessor's counts and worktree and pausing the unproductive round at a plateau.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D15
+	@Test
+	public void partialFixRevertsAtPlateau() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("partial-revert")),
+				new Builder().confirmed().working(1).readyBaseline().ceiling(1).
+					development("safety", 7, 3).round(new Round(Map.of("safety", 1))).
+					failure(Builder.targeted("safety", "logs")).failure(Builder.targeted("safety", "cache")).build());
+			Candidate predecessor = harness.campaign().development().working();
+			Map<String, CellCounts> counts = harness.campaign().development().counts();
+			AtomicInteger authors = new AtomicInteger();
+			harness.authors(request -> harness.edit(request, DriverHarness.PROMPT,
+				"needed-" + authors.incrementAndGet()));
+			harness.trials(request ->
+			{
+				try
+				{
+					if (harness.campaign().development().working().number() == 2)
+					{
+						if (harness.campaign().development().diagnosis() != null)
+							return harness.passed();
+						return harness.failed();
+					}
+					if (String.join("\n", request.turns()).contains("cache"))
+						return harness.failed();
+					Write entry = (Write) harness.overlays().require(harness.snapshot(request)).entries().
+						get(DriverHarness.PROMPT);
+					if (entry != null && new String(entry.content().bytes(), UTF_8).startsWith("needed-"))
+						return harness.passed();
+					return harness.failed();
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			});
+
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().working().number() == 2);
+				Campaign reverted = harness.runUntil(driver,
+					state -> state.pending() instanceof PendingDecision.PlateauReached);
+
+				requireThat(reverted.development().working(), "restoredCandidate").isEqualTo(predecessor);
+				requireThat(reverted.development().counts(), "restoredCounts").isEqualTo(counts);
+				requireThat(harness.workspace().scanWorktree(), "restoredWorktree").
+					isEqualTo(harness.overlays().require(predecessor.snapshot()).snapshot());
+				requireThat(harness.author().briefs().size(), "authorsBeforePause").isEqualTo(1);
+				requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
+				requireThat(StatusReport.of(reverted, ReportEvidence.NONE).status().label(), "status").
+					isEqualTo("awaiting-user");
 			}
 		}
 	}

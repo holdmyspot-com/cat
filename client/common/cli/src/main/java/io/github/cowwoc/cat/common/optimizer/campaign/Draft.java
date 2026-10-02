@@ -83,6 +83,18 @@ final class Draft
 	 */
 	List<Failure> developmentFailures;
 	/**
+	 * The working candidate's adopted outcomes grouped by instance content.
+	 */
+	List<InstanceOutcomes> instanceOutcomes;
+	/**
+	 * The retained state before the latest promotion, or {@code null}.
+	 */
+	Predecessor predecessor;
+	/**
+	 * The candidates withdrawn after representative outcomes, in withdrawal order.
+	 */
+	final List<Revert> reverts;
+	/**
 	 * The diagnosis in progress, or {@code null}.
 	 */
 	Diagnosis diagnosis;
@@ -188,6 +200,9 @@ final class Draft
 		series = development.series();
 		developmentCounts = new LinkedHashMap<>(development.counts());
 		developmentFailures = new ArrayList<>(development.failures());
+		instanceOutcomes = development.instanceOutcomes();
+		predecessor = development.predecessor();
+		reverts = new ArrayList<>(development.reverts());
 		diagnosis = development.diagnosis();
 		round = development.round();
 		author = development.author();
@@ -317,6 +332,34 @@ final class Draft
 	}
 
 	/**
+	 * Indicates whether a trial measures a working reference registered by an attempt in the current round.
+	 * The reference remains shared evidence even when its owning sequential attempt has rejected.
+	 *
+	 * @param trial the trial to classify
+	 * @return {@code true} if the trial uses the working snapshot and its owner's reference content
+	 */
+	boolean isWorkingReference(LogicalTrial trial)
+	{
+		TrialKey key = trial.key();
+		if (key.purpose() != Purpose.PROMOTION || !key.snapshot().equals(working.snapshot()) || round == null)
+			return false;
+		AuthorAttempt owner = findAuthor(key.series());
+		if (owner != null)
+		{
+			return owner.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE &&
+				key.equals(run.trial()));
+		}
+		for (AuthorAttempt attempt : round.validationAttempts())
+		{
+			if (attempt.number() != key.series())
+				continue;
+			return attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE &&
+				Promotion.isSameContent(run.instance(), trial.instance()));
+		}
+		return false;
+	}
+
+	/**
 	 * Replaces either the selected attempt or one concurrent contender.
 	 *
 	 * @param attempt the updated attempt
@@ -340,6 +383,8 @@ final class Draft
 		++series;
 		developmentCounts = new LinkedHashMap<>();
 		developmentFailures = new ArrayList<>();
+		instanceOutcomes = List.of();
+		predecessor = null;
 		diagnosis = null;
 		round = null;
 		author = null;
@@ -498,7 +543,7 @@ final class Draft
 			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, author, reviewPoints, widened);
+			diagnosis, round, author, reviewPoints, widened, instanceOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
 			development, failedCells, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
 			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);

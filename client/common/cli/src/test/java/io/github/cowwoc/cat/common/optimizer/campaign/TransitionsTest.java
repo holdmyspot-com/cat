@@ -283,6 +283,7 @@ public final class TransitionsTest
 	 * Verifies that a promoted candidate starts new counts and that the earlier failing instance stays in the
 	 * regression set.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void newCandidateStartsNewCounts()
 	{
@@ -293,7 +294,7 @@ public final class TransitionsTest
 			development("formatting", 61, 0).failure(logs).regression(logs, Verdict.FAIL).
 			round(new Round(Map.of("safety", 0))).build();
 		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
-		for (int run = 0; run < 2; ++run)
+		for (int run = 0; run < 3; ++run)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, attempt, logs, Verdict.PASS);
 
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(attempt));

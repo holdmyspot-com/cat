@@ -156,6 +156,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("authorized_targets", list(brief.authorizedTargets())),
 			Map.entry("links", links(brief.links())),
 			Map.entry("cell", brief.cell()),
+			Map.entry("approach", brief.approach().text()),
 			Map.entry("contract", schema.toJson(brief.contract())),
 			Map.entry("campaign_edits", brief.campaignEdits()),
 			Map.entry("failures", pretty(failures)),

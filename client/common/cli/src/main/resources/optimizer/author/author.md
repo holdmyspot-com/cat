@@ -80,6 +80,12 @@ The formal outcomes of the certification attempts that have ended, as JSON. Each
 
 {{ended_attempts}}
 
+### Your approach
+
+Other attempts for this cell may follow other approaches. Follow this one in every edit you make:
+
+{{approach}}
+
 ### How to edit
 
 1. Classify every supplied failure before editing: `routing` when an existing instruction was not loaded or applied;
@@ -93,10 +99,12 @@ The formal outcomes of the certification attempts that have ended, as JSON. Each
    resolutions, recommend one with its reason, and make no edit for it. CAT pauses the campaign for the user's choice. A
    contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
    resolve it.
-2. Make the smallest correction supported by the evidence in the file that owns the decision. Prefer editing or
-   creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session. Edit one of them only
-   when the correction cannot otherwise reach the sessions that need it, such as adding the reference that loads a new
-   file. Remove a contradiction or ambiguity before adding emphasis.
+2. Make the smallest correction supported by the evidence in the file that owns the decision. When the failing replies
+   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
+   guidance added elsewhere leaves that instruction in force. Put new guidance in a prompt file other than
+   `AGENTS.md` or `CLAUDE.md`, which load into every session, and add it to one of them only when it cannot
+   otherwise reach the sessions that need it, such as adding the reference that loads a new file. Remove a
+   contradiction or ambiguity before adding emphasis.
    Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
    repeated instructions are not corrections.
 3. For each change, name an analogous case that needs the same path and a dissimilar case that must not receive the

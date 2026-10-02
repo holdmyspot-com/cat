@@ -884,7 +884,7 @@ public final class Driver implements AutoCloseable
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
 			Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 			String edits = CampaignEdits.of(context.workspace(), incumbent, overlay, context.promptSources());
-			AuthorBrief brief = AuthorBrief.of(campaign, cell, overlay.fork(), edits);
+			AuthorBrief brief = AuthorBrief.of(campaign, number, overlay.fork(), edits);
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
 			register(new InFlight.Author(number, cell, working, overlay, copy, before, brief, handle));

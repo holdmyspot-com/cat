@@ -562,7 +562,7 @@ public final class Transitions
 				String categoryId = draft.contract().findCell(cell).orElseThrow().categoryId();
 				cells = draft.contract().profiles().cellsOf(categoryId).stream().map(Cell::id).toList();
 			}
-			runs = Promotion.plan(cells, failures, draft.regressionSet, draft.generator());
+			runs = planPromotionRuns(draft, cells, failures);
 		}
 		AuthorAttempt attempt = new AuthorAttempt(number, cell, submit.snapshot(), runs,
 			Minimality.start(submit.changes(), submit.snapshot()));
@@ -584,6 +584,41 @@ public final class Transitions
 	}
 
 	/**
+	 * Plans an attempt's runs, sharing references already owned by a weak contender or an unadopted trial.
+	 * Adopted working verdicts are supplied by the regression set.
+	 *
+	 * @param draft the campaign state
+	 * @param cells the triggering cells
+	 * @param failures the instances that the author received
+	 * @return the attempt's own runs and references that have no owner yet
+	 */
+	private static List<PromotionRun> planPromotionRuns(Draft draft, List<String> cells,
+		List<TrialInstance> failures)
+	{
+		List<TrialInstance> references = new ArrayList<>();
+		for (LogicalTrial trial : draft.trials)
+		{
+			if (draft.isWorkingReference(trial))
+				references.add(trial.instance());
+		}
+		if (draft.round.weak())
+		{
+			for (AuthorAttempt attempt : draft.round.validationAttempts())
+			{
+				for (PromotionRun run : attempt.runs())
+				{
+					if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+						references.add(run.instance());
+				}
+			}
+		}
+
+		return Promotion.plan(cells, failures, draft.regressionSet, draft.generator()).stream().filter(run ->
+			run.role() != PromotionRun.Role.WORKING_REFERENCE ||
+				!Promotion.containsContent(references, run.instance())).toList();
+	}
+
+	/**
 	 * Advances the shared reduction policy after the current attempt's runs have settled.
 	 *
 	 * @param draft the state
@@ -596,7 +631,7 @@ public final class Transitions
 		if (author == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
 			throw new IllegalStateException("Minimality needs a completed attempt with no remaining promotion trials");
 		Minimality next = author.minimality().advance(author.snapshot(), author.runs(),
-			Promotion.decide(author, draft.regressionSet));
+			Promotion.decide(author, draft.regressionSet, draft.instanceOutcomes));
 		if (next.testing() == null)
 		{
 			List<String> removed = new ArrayList<>(draft.optimization.removed());
@@ -608,14 +643,7 @@ public final class Transitions
 				next.acceptedRuns(), next));
 			return;
 		}
-		List<PromotionRun> runs = new ArrayList<>();
-		for (PromotionRun run : author.runs())
-		{
-			if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
-				runs.add(run);
-			else
-				runs.add(new PromotionRun(run.role(), run.instance(), null, null));
-		}
+		List<PromotionRun> runs = Promotion.resetRuns(author.runs());
 		draft.author = new AuthorAttempt(author.number(), author.cell(), snapshot, runs, next);
 	}
 

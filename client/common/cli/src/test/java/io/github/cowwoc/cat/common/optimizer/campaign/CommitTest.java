@@ -199,6 +199,7 @@ public final class CommitTest
 	 * Verifies that formal outcomes never revise the frozen candidate: the edit that they inform becomes a new
 	 * candidate that needs a new attempt with the next index.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void editNeedsNewAttempt()
 	{
@@ -213,9 +214,11 @@ public final class CommitTest
 
 		Sha256 edit = Builder.snapshot("edit");
 		campaign = TransitionSteps.submit(campaign, "safety", edit, List.of());
-		AuthorAttempt author = campaign.development().author();
-		for (PromotionRun run : author.runs())
+		while (campaign.development().author().runs().stream().anyMatch(run -> run.verdict() == null))
 		{
+			AuthorAttempt author = campaign.development().author();
+			PromotionRun run = author.runs().stream().filter(element -> element.verdict() == null).
+				findFirst().orElseThrow();
 			Sha256 snapshot = edit;
 			if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
 				snapshot = frozen.snapshot();

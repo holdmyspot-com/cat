@@ -32,8 +32,41 @@ public final class MinimalityTest
 	}
 
 	/**
+	 * A reduction needs the same extended passing streak that established the accepted fix.
+	 */
+	// Requirement: R-D11
+	@Test
+	public void reductionUsesExtendedStreak()
+	{
+		Sha256 original = Builder.snapshot("original");
+		Sha256 reduced = Builder.snapshot("reduced");
+		Campaign campaign = TransitionSteps.submit(PromotionTest.streakRound(1), "safety", original, List.of(
+			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
+				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
+		TrialInstance instance = campaign.development().author().runs().getFirst().instance();
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, instance, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, instance, Verdict.PASS);
+		requireThat(campaign.development().author().runs(), "originalExtension").size().isEqualTo(3);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, instance, Verdict.PASS);
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(reduced));
+		requireThat(campaign.development().author().runs(), "reductionStartingRuns").size().isEqualTo(2);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, instance, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, instance, Verdict.PASS);
+		AuthorAttempt author = campaign.development().author();
+		requireThat(author.runs(), "reductionExtension").size().isEqualTo(3);
+		requireThat(Promotion.decide(author, campaign.lineage().regressionSet(),
+			campaign.development().instanceOutcomes()), "pendingReduction").
+			isEqualTo(Promotion.Decision.PENDING);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, instance, Verdict.PASS);
+		requireThat(Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet(),
+				campaign.development().instanceOutcomes()),
+			"acceptedReduction").isEqualTo(Promotion.Decision.PROMOTE);
+	}
+
+	/**
 	 * Verifies that passing promotion trials preserve the old working candidate until reduction finishes.
 	 */
+	// Requirement: R-D11
 	@Test
 	public void passingAttemptWaitsForReduction()
 	{
@@ -45,7 +78,7 @@ public final class MinimalityTest
 		campaign = TransitionSteps.submit(campaign, "safety", snapshot, List.of(
 			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
 				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
-		for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
+		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, failure, Verdict.PASS);
 		requireThat(campaign.development().working().number(), "working").isEqualTo(1);
 		requireThat(campaign.development().author(), "attempt").isNotNull();
@@ -53,23 +86,62 @@ public final class MinimalityTest
 	}
 
 	/**
+	 * A reduction must keep every accepted fix even when a different instance is still fixed.
+	 */
+	// Requirement: R-D11
+	@Test
+	public void reductionKeepsEveryAcceptedFix()
+	{
+		Sha256 snapshot = Builder.snapshot("attempt");
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		TrialInstance cache = Builder.targeted("safety", "cache");
+		List<PromotionRun> accepted = List.of(run(logs, Verdict.PASS), run(logs, Verdict.PASS),
+			run(cache, Verdict.PASS), run(cache, Verdict.PASS));
+		Minimality search = new Minimality(List.of(), List.of("CLAUDE.md#1", "CLAUDE.md#2"), 2, 0,
+			List.of("CLAUDE.md#2"), snapshot, accepted);
+		AuthorAttempt lost = new AuthorAttempt(1, "safety", snapshot, List.of(run(logs, Verdict.FAIL),
+			run(logs, Verdict.PASS), run(cache, Verdict.PASS), run(cache, Verdict.PASS)), search);
+		AuthorAttempt kept = new AuthorAttempt(1, "safety", snapshot, accepted, search);
+		requireThat(Promotion.decide(lost, List.of(), List.of(
+			new InstanceOutcomes(logs, 0, 4), new InstanceOutcomes(cache, 0, 4))), "lostFix").
+			isEqualTo(Promotion.Decision.REJECT);
+		requireThat(Promotion.decide(kept, List.of(), List.of(
+			new InstanceOutcomes(logs, 0, 4), new InstanceOutcomes(cache, 0, 4))), "keptFixes").
+			isEqualTo(Promotion.Decision.PROMOTE);
+	}
+
+	/**
+	 * Returns a triggering outcome for reduction evidence.
+	 *
+	 * @param instance the triggering instance
+	 * @param verdict its outcome
+	 * @return the run
+	 */
+	private static PromotionRun run(TrialInstance instance, Verdict verdict)
+	{
+		return new PromotionRun(PromotionRun.Role.TRIGGERING, instance,
+			new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("attempt"), instance.cellId(), 1), verdict);
+	}
+
+	/**
 	 * Verifies that failed coarse removals refine to single hunks and preserve the two necessary changes.
 	 */
+	// Requirement: R-D11
 	@Test
 	public void refinesUntilNoHunkCanBeRemoved()
 	{
-		// Requirement: R-D11
 		FileDelta file = new FileDelta(Path.of("CLAUDE.md"),
 			new FileContent("a\nx\nb\ny\nc\nz\nd\n".getBytes(UTF_8)),
 			new FileContent("needed-a\nx\nunneeded-b\ny\nneeded-c\nz\nunneeded-d\n".getBytes(UTF_8)),
 			PosixFilePermissions.fromString("rw-r--r--"));
 		Overlay working = Overlay.of(new FileInventory(Path.of("/project"), Map.of(file.path(),
 			new RegularFile(file.before().hash(), file.permissions()))));
-		PromotionRun pass = new PromotionRun(PromotionRun.Role.TRIGGERING,
-			Builder.targeted("safety", "cache"),
-			new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("full"), "safety", 1), Verdict.PASS);
+		TrialInstance first = Builder.targeted("safety", "logs");
+		TrialInstance second = Builder.targeted("safety", "cache");
+		List<PromotionRun> accepted = List.of(run(first, Verdict.PASS), run(first, Verdict.PASS),
+			run(second, Verdict.PASS), run(second, Verdict.PASS));
 		Minimality search = Minimality.start(List.of(file), Builder.snapshot("full")).
-			advance(Builder.snapshot("full"), List.of(pass), Promotion.Decision.PROMOTE);
+			advance(Builder.snapshot("full"), accepted, Promotion.Decision.PROMOTE);
 		for (int iteration = 0; iteration < 20 && search.testing() != null; ++iteration)
 		{
 			Overlay reduced = Hunks.apply(working, search.files(), Set.copyOf(search.testing()));
@@ -77,10 +149,17 @@ public final class MinimalityTest
 			if (reduced.entries().get(file.path()) instanceof Write write)
 				content = write.content();
 			List<String> lines = new String(content.bytes(), UTF_8).lines().toList();
-			Promotion.Decision decision = Promotion.Decision.REJECT;
-			if (lines.contains("needed-a") && lines.contains("needed-c"))
-				decision = Promotion.Decision.PROMOTE;
-			search = search.advance(reduced.identity(), List.of(pass), decision);
+			Verdict firstVerdict = Verdict.FAIL;
+			if (lines.contains("needed-a"))
+				firstVerdict = Verdict.PASS;
+			Verdict secondVerdict = Verdict.FAIL;
+			if (lines.contains("needed-c"))
+				secondVerdict = Verdict.PASS;
+			List<PromotionRun> runs = List.of(run(first, firstVerdict), run(first, firstVerdict),
+				run(second, secondVerdict), run(second, secondVerdict));
+			AuthorAttempt attempt = new AuthorAttempt(1, "safety", reduced.identity(), runs, search);
+			search = search.advance(reduced.identity(), runs, Promotion.decide(attempt, List.of(), List.of(
+				new InstanceOutcomes(first, 0, 4), new InstanceOutcomes(second, 0, 4))));
 		}
 		requireThat(search.testing(), "finished").isNull();
 		requireThat(search.removed(), "removed").isEqualTo(List.of("CLAUDE.md#2", "CLAUDE.md#4"));

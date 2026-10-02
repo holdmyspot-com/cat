@@ -45,6 +45,31 @@ public final class SchedulerTest
 	}
 
 	/**
+	 * An extended streak schedules one targeted promotion run, and an assigned extension resumes under its key.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void extendedStreakSchedulesAndResumes()
+	{
+		Sha256 snapshot = Builder.snapshot("extended");
+		Campaign campaign = TransitionSteps.submit(PromotionTest.streakRound(1), "safety", snapshot, List.of());
+		TrialInstance instance = campaign.development().author().runs().getFirst().instance();
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, instance, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, instance, Verdict.PASS);
+		List<Admission> plan = Scheduler.plan(campaign, NOW, 1);
+		requireThat(plan, "extensionPlan").size().isEqualTo(1);
+		Admission.Assign extension = (Admission.Assign) plan.getFirst();
+		requireThat(extension.purpose(), "purpose").isEqualTo(Purpose.PROMOTION);
+		requireThat(extension.instance().targeted(), "targeted").isTrue();
+		requireThat(extension.allocation().rule(), "allocation").isEqualTo(AllocationRule.TARGETED);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(extension));
+		TrialKey key = TransitionSteps.last(campaign);
+		requireThat(Scheduler.plan(campaign, NOW, 1), "resume").isEqualTo(List.of(new Admission.Rerun(key)));
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(Builder.counts(60, 1));
+		requireThat(campaign.attempts(), "allowance").isEmpty();
+	}
+
+	/**
 	 * Returns the allocation decision of a rule that used no adopted outcomes, made at {@link #NOW}.
 	 *
 	 * @param rule the allocation rule
@@ -607,6 +632,7 @@ public final class SchedulerTest
 	 * Verifies that after an edit, the new working candidate starts again with counts at zero, not widened, and
 	 * receives representative trials only in the active cells, including the cell that failed.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void restartInActiveSetAfterEdit()
 	{
@@ -619,7 +645,8 @@ public final class SchedulerTest
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).build();
 		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM,
 			Builder.snapshot("attempt"), List.of());
-		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet()) ==
+		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet(),
+			campaign.development().instanceOutcomes()) ==
 			Promotion.Decision.PENDING)
 		{
 			campaign = runNext(campaign, Verdict.PASS);

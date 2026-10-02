@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import java.nio.charset.StandardCharsets;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
@@ -179,6 +180,7 @@ public final class AuthorManifestTest
 	/**
 	 * Verifies that the author receives all four evidence-based editing steps.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void explainsClassificationAndGeneralization()
 	{
@@ -186,7 +188,8 @@ public final class AuthorManifestTest
 		JsonMapper json = JsonMapper.builder().build();
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
 			Set.of(), Map.of(), "");
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not guidance").contains("smallest").
@@ -254,12 +257,14 @@ public final class AuthorManifestTest
 	/**
 	 * Verifies that repeated instances from different ended attempts retain separate classifications.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void separatesFailureOccurrences()
 	{
 		// Requirement: R-D10
 		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure), Map.of(),
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),
 				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of(), "");
 		requireThat(brief.failureIds().size(), "classifiedFailures").isEqualTo(3);

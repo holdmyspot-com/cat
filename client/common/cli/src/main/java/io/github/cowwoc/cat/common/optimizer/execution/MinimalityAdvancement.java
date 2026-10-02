@@ -28,7 +28,8 @@ final class MinimalityAdvancement
 	}
 
 	/**
-	 * Advances a completed promotion decision to its next reduction or final minimal candidate.
+	 * Advances a completed promotion decision to its next reduction or final minimal candidate. Promotion requires
+	 * reductions to preserve every triggering fix from the last accepted runs.
 	 *
 	 * @param context the execution ports
 	 * @param campaign the state after completed outcomes are adopted
@@ -44,7 +45,8 @@ final class MinimalityAdvancement
 		{
 			return campaign;
 		}
-		Promotion.Decision decision = Promotion.decide(author, campaign.lineage().regressionSet());
+		Promotion.Decision decision = Promotion.decide(author, campaign.lineage().regressionSet(),
+			campaign.development().instanceOutcomes());
 		if (decision == Promotion.Decision.PENDING)
 			return campaign;
 		Minimality next = author.minimality().advance(author.snapshot(), author.runs(), decision);

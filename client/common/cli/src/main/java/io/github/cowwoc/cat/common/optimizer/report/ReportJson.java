@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -66,6 +67,7 @@ final class ReportJson
 		remaining(root.putObject("remaining"), report.remaining());
 		tokens(root.putObject("tokens"), report.tokens());
 		OptimizationJson.write(root, report.optimization());
+		reverts(root.putArray("reverts"), report.reverts());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
@@ -91,6 +93,26 @@ final class ReportJson
 		for (Map.Entry<String, String> entry : report.conditions().entrySet())
 			conditions.put(entry.getKey(), entry.getValue());
 		return root;
+	}
+
+	/**
+	 * Adds the withdrawn candidates and the estimates that triggered each revert.
+	 *
+	 * @param array the report's revert array
+	 * @param reverts the recorded withdrawals, in withdrawal order
+	 */
+	private static void reverts(ArrayNode array, List<Revert> reverts)
+	{
+		for (Revert revert : reverts)
+		{
+			ObjectNode node = array.addObject();
+			ObjectNode withdrawn = node.putObject("withdrawn");
+			withdrawn.put("number", revert.withdrawn().number());
+			withdrawn.put("snapshot", revert.withdrawn().snapshot().hex());
+			node.put("cell", revert.cell());
+			node.put("upperBound", revert.upperBound());
+			node.put("predecessorRate", revert.predecessorRate());
+		}
 	}
 
 	/**

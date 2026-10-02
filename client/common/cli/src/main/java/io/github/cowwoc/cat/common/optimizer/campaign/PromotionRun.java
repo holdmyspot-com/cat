@@ -22,7 +22,9 @@ public record PromotionRun(Role role, TrialInstance instance, TrialKey trial, Ve
 	public enum Role
 	{
 		/**
-		 * The attempt runs an instance that triggered the round; every such run must pass.
+		 * The attempt runs an instance that triggered the round. Every run must pass and its streak must be unlikely
+		 * for the working candidate. An original attempt must fix at least one instance; a reduction retains every fix
+		 * from its last accepted runs.
 		 */
 		TRIGGERING,
 		/**

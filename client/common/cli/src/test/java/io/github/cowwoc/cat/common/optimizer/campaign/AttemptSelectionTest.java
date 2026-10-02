@@ -13,6 +13,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Map;
+import java.util.ArrayList;
 
 import org.testng.annotations.Test;
 import java.util.List;
@@ -27,6 +28,35 @@ public final class AttemptSelectionTest
 	 */
 	public AttemptSelectionTest()
 	{
+	}
+
+	/**
+	 * A weak round selects no winner until every contender's required streak extension is adopted.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void winnerWaitsForStreakExtensions()
+	{
+		TrialInstance instance = Builder.targeted("safety", "logs");
+		Failure failure = new Failure(instance, "representative failure", List.of(
+			new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
+		Campaign campaign = new Builder().confirmed().working(1).failure(failure).
+			round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
+		for (int attempt = 1; attempt <= 3; ++attempt)
+			campaign = TransitionSteps.submit(campaign, "safety", Builder.snapshot("attempt" + attempt), List.of());
+		for (int attempt = 1; attempt <= 3; ++attempt)
+		{
+			for (int completed = 0; completed < 2; ++completed)
+				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
+					Builder.snapshot("attempt" + attempt), instance, Verdict.PASS);
+		}
+		requireThat(campaign.development().author(), "pendingWinner").isNull();
+		requireThat(campaign.outcome(), "pendingPlateau").isNull();
+		for (int attempt = 1; attempt <= 3; ++attempt)
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
+				Builder.snapshot("attempt" + attempt), instance, Verdict.PASS);
+		requireThat(campaign.development().author().number(), "winner").isEqualTo(1);
 	}
 
 	/**
@@ -85,6 +115,7 @@ public final class AttemptSelectionTest
 	/**
 	 * Verifies that the accepted contender with more passing runs wins.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void mostPassingRunsWins()
 	{
@@ -94,8 +125,47 @@ public final class AttemptSelectionTest
 	}
 
 	/**
+	 * A partial fix wins when it passes more of its own promotion runs, excluding reference runs.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void partialFixWithMorePassingRunsWins()
+	{
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		TrialInstance cache = Builder.targeted("safety", "cache");
+		TrialInstance tmp = Builder.targeted("safety", "tmp");
+		List<AuthorAttempt> attempts = new ArrayList<>();
+		for (int number = 1; number <= 2; ++number)
+		{
+			Sha256 snapshot = Builder.snapshot("attempt" + number);
+			List<PromotionRun> runs = new ArrayList<>();
+			for (TrialInstance instance : List.of(logs, cache, tmp))
+			{
+				Verdict verdict = Verdict.FAIL;
+				if (instance.equals(logs) || number == 2 && instance.equals(cache))
+					verdict = Verdict.PASS;
+				for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+					runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, instance,
+						new TrialKey(Purpose.PROMOTION, number, snapshot, "safety", runs.size() + 1), verdict));
+			}
+			runs.add(new PromotionRun(PromotionRun.Role.REGRESSION, Builder.targeted("formatting", "formal"),
+				new TrialKey(Purpose.PROMOTION, number, snapshot, "formatting", 1), Verdict.PASS));
+			runs.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, Builder.targeted("formatting", "formal"),
+				new TrialKey(Purpose.PROMOTION, number, Builder.snapshot("working"), "formatting", 2), Verdict.PASS));
+			attempts.add(new AuthorAttempt(number, "safety", snapshot, runs, Minimality.start(List.of(), snapshot)));
+		}
+		requireThat(AttemptSelection.select(attempts, Builder.snapshot("working"), List.of(), List.of(
+			new InstanceOutcomes(logs, 0, 4), new InstanceOutcomes(cache, 0, 4), new InstanceOutcomes(tmp, 0, 4))).
+			orElseThrow().number(),
+			"winner").isEqualTo(2);
+		requireThat(AttemptSelection.passingRuns(attempts.getLast().runs()), "ownPasses").isEqualTo(5L);
+		requireThat(AttemptSelection.plannedRuns(attempts.getLast().runs()), "ownRuns").isEqualTo(7L);
+	}
+
+	/**
 	 * Verifies that equally successful contenders are ranked by fewer added and removed lines.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void fewerChangedLinesBreaksTie()
 	{
@@ -107,6 +177,7 @@ public final class AttemptSelectionTest
 	/**
 	 * Verifies that the earlier attempt wins when passing runs and changed lines tie.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void earlierAttemptBreaksTie()
 	{
@@ -136,6 +207,7 @@ public final class AttemptSelectionTest
 	/**
 	 * Verifies that no accepted attempt means no winner and a plateau only after the complete round.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void noAcceptedAttemptHasNoWinner()
 	{
@@ -143,7 +215,7 @@ public final class AttemptSelectionTest
 		Campaign campaign = contenders(List.of(1, 1, 1));
 		for (int attempt = 1; attempt <= 3; ++attempt)
 		{
-			for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
+			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
 					Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "cache"),
 					Verdict.FAIL);
@@ -196,7 +268,9 @@ public final class AttemptSelectionTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), failure, Verdict.FAIL);
 		campaign = new Builder().confirmed().working(1).development("safety", 0, 1).
-			failure(Builder.targeted("safety", "cache")).regression(Builder.targeted("safety", "logs"),
+			failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(
+				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(Builder.targeted("safety", "logs"),
 				Verdict.FAIL).round(campaign.development().round()).build();
 		for (int index = 0; index < sizes.size(); ++index)
 		{
@@ -223,7 +297,7 @@ public final class AttemptSelectionTest
 		for (int attempt = 3; attempt >= 1; --attempt)
 		{
 			Sha256 snapshot = Builder.snapshot("attempt" + attempt);
-			for (int run = 0; run < Promotion.TRIGGERING_RUNS; ++run)
+			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
 					Builder.targeted("safety", "cache"), Verdict.PASS);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,

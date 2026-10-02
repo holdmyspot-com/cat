@@ -118,14 +118,17 @@ public final class PlateauTest
 	/**
 	 * Verifies that a promotion ends the round without a plateau.
 	 */
+	// Requirement: R-D3
 	@Test
 	public void promotionEndsRoundWithoutPlateau()
 	{
 		// Requirement: R-D6
 		Campaign campaign = TransitionSteps.submit(lastAttempt(), "safety", ATTEMPT, List.of());
-		AuthorAttempt author = campaign.development().author();
-		for (PromotionRun run : author.runs())
+		while (campaign.development().author().runs().stream().anyMatch(run -> run.verdict() == null))
 		{
+			AuthorAttempt author = campaign.development().author();
+			PromotionRun run = author.runs().stream().filter(element -> element.verdict() == null).
+				findFirst().orElseThrow();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, run.instance(),
 				Verdict.PASS);
 		}

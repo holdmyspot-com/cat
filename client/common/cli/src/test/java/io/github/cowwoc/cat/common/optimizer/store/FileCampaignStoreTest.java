@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
@@ -18,6 +19,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import java.nio.file.attribute.PosixFilePermissions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
@@ -75,6 +78,108 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	public FileCampaignStoreTest()
 	{
+	}
+
+	/**
+	 * A fresh store read retains the evidence needed to restore a promoted candidate's predecessor.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-D15
+	@Test
+	public void predecessorSurvivesStoreRestart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-predecessor"));
+			Campaign promoted = promotedForRevert();
+			new FileCampaignStore(base, JSON).replaceSnapshot(promoted);
+			Campaign reloaded = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
+			requireThat(reloaded, "reloaded").isEqualTo(promoted);
+
+			Campaign reverted = failDevelopment(reloaded);
+			requireThat(reverted.development().working().number(), "working").isEqualTo(1);
+			requireThat(reverted.development().count("safety"), "counts").isEqualTo(Builder.counts(99, 1));
+			requireThat(reverted.outcome(), "outcome").
+				isEqualTo(Outcome.PLATEAU);
+			new FileCampaignStore(base, JSON).replaceSnapshot(reverted);
+			requireThat(new FileCampaignStore(base, JSON).load(ID).orElseThrow(), "reloadedRevert").isEqualTo(reverted);
+		}
+	}
+
+	/**
+	 * A campaign stored without a predecessor remains readable and cannot revert a candidate.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-D15
+	@Test
+	public void olderCampaignLoadsAndNeverReverts() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-no-predecessor"));
+			new FileCampaignStore(base, JSON).replaceSnapshot(promotedForRevert());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 10);
+			ObjectNode development = (ObjectNode) root.get("development");
+			development.remove("predecessor");
+			development.remove("reverts");
+			development.remove("instance_outcomes");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign campaign = failDevelopment(new FileCampaignStore(base, JSON).load(ID).orElseThrow());
+			requireThat(campaign.development().working().number(), "working").isEqualTo(2);
+			requireThat(campaign.development().count("safety"), "counts").isEqualTo(Builder.counts(0, 1));
+		}
+	}
+
+	/**
+	 * Returns a candidate promoted after the final attempt of a sequential round.
+	 *
+	 * @return the promoted campaign
+	 */
+	private static Campaign promotedForRevert()
+	{
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The defect reproduced");
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 99, 1).
+			failure(new Failure(logs, "Removed the directory", List.of(failed, failed, failed), List.of())).
+			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 1))).build();
+		Sha256 snapshot = Builder.snapshot("stored-promoted-revert-candidate");
+		campaign = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
+		campaign = Transitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(1, "safety", snapshot,
+			List.of()));
+		for (int run = 0; run < 2; ++run)
+		{
+			campaign = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.PROMOTION,
+				1, snapshot, "safety", logs, new Allocation(AllocationRule.TARGETED, campaign.evidenceRevision(),
+					Instant.parse("2026-10-01T12:00:00Z")))));
+			TrialKey key = campaign.trials().getLast().key();
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "Fixed",
+				campaign.identity(), null, List.of()));
+		}
+		return Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
+	}
+
+	/**
+	 * Adopts a failing representative outcome for the working candidate.
+	 *
+	 * @param campaign the campaign
+	 * @return the state after adoption
+	 */
+	private static Campaign failDevelopment(Campaign campaign)
+	{
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT,
+			campaign.development().series(), campaign.development().working().snapshot(), "safety", null,
+			new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
+				Instant.parse("2026-10-01T12:00:00Z")))));
+		TrialKey key = campaign.trials().getLast().key();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		return Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "Poor representative result",
+			campaign.identity(), null, List.of()));
 	}
 
 	@Override
@@ -443,6 +548,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 *
 	 * @throws IOException if the store fails
 	 */
+	// Requirement: R-D15
 	@Test
 	public void storesSnapshotAndOneRecordPerTrial() throws IOException
 	{
@@ -469,10 +575,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(10);
+					"recordVersion").isEqualTo(11);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(10);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(11);
 		}
 	}
 
@@ -862,6 +968,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 *
 	 * @throws IOException if the store fails
 	 */
+	// Requirement: R-D15
 	@Test(expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = "(?s).*format_version.*")
 	public void rejectsUnknownFormatVersion() throws IOException
@@ -874,7 +981,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 11);
+			root.put("format_version", 12);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

@@ -12,6 +12,11 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
+import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
+import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
+import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
@@ -44,6 +49,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,6 +57,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -64,6 +71,53 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class StatusReportTest
 {
+	/**
+	 * The JSON and human status identify a withdrawn candidate, the addressed cell and both estimates that
+	 * triggered its replacement with the predecessor.
+	 */
+	// Requirement: R-D15
+	@Test
+	public void reportsRevertedCandidate()
+	{
+		TrialInstance trigger = Builder.targeted("safety", "logs");
+		Sha256 snapshot = Builder.snapshot("withdrawn");
+		Campaign campaign = new Builder().confirmed().working(1).readyBaseline().
+			development("safety", 90, 10).round(new Round(Map.of("safety", 1))).failure(trigger).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
+		campaign = Transitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(1, "safety", snapshot,
+			List.of()));
+		for (int run = 0; run < 3; ++run)
+		{
+			Allocation allocation = new Allocation(AllocationRule.TARGETED, campaign.evidenceRevision(),
+				Instant.EPOCH);
+			campaign = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.PROMOTION,
+				1, snapshot, "safety", trigger, allocation)));
+			TrialKey key = campaign.trials().getLast().key();
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "",
+				campaign.identity(), null, List.of()));
+		}
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
+		Allocation allocation = new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND,
+			campaign.evidenceRevision(), Instant.EPOCH);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT,
+			campaign.development().series(), snapshot, "safety", null, allocation)));
+		TrialKey key = campaign.trials().getLast().key();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "poor outcome",
+			campaign.identity(), null, List.of()));
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode reverted = report.toJson(JsonMapper.builder().build()).path("reverts").path(0);
+		requireThat(reverted.path("withdrawn").path("number").asInt(), "withdrawn").isEqualTo(2);
+		requireThat(reverted.path("cell").asString(), "cell").isEqualTo("safety");
+		requireThat(reverted.path("upperBound").asDouble(), "upperBound").
+			isEqualTo(ExploratoryBounds.wilson(0, 1).upper());
+		requireThat(reverted.path("predecessorRate").asDouble(), "predecessorRate").isEqualTo(0.9);
+		requireThat(report.summary(), "summary").contains("Reverted candidate 2").contains("safety").
+			contains("upper bound").contains("predecessor rate");
+	}
+
 	/**
 	 * Verifies that status offers numbered resolutions, their recommendation and its reason, then stop.
 	 */
@@ -157,6 +211,68 @@ public final class StatusReportTest
 		requireThat(attempts.get(0).get("accepted").isNull(), "acceptancePending").isTrue();
 		requireThat(attempts.get(0).get("snapshot").isNull(), "authorPending").isTrue();
 		requireThat(attempts.get(0).get("winner").asBoolean(), "winner").isFalse();
+	}
+
+	/**
+	 * Retained attempts identify each round by its position, including a current round with a retained result.
+	 */
+	@Test
+	public void reportsRoundPositionsForRetainedAttempts()
+	{
+		// Requirement: R-D12
+		Sha256 working = Builder.snapshot("candidate-1");
+		List<AttemptResult> results = new ArrayList<>();
+		for (int number = 1; number <= 4; ++number)
+		{
+			int round = 1;
+			if (number == 4)
+				round = 4;
+			results.add(new AttemptResult(round, working, number, "safety", Builder.snapshot("author-" + number),
+				List.of(), 1, false, false));
+		}
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), results,
+			Map.of());
+		Map<Integer, String> reservations = new LinkedHashMap<>();
+		reservations.put(4, "safety");
+		reservations.put(5, "safety");
+		Campaign campaign = new Builder().confirmed().working(1).optimization(evidence).
+			round(new Round(Map.of("safety", 1), true, reservations, List.of())).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode attempts = report.toJson(JsonMapper.builder().build()).path("author_attempts");
+
+		requireThat(attempts.size(), "attempts").isEqualTo(5);
+		for (int position = 0; position < attempts.size(); ++position)
+		{
+			int round = 1;
+			if (position >= 3)
+				round = 2;
+			requireThat(attempts.get(position).path("round").asInt(), "round").isEqualTo(round);
+			requireThat(report.summary(), "summary").contains("Round " + round + ", Attempt " + (position + 1));
+		}
+		requireThat(results.getLast().round(), "storedRoundIdentity").isEqualTo(4);
+	}
+
+	/**
+	 * The unfinished round contributes its identity before any of its attempts is retained.
+	 */
+	@Test
+	public void reportsPositionOfCurrentRound()
+	{
+		// Requirement: R-D12
+		AttemptResult first = new AttemptResult(1, Builder.snapshot("candidate-1"), 1, "safety",
+			Builder.snapshot("author-1"), List.of(), 1, false, false);
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(),
+			List.of(first), Map.of());
+		Campaign campaign = new Builder().confirmed().working(1).optimization(evidence).
+			round(new Round(Map.of("safety", 0), true, Map.of(4, "safety"), List.of())).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode attempts = report.toJson(JsonMapper.builder().build()).path("author_attempts");
+
+		requireThat(attempts.get(0).path("round").asInt(), "firstRound").isEqualTo(1);
+		requireThat(attempts.get(1).path("round").asInt(), "currentRound").isEqualTo(2);
+		requireThat(attempts.get(1).path("number").asInt(), "attemptNumber").isEqualTo(4);
+		requireThat(report.summary(), "summary").contains("Round 1, Attempt 1").contains("Round 2, Attempt 4");
+		requireThat(campaign.development().round().number(), "storedRoundIdentity").isEqualTo(4);
 	}
 
 
@@ -814,12 +930,47 @@ public final class StatusReportTest
 			outcome(Outcome.PLATEAU).build(),
 			ReportEvidence.NONE).status().label(), "closed").isEqualTo("not certified: plateau");
 		requireThat(StatusReport.of(confirmed().readyDevelopment().lifecycle(Lifecycle.CANCELLED).build(),
-			ReportEvidence.NONE).status().label(), "cancelled").isEqualTo("awaiting-user");
+			ReportEvidence.NONE).status().label(), "cancelled").isEqualTo("interrupted");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).status().label(),
 			"unconfirmedStatus").
 			isEqualTo("awaiting-user");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
 			isEqualTo(Phase.UNCONFIRMED);
+	}
+
+	/**
+	 * Stopping at a plateau preserves its outcome and choices while clearing the report's pending decision.
+	 */
+	@Test
+	public void reportsStoppedPlateau()
+	{
+		// Requirement: R-P1
+		Campaign campaign = confirmed().working(1).readyDevelopment().outcome(Outcome.PLATEAU).
+			pending(new PendingDecision.PlateauReached()).build();
+		StatusReport waiting = StatusReport.of(campaign, ReportEvidence.NONE);
+		requireThat(waiting.status().label(), "waitingStatus").isEqualTo("awaiting-user");
+		requireThat(waiting.summary(), "waitingSummary").contains("Waiting for: a full development round");
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
+		StatusReport stopped = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode json = stopped.toJson(JsonMapper.builder().build());
+
+		requireThat(json.path("status").asString(), "stoppedStatus").isEqualTo("not certified: plateau");
+		requireThat(json.path("lifecycle").asString(), "lifecycle").isEqualTo("cancelled");
+		requireThat(json.path("outcome").asString(), "outcome").isEqualTo("not certified: plateau");
+		requireThat(stopped.pending(), "pending").isNull();
+		requireThat(json.path("pending").isNull(), "jsonPending").isTrue();
+		requireThat(stopped.choices().stream().map(ChoiceItem::choice).toList(), "choices").
+			containsExactly(List.of(Choice.RESUME, Choice.ACCEPT_WITHOUT_CERTIFICATION));
+		requireThat(stopped.summary(), "summary").contains("The user stopped the campaign.").
+			contains("Outcome: not certified: plateau").contains("resume").contains("accept without certification").
+			doesNotContain("Waiting for:").doesNotContain("a full development round produced no stronger candidate");
+		requireThat(campaign.pending(), "retainedDecision").isEqualTo(new PendingDecision.PlateauReached());
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
+		StatusReport resumed = StatusReport.of(campaign, ReportEvidence.NONE);
+		requireThat(resumed.status().label(), "resumedStatus").isEqualTo("awaiting-user");
+		requireThat(resumed.summary(), "resumedSummary").contains("Waiting for: a full development round").
+			doesNotContain("The user stopped the campaign.");
 	}
 
 	/**

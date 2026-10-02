@@ -19,7 +19,7 @@ import java.util.TreeMap;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param round the round's first reserved attempt number
+ * @param round the round's position in the campaign, starting at one
  * @param number the author's launch-order attempt number
  * @param working the starting working snapshot
  * @param cell the representative addressed cell
@@ -35,7 +35,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	/**
 	 * Creates an attempt's status.
 	 *
-	 * @param round the round identity
+	 * @param round the round's position in the campaign
 	 * @param number the attempt identity
 	 * @param working the starting snapshot
 	 * @param cell the addressed cell
@@ -45,7 +45,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param accepted the promotion decision, or {@code null} while pending
 	 * @param winner whether this attempt won
 	 * @throws NullPointerException if working or cell is null
-	 * @throws IllegalArgumentException if an identity or count is invalid, or a winner is not accepted
+	 * @throws IllegalArgumentException if a position, number or count is invalid, or a winner is not accepted
 	 */
 	public AttemptProgress
 	{
@@ -70,12 +70,13 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	public static List<AttemptProgress> of(Campaign campaign)
 	{
 		requireThat(campaign, "campaign").isNotNull();
+		Map<Integer, Integer> roundPositions = roundPositions(campaign);
 		Map<Integer, AttemptProgress> progress = new TreeMap<>();
 		for (AttemptResult result : campaign.optimization().attempts())
 		{
-			progress.put(result.number(), new AttemptProgress(result.round(), result.number(), result.working(),
-				result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(), result.accepted(),
-				result.winner()));
+			progress.put(result.number(), new AttemptProgress(roundPositions.get(result.round()), result.number(),
+				result.working(), result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(),
+				result.accepted(), result.winner()));
 		}
 		Round round = campaign.development().round();
 		if (round != null)
@@ -88,8 +89,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 				Sha256 working = campaign.development().working().snapshot();
 				if (attempt == null)
 				{
-					progress.put(entry.getKey(), new AttemptProgress(round.number(), entry.getKey(), working,
-						entry.getValue(), null, 0, 0, null, false));
+					progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(),
+						working, entry.getValue(), null, 0, 0, null, false));
 					continue;
 				}
 				Boolean accepted;
@@ -97,19 +98,43 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 					accepted = false;
 				else
 				{
-					accepted = switch (Promotion.decide(attempt, campaign.lineage().regressionSet()))
+					accepted = switch (Promotion.decide(attempt, campaign.lineage().regressionSet(),
+						campaign.development().instanceOutcomes()))
 					{
 						case PENDING -> null;
 						case PROMOTE -> true;
 						case REJECT -> false;
 					};
 				}
-				progress.put(entry.getKey(), new AttemptProgress(round.number(), entry.getKey(), working,
+				progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(), working,
 					entry.getValue(), attempt.snapshot(), AttemptSelection.passingRuns(attempt.runs()),
 					AttemptSelection.plannedRuns(attempt.runs()), accepted, false));
 			}
 		}
 		return List.copyOf(progress.values());
+	}
+
+	/**
+	 * Ranks the distinct stored round identities, including the current round before any result is retained.
+	 *
+	 * @param campaign the campaign
+	 * @return each round identity's position
+	 */
+	private static Map<Integer, Integer> roundPositions(Campaign campaign)
+	{
+		Map<Integer, Integer> positions = new TreeMap<>();
+		for (AttemptResult result : campaign.optimization().attempts())
+			positions.put(result.round(), 0);
+		Round round = campaign.development().round();
+		if (round != null && round.number() > 0)
+			positions.put(round.number(), 0);
+		int position = 0;
+		for (Map.Entry<Integer, Integer> entry : positions.entrySet())
+		{
+			++position;
+			entry.setValue(position);
+		}
+		return positions;
 	}
 
 	/**

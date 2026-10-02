@@ -114,7 +114,8 @@ public final class Scheduler
 			return;
 		}
 		AuthorAttempt author = development.author();
-		if (author != null && Promotion.decide(author, campaign.lineage().regressionSet()) == Promotion.Decision.PENDING)
+		if (author != null && Promotion.decide(author, campaign.lineage().regressionSet(),
+			development.instanceOutcomes()) == Promotion.Decision.PENDING)
 			planPromotion(author, working, plan, allocations);
 	}
 

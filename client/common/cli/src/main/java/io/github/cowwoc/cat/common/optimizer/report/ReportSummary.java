@@ -4,6 +4,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
@@ -45,8 +47,17 @@ final class ReportSummary
 		}
 		if (report.delivery() != null)
 			lines.add("Delivery: " + report.delivery());
+		if (report.lifecycle() == Lifecycle.CANCELLED)
+			lines.add("The user stopped the campaign.");
 		if (report.pending() != null)
 			lines.add("Waiting for: " + report.pending());
+		for (Revert revert : report.reverts())
+		{
+			lines.add("Reverted candidate " + revert.withdrawn().number() + " (" +
+				revert.withdrawn().snapshot().hex() + ") in cell " + revert.cell() + ": development 95% Wilson " +
+				"upper bound " + decimal(revert.upperBound()) + " < predecessor rate " +
+				decimal(revert.predecessorRate()));
+		}
 		if (!report.choices().isEmpty())
 		{
 			List<String> labels = new ArrayList<>();

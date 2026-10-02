@@ -142,6 +142,23 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	}
 
 	/**
+	 * Returns the editing approach for a reserved attempt. The first, second and third reservations for its cell
+	 * correct the instruction, rewrite existing instructions and add missing guidance, respectively.
+	 *
+	 * @param number the reserved attempt number
+	 * @return the approach derived from durable reservation order, including for a resumed session
+	 * @throws IllegalArgumentException if {@code number} is not reserved in this round
+	 */
+	public AuthorApproach approach(int number)
+	{
+		requireThat(reservations.containsKey(number), "reservedAttempt").isTrue();
+		String cell = reservations.get(number);
+		long position = reservations.entrySet().stream().
+			filter(entry -> entry.getKey() <= number && entry.getValue().equals(cell)).count();
+		return AuthorApproach.values()[Math.toIntExact(position) - 1];
+	}
+
+	/**
 	 * Reserves a session before the driver launches it.
 	 *
 	 * @param number the campaign's next author attempt number
