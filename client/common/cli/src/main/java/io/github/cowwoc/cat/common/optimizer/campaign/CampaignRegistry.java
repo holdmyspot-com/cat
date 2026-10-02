@@ -7,13 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Decides campaign uniqueness and harness binding: a canonical project root and target have at most one resumable
- * campaign, and only its starting harness may advance it.
+ * Decides whether to create or resume a campaign for a project root and prompt target. At most one active or
+ * cancelled campaign may exist for that pair, and only its starting harness may advance it.
  */
 public final class CampaignRegistry
 {
 	/**
-	 * What opening a campaign for a root and target does.
+	 * The decision to resume, refuse or create a campaign for a root and target.
 	 */
 	public sealed interface Opening
 	{
@@ -77,7 +77,7 @@ public final class CampaignRegistry
 	}
 
 	/**
-	 * Decides what opening a campaign does.
+	 * Selects whether the caller should resume, refuse or create a campaign; does not change any campaign.
 	 *
 	 * @param headers every campaign's header
 	 * @param root the canonical project root

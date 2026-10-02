@@ -40,7 +40,7 @@ public final class CampaignTransitions
 	 * @param event the event
 	 * @return the next state
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the event names a trial, category, choice or attempt that the state does
+	 * @throws IllegalArgumentException if the event names a trial, cell, choice or attempt that the state does
 	 *   not offer
 	 * @throws IllegalStateException if the campaign's state does not permit the event
 	 */
@@ -48,7 +48,7 @@ public final class CampaignTransitions
 	{
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(event, "event").isNotNull();
-		CampaignDraft draft = new CampaignDraft(campaign);
+		Draft draft = new Draft(campaign);
 		switch (event)
 		{
 			case CampaignEvent.Confirm confirm -> confirm(draft, confirm);
@@ -109,7 +109,7 @@ public final class CampaignTransitions
 	 * @param draft the state
 	 * @throws IllegalStateException if the campaign is not active
 	 */
-	private static void requireActive(CampaignDraft draft)
+	private static void requireActive(Draft draft)
 	{
 		if (draft.header.lifecycle() != Lifecycle.ACTIVE)
 			throw new IllegalStateException("The campaign is " + draft.header.lifecycle() + ", not ACTIVE");
@@ -121,7 +121,7 @@ public final class CampaignTransitions
 	 * @param draft the state
 	 * @throws IllegalStateException if the campaign is not active or has no confirmed contract
 	 */
-	private static void requireConfirmed(CampaignDraft draft)
+	private static void requireConfirmed(Draft draft)
 	{
 		requireActive(draft);
 		if (!draft.isConfirmed())
@@ -129,13 +129,14 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Confirms a contract, which starts a lineage, an incumbent baseline and a development series.
+	 * Confirms a contract and starts its evidence history, the original prompt's baseline measurement and a new
+	 * development series with no counted outcomes.
 	 *
 	 * @param draft the state
 	 * @param confirm the event
 	 * @throws IllegalStateException if a contract is confirmed and no revision is requested, or a trial runs
 	 */
-	private static void confirm(CampaignDraft draft, CampaignEvent.Confirm confirm)
+	private static void confirm(Draft draft, CampaignEvent.Confirm confirm)
 	{
 		requireActive(draft);
 		if (draft.isConfirmed() && !draft.revisionRequested)
@@ -164,12 +165,13 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Requests a contract revision. A running attempt stops; trials that have not started are discarded.
+	 * Requests a contract revision. A running attempt stops; trials that have not started are discarded when
+	 * {@link TrialAdoption#settle(Draft)} runs.
 	 *
 	 * @param draft the state
 	 * @throws IllegalStateException if the campaign is not active or has no confirmed contract
 	 */
-	private static void revise(CampaignDraft draft)
+	private static void revise(Draft draft)
 	{
 		requireConfirmed(draft);
 		draft.endRunningAttempt(Outcome.STOPPED_FOR_CONTRACT_REVISION);
@@ -187,7 +189,7 @@ public final class CampaignTransitions
 	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or waits for a
 	 *   revision
 	 */
-	private static void assign(CampaignDraft draft, Admission.Assign admission)
+	private static void assign(Draft draft, Admission.Assign admission)
 	{
 		requireConfirmed(draft);
 		if (draft.revisionRequested)
@@ -208,7 +210,7 @@ public final class CampaignTransitions
 		{
 			case DEVELOPMENT ->
 			{
-				requireOffered(admission, draft.series, draft.working);
+				requireSeriesAndSnapshot(admission, draft.series, draft.working);
 				DrawStream stream = DrawStream.resume(draft.developmentStream);
 				TrialInstance drawn = draft.generator().draw(category, stream);
 				draft.developmentStream = stream.state();
@@ -216,7 +218,7 @@ public final class CampaignTransitions
 			}
 			case BASELINE ->
 			{
-				requireOffered(admission, draft.baselineIndex, draft.incumbent);
+				requireSeriesAndSnapshot(admission, draft.baselineIndex, draft.incumbent);
 				DrawStream stream = DrawStream.resume(draft.baselineStream);
 				TrialInstance drawn = draft.generator().draw(category, stream);
 				draft.baselineStream = stream.state();
@@ -237,7 +239,7 @@ public final class CampaignTransitions
 	 * @param candidate the expected candidate
 	 * @throws IllegalArgumentException if the admission names another series or snapshot
 	 */
-	private static void requireOffered(Admission.Assign admission, int series, Candidate candidate)
+	private static void requireSeriesAndSnapshot(Admission.Assign admission, int series, Candidate candidate)
 	{
 		if (admission.series() != series || !admission.snapshot().equals(candidate.snapshot()))
 		{
@@ -254,13 +256,13 @@ public final class CampaignTransitions
 	 * @return the instance
 	 * @throws IllegalArgumentException if no attempt runs or the admission names another attempt or candidate
 	 */
-	private static TrialInstance assignFormal(CampaignDraft draft, Admission.Assign admission)
+	private static TrialInstance assignFormal(Draft draft, Admission.Assign admission)
 	{
 		Optional<CertificationAttempt> running = draft.runningAttempt();
 		if (running.isEmpty())
 			throw new IllegalArgumentException("No certification attempt runs: " + admission);
 		CertificationAttempt attempt = running.get();
-		requireOffered(admission, attempt.index(), attempt.candidate());
+		requireSeriesAndSnapshot(admission, attempt.index(), attempt.candidate());
 		DrawStream stream = DrawStream.resume(attempt.formalStream());
 		TrialInstance drawn = draft.generator().draw(admission.category(), stream);
 		draft.replaceAttempt(new CertificationAttempt(attempt.index(), attempt.lineage(), attempt.candidate(),
@@ -277,10 +279,10 @@ public final class CampaignTransitions
 	 * @return the instance
 	 * @throws IllegalArgumentException if no rerun is due or the admission names another instance
 	 */
-	private static TrialInstance assignDiagnostic(CampaignDraft draft, Admission.Assign admission, TrialKey key)
+	private static TrialInstance assignDiagnostic(Draft draft, Admission.Assign admission, TrialKey key)
 	{
 		Diagnosis diagnosis = draft.diagnosis;
-		requireOffered(admission, draft.series, draft.working);
+		requireSeriesAndSnapshot(admission, draft.series, draft.working);
 		if (diagnosis == null || diagnosis.pending().isEmpty() || diagnosis.rerun() != null ||
 			!Promotion.isSameContent(diagnosis.pending().getFirst(), admission.instance()))
 		{
@@ -299,7 +301,7 @@ public final class CampaignTransitions
 	 * @return the instance
 	 * @throws IllegalArgumentException if no unassigned run matches the admission
 	 */
-	private static TrialInstance assignPromotion(CampaignDraft draft, Admission.Assign admission, TrialKey key)
+	private static TrialInstance assignPromotion(Draft draft, Admission.Assign admission, TrialKey key)
 	{
 		AuthorAttempt author = draft.author;
 		if (author == null || admission.series() != author.number())
@@ -327,7 +329,7 @@ public final class CampaignTransitions
 	 * @param key the trial's key
 	 * @throws IllegalArgumentException if no assigned trial has the key
 	 */
-	private static void start(CampaignDraft draft, TrialKey key)
+	private static void start(Draft draft, TrialKey key)
 	{
 		int index = draft.indexOf(key);
 		LogicalTrial trial = draft.trials.get(index);
@@ -337,14 +339,14 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Returns a running trial.
+	 * Finds the index of the running trial with a key.
 	 *
 	 * @param draft the state
 	 * @param key the trial's key
 	 * @return the trial's index
 	 * @throws IllegalArgumentException if no running trial has the key
 	 */
-	private static int running(CampaignDraft draft, TrialKey key)
+	private static int indexOfRunningTrial(Draft draft, TrialKey key)
 	{
 		int index = draft.indexOf(key);
 		LogicalTrial trial = draft.trials.get(index);
@@ -354,16 +356,16 @@ public final class CampaignTransitions
 	}
 
 	/**
-	 * Records a judged session. An outcome observed under changed measurement conditions is not an outcome: the
-	 * trial returns to the queue and the campaign asks the user.
+	 * Records a judged session. When its observed measurement conditions differ, discards its verdict, queues
+	 * the same trial again and asks the user how to proceed.
 	 *
 	 * @param draft the state
 	 * @param complete the event
 	 * @throws IllegalArgumentException if no running trial has the key
 	 */
-	private static void complete(CampaignDraft draft, CampaignEvent.Complete complete)
+	private static void complete(Draft draft, CampaignEvent.Complete complete)
 	{
-		int index = running(draft, complete.key());
+		int index = indexOfRunningTrial(draft, complete.key());
 		LogicalTrial trial = draft.trials.get(index);
 		if (TrialAdoption.isStale(draft, trial))
 		{
@@ -393,7 +395,7 @@ public final class CampaignTransitions
 	 * @param draft the state
 	 * @param observed the observed conditions, which do not differ from the recorded ones
 	 */
-	private static void extendIdentity(CampaignDraft draft, MeasurementIdentity observed)
+	private static void extendIdentity(Draft draft, MeasurementIdentity observed)
 	{
 		draft.identity = draft.identity.extendWith(observed);
 		Optional<CertificationAttempt> running = draft.runningAttempt();
@@ -413,9 +415,9 @@ public final class CampaignTransitions
 	 * @param fail the event
 	 * @throws IllegalArgumentException if no running trial has the key
 	 */
-	private static void fail(CampaignDraft draft, CampaignEvent.Fail fail)
+	private static void fail(Draft draft, CampaignEvent.Fail fail)
 	{
-		int index = running(draft, fail.key());
+		int index = indexOfRunningTrial(draft, fail.key());
 		LogicalTrial trial = draft.trials.get(index);
 		if (TrialAdoption.isStale(draft, trial))
 		{
@@ -436,9 +438,9 @@ public final class CampaignTransitions
 				draft.throttle = draft.throttle.reject(fail.at(), fail.resetsAt());
 				draft.slowStart = SlowStart.INITIAL;
 			}
+			// An interrupted trial is queued unchanged after this switch.
 			case INTERRUPTED ->
 			{
-				// The trial reruns unchanged
 			}
 		}
 		List<InfrastructureAttempt> attempts = new ArrayList<>(trial.infrastructureAttempts());
@@ -453,9 +455,9 @@ public final class CampaignTransitions
 	 *
 	 * @param draft the state
 	 * @param submit the event
-	 * @throws IllegalStateException if no round offers an author attempt for the category
+	 * @throws IllegalStateException if no round offers an author attempt for the cell
 	 */
-	private static void submitAuthorAttempt(CampaignDraft draft, CampaignEvent.SubmitAuthorAttempt submit)
+	private static void submitAuthorAttempt(Draft draft, CampaignEvent.SubmitAuthorAttempt submit)
 	{
 		requireConfirmed(draft);
 		String category = submit.category();
@@ -486,7 +488,7 @@ public final class CampaignTransitions
 	 * @param commit the event
 	 * @throws IllegalStateException if no commit is due or the calibration is for another index
 	 */
-	private static void commit(CampaignDraft draft, Campaign campaign, CampaignEvent.Commit commit)
+	private static void commit(Draft draft, Campaign campaign, CampaignEvent.Commit commit)
 	{
 		if (!ReadinessGate.isCommitDue(campaign))
 			throw new IllegalStateException("No commit is due");
@@ -525,7 +527,7 @@ public final class CampaignTransitions
 	 * @param observed the observed conditions
 	 * @throws IllegalStateException if the campaign is not active
 	 */
-	private static void changeMeasurement(CampaignDraft draft, MeasurementIdentity observed)
+	private static void changeMeasurement(Draft draft, MeasurementIdentity observed)
 	{
 		requireActive(draft);
 		List<MeasurementCondition> differences = draft.identity.differences(observed);
@@ -542,7 +544,7 @@ public final class CampaignTransitions
 	 * @param outcome the condition
 	 * @throws IllegalStateException if the campaign is not active or has no confirmed contract
 	 */
-	private static void reportUnavailable(CampaignDraft draft, Outcome outcome)
+	private static void reportUnavailable(Draft draft, Outcome outcome)
 	{
 		requireConfirmed(draft);
 		draft.endRunningAttempt(outcome);

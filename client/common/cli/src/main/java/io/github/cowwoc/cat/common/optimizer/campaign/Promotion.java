@@ -10,16 +10,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Plans and decides the promotion runs of an author attempt, from {@code design.md} section 2.7.
+ * Plans trial runs and decides whether a proposed edit replaces the working candidate.
  * <p>
- * The attempt runs each triggering instance twice and each regression instance once. The working candidate also runs
- * each regression instance on which it has no outcome. The attempt is promoted when every triggering run passes and
- * it fails no regression instance that the working candidate passes. These runs are targeted and never counted.
+ * A triggering instance is a failure in the edited cell, the requirement category under a runner profile. The edit
+ * runs each triggering instance twice and each other instance in the regression set once. The working candidate also
+ * runs each of those other instances on which it has no outcome. The edit replaces the working candidate when every
+ * triggering run passes and it fails no regression instance that the working candidate passes. These runs reuse fixed
+ * instances and never count as representative evidence.
  */
 public final class Promotion
 {
 	/**
-	 * The runs of each triggering instance.
+	 * Require this many passing runs of each triggering instance before promoting an edit.
 	 */
 	public static final int TRIGGERING_RUNS = 2;
 
@@ -53,12 +55,12 @@ public final class Promotion
 	 * Plans the promotion runs of an author attempt.
 	 *
 	 * @param category the round cell that the attempt addresses
-	 * @param failures the failing instances that the author received
+	 * @param failures the failing instances that the author received; only those in {@code category} trigger runs
 	 * @param regressionSet the lineage's regression set
 	 * @param generator the contract's generator, which marks the instances targeted
 	 * @return the unassigned runs: the triggering runs, then the regression runs, then the working candidate's
 	 *   reference runs
-	 * @throws NullPointerException if any argument is null
+	 * @throws NullPointerException if any argument is null or either list contains null
 	 */
 	public static List<PromotionRun> plan(String category, List<TrialInstance> failures,
 		List<RegressionInstance> regressionSet, Generator generator)
@@ -134,9 +136,9 @@ public final class Promotion
 							pending = true;
 					}
 				}
+				// A reference run matters only through the regression run that it explains
 				case WORKING_REFERENCE ->
 				{
-					// A reference run matters only through the regression run that it explains
 				}
 			}
 		}

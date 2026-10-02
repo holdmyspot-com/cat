@@ -5,13 +5,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * Whether two observations were measured under exactly equal conditions, and which conditions prevent it.
+ * Whether two observations record equal measurement conditions, and which conditions prevent comparison.
+ * <p>
+ * Compares campaign-wide values and values for the same cell, the requirement category under a runner profile.
+ * A cell uses its recorded value when present, otherwise the campaign-wide value. A condition absent from both
+ * observations does not block comparison.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param status whether the observations are comparable
- * @param differing the conditions that both record with different values
- * @param missing the conditions that at least one does not record
+ * @param differing the conditions with different recorded values campaign-wide or for the same cell
+ * @param missing the conditions recorded by only one observation campaign-wide or for the same cell
  */
 public record Comparability(Status status, List<MeasurementCondition> differing, List<MeasurementCondition> missing)
 {
@@ -21,7 +25,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	public enum Status
 	{
 		/**
-		 * Every condition is recorded by both and equal.
+		 * The recorded conditions are equal; no compared condition is recorded by only one observation.
 		 */
 		COMPARABLE,
 		/**
@@ -29,7 +33,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 		 */
 		NOT_COMPARABLE,
 		/**
-		 * No recorded condition differs, but some is missing; the comparison is unavailable.
+		 * No recorded condition differs, but some is recorded by only one observation; comparison is unavailable.
 		 */
 		INDETERMINATE
 	}
@@ -38,9 +42,9 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	 * Creates a comparability result.
 	 *
 	 * @param status whether the observations are comparable
-	 * @param differing the conditions that both record with different values
-	 * @param missing the conditions that at least one does not record
-	 * @throws NullPointerException if any argument is null
+	 * @param differing the conditions with different recorded values campaign-wide or for the same cell
+	 * @param missing the conditions recorded by only one observation campaign-wide or for the same cell
+	 * @throws NullPointerException if any argument is null or either list contains null
 	 */
 	public Comparability
 	{

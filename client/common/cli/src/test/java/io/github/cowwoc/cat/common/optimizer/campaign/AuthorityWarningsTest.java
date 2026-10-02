@@ -12,8 +12,7 @@ import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
- * Tests the {@code awaiting-user} decision that an authority warning raises, and the choices that answer it
- * (design &sect;4.3).
+ * Tests how warnings about unauthorized edits make the campaign wait for a user choice.
  */
 public final class AuthorityWarningsTest
 {
@@ -126,7 +125,7 @@ public final class AuthorityWarningsTest
 	}
 
 	/**
-	 * Verifies that authorizing a target that no pending warning names is refused without a change.
+	 * Verifies that authorizing a target that no pending warning names is refused.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void authorizeRefusesUnwarnedTarget()
@@ -182,7 +181,7 @@ public final class AuthorityWarningsTest
 	 * Verifies that stopping at a warning cancels the campaign and keeps the warning, and that revising clears it.
 	 */
 	@Test
-	public void stopAndReviseUseTheExistingTransitions()
+	public void stopKeepsWarningAndRevisionClearsIt()
 	{
 		// Requirement: R-W4
 		PendingDecision.AuthorityWarnings pending = new PendingDecision.AuthorityWarnings(

@@ -10,13 +10,14 @@ import java.util.List;
  * Whether a result still describes the current prompt system and conditions.
  * <p>
  * A result is current only while CAT knows of no material change. A known change makes it historical without
- * deleting or rewriting it. Missing data is not a known change.
+ * deleting or rewriting it. Conditions are compared campaign-wide and for the same cell, the requirement category
+ * under a runner profile. Missing data is not a known change.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param status whether the result is current
  * @param promptContentChanged {@code true} if the prompt-system snapshot differs
- * @param changed the conditions that both identities record with different values
+ * @param changed the conditions with different recorded values campaign-wide or for the same cell
  */
 public record Applicability(Status status, boolean promptContentChanged, List<MeasurementCondition> changed)
 {
@@ -40,8 +41,8 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	 *
 	 * @param status whether the result is current
 	 * @param promptContentChanged {@code true} if the prompt-system snapshot differs
-	 * @param changed the conditions that both identities record with different values
-	 * @throws NullPointerException if {@code status} or {@code changed} are null
+	 * @param changed the conditions with different recorded values campaign-wide or for the same cell
+	 * @throws NullPointerException if {@code status} or {@code changed} are null, or {@code changed} contains null
 	 */
 	public Applicability
 	{

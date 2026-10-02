@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 /**
- * One targeted run that decides whether an author attempt is promoted.
+ * Replays an instance to decide whether an author's prompt edits replace the working candidate.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -26,11 +26,11 @@ public record PromotionRun(Role role, TrialInstance instance, TrialKey trial, Ve
 		 */
 		TRIGGERING,
 		/**
-		 * The attempt runs a regression instance; it must not fail where the working candidate passes.
+		 * The attempt replays a previously failing instance; it must not fail where the working candidate passes.
 		 */
 		REGRESSION,
 		/**
-		 * The working candidate runs a regression instance on which it has no outcome yet.
+		 * The working candidate replays a previously failing instance on which it has no outcome yet.
 		 */
 		WORKING_REFERENCE
 	}

@@ -5,8 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * The best qualifying certification attempt of one measurement identity, offered as its own {@code keep improvement}
- * choice.
+ * Offers the highest-ranked attempt that meets {@link KeepImprovement}'s conditions under one set of measurement
+ * conditions. Keeping its prompt snapshot ends optimization with the label {@code improved, not certified}.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

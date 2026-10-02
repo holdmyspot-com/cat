@@ -14,12 +14,12 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Something that changes a campaign's state, applied by {@link CampaignTransitions#apply(Campaign, CampaignEvent)}.
+ * An input to {@link CampaignTransitions#apply(Campaign, CampaignEvent)} that requests a campaign state change.
  */
 public sealed interface CampaignEvent
 {
 	/**
-	 * The user confirmed a contract, which starts a new lineage.
+	 * The user confirmed a contract, which starts a new evidence history called a lineage.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -54,7 +54,7 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A logical trial was assigned and recorded before its session starts.
+	 * Requests assignment and recording of a trial before its session starts.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -190,11 +190,12 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * An author attempt's delta passed inventory validation, so its promotion runs can start.
+	 * An author's proposed file changes passed inventory validation, so checks that decide whether to promote
+	 * the snapshot can start.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the round category that the attempt addresses
+	 * @param category the optimization round's cell identifier that the attempt addresses
 	 * @param snapshot the attempt's snapshot
 	 */
 	record SubmitAuthorAttempt(String category, Sha256 snapshot) implements CampaignEvent
@@ -202,7 +203,7 @@ public sealed interface CampaignEvent
 		/**
 		 * Creates the event.
 		 *
-		 * @param category the round category that the attempt addresses
+		 * @param category the optimization round's cell identifier that the attempt addresses
 		 * @param snapshot the attempt's snapshot
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code category} is blank
@@ -215,7 +216,7 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * Commit the working candidate to the next certification attempt.
+	 * Starts the working candidate's next certification attempt by freezing its procedure and opening its trial stream.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -284,10 +285,10 @@ public sealed interface CampaignEvent
 		 *   {@link Choice#AUTHORIZE_TARGET}, otherwise {@code null}
 		 * @throws NullPointerException if {@code choice} is null, or {@code target} is null and the choice is
 		 *   {@link Choice#AUTHORIZE_TARGET}
-		 * @throws IllegalArgumentException if {@code attempt} is not positive exactly when the choice is
-		 *   {@link Choice#KEEP_IMPROVEMENT}, {@code reviewPoint} is not positive exactly when the choice is
-		 *   {@link Choice#MORE_EVIDENCE}, or {@code target} is set for another choice or is not a normalized absolute
-		 *   path
+		 * @throws IllegalArgumentException if {@code attempt} is not positive for {@link Choice#KEEP_IMPROVEMENT}
+		 *   or is not zero for another choice, {@code reviewPoint} is not positive for {@link Choice#MORE_EVIDENCE}
+		 *   or is not zero for another choice, or {@code target} is set for another choice or is not a normalized
+		 *   absolute path
 		 */
 		public Choose
 		{
@@ -315,7 +316,8 @@ public sealed interface CampaignEvent
 		 *
 		 * @param choice the answer
 		 * @return the event
-		 * @throws NullPointerException if {@code choice} is null, or is {@link Choice#AUTHORIZE_TARGET}
+		 * @throws NullPointerException if {@code choice} is null or is {@link Choice#AUTHORIZE_TARGET}, which requires
+		 *   a target argument
 		 * @throws IllegalArgumentException if the choice is {@link Choice#KEEP_IMPROVEMENT} or
 		 *   {@link Choice#MORE_EVIDENCE}
 		 */
@@ -363,8 +365,8 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * An author reported edits that its requirements need but that lie outside the edit authority, which asks the
-	 * user how to continue. Only the driver applies it.
+	 * Reports required edits outside the author's permitted files and asks the user how to continue. Only the
+	 * driver applies this event.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

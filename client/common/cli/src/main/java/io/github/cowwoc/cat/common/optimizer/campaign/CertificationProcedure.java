@@ -8,16 +8,17 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import java.util.List;
 
 /**
- * Everything that a commit freezes before a certification attempt's first formal draw.
+ * The statistical settings frozen when a certification attempt is admitted, before its first trial is sampled.
  * <p>
- * The boundaries hold {@code α_i}, the cap and, per category, the comparison with {@code UI(k)}, {@code LI(k)} and
- * {@code β_i / K}.
+ * The boundaries use the attempt's certification error limit {@code α_i} and trial cap. Each cell (category and
+ * trial profile) is compared with the incumbent's upper and lower compliance bounds, {@code UI(k)} and {@code LI(k)},
+ * using the improvement error limit {@code β_i / K}.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param improvementLevel the per-category improvement level {@code β_i / K}
+ * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
  * @param baselineIndex the incumbent baseline that the comparisons were frozen from
- * @param categories the contract's categories, in the order of the boundaries' comparisons
+ * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
  * @param boundaries the decision boundaries
  * @param bets the version of the bets and weights
  * @param allocationPolicy the version of the formal allocation policy
@@ -39,15 +40,15 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	/**
 	 * Creates a procedure.
 	 *
-	 * @param improvementLevel the per-category improvement level {@code β_i / K}
+	 * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
 	 * @param baselineIndex the incumbent baseline that the comparisons were frozen from
-	 * @param categories the contract's categories, in the order of the boundaries' comparisons
+	 * @param categories the contract's cell identifiers, in the order of the boundaries' comparisons
 	 * @param boundaries the decision boundaries
 	 * @param bets the version of the bets and weights
 	 * @param allocationPolicy the version of the formal allocation policy
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code baselineIndex} is not positive, {@code categories} is empty, the
-	 *   boundaries do not hold one comparison per category, or a text is blank
+	 *   {@code boundaries} do not hold one comparison per cell, or {@code bets} or {@code allocationPolicy} are blank
 	 */
 	public CertificationProcedure
 	{
@@ -63,11 +64,11 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	}
 
 	/**
-	 * Returns the position of a category in the boundaries' comparisons.
+	 * Returns the position of a cell in the boundaries' comparisons.
 	 *
-	 * @param category the category
+	 * @param category the cell's identifier
 	 * @return the position
-	 * @throws IllegalArgumentException if the procedure has no such category
+	 * @throws IllegalArgumentException if {@code category} is not one of the procedure's cell identifiers
 	 */
 	int position(String category)
 	{

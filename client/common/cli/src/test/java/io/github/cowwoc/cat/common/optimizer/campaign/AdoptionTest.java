@@ -7,7 +7,8 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * Tests that outcomes are adopted in assignment order and that post-decision outcomes never change a decision.
+ * Tests {@link TrialAdoption}: representative outcomes enter counts in assignment order, and outcomes received
+ * after a decision do not change it.
  */
 public final class AdoptionTest
 {
@@ -19,7 +20,8 @@ public final class AdoptionTest
 	}
 
 	/**
-	 * Verifies that an outcome waits for every earlier-assigned outcome of its category and purpose.
+	 * Verifies that a development outcome waits for an earlier-assigned outcome of the same cell, purpose, series
+	 * and snapshot.
 	 */
 	@Test
 	public void laterOutcomeWaitsForEarlier()
@@ -45,8 +47,8 @@ public final class AdoptionTest
 	}
 
 	/**
-	 * Verifies that each category, purpose and snapshot numbers its trials from 1, and that adoption follows that
-	 * numbering even when another group's trials are assigned in between.
+	 * Verifies that two cells of the same purpose and snapshot number their trials separately from 1, and adoption
+	 * follows each cell's numbering even when assignments to the two cells are interleaved.
 	 */
 	@Test
 	public void eachGroupNumbersFromOne()
@@ -74,7 +76,7 @@ public final class AdoptionTest
 	}
 
 	/**
-	 * Verifies that the order applies only within a category and purpose.
+	 * Verifies that a development outcome in one cell does not wait for a running development trial in another cell.
 	 */
 	@Test
 	public void otherCategoryDoesNotWait()
@@ -90,8 +92,8 @@ public final class AdoptionTest
 	}
 
 	/**
-	 * Verifies that an outcome that arrives after its category certified is a post-decision observation that never
-	 * changes the decision.
+	 * Verifies that a cell's failure judged before its earlier-assigned certifying pass is discarded once that pass
+	 * certifies the cell.
 	 */
 	@Test
 	public void postDecisionOutcomeIsIgnored()

@@ -11,7 +11,8 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * Tests the admission blocks: calibration failures and the incumbent's baseline arm.
+ * Tests trial admission during calibration failures and incumbent measurement. The baseline arm runs
+ * representative trials of the incumbent using capacity left by the working candidate.
  */
 public final class AdmissionTest
 {

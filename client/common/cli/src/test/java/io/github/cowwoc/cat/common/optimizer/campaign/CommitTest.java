@@ -28,7 +28,7 @@ public final class CommitTest
 	}
 
 	/**
-	 * Returns a campaign whose commit is due, with working candidate 1 and a baseline of 50 passes in
+	 * Returns a builder for a campaign ready for certification, with working candidate 1 and a baseline of 50 passes in
 	 * {@code formatting} and 48 passes and 2 failures in {@code safety}.
 	 *
 	 * @return the builder

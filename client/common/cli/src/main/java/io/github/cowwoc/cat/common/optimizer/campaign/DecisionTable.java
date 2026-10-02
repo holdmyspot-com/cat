@@ -6,14 +6,15 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 /**
- * The formal decisions of {@code design.md} section 2.8.
+ * Maps adopted formal counts to cell and certification-attempt decisions, then selects the campaign action.
  * <p>
- * Decisions use only the adopted counts. A frozen cap is never raised, and an ended attempt never reopens.
+ * A cell tests one category with one model and reasoning effort. Decisions use each cell's adopted counts and the
+ * attempt's fixed boundaries; this class does not change the attempt or campaign.
  */
 public final class DecisionTable
 {
 	/**
-	 * The state of one category of a certification attempt.
+	 * The decision for one cell of a certification attempt.
 	 */
 	public enum CategoryDecision
 	{
@@ -22,15 +23,15 @@ public final class DecisionTable
 		 */
 		UNDECIDED,
 		/**
-		 * The category certifies.
+		 * The cell certifies.
 		 */
 		CERTIFIED,
 		/**
-		 * The category is clearly below 95%.
+		 * The cell's compliance rate is clearly below 95%.
 		 */
 		CLEARLY_BELOW,
 		/**
-		 * The category reached its cap undecided.
+		 * The cell reached its outcome cap without certification or a clearly-below decision.
 		 */
 		CAP_REACHED
 	}
@@ -45,19 +46,19 @@ public final class DecisionTable
 		 */
 		UNDECIDED,
 		/**
-		 * Every category certified and none is proven worse than the incumbent.
+		 * Every cell certified and none is proven worse than the incumbent.
 		 */
 		CERTIFIED,
 		/**
-		 * Every category certified and some category is proven worse than the incumbent.
+		 * Every cell certified and at least one is proven worse than the incumbent.
 		 */
 		CERTIFIED_PROVEN_WORSE,
 		/**
-		 * Some category is clearly below 95%.
+		 * At least one cell's compliance rate is clearly below 95%.
 		 */
 		BELOW_MINIMUM,
 		/**
-		 * Some category reached its cap undecided, and none is clearly below.
+		 * At least one cell reached its outcome cap undecided, and none is clearly below 95%.
 		 */
 		INCONCLUSIVE
 	}
@@ -97,13 +98,13 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Decides one category.
+	 * Decides one cell from its adopted formal counts.
 	 *
 	 * @param boundaries the attempt's boundaries
-	 * @param counts the category's adopted formal counts
+	 * @param counts the cell's adopted formal counts
 	 * @return the decision
-	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the counts exceed the cap
+	 * @throws NullPointerException if {@code boundaries} or {@code counts} are null
+	 * @throws IllegalArgumentException if {@code counts} exceed the boundaries' outcome cap
 	 */
 	public static CategoryDecision categoryDecision(DecisionBoundaries boundaries, CategoryCounts counts)
 	{
@@ -189,14 +190,14 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Indicates whether a category of an attempt is proven better than the incumbent at the attempt's improvement
+	 * Indicates whether a cell of an attempt is proven better than the incumbent at the attempt's improvement
 	 * level.
 	 *
 	 * @param attempt the attempt
-	 * @param category the category
-	 * @return {@code true} if the category is proven better
-	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the attempt's procedure has no such category
+	 * @param category the identifier of the cell whose formal counts are compared
+	 * @return {@code true} if the cell is proven better
+	 * @throws NullPointerException if {@code attempt} or {@code category} are null
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
 	 */
 	public static boolean isProvenBetter(CertificationAttempt attempt, String category)
 	{
@@ -207,14 +208,14 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Indicates whether a category of an attempt is proven worse than the incumbent at the attempt's improvement
+	 * Indicates whether a cell of an attempt is proven worse than the incumbent at the attempt's improvement
 	 * level.
 	 *
 	 * @param attempt the attempt
-	 * @param category the category
-	 * @return {@code true} if the category is proven worse
-	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the attempt's procedure has no such category
+	 * @param category the identifier of the cell whose formal counts are compared
+	 * @return {@code true} if the cell is proven worse
+	 * @throws NullPointerException if {@code attempt} or {@code category} are null
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
 	 */
 	public static boolean isProvenWorse(CertificationAttempt attempt, String category)
 	{
@@ -225,12 +226,12 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Returns a category's comparison boundaries.
+	 * Returns a cell's comparison boundaries.
 	 *
 	 * @param attempt the attempt
-	 * @param category the category
+	 * @param category the cell identifier selecting the comparison boundaries
 	 * @return the boundaries
-	 * @throws IllegalArgumentException if the attempt's procedure has no such category
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code category}
 	 */
 	private static ComparisonBoundaries comparison(CertificationAttempt attempt, String category)
 	{

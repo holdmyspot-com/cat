@@ -20,7 +20,7 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
-final class CampaignDraft
+final class Draft
 {
 	/**
 	 * The campaign's header.
@@ -75,7 +75,7 @@ final class CampaignDraft
 	 */
 	int series;
 	/**
-	 * The working candidate's adopted development outcomes per category.
+	 * The working candidate's development outcomes included in evidence per cell (category and trial profile).
 	 */
 	Map<String, CategoryCounts> developmentCounts;
 	/**
@@ -95,7 +95,7 @@ final class CampaignDraft
 	 */
 	AuthorAttempt author;
 	/**
-	 * The review point of each category that differs from the default.
+	 * The next review threshold of each cell that differs from the default.
 	 */
 	Map<String, Integer> reviewPoints;
 	/**
@@ -111,7 +111,7 @@ final class CampaignDraft
 	 */
 	int baselineIndex;
 	/**
-	 * The current incumbent baseline's counts per category.
+	 * The current incumbent baseline's counts per cell.
 	 */
 	Map<String, CategoryCounts> baselineCounts = new LinkedHashMap<>();
 	/**
@@ -164,7 +164,7 @@ final class CampaignDraft
 	 *
 	 * @param campaign the campaign
 	 */
-	CampaignDraft(Campaign campaign)
+	Draft(Campaign campaign)
 	{
 		header = campaign.header();
 		ceiling = campaign.ceiling();
@@ -224,7 +224,7 @@ final class CampaignDraft
 	 *
 	 * @return the lineage
 	 */
-	private Lineage currentLineage()
+	private Lineage buildCurrentLineage()
 	{
 		Lineage stored = lineages.getLast();
 		return new Lineage(stored.number(), stored.contract(), stored.contractHash(), developmentStream,
@@ -285,7 +285,7 @@ final class CampaignDraft
 	void startLineage(Lineage lineage)
 	{
 		if (!lineages.isEmpty())
-			lineages.set(lineages.size() - 1, currentLineage());
+			lineages.set(lineages.size() - 1, buildCurrentLineage());
 		lineages.add(lineage);
 		loadLineage(lineage);
 	}
@@ -318,9 +318,9 @@ final class CampaignDraft
 	}
 
 	/**
-	 * Returns a category's development counts.
+	 * Returns a cell's development counts.
 	 *
-	 * @param category the category
+	 * @param category the cell identifier
 	 * @return the counts
 	 */
 	CategoryCounts developmentCount(String category)
@@ -365,7 +365,7 @@ final class CampaignDraft
 	}
 
 	/**
-	 * Ends the running certification attempt, if any, and reports its outcome.
+	 * Indicates whether a running certification attempt was ended and its outcome reported.
 	 *
 	 * @param ending the attempt's outcome
 	 * @return {@code true} if an attempt was running
@@ -454,7 +454,7 @@ final class CampaignDraft
 		IncumbentBaseline baseline = null;
 		if (!builtLineages.isEmpty())
 		{
-			builtLineages.set(builtLineages.size() - 1, currentLineage());
+			builtLineages.set(builtLineages.size() - 1, buildCurrentLineage());
 			baseline = new IncumbentBaseline(baselineIndex, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,

@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.time.Instant;
 
 /**
- * The allocation decision that assigned a logical trial, as its assignment record holds it.
+ * The scheduler's rule, adopted-outcome count and time when it assigned a trial. Retries retain this decision.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

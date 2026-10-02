@@ -14,15 +14,15 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 /**
- * Reviews the statistical assumptions of {@code design.md} section 2.6.
+ * Describes trial pass rates by concurrency level and checks reported access to state forbidden to trials.
  * <p>
- * It describes pass rates by concurrency level, and detects dependence that CAT cannot rule out, which makes
+ * These results support review of trial independence. The caller decides whether detected dependence makes
  * certification unavailable with {@link Outcome#INVALID_STATISTICAL_ASSUMPTIONS}.
  */
 public final class AssumptionCheck
 {
 	/**
-	 * One adopted outcome with the concurrency level it ran at.
+	 * One outcome counted by the campaign, with the concurrency level its trial started at.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -90,7 +90,7 @@ public final class AssumptionCheck
 	 *
 	 * @param observations the adopted outcomes
 	 * @return one rate per observed level, in increasing level order
-	 * @throws NullPointerException if {@code observations} is null
+	 * @throws NullPointerException if {@code observations} is null or contains null
 	 */
 	public static List<LevelRate> passRatesByConcurrency(List<Observation> observations)
 	{
@@ -114,12 +114,13 @@ public final class AssumptionCheck
 	}
 
 	/**
-	 * Indicates whether a trial accessed state that links it to other trials, such as another trial's records.
+	 * Indicates whether a reported accessed path lies under a root forbidden to trials, after removing
+	 * {@code .} and {@code ..} path components. This checks paths without resolving symbolic links.
 	 *
 	 * @param accessed the absolute paths that the trial accessed
 	 * @param protectedRoots the absolute roots of state that no trial may access
-	 * @return {@code true} if an accessed path lies under a protected root
-	 * @throws NullPointerException if any argument is null
+	 * @return {@code true} if an accessed path equals or lies under a protected root
+	 * @throws NullPointerException if either argument is null or contains null
 	 * @throws IllegalArgumentException if a path is not absolute
 	 */
 	public static boolean isDependent(Collection<Path> accessed, Collection<Path> protectedRoots)

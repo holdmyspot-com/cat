@@ -10,11 +10,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds small handwritten decision boundaries, so that tests of the campaign policies need no betting
- * computation.
+ * Builds handwritten decision boundaries so campaign-policy tests need no statistical boundary computation.
  * <p>
- * A table certifies (or proves better) when {@code passes >= base + step·F}, capped at the unreachable value
- * {@code cap − F + 1}, and is clearly below (or proven worse) at any pass count once {@code F} reaches a threshold.
+ * For {@code failures} failures, the minimum certifying (or proven-better) pass count is
+ * {@code min(base + step * failures, cap - failures + 1)}. The second term marks a minimum that cannot be reached
+ * within the outcome cap. A count is clearly below (or proven worse) only when its failures reach the specified
+ * threshold and its passes are below that minimum.
  */
 public final class Boundaries
 {
@@ -33,11 +34,12 @@ public final class Boundaries
 	/**
 	 * Returns the boundaries that {@link CampaignBuilder} uses by default.
 	 * <p>
-	 * With a cap of {@value #STANDARD_CAP}: a category certifies at {@code 100 + 50·F} passes and is clearly below
-	 * once it has 5 failures. It is proven better at {@code 60 + 40·F} passes and proven worse once it has 4
-	 * failures.
+	 * With a cap of {@value #STANDARD_CAP} outcomes, a cell certifies at {@code 100 + 50 * failures} passes when that
+	 * count is reachable within the cap, and is clearly below once it has 5 failures. It is proven better at
+	 * {@code 60 + 40 * failures} passes when reachable, and proven worse at 4 or more failures only if its pass count
+	 * is below the proven-better minimum.
 	 *
-	 * @param categories the number of categories
+	 * @param categories the number of cells requiring comparison boundaries
 	 * @return the boundaries
 	 */
 	public static DecisionBoundaries standard(int categories)
@@ -51,11 +53,11 @@ public final class Boundaries
 	/**
 	 * Returns decision boundaries.
 	 *
-	 * @param cap the cap
+	 * @param cap the maximum number of outcomes per cell
 	 * @param base the passes that certify with no failures
 	 * @param step the additional passes that each failure requires
-	 * @param belowFailures the failures at which a category is clearly below
-	 * @param comparisons the comparison boundaries, one per category
+	 * @param belowFailures the minimum failures for a clearly-below decision when passes are below the certifying minimum
+	 * @param comparisons the comparison boundaries, one per cell
 	 * @return the boundaries
 	 */
 	public static DecisionBoundaries decision(int cap, int base, int step, int belowFailures,
@@ -69,10 +71,11 @@ public final class Boundaries
 	/**
 	 * Returns comparison boundaries.
 	 *
-	 * @param cap the cap
+	 * @param cap the maximum number of outcomes per cell
 	 * @param base the passes that prove better with no failures
 	 * @param step the additional passes that each failure requires
-	 * @param worseFailures the failures at which a category is proven worse
+	 * @param worseFailures the minimum failures for a proven-worse decision when passes are below the proven-better
+	 *   minimum
 	 * @return the boundaries
 	 */
 	public static ComparisonBoundaries comparison(int cap, int base, int step, int worseFailures)
@@ -86,7 +89,7 @@ public final class Boundaries
 	/**
 	 * Returns the minimum passes for each failure count.
 	 *
-	 * @param cap the cap
+	 * @param cap the maximum number of outcomes per cell
 	 * @param base the passes required with no failures
 	 * @param step the additional passes that each failure requires
 	 * @return the minimums
@@ -100,12 +103,12 @@ public final class Boundaries
 	}
 
 	/**
-	 * Returns the maximum passes for each failure count.
+	 * Returns the maximum passes that count as clearly below or proven worse for each failure count.
 	 *
-	 * @param cap the cap
-	 * @param minimums the minimums
-	 * @param threshold the failures from which every pass count is at or below the maximum
-	 * @return the maximums
+	 * @param cap the maximum number of outcomes per cell
+	 * @param minimums the certifying or proven-better minimum passes at each failure count
+	 * @param threshold the minimum failures for a clearly-below or proven-worse decision
+	 * @return one less than each minimum at or above the failure threshold, or {@code -1} below that threshold
 	 */
 	private static List<Integer> maximums(int cap, List<Integer> minimums, int threshold)
 	{

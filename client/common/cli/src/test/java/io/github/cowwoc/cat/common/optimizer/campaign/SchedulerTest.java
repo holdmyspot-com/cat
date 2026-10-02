@@ -59,7 +59,7 @@ public final class SchedulerTest
 	 * Returns a development admission for working candidate 1 in series 1, chosen by the lowest exploratory lower
 	 * bound.
 	 *
-	 * @param category the category
+	 * @param category the identifier of the cell receiving the trial
 	 * @return the admission
 	 */
 	private static Admission development(String category)
@@ -70,8 +70,8 @@ public final class SchedulerTest
 	/**
 	 * Returns a development admission for working candidate 1 in series 1.
 	 *
-	 * @param category the category
-	 * @param rule the allocation rule that chose the category
+	 * @param category the identifier of the cell receiving the trial
+	 * @param rule the allocation rule that chose the cell
 	 * @return the admission
 	 */
 	private static Admission development(String category, AllocationRule rule)
@@ -82,7 +82,7 @@ public final class SchedulerTest
 	/**
 	 * Returns a formal admission for attempt 1 of working candidate 1.
 	 *
-	 * @param category the category
+	 * @param category the identifier of the cell receiving the trial
 	 * @return the admission
 	 */
 	private static Admission formal(String category)
@@ -102,17 +102,17 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Returns the categories of a plan.
+	 * Returns the cell identifiers of a plan's admissions.
 	 *
 	 * @param plan the plan
-	 * @return the categories in order
+	 * @return the cell identifiers in admission order
 	 */
-	private static List<String> categories(List<Admission> plan)
+	private static List<String> cellIds(List<Admission> plan)
 	{
-		List<String> categories = new ArrayList<>();
+		List<String> cells = new ArrayList<>();
 		for (Admission admission : plan)
-			categories.add(admission.category());
-		return categories;
+			cells.add(admission.category());
+		return cells;
 	}
 
 	/**
@@ -163,8 +163,8 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies the development coverage floor: no category gets more than 50 representative assignments ahead of the
-	 * least-sampled eligible category.
+	 * Verifies that development excludes a cell when it leads the least-sampled eligible cell by 50 assignments,
+	 * but can choose it when that lead is 49.
 	 */
 	@Test
 	public void coverageFloorLimitsLead()
@@ -239,7 +239,7 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that development admits the category with the lowest Wilson lower bound.
+	 * Verifies that development admits the cell with the lowest Wilson lower bound.
 	 */
 	@Test
 	public void lowestWilsonBoundFirst()
@@ -247,7 +247,7 @@ public final class SchedulerTest
 		// Requirement: R-E3
 		Campaign campaign = working().development("formatting", 60, 0).
 			development("safety", 60, 1).slowStart(new SlowStart(2, 0)).build();
-		requireThat(categories(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety", "safety"));
+		requireThat(cellIds(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety", "safety"));
 	}
 
 	/**
@@ -260,7 +260,7 @@ public final class SchedulerTest
 		Campaign empty = working().build();
 		requireThat(Scheduler.plan(empty, NOW, 8), "riskRank").isEqualTo(List.of(development("safety")));
 
-		// formatting has no passes in 1 outcome; safety has none at all: both lower bounds are 0
+		// safety has no passes in 1 outcome; formatting has no outcomes: both lower bounds are 0
 		Campaign fewer = working().development("safety", 0, 1).build();
 		requireThat(Scheduler.plan(fewer, NOW, 8), "fewerOutcomes").isEqualTo(List.of(development("formatting")));
 	}
@@ -276,7 +276,7 @@ public final class SchedulerTest
 			development("safety", 60, 1).slowStart(new SlowStart(2, 0)).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
-		requireThat(categories(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety"));
+		requireThat(cellIds(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety"));
 	}
 
 	/**
@@ -298,8 +298,8 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that the formal phase then admits the category furthest from certifying, with ties going to fewer
-	 * outcomes and then category order.
+	 * Verifies that formal trials prioritize the lowest confidence bound, breaking ties by fewer outcomes and then
+	 * contract order.
 	 */
 	@Test
 	public void formalFurthestFromCertifyingFirst()
@@ -319,7 +319,8 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that a decided category is no longer admitted and that the category limit bounds in-flight trials.
+	 * Verifies that a decided cell receives no new formal trials and an undecided cell's remaining passes to
+	 * certification limit its unadopted trials.
 	 */
 	@Test
 	public void formalRespectsDecisionsAndCategoryLimit()
@@ -363,13 +364,13 @@ public final class SchedulerTest
 		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
 			development(ContractFixtures.BIG_CELL, 60, 0).development(ContractFixtures.SMALL_CELL, 60, 1).
 			development("safety", 100, 0).slowStart(new SlowStart(2, 0)).build();
-		requireThat(categories(Scheduler.plan(development, NOW, 8)), "development").
+		requireThat(cellIds(Scheduler.plan(development, NOW, 8)), "development").
 			isEqualTo(List.of(ContractFixtures.SMALL_CELL, ContractFixtures.SMALL_CELL));
 
 		Campaign formal = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
 			slowStart(new SlowStart(1, 0)).certificationAttempt(1).category(ContractFixtures.BIG_CELL, 50, 0).
 			category("safety", 50, 0).build();
-		requireThat(categories(Scheduler.plan(formal, NOW, 8)), "formal").
+		requireThat(cellIds(Scheduler.plan(formal, NOW, 8)), "formal").
 			isEqualTo(List.of(ContractFixtures.SMALL_CELL));
 	}
 
@@ -504,7 +505,7 @@ public final class SchedulerTest
 		for (String cell : contract.cellIds())
 			screening.development(cell, 3, 0);
 		Campaign incomplete = screening.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(categories(Scheduler.plan(incomplete, NOW, 8)), "incomplete").isEqualTo(List.of(BIG_MEDIUM));
+		requireThat(cellIds(Scheduler.plan(incomplete, NOW, 8)), "incomplete").isEqualTo(List.of(BIG_MEDIUM));
 
 		// An unadopted trial counts toward the screen
 		CampaignBuilder inFlight = new CampaignBuilder().confirmed(contract, 1).slowStart(new SlowStart(2, 0));
@@ -513,21 +514,21 @@ public final class SchedulerTest
 		Campaign started = TransitionSteps.assign(inFlight.development(BIG_MEDIUM, 2, 0).build(),
 			Purpose.DEVELOPMENT, BIG_MEDIUM);
 		started = CampaignTransitions.apply(started, new CampaignEvent.Start(TransitionSteps.last(started)));
-		requireThat(categories(Scheduler.plan(started, NOW, 8)), "inFlight").isEqualTo(List.of(SAFETY));
+		requireThat(cellIds(Scheduler.plan(started, NOW, 8)), "inFlight").isEqualTo(List.of(SAFETY));
 
 		// Only the first working candidate is screened
 		CampaignBuilder later = tiered().slowStart(new SlowStart(1, 0));
 		for (String cell : contract.cellIds())
 			later.development(cell, 3, 0);
 		Campaign second = later.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(categories(Scheduler.plan(second, NOW, 8)), "laterCandidate").isEqualTo(List.of(SAFETY));
+		requireThat(cellIds(Scheduler.plan(second, NOW, 8)), "laterCandidate").isEqualTo(List.of(SAFETY));
 
 		// The screen runs once per campaign: the incumbent's next series, after a contract revision, is not screened
 		CampaignBuilder revised = new CampaignBuilder().confirmed(contract, 1).series(2).slowStart(new SlowStart(1, 0));
 		for (String cell : contract.cellIds())
 			revised.development(cell, 3, 0);
 		Campaign nextSeries = revised.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(categories(Scheduler.plan(nextSeries, NOW, 8)), "nextSeries").isEqualTo(List.of(SAFETY));
+		requireThat(cellIds(Scheduler.plan(nextSeries, NOW, 8)), "nextSeries").isEqualTo(List.of(SAFETY));
 
 		// A failure in the screen makes its cell active
 		Campaign screened = TransitionSteps.assign(new CampaignBuilder().confirmed(contract, 1).build(),
@@ -573,14 +574,14 @@ public final class SchedulerTest
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, BIG_XHIGH);
 		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
 		requireThat(campaign.development().widened(), "widened").isTrue();
-		requireThat(categories(Scheduler.plan(campaign, NOW, 1)), "after").isEqualTo(List.of(BIG_MEDIUM));
+		requireThat(cellIds(Scheduler.plan(campaign, NOW, 1)), "after").isEqualTo(List.of(BIG_MEDIUM));
 
 		// 98 passes of 100, 2 failures in the second batch: the count conditions are not met
 		Campaign missed = builder.development(BIG_XHIGH, 97, List.of(0, 2)).build();
 		missed = TransitionSteps.assign(missed, Purpose.DEVELOPMENT, BIG_XHIGH);
 		missed = TransitionSteps.run(missed, TransitionSteps.last(missed), Verdict.PASS);
 		requireThat(missed.development().widened(), "notWidened").isFalse();
-		requireThat(categories(Scheduler.plan(missed, NOW, 1)), "notReady").isEqualTo(List.of(BIG_XHIGH));
+		requireThat(cellIds(Scheduler.plan(missed, NOW, 1)), "notReady").isEqualTo(List.of(BIG_XHIGH));
 	}
 
 	/**

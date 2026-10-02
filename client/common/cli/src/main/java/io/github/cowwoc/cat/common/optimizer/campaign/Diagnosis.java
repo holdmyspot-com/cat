@@ -7,9 +7,10 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import java.util.List;
 
 /**
- * The targeted reruns that follow a representative development failure.
+ * The pending reruns and results used to decide whether an author should investigate sampled development failures.
  * <p>
- * Reruns run one at a time. Each failing instance reruns until it passes {@value #RERUNS} times or fails once.
+ * Each failing instance reruns one at a time. Treat {@value #RERUNS} passes as clearing that instance and one failure
+ * as reproducing its defect.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

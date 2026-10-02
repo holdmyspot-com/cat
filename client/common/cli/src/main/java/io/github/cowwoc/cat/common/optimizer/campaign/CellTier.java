@@ -14,8 +14,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The development cell tier of {@code design.md} sections 3.3 and 6.6: the cells that receive the working candidate's
- * representative development trials.
+ * Selects the cells that receive the working candidate's sampled development trials. A cell tests one category
+ * under one model and reasoning profile.
  * <p>
  * A cell is active when it is its category's only cell, when it is the lowest or the highest effort that its model
  * has in its category, or when a candidate of the campaign has failed a trial in it. The contract lists each
@@ -71,7 +71,8 @@ public final class CellTier
 	 * Returns the identifiers of the active cells of a contract, grouped by category.
 	 *
 	 * @param contract the contract
-	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial
+	 * @param failedCells the identifiers of cells in which a candidate of the campaign has failed a trial;
+	 *   identifiers absent from the contract are ignored
 	 * @return the identifiers of each category's active cells, by category in contract order
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -88,6 +89,7 @@ public final class CellTier
 	 *
 	 * @param contract the contract
 	 * @return the cell identifiers
+	 * @throws NullPointerException if {@code contract} is null
 	 */
 	static Set<String> lowestEffortCells(Contract contract)
 	{
@@ -102,13 +104,13 @@ public final class CellTier
 	}
 
 	/**
-	 * Indicates whether every active cell of a contract meets the readiness gate's count conditions, which widens
-	 * development to every cell.
+	 * Indicates whether every active cell of a contract meets the readiness gate's count conditions.
 	 *
 	 * @param contract the contract
 	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial
 	 * @param counts the working candidate's development counts per cell; a missing cell has no outcomes
 	 * @return {@code true} if every active cell is ready
+	 * @throws NullPointerException if any argument is null
 	 */
 	static boolean isActiveSetReady(Contract contract, Set<String> failedCells, Map<String, CategoryCounts> counts)
 	{

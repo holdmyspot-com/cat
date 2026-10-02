@@ -8,16 +8,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One frozen candidate tested on fresh formal trials under one frozen procedure.
+ * The outcomes and fixed conditions for certifying one unchanged prompt snapshot on newly sampled trials.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param index the certification index {@code i}, assigned at commit and never changed
- * @param lineage the lineage that the attempt was committed under
+ * @param lineage the number of the confirmed-contract history that the attempt belongs to
  * @param candidate the frozen candidate
  * @param identity the measurement conditions that the attempt was measured under
  * @param procedure the frozen procedure
- * @param counts the adopted formal outcomes per category
+ * @param counts the certification outcomes included in evidence per cell (category and trial profile)
  * @param failures the formal failures, in adoption order
  * @param formalStream the attempt's formal draw stream
  * @param outcome the attempt's outcome, or {@code null} while it runs
@@ -30,17 +30,17 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 * Creates an attempt.
 	 *
 	 * @param index the certification index {@code i}, assigned at commit and never changed
-	 * @param lineage the lineage that the attempt was committed under
+	 * @param lineage the number of the confirmed-contract history that the attempt belongs to
 	 * @param candidate the frozen candidate
 	 * @param identity the measurement conditions that the attempt was measured under
 	 * @param procedure the frozen procedure
-	 * @param counts the adopted formal outcomes per category
+	 * @param counts the certification outcomes included in evidence per cell (category and trial profile)
 	 * @param failures the formal failures, in adoption order
 	 * @param formalStream the attempt's formal draw stream
 	 * @param outcome the attempt's outcome, or {@code null} while it runs
 	 * @throws NullPointerException if any argument other than {@code outcome} is null
-	 * @throws IllegalArgumentException if the stream is not an open formal stream, {@code index} or
-	 *   {@code lineage} are not positive, or a category exceeds the cap
+	 * @throws IllegalArgumentException if {@code formalStream} is not an open formal stream, {@code index} or
+	 *   {@code lineage} are not positive, or a cell's counts exceed the cap
 	 */
 	public CertificationAttempt
 	{
@@ -65,10 +65,10 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	}
 
 	/**
-	 * Returns a category's outcomes.
+	 * Returns a cell's outcomes included in certification evidence.
 	 *
-	 * @param category the category
-	 * @return the outcomes, empty if the category has none
+	 * @param category the cell's identifier
+	 * @return the counts, empty if the cell has no outcomes
 	 * @throws NullPointerException if {@code category} is null
 	 */
 	public CategoryCounts count(String category)
@@ -92,10 +92,13 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 *
 	 * @param ending the outcome
 	 * @return the ended attempt
+	 * @throws NullPointerException if {@code ending} is null
 	 * @throws IllegalStateException if the attempt has ended
 	 */
 	CertificationAttempt end(Outcome ending)
 	{
+		requireThat(ending, "ending").isNotNull();
+
 		if (outcome != null)
 			throw new IllegalStateException("Certification attempt " + index + " already ended " + outcome.label());
 		return new CertificationAttempt(index, lineage, candidate, identity, procedure, counts, failures,

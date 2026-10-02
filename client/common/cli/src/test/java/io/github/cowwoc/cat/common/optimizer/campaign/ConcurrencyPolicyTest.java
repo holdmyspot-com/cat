@@ -21,7 +21,7 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Returns each risk-ceiling threshold, on both sides.
+	 * Returns sampled outcome counts that keep or increase the permitted number of concurrent trials.
 	 *
 	 * @return rows of outcomes, failures and the expected ceiling
 	 */
@@ -118,11 +118,40 @@ public final class ConcurrencyPolicyTest
 			isEqualTo(1);
 		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(140, 1)), "afterFailure").
 			isEqualTo(10);
-		// 296 passes with 4 failures never certify within the cap of 300, but one trial remains
+		// From 295 passes and 4 failures, one trial remains below the cap of 300 even though one pass cannot certify.
 		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(295, 4)), "unreachable").
 			isEqualTo(1);
 		requireThat(ConcurrencyPolicy.categoryLimit(boundaries, CampaignBuilder.counts(296, 4)), "atCap").
 			isEqualTo(0);
+	}
+
+	/**
+	 * Returns outcome counts that exceed the certification cap through passes or failures.
+	 *
+	 * @return rows of passing and failing outcomes
+	 */
+	@DataProvider
+	public static Object[][] countsAboveCap()
+	{
+		int aboveCap = Boundaries.standard(2).cap() + 1;
+		return new Object[][]
+			{
+				{aboveCap, 0},
+				{0, aboveCap}
+			};
+	}
+
+	/**
+	 * Verifies that a concurrency limit rejects counts exceeding the certification cap.
+	 *
+	 * @param passes the adopted passing outcomes
+	 * @param failures the adopted failing outcomes
+	 */
+	@Test(dataProvider = "countsAboveCap", expectedExceptions = IllegalArgumentException.class)
+	public void countsAboveCapAreRejected(int passes, int failures)
+	{
+		// Requirement: R-E4
+		ConcurrencyPolicy.categoryLimit(Boundaries.standard(2), CampaignBuilder.counts(passes, failures));
 	}
 
 	/**
@@ -151,7 +180,7 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Verifies that an adopted failure resets the window to 1 and that slow start then grows it again.
+	 * Verifies that an adopted failure resets the campaign's concurrency window to 1.
 	 */
 	@Test
 	public void adoptedFailureResetsCampaignWindow()

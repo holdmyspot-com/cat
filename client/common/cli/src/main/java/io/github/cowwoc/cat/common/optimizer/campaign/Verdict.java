@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The judge's compliance label for one logical trial.
+ * The compliance result of one trial, determined by the judge or by failed deterministic checks.
  */
 public enum Verdict
 {

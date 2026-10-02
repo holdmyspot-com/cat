@@ -32,15 +32,11 @@ public final class ApplicabilityTest
 	{
 		return new Object[][]
 			{
-				// the contract
 				{MeasurementCondition.CONTRACT},
 				{MeasurementCondition.GENERATOR},
-				// the judge
 				{MeasurementCondition.JUDGE},
-				// the runner model or reasoning profile
 				{MeasurementCondition.MODEL},
 				{MeasurementCondition.REASONING},
-				// a provider, harness, source or host tool capable of affecting outcomes
 				{MeasurementCondition.PROVIDER},
 				{MeasurementCondition.HARNESS_VERSION},
 				{MeasurementCondition.RUNNER_VERSION},
@@ -67,7 +63,7 @@ public final class ApplicabilityTest
 	}
 
 	/**
-	 * Verifies that a result is current while nothing changed.
+	 * Verifies that a result is current while no recorded condition or prompt content changed.
 	 */
 	@Test
 	public void unchangedResultIsCurrent()
@@ -113,8 +109,7 @@ public final class ApplicabilityTest
 	}
 
 	/**
-	 * Verifies that a condition that the current observation does not report is missing data, not a change, and
-	 * that the result keeps its record.
+	 * Verifies that a condition missing from the current observation does not make a result historical.
 	 */
 	@Test
 	public void missingConditionIsNotAChange()

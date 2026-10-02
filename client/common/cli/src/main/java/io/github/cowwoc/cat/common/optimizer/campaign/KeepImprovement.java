@@ -12,12 +12,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The keep-improvement conditions and offers of {@code design.md} section 2.10.
+ * Selects certification attempts that the user may keep as improvements without certification.
+ * Comparisons use each cell's counts; a cell is a requirement category under one runner profile.
  */
 public final class KeepImprovement
 {
 	/**
-	 * The adopted outcomes that a category neither certified nor proven better needs as a regression check.
+	 * Require this many counted outcomes in each cell that is neither certified nor proven better.
 	 */
 	public static final int REGRESSION_CHECK_OUTCOMES = 100;
 
@@ -29,12 +30,13 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Indicates whether an attempt meets the keep-improvement conditions: it ended without certification under the
-	 * current lineage, some category is proven better, none is proven worse, and every other category certified or
-	 * has at least {@value #REGRESSION_CHECK_OUTCOMES} adopted outcomes.
+	 * Indicates whether an attempt qualifies to be kept without certification: it ended without certification or
+	 * invalid statistical assumptions under the current contract revision, some cell is proven better, none is proven
+	 * worse, and each cell not proven better is certified or has at least {@value #REGRESSION_CHECK_OUTCOMES} counted
+	 * outcomes.
 	 *
 	 * @param attempt the attempt
-	 * @param currentLineage the current lineage's number
+	 * @param currentLineage the current contract revision's number, which an eligible attempt must match
 	 * @return {@code true} if the attempt qualifies
 	 * @throws NullPointerException if {@code attempt} is null
 	 */
@@ -69,10 +71,10 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Returns the best qualifying attempt of each measurement identity.
+	 * Returns the best qualifying attempt under each set of recorded measurement conditions.
 	 * <p>
-	 * Attempts are ranked only against attempts with an equal identity: the highest 95% Wilson lower bound on the
-	 * weakest cell wins, then more categories proven better, then the more recent attempt.
+	 * Attempts are ranked only against attempts with equal recorded conditions: the highest 95% Wilson lower bound
+	 * on the weakest cell wins, then more cells proven better, then the more recent attempt.
 	 *
 	 * @param campaign the campaign
 	 * @return the offers: the current identity's first, then each earlier identity's, most recent first
@@ -107,11 +109,11 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Returns the better of two qualifying attempts with an equal identity.
+	 * Returns the better of two qualifying attempts with equal recorded measurement conditions.
 	 *
 	 * @param first an attempt
 	 * @param second a later attempt
-	 * @return the attempt with the higher lower bound on its weakest cell, then more categories proven better,
+	 * @return the attempt with the higher lower bound on its weakest cell, then more cells proven better,
 	 *   then {@code second}
 	 */
 	private static CertificationAttempt better(CertificationAttempt first, CertificationAttempt second)
@@ -132,7 +134,7 @@ public final class KeepImprovement
 	 * Returns the 95% Wilson lower bound on an attempt's weakest cell.
 	 *
 	 * @param attempt the attempt
-	 * @return the smallest lower bound across the attempt's categories
+	 * @return the smallest lower bound across the attempt's cells
 	 */
 	private static double weakestLowerBound(CertificationAttempt attempt)
 	{
@@ -146,10 +148,10 @@ public final class KeepImprovement
 	}
 
 	/**
-	 * Returns the number of an attempt's categories that are proven better than the incumbent.
+	 * Returns the number of an attempt's cells that are proven better than the incumbent.
 	 *
 	 * @param attempt the attempt
-	 * @return the number of categories
+	 * @return the number of cells
 	 */
 	private static int provenBetterCategories(CertificationAttempt attempt)
 	{

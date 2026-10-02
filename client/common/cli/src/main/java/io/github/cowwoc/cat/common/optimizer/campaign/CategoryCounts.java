@@ -6,7 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The adopted outcomes of one category for one snapshot and purpose.
+ * The outcomes included in campaign evidence for one cell, snapshot and trial purpose. A cell tests one category
+ * under one model and reasoning profile.
  * <p>
  * The batches split the outcomes, in adoption order, into consecutive groups of {@value #BATCH_SIZE}. The last batch
  * may be incomplete.
@@ -34,9 +35,9 @@ public record CategoryCounts(int passes, int failures, List<Integer> batchFailur
 	 * @param passes the number of adopted passes {@code S}
 	 * @param failures the number of adopted failures {@code F}
 	 * @param batchFailures the number of failures in each started batch, in adoption order
-	 * @throws NullPointerException if {@code batchFailures} is null
-	 * @throws IllegalArgumentException if a count is negative, the number of batches is not the number of started
-	 *   batches, a batch has more failures than outcomes, or the batches do not sum to {@code failures}
+	 * @throws NullPointerException if {@code batchFailures} is null or contains null
+	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative, the number of batches differs
+	 *   from the number started, a batch has more failures than outcomes, or the batches do not sum to {@code failures}
 	 */
 	public CategoryCounts
 	{

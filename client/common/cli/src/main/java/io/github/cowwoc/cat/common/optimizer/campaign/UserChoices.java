@@ -19,15 +19,15 @@ final class UserChoices
 	}
 
 	/**
-	 * Applies a choice.
+	 * Updates the draft to record the offered choice and its resulting campaign state.
 	 *
-	 * @param draft the state
+	 * @param draft the mutable campaign state to update
 	 * @param campaign the state before the choice
 	 * @param choose the event
 	 * @throws IllegalArgumentException if the campaign does not offer the choice, or the choice names an attempt,
 	 *   review point or target that the state does not offer
 	 */
-	static void apply(CampaignDraft draft, Campaign campaign, CampaignEvent.Choose choose)
+	static void apply(Draft draft, Campaign campaign, CampaignEvent.Choose choose)
 	{
 		Choice choice = choose.choice();
 		if (!campaign.choices().contains(choice))
@@ -83,15 +83,15 @@ final class UserChoices
 	}
 
 	/**
-	 * Authorizes the external target that pending warnings name. The warnings about the target are answered; the
-	 * decision stays pending while warnings about other edits remain.
+	 * Records authorization of the external target that pending warnings name. Warnings about that target are
+	 * answered; warnings about other targets remain pending.
 	 *
 	 * @param draft the state
 	 * @param warnings the pending decision
 	 * @param target the target to authorize
 	 * @throws IllegalArgumentException if no pending warning offers authorizing {@code target}
 	 */
-	private static void authorize(CampaignDraft draft, PendingDecision.AuthorityWarnings warnings, Path target)
+	private static void authorize(Draft draft, PendingDecision.AuthorityWarnings warnings, Path target)
 	{
 		List<AuthorityWarning> remaining = new ArrayList<>();
 		boolean offered = false;
@@ -118,13 +118,14 @@ final class UserChoices
 	}
 
 	/**
-	 * Adopts the observed measurement conditions as the campaign's identity. Evidence gathered under the old
-	 * identity no longer counts toward the working candidate or the incumbent baseline.
+	 * Replaces recorded measurement conditions with observed values. Ends any running certification attempt and
+	 * clears the working candidate's development counts and the incumbent's baseline counts; evidence recorded in
+	 * earlier attempts remains there.
 	 *
 	 * @param draft the state
 	 * @param changed the pending decision
 	 */
-	private static void newIdentity(CampaignDraft draft, PendingDecision.MeasurementChanged changed)
+	private static void newIdentity(Draft draft, PendingDecision.MeasurementChanged changed)
 	{
 		draft.identity = draft.identity.replaceWith(changed.observed());
 		draft.endRunningAttempt(Outcome.TESTING_ENVIRONMENT_CHANGED);
@@ -135,12 +136,13 @@ final class UserChoices
 	}
 
 	/**
-	 * Retries after failures: resets the failing trial's count, or allows the commit again.
+	 * Answers the pending retry decision, clearing a failing trial's consecutive infrastructure-failure count when
+	 * the decision names that trial.
 	 *
 	 * @param draft the state
 	 * @param pending the pending decision
 	 */
-	private static void retry(CampaignDraft draft, PendingDecision pending)
+	private static void retry(Draft draft, PendingDecision pending)
 	{
 		if (pending instanceof PendingDecision.TrialFailures(TrialKey key))
 		{
@@ -166,7 +168,7 @@ final class UserChoices
 	 * @param reviewPoint the next review point
 	 * @throws IllegalArgumentException if {@code reviewPoint} does not exceed the category's outcomes
 	 */
-	private static void moreEvidence(CampaignDraft draft, PendingDecision.CheckpointReached checkpoint,
+	private static void moreEvidence(Draft draft, PendingDecision.CheckpointReached checkpoint,
 		int reviewPoint)
 	{
 		String category = checkpoint.category();
@@ -181,14 +183,14 @@ final class UserChoices
 	}
 
 	/**
-	 * Delivers the frozen candidate of an offered keep-improvement attempt.
+	 * Requests delivery of the frozen candidate of an offered improvement attempt, without certification.
 	 *
 	 * @param draft the state
 	 * @param campaign the state before the choice
 	 * @param index the attempt's certification index
 	 * @throws IllegalArgumentException if the attempt is not offered
 	 */
-	private static void keepImprovement(CampaignDraft draft, Campaign campaign, int index)
+	private static void keepImprovement(Draft draft, Campaign campaign, int index)
 	{
 		boolean offered = false;
 		for (ImprovementOffer offer : KeepImprovement.offers(campaign))
@@ -204,13 +206,13 @@ final class UserChoices
 	}
 
 	/**
-	 * Finishes the campaign. An active campaign's choice answers its current decision; a cancelled campaign's
-	 * choice answers none, so its pending decisions stay recorded.
+	 * Marks the campaign finished and records whether a candidate should be delivered. An active campaign's choice
+	 * answers its current decision; a cancelled campaign's choice answers none, so its pending decisions stay recorded.
 	 *
 	 * @param draft the state
 	 * @param delivery the candidate to deliver, or {@code null} to keep the incumbent
 	 */
-	private static void finish(CampaignDraft draft, DeliveryRequest delivery)
+	private static void finish(Draft draft, DeliveryRequest delivery)
 	{
 		if (draft.header.lifecycle() == Lifecycle.ACTIVE)
 			draft.resolve();

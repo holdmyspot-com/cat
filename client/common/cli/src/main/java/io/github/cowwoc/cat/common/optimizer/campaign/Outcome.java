@@ -6,19 +6,20 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 public enum Outcome
 {
 	/**
-	 * Every category certified.
+	 * Every cell (category and trial profile) certified.
 	 */
 	CERTIFIED("certified"),
 	/**
-	 * The user kept a candidate proven better than the incumbent.
+	 * The user kept a candidate proven better than the original prompt system in at least one cell, with none proven
+	 * worse and every other cell certified or measured on at least 100 outcomes.
 	 */
 	IMPROVED_NOT_CERTIFIED("improved, not certified"),
 	/**
-	 * A category is proven below 95% in the certification attempt.
+	 * A cell is proven below 95% compliance in the certification attempt.
 	 */
 	BELOW_MINIMUM("not certified: below minimum"),
 	/**
-	 * A category reached its trial cap undecided.
+	 * A cell reached its trial cap without certifying or being proven below 95% compliance.
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
 	/**

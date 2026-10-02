@@ -7,10 +7,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import java.util.Optional;
 
 /**
- * Decides when a category's review checkpoint is due, from {@code design.md} section 2.7.
+ * Decides when a cell needs user review before more development trials run. A cell is a requirement category under
+ * one runner profile.
  * <p>
- * A checkpoint is due when an unresolved category of an unchanged candidate reaches its review point: 200
- * representative trials, or the point that the user named when extending it.
+ * Review is due when a cell of an unchanged candidate is not ready and reaches its review point: 200 representative
+ * trials, or the point that the user named when extending it.
  */
 public final class ReviewCheckpoint
 {
@@ -22,11 +23,11 @@ public final class ReviewCheckpoint
 	}
 
 	/**
-	 * Indicates whether a category's review checkpoint is due.
+	 * Indicates whether a cell's review checkpoint is due.
 	 *
 	 * @param development the development state
-	 * @param category the category
-	 * @return {@code true} if the category reached its review point and is not ready
+	 * @param category the cell identifier
+	 * @return {@code true} if the cell reached its review point and is not ready
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static boolean isDue(Development development, String category)

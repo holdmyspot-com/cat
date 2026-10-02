@@ -9,23 +9,24 @@ import java.util.Map.Entry;
 import java.util.Optional;
 
 /**
- * A development round: each failing category receives up to {@value #ATTEMPTS} author attempts.
+ * Tracks a round of prompt edits: each failing cell (category and trial profile) receives up to {@value #ATTEMPTS}
+ * author attempts. Once every cell uses that allowance without promotion, development reaches a plateau.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param attempts the completed author attempts of each failing category, in category order
+ * @param attempts the completed author attempts of each failing cell, in contract order
  */
 public record Round(Map<String, Integer> attempts)
 {
 	/**
-	 * The author attempts that each failing category receives.
+	 * The maximum author attempts a failing cell receives before the round moves to the next cell.
 	 */
 	public static final int ATTEMPTS = 2;
 
 	/**
 	 * Creates a round.
 	 *
-	 * @param attempts the completed author attempts of each failing category, in category order
+	 * @param attempts the completed author attempts of each failing cell, in contract order
 	 * @throws NullPointerException if {@code attempts} is null
 	 * @throws IllegalArgumentException if {@code attempts} is empty or a count is outside [0, {@value #ATTEMPTS}]
 	 */
@@ -38,9 +39,9 @@ public record Round(Map<String, Integer> attempts)
 	}
 
 	/**
-	 * Returns the first category that has author attempts left.
+	 * Returns the first cell that has author attempts left.
 	 *
-	 * @return the category, or empty if the round is complete
+	 * @return the cell's identifier, or empty if the round is complete
 	 */
 	public Optional<String> nextCategory()
 	{

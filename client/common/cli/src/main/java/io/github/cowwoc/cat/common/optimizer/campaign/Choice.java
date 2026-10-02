@@ -10,7 +10,7 @@ public enum Choice
 	 */
 	RESTORE,
 	/**
-	 * Start a new measurement identity under the changed conditions.
+	 * Start recording results under the changed measurement conditions, keeping earlier results historical.
 	 */
 	NEW_IDENTITY,
 	/**
@@ -22,7 +22,7 @@ public enum Choice
 	 */
 	RESUME,
 	/**
-	 * Run the paused logical trial again after an infrastructure failure, or calibrate again.
+	 * Run the paused trial again after a run ended without a compliance result, or retry trial-cap calibration.
 	 */
 	RETRY,
 	/**
@@ -30,11 +30,11 @@ public enum Choice
 	 */
 	STOP,
 	/**
-	 * Continue sampling a category past its review checkpoint, up to a new review point.
+	 * Continue sampling a cell (category and trial profile) until a newly chosen outcome count triggers another review.
 	 */
 	MORE_EVIDENCE,
 	/**
-	 * Start a development round at a review checkpoint.
+	 * Start author attempts to improve failing cells when the sampled-outcome count triggers a review.
 	 */
 	TARGETED_OPTIMIZATION,
 	/**
@@ -46,11 +46,11 @@ public enum Choice
 	 */
 	OPTIMIZE_FURTHER,
 	/**
-	 * Deliver a certified candidate that is proven worse than the incumbent in some category.
+	 * Deliver a certified candidate that is proven worse than the original prompt system in some cell.
 	 */
 	ACCEPT_TRADE_OFF,
 	/**
-	 * Keep the incumbent instead of a certified candidate that is proven worse in some category.
+	 * Keep the original prompt system instead of a certified candidate that is proven worse in some cell.
 	 */
 	RETAIN_INCUMBENT,
 	/**

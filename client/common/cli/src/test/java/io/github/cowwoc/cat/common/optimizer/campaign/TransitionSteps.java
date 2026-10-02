@@ -6,7 +6,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import java.time.Instant;
 
 /**
- * Applies the event sequences that tests repeat.
+ * Applies the campaign event sequences that tests repeat. Representative trials are sampled and counted;
+ * targeted trials reuse specific instances and do not enter those counts.
  */
 final class TransitionSteps
 {
@@ -23,8 +24,8 @@ final class TransitionSteps
 	}
 
 	/**
-	 * Returns the allocation decision that the scheduler would record for a trial of a purpose now, choosing rule 3
-	 * for development trials.
+	 * Returns an allocation decision for the current evidence revision, recording
+	 * {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} for development trials.
 	 *
 	 * @param campaign the campaign
 	 * @param purpose the trial's purpose
@@ -47,7 +48,7 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's category
+	 * @param category the trial's cell identifier
 	 * @return the admission
 	 */
 	static Admission.Assign admission(Campaign campaign, Purpose purpose, String category)
@@ -74,7 +75,7 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's category
+	 * @param category the trial's cell identifier
 	 * @return the updated campaign
 	 */
 	static Campaign assign(Campaign campaign, Purpose purpose, String category)
@@ -95,7 +96,7 @@ final class TransitionSteps
 	static Campaign assign(Campaign campaign, Purpose purpose, int series, Sha256 snapshot, TrialInstance instance)
 	{
 		return CampaignTransitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(purpose, series,
-			snapshot, instance.categoryId(), instance, allocation(campaign, purpose))));
+			snapshot, instance.cellId(), instance, allocation(campaign, purpose))));
 	}
 
 	/**
@@ -158,7 +159,7 @@ final class TransitionSteps
 	 *
 	 * @param campaign the campaign
 	 * @param purpose a representative purpose
-	 * @param category the trial's category
+	 * @param category the trial's cell identifier
 	 * @param verdict the judged outcome
 	 * @return the updated campaign
 	 */

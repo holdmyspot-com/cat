@@ -6,7 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 /**
- * One session that {@link Scheduler} admits.
+ * A trial session that {@link Scheduler} plans: assign a new trial or rerun an assigned one.
  */
 public sealed interface Admission
 {
@@ -18,21 +18,21 @@ public sealed interface Admission
 	Purpose purpose();
 
 	/**
-	 * Returns the snapshot that the trial runs.
+	 * Returns the digest of the prompt-system snapshot that the trial runs.
 	 *
 	 * @return the snapshot
 	 */
 	Sha256 snapshot();
 
 	/**
-	 * Returns the trial's category.
+	 * Returns the trial's cell identifier: its requirement category and runner profile.
 	 *
 	 * @return the category
 	 */
 	String category();
 
 	/**
-	 * Run an assigned logical trial again with the same instance.
+	 * Reruns an assigned trial with the same instance, purpose and snapshot.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -71,14 +71,15 @@ public sealed interface Admission
 	}
 
 	/**
-	 * Assign a new logical trial. The assignment, recorded by {@link CampaignEvent.Assign}, precedes its session.
+	 * Assigns a new trial instance to a purpose and snapshot. Recording {@link CampaignEvent.Assign} precedes
+	 * starting its session.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param purpose why the trial runs
 	 * @param series the series that the trial belongs to, as {@link TrialKey#series()} describes
 	 * @param snapshot the snapshot that the trial runs
-	 * @param category the trial's category
+	 * @param category the trial's cell identifier
 	 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
 	 * @param allocation the allocation decision that chose the trial
 	 */
@@ -91,14 +92,15 @@ public sealed interface Admission
 		 * @param purpose why the trial runs
 		 * @param series the series that the trial belongs to
 		 * @param snapshot the snapshot that the trial runs
-		 * @param category the trial's category
+		 * @param category the trial's non-blank cell identifier
 		 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
 		 * @param allocation the allocation decision that chose the trial
 		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code category} or {@code allocation}
 		 *   are null
 		 * @throws IllegalArgumentException if {@code series} is negative, {@code category} is blank,
-		 *   {@code instance} is null exactly when the purpose is targeted, or belongs to another category, or the
-		 *   allocation rule does not assign the purpose
+		 *   {@code instance} is missing for a targeted purpose or supplied for a representative purpose,
+		 *   {@code instance} is not marked targeted or belongs to another cell, or the allocation rule does not assign
+		 *   the purpose
 		 */
 		public Assign
 		{

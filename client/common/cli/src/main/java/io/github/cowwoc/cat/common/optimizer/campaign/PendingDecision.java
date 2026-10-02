@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import java.util.List;
 
 /**
- * A decision that the campaign waits for the user to make. While one is pending, nothing is admitted.
+ * A decision that the campaign waits for the user to make. While one is pending, no new work starts.
  * <p>
  * {@link Campaign#choices()} lists the choices that the user may give.
  */
@@ -73,7 +73,8 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A logical trial ended without an outcome {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} times.
+	 * A trial had {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures since assignment or the last
+	 * retry choice; the user must choose whether to retry or stop. Rate limits and interruptions are excluded.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -116,20 +117,20 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A category reached its review point unresolved.
+	 * A cell (category and trial profile) reached the outcome count that triggers review without meeting readiness.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the category
-	 * @param outcomes the category's adopted development outcomes
+	 * @param category the cell's identifier
+	 * @param outcomes the cell's development outcomes included in evidence
 	 */
 	record CheckpointReached(String category, int outcomes) implements PendingDecision
 	{
 		/**
 		 * Creates the decision.
 		 *
-		 * @param category the category
-		 * @param outcomes the category's adopted development outcomes
+		 * @param category the cell's identifier
+		 * @param outcomes the cell's development outcomes included in evidence
 		 * @throws NullPointerException if {@code category} is null
 		 * @throws IllegalArgumentException if {@code category} is blank or {@code outcomes} is negative
 		 */
@@ -141,7 +142,8 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A certification attempt ended without certification, and its evidence meets the keep-improvement conditions.
+	 * A certification attempt ended without certification and meets {@link KeepImprovement}'s conditions for offering
+	 * its snapshot as an improvement over the original prompt system.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -162,7 +164,7 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A certification attempt certified, but some category is proven worse than the incumbent.
+	 * A certification attempt certified, but some cell is proven worse than the original prompt system.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -183,7 +185,7 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A complete development round produced no promotable attempt.
+	 * Every failing cell exhausted its author attempts without producing edits that passed promotion checks.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 */
@@ -192,7 +194,7 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A condition makes certification unavailable under the current lineage.
+	 * A condition makes certification unavailable under the current confirmed contract.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

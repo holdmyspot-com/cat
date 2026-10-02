@@ -5,11 +5,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The slow-start limit on the active candidate's concurrency.
  * <p>
- * After any adopted failure the window returns to 1. It doubles after each window whose trials all pass.
+ * The window limits how many trials of the active candidate may run at once. After a failure is counted, the window
+ * returns to 1. It doubles, up to {@value #MAXIMUM_SIZE}, after that many consecutive outcomes pass.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param size the current window
+ * @param size the current limit on simultaneous trials of the active candidate
  * @param passes the consecutive adopted passes in the current window
  */
 public record SlowStart(int size, int passes)
@@ -26,7 +27,7 @@ public record SlowStart(int size, int passes)
 	/**
 	 * Creates a slow-start state.
 	 *
-	 * @param size the current window
+	 * @param size the current limit on simultaneous trials of the active candidate
 	 * @param passes the consecutive adopted passes in the current window
 	 * @throws IllegalArgumentException if {@code size} is outside [1, {@value #MAXIMUM_SIZE}] or {@code passes} is
 	 *   outside [0, size)

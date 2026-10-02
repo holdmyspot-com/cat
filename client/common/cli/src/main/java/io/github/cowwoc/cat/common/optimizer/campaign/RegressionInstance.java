@@ -5,7 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 /**
- * An instance that failed representatively for an earlier candidate or for the incumbent's baseline arm.
+ * An instance that failed a sampled trial of an earlier prompt snapshot or of the original prompt system, retained
+ * for replay to check later edits.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

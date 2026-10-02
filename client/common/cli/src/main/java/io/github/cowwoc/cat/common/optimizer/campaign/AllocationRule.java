@@ -1,31 +1,31 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The allocation rule of {@code design.md} section 3.3 that chose a new logical trial's category.
+ * The scheduler rule that chose a new trial's cell: a category tested under one model and reasoning profile.
  */
 public enum AllocationRule
 {
 	/**
-	 * Rule 1: pending targeted work, which is a diagnostic rerun or a promotion run, including a regression run.
+	 * Rule 1: replay a failing instance for diagnosis or to check whether an author's edits replace the working
+	 * candidate.
 	 */
 	TARGETED,
 	/**
-	 * Rule 2: the development cell tier ({@link CellTier}) chose a cell other than the one with the lowest exploratory
-	 * lower bound, either because the coverage floor excluded that cell, which was {@value Scheduler#COVERAGE_LEAD}
-	 * representative assignments ahead of the least-sampled eligible cell, or because a model's lowest-effort cell
-	 * comes first within the floor.
+	 * Rule 2: choose another eligible cell because the cell with the lowest Wilson 95% lower bound is at least
+	 * {@value Scheduler#COVERAGE_LEAD} assignments ahead of the least-sampled eligible cell, or because a model's
+	 * lowest-effort cell has priority among cells within that limit.
 	 */
 	COVERAGE_FLOOR,
 	/**
-	 * Rule 3: the development category with the lowest exploratory Wilson 95% lower bound for the working candidate.
+	 * Rule 3: choose the development cell with the lowest Wilson 95% lower bound for the working candidate.
 	 */
 	LOWEST_EXPLORATORY_BOUND,
 	/**
-	 * Rule 4: the formal category that has no trial yet, otherwise the category furthest from certifying.
+	 * Rule 4: choose a certification cell with no trial yet, otherwise the cell furthest from certifying.
 	 */
 	FORMAL,
 	/**
-	 * Rule 5: a baseline-arm trial of the incumbent.
+	 * Rule 5: sample a trial to measure the original prompt system, called the incumbent.
 	 */
 	BASELINE_ARM;
 

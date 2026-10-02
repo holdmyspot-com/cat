@@ -37,10 +37,10 @@ public final class CampaignRegistryTest
 	}
 
 	/**
-	 * Verifies that a new campaign is created when none exists for the root and target.
+	 * Verifies that the registry selects creation when no resumable campaign exists for the root and target.
 	 */
 	@Test
-	public void createsWhenNoneExists()
+	public void offersCreationWhenNoneExists()
 	{
 		// Requirement: R-L1
 		requireThat(CampaignRegistry.open(List.of(), ROOT, TARGET, Harness.CLAUDE), "empty").
@@ -56,10 +56,10 @@ public final class CampaignRegistryTest
 	}
 
 	/**
-	 * Verifies that an active or cancelled campaign is resumed by its starting harness.
+	 * Verifies that the registry selects an active or cancelled campaign for its starting harness to resume.
 	 */
 	@Test
-	public void resumesWithStartingHarness()
+	public void offersResumeWithStartingHarness()
 	{
 		// Requirement: R-L1
 		for (Lifecycle lifecycle : List.of(Lifecycle.ACTIVE, Lifecycle.CANCELLED))
@@ -83,10 +83,10 @@ public final class CampaignRegistryTest
 	}
 
 	/**
-	 * Verifies that a closed or finished campaign does not block a new one.
+	 * Verifies that a closed or finished campaign does not block selecting creation.
 	 */
 	@Test
-	public void endedCampaignAllowsNew()
+	public void endedCampaignAllowsCreation()
 	{
 		// Requirement: R-L1
 		List<CampaignHeader> headers = List.of(header("c1", Harness.CLAUDE, Lifecycle.CLOSED),

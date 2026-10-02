@@ -6,16 +6,19 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * The commit condition of {@code design.md} section 2.7. It is a cost control, not evidence.
+ * Checks whether development is ready to freeze the working candidate and start certification.
+ * <p>
+ * Each cell, a requirement category under one runner profile, must meet the development thresholds below. Passing
+ * these checks controls when certification starts; it does not certify the candidate.
  */
 public final class ReadinessGate
 {
 	/**
-	 * The fewest representative development trials that a ready cell has.
+	 * Require at least this many representative development trials before treating a cell as ready.
 	 */
 	public static final int MINIMUM_TRIALS = 100;
 	/**
-	 * The most failures that each of the latest two complete batches of a ready cell has.
+	 * Treat a cell as unready if either of its latest two complete batches exceeds this many failures.
 	 */
 	public static final int BATCH_FAILURE_LIMIT = 1;
 

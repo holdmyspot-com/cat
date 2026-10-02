@@ -13,7 +13,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link ContractIdentity}, the confirmed-contract hash of handoff H-1.
+ * Tests whether {@link ContractIdentity} distinguishes confirmed contracts for campaign evidence.
  */
 public final class ContractIdentityTest
 {

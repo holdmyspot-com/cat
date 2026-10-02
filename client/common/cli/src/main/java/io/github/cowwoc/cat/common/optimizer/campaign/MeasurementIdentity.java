@@ -20,8 +20,8 @@ import java.util.function.BiPredicate;
  * A condition without a value has not been observed. An observation that found nothing to record, such as no host
  * tools, is recorded as an explicit value, so that a missing value always means missing data.
  * <p>
- * The trial model and reasoning configuration are observed per cell, because each cell's trials start under their
- * own profile (design &sect;5). Two cells that observe different models do not differ; a change within one cell does.
+ * A cell tests one category under one model and reasoning profile. Its observed trial model and reasoning
+ * configuration are compared with observations of the same cell; different cells can use different profiles.
  * A condition that is recorded for the whole campaign applies to every cell that does not record its own value, so a
  * cell's value that equals the campaign-wide value is redundant and is not kept. Equal identities therefore record
  * equal conditions.
@@ -98,8 +98,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
-	 * Returns the conditions that at least one of the identities does not record, for the whole campaign or for a
-	 * cell.
+	 * Returns the conditions recorded by only one identity, for the whole campaign or for the same cell. Conditions
+	 * absent from both identities are excluded.
 	 *
 	 * @param other another identity
 	 * @return the conditions with missing data, in declaration order
@@ -197,7 +197,7 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * Merges two identities.
 	 *
 	 * @param base the identity whose values apply where {@code overrides} records none
-	 * @param overrides the identity whose values win
+	 * @param overrides the identity whose recorded values replace matching values in {@code base}
 	 * @return the merged identity
 	 */
 	private static MeasurementIdentity merge(MeasurementIdentity base, MeasurementIdentity overrides)

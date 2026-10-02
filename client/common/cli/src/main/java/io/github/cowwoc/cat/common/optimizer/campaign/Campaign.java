@@ -14,7 +14,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The persisted state of one campaign. {@link CampaignTransitions} derives each next state.
+ * The saved state of one prompt-optimization campaign. {@link CampaignTransitions} derives each next state.
+ * A lineage is the evidence history under one confirmed contract.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -22,20 +23,20 @@ import java.util.Set;
  * @param ceiling the most nested sessions that may run at once
  * @param lineages every lineage, the last being the current one; empty before the first confirmation
  * @param identity the current measurement identity
- * @param incumbent the incumbent
+ * @param incumbent the prompt snapshot recorded before optimization
  * @param candidates the number of candidates promoted so far
  * @param authorAttempts the number of author attempts validated so far
  * @param development the working candidate's development state
  * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial; each stays
  *   active in development for the rest of the campaign ({@link CellTier})
- * @param baseline the current incumbent baseline, or {@code null} before the first confirmation
+ * @param baseline the original prompt's measured outcomes, or {@code null} before the first confirmation
  * @param attempts every certification attempt, in index order
- * @param trials the logical trials that are not adopted, in assignment order
+ * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
  * @param sequences the last sequence number assigned in each sequence group
  * @param evidenceRevision the number of outcomes the campaign has adopted, so that each {@link Allocation} identifies
  *   the evidence its decision used
  * @param slowStart the slow-start limit on the active candidate's concurrency
- * @param throttle the rate-limit response
+ * @param throttle the provider's rate-limit waiting and concurrency limits
  * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
  *   to edit
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
@@ -52,16 +53,16 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	DeliveryRequest delivery)
 {
 	/**
-	 * The default campaign ceiling.
+	 * The default maximum number of concurrent nested sessions.
 	 */
 	public static final int DEFAULT_CEILING = 8;
 	/**
-	 * The largest campaign ceiling.
+	 * The largest permitted number of concurrent nested sessions.
 	 */
 	public static final int MAXIMUM_CEILING = 16;
 	/**
-	 * The runs without an outcome, not counting rate-limit rejections, after which a logical trial pauses the
-	 * campaign.
+	 * Pause the campaign when one trial reaches this many infrastructure failures; rate-limit rejections and
+	 * interruptions do not count toward the limit.
 	 */
 	public static final int INFRASTRUCTURE_FAILURE_LIMIT = 3;
 
@@ -72,18 +73,18 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param ceiling the most nested sessions that may run at once
 	 * @param lineages every lineage, the last being the current one; empty before the first confirmation
 	 * @param identity the current measurement identity
-	 * @param incumbent the incumbent
+	 * @param incumbent the prompt snapshot recorded before optimization
 	 * @param candidates the number of candidates promoted so far
 	 * @param authorAttempts the number of author attempts validated so far
 	 * @param development the working candidate's development state
 	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial
-	 * @param baseline the current incumbent baseline, or {@code null} before the first confirmation
+	 * @param baseline the original prompt's measured outcomes, or {@code null} before the first confirmation
 	 * @param attempts every certification attempt, in index order
-	 * @param trials the logical trials that are not adopted, in assignment order
+	 * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
 	 * @param sequences the last sequence number assigned in each sequence group
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
 	 * @param slowStart the slow-start limit on the active candidate's concurrency
-	 * @param throttle the rate-limit response
+	 * @param throttle the provider's rate-limit waiting and concurrency limits
 	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
 	 *   attempts to edit
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
@@ -92,9 +93,9 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 * @param outcome the outcome that the campaign reports, or {@code null} if none
 	 * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
-	 *   {@code delivery} is null
+	 *   {@code delivery} is null, or {@code baseline} is null after a confirmation
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value #MAXIMUM_CEILING}], a count is
-	 *   negative, the incumbent is not candidate 0, the baseline is missing after a confirmation, attempts are not
+	 *   negative, the incumbent is not candidate 0, attempts are not
 	 *   numbered 1, 2, …, more than one attempt is running, a group's last sequence number is not positive, a
 	 *   trial's sequence number exceeds its group's, or an authorized target is not a normalized absolute path
 	 */
@@ -156,7 +157,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	 *
 	 * @param header the campaign's identity and binding; its lifecycle must be {@link Lifecycle#ACTIVE}
 	 * @param ceiling the most nested sessions that may run at once
-	 * @param incumbent the snapshot recorded at the fork
+	 * @param incumbent the prompt snapshot recorded before optimization
 	 * @param identity the measurement conditions observed so far
 	 * @return the campaign
 	 * @throws NullPointerException if any argument is null
@@ -194,7 +195,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	}
 
 	/**
-	 * Returns the current lineage.
+	 * Returns the evidence history under the latest confirmed contract.
 	 *
 	 * @return the lineage
 	 * @throws IllegalStateException if no contract has been confirmed
@@ -243,7 +244,8 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	}
 
 	/**
-	 * Returns the certification index that the next commit receives. Only a new campaign starts again from 1.
+	 * Returns the next certification attempt's index, assigned when its procedure is frozen. Only a new campaign
+	 * starts again from 1.
 	 *
 	 * @return the index
 	 */
@@ -265,7 +267,7 @@ public record Campaign(CampaignHeader header, int ceiling, List<Lineage> lineage
 	}
 
 	/**
-	 * Returns the choices that the user may give now.
+	 * Returns the choices that the user may select now.
 	 *
 	 * @return the choices, empty if the campaign waits for no decision
 	 */

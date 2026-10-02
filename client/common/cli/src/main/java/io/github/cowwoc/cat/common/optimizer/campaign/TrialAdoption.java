@@ -9,11 +9,13 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Adopts judged trials into the campaign's counts and applies the policies that each adoption triggers.
+ * Records judged trials in campaign evidence and applies the policies that each adoption triggers.
  * <p>
- * Representative outcomes are adopted in assignment order within their group, so the order in which sessions finish
- * cannot bias the counts. Targeted outcomes are adopted as soon as they are judged. A trial whose purpose the state
- * no longer serves is stale: its outcome is discarded.
+ * Representative outcomes enter counts in assignment order within each adoption group: trials sharing a purpose,
+ * series, snapshot and cell, where a cell tests one category with one model and reasoning effort. Completion order
+ * therefore cannot choose which outcomes enter a decision. Diagnostic and promotion outcomes are adopted as soon
+ * as they are judged and do not enter representative counts. A trial whose purpose the state no longer serves is
+ * stale: its outcome is discarded.
  */
 final class TrialAdoption
 {
@@ -31,7 +33,7 @@ final class TrialAdoption
 	 * @param trial the trial
 	 * @return {@code true} if the trial's outcome must be discarded
 	 */
-	static boolean isStale(CampaignDraft draft, LogicalTrial trial)
+	static boolean isStale(Draft draft, LogicalTrial trial)
 	{
 		if (draft.revisionRequested)
 			return true;
@@ -48,13 +50,13 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Indicates whether a formal trial's attempt ended or its category is decided.
+	 * Indicates whether a formal trial's attempt is absent or ended, or its cell already has a decision.
 	 *
 	 * @param draft the state
 	 * @param key the trial's key
 	 * @return {@code true} if the trial's outcome must be discarded
 	 */
-	private static boolean isStaleFormal(CampaignDraft draft, TrialKey key)
+	private static boolean isStaleFormal(Draft draft, TrialKey key)
 	{
 		if (key.series() < 1 || key.series() > draft.attempts.size())
 			return true;
@@ -69,13 +71,13 @@ final class TrialAdoption
 	 *
 	 * @param draft the state
 	 */
-	static void settle(CampaignDraft draft)
+	static void settle(Draft draft)
 	{
 		boolean changed = true;
 		while (changed)
 		{
 			changed = draft.trials.removeIf(trial -> trial.state() != TrialState.RUNNING && isStale(draft, trial));
-			Optional<LogicalTrial> next = nextAdoptable(draft);
+			Optional<LogicalTrial> next = findNextAdoptable(draft);
 			if (next.isPresent())
 			{
 				LogicalTrial trial = next.get();
@@ -88,12 +90,12 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Returns the judged trial to adopt next.
+	 * Finds the first judged trial whose outcome can be adopted, in trial-list order.
 	 *
 	 * @param draft the state
-	 * @return the trial, or empty if every judged trial waits for an earlier trial of its group
+	 * @return the trial, or empty if none is judged or every judged trial waits for an earlier trial of its group
 	 */
-	private static Optional<LogicalTrial> nextAdoptable(CampaignDraft draft)
+	private static Optional<LogicalTrial> findNextAdoptable(Draft draft)
 	{
 		for (LogicalTrial trial : draft.trials)
 		{
@@ -112,7 +114,7 @@ final class TrialAdoption
 	 * @param trial the trial
 	 * @return {@code true} if the trial must wait
 	 */
-	private static boolean waitsForEarlierTrial(CampaignDraft draft, LogicalTrial trial)
+	private static boolean waitsForEarlierTrial(Draft draft, LogicalTrial trial)
 	{
 		for (LogicalTrial other : draft.trials)
 		{
@@ -129,7 +131,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adopt(CampaignDraft draft, LogicalTrial trial)
+	private static void adopt(Draft draft, LogicalTrial trial)
 	{
 		if (trial.verdict() == Verdict.FAIL && trial.key().purpose() != Purpose.PROMOTION)
 			draft.failedCells.add(trial.key().category());
@@ -150,7 +152,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adoptDevelopment(CampaignDraft draft, LogicalTrial trial)
+	private static void adoptDevelopment(Draft draft, LogicalTrial trial)
 	{
 		String category = trial.key().category();
 		Verdict verdict = trial.verdict();
@@ -192,7 +194,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adoptBaseline(CampaignDraft draft, LogicalTrial trial)
+	private static void adoptBaseline(Draft draft, LogicalTrial trial)
 	{
 		addBaseline(draft, trial.key().category(), trial.verdict());
 		if (trial.verdict() == Verdict.FAIL)
@@ -206,10 +208,10 @@ final class TrialAdoption
 	 * Adds an outcome to the incumbent baseline.
 	 *
 	 * @param draft the state
-	 * @param category the category
+	 * @param category the cell identifier used to update baseline counts
 	 * @param verdict the outcome
 	 */
-	private static void addBaseline(CampaignDraft draft, String category, Verdict verdict)
+	private static void addBaseline(Draft draft, String category, Verdict verdict)
 	{
 		CategoryCounts counts = draft.baselineCounts.getOrDefault(category, CategoryCounts.EMPTY);
 		draft.baselineCounts.put(category, counts.add(verdict));
@@ -222,7 +224,7 @@ final class TrialAdoption
 	 * @param targeted the targeted copy of the instance
 	 * @param working the working candidate's verdict on it, or {@code null} if unknown
 	 */
-	private static void addRegression(CampaignDraft draft, TrialInstance targeted, Verdict working)
+	private static void addRegression(Draft draft, TrialInstance targeted, Verdict working)
 	{
 		for (RegressionInstance regression : draft.regressionSet)
 		{
@@ -239,7 +241,7 @@ final class TrialAdoption
 	 * @param instance the instance that the working candidate ran
 	 * @param verdict the verdict
 	 */
-	private static void recordWorkingVerdict(CampaignDraft draft, TrialInstance instance, Verdict verdict)
+	private static void recordWorkingVerdict(Draft draft, TrialInstance instance, Verdict verdict)
 	{
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
@@ -254,7 +256,7 @@ final class TrialAdoption
 	 *
 	 * @param draft the state
 	 */
-	private static void resolveDiagnosis(CampaignDraft draft)
+	private static void resolveDiagnosis(Draft draft)
 	{
 		if (draft.diagnosis == null)
 			return;
@@ -276,11 +278,12 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Returns a targeted-optimization round over the categories that have failures.
+	 * Creates an optimization round with zero author attempts for each listed cell that has failures or matches
+	 * {@code required}.
 	 *
-	 * @param counts the counts per category
-	 * @param categories the categories, in contract order
-	 * @param required a category that the round always includes, or {@code null}
+	 * @param counts the counts per cell; missing cells have no outcomes
+	 * @param categories the cell identifiers to consider, in contract order
+	 * @param required a listed cell to include even without failures, or {@code null}
 	 * @return the round
 	 */
 	static Round failingRound(Map<String, CategoryCounts> counts, List<String> categories, String required)
@@ -296,13 +299,13 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a diagnostic rerun outcome. The outcome joins the diagnosis of the development failure that it reran, which
-	 * the failure keeps whether the campaign edits or continues.
+	 * Records a diagnostic rerun's verdict and rationale on the development failure it reran, then applies the
+	 * edit-or-continue decision. The failure retains that rerun evidence after the decision.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adoptDiagnostic(CampaignDraft draft, LogicalTrial trial)
+	private static void adoptDiagnostic(Draft draft, LogicalTrial trial)
 	{
 		Diagnosis diagnosis = draft.diagnosis;
 		recordRerun(draft, diagnosis.pending().getFirst(), new DiagnosticRerun(trial.verdict(), trial.rationale()));
@@ -329,7 +332,7 @@ final class TrialAdoption
 	 * @param rerun the rerun's outcome
 	 * @throws IllegalStateException if no development failure has the instance
 	 */
-	private static void recordRerun(CampaignDraft draft, TrialInstance instance, DiagnosticRerun rerun)
+	private static void recordRerun(Draft draft, TrialInstance instance, DiagnosticRerun rerun)
 	{
 		for (int i = 0; i < draft.developmentFailures.size(); ++i)
 		{
@@ -349,7 +352,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adoptPromotion(CampaignDraft draft, LogicalTrial trial)
+	private static void adoptPromotion(Draft draft, LogicalTrial trial)
 	{
 		AuthorAttempt author = draft.author;
 		List<PromotionRun> runs = new ArrayList<>(author.runs());
@@ -371,7 +374,7 @@ final class TrialAdoption
 	 *
 	 * @param draft the state
 	 */
-	static void decidePromotion(CampaignDraft draft)
+	static void decidePromotion(Draft draft)
 	{
 		AuthorAttempt author = draft.author;
 		switch (Promotion.decide(author, draft.regressionSet))
@@ -395,7 +398,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param author the author attempt
 	 */
-	private static void promote(CampaignDraft draft, AuthorAttempt author)
+	private static void promote(Draft draft, AuthorAttempt author)
 	{
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
@@ -439,7 +442,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param category the round category
 	 */
-	static void rejectAuthorAttempt(CampaignDraft draft, String category)
+	static void rejectAuthorAttempt(Draft draft, String category)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>(draft.round.attempts());
 		attempts.put(category, attempts.get(category) + 1);
@@ -457,7 +460,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param trial the trial
 	 */
-	private static void adoptFormal(CampaignDraft draft, LogicalTrial trial)
+	private static void adoptFormal(Draft draft, LogicalTrial trial)
 	{
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
 		String category = trial.key().category();
@@ -489,7 +492,7 @@ final class TrialAdoption
 	 * @param draft the state
 	 * @param attempt the attempt
 	 */
-	private static void applyDecision(CampaignDraft draft, CertificationAttempt attempt)
+	private static void applyDecision(Draft draft, CertificationAttempt attempt)
 	{
 		DecisionTable.AttemptDecision decision = DecisionTable.attemptDecision(attempt);
 		Outcome ending = switch (decision)
@@ -523,13 +526,14 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Returns to development after an attempt ended without certification: the attempt's formal failures become
-	 * diagnostic input for a targeted-optimization round over the categories that failed.
+	 * Adds an uncertified attempt's formal failures to development evidence, excluding duplicate instance content.
+	 * If that attempt has failures, replaces the current diagnosis and optimization round with a new round for its
+	 * failed cells. An attempt without failures leaves the diagnosis and round unchanged.
 	 *
 	 * @param draft the state
 	 * @param attempt the ended attempt
 	 */
-	static void returnToDevelopment(CampaignDraft draft, CertificationAttempt attempt)
+	static void returnToDevelopment(Draft draft, CertificationAttempt attempt)
 	{
 		for (Failure failure : attempt.failures())
 		{
@@ -545,11 +549,12 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Reaches the review checkpoint of the first category that is due, if the campaign waits for nothing else.
+	 * Raises a review decision for the first cell whose development review point is due, if the active, confirmed
+	 * campaign has no pending decision, revision, certification attempt, diagnosis, optimization round or author attempt.
 	 *
 	 * @param draft the state
 	 */
-	static void checkReviewPoints(CampaignDraft draft)
+	static void checkReviewPoints(Draft draft)
 	{
 		if (draft.header.lifecycle() != Lifecycle.ACTIVE || !draft.isConfirmed() || !draft.pendingDecisions.isEmpty() ||
 			draft.revisionRequested || draft.runningAttempt().isPresent() || draft.diagnosis != null ||

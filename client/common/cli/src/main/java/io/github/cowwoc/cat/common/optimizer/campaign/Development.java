@@ -6,18 +6,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The development state of the working candidate.
+ * The outcomes and pending diagnosis or author work used to improve the current prompt snapshot.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param working the working candidate
- * @param series the development series, which changes whenever the counts restart
- * @param counts the working candidate's representative outcomes per category in this series
+ * @param series the sequence of development counts, identified by a number that changes whenever counts restart
+ * @param counts the working candidate's sampled outcomes included in evidence per cell in this series
  * @param failures the failures that an author attempt receives, in failure order
  * @param diagnosis the reruns in progress, or {@code null} if none are
  * @param round the development round in progress, or {@code null} if none is
  * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
- * @param reviewPoints the review point of each category that the user extended
+ * @param reviewPoints the outcome count that triggers another review for each cell the user extended
  * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series, which
  *   makes every cell eligible for representative trials ({@link CellTier})
  */
@@ -26,7 +26,7 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	Map<String, Integer> reviewPoints, boolean widened)
 {
 	/**
-	 * The review point of a category that the user has not extended.
+	 * The adopted-outcome count that triggers a cell's review unless the user extends it.
 	 */
 	public static final int DEFAULT_REVIEW_POINT = 200;
 
@@ -34,18 +34,18 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	 * Creates a development state.
 	 *
 	 * @param working the working candidate
-	 * @param series the development series, which changes whenever the counts restart
-	 * @param counts the working candidate's representative outcomes per category in this series
+	 * @param series the sequence of development counts, identified by a number that changes whenever counts restart
+	 * @param counts the working candidate's sampled outcomes included in evidence per cell in this series
 	 * @param failures the failures that an author attempt receives, in failure order
 	 * @param diagnosis the reruns in progress, or {@code null} if none are
 	 * @param round the development round in progress, or {@code null} if none is
 	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
-	 * @param reviewPoints the review point of each category that the user extended
+	 * @param reviewPoints the outcome count that triggers another review for each cell the user extended
 	 * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series
 	 * @throws NullPointerException if {@code working}, {@code counts}, {@code failures} or {@code reviewPoints} are
 	 *   null
-	 * @throws IllegalArgumentException if {@code series} is negative, or {@code author} exists without
-	 *   {@code round}
+	 * @throws NullPointerException if {@code author} is non-null while {@code round} is null
+	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public Development
 	{
@@ -76,10 +76,10 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	}
 
 	/**
-	 * Returns a category's outcomes.
+	 * Returns a cell's outcomes included in development evidence.
 	 *
-	 * @param category the category
-	 * @return the outcomes, empty if the category has none
+	 * @param category the cell's identifier
+	 * @return the counts, empty if the cell has no outcomes
 	 * @throws NullPointerException if {@code category} is null
 	 */
 	public CategoryCounts count(String category)
@@ -89,10 +89,10 @@ public record Development(Candidate working, int series, Map<String, CategoryCou
 	}
 
 	/**
-	 * Returns a category's review point.
+	 * Returns the outcome count that triggers a cell's next review.
 	 *
-	 * @param category the category
-	 * @return the number of outcomes at which the category's review checkpoint is due
+	 * @param category the cell's identifier
+	 * @return the adopted-outcome count at which the cell's review is due
 	 * @throws NullPointerException if {@code category} is null
 	 */
 	public int reviewPoint(String category)

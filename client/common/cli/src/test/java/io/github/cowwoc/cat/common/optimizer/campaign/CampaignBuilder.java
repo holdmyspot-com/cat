@@ -24,12 +24,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Builds campaign states directly, so that a test never replays trials to reach a state.
+ * Builds campaign states without running predecessor transitions.
  * <p>
  * For example, {@code new CampaignBuilder().confirmed().certificationAttempt(1).category("safety", 250, 2).build()}
  * returns a campaign whose first certification attempt has 250 passes and 2 failures in {@code safety}.
  * <p>
- * Category counts that a test gives as {@code (S, F)} place the failures in the earliest batches.
+ * Cell counts that a test gives as {@code (passes, failures)} place the failures in the earliest batches.
  */
 public final class CampaignBuilder
 {
@@ -282,9 +282,9 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Sets a category's development counts.
+	 * Sets a cell's development counts.
 	 *
-	 * @param category the category
+	 * @param category the cell identifier
 	 * @param passes the passes
 	 * @param failures the failures, placed in the earliest batches
 	 * @return this builder
@@ -296,9 +296,9 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Sets a category's development counts with explicit batches.
+	 * Sets a cell's development counts with explicit batches.
 	 *
-	 * @param category the category
+	 * @param category the cell identifier
 	 * @param passes the passes
 	 * @param batchFailures the failures of each started batch
 	 * @return this builder
@@ -395,10 +395,10 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Extends a category's review point.
+	 * Sets the development-outcome threshold at which a cell is reviewed.
 	 *
-	 * @param category the category
-	 * @param point the review point
+	 * @param category the cell identifier
+	 * @param point the number of adopted development outcomes that triggers review
 	 * @return this builder
 	 */
 	public CampaignBuilder reviewPoint(String category, int point)
@@ -443,9 +443,9 @@ public final class CampaignBuilder
 	}
 
 	/**
-	 * Sets a category's baseline counts.
+	 * Sets a cell's baseline counts.
 	 *
-	 * @param category the category
+	 * @param category the cell identifier
 	 * @param passes the passes
 	 * @param failures the failures, placed in the earliest batches
 	 * @return this builder
@@ -711,9 +711,9 @@ public final class CampaignBuilder
 		}
 
 		/**
-		 * Sets a category's formal counts.
+		 * Sets a cell's certification counts.
 		 *
-		 * @param category the category
+		 * @param category the cell identifier
 		 * @param passes the passes
 		 * @param failures the failures, placed in the earliest batches
 		 * @return this builder
@@ -796,7 +796,7 @@ public final class CampaignBuilder
 		}
 
 		/**
-		 * Ends the attempt.
+		 * Sets the attempt's outcome or leaves it running.
 		 *
 		 * @param value the outcome, or {@code null} to keep it running
 		 * @return this builder

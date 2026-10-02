@@ -14,7 +14,7 @@ public enum RunFailure
 	 */
 	RATE_LIMITED,
 	/**
-	 * CAT interrupted the run, for example at the end of a slice. It does not count toward the limit.
+	 * CAT interrupted the run, for example when its current work allowance ended. It does not count toward the limit.
 	 */
 	INTERRUPTED
 }

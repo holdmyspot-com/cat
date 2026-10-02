@@ -11,10 +11,10 @@ import java.util.List;
 /**
  * The response to the rate limits that the harness reports.
  * <p>
- * At {@value #FREEZE_UTILIZATION} utilization or more of any window, the concurrency window stops growing. At
- * {@value #HOLD_UTILIZATION} or more, or on a rate-limit rejection, the window drops to 1 and nothing is admitted
- * until the reported reset time. Without a reset time, admissions back off for 1, 2, 4, … minutes, up to 30 minutes.
- * The response is deterministic: it adds no randomized pacing.
+ * Utilization is the fraction of a reported rate-limit allowance consumed. At {@value #FREEZE_UTILIZATION} or more
+ * of any allowance, the limit on simultaneous candidate trials stops growing. At {@value #HOLD_UTILIZATION} or more,
+ * or on a rate-limit rejection, that limit drops to 1 and no trials start until the reported reset time. Without a
+ * future reset time, admissions wait for 1, 2, 4, … minutes, up to 30 minutes. The response adds no randomized pacing.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -68,7 +68,7 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	 * @param now the current time
 	 * @param window the active candidate's current concurrency window
 	 * @return the updated state
-	 * @throws NullPointerException if {@code windows} or {@code now} are null
+	 * @throws NullPointerException if {@code windows} or {@code now} are null, or {@code windows} contains null
 	 * @throws IllegalArgumentException if {@code window} is not positive
 	 */
 	public Throttle observe(List<RateLimitWindow> windows, Instant now, int window)
@@ -149,7 +149,7 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	}
 
 	/**
-	 * Indicates whether admissions may start.
+	 * Indicates whether this throttle permits admission at the supplied time.
 	 *
 	 * @param now the current time
 	 * @return {@code true} if no hold lasts beyond {@code now}

@@ -10,7 +10,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The evidence history under one confirmed contract.
+ * The evidence history under one confirmed contract. Revising the contract starts a new history rather than reusing
+ * earlier results for certification.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -19,7 +20,8 @@ import java.util.Set;
  * @param contractHash the contract's identity
  * @param development the development draw stream
  * @param baseline the baseline-arm draw stream
- * @param regressionSet every instance that failed representatively under this lineage, in failure order
+ * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
+ *   in failure order
  * @param unavailable the known conditions that make certification unavailable under this lineage
  */
 public record Lineage(int number, Contract contract, Sha256 contractHash, DrawStream.State development,
@@ -33,7 +35,8 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 	 * @param contractHash the contract's identity
 	 * @param development the development draw stream
 	 * @param baseline the baseline-arm draw stream
-	 * @param regressionSet every instance that failed representatively under this lineage, in failure order
+	 * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
+	 *   in failure order
 	 * @param unavailable the known conditions that make certification unavailable under this lineage
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code number} is not positive, a stream has the wrong kind, or

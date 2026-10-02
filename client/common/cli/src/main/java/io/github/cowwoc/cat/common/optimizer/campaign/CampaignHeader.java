@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.nio.file.Path;
 
 /**
- * What identifies a campaign and binds it to a project, a target and a harness.
+ * A campaign's identity, project and prompt target, starting harness, and lifecycle state.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -13,7 +13,7 @@ import java.nio.file.Path;
  * @param root the canonical project root
  * @param target the canonical path of the prompt file or prompt system
  * @param harness the harness that started the campaign
- * @param lifecycle where the campaign is in its life
+ * @param lifecycle whether the campaign is active, cancelled, closed or finished
  */
 public record CampaignHeader(String id, Path root, Path target, Harness harness, Lifecycle lifecycle)
 {
@@ -24,7 +24,7 @@ public record CampaignHeader(String id, Path root, Path target, Harness harness,
 	 * @param root the canonical project root
 	 * @param target the canonical path of the prompt file or prompt system
 	 * @param harness the harness that started the campaign
-	 * @param lifecycle where the campaign is in its life
+	 * @param lifecycle whether the campaign is active, cancelled, closed or finished
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id} is blank
 	 */

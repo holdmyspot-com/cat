@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * Where an unadopted logical trial is in its life.
+ * The execution state of a trial whose outcome is not yet included in campaign evidence.
  */
 public enum TrialState
 {
@@ -14,7 +14,8 @@ public enum TrialState
 	 */
 	RUNNING,
 	/**
-	 * The judge labelled the trial, and the outcome waits for every earlier trial of its group to be adopted.
+	 * The trial has a compliance result and waits for earlier trials with the same cell, purpose, snapshot and series
+	 * to enter campaign evidence first.
 	 */
 	JUDGED
 }

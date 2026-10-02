@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Decides when development has reached a plateau, from {@code design.md} section 2.7.
+ * Detects a development plateau: a completed round without a promotion to a new working candidate.
  * <p>
  * Only a complete round without a promotion establishes a plateau. A promotion ends its round, interruptions and
  * infrastructure failures never complete an author attempt, and elapsed time or tokens are never consulted.
@@ -21,7 +21,8 @@ public final class Plateau
 	 * Indicates whether a round is complete.
 	 *
 	 * @param round a round that has not promoted a candidate
-	 * @return {@code true} if every category of the round received all of its author attempts
+	 * @return {@code true} if every cell in the round (a requirement category under one runner profile) received
+	 *   all of its author attempts
 	 * @throws NullPointerException if {@code round} is null
 	 */
 	public static boolean isReached(Round round)

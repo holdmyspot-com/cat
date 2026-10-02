@@ -16,7 +16,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link DecisionTable} and the actions that the campaign takes for each row.
+ * Tests {@link DecisionTable} and the campaign actions that its decisions select.
  */
 public final class DecisionTableTest
 {
@@ -28,8 +28,9 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Returns boundaries under which a category certifies at {@code 100 + 50·F}, is clearly below at 5 failures and
-	 * is proven worse below 250 passes from 2 failures, so that a certified category can be proven worse.
+	 * Returns boundaries under which a cell certifies at {@code 100 + 50 * failures} passes when reachable within
+	 * the cap, is clearly below at 5 failures, and is proven worse below 250 passes from 2 failures. A cell can
+	 * therefore certify while being proven worse.
 	 *
 	 * @return the boundaries
 	 */
@@ -265,8 +266,8 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Verifies that a category at its cap ends the attempt inconclusive, and that an ended attempt never reopens and
-	 * keeps its frozen cap.
+	 * Verifies that an undecided cell at its cap ends the attempt inconclusive, and a later outcome neither reopens
+	 * the attempt nor changes its counts or fixed boundaries.
 	 */
 	@Test
 	public void endedAttemptNeverReopens()
@@ -307,7 +308,8 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Verifies that accepting a working candidate without certification is an explicit, labelled choice.
+	 * Verifies that explicitly accepting a working candidate without certification finishes the campaign with
+	 * {@link Outcome#NOT_CERTIFIED} and a delivery request carrying that label.
 	 */
 	@Test
 	public void acceptanceWithoutCertificationIsExplicit()

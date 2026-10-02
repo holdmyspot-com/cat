@@ -3,7 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.cat.common.optimizer.campaign.CampaignBuilder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
@@ -96,8 +99,30 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
-	 * Verifies that only a commit spends a certification index, and that failed attempts, revisions, new identities
-	 * and cancel-then-resume never reset it.
+	 * Verifies that assigning a diagnostic rerun preserves its cell when the category has multiple trial profiles.
+	 */
+	@Test
+	public void diagnosticRerunKeepsCellIdentity()
+	{
+		// Requirement: R-C11
+		Contract contract = ContractFixtures.twoCellContract();
+		Generator generator = new Generator(contract);
+		TrialInstance instance = generator.markTargeted(generator.draw(ContractFixtures.BIG_CELL,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1)));
+		Campaign campaign = new CampaignBuilder().confirmed(contract, 1).
+			diagnosis(new Diagnosis(List.of(instance), 0, null, false)).build();
+
+		Campaign assigned = TransitionSteps.assign(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
+			campaign.development().working().snapshot(), instance);
+
+		LogicalTrial trial = assigned.trials().getFirst();
+		requireThat(trial.key().category(), "cell").isEqualTo(ContractFixtures.BIG_CELL);
+		requireThat(trial.instance(), "instance").isEqualTo(instance);
+	}
+
+	/**
+	 * Verifies that only freezing a certification procedure spends an index, revisions, new measurement identities
+	 * and cancel-then-resume keep it spent, and a new campaign starts again from 1.
 	 */
 	@Test
 	public void certificationIndexIsPermanent()
@@ -132,8 +157,8 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
-	 * Verifies that a promoted candidate starts new counts and that the earlier failures stay available for
-	 * diagnosis.
+	 * Verifies that a promoted candidate starts new counts and that the earlier failing instance stays in the
+	 * regression set.
 	 */
 	@Test
 	public void newCandidateStartsNewCounts()
@@ -156,7 +181,7 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
-	 * Returns the four certifiable-scope outcomes.
+	 * Returns the four outcomes for conditions outside the supported certification scope.
 	 *
 	 * @return the rows
 	 */
@@ -223,8 +248,8 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
-	 * Verifies that a scope disposition is kept in the campaign state across a stop and resume, so a reloaded
-	 * campaign still refuses a commit.
+	 * Verifies that a certification-unavailable condition survives stop and resume, so freezing a certification
+	 * procedure remains unavailable.
 	 */
 	@Test
 	public void unavailabilitySurvivesResume()
@@ -560,7 +585,7 @@ public final class CampaignTransitionsTest
 	}
 
 	/**
-	 * Verifies that a loader-configuration change offers only restoring it or starting a new campaign.
+	 * Verifies that a loader-configuration change offers restoring it, starting a new campaign or stopping.
 	 */
 	@Test
 	public void loaderChangeOffersNewCampaign()

@@ -21,9 +21,12 @@ public final class KeepImprovementTest
 	}
 
 	/**
-	 * Returns boundaries that keep the decisions apart: a category certifies at {@code 100 + 50·F} and is clearly
-	 * below at 6 failures. {@code formatting} is proven better at {@code 60 + 40·F} and {@code safety} at
-	 * {@code 150 + 40·F}; both are proven worse at 8 failures.
+	 * Returns boundaries that distinguish the tested decisions. With {@code F} failures, the certification minimum
+	 * is {@code 100 + 50·F} passes. The proven-better minimum is {@code 60 + 40·F} for {@code formatting} and
+	 * {@code 150 + 40·F} for {@code safety}. Each minimum is capped at {@code cap - F + 1}, where {@code cap} is the
+	 * maximum total outcomes.
+	 * A cell is clearly below with at least 6 failures and fewer passes than its certification minimum; it is proven
+	 * worse with at least 8 failures and fewer passes than its proven-better minimum.
 	 *
 	 * @return the boundaries
 	 */

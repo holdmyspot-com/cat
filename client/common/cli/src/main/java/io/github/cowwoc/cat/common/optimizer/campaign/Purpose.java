@@ -1,7 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * Why a logical trial runs, which decides the counts its outcome enters.
+ * Why an assigned test instance runs, which decides the counts its outcome enters. Representative trials sample new
+ * instances from the contract's distribution; targeted trials replay selected instances and do not enter those counts.
  */
 public enum Purpose
 {
@@ -10,7 +11,7 @@ public enum Purpose
 	 */
 	DEVELOPMENT,
 	/**
-	 * A representative trial of the incumbent's baseline arm, counted in the baseline.
+	 * A sampled trial of the original prompt system, counted in its baseline measurement.
 	 */
 	BASELINE,
 	/**
