@@ -28,7 +28,7 @@ public final class ExecutableFilesTest
 	 */
 	@Test public void runsConfiguredExecutable() throws IOException, InterruptedException
 	{
-		try (Process process = ExecutableFiles.run(new ProcessBuilder("true")))
+		try (Process process = ExecutableFiles.run(ProcessFixture.builder(ProcessFixture.Mode.EXIT)))
 		{
 			requireThat(process.waitFor(), "exitCode").isEqualTo(0);
 		}

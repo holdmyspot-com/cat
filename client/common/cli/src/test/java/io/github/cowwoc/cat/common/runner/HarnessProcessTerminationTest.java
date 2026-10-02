@@ -1,8 +1,9 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.ProcessFixture;
+
 import java.io.IOException;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import org.testng.annotations.Test;
@@ -30,13 +31,13 @@ public final class HarnessProcessTerminationTest
 	@Test
 	public void terminatesVisibleChildren() throws IOException
 	{
-		if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"))
-			return;
-		try (Process process = new ProcessBuilder(List.of("sh", "-c", "sleep 30 & wait")).start())
+		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.TREE).start())
 		{
+			List<ProcessHandle> children = List.of();
 			try
 			{
-				waitForDescendant(process);
+				ProcessFixture.awaitStarted(process);
+				children = process.toHandle().descendants().toList();
 				HarnessProcessTermination.terminate(process, "test harness");
 				List<ProcessHandle> descendants = process.toHandle().descendants().toList();
 				requireThat(process.isAlive(), "process.isAlive").isFalse();
@@ -44,6 +45,7 @@ public final class HarnessProcessTerminationTest
 			}
 			finally
 			{
+				children.forEach(ProcessHandle::destroyForcibly);
 				if (process.isAlive())
 					process.destroyForcibly();
 			}
@@ -60,13 +62,13 @@ public final class HarnessProcessTerminationTest
 	@Test
 	public void immediatelyTerminatesVisibleChildren() throws IOException, InterruptedException
 	{
-		if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"))
-			return;
-		try (Process process = new ProcessBuilder(List.of("sh", "-c", "sleep 30 & wait")).start())
+		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.TREE).start())
 		{
+			List<ProcessHandle> children = List.of();
 			try
 			{
-				waitForDescendant(process);
+				ProcessFixture.awaitStarted(process);
+				children = process.toHandle().descendants().toList();
 				HarnessProcessTermination.terminateImmediately(process);
 				requireThat(process.waitFor(5, TimeUnit.SECONDS), "processExit").isTrue();
 				requireThat(process.toHandle().descendants().anyMatch(ProcessHandle::isAlive), "liveDescendants").
@@ -74,35 +76,10 @@ public final class HarnessProcessTerminationTest
 			}
 			finally
 			{
+				children.forEach(ProcessHandle::destroyForcibly);
 				if (process.isAlive())
 					process.destroyForcibly();
 			}
 		}
-	}
-
-	/**
-	 * Waits until the test harness has started its child.
-	 *
-	 * @param process the direct test harness process
-	 *
-	 * @throws IOException if the child did not start
-	 */
-	private static void waitForDescendant(Process process) throws IOException
-	{
-		for (int attempt = 0; attempt < 100; ++attempt)
-		{
-			if (process.toHandle().descendants().findAny().isPresent())
-				return;
-			try
-			{
-				Thread.sleep(10);
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while waiting for the test harness child", e);
-			}
-		}
-		throw new IOException("Test harness did not start its child");
 	}
 }

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.ProcessFixture;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import org.testng.annotations.Test;
 
@@ -37,13 +38,13 @@ public final class ProcessHandleTerminatorTest
 	 * Starts a process that runs until it is terminated.
 	 *
 	 * @param directory the process's working directory
-	 * @param command the command
+	 * @param mode the process's behavior
 	 * @return the process
 	 * @throws IOException if the process cannot start
 	 */
-	private static Process start(Path directory, String... command) throws IOException
+	private static Process start(Path directory, ProcessFixture.Mode mode) throws IOException
 	{
-		return new ProcessBuilder(command).directory(directory.toFile()).start();
+		return ProcessFixture.builder(mode).directory(directory.toFile()).start();
 	}
 
 	/**
@@ -69,7 +70,8 @@ public final class ProcessHandleTerminatorTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try (Process process = start(cleanup.add(Files.createTempDirectory("terminator")), "cat"))
+			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
+			try (Process process = start(directory, ProcessFixture.Mode.CHILD))
 			{
 				try
 				{
@@ -104,16 +106,12 @@ public final class ProcessHandleTerminatorTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
-			Files.createFile(directory.resolve("followed"));
-			// The shell's child follows an empty file and writes to /dev/null, so it can outlive the shell without
-			// writing to the test's closed pipe. The test must observe the child's exit as well as the shell's
-			try (Process process = start(directory, "sh", "-c",
-				"tail -f followed >/dev/null 2>&1 & echo started; wait"))
+			try (Process process = start(directory, ProcessFixture.Mode.TREE))
 			{
 				List<ProcessHandle> descendants = List.of();
 				try
 				{
-					// The shell prints once it started its child
+					// The Java parent reports readiness after its child has started
 					try (BufferedReader output = process.inputReader(UTF_8))
 					{
 						requireThat(output.readLine(), "output").isEqualTo("started");
@@ -130,7 +128,7 @@ public final class ProcessHandleTerminatorTest
 				}
 				finally
 				{
-					// A child that outlived the shell is no longer its descendant
+					// A child that outlived the parent is no longer its descendant
 					descendants.forEach(ProcessHandle::destroyForcibly);
 					process.destroyForcibly();
 				}
@@ -162,12 +160,12 @@ public final class ProcessHandleTerminatorTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try (Process process = start(cleanup.add(Files.createTempDirectory("terminator")), "cat"))
+			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
+			try (Process process = start(directory, ProcessFixture.Mode.CHILD))
 			{
 				ProcessHandle handle = process.toHandle();
 				Instant startedAt = startedAt(handle);
-				// Closing the parent's output endpoint sends EOF to the child process, so cat exits
-				process.getOutputStream().close();
+				process.destroy();
 				requireThat(process.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "exited").isTrue();
 				requireThat(new ProcessHandleTerminator().terminate(handle.pid(), startedAt), "terminated").isFalse();
 			}
