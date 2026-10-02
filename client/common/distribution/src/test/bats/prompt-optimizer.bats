@@ -2,10 +2,10 @@
 
 # Tests the packaged prompt-optimizer launchers of both harness images against a fixture campaign.
 
-# Bats invokes this before each test to create a Git project that holds the fixture campaign.
+# Bats invokes this before each test to create a Git project that holds the fixture Claude campaign.
 #
 # Side effects:
-#   Sets test-scoped environment variables and creates their directories under CAT work.
+#   Sets test-scoped environment variables and creates their directories under the project's .cat/work/temp.
 setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
@@ -19,7 +19,7 @@ setup()
 	cp "${fixture}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/campaign.json"
 }
 
-# Removes the test's CAT-work fixture after its last assertion completes.
+# Removes the test's fixture directory after its last assertion completes.
 #
 # Side effects:
 #   Deletes the temporary directory created by setup.
@@ -52,7 +52,7 @@ tree_checksum()
 	(cd "${PROJECT}" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs sha256sum | sha256sum)
 }
 
-@test "packaged Claude prompt-optimizer prints the status JSON of a fixture campaign" {
+@test "packaged Claude prompt-optimizer prints the status JSON of the fixture Claude campaign" {
 	# Requirement: R-I4
 	run_optimizer claude status fixture-campaign
 	[ "${status}" -eq 0 ]
@@ -60,7 +60,7 @@ tree_checksum()
 		(.choices | type == "array") and (.summary | type == "string") and (.status | type == "string")'
 }
 
-@test "packaged Codex prompt-optimizer prints the status JSON of a fixture campaign" {
+@test "packaged Codex prompt-optimizer prints the status JSON of the fixture Claude campaign" {
 	# Requirement: R-I4
 	run_optimizer codex status fixture-campaign
 	[ "${status}" -eq 0 ]

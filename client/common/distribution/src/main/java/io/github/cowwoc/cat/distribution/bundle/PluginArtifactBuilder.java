@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.stream.Stream;
 
@@ -34,7 +35,7 @@ import java.util.stream.Stream;
  */
 public final class PluginArtifactBuilder
 {
-	private static final int MAXIMUM_SKILL_INPUT_BYTES = 1_048_576;
+	private static final int MAXIMUM_PROMPT_FILE_BYTES = 1_048_576;
 	private final String version;
 
 	/**
@@ -130,19 +131,14 @@ public final class PluginArtifactBuilder
 		{
 			for (Path skill : paths.filter(path -> path.getFileName().toString().equals("SKILL.md")).sorted().toList())
 			{
-				String template = BoundedInput.readUtf8(skill, MAXIMUM_SKILL_INPUT_BYTES, "Skill template");
-				Matcher matcher = MarkdownIncludes.DIRECTIVE.matcher(template);
-				if (!matcher.find())
+				String template = BoundedInput.readUtf8(skill, MAXIMUM_PROMPT_FILE_BYTES, "Skill template");
+				MatchResult include = findOnlyInclude(template, skill, "Skill");
+				if (include == null)
 					continue;
-				String bodyName = matcher.group(1);
-				int includeStart = matcher.start();
-				int includeEnd = matcher.end();
-				if (matcher.find())
-					throw new IOException("Skill contains more than one cat:include directive: " + skill);
-				Path body = MarkdownIncludes.resolve(skill, bodyName, "Skill include", skills);
-				String expanded = template.substring(0, includeStart) + BoundedInput.readUtf8(body,
-					MAXIMUM_SKILL_INPUT_BYTES, "Skill body") +
-					template.substring(includeEnd);
+				Path body = MarkdownIncludes.resolve(skill, include.group(1), "Skill include", skills);
+				String expanded = template.substring(0, include.start()) + BoundedInput.readUtf8(body,
+					MAXIMUM_PROMPT_FILE_BYTES, "Skill body") +
+					template.substring(include.end());
 				Files.writeString(skill, expanded);
 				sourceOnlyBodies.add(body);
 			}
@@ -152,7 +148,7 @@ public final class PluginArtifactBuilder
 	}
 
 	/**
-	 * Expands shared reviewer instructions into each harness-specific agent and removes the source-only common files.
+	 * Expands shared agent bodies into each harness-specific agent and removes the source-only common files.
 	 *
 	 * @param artifactDirectory the assembled plugin directory
 	 * @throws IOException if an agent include is ambiguous, unsafe, or unreadable
@@ -192,24 +188,39 @@ public final class PluginArtifactBuilder
 		Path normalized = agent.normalize();
 		if (!expanding.add(normalized))
 			throw new IOException("Cyclic agent include: " + normalized);
-		String template = BoundedInput.readUtf8(normalized, MAXIMUM_SKILL_INPUT_BYTES, "Agent instruction");
-		Matcher matcher = MarkdownIncludes.DIRECTIVE.matcher(template);
-		if (!matcher.find())
+		String template = BoundedInput.readUtf8(normalized, MAXIMUM_PROMPT_FILE_BYTES, "Agent instruction");
+		MatchResult include = findOnlyInclude(template, normalized, "Agent");
+		if (include == null)
 		{
 			expanding.remove(normalized);
 			return template;
 		}
-		String bodyName = matcher.group(1);
-		int includeStart = matcher.start();
-		int includeEnd = matcher.end();
-		if (matcher.find())
-			throw new IOException("Agent contains more than one cat:include directive: " + normalized);
 		Path rules = artifactDirectory.resolve("rules");
-		Path body = MarkdownIncludes.resolve(normalized, bodyName, "Agent include", agents, rules);
-		String expanded = template.substring(0, includeStart) +
-			expandAgentIncludes(body, agents, artifactDirectory, expanding) + template.substring(includeEnd);
+		Path body = MarkdownIncludes.resolve(normalized, include.group(1), "Agent include", agents, rules);
+		String expanded = template.substring(0, include.start()) +
+			expandAgentIncludes(body, agents, artifactDirectory, expanding) + template.substring(include.end());
 		expanding.remove(normalized);
 		return expanded;
+	}
+
+	/**
+	 * Finds the include directive of a prompt file that may contain at most one.
+	 *
+	 * @param template the prompt file's content
+	 * @param file the prompt file, named in the error message
+	 * @param kind the kind of prompt file named in the error message, such as {@code "Skill"}
+	 * @return the directive, or {@code null} if {@code template} contains none
+	 * @throws IOException if {@code template} contains more than one directive
+	 */
+	private static MatchResult findOnlyInclude(String template, Path file, String kind) throws IOException
+	{
+		Matcher matcher = MarkdownIncludes.DIRECTIVE.matcher(template);
+		if (!matcher.find())
+			return null;
+		MatchResult include = matcher.toMatchResult();
+		if (matcher.find())
+			throw new IOException(kind + " contains more than one cat:include directive: " + file);
+		return include;
 	}
 
 	/**
@@ -337,7 +348,7 @@ public final class PluginArtifactBuilder
 		}
 		catch (UnsupportedOperationException _)
 		{
-			// Native CAT distributions target POSIX filesystems; other filesystems retain their default permissions.
+			// CAT distributions target POSIX filesystems; other filesystems retain their default permissions.
 		}
 	}
 
@@ -351,7 +362,7 @@ public final class PluginArtifactBuilder
 	private static void copyTree(Path source, Path destination) throws IOException
 	{
 		if (!Files.isDirectory(source, NOFOLLOW_LINKS))
-			throw new IOException("Source directory is not a directory: " + source);
+			throw new IOException("Copy source is not a directory: " + source);
 		try (Stream<Path> paths = Files.walk(source))
 		{
 			for (Path path : paths.sorted().toList())
@@ -368,7 +379,7 @@ public final class PluginArtifactBuilder
 				{
 					Files.createDirectories(target.getParent());
 					Files.copy(path, target, COPY_ATTRIBUTES);
-					copyExecutablePermissions(path, target);
+					copyPosixPermissions(path, target);
 				}
 			}
 		}
@@ -381,7 +392,7 @@ public final class PluginArtifactBuilder
 	 * @param target the destination file
 	 * @throws IOException if permissions cannot be read or written
 	 */
-	private static void copyExecutablePermissions(Path source, Path target) throws IOException
+	private static void copyPosixPermissions(Path source, Path target) throws IOException
 	{
 		try
 		{
@@ -390,7 +401,8 @@ public final class PluginArtifactBuilder
 		}
 		catch (UnsupportedOperationException _)
 		{
-			// The supported build platforms provide POSIX permissions; keep Files.copy() attributes elsewhere.
+			// The supported build platforms provide POSIX permissions; other filesystems keep the attributes that
+			// Files.copy() copied.
 		}
 	}
 }

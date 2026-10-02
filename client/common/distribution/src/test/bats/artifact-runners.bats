@@ -2,10 +2,10 @@
 
 # Tests packaged Claude and Codex runners for isolated harness protocol and artifact boundaries.
 
-# Bats invokes this before each test to allocate a CAT-work root for runner-owned fixtures.
+# Bats invokes this before each test to create its fixture directory under the project's .cat/work/temp.
 #
 # Side effects:
-#   Sets test-scoped environment variables and creates their directories under CAT work.
+#   Sets test-scoped environment variables and creates their directories under the fixture directory.
 setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
@@ -17,7 +17,7 @@ setup()
 	mkdir -p "${FAKE_BIN}" "${HOST_HOME}" "${RUN_ROOT}"
 }
 
-# Removes the test's CAT-work fixture after its last runner assertion completes.
+# Removes the test's fixture directory after its last runner assertion completes.
 #
 # Side effects:
 #   Deletes the temporary directory created by setup.
@@ -45,14 +45,20 @@ teardown()
 	[ -f "${retained}/evidence" ]
 	"${launcher}" delete "${retained}"
 	[ ! -e "${retained}" ]
+}
 
-	run "${launcher}" --help
+@test "packaged workflow-temp help states that create prints the new directory's path" {
+	run "${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" --help
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *"Output: the new directory's absolute path, on one line."* ]]
+}
 
+@test "packaged workflow-temp rejects an invalid workflow name and deletion of its root" {
+	launcher="${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp"
 	run "${launcher}" create Uppercase
 	[ "${status}" -ne 0 ]
 	[[ "${output}" == *"Workflow name must match"* ]]
+	root="$("${launcher}" root)"
 	run "${launcher}" delete "${root}"
 	[ "${status}" -ne 0 ]
 	[[ "${output}" == *"must be below"* ]]
@@ -91,7 +97,8 @@ create_source_project()
 	printf '%s\n' "${project}"
 }
 
-# Creates a fake Claude executable that records setup commands and streams one result for each input line.
+# Creates a fake Claude executable that records setup commands and, for each input line, streams one result followed
+# by an idle session-state event.
 #
 # Side effects:
 #   Creates FAKE_BIN/claude and writes its invocation log to FAKE_BIN/harness.log.
@@ -117,6 +124,18 @@ while IFS= read -r line; do
 done
 SCRIPT
 	chmod +x "${FAKE_BIN}/claude"
+}
+
+# Prints the line number of the first runner event of one type in the output of the last bats run command.
+#
+# Arguments:
+#   $1 - Event type, such as turn-completed.
+#
+# Output:
+#   Writes the 1-based line number to standard output.
+first_event_line()
+{
+	printf '%s\n' "${output}" | grep -n "\"type\":\"$1\"" | head -n 1 | cut -d: -f1
 }
 
 # Creates a fake Codex executable that records setup commands and emits minimal app-server protocol messages.
@@ -163,9 +182,7 @@ SCRIPT
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"type":"started"'* ]]
-	harness_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"harness-event"' | head -n 1 | cut -d: -f1)"
-	completed_line="$(printf '%s\n' "${output}" | grep -n '"type":"turn-completed"' | head -n 1 | cut -d: -f1)"
-	[ "${harness_event_line}" -lt "${completed_line}" ]
+	[ "$(first_event_line harness-event)" -lt "$(first_event_line turn-completed)" ]
 	[ "$(grep -c '^serve:' "${FAKE_BIN}/harness.log")" -eq 1 ]
 	grep -F "plugin marketplace add" "${FAKE_BIN}/harness.log"
 	grep -F "plugin install cat@cat" "${FAKE_BIN}/harness.log"
@@ -210,9 +227,7 @@ SCRIPT
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"type":"turn-completed"'* ]]
-	harness_event_line="$(printf '%s\n' "${output}" | grep -n '"type":"harness-event"' | head -n 1 | cut -d: -f1)"
-	completed_line="$(printf '%s\n' "${output}" | grep -n '"type":"turn-completed"' | head -n 1 | cut -d: -f1)"
-	[ "${harness_event_line}" -lt "${completed_line}" ]
+	[ "$(first_event_line harness-event)" -lt "$(first_event_line turn-completed)" ]
 	[ "$(grep -c '^serve:' "${FAKE_BIN}/harness.log")" -eq 1 ]
 	grep -F "plugin marketplace add" "${FAKE_BIN}/harness.log"
 	grep -F "plugin add cat@cat" "${FAKE_BIN}/harness.log"

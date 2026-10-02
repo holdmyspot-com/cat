@@ -82,8 +82,8 @@ add_test_migration()
 	printf '%s\n' "${script_body}" > "${artifact}/install/migrations/${script_name}"
 }
 
-# Writes the CAT platform identifier that corresponds to the current native operating system and architecture.
-expected_native_platform()
+# Writes the CAT platform identifier of the current operating system and architecture.
+current_platform()
 {
 	case "$(uname -s):$(uname -m)" in
 		Linux:x86_64|Linux:amd64) printf '%s\n' linux-x64 ;;

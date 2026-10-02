@@ -127,12 +127,6 @@ public final class DistributionMain
 			Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"),
 			codexLaunchers(), jlinkDirectory.resolve("codex"));
 
-		// Resolve these eagerly so a missing runtime dependency fails with a specific artifact name.
-		if (!Files.isRegularFile(commonCli) || !Files.isRegularFile(claudeCli) ||
-			!Files.isRegularFile(codexCli) ||
-			!Files.isRegularFile(requirements))
-			throw new IOException("One or more Java runtime modules are missing from " + moduleDirectory);
-
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
 		Path catLicense = projectRoot.resolve("LICENSE.md");
@@ -140,7 +134,8 @@ public final class DistributionMain
 		Path commonInstallers = projectRoot.resolve("client/common/lifecycle/src/main/resources/install");
 		Path claudeInstallers = projectRoot.resolve("client/claude/lifecycle/src/main/resources/install");
 		Path codexInstallers = projectRoot.resolve("client/codex/lifecycle/src/main/resources/install");
-		List<ThirdPartyComponent> commonLegalComponents = List.of(
+		String jacksonCoreCoordinates = "tools.jackson.core:jackson-core:3.1.4";
+		List<ThirdPartyComponent> legalComponents = List.of(
 			new ThirdPartyComponent("java-diff-utils", "io.github.java-diff-utils:java-diff-utils:4.16",
 				"Apache-2.0.txt", javaDiff, List.of()),
 			new ThirdPartyComponent("Pouch", "io.github.cowwoc.pouch:pouch-core:10.3", "Apache-2.0.txt", pouch,
@@ -153,22 +148,21 @@ public final class DistributionMain
 			new ThirdPartyComponent("SLF4J API", "org.slf4j:slf4j-api:2.0.17", "MIT.txt", slf4j,
 				List.of("META-INF/LICENSE.txt")),
 			new ThirdPartyComponent("SLF4J NOP Provider", "org.slf4j:slf4j-nop:2.0.17", "MIT.txt", slf4jNop,
-				List.of("META-INF/LICENSE.txt")));
-		List<ThirdPartyComponent> jsonLegalComponents = List.of(
+				List.of("META-INF/LICENSE.txt")),
 			new ThirdPartyComponent("Jackson Annotations", "com.fasterxml.jackson.core:jackson-annotations:2.21",
 				"Apache-2.0.txt", jacksonAnnotations, List.of("META-INF/NOTICE")),
-			new ThirdPartyComponent("Jackson Core", "tools.jackson.core:jackson-core:3.1.4", "Apache-2.0.txt",
+			new ThirdPartyComponent("Jackson Core", jacksonCoreCoordinates, "Apache-2.0.txt",
 				jacksonCore, List.of("META-INF/NOTICE", "META-INF/FastDoubleParser-LICENSE",
 					"META-INF/FastDoubleParser-ThirdParty-LICENSE", "META-INF/Schubfach-LICENSE")),
-			new ThirdPartyComponent("FastDoubleParser", "embedded in tools.jackson.core:jackson-core:3.1.4", "MIT.txt",
+			new ThirdPartyComponent("FastDoubleParser", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
 				jacksonCore, List.of()),
-			new ThirdPartyComponent("fast_double_parser", "embedded in tools.jackson.core:jackson-core:3.1.4",
+			new ThirdPartyComponent("fast_double_parser", "embedded in " + jacksonCoreCoordinates,
 				"Boost-1.0.txt", jacksonCore, List.of()),
-			new ThirdPartyComponent("fast_float", "embedded in tools.jackson.core:jackson-core:3.1.4", "MIT.txt",
+			new ThirdPartyComponent("fast_float", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
 				jacksonCore, List.of()),
-			new ThirdPartyComponent("bigint", "embedded in tools.jackson.core:jackson-core:3.1.4", "BSD-2-Clause.txt",
+			new ThirdPartyComponent("bigint", "embedded in " + jacksonCoreCoordinates, "BSD-2-Clause.txt",
 				jacksonCore, List.of()),
-			new ThirdPartyComponent("Schubfach", "embedded in tools.jackson.core:jackson-core:3.1.4", "MIT.txt",
+			new ThirdPartyComponent("Schubfach", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
 				jacksonCore, List.of()),
 			new ThirdPartyComponent("Jackson Databind", "tools.jackson.core:jackson-databind:3.1.4", "Apache-2.0.txt",
 				jacksonDatabind, List.of("META-INF/NOTICE")),
@@ -176,12 +170,8 @@ public final class DistributionMain
 				"Apache-2.0.txt", jacksonYaml, List.of("META-INF/NOTICE")),
 			new ThirdPartyComponent("SnakeYAML Engine", "org.snakeyaml:snakeyaml-engine:3.0.1", "Apache-2.0.txt",
 				snakeyaml, List.of()));
-		List<ThirdPartyComponent> claudeLegalComponents = append(commonLegalComponents, jsonLegalComponents);
-		List<ThirdPartyComponent> codexLegalComponents = append(commonLegalComponents, jsonLegalComponents);
-		Path claudeLegalMaterials = legalMaterialsBuilder.build(catLicense, claudeLegalComponents, canonicalLicenses,
-			runtimeDirectory.resolve("claude-legal"));
-		Path codexLegalMaterials = legalMaterialsBuilder.build(catLicense, codexLegalComponents, canonicalLicenses,
-			runtimeDirectory.resolve("codex-legal"));
+		Path legalMaterials = legalMaterialsBuilder.build(catLicense, legalComponents, canonicalLicenses,
+			runtimeDirectory.resolve("legal"));
 		Path claudeRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
 				"hooks/subagent-start.sh")),
@@ -189,7 +179,7 @@ public final class DistributionMain
 			new ArtifactLayer("common-rules", commonRules),
 			new ArtifactLayer("claude-plugin", claudePlugin, Set.of(), Set.of("hooks/session-end.sh")),
 			new ArtifactLayer("claude-rules", claudeRules)),
-			claudeImage, claudeLegalMaterials, List.of(commonInstallers, claudeInstallers),
+			claudeImage, legalMaterials, List.of(commonInstallers, claudeInstallers),
 			runtimeDirectory.resolve("claude"));
 		Path codexRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
@@ -201,7 +191,7 @@ public final class DistributionMain
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
 			new ArtifactLayer("codex-plugin", codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
-			codexLegalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
+			legalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
 		try (ToolScope scope = new ToolScope())
 		{
 			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
@@ -276,26 +266,26 @@ public final class DistributionMain
 	 * Appends one value to a list.
 	 *
 	 * @param <T> the value type
-	 * @param paths the existing values
-	 * @param path the value to append
+	 * @param values the existing values
+	 * @param value the value to append
 	 * @return the combined list
 	 */
-	private static <T> List<T> append(List<T> paths, T path)
+	private static <T> List<T> append(List<T> values, T value)
 	{
-		return Stream.concat(paths.stream(), Stream.of(path)).toList();
+		return Stream.concat(values.stream(), Stream.of(value)).toList();
 	}
 
 	/**
 	 * Appends values to a list.
 	 *
 	 * @param <T> the value type
-	 * @param paths the existing values
-	 * @param additionalPaths the values to append
+	 * @param values the existing values
+	 * @param additionalValues the values to append
 	 * @return the combined list
 	 */
-	private static <T> List<T> append(List<T> paths, List<T> additionalPaths)
+	private static <T> List<T> append(List<T> values, List<T> additionalValues)
 	{
-		return Stream.concat(paths.stream(), additionalPaths.stream()).toList();
+		return Stream.concat(values.stream(), additionalValues.stream()).toList();
 	}
 
 	/**
@@ -340,17 +330,11 @@ public final class DistributionMain
 	 */
 	static List<JlinkImageBuilder.Launcher> claudeLaunchers()
 	{
-		return List.of(
+		return append(sharedLaunchers(), List.of(
 			new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.claude.cli",
 				"io.github.cowwoc.cat.claude.ClaudePluginInfo"),
 			new JlinkImageBuilder.Launcher("claude-runner", "io.github.cowwoc.cat.claude.cli",
 				"io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli"),
-			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
-			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.InvocationDirectory"),
-			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.history.SessionHistory"),
 			new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.claude.cli",
 				"io.github.cowwoc.cat.claude.ClaudeGetHistory"),
 			new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.claude.cli",
@@ -360,7 +344,7 @@ public final class DistributionMain
 			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.claude.cli",
 				"io.github.cowwoc.cat.claude.ClaudeSubagentStartHook"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.claude.cli",
-				"io.github.cowwoc.cat.claude.optimizer.ClaudePromptOptimizer"));
+				"io.github.cowwoc.cat.claude.optimizer.ClaudePromptOptimizer")));
 	}
 
 	/**
@@ -370,17 +354,11 @@ public final class DistributionMain
 	 */
 	static List<JlinkImageBuilder.Launcher> codexLaunchers()
 	{
-		return List.of(
+		return append(sharedLaunchers(), List.of(
 			new JlinkImageBuilder.Launcher("plugin-info", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexPluginInfo"),
 			new JlinkImageBuilder.Launcher("codex-runner", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.runner.CodexRunnerCli"),
-			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
-			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.InvocationDirectory"),
-			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.history.SessionHistory"),
 			new JlinkImageBuilder.Launcher("get-history", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexGetHistory"),
 			new JlinkImageBuilder.Launcher("session-start", "io.github.cowwoc.cat.codex.cli",
@@ -388,6 +366,22 @@ public final class DistributionMain
 			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexSubagentStartHook"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer"));
+				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer")));
+	}
+
+	/**
+	 * Returns the launchers that both images contain.
+	 *
+	 * @return the launchers
+	 */
+	private static List<JlinkImageBuilder.Launcher> sharedLaunchers()
+	{
+		return List.of(
+			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
+			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.InvocationDirectory"),
+			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
+				"io.github.cowwoc.cat.common.history.SessionHistory"));
 	}
 }

@@ -15,8 +15,8 @@ load bootstrap-helpers
 	[[ "${output}" == *"CAT installer library not found"* ]]
 }
 
-@test "generated Codex plugin-info launcher reports its native identity" {
-	expected_platform="$(expected_native_platform)"
+@test "generated Codex plugin-info launcher reports its harness, version, and platform" {
+	expected_platform="$(current_platform)"
 
 	run "${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/plugin-info"
 
@@ -95,7 +95,7 @@ SCRIPT
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
-@test "Codex uninstall removes only CAT-owned user agents before harness plugin removal" {
+@test "Codex uninstall removes only CAT-owned user agents before running codex plugin remove" {
 	create_fake_engine_command codex
 	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat" "${CODEX_HOME}/agents"
 	printf 'cat agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"

@@ -15,8 +15,8 @@ load bootstrap-helpers
 	[[ "${output}" == *"CAT installer library not found"* ]]
 }
 
-@test "generated Claude plugin-info launcher reports its native identity" {
-	expected_platform="$(expected_native_platform)"
+@test "generated Claude plugin-info launcher reports its harness, version, and platform" {
+	expected_platform="$(current_platform)"
 
 	run "${GENERATED_RUNTIME_DIRECTORY}/claude/client/bin/plugin-info"
 
@@ -60,7 +60,7 @@ platform=${expected_platform}" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
-@test "Claude removal delegates to the harness plugin command" {
+@test "Claude removal delegates to claude plugin uninstall" {
 	create_fake_engine_command claude
 	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Starts CAT's harness session hook from the installed plugin that contains this launcher.
+# Starts CAT's client/bin/session-start hook from the installed plugin that contains this launcher.
 set -eu
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

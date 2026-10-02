@@ -8,7 +8,7 @@ Run the complete Java, TestNG, and ShellCheck verification:
 client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml verify
 ```
 
-Build native artifacts for the current platform:
+Build the artifacts for the current platform:
 
 ```bash
 client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml package
