@@ -85,12 +85,14 @@ public final class DistributionMain
 		Path commonCli = findDependencyJar(moduleDirectory, "client-common-cli");
 		Path claudeCli = findDependencyJar(moduleDirectory, "client-claude-cli");
 		Path codexCli = findDependencyJar(moduleDirectory, "client-codex-cli");
-		Path requirements = findDependencyJar(moduleDirectory, "requirements-java");
-		Path requirementsAnnotation = findDependencyJar(moduleDirectory, "requirements-annotation");
-		Path pouch = findDependencyJar(moduleDirectory, "pouch-core");
-		Path slf4j = findDependencyJar(moduleDirectory, "slf4j-api");
-		Path slf4jNop = findDependencyJar(moduleDirectory, "slf4j-nop");
-		Path javaDiff = findDependencyJar(moduleDirectory, "java-diff-utils");
+		DependencyJar requirements = findThirdParty(moduleDirectory, "io.github.cowwoc.requirements",
+			"requirements-java");
+		DependencyJar requirementsAnnotation = findThirdParty(moduleDirectory, "io.github.cowwoc.requirements",
+			"requirements-annotation");
+		DependencyJar pouch = findThirdParty(moduleDirectory, "io.github.cowwoc.pouch", "pouch-core");
+		DependencyJar slf4j = findThirdParty(moduleDirectory, "org.slf4j", "slf4j-api");
+		DependencyJar slf4jNop = findThirdParty(moduleDirectory, "org.slf4j", "slf4j-nop");
+		DependencyJar javaDiff = findThirdParty(moduleDirectory, "io.github.java-diff-utils", "java-diff-utils");
 		Path commonAgents = findDependencyJar(moduleDirectory, "client-common-agents");
 		Path commonPlugin = findDependencyJar(moduleDirectory, "client-common-plugin");
 		Path commonSkills = findDependencyJar(moduleDirectory, "client-common-skills");
@@ -101,22 +103,24 @@ public final class DistributionMain
 		Path codexSkills = findDependencyJar(moduleDirectory, "client-codex-skills");
 		Path codexPlugin = findDependencyJar(moduleDirectory, "client-codex-plugin");
 		Path codexRules = findDependencyJar(moduleDirectory, "client-codex-rules");
-		Path jacksonCore = findDependencyJar(moduleDirectory, "jackson-core");
-		Path jacksonAnnotations = findDependencyJar(moduleDirectory, "jackson-annotations");
-		Path jacksonDatabind = findDependencyJar(moduleDirectory, "jackson-databind");
-		Path jacksonYaml = findDependencyJar(moduleDirectory, "jackson-dataformat-yaml");
-		Path snakeyaml = findDependencyJar(moduleDirectory, "snakeyaml-engine");
+		DependencyJar jacksonCore = findThirdParty(moduleDirectory, "tools.jackson.core", "jackson-core");
+		DependencyJar jacksonAnnotations = findThirdParty(moduleDirectory, "com.fasterxml.jackson.core",
+			"jackson-annotations");
+		DependencyJar jacksonDatabind = findThirdParty(moduleDirectory, "tools.jackson.core", "jackson-databind");
+		DependencyJar jacksonYaml = findThirdParty(moduleDirectory, "tools.jackson.dataformat",
+			"jackson-dataformat-yaml");
+		DependencyJar snakeyaml = findThirdParty(moduleDirectory, "org.snakeyaml", "snakeyaml-engine");
 
 		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
-			copyModule(requirements, jlinkModules), copyModule(requirementsAnnotation, jlinkModules),
-			copyModule(pouch, jlinkModules), copyModule(slf4j, jlinkModules), copyModule(slf4jNop, jlinkModules),
-			modularizeJavaDiff(javaDiff, jlinkModules));
+			copyModule(requirements.path(), jlinkModules), copyModule(requirementsAnnotation.path(), jlinkModules),
+			copyModule(pouch.path(), jlinkModules), copyModule(slf4j.path(), jlinkModules),
+			copyModule(slf4jNop.path(), jlinkModules),
+			modularizeJavaDiff(javaDiff.path(), jlinkModules));
 		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
-		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore, jlinkModules), copyModule(jacksonAnnotations,
-			jlinkModules),
-			copyModule(jacksonDatabind, jlinkModules), copyModule(jacksonYaml, jlinkModules), copyModule(snakeyaml,
-				jlinkModules));
+		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), jlinkModules),
+			copyModule(jacksonAnnotations.path(), jlinkModules), copyModule(jacksonDatabind.path(), jlinkModules),
+			copyModule(jacksonYaml.path(), jlinkModules), copyModule(snakeyaml.path(), jlinkModules));
 
 		JlinkImageBuilder imageBuilder = new JlinkImageBuilder();
 		Path claudeImage = imageBuilder.build(append(append(sharedRuntimeModules, packagedClaudeCli), jsonRuntimeModules),
@@ -134,42 +138,40 @@ public final class DistributionMain
 		Path commonInstallers = projectRoot.resolve("client/common/lifecycle/src/main/resources/install");
 		Path claudeInstallers = projectRoot.resolve("client/claude/lifecycle/src/main/resources/install");
 		Path codexInstallers = projectRoot.resolve("client/codex/lifecycle/src/main/resources/install");
-		String jacksonCoreCoordinates = "tools.jackson.core:jackson-core:3.1.4";
+		String jacksonCoreCoordinates = jacksonCore.coordinates();
 		List<ThirdPartyComponent> legalComponents = List.of(
-			new ThirdPartyComponent("java-diff-utils", "io.github.java-diff-utils:java-diff-utils:4.16",
-				"Apache-2.0.txt", javaDiff, List.of()),
-			new ThirdPartyComponent("Pouch", "io.github.cowwoc.pouch:pouch-core:10.3", "Apache-2.0.txt", pouch,
+			new ThirdPartyComponent("java-diff-utils", javaDiff.coordinates(), "Apache-2.0.txt", javaDiff.path(),
 				List.of()),
-			new ThirdPartyComponent("Requirements Annotation",
-				"io.github.cowwoc.requirements:requirements-annotation:13.2", "Apache-2.0.txt", requirementsAnnotation,
-				List.of()),
-			new ThirdPartyComponent("Requirements Java", "io.github.cowwoc.requirements:requirements-java:13.2",
-				"Apache-2.0.txt", requirements, List.of()),
-			new ThirdPartyComponent("SLF4J API", "org.slf4j:slf4j-api:2.0.17", "MIT.txt", slf4j,
+			new ThirdPartyComponent("Pouch", pouch.coordinates(), "Apache-2.0.txt", pouch.path(), List.of()),
+			new ThirdPartyComponent("Requirements Annotation", requirementsAnnotation.coordinates(), "Apache-2.0.txt",
+				requirementsAnnotation.path(), List.of()),
+			new ThirdPartyComponent("Requirements Java", requirements.coordinates(), "Apache-2.0.txt",
+				requirements.path(), List.of()),
+			new ThirdPartyComponent("SLF4J API", slf4j.coordinates(), "MIT.txt", slf4j.path(),
 				List.of("META-INF/LICENSE.txt")),
-			new ThirdPartyComponent("SLF4J NOP Provider", "org.slf4j:slf4j-nop:2.0.17", "MIT.txt", slf4jNop,
+			new ThirdPartyComponent("SLF4J NOP Provider", slf4jNop.coordinates(), "MIT.txt", slf4jNop.path(),
 				List.of("META-INF/LICENSE.txt")),
-			new ThirdPartyComponent("Jackson Annotations", "com.fasterxml.jackson.core:jackson-annotations:2.21",
-				"Apache-2.0.txt", jacksonAnnotations, List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Jackson Annotations", jacksonAnnotations.coordinates(), "Apache-2.0.txt",
+				jacksonAnnotations.path(), List.of("META-INF/NOTICE")),
 			new ThirdPartyComponent("Jackson Core", jacksonCoreCoordinates, "Apache-2.0.txt",
-				jacksonCore, List.of("META-INF/NOTICE", "META-INF/FastDoubleParser-LICENSE",
+				jacksonCore.path(), List.of("META-INF/NOTICE", "META-INF/FastDoubleParser-LICENSE",
 					"META-INF/FastDoubleParser-ThirdParty-LICENSE", "META-INF/Schubfach-LICENSE")),
 			new ThirdPartyComponent("FastDoubleParser", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
-				jacksonCore, List.of()),
+				jacksonCore.path(), List.of()),
 			new ThirdPartyComponent("fast_double_parser", "embedded in " + jacksonCoreCoordinates,
-				"Boost-1.0.txt", jacksonCore, List.of()),
+				"Boost-1.0.txt", jacksonCore.path(), List.of()),
 			new ThirdPartyComponent("fast_float", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
-				jacksonCore, List.of()),
+				jacksonCore.path(), List.of()),
 			new ThirdPartyComponent("bigint", "embedded in " + jacksonCoreCoordinates, "BSD-2-Clause.txt",
-				jacksonCore, List.of()),
+				jacksonCore.path(), List.of()),
 			new ThirdPartyComponent("Schubfach", "embedded in " + jacksonCoreCoordinates, "MIT.txt",
-				jacksonCore, List.of()),
-			new ThirdPartyComponent("Jackson Databind", "tools.jackson.core:jackson-databind:3.1.4", "Apache-2.0.txt",
-				jacksonDatabind, List.of("META-INF/NOTICE")),
-			new ThirdPartyComponent("Jackson Dataformat YAML", "tools.jackson.dataformat:jackson-dataformat-yaml:3.1.4",
-				"Apache-2.0.txt", jacksonYaml, List.of("META-INF/NOTICE")),
-			new ThirdPartyComponent("SnakeYAML Engine", "org.snakeyaml:snakeyaml-engine:3.0.1", "Apache-2.0.txt",
-				snakeyaml, List.of()));
+				jacksonCore.path(), List.of()),
+			new ThirdPartyComponent("Jackson Databind", jacksonDatabind.coordinates(), "Apache-2.0.txt",
+				jacksonDatabind.path(), List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("Jackson Dataformat YAML", jacksonYaml.coordinates(), "Apache-2.0.txt",
+				jacksonYaml.path(), List.of("META-INF/NOTICE")),
+			new ThirdPartyComponent("SnakeYAML Engine", snakeyaml.coordinates(), "Apache-2.0.txt",
+				snakeyaml.path(), List.of()));
 		Path legalMaterials = legalMaterialsBuilder.build(catLicense, legalComponents, canonicalLicenses,
 			runtimeDirectory.resolve("legal"));
 		Path claudeRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
@@ -247,6 +249,20 @@ public final class DistributionMain
 				throw new IOException("Expected one " + artifactId + " JAR in " + directory + " but found " + matches);
 			return matches.getFirst();
 		}
+	}
+
+	/**
+	 * Finds one third-party dependency JAR.
+	 *
+	 * @param directory the dependency directory
+	 * @param groupId the Maven group identifier
+	 * @param artifactId the Maven artifact identifier
+	 * @return the single JAR whose filename starts with the artifact identifier
+	 * @throws IOException if no matching JAR or more than one matching JAR is found
+	 */
+	private static DependencyJar findThirdParty(Path directory, String groupId, String artifactId) throws IOException
+	{
+		return new DependencyJar(groupId, artifactId, findDependencyJar(directory, artifactId));
 	}
 
 	/**
