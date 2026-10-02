@@ -63,10 +63,8 @@ final class CodexCuratedPluginCache
 		try
 		{
 			Files.createDirectories(childTemporaryDirectory);
-			HarnessCommand.execute(List.of("git", "clone", "--quiet", "--shared", "--no-checkout",
-				parentRepository.toString(), childRepository.toString()), isolatedHome, environment);
-			HarnessCommand.execute(List.of("git", "checkout", "--quiet", "--detach", revision), childRepository,
-				environment);
+			HarnessCommand.execute(cloneCommand(parentRepository, childRepository), isolatedHome, environment);
+			HarnessCommand.execute(checkoutCommand(revision), childRepository, environment);
 			Files.writeString(childTemporaryDirectory.resolve("plugins.sha"), revision + System.lineSeparator());
 			return true;
 		}
@@ -82,6 +80,30 @@ final class CodexCuratedPluginCache
 			}
 			return false;
 		}
+	}
+
+	/**
+	 * Returns the command that gives the child its own working tree and metadata over the parent's immutable objects.
+	 *
+	 * @param parentRepository the parent's curated-plugin repository
+	 * @param childRepository the child's repository, which must not exist yet
+	 * @return the clone command
+	 */
+	static List<String> cloneCommand(Path parentRepository, Path childRepository)
+	{
+		return List.of("git", "clone", "--quiet", "--shared", "--no-checkout", parentRepository.toString(),
+			childRepository.toString());
+	}
+
+	/**
+	 * Returns the command that checks out the parent's verified revision in the child's repository.
+	 *
+	 * @param revision the verified revision
+	 * @return the checkout command
+	 */
+	static List<String> checkoutCommand(String revision)
+	{
+		return List.of("git", "checkout", "--quiet", "--detach", revision);
 	}
 
 	/**

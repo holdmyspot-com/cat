@@ -3,12 +3,10 @@ package io.github.cowwoc.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.runner.HarnessCommand;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,35 +18,28 @@ import org.testng.annotations.Test;
 public final class CodexCuratedPluginCacheTest
 {
 	/**
-	 * Verifies a child starts from the parent's verified curated-plugin revision without sharing its working files.
-	 *
-	 * @throws IOException if fixture setup or cache seeding fails
+	 * Verifies the child gets its own working tree and metadata over the parent's objects, without a checkout.
 	 */
 	@Test
-	public void seedsVerifiedSnapshotIntoIsolatedHome() throws IOException
+	public void clonesWithOwnWorkingTree()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-curated-plugin-cache-"));
-			Path parentHome = root.resolve("parent");
-			Path repository = Files.createDirectories(parentHome.resolve(".tmp/plugins"));
-			Map<String, String> environment = new HashMap<>(System.getenv());
-			initializeRepository(repository, environment);
-			String revision = Files.readString(repository.resolve(".git/refs/heads/main")).strip();
-			Files.writeString(parentHome.resolve(".tmp/plugins.sha"), revision + System.lineSeparator());
-			Path isolatedHome = root.resolve("isolated");
+		Path parent = Path.of("parent", ".tmp", "plugins");
+		Path child = Path.of("child", ".tmp", "plugins");
 
-			boolean seeded = CodexCuratedPluginCache.seed(parentHome, isolatedHome, environment);
+		requireThat(CodexCuratedPluginCache.cloneCommand(parent, child), "cloneCommand").isEqualTo(List.of("git",
+			"clone", "--quiet", "--shared", "--no-checkout", parent.toString(), child.toString()));
+	}
 
-			Path childRepository = isolatedHome.resolve(".tmp/plugins");
-			requireThat(seeded, "seeded").isTrue();
-			requireThat(Files.isSymbolicLink(childRepository), "childRepositoryIsSymbolicLink").isFalse();
-			requireThat(Files.readString(isolatedHome.resolve(".tmp/plugins.sha")), "childRevision").
-				isEqualTo(revision + System.lineSeparator());
-			requireThat(Files.readString(childRepository.resolve("catalog.txt")), "childCatalog").isEqualTo("catalog");
-			Files.writeString(childRepository.resolve("catalog.txt"), "child-only");
-			requireThat(Files.readString(repository.resolve("catalog.txt")), "parentCatalog").isEqualTo("catalog");
-		}
+	/**
+	 * Verifies the child checks out exactly the parent's verified revision, detached from any branch.
+	 */
+	@Test
+	public void checksOutVerifiedRevision()
+	{
+		String revision = "442228db01aedfd27c5fffbe57fb7e2ad6dc8117";
+
+		requireThat(CodexCuratedPluginCache.checkoutCommand(revision), "checkoutCommand").
+			isEqualTo(List.of("git", "checkout", "--quiet", "--detach", revision));
 	}
 
 	/**
@@ -62,32 +53,17 @@ public final class CodexCuratedPluginCacheTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-curated-plugin-cache-"));
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				"cat-curated-plugin-cache-"));
 			Path parentHome = root.resolve("parent");
 			Files.createDirectories(parentHome.resolve(".tmp/plugins/.git"));
 			Path isolatedHome = root.resolve("isolated");
 
-			boolean seeded = CodexCuratedPluginCache.seed(parentHome, isolatedHome, System.getenv());
+			boolean seeded = CodexCuratedPluginCache.seed(parentHome, isolatedHome, Map.of());
 
 			requireThat(seeded, "seeded").isFalse();
 			requireThat(Files.exists(isolatedHome.resolve(".tmp")), "isolatedTemporaryDirectory").isFalse();
 		}
-	}
-
-	/**
-	 * Creates a local curated-plugin repository fixture at one known revision.
-	 *
-	 * @param repository the empty repository directory
-	 * @param environment the Git execution environment
-	 * @throws IOException if Git fixture initialization fails
-	 */
-	private static void initializeRepository(Path repository, Map<String, String> environment) throws IOException
-	{
-		HarnessCommand.execute(List.of("git", "init", "--quiet", "--initial-branch=main"), repository, environment);
-		Files.writeString(repository.resolve("catalog.txt"), "catalog");
-		HarnessCommand.execute(List.of("git", "add", "catalog.txt"), repository, environment);
-		HarnessCommand.execute(List.of("git", "-c", "user.name=CAT fixture", "-c",
-			"user.email=cat-fixture@example.invalid", "-c", "commit.gpgSign=false", "commit", "--quiet", "-m",
-			"Curated plugin snapshot"), repository, environment);
 	}
 }

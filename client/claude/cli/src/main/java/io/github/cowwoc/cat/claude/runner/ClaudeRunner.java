@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.runner.HarnessProcessStarter;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
+import io.github.cowwoc.cat.common.runner.HarnessProjectRepository;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
@@ -138,6 +139,7 @@ public final class ClaudeRunner
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
 			manager.copyProject(project, run);
+			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
@@ -173,7 +175,7 @@ public final class ClaudeRunner
 			if (installCat)
 				marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
 			Path worktree = run.directory().resolve("project");
-			// copyProject() creates the owned baseline after excluding the caller's Git metadata. A second initial commit
+			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			if (installCat)

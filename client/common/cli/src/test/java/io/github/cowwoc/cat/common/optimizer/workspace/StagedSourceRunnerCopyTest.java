@@ -66,7 +66,9 @@ public final class StagedSourceRunnerCopyTest
 		// Requirement: R-W5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path fixture = cleanup.add(Files.createTempDirectory("staged-runner-copy-"));
+			Path fixture = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				"staged-runner-copy-"));
 			LinkedProject project = ProjectFixtures.linkedProject(fixture);
 			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
 				stage(Overlay.of(project.tree().inventory()));

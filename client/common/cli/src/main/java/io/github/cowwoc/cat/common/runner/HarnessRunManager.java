@@ -336,7 +336,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies a project into an owned Git repository with a clean baseline and without source Git metadata or symlinks.
+	 * Copies project files into an owned run without source Git metadata or symlinks.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
@@ -380,7 +380,6 @@ public final class HarnessRunManager
 				return CONTINUE;
 			}
 		});
-		HarnessProjectRepository.initialize(destination, run.directory());
 	}
 
 	/**

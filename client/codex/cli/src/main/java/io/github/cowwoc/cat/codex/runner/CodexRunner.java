@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.runner.HarnessProcessStarter;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunLock;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
+import io.github.cowwoc.cat.common.runner.HarnessProjectRepository;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
@@ -168,6 +169,7 @@ public final class CodexRunner
 		try
 		{
 			manager.copyProject(project, run);
+			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);

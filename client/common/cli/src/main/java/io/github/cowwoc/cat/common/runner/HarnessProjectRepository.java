@@ -12,34 +12,58 @@ import java.util.Map;
 /**
  * Creates the independent Git baseline for a copied harness project.
  */
-final class HarnessProjectRepository
+public final class HarnessProjectRepository
 {
+	/**
+	 * The commands that create the baseline, in order.
+	 */
+	static final List<List<String>> COMMANDS = List.of(
+		List.of("git", "init", "--quiet"),
+		// Detached maintenance outlives the command that starts it and races the deletion of the run directory
+		List.of("git", "config", "maintenance.auto", "false"),
+		List.of("git", "config", "gc.auto", "0"),
+		List.of("git", "add", "--all"),
+		List.of("git", "-c", "user.name=CAT fixture", "-c", "user.email=cat-fixture@example.invalid", "-c",
+			"commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "-m", "CAT fixture baseline"));
+
 	/**
 	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture and that never starts
 	 * background maintenance.
 	 *
 	 * @param project the copied project directory
 	 * @param runDirectory the owned run directory that may hold setup-only state
+	 * @param parentEnvironment the environment resolved by the production entry point
+	 * @throws NullPointerException if {@code project}, {@code runDirectory}, or {@code parentEnvironment} are null
 	 * @throws IOException if Git cannot create the independent baseline
 	 */
-	static void initialize(Path project, Path runDirectory) throws IOException
+	public static void initialize(Path project, Path runDirectory, Map<String, String> parentEnvironment)
+		throws IOException
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(runDirectory, "runDirectory").isNotNull();
+		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
+
 		Path gitHome = runDirectory.resolve("git-home");
 		Files.createDirectories(gitHome);
-		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(System.getenv()));
+		Map<String, String> environment = environment(parentEnvironment, gitHome);
+		for (List<String> command : COMMANDS)
+			HarnessCommand.execute(command, project, environment);
+	}
+
+	/**
+	 * Returns the environment that isolates the baseline's Git commands from the user's configuration.
+	 *
+	 * @param parentEnvironment the environment resolved by the production entry point
+	 * @param gitHome the run-owned directory that Git uses as its home
+	 * @return the Git environment
+	 */
+	static Map<String, String> environment(Map<String, String> parentEnvironment, Path gitHome)
+	{
+		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(parentEnvironment));
 		environment.put("HOME", gitHome.toString());
 		environment.put("GIT_CONFIG_NOSYSTEM", "1");
 		environment.put("GIT_TERMINAL_PROMPT", "0");
-		HarnessCommand.execute(List.of("git", "init", "--quiet"), project, environment);
-		// Detached maintenance outlives the command that starts it and races the deletion of the run directory
-		HarnessCommand.execute(List.of("git", "config", "maintenance.auto", "false"), project, environment);
-		HarnessCommand.execute(List.of("git", "config", "gc.auto", "0"), project, environment);
-		HarnessCommand.execute(List.of("git", "add", "--all"), project, environment);
-		HarnessCommand.execute(List.of("git", "-c", "user.name=CAT fixture", "-c",
-			"user.email=cat-fixture@example.invalid", "-c", "commit.gpgSign=false", "commit", "--quiet",
-			"--allow-empty", "--no-verify", "-m", "CAT fixture baseline"), project, environment);
+		return environment;
 	}
 
 	/**
