@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One side of an anytime-valid betting test of a category's pass probability {@code p} against a null rate
- * {@code t}, with the design's fixed bets and weights.
+ * One side of an anytime-valid betting test of the pass probability {@code p} of a cell, one category under one
+ * trial profile, against a null rate {@code t}, with the design's fixed bets and weights.
  * <p>
  * With {@code S} adopted passes and {@code F} adopted failures:
  * <ul>
@@ -201,26 +201,6 @@ public final class BettingProcess
 			terms.add(new ExactTerm(weight, pass, failure));
 		}
 		return List.copyOf(terms);
-	}
-
-	/**
-	 * Returns the side of the null hypothesis that the process tests.
-	 *
-	 * @return the side
-	 */
-	public Side side()
-	{
-		return side;
-	}
-
-	/**
-	 * Returns the null pass rate.
-	 *
-	 * @return the null rate {@code t}
-	 */
-	public BigDecimal nullRate()
-	{
-		return nullRate;
 	}
 
 	/**

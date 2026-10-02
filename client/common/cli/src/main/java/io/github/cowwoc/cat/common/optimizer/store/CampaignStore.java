@@ -24,7 +24,7 @@ public interface CampaignStore
 	/**
 	 * Loads a campaign's snapshot.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @return the campaign, or empty if it has no snapshot
 	 * @throws NullPointerException if {@code campaignId} is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
@@ -35,7 +35,7 @@ public interface CampaignStore
 	/**
 	 * Records a trial's assignment before its session starts. A record that has no outcome is replaced.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @param trial the assigned trial
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment or {@code trial} is not
@@ -49,7 +49,7 @@ public interface CampaignStore
 	 * Records a trial's outcome before the campaign adopts it. Writing the outcome that the record already holds does
 	 * nothing.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @param outcome the judged outcome
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
@@ -63,7 +63,7 @@ public interface CampaignStore
 	 *
 	 * @param campaign the campaign's current state
 	 * @throws NullPointerException if {@code campaign} is null
-	 * @throws IllegalArgumentException if the campaign's identity is not a single path segment
+	 * @throws IllegalArgumentException if the campaign's identifier is not a single path segment
 	 * @throws IOException if the snapshot cannot be written
 	 */
 	void replaceSnapshot(Campaign campaign) throws IOException;
@@ -75,7 +75,7 @@ public interface CampaignStore
 	 * @param snapshot the loaded campaign
 	 * @return the outcomes, in the snapshot's trial order
 	 * @throws NullPointerException if {@code snapshot} is null
-	 * @throws IllegalArgumentException if the campaign's identity is not a single path segment
+	 * @throws IllegalArgumentException if the campaign's identifier is not a single path segment
 	 * @throws IOException if a record cannot be read, is malformed or does not match the snapshot's trial
 	 */
 	List<CampaignEvent.Complete> listUnadoptedOutcomes(Campaign snapshot) throws IOException;
@@ -83,7 +83,7 @@ public interface CampaignStore
 	/**
 	 * Returns the headers of every campaign that has a snapshot.
 	 *
-	 * @return the headers, ordered by campaign identity
+	 * @return the headers, ordered by campaign identifier
 	 * @throws IOException if a snapshot cannot be read or is malformed
 	 */
 	List<CampaignHeader> listHeaders() throws IOException;
@@ -91,7 +91,7 @@ public interface CampaignStore
 	/**
 	 * Loads a campaign's delivery journal.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @return the journal, or empty if the campaign has not started a delivery
 	 * @throws NullPointerException if {@code campaignId} is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
@@ -103,7 +103,7 @@ public interface CampaignStore
 	 * Atomically replaces a campaign's delivery journal. A campaign has at most one delivery: once its journal exists,
 	 * only the progress of the same planned changes may be recorded.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @param journal the delivery's current progress
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment

@@ -62,21 +62,21 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Returns the report of a category.
+	 * Returns the report of a cell.
 	 *
 	 * @param report the report
-	 * @param category the category
-	 * @return the category's report
-	 * @throws AssertionError if the report has no such category
+	 * @param cell the cell's identifier
+	 * @return the cell's report
+	 * @throws AssertionError if the report has no such cell
 	 */
-	private static CategoryReport category(StatusReport report, String category)
+	private static CellReport cell(StatusReport report, String cell)
 	{
-		for (CategoryReport candidate : report.cells())
+		for (CellReport candidate : report.cells())
 		{
-			if (candidate.cell().equals(category))
+			if (candidate.cell().equals(cell))
 				return candidate;
 		}
-		throw new AssertionError("No category " + category + " in " + report.cells());
+		throw new AssertionError("No cell " + cell + " in " + report.cells());
 	}
 
 	/**
@@ -94,7 +94,7 @@ public final class StatusReportTest
 		requireThat(report.phase(), "phase").isEqualTo(Phase.DEVELOPMENT);
 		requireThat(report.candidate(), "candidate").isEqualTo(1);
 
-		CategoryReport formatting = category(report, "formatting");
+		CellReport formatting = cell(report, "formatting");
 		requireThat(formatting.passRate().label(), "label").isEqualTo("development estimate");
 		requireThat(formatting.passRate().rate(), "rate").isEqualTo(0.9);
 		requireThat(formatting.comparison().state(), "state").isEqualTo("not certified");
@@ -103,12 +103,12 @@ public final class StatusReportTest
 		requireThat(formatting.comparison().reasons().size(), "reasons").isEqualTo(2);
 		requireThat(formatting.comparison().lowerBound(), "lowerBound").isNull();
 		requireThat(formatting.errorBars().size(), "errorBars").isEqualTo(1);
-		CategoryReport.ErrorBar bar = formatting.errorBars().getFirst();
+		CellReport.ErrorBar bar = formatting.errorBars().getFirst();
 		requireThat(bar.exploratory(), "exploratory").isTrue();
 		requireThat(bar.errorProbability(), "errorProbability").isNull();
 		requireThat(bar.interval(), "interval").isEqualTo(ExploratoryBounds.wilson(90, 100));
 
-		CategoryReport safety = category(report, "safety");
+		CellReport safety = cell(report, "safety");
 		requireThat(safety.comparison().state(), "safetyState").isEqualTo("not certified");
 		requireThat(report.summary(), "summary").contains("development estimate").contains("not certified");
 	}
@@ -123,11 +123,11 @@ public final class StatusReportTest
 		// candidate: 90 of 100 (0.9); incumbent baseline 1 (index 1): 50 of 50 (1.0) -> -10.0 percentage points
 		// difference interval: [wilson(90,100).lower - wilson(50,50).upper, wilson(90,100).upper - wilson(50,50).lower]
 		Campaign campaign = confirmed().development("formatting", 90, 10).development("safety", 100, 0).build();
-		CategoryReport.Improvement improvement = category(StatusReport.of(campaign, ReportEvidence.NONE),
+		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.unavailable(), "unavailable").isNull();
 		requireThat(Math.abs(improvement.points() + 10.0) < 1e-9, "pointsAreMinusTen").isTrue();
-		requireThat(improvement.incumbent(), "incumbent").isEqualTo(new CategoryReport.IncumbentCounts(1, 50, 50));
+		requireThat(improvement.incumbent(), "incumbent").isEqualTo(new CellReport.IncumbentCounts(1, 50, 50));
 		Interval candidate = ExploratoryBounds.wilson(90, 100);
 		Interval incumbent = ExploratoryBounds.wilson(50, 50);
 		requireThat(improvement.difference().lower(), "lower").
@@ -148,12 +148,12 @@ public final class StatusReportTest
 		Campaign campaign = new CampaignBuilder().confirmed().readyBaseline().development("formatting", 100, 0).
 			build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		CategoryReport safety = category(report, "safety");
+		CellReport safety = cell(report, "safety");
 		requireThat(safety.passRate().rate(), "rate").isNull();
 		requireThat(safety.passRate().unavailable(), "rateReason").isNotNull();
 		requireThat(safety.errorBars(), "errorBars").isEmpty();
 		requireThat(safety.improvement().unavailable(), "improvementReason").isNotNull();
-		CategoryReport formatting = category(report, "formatting");
+		CellReport formatting = cell(report, "formatting");
 		requireThat(formatting.improvement().unavailable(), "incumbentReason").isNotNull();
 	}
 
@@ -176,7 +176,7 @@ public final class StatusReportTest
 		requireThat(report.attempt(), "attempt").isEqualTo(1);
 		SignificanceLevel alpha = ErrorBudget.certificationLevel(1);
 
-		CategoryReport formatting = category(report, "formatting");
+		CellReport formatting = cell(report, "formatting");
 		requireThat(formatting.passRate().label(), "label").isEqualTo("formal estimate");
 		requireThat(formatting.passRate().rate(), "rate").isEqualTo(1.0);
 		requireThat(formatting.comparison().state(), "state").isEqualTo("certified");
@@ -186,7 +186,7 @@ public final class StatusReportTest
 		requireThat(formatting.comparison().lowerBound(), "lowerBound").isEqualTo(lower);
 		requireThat(formatting.comparison().upperBound(), "upperBound").isEqualTo(upper);
 		requireThat(formatting.comparison().alpha(), "alpha").isEqualTo(alpha.probability());
-		CategoryReport.Improvement improvement = formatting.improvement();
+		CellReport.Improvement improvement = formatting.improvement();
 		requireThat(improvement.state(), "improvementState").isEqualTo("proven better");
 		requireThat(improvement.incumbentUpper(), "UI").isEqualTo(0.9);
 		requireThat(improvement.incumbentLower(), "LI").isEqualTo(0.8);
@@ -194,7 +194,7 @@ public final class StatusReportTest
 		requireThat(Math.abs(improvement.difference().lower() - (lower - 0.9)) < EPSILON, "differenceLower").isTrue();
 		requireThat(Math.abs(improvement.difference().upper() - (upper - 0.8)) < EPSILON, "differenceUpper").isTrue();
 		requireThat(improvement.points(), "points").isEqualTo(0.0);
-		requireThat(improvement.incumbent(), "incumbent").isEqualTo(new CategoryReport.IncumbentCounts(1, 50, 50));
+		requireThat(improvement.incumbent(), "incumbent").isEqualTo(new CellReport.IncumbentCounts(1, 50, 50));
 		requireThat(improvement.deficiency(), "deficiency").isEqualTo("deficiency unproven");
 		// the one-sided certification bound stays apart from the descriptive two-sided interval
 		requireThat(formatting.errorBars().size(), "errorBars").isEqualTo(2);
@@ -204,13 +204,13 @@ public final class StatusReportTest
 		requireThat(formatting.errorBars().get(1).oneSided(), "descriptiveOneSided").isFalse();
 		requireThat(formatting.errorBars().get(1).exploratory(), "descriptiveExploratory").isTrue();
 
-		CategoryReport safety = category(report, "safety");
+		CellReport safety = cell(report, "safety");
 		requireThat(safety.comparison().state(), "safetyState").isEqualTo("undecided");
 		requireThat(safety.improvement().state(), "safetyImprovementState").isEqualTo("undecided");
 	}
 
 	/**
-	 * Verifies the remaining comparison labels of a formal category.
+	 * Verifies the remaining comparison labels of a formal cell.
 	 */
 	@Test
 	public void formalComparisonLabels()
@@ -221,9 +221,9 @@ public final class StatusReportTest
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
 			category("formatting", 295, 5).category("safety", 0, 8).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(category(report, "formatting").comparison().state(), "capReached").isEqualTo("inconclusive");
-		requireThat(category(report, "safety").comparison().state(), "clearlyBelow").isEqualTo("clearly below");
-		requireThat(category(report, "safety").improvement().state(), "worse").isEqualTo("proven worse");
+		requireThat(cell(report, "formatting").comparison().state(), "capReached").isEqualTo("inconclusive");
+		requireThat(cell(report, "safety").comparison().state(), "clearlyBelow").isEqualTo("clearly below");
+		requireThat(cell(report, "safety").improvement().state(), "worse").isEqualTo("proven worse");
 	}
 
 	/**
@@ -243,7 +243,7 @@ public final class StatusReportTest
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
 			frozen.delivery());
-		CategoryReport.Improvement improvement = category(StatusReport.of(campaign, ReportEvidence.NONE),
+		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();
 		requireThat(improvement.points(), "points").isNull();
@@ -265,9 +265,9 @@ public final class StatusReportTest
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.allocation().get("formatting"), "formattingAllocation").isEqualTo(120);
 		requireThat(report.allocation().get("safety"), "safetyAllocation").isEqualTo(61);
-		List<Benchmark.CategoryWeights> weights = report.benchmark().cells();
-		requireThat(weights, "weights").isEqualTo(List.of(new Benchmark.CategoryWeights("formatting", 2, 0.5),
-			new Benchmark.CategoryWeights("safety", 1, 1.0)));
+		List<Benchmark.CellWeights> weights = report.benchmark().cells();
+		requireThat(weights, "weights").isEqualTo(List.of(new Benchmark.CellWeights("formatting", 2, 0.5),
+			new Benchmark.CellWeights("safety", 1, 1.0)));
 
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
 		requireThat(json.has("allocation"), "allocation").isTrue();
@@ -430,17 +430,17 @@ public final class StatusReportTest
 		requireThat(offer.historical(), "historical").isFalse();
 		requireThat(offer.differing(), "differing").isEmpty();
 		requireThat(offer.weakestLowerBound(), "weakest").isEqualTo(ExploratoryBounds.wilson(95, 100).lower());
-		KeepOffer.Category formatting = offer.cells().get(0);
-		requireThat(formatting.cell(), "firstCategory").isEqualTo("formatting");
+		KeepOffer.CellEvidence formatting = offer.cells().get(0);
+		requireThat(formatting.cell(), "firstCell").isEqualTo("formatting");
 		requireThat(formatting.state(), "formattingState").isEqualTo("proven better");
 		requireThat(formatting.incumbentUpper(), "UI").isEqualTo(0.9);
 		requireThat(formatting.incumbentLower(), "LI").isEqualTo(0.8);
 		requireThat(formatting.note(), "formattingNote").isNull();
-		KeepOffer.Category safety = offer.cells().get(1);
+		KeepOffer.CellEvidence safety = offer.cells().get(1);
 		requireThat(safety.state(), "safetyState").isEqualTo("undecided");
 		requireThat(safety.passes(), "safetyPasses").isEqualTo(95);
 		requireThat(safety.trials(), "safetyTrials").isEqualTo(100);
-		// the difference interval's lower endpoint is below 0, so the category might be slightly worse
+		// the difference interval's lower endpoint is below 0, so the cell might be slightly worse
 		requireThat(safety.difference().lower(), "differenceLower").isLessThan(0.0);
 		requireThat(safety.note(), "safetyNote").isNotNull();
 
@@ -610,12 +610,12 @@ public final class StatusReportTest
 		Campaign development = new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
 			development(ContractFixtures.BIG_CELL, 100, 0).development(ContractFixtures.SMALL_CELL, 60, 1).build();
 		StatusReport report = StatusReport.of(development, ReportEvidence.NONE);
-		requireThat(report.cells().stream().map(CategoryReport::cell).toList(), "cells").
+		requireThat(report.cells().stream().map(CellReport::cell).toList(), "cells").
 			isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety"));
-		requireThat(category(report, ContractFixtures.BIG_CELL).comparison().readiness(), "bigReadiness").
+		requireThat(cell(report, ContractFixtures.BIG_CELL).comparison().readiness(), "bigReadiness").
 			isEqualTo("ready");
-		requireThat(category(report, ContractFixtures.SMALL_CELL).trials(), "smallTrials").isEqualTo(61);
-		requireThat(category(report, ContractFixtures.SMALL_CELL).comparison().readiness(), "smallReadiness").
+		requireThat(cell(report, ContractFixtures.SMALL_CELL).trials(), "smallTrials").isEqualTo(61);
+		requireThat(cell(report, ContractFixtures.SMALL_CELL).comparison().readiness(), "smallReadiness").
 			isEqualTo("not ready");
 		requireThat(report.claim(), "claim").contains("3 cells");
 		requireThat(report.summary(), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
@@ -639,11 +639,11 @@ public final class StatusReportTest
 			category(ContractFixtures.BIG_CELL, 120, 0).category(ContractFixtures.SMALL_CELL, 0, 8).
 			category("safety", 60, 1).build();
 		StatusReport formalReport = StatusReport.of(formal, ReportEvidence.NONE);
-		requireThat(category(formalReport, ContractFixtures.BIG_CELL).comparison().state(), "big").
+		requireThat(cell(formalReport, ContractFixtures.BIG_CELL).comparison().state(), "big").
 			isEqualTo("certified");
-		requireThat(category(formalReport, ContractFixtures.SMALL_CELL).comparison().state(), "small").
+		requireThat(cell(formalReport, ContractFixtures.SMALL_CELL).comparison().state(), "small").
 			isEqualTo("clearly below");
-		requireThat(category(formalReport, "safety").comparison().state(), "safety").isEqualTo("undecided");
+		requireThat(cell(formalReport, "safety").comparison().state(), "safety").isEqualTo("undecided");
 	}
 
 	/**

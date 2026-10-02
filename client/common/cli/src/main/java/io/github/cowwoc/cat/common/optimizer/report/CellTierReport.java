@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,27 +53,5 @@ public record CellTierReport(Map<String, List<String>> activeCells, boolean wide
 			return null;
 		return new CellTierReport(CellTier.activeCellsByCategory(campaign.contract(), campaign.failedCells()),
 			campaign.development().widened());
-	}
-
-	/**
-	 * Returns the lines of the human summary.
-	 *
-	 * @return the lines
-	 */
-	List<String> describe()
-	{
-		List<String> lines = new ArrayList<>();
-		for (Map.Entry<String, List<String>> entry : activeCells.entrySet())
-		{
-			lines.add("Active development cells of category " + entry.getKey() + ": " +
-				String.join(", ", entry.getValue()));
-		}
-		String answer;
-		if (widened)
-			answer = "yes";
-		else
-			answer = "no";
-		lines.add("Development widened to every cell: " + answer);
-		return lines;
 	}
 }

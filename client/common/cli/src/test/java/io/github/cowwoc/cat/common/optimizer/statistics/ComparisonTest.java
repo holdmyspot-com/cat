@@ -17,7 +17,7 @@ import java.math.BigInteger;
  * <table>
  *   <caption>Design numbers checked by this class</caption>
  *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 categories
+ *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells
  *     ({@code beta_1 / 3}, threshold 1200)</td><td>79</td><td>79</td></tr>
  *   <tr><td>&sect;13 D1</td><td>the same with the full {@code alpha_1 = 2%} (threshold 50)</td><td>45</td>
  *     <td>45</td></tr>
@@ -51,11 +51,11 @@ public final class ComparisonTest
 		requireThat(comparison.level(), "level").isEqualTo(improvementLevel);
 		requireRoundedOutward(40, 10, incumbentLevel, comparison);
 
-		SignificanceLevel singleCategory = ErrorBudget.incumbentLevel(1, 1);
-		Comparison deficient = Comparison.freeze(84, 16, singleCategory, ErrorBudget.improvementLevel(1, 1));
+		SignificanceLevel singleCell = ErrorBudget.incumbentLevel(1, 1);
+		Comparison deficient = Comparison.freeze(84, 16, singleCell, ErrorBudget.improvementLevel(1, 1));
 		requireThat(deficient.incumbentUpper(), "deficientUpper").isEqualTo(new BigDecimal("0.9458"));
 		requireThat(deficient.incumbentLower(), "deficientLower").isEqualTo(new BigDecimal("0.6682"));
-		requireRoundedOutward(84, 16, singleCategory, deficient);
+		requireRoundedOutward(84, 16, singleCell, deficient);
 	}
 
 	/**
@@ -109,8 +109,8 @@ public final class ComparisonTest
 		}
 
 		Comparison ninety = new Comparison(new BigDecimal("0.9000"), new BigDecimal("0.5000"), improvementLevel);
-		requireThat(ninety.isProvenBetter(79, 0), "threeCategories").isTrue();
-		requireThat(ninety.isProvenBetter(78, 0), "threeCategoriesOneFewer").isFalse();
+		requireThat(ninety.isProvenBetter(79, 0), "threeCells").isTrue();
+		requireThat(ninety.isProvenBetter(78, 0), "threeCellsOneFewer").isFalse();
 		Comparison fullAlpha = new Comparison(new BigDecimal("0.9000"), new BigDecimal("0.5000"),
 			ErrorBudget.certificationLevel(1));
 		requireThat(fullAlpha.isProvenBetter(45, 0), "fullAlpha").isTrue();

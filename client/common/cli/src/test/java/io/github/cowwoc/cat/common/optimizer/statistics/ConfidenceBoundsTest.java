@@ -51,7 +51,7 @@ public final class ConfidenceBoundsTest
 	}
 
 	/**
-	 * Requires the lower and upper bounds of one category state.
+	 * Requires the lower and upper bounds for one cell's passes and failures.
 	 *
 	 * @param passes   the number of passes
 	 * @param failures the number of failures
@@ -72,7 +72,7 @@ public final class ConfidenceBoundsTest
 	}
 
 	/**
-	 * Verifies that the lower bound at {@code alpha_1} exceeds 0.95 exactly when the category certifies, and that the
+	 * Verifies that the lower bound at {@code alpha_1} exceeds 0.95 exactly when the cell certifies, and that the
 	 * upper bound is below 0.95 exactly when it is clearly below.
 	 */
 	@Test
@@ -124,7 +124,7 @@ public final class ConfidenceBoundsTest
 	}
 
 	/**
-	 * Verifies that negative counts are rejected.
+	 * Verifies that a negative number of failures is rejected.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsNegativeFailures()

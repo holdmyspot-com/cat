@@ -1,7 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
 /**
- * The steps of one atomic file replacement, in the order that {@link FileCampaignStore} performs them.
+ * The steps of one atomic file replacement by {@link FileCampaignStore} or {@link FileCandidateOverlays}, in the
+ * order they are performed.
  */
 public enum WriteStep
 {

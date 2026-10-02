@@ -147,7 +147,7 @@ public final class BettingProcessTest
 		requireAgreement(new BettingProcess(BELOW, REQUIRED_PASS_RATE), 0, 70, 12, BigInteger.valueOf(50));
 		requireAgreement(new BettingProcess(ABOVE, new BigDecimal("0.9566")), 150, 320, 2, BigInteger.valueOf(1200));
 		requireAgreement(new BettingProcess(BELOW, new BigDecimal("0.5218")), 0, 20, 30, BigInteger.valueOf(1200));
-		// A threshold wider than 53 bits takes the shifted logarithm
+		// A threshold wider than 53 bits is shifted right to 53 bits before its logarithm is taken
 		requireAgreement(new BettingProcess(ABOVE, REQUIRED_PASS_RATE), 1710, 1750, 1, BigInteger.TEN.pow(30));
 	}
 
@@ -213,9 +213,9 @@ public final class BettingProcessTest
 	public void deficiencyThresholdsMatchDesign()
 	{
 		// Requirement: R-S4
-		int[] categoryCounts = {1, 2, 3, 5, 8};
-		requireFewestFailures(50, new int[]{10, 11, 11, 12, 12}, categoryCounts, 400);
-		requireFewestFailures(100, new int[]{16, 16, 17, 17, 17}, categoryCounts, 400);
+		int[] cellCounts = {1, 2, 3, 5, 8};
+		requireFewestFailures(50, new int[]{10, 11, 11, 12, 12}, cellCounts, 400);
+		requireFewestFailures(100, new int[]{16, 16, 17, 17, 17}, cellCounts, 400);
 	}
 
 	/**
@@ -226,33 +226,33 @@ public final class BettingProcessTest
 	public void halvingIncumbentShareCostsOneFailure()
 	{
 		// Requirement: R-S4
-		int[] categoryCounts = {1, 2, 3, 5, 8};
+		int[] cellCounts = {1, 2, 3, 5, 8};
 		// At 0.01, the first baseline's threshold is K / (0.01 / 2) = 200 K
-		requireFewestFailures(50, new int[]{10, 10, 11, 11, 11}, categoryCounts, 200);
-		requireFewestFailures(100, new int[]{15, 16, 16, 16, 17}, categoryCounts, 200);
+		requireFewestFailures(50, new int[]{10, 10, 11, 11, 11}, cellCounts, 200);
+		requireFewestFailures(100, new int[]{15, 16, 16, 16, 17}, cellCounts, 200);
 	}
 
 	/**
-	 * Requires the fewest failures among {@code trials} that prove deficiency for each category count.
+	 * Requires the fewest failures among {@code trials} that prove deficiency for each cell count.
 	 *
 	 * @param trials           the number of incumbent trials
-	 * @param fewestFailures   the expected fewest failures for each category count
-	 * @param categoryCounts   the category counts {@code K}
-	 * @param thresholdPerCategory the threshold divided by {@code K}
+	 * @param fewestFailures   the expected fewest failures for each cell count
+	 * @param cellCounts       the cell counts {@code K}
+	 * @param thresholdPerCell the threshold divided by {@code K}
 	 */
-	private static void requireFewestFailures(int trials, int[] fewestFailures, int[] categoryCounts,
-		int thresholdPerCategory)
+	private static void requireFewestFailures(int trials, int[] fewestFailures, int[] cellCounts,
+		int thresholdPerCell)
 	{
 		BettingProcess below = new BettingProcess(BELOW, REQUIRED_PASS_RATE);
-		for (int column = 0; column < categoryCounts.length; ++column)
+		for (int column = 0; column < cellCounts.length; ++column)
 		{
-			SignificanceLevel level = level((long) thresholdPerCategory * categoryCounts[column]);
-			if (thresholdPerCategory == 400)
+			SignificanceLevel level = level((long) thresholdPerCell * cellCounts[column]);
+			if (thresholdPerCell == 400)
 			{
-				requireThat(level, "level").isEqualTo(ErrorBudget.incumbentLevel(1, categoryCounts[column]));
+				requireThat(level, "level").isEqualTo(ErrorBudget.incumbentLevel(1, cellCounts[column]));
 			}
 			int failures = fewestFailures[column];
-			String name = "n" + trials + "K" + categoryCounts[column];
+			String name = "n" + trials + "K" + cellCounts[column];
 			requireThat(below.exceeds(trials - failures, failures, level), name + "Deficient").isTrue();
 			requireThat(below.exceeds(trials - failures + 1, failures - 1, level), name + "OneFewer").isFalse();
 		}
@@ -305,7 +305,7 @@ public final class BettingProcessTest
 	}
 
 	/**
-	 * Verifies that negative counts are rejected.
+	 * Verifies that a negative number of passes is rejected.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsNegativePasses()

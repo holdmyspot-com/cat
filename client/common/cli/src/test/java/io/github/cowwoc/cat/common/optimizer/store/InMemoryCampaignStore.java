@@ -57,7 +57,7 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	List<CampaignHeader> readHeaders()
+	public List<CampaignHeader> listHeaders()
 	{
 		List<CampaignHeader> headers = new ArrayList<>();
 		for (Campaign campaign : snapshots.values())

@@ -610,22 +610,4 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		}
 		finish(store, running, trial.key(), Verdict.PASS);
 	}
-
-	/**
-	 * Simulates a process that stops after a write step.
-	 */
-	private static final class SimulatedCrash extends RuntimeException
-	{
-		private static final long serialVersionUID = 0L;
-
-		/**
-		 * Creates the exception.
-		 *
-		 * @param step the last step that completed
-		 */
-		SimulatedCrash(WriteStep step)
-		{
-			super("Crashed after " + step);
-		}
-	}
 }

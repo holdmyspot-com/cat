@@ -5,10 +5,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * A certification attempt's per-category cap, calibrated once before admission and persisted with the attempt.
+ * A certification attempt's per-cell cap, calibrated once before admission and persisted with the attempt. A cell is
+ * one category under one trial profile.
  * <p>
- * The cap is the smallest number of adopted outcomes at which a category whose true pass rate is
- * {@link #PLANNING_PASS_RATE} certifies with probability at least {@link #POWER}. A category stops early when it
+ * The cap is the smallest number of adopted outcomes at which a cell whose true pass rate is
+ * {@link #PLANNING_PASS_RATE} certifies with probability at least {@link #POWER}. A cell stops early when it
  * certifies or is clearly below, so the probability comes from an exact absorbing-state calculation over the states
  * {@code (S, F)}: after each outcome, the mass of every certifying state is absorbed as certified and the mass of every
  * clearly-below state is discarded.
@@ -17,16 +18,16 @@ import java.util.List;
  * {@link DecisionBoundaries}.
  *
  * @param level the attempt's certification level {@code alpha_i}
- * @param cap   the per-category cap, in {@code [1, MAXIMUM_CAP]}
+ * @param cap   the per-cell cap, in {@code [1, MAXIMUM_CAP]}
  */
 public record CapCalibration(SignificanceLevel level, int cap)
 {
 	/**
-	 * The true pass rate at which a category must certify with the required power.
+	 * The true pass rate at which a cell must certify with the required power.
 	 */
 	public static final double PLANNING_PASS_RATE = 0.99;
 	/**
-	 * The probability with which a category at the planning pass rate must certify within the cap.
+	 * The probability with which a cell at the planning pass rate must certify within the cap.
 	 */
 	public static final double POWER = 0.90;
 	/**
@@ -41,7 +42,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 	 * Creates a calibration.
 	 *
 	 * @param level the attempt's certification level {@code alpha_i}
-	 * @param cap   the per-category cap
+	 * @param cap   the per-cell cap
 	 * @throws NullPointerException     if {@code level} is null
 	 * @throws IllegalArgumentException if {@code cap} is not in {@code [1, MAXIMUM_CAP]}
 	 */
@@ -70,44 +71,21 @@ public record CapCalibration(SignificanceLevel level, int cap)
 			if (certified >= POWER)
 				return new CapCalibration(level, outcomes);
 		}
-		throw new CapCalibrationException("A category whose true pass rate is " + PLANNING_PASS_RATE +
+		throw new CapCalibrationException("A cell whose true pass rate is " + PLANNING_PASS_RATE +
 			" certifies at level 1/" + level.threshold() + " within " + MAXIMUM_CAP +
 			" adopted outcomes with probability " + certified + ", which is below the required power of " + POWER +
 			". No cap up to " + MAXIMUM_CAP + " exists for this level, so an attempt at this level cannot be admitted.");
 	}
 
 	/**
-	 * Returns the probability that a category certifies within a number of adopted outcomes, given both early stops.
-	 *
-	 * @param level    the attempt's certification level {@code alpha_i}
-	 * @param passRate the category's true pass rate
-	 * @param outcomes the number of adopted outcomes
-	 * @return the probability
-	 * @throws NullPointerException     if {@code level} is null
-	 * @throws IllegalArgumentException if {@code passRate} is not in {@code [0, 1]}, or if {@code outcomes} is not in
-	 *                                  {@code [1, MAXIMUM_CAP]}
-	 */
-	static double certificationProbability(SignificanceLevel level, double passRate, int outcomes)
-	{
-		requireThat(level, "level").isNotNull();
-		requireThat(passRate, "passRate").isBetween(0.0, true, 1.0, true);
-		requireThat(outcomes, "outcomes").isBetween(1, true, MAXIMUM_CAP, true);
-		Walk walk = new Walk(DecisionBoundaries.compute(level, outcomes, List.of()), passRate);
-		double certified = 0;
-		for (int outcome = 1; outcome <= outcomes; ++outcome)
-			certified = walk.advance();
-		return certified;
-	}
-
-	/**
-	 * The distribution of a category's undecided states, advanced one adopted outcome at a time.
+	 * The distribution of a cell's undecided states, advanced one adopted outcome at a time.
 	 * <p>
 	 * After {@code n} outcomes, a state with {@code F} failures has {@code n - F} passes, so the distribution is
 	 * indexed by {@code F} alone.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
-	private static final class Walk
+	static final class Walk
 	{
 		/**
 		 * The fewest passes that certify, indexed by failures.
@@ -129,7 +107,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 		 * Creates a walk that starts with no outcomes.
 		 *
 		 * @param boundaries the decisions, whose cap bounds the number of outcomes
-		 * @param passRate   the category's true pass rate
+		 * @param passRate   the cell's true pass rate
 		 */
 		Walk(DecisionBoundaries boundaries, double passRate)
 		{

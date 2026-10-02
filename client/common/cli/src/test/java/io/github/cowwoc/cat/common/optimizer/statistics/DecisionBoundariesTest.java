@@ -19,7 +19,9 @@ import java.util.List;
  *   <caption>Design numbers checked by this class</caption>
  *   <tr><th>Source</th><th>Quantity</th><th>Design value</th><th>Checked value</th></tr>
  *   <tr><td>&sect;2.4</td><td>attempt 1's all-pass minimum</td><td>93</td><td>93</td></tr>
- *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 categories</td>
+ *   <tr><td>&sect;2.4</td><td>attempt 2's all-pass minimum</td><td>117</td><td>117</td></tr>
+ *   <tr><td>&sect;2.4</td><td>attempt 3's all-pass minimum</td><td>132</td><td>132</td></tr>
+ *   <tr><td>&sect;13 D1</td><td>all-pass trials proving improvement over {@code UI = 0.90} with 3 cells</td>
  *     <td>79</td><td>79</td></tr>
  * </table>
  */
@@ -89,7 +91,19 @@ public final class DecisionBoundariesTest
 	}
 
 	/**
-	 * Verifies each category's proven-better and proven-worse boundaries, and that the lookups agree with the
+	 * Verifies the all-pass minimum without a cap for the first three certification attempts.
+	 */
+	@Test
+	public void allPassMinimumWithoutCap()
+	{
+		// Requirement: R-S2
+		requireThat(DecisionBoundaries.allPassMinimum(ErrorBudget.certificationLevel(1)), "attempt1").isEqualTo(93);
+		requireThat(DecisionBoundaries.allPassMinimum(ErrorBudget.certificationLevel(2)), "attempt2").isEqualTo(117);
+		requireThat(DecisionBoundaries.allPassMinimum(ErrorBudget.certificationLevel(3)), "attempt3").isEqualTo(132);
+	}
+
+	/**
+	 * Verifies each cell's proven-better and proven-worse boundaries, and that the lookups agree with the
 	 * comparison for every state up to the cap.
 	 */
 	@Test
@@ -110,17 +124,17 @@ public final class DecisionBoundariesTest
 		requireThat(first.maximumProvenWorsePasses().get(10), "maximumProvenWorseF10").isEqualTo(-1);
 		requireThat(first.maximumProvenWorsePasses().get(20), "maximumProvenWorseF20").isEqualTo(0);
 		requireThat(first.maximumProvenWorsePasses().get(30), "maximumProvenWorseF30").isEqualTo(6);
-		for (ComparisonBoundaries category : boundaries.comparisons())
+		for (ComparisonBoundaries cell : boundaries.comparisons())
 		{
-			Comparison comparison = category.comparison();
+			Comparison comparison = cell.comparison();
 			for (int failures = 0; failures <= cap; ++failures)
 			{
 				for (int passes = 0; passes + failures <= cap; ++passes)
 				{
 					String name = comparison.incumbentUpper() + "S" + passes + "F" + failures;
-					requireThat(category.isProvenBetter(passes, failures), name + "Better").
+					requireThat(cell.isProvenBetter(passes, failures), name + "Better").
 						isEqualTo(comparison.isProvenBetter(passes, failures));
-					requireThat(category.isProvenWorse(passes, failures), name + "Worse").
+					requireThat(cell.isProvenWorse(passes, failures), name + "Worse").
 						isEqualTo(comparison.isProvenWorse(passes, failures));
 				}
 			}

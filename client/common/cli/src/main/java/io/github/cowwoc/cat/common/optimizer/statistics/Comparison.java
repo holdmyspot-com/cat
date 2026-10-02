@@ -9,17 +9,19 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 
 /**
- * One category's frozen comparison between a candidate and the incumbent in a certification attempt.
+ * The frozen comparison between a candidate and the incumbent in one cell {@code k}, one category under one trial
+ * profile, of a certification attempt.
  * <p>
  * The candidate is <i>proven better</i> when {@code E_up}, with the null rate {@code UI(k)} in place of 0.95, exceeds
- * the attempt's per-category improvement threshold {@code K / beta_i}. It is <i>proven worse</i> when
+ * the attempt's per-cell improvement threshold {@code K / beta_i}. It is <i>proven worse</i> when
  * {@code E_down}, with the null rate {@code LI(k)}, exceeds the same threshold. {@code UI(k)} and {@code LI(k)} are
  * the incumbent's bounds at its baseline's level {@code gamma_b / K}, rounded outward to 4 decimal places and frozen
- * when the attempt is committed.
+ * when the attempt is committed. {@code K} is the number of cells in the contract, and {@link ErrorBudget} defines the
+ * improvement budget {@code beta_i} and the incumbent budget {@code gamma_b}.
  *
  * @param incumbentUpper the incumbent's upper bound {@code UI(k)}, a multiple of 0.0001 in {@code (0, 1]}
  * @param incumbentLower the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
- * @param level          the per-category improvement level {@code beta_i / K}
+ * @param level          the per-cell improvement level {@code beta_i / K}
  */
 public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, SignificanceLevel level)
 {
@@ -41,7 +43,7 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 	 *
 	 * @param incumbentUpper the incumbent's upper bound {@code UI(k)}, a multiple of 0.0001 in {@code (0, 1]}
 	 * @param incumbentLower the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
-	 * @param level          the per-category improvement level {@code beta_i / K}
+	 * @param level          the per-cell improvement level {@code beta_i / K}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code incumbentUpper} or {@code incumbentLower} are not multiples of 0.0001
 	 *                                  in their ranges
@@ -66,10 +68,10 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 	 * 0 does, which rounds the exact lower bound down. Both are found by bisection over the grid with exact
 	 * comparisons.
 	 *
-	 * @param incumbentPasses   the incumbent's representative passes in the category
-	 * @param incumbentFailures the incumbent's representative failures in the category
-	 * @param incumbentLevel    the baseline's per-category level {@code gamma_b / K}
-	 * @param improvementLevel  the attempt's per-category improvement level {@code beta_i / K}
+	 * @param incumbentPasses   the incumbent's representative passes in the cell
+	 * @param incumbentFailures the incumbent's representative failures in the cell
+	 * @param incumbentLevel    the baseline's per-cell level {@code gamma_b / K}
+	 * @param improvementLevel  the attempt's per-cell improvement level {@code beta_i / K}
 	 * @return the frozen comparison
 	 * @throws NullPointerException     if any of the levels are null
 	 * @throws IllegalArgumentException if {@code incumbentPasses} or {@code incumbentFailures} are negative

@@ -22,9 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds the four outputs of {@code design.md} section 2.9 for each category.
+ * Builds the four outputs of {@code design.md} section 2.9 for each cell.
  */
-final class CategoryReports
+final class CellReports
 {
 	/**
 	 * The label of a development pass rate.
@@ -35,19 +35,19 @@ final class CategoryReports
 	 */
 	static final String FORMAL_ESTIMATE = "formal estimate";
 	/**
-	 * The comparison state of every development category.
+	 * The comparison state of every development cell.
 	 */
 	static final String NOT_CERTIFIED = "not certified";
 	/**
-	 * The state of a category that is proven better than the incumbent.
+	 * The state of a cell that is proven better than the incumbent.
 	 */
 	static final String PROVEN_BETTER = "proven better";
 	/**
-	 * The state of a category that is proven worse than the incumbent.
+	 * The state of a cell that is proven worse than the incumbent.
 	 */
 	static final String PROVEN_WORSE = "proven worse";
 	/**
-	 * The state of a category that is neither proven better nor proven worse.
+	 * The state of a cell that is neither proven better nor proven worse.
 	 */
 	static final String UNDECIDED = "undecided";
 	/**
@@ -58,7 +58,7 @@ final class CategoryReports
 	/**
 	 * Prevents instantiation.
 	 */
-	private CategoryReports()
+	private CellReports()
 	{
 	}
 
@@ -70,9 +70,9 @@ final class CategoryReports
 	 *   development results
 	 * @return the reports, in contract order
 	 */
-	static List<CategoryReport> of(Campaign campaign, CertificationAttempt attempt)
+	static List<CellReport> of(Campaign campaign, CertificationAttempt attempt)
 	{
-		List<CategoryReport> reports = new ArrayList<>();
+		List<CellReport> reports = new ArrayList<>();
 		for (String cell : campaign.contract().cellIds())
 		{
 			if (attempt == null)
@@ -84,58 +84,58 @@ final class CategoryReports
 	}
 
 	/**
-	 * Builds the report of a category from the working candidate's development counts.
+	 * Builds the report of a cell from the working candidate's development counts.
 	 *
 	 * @param campaign the campaign
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @return the report
 	 */
-	private static CategoryReport development(Campaign campaign, String category)
+	private static CellReport development(Campaign campaign, String cell)
 	{
-		CategoryCounts counts = campaign.development().count(category);
+		CategoryCounts counts = campaign.development().count(cell);
 		int trials = counts.outcomes();
-		CategoryReport.PassRate passRate = passRate(DEVELOPMENT_ESTIMATE, counts, "no adopted development outcomes");
-		List<CategoryReport.ErrorBar> errorBars = new ArrayList<>();
+		CellReport.PassRate passRate = passRate(DEVELOPMENT_ESTIMATE, counts, "no adopted development outcomes");
+		List<CellReport.ErrorBar> errorBars = new ArrayList<>();
 		if (trials > 0)
 			errorBars.add(wilson(counts));
-		return new CategoryReport(category, counts.passes(), trials, passRate,
-			developmentImprovement(campaign, category, counts), developmentComparison(counts), errorBars);
+		return new CellReport(cell, counts.passes(), trials, passRate,
+			developmentImprovement(campaign, cell, counts), developmentComparison(counts), errorBars);
 	}
 
 	/**
 	 * Returns the exploratory improvement of the working candidate over the incumbent baseline.
 	 *
 	 * @param campaign the campaign
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @param counts the working candidate's development counts
 	 * @return the improvement
 	 */
-	private static CategoryReport.Improvement developmentImprovement(Campaign campaign, String category,
+	private static CellReport.Improvement developmentImprovement(Campaign campaign, String cell,
 		CategoryCounts counts)
 	{
 		if (campaign.development().working().isIncumbent())
-			return CategoryReport.Improvement.unavailable("The working candidate is the incumbent.");
+			return CellReport.Improvement.unavailable("The working candidate is the incumbent.");
 		if (counts.outcomes() == 0)
-			return CategoryReport.Improvement.unavailable("The working candidate has no development outcomes.");
+			return CellReport.Improvement.unavailable("The working candidate has no development outcomes.");
 		IncumbentBaseline baseline = campaign.baseline();
-		CategoryCounts incumbent = baseline.count(category);
+		CategoryCounts incumbent = baseline.count(cell);
 		if (incumbent.outcomes() == 0)
-			return CategoryReport.Improvement.unavailable("The incumbent baseline has no outcomes.");
+			return CellReport.Improvement.unavailable("The incumbent baseline has no outcomes.");
 		Interval candidate = ExploratoryBounds.wilson(counts.passes(), counts.outcomes());
 		Interval other = ExploratoryBounds.wilson(incumbent.passes(), incumbent.outcomes());
 		Interval difference = new Interval(candidate.lower() - other.upper(), candidate.upper() - other.lower());
-		return new CategoryReport.Improvement(null, points(counts, incumbent), incumbentCounts(baseline, incumbent),
+		return new CellReport.Improvement(null, points(counts, incumbent), incumbentCounts(baseline, incumbent),
 			deficiency(baseline, incumbent, campaign.contract().cells().size()), difference,
 			"exploratory difference of the two 95% Wilson intervals", null, null, null);
 	}
 
 	/**
-	 * Returns the readiness assessment of a development category.
+	 * Returns the readiness assessment of a development cell.
 	 *
-	 * @param counts the category's development counts
+	 * @param counts the cell's development counts
 	 * @return the comparison
 	 */
-	private static CategoryReport.Threshold developmentComparison(CategoryCounts counts)
+	private static CellReport.Threshold developmentComparison(CategoryCounts counts)
 	{
 		List<String> reasons = new ArrayList<>();
 		int trials = counts.outcomes();
@@ -159,20 +159,20 @@ final class CategoryReports
 		String readiness = "not ready";
 		if (ReadinessGate.isReady(counts))
 			readiness = "ready";
-		return new CategoryReport.Threshold(NOT_CERTIFIED, readiness, reasons, null, null, null);
+		return new CellReport.Threshold(NOT_CERTIFIED, readiness, reasons, null, null, null);
 	}
 
 	/**
-	 * Builds the report of a category from a certification attempt's counts.
+	 * Builds the report of a cell from a certification attempt's counts.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @return the report
 	 */
-	private static CategoryReport formal(Campaign campaign, CertificationAttempt attempt, String category)
+	private static CellReport formal(Campaign campaign, CertificationAttempt attempt, String cell)
 	{
-		CategoryCounts counts = attempt.count(category);
+		CategoryCounts counts = attempt.count(cell);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		SignificanceLevel alpha = boundaries.level();
 		ConfidenceBound lower = ConfidenceBounds.lower(counts.passes(), counts.failures(), alpha);
@@ -184,15 +184,15 @@ final class CategoryReports
 			case CAP_REACHED -> "inconclusive";
 			case UNDECIDED -> UNDECIDED;
 		};
-		CategoryReport.Threshold comparison = new CategoryReport.Threshold(state, null, List.of(), lower.value(),
+		CellReport.Threshold comparison = new CellReport.Threshold(state, null, List.of(), lower.value(),
 			upper.value(), alpha.probability());
-		List<CategoryReport.ErrorBar> errorBars = new ArrayList<>();
-		errorBars.add(new CategoryReport.ErrorBar("one-sided lower confidence bound at alpha_i", true,
+		List<CellReport.ErrorBar> errorBars = new ArrayList<>();
+		errorBars.add(new CellReport.ErrorBar("one-sided lower confidence bound at alpha_i", true,
 			alpha.probability(), false, counts.outcomes(), new Interval(lower.value(), 1.0)));
 		errorBars.add(wilson(counts));
-		return new CategoryReport(category, counts.passes(), counts.outcomes(),
+		return new CellReport(cell, counts.passes(), counts.outcomes(),
 			passRate(FORMAL_ESTIMATE, counts, "no adopted formal outcomes"),
-			formalImprovement(campaign, attempt, category, counts, lower, upper), comparison, errorBars);
+			formalImprovement(campaign, attempt, cell, counts, lower, upper), comparison, errorBars);
 	}
 
 	/**
@@ -200,51 +200,63 @@ final class CategoryReports
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
-	 * @param category the category
-	 * @param counts the attempt's counts for the category
+	 * @param cell the cell's identifier
+	 * @param counts the attempt's counts for the cell
 	 * @param lower the certification lower bound
 	 * @param upper the certification upper bound
 	 * @return the improvement
 	 */
-	private static CategoryReport.Improvement formalImprovement(Campaign campaign, CertificationAttempt attempt,
-		String category, CategoryCounts counts, ConfidenceBound lower, ConfidenceBound upper)
+	private static CellReport.Improvement formalImprovement(Campaign campaign, CertificationAttempt attempt,
+		String cell, CategoryCounts counts, ConfidenceBound lower, ConfidenceBound upper)
 	{
-		ComparisonBoundaries boundaries = comparison(attempt, category);
+		ComparisonBoundaries boundaries = comparison(attempt, cell);
 		Comparison frozen = boundaries.comparison();
-		String state = UNDECIDED;
-		if (boundaries.isProvenBetter(counts.passes(), counts.failures()))
-			state = PROVEN_BETTER;
-		else if (boundaries.isProvenWorse(counts.passes(), counts.failures()))
-			state = PROVEN_WORSE;
+		String state = improvementState(boundaries, counts);
 		Double points = null;
-		CategoryReport.IncumbentCounts incumbentCounts = null;
+		CellReport.IncumbentCounts incumbentCounts = null;
 		String deficiency = null;
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline != null && baseline.index() == attempt.procedure().baselineIndex())
 		{
-			CategoryCounts incumbent = baseline.count(category);
+			CategoryCounts incumbent = baseline.count(cell);
 			incumbentCounts = incumbentCounts(baseline, incumbent);
 			deficiency = deficiency(baseline, incumbent, attempt.procedure().categories().size());
 			if (counts.outcomes() > 0 && incumbent.outcomes() > 0)
 				points = points(counts, incumbent);
 		}
-		return new CategoryReport.Improvement(null, points, incumbentCounts, deficiency,
+		return new CellReport.Improvement(null, points, incumbentCounts, deficiency,
 			frozen.difference(lower, upper), "[LC - UI(k), UC - LI(k)] at the attempt's certification level", state,
 			frozen.incumbentUpper().doubleValue(), frozen.incumbentLower().doubleValue());
 	}
 
 	/**
-	 * Returns the comparison boundaries that an attempt froze for a category.
+	 * Returns the comparison boundaries that an attempt froze for a cell.
 	 *
 	 * @param attempt the attempt
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @return the boundaries
 	 */
-	static ComparisonBoundaries comparison(CertificationAttempt attempt, String category)
+	static ComparisonBoundaries comparison(CertificationAttempt attempt, String cell)
 	{
-		int position = attempt.procedure().categories().indexOf(category);
-		requireThat(position, "position").withContext(category, "category").isNotNegative();
+		int position = attempt.procedure().categories().indexOf(cell);
+		requireThat(position, "position").withContext(cell, "cell").isNotNegative();
 		return attempt.procedure().boundaries().comparisons().get(position);
+	}
+
+	/**
+	 * Returns whether an attempt's candidate is proven better or worse than the incumbent in a cell.
+	 *
+	 * @param boundaries the comparison boundaries that the attempt froze for the cell
+	 * @param counts the attempt's counts for the cell
+	 * @return {@code proven better}, {@code proven worse} or {@code undecided}
+	 */
+	static String improvementState(ComparisonBoundaries boundaries, CategoryCounts counts)
+	{
+		if (boundaries.isProvenBetter(counts.passes(), counts.failures()))
+			return PROVEN_BETTER;
+		if (boundaries.isProvenWorse(counts.passes(), counts.failures()))
+			return PROVEN_WORSE;
+		return UNDECIDED;
 	}
 
 	/**
@@ -255,22 +267,22 @@ final class CategoryReports
 	 * @param missing the reason that there is no rate if there are no outcomes
 	 * @return the pass rate
 	 */
-	private static CategoryReport.PassRate passRate(String label, CategoryCounts counts, String missing)
+	private static CellReport.PassRate passRate(String label, CategoryCounts counts, String missing)
 	{
 		if (counts.outcomes() == 0)
-			return new CategoryReport.PassRate(label, null, missing);
-		return new CategoryReport.PassRate(label, (double) counts.passes() / counts.outcomes(), null);
+			return new CellReport.PassRate(label, null, missing);
+		return new CellReport.PassRate(label, (double) counts.passes() / counts.outcomes(), null);
 	}
 
 	/**
-	 * Returns the descriptive Wilson interval of a category.
+	 * Returns the descriptive Wilson interval of a cell.
 	 *
 	 * @param counts the counts, which hold at least one outcome
 	 * @return the error bar
 	 */
-	private static CategoryReport.ErrorBar wilson(CategoryCounts counts)
+	private static CellReport.ErrorBar wilson(CategoryCounts counts)
 	{
-		return new CategoryReport.ErrorBar(WILSON, false, null, true, counts.outcomes(),
+		return new CellReport.ErrorBar(WILSON, false, null, true, counts.outcomes(),
 			ExploratoryBounds.wilson(counts.passes(), counts.outcomes()));
 	}
 
@@ -291,25 +303,25 @@ final class CategoryReports
 	 * Returns the incumbent's counts in its baseline.
 	 *
 	 * @param baseline the baseline
-	 * @param counts the category's counts
+	 * @param counts the cell's counts
 	 * @return the counts
 	 */
-	private static CategoryReport.IncumbentCounts incumbentCounts(IncumbentBaseline baseline, CategoryCounts counts)
+	private static CellReport.IncumbentCounts incumbentCounts(IncumbentBaseline baseline, CategoryCounts counts)
 	{
-		return new CategoryReport.IncumbentCounts(baseline.index(), counts.passes(), counts.outcomes());
+		return new CellReport.IncumbentCounts(baseline.index(), counts.passes(), counts.outcomes());
 	}
 
 	/**
-	 * Returns whether the incumbent is proven deficient in a category.
+	 * Returns whether the incumbent is proven deficient in a cell.
 	 *
 	 * @param baseline the baseline
-	 * @param counts the category's counts
-	 * @param categories the number of categories
+	 * @param counts the cell's counts
+	 * @param cells the number of cells
 	 * @return {@code proven deficient} or {@code deficiency unproven}
 	 */
-	private static String deficiency(IncumbentBaseline baseline, CategoryCounts counts, int categories)
+	private static String deficiency(IncumbentBaseline baseline, CategoryCounts counts, int cells)
 	{
-		if (Baseline.isProvenDeficient(counts, baseline.index(), categories))
+		if (Baseline.isProvenDeficient(counts, baseline.index(), cells))
 			return "proven deficient";
 		return "deficiency unproven";
 	}

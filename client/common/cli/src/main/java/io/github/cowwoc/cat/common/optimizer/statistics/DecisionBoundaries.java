@@ -14,17 +14,17 @@ import java.util.List;
  * <p>
  * Element {@code F} of each list describes the states with {@code F} failures, for {@code F} from 0 to the cap
  * {@code n}. A state {@code (S, F)} certifies when {@code E_up(S, F) > 1 / alpha_i} at null rate 0.95, and is
- * clearly below when {@code E_down(S, F) > 1 / alpha_i}. Each category's comparison boundaries use its own frozen
- * incumbent bounds at {@code K / beta_i}.
+ * clearly below when {@code E_down(S, F) > 1 / alpha_i}. Each cell, one category under one trial profile, has
+ * comparison boundaries that use its own frozen incumbent bounds at {@code K / beta_i} (see {@link Comparison}).
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param level                     the attempt's certification level {@code alpha_i}
- * @param cap                       the attempt's per-category cap
+ * @param cap                       the attempt's per-cell cap
  * @param minimumCertifyingPasses   for each {@code F}, the fewest passes that certify, or {@code n - F + 1} if no
  *                                  state within the cap does
  * @param maximumClearlyBelowPasses for each {@code F}, the most passes that are clearly below, or -1 if no state is
- * @param comparisons               the comparison boundaries of each category, in the contract's category order
+ * @param comparisons               the comparison boundaries of each cell, in the contract's cell order
  */
 public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer> minimumCertifyingPasses,
 	List<Integer> maximumClearlyBelowPasses, List<ComparisonBoundaries> comparisons)
@@ -33,16 +33,16 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 	 * Creates a table.
 	 *
 	 * @param level                     the attempt's certification level {@code alpha_i}
-	 * @param cap                       the attempt's per-category cap
+	 * @param cap                       the attempt's per-cell cap
 	 * @param minimumCertifyingPasses   for each {@code F}, the fewest passes that certify, or {@code n - F + 1} if no
 	 *                                  state within the cap does
 	 * @param maximumClearlyBelowPasses for each {@code F}, the most passes that are clearly below, or -1 if no state
 	 *                                  is
-	 * @param comparisons               the comparison boundaries of each category, in the contract's category order
+	 * @param comparisons               the comparison boundaries of each cell, in the contract's cell order
 	 * @throws NullPointerException     if any of the arguments are null, or if a list contains null
 	 * @throws IllegalArgumentException if {@code cap} is not positive, if a list does not have {@code cap + 1}
 	 *                                  elements, if an element is out of range, if a state would both certify and be
-	 *                                  clearly below, or if a category's boundaries cover a different cap
+	 *                                  clearly below, or if a cell's boundaries cover a different cap
 	 */
 	public DecisionBoundaries
 	{
@@ -51,8 +51,8 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 		BoundaryLists.requireValid(minimumCertifyingPasses, "minimumCertifyingPasses", maximumClearlyBelowPasses,
 			"maximumClearlyBelowPasses", cap);
 		requireThat(comparisons, "comparisons").isNotNull();
-		for (int category = 0; category < comparisons.size(); ++category)
-			requireThat(comparisons.get(category).cap(), "comparisons[" + category + "].cap()").isEqualTo(cap, "cap");
+		for (int cell = 0; cell < comparisons.size(); ++cell)
+			requireThat(comparisons.get(cell).cap(), "comparisons[" + cell + "].cap()").isEqualTo(cap, "cap");
 		minimumCertifyingPasses = List.copyOf(minimumCertifyingPasses);
 		maximumClearlyBelowPasses = List.copyOf(maximumClearlyBelowPasses);
 		comparisons = List.copyOf(comparisons);
@@ -62,8 +62,8 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 	 * Computes a certification attempt's decision table.
 	 *
 	 * @param certificationLevel the attempt's certification level {@code alpha_i}
-	 * @param cap                the attempt's per-category cap
-	 * @param comparisons        each category's frozen comparison, in the contract's category order
+	 * @param cap                the attempt's per-cell cap
+	 * @param comparisons        each cell's frozen comparison, in the contract's cell order
 	 * @return the table
 	 * @throws NullPointerException     if any of the arguments are null, or if {@code comparisons} contains null
 	 * @throws IllegalArgumentException if {@code cap} is not positive
@@ -79,17 +79,34 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 			certificationLevel, cap);
 		List<Integer> maximums = BoundaryLists.computeMaximums(new BettingProcess(BELOW, REQUIRED_PASS_RATE),
 			certificationLevel, cap);
-		List<ComparisonBoundaries> categories = new ArrayList<>(comparisons.size());
+		List<ComparisonBoundaries> comparisonBoundaries = new ArrayList<>(comparisons.size());
 		for (Comparison comparison : comparisons)
-			categories.add(ComparisonBoundaries.compute(comparison, cap));
-		return new DecisionBoundaries(certificationLevel, cap, minimums, maximums, categories);
+			comparisonBoundaries.add(ComparisonBoundaries.compute(comparison, cap));
+		return new DecisionBoundaries(certificationLevel, cap, minimums, maximums, comparisonBoundaries);
 	}
 
 	/**
-	 * Indicates whether a category state certifies.
+	 * Returns the fewest passes that certify when no outcome failed, without a cap.
 	 *
-	 * @param passes   the category's adopted passes in the attempt
-	 * @param failures the category's adopted failures in the attempt
+	 * @param certificationLevel the attempt's certification level {@code alpha_i}
+	 * @return the all-pass minimum
+	 * @throws NullPointerException if {@code certificationLevel} is null
+	 */
+	public static int allPassMinimum(SignificanceLevel certificationLevel)
+	{
+		requireThat(certificationLevel, "certificationLevel").isNotNull();
+		BettingProcess certification = new BettingProcess(ABOVE, REQUIRED_PASS_RATE);
+		int maximumPasses = 1;
+		while (!certification.exceeds(maximumPasses, 0, certificationLevel))
+			maximumPasses *= 2;
+		return certification.findMinimumExceedingPasses(0, certificationLevel, maximumPasses);
+	}
+
+	/**
+	 * Indicates whether a cell state certifies.
+	 *
+	 * @param passes   the cell's adopted passes in the attempt
+	 * @param failures the cell's adopted failures in the attempt
 	 * @return {@code true} if the state certifies
 	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative, or if their sum exceeds
 	 *                                  {@code cap}
@@ -101,10 +118,10 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 	}
 
 	/**
-	 * Indicates whether a category state is clearly below the required pass rate.
+	 * Indicates whether a cell state is clearly below the required pass rate.
 	 *
-	 * @param passes   the category's adopted passes in the attempt
-	 * @param failures the category's adopted failures in the attempt
+	 * @param passes   the cell's adopted passes in the attempt
+	 * @param failures the cell's adopted failures in the attempt
 	 * @return {@code true} if the state is clearly below
 	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative, or if their sum exceeds
 	 *                                  {@code cap}

@@ -1,5 +1,14 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.intValue;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.integer;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.nullable;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireObject;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.stringValue;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
@@ -101,8 +110,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	static final int FORMAT_VERSION = 3;
-	private static final String VERSION = "format_version";
+	private static final int FORMAT_VERSION = 3;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -580,11 +588,11 @@ final class CampaignJson
 	private static CertificationAttempt readAttempt(JsonNode node)
 	{
 		JsonNode procedureNode = field(node, "procedure");
-		List<String> categories = new ArrayList<>();
+		List<String> cellIds = new ArrayList<>();
 		for (JsonNode cell : elements(procedureNode, "cells"))
-			categories.add(stringValue(cell, "cells"));
+			cellIds.add(stringValue(cell, "cells"));
 		CertificationProcedure procedure = new CertificationProcedure(level(procedureNode, "improvement_level"),
-			integer(procedureNode, "baseline_index"), categories, readBoundaries(field(procedureNode, "boundaries")),
+			integer(procedureNode, "baseline_index"), cellIds, readBoundaries(field(procedureNode, "boundaries")),
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
@@ -1172,7 +1180,7 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts per-category counts to a document, in category order.
+	 * Converts per-cell counts to a document, sorted by cell identifier.
 	 *
 	 * @param counts the counts
 	 * @return the document
@@ -1191,7 +1199,7 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts a document to per-category counts.
+	 * Converts a document to per-cell counts.
 	 *
 	 * @param node the document
 	 * @return the counts
@@ -1272,54 +1280,6 @@ final class CampaignJson
 	}
 
 	/**
-	 * Checks that a value is an object.
-	 *
-	 * @param node the value
-	 * @param name the value's name
-	 * @throws IllegalArgumentException if the value is not an object
-	 */
-	private static void requireObject(JsonNode node, String name)
-	{
-		if (node == null || !node.isObject())
-			throw new IllegalArgumentException(name + ": must be an object");
-	}
-
-	/**
-	 * Returns a field that may not be missing or null.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the field is missing or null
-	 */
-	private static JsonNode field(JsonNode node, String name)
-	{
-		JsonNode value = nullable(node, name);
-		if (value == null)
-			throw new IllegalArgumentException(name + ": must have a value");
-		return value;
-	}
-
-	/**
-	 * Returns a field that must be present but may be null.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value, or null if it is JSON {@code null}
-	 * @throws IllegalArgumentException if the field is missing
-	 */
-	private static JsonNode nullable(JsonNode node, String name)
-	{
-		requireObject(node, name + "'s parent");
-		JsonNode value = node.get(name);
-		if (value == null)
-			throw new IllegalArgumentException(name + ": is missing");
-		if (value.isNull())
-			return null;
-		return value;
-	}
-
-	/**
 	 * Returns an object field.
 	 *
 	 * @param node the object that holds the field
@@ -1331,34 +1291,6 @@ final class CampaignJson
 		JsonNode value = field(node, name);
 		requireObject(value, name);
 		return value;
-	}
-
-	/**
-	 * Returns the elements of an array field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the elements
-	 * @throws IllegalArgumentException if the field is not an array
-	 */
-	private static List<JsonNode> elements(JsonNode node, String name)
-	{
-		JsonNode value = field(node, name);
-		if (!value.isArray())
-			throw new IllegalArgumentException(name + ": must be an array");
-		return value.valueStream().toList();
-	}
-
-	/**
-	 * Returns a string field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the string
-	 */
-	private static String text(JsonNode node, String name)
-	{
-		return stringValue(field(node, name), name);
 	}
 
 	/**
@@ -1375,21 +1307,6 @@ final class CampaignJson
 		if (value == null)
 			return null;
 		return stringValue(value, name);
-	}
-
-	/**
-	 * Returns a string value.
-	 *
-	 * @param value the value
-	 * @param name the value's name
-	 * @return the string
-	 * @throws IllegalArgumentException if the value is not a string
-	 */
-	private static String stringValue(JsonNode value, String name)
-	{
-		if (value == null || !value.isString())
-			throw new IllegalArgumentException(name + ": must be a string");
-		return value.asString();
 	}
 
 	/**
@@ -1411,33 +1328,6 @@ final class CampaignJson
 		{
 			throw new IllegalArgumentException(name + ": " + text + " is not a path", e);
 		}
-	}
-
-	/**
-	 * Returns an {@code int} field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 */
-	private static int integer(JsonNode node, String name)
-	{
-		return intValue(field(node, name), name);
-	}
-
-	/**
-	 * Returns an {@code int} value.
-	 *
-	 * @param value the value
-	 * @param name the value's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the value is not an {@code int}
-	 */
-	private static int intValue(JsonNode value, String name)
-	{
-		if (value == null || !value.isIntegralNumber() || !value.canConvertToInt())
-			throw new IllegalArgumentException(name + ": must be a 32-bit integer");
-		return value.asInt();
 	}
 
 	/**

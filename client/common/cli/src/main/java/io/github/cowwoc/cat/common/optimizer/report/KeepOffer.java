@@ -20,7 +20,7 @@ import java.util.List;
  * @param cells the evidence of each cell
  */
 public record KeepOffer(int attempt, boolean historical, List<String> differing, double weakestLowerBound,
-	List<Category> cells)
+	List<CellEvidence> cells)
 {
 	/**
 	 * The evidence that one cell of an offered attempt gives.
@@ -34,10 +34,10 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 	 * @param incumbentUpper the incumbent's frozen upper bound {@code UI(k)}
 	 * @param incumbentLower the incumbent's frozen lower bound {@code LI(k)}
 	 * @param difference the difference interval between the candidate's and the incumbent's pass probabilities
-	 * @param note a warning that a category that is not proven better might still be slightly worse, or
+	 * @param note a warning that a cell that is not proven better might still be slightly worse, or
 	 *   {@code null} if none applies
 	 */
-	public record Category(String cell, int passes, int trials, String state, double incumbentUpper,
+	public record CellEvidence(String cell, int passes, int trials, String state, double incumbentUpper,
 		double incumbentLower, Interval difference, String note)
 	{
 		/**
@@ -50,12 +50,12 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 		 * @param incumbentUpper the incumbent's frozen upper bound {@code UI(k)}
 		 * @param incumbentLower the incumbent's frozen lower bound {@code LI(k)}
 		 * @param difference the difference interval
-		 * @param note a warning that the category might still be slightly worse, or {@code null} if none applies
+		 * @param note a warning that the cell might still be slightly worse, or {@code null} if none applies
 		 * @throws NullPointerException if {@code cell}, {@code state} or {@code difference} are null
 		 * @throws IllegalArgumentException if {@code trials} is negative or {@code passes} is outside
 		 *   [0, {@code trials}]
 		 */
-		public Category
+		public CellEvidence
 		{
 			requireThat(cell, "cell").isNotNull();
 			requireThat(trials, "trials").isNotNegative();

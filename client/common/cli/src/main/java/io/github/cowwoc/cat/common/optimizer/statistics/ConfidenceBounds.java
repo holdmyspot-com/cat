@@ -18,11 +18,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class ConfidenceBounds
 {
 	/**
-	 * The number of bisection steps, which narrows the bracket to {@code 2^-100}.
-	 */
-	private static final int BISECTION_STEPS = 100;
-
-	/**
 	 * Returns the lower confidence bound on a pass probability.
 	 *
 	 * @param passes   the number of adopted passes {@code S}
@@ -42,17 +37,9 @@ public final class ConfidenceBounds
 			return new ConfidenceBound(0, level);
 
 		double logThreshold = BettingProcess.log(level.threshold());
-		double low = 0;
-		double high = 1;
-		for (int step = 0; step < BISECTION_STEPS; ++step)
-		{
-			double middle = (low + high) / 2;
-			if (BettingProcess.logValue(ABOVE, middle, passes, failures) > logThreshold)
-				low = middle;
-			else
-				high = middle;
-		}
-		return new ConfidenceBound(low, level);
+		Interval bracket = Bisection.bracket(nullRate ->
+			BettingProcess.logValue(ABOVE, nullRate, passes, failures) > logThreshold);
+		return new ConfidenceBound(bracket.lower(), level);
 	}
 
 	/**
@@ -75,17 +62,9 @@ public final class ConfidenceBounds
 			return new ConfidenceBound(1, level);
 
 		double logThreshold = BettingProcess.log(level.threshold());
-		double low = 0;
-		double high = 1;
-		for (int step = 0; step < BISECTION_STEPS; ++step)
-		{
-			double middle = (low + high) / 2;
-			if (BettingProcess.logValue(BELOW, middle, passes, failures) > logThreshold)
-				high = middle;
-			else
-				low = middle;
-		}
-		return new ConfidenceBound(high, level);
+		Interval bracket = Bisection.bracket(nullRate ->
+			BettingProcess.logValue(BELOW, nullRate, passes, failures) <= logThreshold);
+		return new ConfidenceBound(bracket.upper(), level);
 	}
 
 	/**

@@ -23,7 +23,7 @@ import java.util.List;
  * @param errorBars the error bars; the one-sided certification bound is kept apart from descriptive two-sided
  *   intervals
  */
-public record CategoryReport(String cell, int passes, int trials, PassRate passRate, Improvement improvement,
+public record CellReport(String cell, int passes, int trials, PassRate passRate, Improvement improvement,
 	Threshold comparison, List<ErrorBar> errorBars)
 {
 	/**
@@ -97,7 +97,7 @@ public record CategoryReport(String cell, int passes, int trials, PassRate passR
 	 * @param difference the interval for the candidate's pass probability minus the incumbent's
 	 * @param differenceMethod how the interval was computed
 	 * @param state {@code proven better}, {@code proven worse} or {@code undecided} at the attempt's
-	 *   per-category improvement level {@code β_i / K}
+	 *   per-cell improvement level {@code β_i / K}
 	 * @param incumbentUpper the incumbent's frozen upper bound {@code UI(k)}
 	 * @param incumbentLower the incumbent's frozen lower bound {@code LI(k)}
 	 */
@@ -153,7 +153,7 @@ public record CategoryReport(String cell, int passes, int trials, PassRate passR
 	 *
 	 * @param state the state of the comparison
 	 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
-	 * @param reasons why a development category is not ready, empty if it is ready or the phase is formal
+	 * @param reasons why a development cell is not ready, empty if it is ready or the phase is formal
 	 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}, or {@code null} in development
 	 * @param upperBound the one-sided upper confidence bound at {@code α_i}, or {@code null} in development
 	 * @param alpha the attempt's certification level {@code α_i}, or {@code null} in development
@@ -166,7 +166,7 @@ public record CategoryReport(String cell, int passes, int trials, PassRate passR
 		 *
 		 * @param state the state of the comparison
 		 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
-		 * @param reasons why a development category is not ready
+		 * @param reasons why a development cell is not ready
 		 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}
 		 * @param upperBound the one-sided upper confidence bound at {@code α_i}
 		 * @param alpha the attempt's certification level {@code α_i}
@@ -231,7 +231,7 @@ public record CategoryReport(String cell, int passes, int trials, PassRate passR
 	 * @throws IllegalArgumentException if {@code trials} is negative or {@code passes} is outside
 	 *   [0, {@code trials}]
 	 */
-	public CategoryReport
+	public CellReport
 	{
 		requireThat(cell, "cell").isNotNull();
 		requireThat(trials, "trials").isNotNegative();

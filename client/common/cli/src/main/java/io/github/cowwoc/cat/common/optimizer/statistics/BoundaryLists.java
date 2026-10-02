@@ -104,7 +104,7 @@ final class BoundaryLists
 	}
 
 	/**
-	 * Validates that a category state lies within the cap.
+	 * Validates that a cell state lies within the cap.
 	 *
 	 * @param passes   the number of passes
 	 * @param failures the number of failures

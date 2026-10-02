@@ -6,6 +6,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.math.BigInteger;
+import java.util.List;
 
 /**
  * Tests {@link CapCalibration}. This is the only test class that runs calibration.
@@ -84,11 +85,11 @@ public final class CapCalibrationTest
 		CapCalibration calibration = CapCalibration.calibrate(level);
 		requireThat(calibration.level(), "level").isEqualTo(level);
 		requireThat(calibration.cap(), "cap").isEqualTo(cap);
-		requireThat(CapCalibration.certificationProbability(level, 0.99, cap), "powerAtCap").
+		requireThat(certificationProbability(level, 0.99, cap), "powerAtCap").
 			isGreaterThanOrEqualTo(CapCalibration.POWER);
-		requireThat(CapCalibration.certificationProbability(level, 0.99, cap - 1), "powerBeforeCap").
+		requireThat(certificationProbability(level, 0.99, cap - 1), "powerBeforeCap").
 			isLessThan(CapCalibration.POWER);
-		requireThat(CapCalibration.certificationProbability(level, 0.98, 600), "probabilityWithin600At98").
+		requireThat(certificationProbability(level, 0.98, 600), "probabilityWithin600At98").
 			isBetween(probabilityWithin600At98 - 1.0e-9, probabilityWithin600At98 + 1.0e-9);
 	}
 
@@ -100,11 +101,11 @@ public final class CapCalibrationTest
 	{
 		// Requirement: R-S6
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
-		requireThat(CapCalibration.certificationProbability(level, 0.99, 262), "at99").
+		requireThat(certificationProbability(level, 0.99, 262), "at99").
 			isBetween(0.903_855_941_637 - 1.0e-9, 0.903_855_941_637 + 1.0e-9);
-		requireThat(CapCalibration.certificationProbability(level, 0.98, 262), "at98").
+		requireThat(certificationProbability(level, 0.98, 262), "at98").
 			isBetween(0.486_035_249_752 - 1.0e-9, 0.486_035_249_752 + 1.0e-9);
-		requireThat(CapCalibration.certificationProbability(level, 0.97, 262), "at97").
+		requireThat(certificationProbability(level, 0.97, 262), "at97").
 			isBetween(0.173_553_940_215 - 1.0e-9, 0.173_553_940_215 + 1.0e-9);
 	}
 
@@ -145,6 +146,24 @@ public final class CapCalibrationTest
 	public void rejectsCapAboveMaximum()
 	{
 		new CapCalibration(ErrorBudget.certificationLevel(1), CapCalibration.MAXIMUM_CAP + 1);
+	}
+
+	/**
+	 * Returns the probability that a cell certifies within a number of adopted outcomes, given both early stops.
+	 *
+	 * @param level    the attempt's certification level {@code alpha_i}
+	 * @param passRate the cell's true pass rate
+	 * @param outcomes the number of adopted outcomes
+	 * @return the probability
+	 */
+	private static double certificationProbability(SignificanceLevel level, double passRate, int outcomes)
+	{
+		CapCalibration.Walk walk = new CapCalibration.Walk(DecisionBoundaries.compute(level, outcomes, List.of()),
+			passRate);
+		double certified = 0;
+		for (int outcome = 1; outcome <= outcomes; ++outcome)
+			certified = walk.advance();
+		return certified;
 	}
 
 	/**

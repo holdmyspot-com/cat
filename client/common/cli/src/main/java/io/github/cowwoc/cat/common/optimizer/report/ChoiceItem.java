@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 
+import java.util.Locale;
+
 /**
  * One answer that the user may give now. The command that passes an answer back accepts only listed choices.
  * <p>
@@ -43,7 +45,7 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	 */
 	public String id()
 	{
-		return choice.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+		return words('-');
 	}
 
 	/**
@@ -53,6 +55,17 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	 */
 	public String label()
 	{
-		return choice.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+		return words(' ');
+	}
+
+	/**
+	 * Returns the choice's name in lower case.
+	 *
+	 * @param separator the character between words
+	 * @return the words of the name, joined by {@code separator}
+	 */
+	private String words(char separator)
+	{
+		return choice.name().toLowerCase(Locale.ROOT).replace('_', separator);
 	}
 }

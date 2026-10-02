@@ -228,7 +228,8 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 	}
 
 	/**
-	 * An overlay stored for a different fork is rejected with an exception that names the file.
+	 * An overlay stored for a different fork is rejected with an exception that names the file and says it does not
+	 * describe an overlay on the campaign's fork.
 	 *
 	 * @throws IOException if the overlays fail
 	 */
@@ -245,8 +246,9 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-fork-"));
 			new FileCandidateOverlays(campaign, fork, JSON).save(overlay);
 
-			requireRejected(new FileCandidateOverlays(campaign, otherFork, JSON), overlay.identity(),
-				overlayFile(campaign, overlay.identity()));
+			String message = requireRejected(new FileCandidateOverlays(campaign, otherFork, JSON),
+				overlay.identity(), overlayFile(campaign, overlay.identity()));
+			requireThat(message, "message").contains("does not describe an overlay on this campaign's fork");
 		}
 	}
 
@@ -287,37 +289,19 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 	 * @param overlays the overlays
 	 * @param snapshot the snapshot
 	 * @param file the file that the exception must name
+	 * @return the exception's message
 	 */
-	private static void requireRejected(CandidateOverlays overlays, Sha256 snapshot, Path file)
+	private static String requireRejected(CandidateOverlays overlays, Sha256 snapshot, Path file)
 	{
-		boolean rejected = false;
 		try
 		{
 			overlays.find(snapshot);
 		}
 		catch (IOException e)
 		{
-			rejected = true;
 			requireThat(e.getMessage(), "message").contains(file.toString());
+			return e.getMessage();
 		}
-		requireThat(rejected, "rejected").isTrue();
-	}
-
-	/**
-	 * Simulates a process that stops after a write step.
-	 */
-	private static final class SimulatedCrash extends RuntimeException
-	{
-		private static final long serialVersionUID = 0L;
-
-		/**
-		 * Creates the exception.
-		 *
-		 * @param step the last step that completed
-		 */
-		SimulatedCrash(WriteStep step)
-		{
-			super("Crashed after " + step);
-		}
+		throw new AssertionError("Looking up " + snapshot.hex() + " was not rejected");
 	}
 }

@@ -1,5 +1,10 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireObject;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireVersion;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -39,8 +44,7 @@ final class OverlayJson
 	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
 	 * when campaign files became keyed by cell.
 	 */
-	static final int FORMAT_VERSION = 1;
-	private static final String VERSION = "format_version";
+	private static final int FORMAT_VERSION = 1;
 	private static final Set<String> ROOT_FIELDS = Set.of(VERSION, "fork", "entries");
 	private static final Set<String> WRITE_FIELDS = Set.of("path", "kind", "permissions", "content");
 	private static final Set<String> DELETE_FIELDS = Set.of("path", "kind");
@@ -101,25 +105,16 @@ final class OverlayJson
 	Overlay read(JsonNode root, FileInventory fork)
 	{
 		requireFields(root, "$", ROOT_FIELDS);
-		JsonNode version = field(root, VERSION);
-		if (!version.isInt() || version.asInt() != FORMAT_VERSION)
-		{
-			throw new IllegalArgumentException(VERSION + " is " + version + ", but this version of CAT reads " +
-				FORMAT_VERSION);
-		}
+		requireVersion(root, FORMAT_VERSION);
 		String forkIdentity = text(root, "fork");
 		if (!forkIdentity.equals(fork.identity().hex()))
 		{
 			throw new IllegalArgumentException("fork: the overlay is on fork " + forkIdentity + ", but the campaign's " +
 				"fork is " + fork.identity().hex());
 		}
-		JsonNode entries = field(root, "entries");
-		if (!entries.isArray())
-			throw new IllegalArgumentException("entries: must be an array");
-
 		Overlay overlay = Overlay.of(fork);
 		int index = 0;
-		for (JsonNode entry : entries)
+		for (JsonNode entry : elements(root, "entries"))
 		{
 			overlay = apply(overlay, entry, "entries[" + index + "]");
 			++index;
@@ -137,8 +132,7 @@ final class OverlayJson
 	 */
 	private static Overlay apply(Overlay overlay, JsonNode node, String name)
 	{
-		if (node == null || !node.isObject())
-			throw new IllegalArgumentException(name + ": must be an object");
+		requireObject(node, name);
 		Path path = Path.of(text(node, "path"));
 		String kind = text(node, "kind");
 		return switch (kind)
@@ -169,45 +163,12 @@ final class OverlayJson
 	 */
 	private static void requireFields(JsonNode node, String name, Set<String> expected)
 	{
-		if (node == null || !node.isObject())
-			throw new IllegalArgumentException(name + ": must be an object");
+		requireObject(node, name);
 		Set<String> actual = Set.copyOf(node.propertyNames());
 		if (!actual.equals(expected))
 		{
 			throw new IllegalArgumentException(name + ": must hold the fields " + expected + ", but holds " +
 				actual);
 		}
-	}
-
-	/**
-	 * Returns a field that may not be missing or null.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the field is missing or null
-	 */
-	private static JsonNode field(JsonNode node, String name)
-	{
-		JsonNode value = node.get(name);
-		if (value == null || value.isNull())
-			throw new IllegalArgumentException(name + ": must have a value");
-		return value;
-	}
-
-	/**
-	 * Returns a string field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the string
-	 * @throws IllegalArgumentException if the field is not a string
-	 */
-	private static String text(JsonNode node, String name)
-	{
-		JsonNode value = field(node, name);
-		if (!value.isString())
-			throw new IllegalArgumentException(name + ": must be a string");
-		return value.asString();
 	}
 }

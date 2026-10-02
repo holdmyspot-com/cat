@@ -46,7 +46,7 @@ public final class ExploratoryBoundsTest
 	}
 
 	/**
-	 * Verifies that an empty category's Wilson interval is {@code [0, 1]}.
+	 * Verifies that the Wilson interval without trials is {@code [0, 1]}.
 	 */
 	@Test
 	public void wilsonWithoutTrialsIsTrivial()

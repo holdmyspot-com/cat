@@ -12,10 +12,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
-import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,19 +41,19 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	public enum Kind
 	{
 		/**
-		 * Development trials that the readiness gate still requires of a category.
+		 * Development trials that the readiness gate still requires of a cell.
 		 */
 		READINESS,
 		/**
-		 * Trials that the incumbent's baseline still requires of a category.
+		 * Trials that the incumbent's baseline still requires of a cell.
 		 */
 		BASELINE,
 		/**
-		 * The all-pass minimum that the next certification attempt requires of a category.
+		 * The all-pass minimum that the next certification attempt requires of a cell.
 		 */
 		NEXT_ATTEMPT,
 		/**
-		 * Formal trials that a running certification attempt still requires of an unresolved category.
+		 * Formal trials that a running certification attempt still requires of an unresolved cell.
 		 */
 		CERTIFICATION
 	}
@@ -117,14 +115,13 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	/**
 	 * Computes the minimum remaining trials of a campaign.
 	 * <p>
-	 * <b>Development:</b> for every category, the fewest further all-pass trials after which the
-	 * readiness gate's count conditions hold (at least {@code max(0, max(100, 100·f) − n)} with {@code f} failures in
-	 * {@code n} outcomes, and more when a recent batch holds 2 or more failures), plus the incumbent baseline's
-	 * remaining trials if every one passes,
-	 * plus the next certification attempt's all-pass minimum.
+	 * <b>Development:</b> for every cell, the fewest further all-pass trials after which the readiness gate's count
+	 * conditions hold (at least {@code max(0, max(100, 100·f) − n)} with {@code f} failures in {@code n} outcomes, and
+	 * more when a recent batch holds 2 or more failures), plus the incumbent baseline's remaining trials if every one
+	 * passes, plus the next certification attempt's all-pass minimum.
 	 * <p>
-	 * <b>Formal:</b> for every unresolved category, the smallest {@code s} such that {@code E↑(S + s, F)} exceeds
-	 * {@code 1/α_i}. A category that cannot certify within its cap has no minimum.
+	 * <b>Formal:</b> for every unresolved cell, the smallest {@code s} such that {@code E↑(S + s, F)} exceeds
+	 * {@code 1/α_i}. A cell that cannot certify within its cap has no minimum.
 	 *
 	 * @param campaign the campaign
 	 * @return the count
@@ -157,15 +154,15 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	{
 		Contract contract = campaign.contract();
 		List<String> cells = contract.cellIds();
-		int categories = cells.size();
-		int nextAttempt = allPassMinimum(ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
+		int nextAttempt = DecisionBoundaries.allPassMinimum(
+			ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		for (String id : cells)
 		{
 			CategoryCounts counts = campaign.development().count(id);
 			int readiness = readinessRemaining(counts);
-			int baseline = baselineRemaining(campaign.baseline(), id, categories);
+			int baseline = baselineRemaining(campaign.baseline(), id, cells.size());
 			entries.add(new Entry(id, Kind.READINESS, readiness, null));
 			entries.add(new Entry(id, Kind.BASELINE, baseline, null));
 			entries.add(new Entry(id, Kind.NEXT_ATTEMPT, nextAttempt, null));
@@ -175,11 +172,10 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * Returns the fewest further all-pass trials after which a category meets the readiness gate's count
-	 * conditions: at least 100 trials, at least 99% passes, and the latest two complete batches within the failure
-	 * limit.
+	 * Returns the fewest further all-pass trials after which a cell meets the readiness gate's count conditions: at
+	 * least 100 trials, at least 99% passes, and the latest two complete batches within the failure limit.
 	 *
-	 * @param counts the category's development counts
+	 * @param counts the cell's development counts
 	 * @return the trials
 	 */
 	private static int readinessRemaining(CategoryCounts counts)
@@ -194,18 +190,18 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * Returns the incumbent baseline trials that a category still requires if every one passes.
+	 * Returns the incumbent baseline trials that a cell still requires if every one passes.
 	 *
 	 * @param baseline the incumbent baseline
-	 * @param category the category
-	 * @param categories the number of categories
+	 * @param cell the cell's identifier
+	 * @param cells the number of cells
 	 * @return the trials
 	 */
-	private static int baselineRemaining(IncumbentBaseline baseline, String category, int categories)
+	private static int baselineRemaining(IncumbentBaseline baseline, String cell, int cells)
 	{
-		CategoryCounts counts = baseline.count(category);
+		CategoryCounts counts = baseline.count(cell);
 		int trials = 0;
-		while (counts.outcomes() < Baseline.target(counts, baseline.index(), categories))
+		while (counts.outcomes() < Baseline.target(counts, baseline.index(), cells))
 		{
 			counts = counts.add(Verdict.PASS);
 			++trials;
@@ -225,51 +221,27 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		boolean available = true;
-		for (String category : attempt.procedure().categories())
+		for (String cell : attempt.procedure().categories())
 		{
-			CategoryCounts counts = attempt.count(category);
+			CategoryCounts counts = attempt.count(cell);
 			if (DecisionTable.categoryDecision(boundaries, counts) != DecisionTable.CategoryDecision.UNDECIDED)
 				continue;
 			int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
 			if (minimum > boundaries.cap() - counts.failures())
 			{
-				entries.add(new Entry(category, Kind.CERTIFICATION, null,
+				entries.add(new Entry(cell, Kind.CERTIFICATION, null,
 					"No state with " + counts.failures() + " failures certifies within the cap of " +
 						boundaries.cap() + " outcomes."));
 				available = false;
 				continue;
 			}
 			int trials = minimum - counts.passes();
-			entries.add(new Entry(category, Kind.CERTIFICATION, trials, null));
+			entries.add(new Entry(cell, Kind.CERTIFICATION, trials, null));
 			total += trials;
 		}
 		if (available)
 			return new RemainingWork(Phase.FORMAL, entries, total, null);
 		return new RemainingWork(Phase.FORMAL, entries, null,
-			"A category cannot certify within its cap, so no minimum exists.");
-	}
-
-	/**
-	 * Returns the fewest passes, with no failures, whose betting process exceeds the threshold of a level.
-	 *
-	 * @param level the certification level
-	 * @return the passes
-	 */
-	private static int allPassMinimum(SignificanceLevel level)
-	{
-		BettingProcess process = new BettingProcess(BettingProcess.Side.ABOVE, BettingProcess.REQUIRED_PASS_RATE);
-		int high = 1;
-		while (!process.exceeds(high, 0, level))
-			high *= 2;
-		int low = high / 2;
-		while (high - low > 1)
-		{
-			int middle = (low + high) >>> 1;
-			if (process.exceeds(middle, 0, level))
-				high = middle;
-			else
-				low = middle;
-		}
-		return high;
+			"A cell cannot certify within its cap, so no minimum exists.");
 	}
 }

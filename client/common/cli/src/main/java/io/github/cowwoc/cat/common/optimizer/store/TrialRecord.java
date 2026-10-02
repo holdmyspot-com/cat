@@ -15,7 +15,7 @@ import java.util.List;
  * The persisted record of one logical trial: its assignment, every infrastructure attempt and, once judged, its
  * outcome.
  *
- * @param key the trial's identity
+ * @param key the trial's key
  * @param instance the assigned instance
  * @param identity the measurement conditions at assignment
  * @param allocation the allocation decision that assigned the trial
@@ -28,7 +28,7 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 	/**
 	 * Creates a record.
 	 *
-	 * @param key the trial's identity
+	 * @param key the trial's key
 	 * @param instance the assigned instance
 	 * @param identity the measurement conditions at assignment
 	 * @param allocation the allocation decision that assigned the trial

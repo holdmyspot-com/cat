@@ -8,12 +8,12 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * One category's precomputed proven-better and proven-worse boundaries in a certification attempt, so that each
- * decision is a lookup.
+ * The precomputed proven-better and proven-worse boundaries of one cell, one category under one trial profile, in a
+ * certification attempt, so that each decision is a lookup.
  * <p>
  * Element {@code F} of each list describes the states with {@code F} failures, up to the attempt's cap {@code n}.
  *
- * @param comparison                the category's frozen comparison
+ * @param comparison                the cell's frozen comparison
  * @param minimumProvenBetterPasses for each {@code F}, the fewest passes that prove the candidate better, or
  *                                  {@code n - F + 1} if no state within the cap does
  * @param maximumProvenWorsePasses  for each {@code F}, the most passes that prove the candidate worse, or -1 if no
@@ -25,7 +25,7 @@ public record ComparisonBoundaries(Comparison comparison, List<Integer> minimumP
 	/**
 	 * Creates the boundaries.
 	 *
-	 * @param comparison                the category's frozen comparison
+	 * @param comparison                the cell's frozen comparison
 	 * @param minimumProvenBetterPasses for each {@code F}, the fewest passes that prove the candidate better, or
 	 *                                  {@code n - F + 1} if no state within the cap does
 	 * @param maximumProvenWorsePasses  for each {@code F}, the most passes that prove the candidate worse, or -1 if
@@ -46,9 +46,9 @@ public record ComparisonBoundaries(Comparison comparison, List<Integer> minimumP
 	}
 
 	/**
-	 * Computes the boundaries of one category.
+	 * Computes the boundaries of one cell.
 	 *
-	 * @param comparison the category's frozen comparison
+	 * @param comparison the cell's frozen comparison
 	 * @param cap        the attempt's cap
 	 * @return the boundaries
 	 */

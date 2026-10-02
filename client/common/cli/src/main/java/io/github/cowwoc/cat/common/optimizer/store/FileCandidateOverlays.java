@@ -13,8 +13,6 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -89,22 +87,8 @@ public final class FileCandidateOverlays implements CandidateOverlays
 		if (Files.notExists(file))
 			return Optional.empty();
 		// An overlay holds only the prompt files a candidate changes, so the whole document fits in memory
-		byte[] content = Files.readAllBytes(file);
-		Overlay overlay;
-		try
-		{
-			JsonNode tree = json.readTree(content);
-			overlay = codec.read(tree, fork);
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("The overlay file " + file + " is not valid JSON: " + e.getOriginalMessage(), e);
-		}
-		catch (IllegalArgumentException | NullPointerException e)
-		{
-			throw new IOException("The overlay file " + file + " does not describe an overlay on this campaign's " +
-				"fork: " + e.getMessage(), e);
-		}
+		Overlay overlay = JsonFiles.read(json, file, tree -> codec.read(tree, fork),
+			"does not describe an overlay on this campaign's fork");
 		Sha256 identity = overlay.identity();
 		if (!identity.equals(snapshot))
 		{
@@ -129,8 +113,7 @@ public final class FileCandidateOverlays implements CandidateOverlays
 		if (Files.exists(file))
 			return;
 		AtomicFiles.createDirectories(directory);
-		AtomicFiles.replace(file, json.writerWithDefaultPrettyPrinter().writeValueAsBytes(codec.write(overlay)),
-			afterStep);
+		JsonFiles.replace(json, file, codec.write(overlay), afterStep);
 	}
 
 	/**

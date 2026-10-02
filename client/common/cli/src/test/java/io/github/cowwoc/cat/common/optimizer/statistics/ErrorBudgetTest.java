@@ -74,10 +74,10 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that each category's improvement decision uses {@code beta_i / K}.
+	 * Verifies that each cell's improvement decision uses {@code beta_i / K}.
 	 */
 	@Test
-	public void improvementLevelDividesByCategories()
+	public void improvementLevelDividesByCells()
 	{
 		// Requirement: R-S1
 		requireThat(ErrorBudget.improvementLevel(1, 1).threshold(), "beta1K1").isEqualTo(BigInteger.valueOf(400));
@@ -86,11 +86,11 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that each category's incumbent bounds use {@code gamma_b / K}, where {@code b} numbers the baseline
+	 * Verifies that each cell's incumbent bounds use {@code gamma_b / K}, where {@code b} numbers the baseline
 	 * independently of the certification index.
 	 */
 	@Test
-	public void incumbentLevelDividesByCategories()
+	public void incumbentLevelDividesByCells()
 	{
 		// Requirement: R-S1
 		requireThat(ErrorBudget.incumbentLevel(1, 1).threshold(), "gamma1K1").isEqualTo(BigInteger.valueOf(400));
@@ -99,7 +99,7 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that the union bound over the first 1000 attempts and baselines, each with 7 categories, stays below
+	 * Verifies that the union bound over the first 1000 attempts and baselines, each with 7 cells, stays below
 	 * 0.05: the exact sum is {@code 0.05 * 1000 / 1001}.
 	 */
 	@Test
@@ -107,14 +107,14 @@ public final class ErrorBudgetTest
 	{
 		// Requirement: R-S1
 		int indexes = 1000;
-		int categories = 7;
+		int cells = 7;
 		Sum sum = new Sum(BigInteger.ZERO, BigInteger.ONE);
 		for (int index = 1; index <= indexes; ++index)
 		{
 			sum = sum.plus(1, ErrorBudget.certificationLevel(index));
-			// The improvement and incumbent levels are spent once per category.
-			sum = sum.plus(categories, ErrorBudget.improvementLevel(index, categories));
-			sum = sum.plus(categories, ErrorBudget.incumbentLevel(index, categories));
+			// The improvement and incumbent levels are spent once per cell.
+			sum = sum.plus(cells, ErrorBudget.improvementLevel(index, cells));
+			sum = sum.plus(cells, ErrorBudget.incumbentLevel(index, cells));
 		}
 		// 0.05 * 1000 / 1001 = 50 / 1001
 		requireThat(sum.numerator(), "numerator").isEqualTo(BigInteger.valueOf(50));
@@ -143,10 +143,10 @@ public final class ErrorBudgetTest
 	}
 
 	/**
-	 * Verifies that a contract has at least one category.
+	 * Verifies that a contract has at least one cell.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void rejectsZeroCategories()
+	public void rejectsZeroCells()
 	{
 		ErrorBudget.improvementLevel(1, 0);
 	}

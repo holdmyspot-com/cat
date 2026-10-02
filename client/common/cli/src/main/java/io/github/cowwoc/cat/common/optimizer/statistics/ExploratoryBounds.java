@@ -16,10 +16,6 @@ public final class ExploratoryBounds
 	 * The error probability of the one-sided Clopper&ndash;Pearson bound.
 	 */
 	private static final double CLOPPER_PEARSON_ERROR = 0.05;
-	/**
-	 * The number of bisection steps, which narrows the bracket to {@code 2^-100}.
-	 */
-	private static final int BISECTION_STEPS = 100;
 
 	/**
 	 * Returns the two-sided 95% Wilson score interval for a pass probability.
@@ -64,17 +60,8 @@ public final class ExploratoryBounds
 		if (events == trials)
 			return 1;
 
-		double low = 0;
-		double high = 1;
-		for (int step = 0; step < BISECTION_STEPS; ++step)
-		{
-			double middle = (low + high) / 2;
-			if (binomialDistribution(events, trials, middle) > CLOPPER_PEARSON_ERROR)
-				low = middle;
-			else
-				high = middle;
-		}
-		return high;
+		return Bisection.bracket(probability ->
+			binomialDistribution(events, trials, probability) > CLOPPER_PEARSON_ERROR).upper();
 	}
 
 	/**

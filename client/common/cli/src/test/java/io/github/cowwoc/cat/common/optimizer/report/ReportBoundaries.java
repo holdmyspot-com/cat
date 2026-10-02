@@ -14,8 +14,8 @@ import java.util.List;
  * Builds small handwritten decision boundaries whose values can be checked by hand, so that report tests need no
  * betting computation.
  * <p>
- * A category certifies at {@code 100 + 50·F} passes and is clearly below once it has 6 failures. A category is proven
- * better than the incumbent at {@code 60 + 40·F} passes and proven worse once it has 8 failures. The cap is
+ * A cell certifies at {@code 100 + 50·F} passes and is clearly below once it has 6 failures. A cell is proven better
+ * than the incumbent at {@code 60 + 40·F} passes and proven worse once it has 8 failures. The cap is
  * {@value #CAP}, and every comparison freezes {@code UI = 0.9000} and {@code LI = 0.8000}.
  */
 final class ReportBoundaries
@@ -33,7 +33,7 @@ final class ReportBoundaries
 	}
 
 	/**
-	 * Returns the boundaries of attempt 1 for the two categories of the fixture contract.
+	 * Returns the boundaries of attempt 1 for the two cells of the fixture contract.
 	 *
 	 * @return the boundaries
 	 */

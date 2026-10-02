@@ -534,7 +534,7 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * A campaign identity that is not a single path segment is rejected.
+	 * A campaign identifier that is not a single path segment is rejected.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -550,7 +550,7 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * Headers are listed for every campaign with a snapshot, ordered by identity; a campaign that has only trial
+	 * Headers are listed for every campaign with a snapshot, ordered by identifier; a campaign that has only trial
 	 * records is not listed.
 	 *
 	 * @throws IOException if the store fails
@@ -688,7 +688,7 @@ public abstract class CampaignStoreContract
 	/**
 	 * Returns a campaign header.
 	 *
-	 * @param id the campaign's identity
+	 * @param id the campaign's identifier
 	 * @return the header
 	 */
 	static CampaignHeader header(String id)
@@ -776,7 +776,7 @@ public abstract class CampaignStoreContract
 	/**
 	 * Returns a campaign that populates every persisted state distinction.
 	 *
-	 * @param id the campaign's identity
+	 * @param id the campaign's identifier
 	 * @return the campaign
 	 */
 	static Campaign populated(String id)

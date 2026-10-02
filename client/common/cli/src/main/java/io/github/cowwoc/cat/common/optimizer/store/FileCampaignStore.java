@@ -17,8 +17,6 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -38,6 +36,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
+	private static final String MALFORMED = "is malformed";
 	private final Path root;
 	private final JsonMapper json;
 	private final CampaignJson codec;
@@ -72,7 +71,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		requireThat(base, "base").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
-		this.root = base.resolve(".cat").resolve("work").resolve("optimizer");
+		this.root = base.resolve(".cat/work/optimizer");
 		this.json = json;
 		this.codec = new CampaignJson(json);
 		this.journalCodec = new DeliveryJournalJson(json);
@@ -85,16 +84,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path file = root.resolve(campaignId).resolve(SNAPSHOT);
 		if (Files.notExists(file))
 			return Optional.empty();
-		JsonNode tree = readTree(file);
-		Campaign campaign;
-		try
-		{
-			campaign = codec.readCampaign(tree);
-		}
-		catch (IllegalArgumentException | NullPointerException e)
-		{
-			throw malformed(file, e);
-		}
+		Campaign campaign = JsonFiles.read(json, file, codec::readCampaign, MALFORMED);
 		requireOwner(file, campaignId, campaign.header());
 		return Optional.of(campaign);
 	}
@@ -104,7 +94,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path directory = root.resolve(campaign.header().id());
 		AtomicFiles.createDirectories(directory);
-		replace(directory.resolve(SNAPSHOT), codec.writeCampaign(campaign));
+		JsonFiles.replace(json, directory.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
 	}
 
 	@Override
@@ -113,16 +103,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path file = recordFile(campaignId, key);
 		if (Files.notExists(file))
 			return Optional.empty();
-		JsonNode tree = readTree(file);
-		TrialRecord record;
-		try
-		{
-			record = codec.readRecord(tree);
-		}
-		catch (IllegalArgumentException | NullPointerException e)
-		{
-			throw malformed(file, e);
-		}
+		TrialRecord record = JsonFiles.read(json, file, codec::readRecord, MALFORMED);
 		if (!record.key().equals(key))
 		{
 			throw new IOException("The trial record " + file + " belongs to a different trial.\n" +
@@ -137,11 +118,11 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path file = recordFile(campaignId, record.key());
 		AtomicFiles.createDirectories(file.getParent());
-		replace(file, codec.writeRecord(record));
+		JsonFiles.replace(json, file, codec.writeRecord(record), afterStep);
 	}
 
 	@Override
-	List<CampaignHeader> readHeaders() throws IOException
+	public List<CampaignHeader> listHeaders() throws IOException
 	{
 		if (Files.notExists(root))
 			return List.of();
@@ -156,16 +137,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 			Path file = directory.resolve(SNAPSHOT);
 			if (Files.notExists(file))
 				continue;
-			JsonNode tree = readTree(file);
-			CampaignHeader header;
-			try
-			{
-				header = codec.readSnapshotHeader(tree);
-			}
-			catch (IllegalArgumentException | NullPointerException e)
-			{
-				throw malformed(file, e);
-			}
+			CampaignHeader header = JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
 			requireOwner(file, directory.getFileName().toString(), header);
 			headers.add(header);
 		}
@@ -178,15 +150,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path file = root.resolve(campaignId).resolve(JOURNAL);
 		if (Files.notExists(file))
 			return Optional.empty();
-		JsonNode tree = readTree(file);
-		try
-		{
-			return Optional.of(journalCodec.read(tree));
-		}
-		catch (IllegalArgumentException | NullPointerException e)
-		{
-			throw malformed(file, e);
-		}
+		return Optional.of(JsonFiles.read(json, file, journalCodec::read, MALFORMED));
 	}
 
 	@Override
@@ -194,61 +158,29 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path directory = root.resolve(campaignId);
 		AtomicFiles.createDirectories(directory);
-		replace(directory.resolve(JOURNAL), journalCodec.write(journal));
+		JsonFiles.replace(json, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
 	}
 
 	/**
 	 * Returns the file that holds a trial's record.
 	 *
-	 * @param campaignId the campaign's identity
-	 * @param key the trial's identity
+	 * @param campaignId the campaign's identifier
+	 * @param key the trial's key
 	 * @return the file
 	 */
 	private Path recordFile(String campaignId, TrialKey key)
 	{
-		String identity = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
+		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
 			key.category() + "\n" + key.sequence();
-		return root.resolve(campaignId).resolve(TRIALS).resolve(Sha256.of(identity.getBytes(UTF_8)).hex() +
+		return root.resolve(campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
 			RECORD_SUFFIX);
-	}
-
-	/**
-	 * Parses a JSON file.
-	 *
-	 * @param file the file
-	 * @return the document
-	 * @throws IOException if the file cannot be read or is not valid JSON
-	 */
-	private JsonNode readTree(Path file) throws IOException
-	{
-		byte[] content = Files.readAllBytes(file);
-		try
-		{
-			return json.readTree(content);
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("The file " + file + " is not valid JSON: " + e.getOriginalMessage(), e);
-		}
-	}
-
-	/**
-	 * Returns the exception for a document that does not describe a valid value.
-	 *
-	 * @param file the document's file
-	 * @param cause the reason
-	 * @return the exception
-	 */
-	private static IOException malformed(Path file, RuntimeException cause)
-	{
-		return new IOException("The file " + file + " is malformed: " + cause.getMessage(), cause);
 	}
 
 	/**
 	 * Checks that a snapshot belongs to the campaign whose directory holds it.
 	 *
 	 * @param file the snapshot
-	 * @param campaignId the identity that the directory names
+	 * @param campaignId the identifier that the directory names
 	 * @param header the snapshot's header
 	 * @throws IOException if the snapshot belongs to a different campaign
 	 */
@@ -259,18 +191,5 @@ public final class FileCampaignStore extends AbstractCampaignStore
 			throw new IOException("The snapshot " + file + " belongs to campaign " + header.id() + ", not " +
 				campaignId);
 		}
-	}
-
-	/**
-	 * Atomically replaces a file with a document.
-	 *
-	 * @param target the file
-	 * @param document the document
-	 * @throws IOException if the file cannot be replaced
-	 */
-	private void replace(Path target, JsonNode document) throws IOException
-	{
-		byte[] content = json.writerWithDefaultPrettyPrinter().writeValueAsBytes(document);
-		AtomicFiles.replace(target, content, afterStep);
 	}
 }

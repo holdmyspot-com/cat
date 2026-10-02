@@ -55,7 +55,7 @@ final class ReportJson
 		choices(root.putArray("choices"), report);
 		authorityWarnings(root.putArray("authorityWarnings"), report);
 		ArrayNode cells = root.putArray("cells");
-		for (CategoryReport cell : report.cells())
+		for (CellReport cell : report.cells())
 			cell(cells.addObject(), cell);
 		ObjectNode allocation = root.putObject("allocation");
 		for (Map.Entry<String, Integer> entry : report.allocation().entrySet())
@@ -157,19 +157,19 @@ final class ReportJson
 	 * Adds a cell's four outputs.
 	 *
 	 * @param node the node
-	 * @param category the cell's report
+	 * @param report the cell's report
 	 */
-	private static void cell(ObjectNode node, CategoryReport category)
+	private static void cell(ObjectNode node, CellReport report)
 	{
-		node.put("cell", category.cell());
-		node.put("passes", category.passes());
-		node.put("trials", category.trials());
+		node.put("cell", report.cell());
+		node.put("passes", report.passes());
+		node.put("trials", report.trials());
 		ObjectNode passRate = node.putObject("passRate");
-		passRate.put("label", category.passRate().label());
-		putNumber(passRate, "rate", category.passRate().rate());
-		putText(passRate, "unavailable", category.passRate().unavailable());
+		passRate.put("label", report.passRate().label());
+		putNumber(passRate, "rate", report.passRate().rate());
+		putText(passRate, "unavailable", report.passRate().unavailable());
 
-		CategoryReport.Improvement improvement = category.improvement();
+		CellReport.Improvement improvement = report.improvement();
 		ObjectNode improvementNode = node.putObject("improvement");
 		putText(improvementNode, "unavailable", improvement.unavailable());
 		putNumber(improvementNode, "points", improvement.points());
@@ -190,7 +190,7 @@ final class ReportJson
 		putNumber(improvementNode, "incumbentUpper", improvement.incumbentUpper());
 		putNumber(improvementNode, "incumbentLower", improvement.incumbentLower());
 
-		CategoryReport.Threshold comparison = category.comparison();
+		CellReport.Threshold comparison = report.comparison();
 		ObjectNode comparisonNode = node.putObject("comparison");
 		comparisonNode.put("state", comparison.state());
 		putText(comparisonNode, "readiness", comparison.readiness());
@@ -200,7 +200,7 @@ final class ReportJson
 		putNumber(comparisonNode, "alpha", comparison.alpha());
 
 		ArrayNode bars = node.putArray("errorBars");
-		for (CategoryReport.ErrorBar bar : category.errorBars())
+		for (CellReport.ErrorBar bar : report.errorBars())
 		{
 			ObjectNode barNode = bars.addObject();
 			barNode.put("method", bar.method());
@@ -226,7 +226,7 @@ final class ReportJson
 			return;
 		}
 		ArrayNode array = root.putObject("benchmark").putArray("cells");
-		for (Benchmark.CategoryWeights weights : report.benchmark().cells())
+		for (Benchmark.CellWeights weights : report.benchmark().cells())
 		{
 			ObjectNode node = array.addObject();
 			node.put("cell", weights.cell());
@@ -417,17 +417,17 @@ final class ReportJson
 			strings(node.putArray("differing"), offer.differing());
 			node.put("weakestLowerBound", offer.weakestLowerBound());
 			ArrayNode cells = node.putArray("cells");
-			for (KeepOffer.Category category : offer.cells())
+			for (KeepOffer.CellEvidence cell : offer.cells())
 			{
-				ObjectNode categoryNode = cells.addObject();
-				categoryNode.put("cell", category.cell());
-				categoryNode.put("passes", category.passes());
-				categoryNode.put("trials", category.trials());
-				categoryNode.put("state", category.state());
-				categoryNode.put("incumbentUpper", category.incumbentUpper());
-				categoryNode.put("incumbentLower", category.incumbentLower());
-				interval(categoryNode.putObject("difference"), category.difference());
-				putText(categoryNode, "note", category.note());
+				ObjectNode cellNode = cells.addObject();
+				cellNode.put("cell", cell.cell());
+				cellNode.put("passes", cell.passes());
+				cellNode.put("trials", cell.trials());
+				cellNode.put("state", cell.state());
+				cellNode.put("incumbentUpper", cell.incumbentUpper());
+				cellNode.put("incumbentLower", cell.incumbentLower());
+				interval(cellNode.putObject("difference"), cell.difference());
+				putText(cellNode, "note", cell.note());
 			}
 		}
 	}

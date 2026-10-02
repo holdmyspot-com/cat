@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
-import io.github.cowwoc.cat.common.optimizer.campaign.CampaignHeader;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
@@ -107,12 +106,6 @@ abstract class AbstractCampaignStore implements CampaignStore
 	}
 
 	@Override
-	public final List<CampaignHeader> listHeaders() throws IOException
-	{
-		return readHeaders();
-	}
-
-	@Override
 	public final Optional<DeliveryJournal> loadJournal(String campaignId) throws IOException
 	{
 		requireCampaignId(campaignId);
@@ -144,9 +137,9 @@ abstract class AbstractCampaignStore implements CampaignStore
 	}
 
 	/**
-	 * Checks that a campaign identity can name a directory.
+	 * Checks that a campaign identifier can name a directory.
 	 *
-	 * @param campaignId the campaign's identity
+	 * @param campaignId the campaign's identifier
 	 * @throws NullPointerException if {@code campaignId} is null
 	 * @throws IllegalArgumentException if {@code campaignId} is blank, {@code .}, {@code ..}, or contains a path
 	 *   separator or a NUL character
@@ -160,7 +153,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	/**
 	 * Reads a campaign's snapshot.
 	 *
-	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @param campaignId the campaign's identifier, which {@link #requireCampaignId(String)} accepts
 	 * @return the campaign, or empty if it has no snapshot
 	 * @throws IOException if the snapshot cannot be read or is malformed
 	 */
@@ -169,7 +162,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	/**
 	 * Atomically replaces a campaign's snapshot.
 	 *
-	 * @param campaign the campaign, whose identity {@link #requireCampaignId(String)} accepts
+	 * @param campaign the campaign, whose identifier {@link #requireCampaignId(String)} accepts
 	 * @throws IOException if the snapshot cannot be written
 	 */
 	abstract void writeSnapshot(Campaign campaign) throws IOException;
@@ -177,8 +170,8 @@ abstract class AbstractCampaignStore implements CampaignStore
 	/**
 	 * Reads a trial's record.
 	 *
-	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
-	 * @param key the trial's identity
+	 * @param campaignId the campaign's identifier, which {@link #requireCampaignId(String)} accepts
+	 * @param key the trial's key
 	 * @return the record, or empty if the trial has none
 	 * @throws IOException if the record cannot be read, is malformed or belongs to a different trial
 	 */
@@ -187,24 +180,16 @@ abstract class AbstractCampaignStore implements CampaignStore
 	/**
 	 * Atomically replaces a trial's record.
 	 *
-	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @param campaignId the campaign's identifier, which {@link #requireCampaignId(String)} accepts
 	 * @param record the record
 	 * @throws IOException if the record cannot be written
 	 */
 	abstract void writeRecord(String campaignId, TrialRecord record) throws IOException;
 
 	/**
-	 * Reads the header of every campaign that has a snapshot.
-	 *
-	 * @return the headers, ordered by campaign identity
-	 * @throws IOException if a snapshot cannot be read or is malformed
-	 */
-	abstract List<CampaignHeader> readHeaders() throws IOException;
-
-	/**
 	 * Reads a campaign's delivery journal.
 	 *
-	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @param campaignId the campaign's identifier, which {@link #requireCampaignId(String)} accepts
 	 * @return the journal, or empty if the campaign has none
 	 * @throws IOException if the journal cannot be read or is malformed
 	 */
@@ -213,7 +198,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	/**
 	 * Atomically replaces a campaign's delivery journal.
 	 *
-	 * @param campaignId the campaign's identity, which {@link #requireCampaignId(String)} accepts
+	 * @param campaignId the campaign's identifier, which {@link #requireCampaignId(String)} accepts
 	 * @param journal the journal
 	 * @throws IOException if the journal cannot be written
 	 */

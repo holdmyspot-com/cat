@@ -53,7 +53,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param status what the host does next, or how the campaign ended
  * @param campaignId the campaign's identifier
  * @param lifecycle the campaign's lifecycle state
- * @param phase the phase that the category reports describe
+ * @param phase the phase that the cell reports describe
  * @param attempt the certification index that the report describes, or 0 if none
  * @param candidate the number of the candidate that the report describes
  * @param snapshot the hexadecimal identity of that candidate's snapshot
@@ -85,7 +85,7 @@ import tools.jackson.databind.node.ObjectNode;
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
 	String delivery, int deliveryAttempt, String pending,
-	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CategoryReport> cells,
+	List<ChoiceItem> choices, List<AuthorityWarning> authorityWarnings, List<CellReport> cells,
 	Map<String, Integer> allocation,
 	Benchmark benchmark, TrialProfiles trialProfiles, CellTierReport cellTier, RemainingWork remaining,
 	TokenStatistics tokens,
@@ -93,6 +93,30 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions)
 {
+	/**
+	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
+	 */
+	static final String INTERRUPTED = "interrupted";
+	/**
+	 * The text of an outcome that is not a compliance outcome: a precise failure stopped work.
+	 */
+	static final String INFRASTRUCTURE_FAILURE = "infrastructure failure";
+	/**
+	 * The limitations that every result carries.
+	 */
+	private static final List<String> FIXED_LIMITATIONS = List.of(
+		"A pass means the frozen judge accepted the response. It is not actual compliance, and the judge is not " +
+			"calibrated against human review.",
+		"The benchmark covers the contract's tests. It does not cover usage frequencies or scenarios that the " +
+			"contract omits.",
+		"Provider prompt caching is assumed to behave as it did during the measurements.",
+		"Conditions that CAT cannot observe may differ, and trials cannot be replayed deterministically.");
+	/**
+	 * The limitation that applies when staging replaced symbolic links.
+	 */
+	private static final String SYMBOLIC_LINK_LIMITATION = "Staging replaced symbolic links with copies of their " +
+		"targets, so trials did not see the links.";
+
 	/**
 	 * The concurrency state that limits how many trials run at once.
 	 * <p>
@@ -136,7 +160,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param status what the host does next, or how the campaign ended
 	 * @param campaignId the campaign's identifier
 	 * @param lifecycle the campaign's lifecycle state
-	 * @param phase the phase that the category reports describe
+	 * @param phase the phase that the cell reports describe
 	 * @param attempt the certification index that the report describes, or 0 if none
 	 * @param candidate the number of the candidate that the report describes
 	 * @param snapshot the hexadecimal identity of that candidate's snapshot
@@ -201,30 +225,6 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
-	 */
-	static final String INTERRUPTED = "interrupted";
-	/**
-	 * The text of an outcome that is not a compliance outcome: a precise failure stopped work.
-	 */
-	static final String INFRASTRUCTURE_FAILURE = "infrastructure failure";
-	/**
-	 * The limitations that every result carries.
-	 */
-	private static final List<String> FIXED_LIMITATIONS = List.of(
-		"A pass means the frozen judge accepted the response. It is not actual compliance, and the judge is not " +
-			"calibrated against human review.",
-		"The benchmark covers the contract's tests. It does not cover usage frequencies or scenarios that the " +
-			"contract omits.",
-		"Provider prompt caching is assumed to behave as it did during the measurements.",
-		"Conditions that CAT cannot observe may differ, and trials cannot be replayed deterministically.");
-	/**
-	 * The limitation that applies when staging replaced symbolic links.
-	 */
-	private static final String SYMBOLIC_LINK_LIMITATION = "Staging replaced symbolic links with copies of their " +
-		"targets, so trials did not see the links.";
-
-	/**
 	 * Returns every outcome label that a campaign can report: the labels of {@code design.md} section 1.
 	 * <p>
 	 * The {@code not certified} label of an uncertified delivery is not an outcome of the table, so it is absent.
@@ -287,7 +287,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			deliveryAttempt = campaign.delivery().attempt();
 		}
 
-		List<CategoryReport> cells = List.of();
+		List<CellReport> cells = List.of();
 		Map<String, Integer> allocation = new LinkedHashMap<>();
 		Benchmark benchmark = null;
 		TrialProfiles trialProfiles = null;
@@ -297,8 +297,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		List<String> limitations = new ArrayList<>(FIXED_LIMITATIONS);
 		if (campaign.isConfirmed())
 		{
-			cells = CategoryReports.of(campaign, attempt);
-			for (CategoryReport cell : cells)
+			cells = CellReports.of(campaign, attempt);
+			for (CellReport cell : cells)
 				allocation.put(cell.cell(), cell.trials());
 			benchmark = benchmark(campaign.contract());
 			trialProfiles = campaign.contract().profiles();
@@ -374,12 +374,12 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.TrialFailures _ -> "a trial ran without an outcome and needs a retry";
 			case PendingDecision.CalibrationFailure failure -> "calibration failed: " + failure.detail();
 			case PendingDecision.CheckpointReached checkpoint ->
-				"review checkpoint reached in category " + checkpoint.category() + " after " + checkpoint.outcomes() +
+				"review checkpoint reached in cell " + checkpoint.category() + " after " + checkpoint.outcomes() +
 					" outcomes";
 			case PendingDecision.ImprovementProven proven ->
 				"attempt " + proven.attempt() + " proved an improvement without certifying";
 			case PendingDecision.RegressionTradeOff tradeOff ->
-				"attempt " + tradeOff.attempt() + " certified but is proven worse in a category";
+				"attempt " + tradeOff.attempt() + " certified but is proven worse in a cell";
 			case PendingDecision.PlateauReached _ -> "a full development round produced no stronger candidate";
 			case PendingDecision.CertificationUnavailable unavailable -> unavailable.outcome().label();
 			case PendingDecision.AuthorityWarnings warnings ->
@@ -447,11 +447,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 */
 	private static Benchmark benchmark(Contract contract)
 	{
-		List<Benchmark.CategoryWeights> weights = new ArrayList<>();
+		List<Benchmark.CellWeights> weights = new ArrayList<>();
 		for (Cell cell : contract.cells())
 		{
 			Category category = contract.categoryOf(cell);
-			weights.add(new Benchmark.CategoryWeights(cell.id(), category.tests().size(),
+			weights.add(new Benchmark.CellWeights(cell.id(), category.tests().size(),
 				category.testProbability()));
 		}
 		return new Benchmark(weights);
@@ -553,28 +553,24 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			CertificationAttempt attempt = campaign.attempt(offer.attempt());
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
 			double weakest = 1.0;
-			List<KeepOffer.Category> cells = new ArrayList<>();
-			for (String category : attempt.procedure().categories())
+			List<KeepOffer.CellEvidence> cells = new ArrayList<>();
+			for (String cell : attempt.procedure().categories())
 			{
-				CategoryCounts counts = attempt.count(category);
+				CategoryCounts counts = attempt.count(cell);
 				weakest = Math.min(weakest, ExploratoryBounds.wilson(counts.passes(), counts.outcomes()).lower());
-				ComparisonBoundaries comparison = CategoryReports.comparison(attempt, category);
+				ComparisonBoundaries comparison = CellReports.comparison(attempt, cell);
 				Comparison frozen = comparison.comparison();
 				Interval difference = frozen.difference(
 					ConfidenceBounds.lower(counts.passes(), counts.failures(), boundaries.level()),
 					ConfidenceBounds.upper(counts.passes(), counts.failures(), boundaries.level()));
-				String state = CategoryReports.UNDECIDED;
-				if (comparison.isProvenBetter(counts.passes(), counts.failures()))
-					state = CategoryReports.PROVEN_BETTER;
-				else if (comparison.isProvenWorse(counts.passes(), counts.failures()))
-					state = CategoryReports.PROVEN_WORSE;
+				String state = CellReports.improvementState(comparison, counts);
 				String note = null;
-				if (!state.equals(CategoryReports.PROVEN_BETTER) && difference.lower() < 0)
+				if (!state.equals(CellReports.PROVEN_BETTER) && difference.lower() < 0)
 				{
 					note = "Not proven better: the candidate might be slightly worse, because the lower end of the " +
 						"difference interval is below 0.";
 				}
-				cells.add(new KeepOffer.Category(category, counts.passes(), counts.outcomes(), state,
+				cells.add(new KeepOffer.CellEvidence(cell, counts.passes(), counts.outcomes(), state,
 					frozen.incumbentUpper().doubleValue(), frozen.incumbentLower().doubleValue(), difference, note));
 			}
 			List<String> differing = new ArrayList<>();

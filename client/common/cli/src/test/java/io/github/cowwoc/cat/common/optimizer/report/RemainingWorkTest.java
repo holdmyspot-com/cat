@@ -14,9 +14,9 @@ import org.testng.annotations.Test;
 /**
  * Tests {@link RemainingWork} with hand-computed values for both phases.
  * <p>
- * The fixture contract has the categories {@code formatting} and {@code safety}, so {@code K = 2}. The all-pass
- * minimum of the next attempt comes from {@code design.md} section 2.4: 93 trials per category for attempt 1, 117 for
- * attempt 2 and 132 for attempt 3.
+ * The fixture contract has the categories {@code formatting} and {@code safety}, each with one cell of the same
+ * identifier, so {@code K = 2}. The all-pass minimum of the next attempt comes from {@code design.md} section 2.4: 93
+ * trials per cell for attempt 1, 117 for attempt 2 and 132 for attempt 3.
  */
 public final class RemainingWorkTest
 {
@@ -31,22 +31,22 @@ public final class RemainingWorkTest
 	 * Returns the trials of one entry.
 	 *
 	 * @param work the count
-	 * @param category the category
+	 * @param cell the cell's identifier
 	 * @param kind what the trials are required for
 	 * @return the trials
 	 * @throws AssertionError if there is no such entry or its count is unavailable
 	 */
-	private static int trials(RemainingWork work, String category, Kind kind)
+	private static int trials(RemainingWork work, String cell, Kind kind)
 	{
 		for (Entry entry : work.entries())
 		{
-			if (entry.cell().equals(category) && entry.kind() == kind)
+			if (entry.cell().equals(cell) && entry.kind() == kind)
 			{
 				requireThat(entry.trials(), "entry.trials()").withContext(entry, "entry").isNotNull();
 				return entry.trials();
 			}
 		}
-		throw new AssertionError("No " + kind + " entry for " + category + " in " + work);
+		throw new AssertionError("No " + kind + " entry for " + cell + " in " + work);
 	}
 
 	/**
@@ -56,7 +56,7 @@ public final class RemainingWorkTest
 	public void allPassMinimumOfAttemptOne()
 	{
 		// Requirement: R-E12
-		// design.md section 2.4: attempt 1 needs 93 all-pass trials per category.
+		// design.md section 2.4: attempt 1 needs 93 all-pass trials per cell.
 		requireThat(FirstAttemptBoundaries.get().minimumCertifyingPasses().get(0), "minimum").isEqualTo(93);
 	}
 
@@ -70,7 +70,7 @@ public final class RemainingWorkTest
 		// formatting: n = 60, f = 0         -> max(0, max(100, 100*0) - 60)  =  40
 		// safety:     n = 100, f = 0        -> max(0, max(100, 0) - 100)     =   0
 		// baseline met (50 and 50)          ->                                  0 + 0
-		// next attempt (i = 1): 93 per category                              -> 93 + 93 = 186
+		// next attempt (i = 1): 93 per cell                                  -> 93 + 93 = 186
 		// total = 40 + 0 + 0 + 0 + 186 = 226
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).development("formatting", 60, 0).
 			development("safety", 100, 0).readyBaseline().build();
@@ -104,7 +104,7 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies failures, an incomplete incumbent baseline and a category with no development outcomes.
+	 * Verifies failures, an incomplete incumbent baseline and a cell with no development outcomes.
 	 */
 	@Test
 	public void developmentFailuresAndBaseline()
@@ -134,7 +134,7 @@ public final class RemainingWorkTest
 	public void developmentNextAttemptUsesNextIndex()
 	{
 		// Requirement: R-E12
-		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per category (design.md 2.4).
+		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per cell (design.md 2.4).
 		// readiness and baseline are met, so total = 117 + 117 = 234
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build();
@@ -146,13 +146,13 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies that only unresolved categories of a running attempt need trials, each to its frozen boundary.
+	 * Verifies that only unresolved cells of a running attempt need trials, each to its frozen boundary.
 	 */
 	@Test
-	public void formalUnresolvedCategories()
+	public void formalUnresolvedCells()
 	{
 		// Requirement: R-E12
-		// Boundaries: a category certifies at 100 + 50*F passes.
+		// Boundaries: a cell certifies at 100 + 50*F passes.
 		// formatting: S = 60,  F = 0 -> undecided; certifies at S = 100 -> 100 - 60 = 40
 		// safety:     S = 140, F = 1 -> undecided; certifies at S = 150 -> 150 - 140 = 10
 		// total = 50
@@ -168,15 +168,15 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies that a certified category and a clearly-below category need no further trials.
+	 * Verifies that a certified cell and a clearly-below cell need no further trials.
 	 */
 	@Test
-	public void formalResolvedCategoriesNeedNothing()
+	public void formalResolvedCellsNeedNothing()
 	{
 		// Requirement: R-E12
 		// formatting: S = 100, F = 0 certifies (100 >= 100 + 50*0)
 		// safety:     S = 0,   F = 6 is clearly below (any S <= 294 at F = 6)
-		// no category is unresolved, so the minimum is 0
+		// no cell is unresolved, so the minimum is 0
 		Campaign campaign = new CampaignBuilder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).category("formatting", 100, 0).
 			category("safety", 0, 6).build();
@@ -186,10 +186,10 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies that a category that cannot certify within its cap has no minimum, with the reason.
+	 * Verifies that a cell that cannot certify within its cap has no minimum, with the reason.
 	 */
 	@Test
-	public void formalUnreachableCategoryHasNoMinimum()
+	public void formalUnreachableCellHasNoMinimum()
 	{
 		// Requirement: R-E12
 		// safety: S = 200, F = 5 (n = 205 < cap 300). Certifying needs 100 + 50*5 = 350 passes, which no state with

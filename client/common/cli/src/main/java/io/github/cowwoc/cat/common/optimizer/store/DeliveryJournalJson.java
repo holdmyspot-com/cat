@@ -1,5 +1,12 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.integer;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireObject;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireVersion;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
@@ -40,8 +47,7 @@ final class DeliveryJournalJson
 	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
 	 * when campaign files became keyed by cell.
 	 */
-	static final int FORMAT_VERSION = 1;
-	private static final String VERSION = "format_version";
+	private static final int FORMAT_VERSION = 1;
 	private final JsonMapper json;
 
 	/**
@@ -144,18 +150,9 @@ final class DeliveryJournalJson
 	 */
 	DeliveryJournal read(JsonNode root)
 	{
-		requireObject(root, "$");
-		int version = integer(root, VERSION);
-		if (version != FORMAT_VERSION)
-		{
-			throw new IllegalArgumentException(VERSION + " is " + version + ", but this version of CAT reads " +
-				FORMAT_VERSION);
-		}
-		JsonNode changesNode = field(root, "changes");
-		if (!changesNode.isArray())
-			throw new IllegalArgumentException("changes: must be an array");
+		requireVersion(root, FORMAT_VERSION);
 		List<DeliveryChange> changes = new ArrayList<>();
-		for (JsonNode change : changesNode)
+		for (JsonNode change : elements(root, "changes"))
 			changes.add(readChange(change, changes.size()));
 		return new DeliveryJournal(new Sha256(text(root, "candidate")), changes, integer(root, "applied"));
 	}
@@ -217,66 +214,5 @@ final class DeliveryJournalJson
 	private static Set<PosixFilePermission> permissions(JsonNode node, String name)
 	{
 		return PosixFilePermissions.fromString(text(node, name));
-	}
-
-	/**
-	 * Checks that a value is an object.
-	 *
-	 * @param node the value
-	 * @param name the value's name
-	 * @throws IllegalArgumentException if the value is not an object
-	 */
-	private static void requireObject(JsonNode node, String name)
-	{
-		if (node == null || !node.isObject())
-			throw new IllegalArgumentException(name + ": must be an object");
-	}
-
-	/**
-	 * Returns a field that may not be missing or null.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the field is missing or null
-	 */
-	private static JsonNode field(JsonNode node, String name)
-	{
-		JsonNode value = node.get(name);
-		if (value == null || value.isNull())
-			throw new IllegalArgumentException(name + ": must have a value");
-		return value;
-	}
-
-	/**
-	 * Returns a string field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the string
-	 * @throws IllegalArgumentException if the field is not a string
-	 */
-	private static String text(JsonNode node, String name)
-	{
-		JsonNode value = field(node, name);
-		if (!value.isString())
-			throw new IllegalArgumentException(name + ": must be a string");
-		return value.asString();
-	}
-
-	/**
-	 * Returns an {@code int} field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the field is not an integer in the range of {@code int}
-	 */
-	private static int integer(JsonNode node, String name)
-	{
-		JsonNode value = field(node, name);
-		if (!value.isIntegralNumber() || !value.canConvertToInt())
-			throw new IllegalArgumentException(name + ": must be an integer in the range of int");
-		return value.asInt();
 	}
 }
