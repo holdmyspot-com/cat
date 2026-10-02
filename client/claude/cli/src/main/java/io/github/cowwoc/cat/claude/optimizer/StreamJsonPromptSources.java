@@ -11,8 +11,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Observes the prompt sources that a Claude session's {@code stream-json} records report.
  * <p>
- * The value lists the skills, agents and plugins that the {@code init} record names and the hooks that ran. Claude
- * does not report the instruction files ({@code CLAUDE.md}) that it loaded, so they are not part of the value.
+ * The value lists the skills, agents and plugins that the {@code init} record names and the hooks that ran on
+ * {@code SessionStart}. Hooks triggered by other events contribute no entries. Claude does not report the instruction
+ * files ({@code CLAUDE.md}) that it loaded, so they are not part of the value.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -38,7 +39,8 @@ final class StreamJsonPromptSources extends PromptSources
 		String subtype = event.path("subtype").asString("");
 		if (subtype.equals("init"))
 			readInit(event);
-		else if (subtype.equals("hook_started") || subtype.equals("hook_response"))
+		else if ((subtype.equals("hook_started") || subtype.equals("hook_response")) &&
+			event.path("hook_event").asString("").equals("SessionStart"))
 		{
 			add("hook:" + event.path("hook_event").asString("none") + " " +
 				event.path("hook_name").asString("none"));

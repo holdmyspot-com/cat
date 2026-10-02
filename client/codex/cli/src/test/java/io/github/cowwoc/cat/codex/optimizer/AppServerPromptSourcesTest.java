@@ -59,8 +59,48 @@ public final class AppServerPromptSourcesTest
 	}
 
 	/**
-	 * Verifies that the value lists the hook that ran, once although Codex reports it as started and as completed, and
-	 * that its source path appears relative to a placeholder.
+	 * Verifies that later-event hooks do not change the sources loaded at session start.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	// Requirement: R-M1
+	@Test
+	public void ignoresLaterEventHooks() throws IOException
+	{
+		List<String> lines = recorded();
+		String sessionStart = observe(lines, RUN);
+		for (String line : lines)
+		{
+			// The subagentStart shape follows the sessionStart notifications in codex-hooks.jsonl.
+			String later = line.replace("sessionStart", "subagentStart").replace("session-start:", "subagent-start:");
+			List<String> withLater = new ArrayList<>(lines);
+			withLater.add(later);
+			requireThat(observe(withLater, RUN), "withLater").isEqualTo(sessionStart);
+		}
+	}
+
+	/**
+	 * Verifies that either session-start notification records its hook and that changing the hook changes the value.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	// Requirement: R-M1
+	@Test
+	public void recordsSessionStartHooks() throws IOException
+	{
+		for (String line : recorded())
+		{
+			String value = observe(List.of(line), RUN);
+			requireThat(value, "value").
+				isEqualTo("hook:sessionStart plugin <run>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
+			String other = line.replace("hooks/hooks.json", "hooks/other.json");
+			requireThat(observe(List.of(other), RUN), "other").isNotEqualTo(value);
+		}
+	}
+
+	/**
+	 * Verifies that the value lists the session-start hook once although Codex reports it as started and as completed,
+	 * and that its source path appears relative to a placeholder.
 	 *
 	 * @throws IOException if the recorded lines cannot be read
 	 */

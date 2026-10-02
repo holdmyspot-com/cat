@@ -60,8 +60,54 @@ public final class StreamJsonPromptSourcesTest
 	}
 
 	/**
-	 * Verifies that the value lists the skills, agents, plugins and hooks that loaded, and that a path inside the
-	 * run directory appears relative to a placeholder.
+	 * Verifies that later-event hooks do not change the sources loaded at session start.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	// Requirement: R-M1
+	@Test
+	public void ignoresLaterEventHooks() throws IOException
+	{
+		List<String> lines = recorded();
+		String sessionStart = observe(lines, RUN);
+		for (String event : List.of("PreToolUse", "SubagentStart"))
+		{
+			for (String line : lines)
+			{
+				if (!JSON.readTree(line).path("hook_event").asString("").equals("SessionStart"))
+					continue;
+				// Later-event shapes follow the SessionStart records in claude-single-turn.jsonl.
+				String later = line.replace("SessionStart", event);
+				List<String> withLater = new ArrayList<>(lines);
+				withLater.add(later);
+				requireThat(observe(withLater, RUN), "withLater").isEqualTo(sessionStart);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that either session-start record names its hook and that changing the hook changes the value.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	// Requirement: R-M1
+	@Test
+	public void recordsSessionStartHooks() throws IOException
+	{
+		for (String line : recorded())
+		{
+			if (!JSON.readTree(line).path("hook_event").asString("").equals("SessionStart"))
+				continue;
+			String value = observe(List.of(line), RUN);
+			requireThat(value, "value").isEqualTo("hook:SessionStart SessionStart:startup");
+			String other = line.replace("SessionStart:startup", "SessionStart:other");
+			requireThat(observe(List.of(other), RUN), "other").isNotEqualTo(value);
+		}
+	}
+
+	/**
+	 * Verifies that the value lists the skills, agents, plugins and session-start hooks that loaded, and that a path
+	 * inside the run directory appears relative to a placeholder.
 	 *
 	 * @throws IOException if the recorded lines cannot be read
 	 */

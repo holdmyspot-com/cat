@@ -11,8 +11,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Observes the prompt sources that a Codex session's app-server notifications report.
  * <p>
- * The value lists the hooks that ran, with their source and source path. Codex does not report the instruction files
- * ({@code AGENTS.md}) that it loaded, so they are not part of the value.
+ * The value lists the hooks that ran on {@code sessionStart}, with their source and source path. Hooks triggered by
+ * other events contribute no entries. Codex does not report the instruction files ({@code AGENTS.md}) that it loaded,
+ * so they are not part of the value.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -37,6 +38,8 @@ final class AppServerPromptSources extends PromptSources
 		if (!method.equals("hook/started") && !method.equals("hook/completed"))
 			return;
 		JsonNode run = event.path("params").path("run");
+		if (!run.path("eventName").asString("").equals("sessionStart"))
+			return;
 		add("hook:" + run.path("eventName").asString("none") + " " + run.path("source").asString("none") + " " +
 			relativize(run.path("sourcePath").asString("none")));
 	}
