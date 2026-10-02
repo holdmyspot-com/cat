@@ -3,6 +3,8 @@ package io.github.cowwoc.cat.codex.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
+import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -15,7 +17,6 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production scope of one {@code prompt-optimizer} command in Codex. This class alone reads the process
@@ -24,7 +25,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 {
-	private static final String HARNESS = "codex";
 	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".codex/config.toml"));
@@ -55,7 +55,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
 	{
-		super(HARNESS, directory, LOADER_CONFIGURATION);
+		super(CodexSessions.HARNESS, directory, LOADER_CONFIGURATION);
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
@@ -117,9 +117,9 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
-		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS);
-		CodexSessions.Settings settings = new CodexSessions.Settings(artifact, runRoot, "", true,
-			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS,
+		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(CodexSessions.HARNESS);
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, "", true,
+			environment, configurationDirectory, HarnessCapacity.forHome(home, CodexSessions.HARNESS,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new CodexSessions(settings);
 	}
@@ -140,22 +140,15 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		String sessionId = environment.get(SESSION_ID);
 		if (sessionId == null || sessionId.isBlank())
 			return _ -> false;
-		AtomicReference<HostInterruptSignal> located = new AtomicReference<>();
-		return start ->
+		return new DeferredInterruptSignal(() ->
 		{
-			HostInterruptSignal signal = located.get();
-			if (signal == null)
+			Optional<Path> rollout = RolloutInterruptSignal.locate(configurationDirectory, sessionId);
+			if (rollout.isEmpty())
 			{
-				Optional<Path> rollout = RolloutInterruptSignal.locate(configurationDirectory, sessionId);
-				if (rollout.isEmpty())
-				{
-					throw new IOException("The rollout of host session " + sessionId + " is not below " +
-						configurationDirectory + ", so a host interrupt cannot be detected.");
-				}
-				signal = new RolloutInterruptSignal(rollout.get(), clock);
-				located.set(signal);
+				throw new IOException("The rollout of host session " + sessionId + " is not below " +
+					configurationDirectory + ", so a host interrupt cannot be detected.");
 			}
-			return signal.isInterruptedAfter(start);
-		};
+			return new RolloutInterruptSignal(rollout.get(), clock);
+		});
 	}
 }

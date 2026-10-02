@@ -14,9 +14,9 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link PromptSources} against harness lines that the Claude runner recorded.
+ * Tests {@link StreamJsonPromptSources} against harness lines that the Claude runner recorded.
  */
-public final class PromptSourcesTest
+public final class StreamJsonPromptSourcesTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String RUN = "/runs/claude/mup8an8w-14snlqq4k6";
@@ -24,7 +24,7 @@ public final class PromptSourcesTest
 	/**
 	 * Creates the test.
 	 */
-	public PromptSourcesTest()
+	public StreamJsonPromptSourcesTest()
 	{
 	}
 
@@ -36,7 +36,8 @@ public final class PromptSourcesTest
 	 */
 	private static List<String> recorded() throws IOException
 	{
-		try (InputStream stream = PromptSourcesTest.class.getResourceAsStream("/optimizer/claude-single-turn.jsonl"))
+		try (InputStream stream = StreamJsonPromptSourcesTest.class.getResourceAsStream(
+			"/optimizer/claude-single-turn.jsonl"))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -52,7 +53,7 @@ public final class PromptSourcesTest
 	 */
 	private static String observe(List<String> lines, String run)
 	{
-		PromptSources sources = new PromptSources(JSON, Map.of("<run>", Path.of(run)));
+		StreamJsonPromptSources sources = new StreamJsonPromptSources(JSON, Map.of("<run>", Path.of(run)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -133,7 +134,7 @@ public final class PromptSourcesTest
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		PromptSources sources = new PromptSources(JSON, Map.of());
+		StreamJsonPromptSources sources = new StreamJsonPromptSources(JSON, Map.of());
 		sources.accept("{\"type\":\"assistant\"}");
 		requireThat(sources.value(), "value").isEqualTo("none");
 	}

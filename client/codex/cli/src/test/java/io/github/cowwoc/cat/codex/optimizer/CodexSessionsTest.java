@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -13,13 +14,9 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
-import io.github.cowwoc.cat.common.runner.HarnessRun;
-import io.github.cowwoc.cat.common.runner.HarnessRunManager;
-import io.github.cowwoc.cat.common.runner.fakes.ManualClock;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness.Turn;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -30,7 +27,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -45,7 +41,6 @@ import org.testng.annotations.Test;
 public final class CodexSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 
 	/**
 	 * Creates the test.
@@ -83,7 +78,7 @@ public final class CodexSessionsTest
 	private static CodexSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		CodexSessions.Settings settings = new CodexSessions.Settings(runRoot, runRoot, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, "", false, Map.of(),
 			runRoot, capacity, clock);
 		return new CodexSessions(settings, (options, input, output) ->
 		{
@@ -184,7 +179,7 @@ public final class CodexSessionsTest
 	 */
 	private static CodexSessions loginPort(Path root, Map<String, String> environment)
 	{
-		CodexSessions.Settings settings = new CodexSessions.Settings(root, root.resolve("runs"), "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC());
 		return new CodexSessions(settings, (options, input, output) ->
 		{
@@ -282,42 +277,6 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that the runner's bridge receives the request's model and reasoning effort, which it sends to the
-	 * app-server as {@code thread/start}'s {@code model} and {@code turn/start}'s {@code effort}, and that an unbound
-	 * dimension is not selected, so Codex applies its default.
-	 *
-	 * @throws Exception if a session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void passesTheRequestedProfile() throws Exception
-	{
-		// Requirement: R-E17
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
-
-			await(sessions.start(request(new TrialProfile("gpt-6.1-sol", "high"), source, List.of(), "complete")));
-			await(sessions.start(request(new TrialProfile("", "low"), source, List.of(), "partial")));
-			await(sessions.start(request(new TrialProfile("gpt-5.5", ""), source, List.of(), "modelOnly")));
-
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(3);
-			List<String> complete = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(complete, "--model"), "completeModel").isEqualTo("gpt-6.1-sol");
-			requireThat(ScriptedHarness.optionValue(complete, "--effort"), "completeEffort").isEqualTo("high");
-			List<String> partial = arguments.get(1);
-			requireThat(partial.contains("--model"), "partialModel").isFalse();
-			requireThat(ScriptedHarness.optionValue(partial, "--effort"), "partialEffort").isEqualTo("low");
-			List<String> modelOnly = arguments.get(2);
-			requireThat(ScriptedHarness.optionValue(modelOnly, "--model"), "modelOnlyModel").isEqualTo("gpt-5.5");
-			requireThat(modelOnly.contains("--effort"), "modelOnlyEffort").isFalse();
-		}
-	}
-
-	/**
 	 * Verifies that an interrupt that CAT requests while a turn runs ends the session as an interruption, and that the
 	 * runner is asked to stop the turn.
 	 *
@@ -345,224 +304,6 @@ public final class CodexSessionsTest
 			SessionResult result = await(handle);
 			requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
 			requireThat(result.windows().size(), "windows.size()").isEqualTo(1);
-		}
-	}
-
-	/**
-	 * Verifies that the interrupt request that the port sends the runner waits for the turn to start, so that an
-	 * interrupt that reaches the runner before its turn is running is not lost.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void interruptWaitsForTheTurnStart() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path runs = root.resolve("runs");
-			List<String> requests = new CopyOnWriteArrayList<>();
-			CountDownLatch turnReceived = new CountDownLatch(1);
-			CodexSessions.Settings settings = new CodexSessions.Settings(root, runs, "", false, Map.of(), root,
-				HarnessCapacity.unlimited(), Clock.systemUTC());
-			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
-			{
-				HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC());
-				HarnessRun run = manager.create("codex");
-				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"runId\":\"" + run.id() + "\"}\n");
-				output.flush();
-				BufferedReader lines = new BufferedReader(input);
-				String line = lines.readLine();
-				while (line != null)
-				{
-					requests.add(line);
-					if (line.contains("\"type\":\"turn\""))
-						turnReceived.countDown();
-					if (line.contains("\"type\":\"interrupt\""))
-					{
-						output.write("{\"type\":\"turn-completed\",\"assistant_response\":\"stopped\"}\n");
-						output.flush();
-					}
-					line = lines.readLine();
-				}
-			});
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(turnReceived.await(60, TimeUnit.SECONDS), "turnReceived").isTrue();
-
-			handle.interrupt();
-
-			requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-			requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn-started\"}");
-		}
-	}
-
-	/**
-	 * Verifies that a harness that fails after CAT asked it to stop still yields an interruption, because the failure
-	 * is a consequence of the interrupt (design &sect;11, H10).
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void reportsInterruptDespiteFailure() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CountDownLatch entered = new CountDownLatch(1);
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.failsWhenInterrupted().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
-
-			handle.interrupt();
-
-			requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-		}
-	}
-
-	/**
-	 * Verifies that interrupting a session that already ended does nothing.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void ignoresInterruptAfterTheSessionEnded() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("done")));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			SessionResult result = await(handle);
-
-			handle.interrupt();
-
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(await(handle), "second").isEqualTo(result);
-		}
-	}
-
-	/**
-	 * Verifies that an interrupt that arrives while the session waits for capacity ends it without starting a
-	 * runner.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void interruptsWhileWaitingForCapacity() throws Exception
-	{
-		// Requirement: R-E8
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
-			{
-			});
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), arguments,
-				List.of(Turn.replies("never")));
-			try (HarnessCapacity.Permit _ = capacity.acquire())
-			{
-				SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-
-				handle.interrupt();
-
-				requireThat(await(handle), "result").isEqualTo(new SessionResult.Interrupted(List.of()));
-				requireThat(arguments, "arguments").isEmpty();
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a session holds one capacity permit from the moment its runner starts until it ends.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void holdsOnePermitForTheSessionsLifetime() throws Exception
-	{
-		// Requirement: R-E8
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
-			{
-			});
-			CountDownLatch entered = new CountDownLatch(1);
-			CodexSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.blocksUntilInterrupted().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
-
-			Optional<HarnessCapacity.Permit> duringSession = capacity.tryAcquire();
-			handle.interrupt();
-			await(handle);
-			Optional<HarnessCapacity.Permit> afterSession = capacity.tryAcquire();
-
-			requireThat(duringSession.isPresent(), "duringSession").isFalse();
-			requireThat(afterSession.isPresent(), "afterSession").isTrue();
-			afterSession.get().close();
-		}
-	}
-
-	/**
-	 * Verifies that a turn that ends without a result is an infrastructure failure, even though the bridge reports
-	 * the failure only when it receives its next request.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void classifiesTurnWithoutResultAsFailure() throws Exception
-	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.fails(), Turn.replies("third")));
-
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two", "three")));
-
-			requireThat(result, "result").isInstanceOf(SessionResult.Failed.class);
-			requireThat(((SessionResult.Failed) result).reason(), "reason").contains("Turn 2");
-		}
-	}
-
-	/**
-	 * Verifies that a runner that fails before the session starts is an infrastructure failure that carries the
-	 * runner's message.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void classifiesRunnerStartupFailureAsFailure() throws Exception
-	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CodexSessions.Settings settings = new CodexSessions.Settings(root, root.resolve("runs"), "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
-			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
-			{
-				throw new IOException("artifact is invalid");
-			});
-
-			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
-
-			requireThat(result, "result").isEqualTo(new SessionResult.Failed("artifact is invalid", List.of()));
 		}
 	}
 
@@ -617,71 +358,6 @@ public final class CodexSessionsTest
 
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 				"Codex turn finished with status failed", List.of()));
-		}
-	}
-
-	/**
-	 * Verifies that a session that exceeds its time limit is completed with the replies that it had, because CAT
-	 * judges such a trial on its behavior instead of retrying it (design &sect;3.2).
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void completesWithRepliesSoFarAtTheTimeLimit() throws Exception
-	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			CountDownLatch entered = new CountDownLatch(1);
-			List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
-				new CopyOnWriteArrayList<>(), script);
-			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two", "three"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
-
-			clock.advance(LIMIT.plusSeconds(1));
-
-			SessionResult result = await(handle);
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of("first"));
-		}
-	}
-
-	/**
-	 * Verifies that a runner that ignores an interrupt does not hold the session forever, and that the session still
-	 * reports the interruption.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(timeOut = 120_000)
-	public void givesUpOnARunnerThatIgnoresAnInterrupt() throws Exception
-	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			CountDownLatch entered = new CountDownLatch(1);
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
-				new CopyOnWriteArrayList<>(), List.of(Turn.blocksForever().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
-
-			handle.interrupt();
-			// The driver sends the interrupt on its next poll and then starts the grace period on the clock.
-			List<SessionResult> results = new ArrayList<>();
-			handle.completion().thenAccept(results::add);
-			while (results.isEmpty())
-			{
-				clock.advance(Duration.ofSeconds(31));
-				handle.completion().toCompletableFuture().completeOnTimeout(null, 1, TimeUnit.SECONDS).get();
-			}
-
-			requireThat(results.get(0), "result").isInstanceOf(SessionResult.Interrupted.class);
 		}
 	}
 }

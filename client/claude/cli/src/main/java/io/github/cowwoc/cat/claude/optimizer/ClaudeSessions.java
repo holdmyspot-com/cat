@@ -3,15 +3,18 @@ package io.github.cowwoc.cat.claude.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli;
+import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
+import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
-import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
-import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -19,25 +22,17 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Runs nested sessions through the Claude runner.
  * <p>
- * Each session runs in a fresh, isolated run directory of the runner and holds one {@link HarnessCapacity} permit
- * for its lifetime. A session sends the request's turns one at a time through the runner's JSONL bridge. It parses
- * the harness's events for the observed model, the token usage and the rate-limit windows, and keeps the
- * events as the transcript. The runner selects the request's profile: {@code --model} and {@code --effort} for each
- * bound dimension, and nothing for an unbound one, so the harness applies its default. Evidence in
- * {@link SessionRequest#readOnly()} is passed to the runner as read-only evidence. The runner exposes it as an added
- * directory, which Claude treats as advisory (design &sect;11, H23).
- * <p>
- * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
- * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
- * loading (design &sect;5, H21). When a session ends, the run's isolated home, which holds a copy of the login, is
- * deleted.
+ * Evidence in {@link SessionRequest#readOnly()} is passed to the runner as read-only evidence. The runner exposes it
+ * as an added directory, which Claude treats as advisory (design &sect;11, H23).
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class ClaudeSessions implements SessionPort
+public final class ClaudeSessions extends RunnerSessions
 {
-	private final Settings settings;
-	private final Bridge bridge;
+	/**
+	 * The harness's identifier.
+	 */
+	static final String HARNESS = "claude";
 
 	/**
 	 * Creates a port that runs sessions through the real Claude runner.
@@ -59,26 +54,35 @@ public final class ClaudeSessions implements SessionPort
 	 */
 	ClaudeSessions(Settings settings, Bridge bridge)
 	{
-		requireThat(settings, "settings").isNotNull();
-		requireThat(bridge, "bridge").isNotNull();
-		this.settings = settings;
-		this.bridge = bridge;
-	}
-
-	@Override
-	public SessionHandle start(SessionRequest request)
-	{
-		requireThat(request, "request").isNotNull();
-		Session session = new Session(settings, request, bridge);
-		session.begin();
-		return session;
+		super(HARNESS, settings, bridge);
 	}
 
 	@Override
 	public HostLogin hostLogin() throws IOException
 	{
-		return Credentials.classify(settings.configurationDirectory(), settings.environment(),
+		return Credentials.classify(settings().configurationDirectory(), settings().environment(),
 			JsonMapper.builder().build());
+	}
+
+	@Override
+	protected HarnessEvents newEvents(JsonMapper json)
+	{
+		return new StreamJsonEvents(json);
+	}
+
+	@Override
+	protected PromptSources newPromptSources(JsonMapper json, Map<String, Path> directories)
+	{
+		return new StreamJsonPromptSources(json, directories);
+	}
+
+	@Override
+	protected List<String> readOnlyArguments(List<Path> evidence)
+	{
+		List<String> arguments = new ArrayList<>();
+		for (Path path : evidence)
+			arguments.addAll(List.of("--read-only-evidence", path.toString()));
+		return arguments;
 	}
 
 	/**
@@ -92,50 +96,5 @@ public final class ClaudeSessions implements SessionPort
 		requireThat(settings, "settings").isNotNull();
 		return (arguments, input, output) -> ClaudeRunnerCli.serve(arguments.toArray(String[]::new), input, output,
 			settings.environment(), _ -> HarnessCapacity.unlimited());
-	}
-
-	/**
-	 * How the Claude runner is configured. Every session of a port shares these settings; the model and reasoning
-	 * effort come from each request's profile.
-	 *
-	 * @param artifact the complete Claude artifact that the runner validates and installs
-	 * @param runRoot the absolute directory that holds the runner's run directories
-	 * @param executable the Claude executable, or blank for {@code claude}
-	 * @param installCat whether the runner installs CAT into the session's isolated home
-	 * @param environment the host environment that the runner scrubs for the session
-	 * @param configurationDirectory the host's Claude configuration directory, which holds the login
-	 * @param capacity the shared capacity from which every session takes one permit
-	 * @param clock the clock for time limits
-	 */
-	public record Settings(Path artifact, Path runRoot, String executable, boolean installCat,
-		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
-	{
-		/**
-		 * Creates settings.
-		 *
-		 * @param artifact the complete Claude artifact that the runner validates and installs
-		 * @param runRoot the absolute directory that holds the runner's run directories
-		 * @param executable the Claude executable, or blank for {@code claude}
-		 * @param installCat whether the runner installs CAT into the session's isolated home
-		 * @param environment the host environment that the runner scrubs for the session
-		 * @param configurationDirectory the host's Claude configuration directory, which holds the login
-		 * @param capacity the shared capacity from which every session takes one permit
-		 * @param clock the clock for time limits
-		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if {@code runRoot} is not absolute
-		 */
-		public Settings
-		{
-			requireThat(artifact, "artifact").isNotNull();
-			requireThat(runRoot, "runRoot").isNotNull();
-			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
-			requireThat(executable, "executable").isNotNull();
-			requireThat(environment, "environment").isNotNull();
-			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
-			requireThat(capacity, "capacity").isNotNull();
-			requireThat(clock, "clock").isNotNull();
-			runRoot = runRoot.normalize();
-			environment = Map.copyOf(environment);
-		}
 	}
 }

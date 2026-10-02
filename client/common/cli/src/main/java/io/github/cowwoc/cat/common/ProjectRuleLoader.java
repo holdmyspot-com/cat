@@ -39,6 +39,7 @@ public final class ProjectRuleLoader
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
+	private static final String RULES_DIRECTORY = ".cat/rules";
 
 	private final YAMLMapper yamlMapper;
 
@@ -52,6 +53,19 @@ public final class ProjectRuleLoader
 	{
 		requireThat(yamlMapper, "yamlMapper").isNotNull();
 		this.yamlMapper = yamlMapper;
+	}
+
+	/**
+	 * Returns the directory beneath a project or home directory that holds its CAT rules.
+	 *
+	 * @param root a non-null project or home directory
+	 * @return the rule directory
+	 * @throws NullPointerException if {@code root} is null
+	 */
+	public static Path rulesDirectory(Path root)
+	{
+		requireThat(root, "root").isNotNull();
+		return root.resolve(RULES_DIRECTORY);
 	}
 
 	/**
@@ -154,7 +168,7 @@ public final class ProjectRuleLoader
 			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER, audience, rules);
 			loadDirectory(userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER, audience, rules);
 		}
-		Path projectRules = projectRoot.resolve(".cat/rules");
+		Path projectRules = rulesDirectory(projectRoot);
 		loadDirectory(projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT, audience, rules);
 		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT, audience, rules);
 		List<String> context = new ArrayList<>(ordered(rules).stream().map(Rule::context).toList());
@@ -707,7 +721,7 @@ public final class ProjectRuleLoader
 	{
 		PLUGIN("rules"),
 		USER("user-rules"),
-		PROJECT(".cat/rules");
+		PROJECT(RULES_DIRECTORY);
 
 		private final String path;
 

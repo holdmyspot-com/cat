@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.codex;
 
+import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,8 +18,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class CodexRuleInjectionHook
 {
-	private static final int MAXIMUM_INPUT_BYTES = 1_048_576;
-
 	/**
 	 * Prevents instantiation.
 	 */
@@ -41,28 +40,21 @@ final class CodexRuleInjectionHook
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
 	Map<String, String> environment, Path workingDirectory)
 {
-	try (CodexHookScope scope = new CodexHookScope(environment))
+	try (HookScope scope = CodexHookScope.open(environment))
 	{
 		try
 		{
 			JsonMapper json = scope.json();
 			if (args.length != 0)
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
-			byte[] bytes = input.readNBytes(MAXIMUM_INPUT_BYTES + 1);
-			if (bytes.length > MAXIMUM_INPUT_BYTES)
-				throw new IOException(eventName + " input is too large");
-			JsonNode event = json.createObjectNode();
-			if (bytes.length != 0)
-				event = json.readTree(bytes);
-			if (event == null || !event.isObject())
-				throw new IOException(eventName + " input must be a JSON object");
+			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = scope.projectDir(event, workingDirectory);
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String context;
 			if (eventName.equals("SubagentStart"))
-				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "codex", subagentType(event));
+				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "codex", scope.subagentType(event));
 			else
 				context = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "codex");
 			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
@@ -129,20 +121,5 @@ final class CodexRuleInjectionHook
 			error.println("CAT " + eventName + ": Unable to return the failure response: " +
 				responseFailure.getMessage());
 		}
-	}
-
-	/**
-	 * Returns the host-provided subagent type without making malformed optional metadata a hook crash.
-	 *
-	 * @param event the harness hook event
-	 * @return the subagent type, or blank when it is absent or not textual
-	 */
-	private static String subagentType(JsonNode event)
-	{
-		assert event != null;
-		JsonNode agentType = event.path("agent_type");
-		if (!agentType.isString())
-			return "";
-		return agentType.stringValue();
 	}
 }

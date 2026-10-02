@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.claude.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 

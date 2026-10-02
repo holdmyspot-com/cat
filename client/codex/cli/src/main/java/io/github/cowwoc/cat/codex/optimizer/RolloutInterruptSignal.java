@@ -2,21 +2,17 @@ package io.github.cowwoc.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.adapter.LogInterruptSignal;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reports a user interrupt that Codex recorded in the host thread's rollout (design &sect;3.8, H11).
@@ -27,14 +23,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class RolloutInterruptSignal implements HostInterruptSignal
+public final class RolloutInterruptSignal extends LogInterruptSignal
 {
 	private static final String EVENT = "turn_aborted";
-	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private final LineTail tail;
-	private final Clock clock;
-	private Instant latest;
-	private final Object lock = new Object();
 
 	/**
 	 * Creates a signal that reads a rollout.
@@ -45,10 +36,7 @@ public final class RolloutInterruptSignal implements HostInterruptSignal
 	 */
 	public RolloutInterruptSignal(Path rollout, Clock clock)
 	{
-		requireThat(rollout, "rollout").isNotNull();
-		requireThat(clock, "clock").isNotNull();
-		this.tail = new LineTail(rollout);
-		this.clock = clock;
+		super(rollout, clock, EVENT);
 	}
 
 	/**
@@ -100,58 +88,15 @@ public final class RolloutInterruptSignal implements HostInterruptSignal
 		}
 	}
 
-	@Override
-	public boolean isInterruptedAfter(Instant start) throws IOException
-	{
-		synchronized (lock)
-		{
-			requireThat(start, "start").isNotNull();
-			for (String line : tail.readNewLines())
-			{
-				if (!line.contains(EVENT))
-					continue;
-				JsonNode record;
-				try
-				{
-					record = JSON.readTree(line);
-				}
-				catch (JacksonException _)
-				{
-					continue;
-				}
-				if (!"event_msg".equals(record.path("type").asString("")) ||
-					!EVENT.equals(record.path("payload").path("type").asString("")))
-				{
-					continue;
-				}
-				Instant recorded = timestamp(record);
-				if (latest == null || recorded.isAfter(latest))
-					latest = recorded;
-			}
-			return latest != null && latest.isAfter(start);
-		}
-	}
-
 	/**
-	 * Returns when a record was written.
+	 * {@inheritDoc}
 	 *
-	 * @param record the record
-	 * @return the record's timestamp, or the current time if the record has none
+	 * @return {@code true} if the record is an {@code event_msg} record whose payload type is {@value #EVENT}
 	 */
-	private Instant timestamp(JsonNode record)
+	@Override
+	protected boolean isInterrupt(JsonNode record)
 	{
-		JsonNode stamp = record.path("timestamp");
-		if (stamp.isString())
-		{
-			try
-			{
-				return Instant.parse(stamp.stringValue());
-			}
-			catch (DateTimeParseException _)
-			{
-				return clock.instant();
-			}
-		}
-		return clock.instant();
+		return "event_msg".equals(record.path("type").asString("")) &&
+			EVENT.equals(record.path("payload").path("type").asString(""));
 	}
 }

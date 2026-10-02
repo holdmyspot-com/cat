@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.claude.runner.ClaudeAgentDefinition;
+import io.github.cowwoc.cat.common.optimizer.adapter.BindingFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -40,7 +41,6 @@ public final class ClaudeProfileInventory implements ProfileInventory
 {
 	private static final String RESOURCE = "claude-profiles.json";
 	private static final int FORMAT_VERSION = 1;
-	private static final String ROLE_AGENT = "optimize-xhigh";
 	private static final String INHERIT = "inherit";
 	private static final Pattern FRONTMATTER = Pattern.compile("(?s)\\A---\\R(.*?)\\R---");
 	private static final Pattern MODEL = field("model");
@@ -176,27 +176,8 @@ public final class ClaudeProfileInventory implements ProfileInventory
 		if (name == null)
 			return false;
 		if (name.toString().equals("SKILL.md"))
-			return hasAncestor(path.getParent(), "skills");
-		return name.toString().endsWith(".md") && hasAncestor(path.getParent(), "agents");
-	}
-
-	/**
-	 * Indicates whether a directory or one of its ancestors has a name.
-	 *
-	 * @param directory a directory, or null
-	 * @param name the name
-	 * @return {@code true} if a path element of {@code directory} is {@code name}
-	 */
-	private static boolean hasAncestor(Path directory, String name)
-	{
-		if (directory == null)
-			return false;
-		for (Path element : directory)
-		{
-			if (element.toString().equals(name))
-				return true;
-		}
-		return false;
+			return BindingFiles.hasAncestor(path.getParent(), "skills");
+		return name.toString().endsWith(".md") && BindingFiles.hasAncestor(path.getParent(), "agents");
 	}
 
 	@Override
@@ -228,7 +209,7 @@ public final class ClaudeProfileInventory implements ProfileInventory
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
-		ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, ROLE_AGENT);
+		ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, BindingFiles.ROLE_AGENT);
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 }

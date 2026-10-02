@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.codex.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import java.io.IOException;
 

@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.claude.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -14,7 +16,6 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production scope of one {@code prompt-optimizer} command in Claude Code. This class alone reads the process
@@ -23,7 +24,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 {
-	private static final String HARNESS = "claude";
 	private static final String SESSION_ID = "CLAUDE_CODE_SESSION_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".claude/settings.json"),
 		Path.of(".claude/settings.local.json"), Path.of(".mcp.json"));
@@ -54,7 +54,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	ClaudeOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
 	{
-		super(HARNESS, directory, LOADER_CONFIGURATION);
+		super(ClaudeSessions.HARNESS, directory, LOADER_CONFIGURATION);
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
@@ -116,9 +116,9 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
-		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS);
-		ClaudeSessions.Settings settings = new ClaudeSessions.Settings(artifact, runRoot, "", true,
-			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS,
+		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(ClaudeSessions.HARNESS);
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, "", true,
+			environment, configurationDirectory, HarnessCapacity.forHome(home, ClaudeSessions.HARNESS,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new ClaudeSessions(settings);
 	}
@@ -139,22 +139,15 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		String sessionId = environment.get(SESSION_ID);
 		if (sessionId == null || sessionId.isBlank())
 			return _ -> false;
-		AtomicReference<HostInterruptSignal> located = new AtomicReference<>();
-		return start ->
+		return new DeferredInterruptSignal(() ->
 		{
-			HostInterruptSignal signal = located.get();
-			if (signal == null)
+			Optional<Path> transcript = TranscriptInterruptSignal.locate(configurationDirectory, sessionId);
+			if (transcript.isEmpty())
 			{
-				Optional<Path> transcript = TranscriptInterruptSignal.locate(configurationDirectory, sessionId);
-				if (transcript.isEmpty())
-				{
-					throw new IOException("The transcript of host session " + sessionId + " is not below " +
-						configurationDirectory + ", so a host interrupt cannot be detected.");
-				}
-				signal = new TranscriptInterruptSignal(transcript.get(), clock);
-				located.set(signal);
+				throw new IOException("The transcript of host session " + sessionId + " is not below " +
+					configurationDirectory + ", so a host interrupt cannot be detected.");
 			}
-			return signal.isInterruptedAfter(start);
-		};
+			return new TranscriptInterruptSignal(transcript.get(), clock);
+		});
 	}
 }

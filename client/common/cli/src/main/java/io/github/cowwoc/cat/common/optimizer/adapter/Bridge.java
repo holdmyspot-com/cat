@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.codex.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -6,12 +6,13 @@ import java.io.Writer;
 import java.util.List;
 
 /**
- * Runs the runner's JSONL bridge once.
+ * Runs a harness runner's JSONL bridge once.
  * <p>
- * The production bridge is {@code CodexRunnerCli.serve}. A test substitutes a bridge that plays a harness.
+ * The production bridge is the harness runner's {@code serve} operation. A test substitutes a bridge that plays a
+ * harness.
  */
 @FunctionalInterface
-interface Bridge
+public interface Bridge
 {
 	/**
 	 * Serves one session until the input ends or the session completes.

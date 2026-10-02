@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
@@ -16,17 +17,17 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link HarnessEvents} against harness lines that the Codex runner recorded, and against synthetic lines for
+ * Tests {@link AppServerEvents} against harness lines that the Codex runner recorded, and against synthetic lines for
  * the shapes that no probe observed.
  */
-public final class HarnessEventsTest
+public final class AppServerEventsTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Creates the test.
 	 */
-	public HarnessEventsTest()
+	public AppServerEventsTest()
 	{
 	}
 
@@ -39,7 +40,7 @@ public final class HarnessEventsTest
 	 */
 	private static List<String> recorded(String name) throws IOException
 	{
-		try (InputStream stream = HarnessEventsTest.class.getResourceAsStream("/optimizer/" + name))
+		try (InputStream stream = AppServerEventsTest.class.getResourceAsStream("/optimizer/" + name))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -54,7 +55,7 @@ public final class HarnessEventsTest
 	 */
 	private static HarnessEvents parse(List<String> lines)
 	{
-		HarnessEvents events = new HarnessEvents(JSON);
+		HarnessEvents events = new AppServerEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events;

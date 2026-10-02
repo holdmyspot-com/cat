@@ -32,7 +32,7 @@ public final class CodexAppServerProtocolTest
 	{
 		String expected = "{\"id\":2,\"method\":\"turn/start\",\"params\":{\"threadId\":\"thread-1\",\"input\":[" +
 			"{\"type\":\"text\",\"text\":\"hello\"}]}}\n";
-		requireThat(CodexAppServerProtocol.turnStart(2, "thread-1", "hello"), "request").isEqualTo(
+		requireThat(CodexAppServerProtocol.turnStart(2, "thread-1", "hello", ""), "request").isEqualTo(
 			expected);
 	}
 
@@ -42,7 +42,7 @@ public final class CodexAppServerProtocolTest
 	@Test
 	public void framesHeadlessThread()
 	{
-		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath(), "");
+		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath(), "", "", "");
 		requireThat(request, "request").contains("\"sandbox\":\"workspace-write\"").
 			contains("\"approvalPolicy\":\"never\"").contains("\"sessionStartSource\":\"startup\"").
 			contains("\"id\":2");

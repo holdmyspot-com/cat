@@ -14,9 +14,9 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link PromptSources} against harness lines that the Codex runner recorded.
+ * Tests {@link AppServerPromptSources} against harness lines that the Codex runner recorded.
  */
-public final class PromptSourcesTest
+public final class AppServerPromptSourcesTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String RUN = "/runs/codex/mup8h3ri-14who5rhrw";
@@ -24,7 +24,7 @@ public final class PromptSourcesTest
 	/**
 	 * Creates the test.
 	 */
-	public PromptSourcesTest()
+	public AppServerPromptSourcesTest()
 	{
 	}
 
@@ -36,7 +36,7 @@ public final class PromptSourcesTest
 	 */
 	private static List<String> recorded() throws IOException
 	{
-		try (InputStream stream = PromptSourcesTest.class.getResourceAsStream("/optimizer/codex-hooks.jsonl"))
+		try (InputStream stream = AppServerPromptSourcesTest.class.getResourceAsStream("/optimizer/codex-hooks.jsonl"))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -52,7 +52,7 @@ public final class PromptSourcesTest
 	 */
 	private static String observe(List<String> lines, String run)
 	{
-		PromptSources sources = new PromptSources(JSON, Map.of("<run>", Path.of(run)));
+		AppServerPromptSources sources = new AppServerPromptSources(JSON, Map.of("<run>", Path.of(run)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -123,7 +123,7 @@ public final class PromptSourcesTest
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		PromptSources sources = new PromptSources(JSON, Map.of());
+		AppServerPromptSources sources = new AppServerPromptSources(JSON, Map.of());
 		sources.accept("{\"method\":\"item/started\"}");
 		requireThat(sources.value(), "value").isEqualTo("none");
 	}

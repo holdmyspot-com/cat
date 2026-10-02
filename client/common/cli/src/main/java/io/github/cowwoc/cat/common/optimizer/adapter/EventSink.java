@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.codex.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Function;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -33,6 +34,7 @@ final class EventSink extends Writer
 	static final String TRANSCRIPT = "transcript.jsonl";
 	private final JsonMapper json;
 	private final HarnessEvents events;
+	private final Function<Map<String, Path>, PromptSources> newPromptSources;
 	private final Path harnessDirectory;
 	private final Map<String, Path> placeholders;
 	private final BlockingQueue<Message> messages;
@@ -45,22 +47,26 @@ final class EventSink extends Writer
 	 *
 	 * @param json the JSON mapper
 	 * @param events the parser that absorbs every harness event
+	 * @param newPromptSources creates the prompt-source observation of a run from the directories whose staged
+	 *   locations must not appear in its value
 	 * @param harnessDirectory the directory that holds the runner's run directories for this harness
 	 * @param placeholders maps each placeholder to a directory whose staged location must not appear in the prompt
 	 *   sources. The sink adds the run directory.
 	 * @param messages where the sink reports the runner's progress
 	 * @throws NullPointerException if any argument is null
 	 */
-	EventSink(JsonMapper json, HarnessEvents events, Path harnessDirectory, Map<String, Path> placeholders,
-		BlockingQueue<Message> messages)
+	EventSink(JsonMapper json, HarnessEvents events, Function<Map<String, Path>, PromptSources> newPromptSources,
+		Path harnessDirectory, Map<String, Path> placeholders, BlockingQueue<Message> messages)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(events, "events").isNotNull();
+		requireThat(newPromptSources, "newPromptSources").isNotNull();
 		requireThat(harnessDirectory, "harnessDirectory").isNotNull();
 		requireThat(placeholders, "placeholders").isNotNull();
 		requireThat(messages, "messages").isNotNull();
 		this.json = json;
 		this.events = events;
+		this.newPromptSources = newPromptSources;
 		this.harnessDirectory = harnessDirectory;
 		this.placeholders = Map.copyOf(placeholders);
 		this.messages = messages;
@@ -156,7 +162,7 @@ final class EventSink extends Writer
 		Path runDirectory = harnessDirectory.resolve(runId);
 		Map<String, Path> directories = new HashMap<>(placeholders);
 		directories.put("run", runDirectory);
-		promptSources = new PromptSources(json, directories);
+		promptSources = newPromptSources.apply(directories);
 		transcript = runDirectory.resolve("artifacts").resolve(TRANSCRIPT);
 		Files.writeString(transcript, "", UTF_8, CREATE, APPEND);
 		messages.add(new Message.Started(runId));

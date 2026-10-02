@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.optimizer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.codex.runner.CodexAgentDefinition;
+import io.github.cowwoc.cat.common.optimizer.adapter.BindingFiles;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -34,7 +35,6 @@ public final class CodexProfileInventory implements ProfileInventory
 {
 	private static final String COMMAND = "`codex debug models`";
 	private static final String LISTED = "list";
-	private static final String ROLE_AGENT = "optimize-xhigh";
 	private static final Pattern TOP_LEVEL_FIELD = Pattern.compile(
 		"^(model|model_reasoning_effort)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')\\s*(?:#.*)?$");
 	private final Path artifact;
@@ -121,15 +121,7 @@ public final class CodexProfileInventory implements ProfileInventory
 	{
 		requireThat(path, "path").isNotNull();
 		Path name = path.getFileName();
-		Path parent = path.getParent();
-		if (name == null || parent == null || !name.toString().endsWith(".toml"))
-			return false;
-		for (Path element : parent)
-		{
-			if (element.toString().equals("agents"))
-				return true;
-		}
-		return false;
+		return name != null && name.toString().endsWith(".toml") && BindingFiles.hasAncestor(path.getParent(), "agents");
 	}
 
 	/**
@@ -192,7 +184,7 @@ public final class CodexProfileInventory implements ProfileInventory
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
-		CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, ROLE_AGENT);
+		CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, BindingFiles.ROLE_AGENT);
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 }

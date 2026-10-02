@@ -115,9 +115,7 @@ final class History
 	 */
 	List<String> range(String base, String tip) throws IOException
 	{
-		if (base.equals(ROOT_BASE))
-			return git.lines("rev-list", "--reverse", tip);
-		return git.lines("rev-list", "--reverse", base + ".." + tip);
+		return git.lines("rev-list", "--reverse", revisionRange(base, tip));
 	}
 
 	/**
@@ -130,11 +128,7 @@ final class History
 	 */
 	List<RangeCommit> rangeWithParents(String base, String tip) throws IOException
 	{
-		List<String> lines;
-		if (base.equals(ROOT_BASE))
-			lines = git.lines("rev-list", "--reverse", "--parents", tip);
-		else
-			lines = git.lines("rev-list", "--reverse", "--parents", base + ".." + tip);
+		List<String> lines = git.lines("rev-list", "--reverse", "--parents", revisionRange(base, tip));
 		List<RangeCommit> result = new ArrayList<>(lines.size());
 		for (String line : lines)
 		{
@@ -145,6 +139,20 @@ final class History
 				result.add(new RangeCommit(line.substring(0, separator), line.substring(separator + 1)));
 		}
 		return result;
+	}
+
+	/**
+	 * Returns the {@code git rev-list} revision argument that selects one replay range.
+	 *
+	 * @param base the resolved commit hash or {@value #ROOT_BASE}
+	 * @param tip the range's final commit
+	 * @return {@code tip} alone when the range starts at the root, otherwise {@code base..tip}
+	 */
+	private static String revisionRange(String base, String tip)
+	{
+		if (base.equals(ROOT_BASE))
+			return tip;
+		return base + ".." + tip;
 	}
 
 	/**

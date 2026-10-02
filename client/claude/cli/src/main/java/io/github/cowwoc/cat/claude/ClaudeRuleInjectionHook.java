@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.claude;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
@@ -19,7 +20,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class ClaudeRuleInjectionHook
 {
-	private static final int MAXIMUM_INPUT_BYTES = 1_048_576;
 	private static final String CONTEXT_FILE_INSTRUCTION = """
 		# CAT %s Context
 
@@ -48,26 +48,19 @@ final class ClaudeRuleInjectionHook
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
 		Map<String, String> environment, Path workingDirectory)
 	{
-		try (ClaudeHookScope scope = new ClaudeHookScope(environment))
+		try (HookScope scope = ClaudeHookScope.open(environment))
 		{
 			JsonMapper json = scope.json();
 			if (args.length != 0)
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
-			byte[] bytes = input.readNBytes(MAXIMUM_INPUT_BYTES + 1);
-			if (bytes.length > MAXIMUM_INPUT_BYTES)
-				throw new IOException(eventName + " input is too large");
-			JsonNode event = json.createObjectNode();
-			if (bytes.length != 0)
-				event = json.readTree(bytes);
-			if (event == null || !event.isObject())
-				throw new IOException(eventName + " input must be a JSON object");
+			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = scope.projectDir(event, workingDirectory);
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String rules = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "claude");
 			if (eventName.equals("SubagentStart"))
-				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "claude", subagentType(event));
+				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "claude", scope.subagentType(event));
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
 				Path contextFile = ClaudeSessionContext.write(toolScope.catTemp(), event, eventName, rules);
@@ -89,20 +82,5 @@ final class ClaudeRuleInjectionHook
 				// The host owns the output stream and no recovery is possible.
 			}
 		}
-	}
-
-	/**
-	 * Returns the host-provided subagent type without making malformed optional metadata a hook crash.
-	 *
-	 * @param event the harness hook event
-	 * @return the subagent type, or blank when it is absent or not textual
-	 */
-	private static String subagentType(JsonNode event)
-	{
-		assert event != null;
-		JsonNode agentType = event.path("agent_type");
-		if (!agentType.isString())
-			return "";
-		return agentType.stringValue();
 	}
 }

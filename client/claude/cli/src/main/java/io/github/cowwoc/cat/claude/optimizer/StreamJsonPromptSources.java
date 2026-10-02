@@ -1,0 +1,71 @@
+package io.github.cowwoc.cat.claude.optimizer;
+
+import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
+
+import java.nio.file.Path;
+import java.util.Map;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Observes the prompt sources that a Claude session's {@code stream-json} records report (design &sect;5, H21).
+ * <p>
+ * The value lists the skills, agents and plugins that the {@code init} record names and the hooks that ran. Claude
+ * does not report the instruction files ({@code CLAUDE.md}) that it loaded (H21), so they are not part of the value.
+ * <p>
+ * <b>Thread Safety:</b> This class is thread-safe.
+ */
+final class StreamJsonPromptSources extends PromptSources
+{
+	/**
+	 * Creates an observation that has seen no events.
+	 *
+	 * @param json the JSON mapper
+	 * @param directories maps each placeholder to a directory whose staged location must not appear in the value
+	 * @throws NullPointerException if any argument is null
+	 */
+	StreamJsonPromptSources(JsonMapper json, Map<String, Path> directories)
+	{
+		super(json, directories);
+	}
+
+	@Override
+	protected void read(JsonNode event)
+	{
+		if (!event.path("type").asString("").equals("system"))
+			return;
+		String subtype = event.path("subtype").asString("");
+		if (subtype.equals("init"))
+			readInit(event);
+		else if (subtype.equals("hook_started") || subtype.equals("hook_response"))
+		{
+			add("hook:" + event.path("hook_event").asString("none") + " " +
+				event.path("hook_name").asString("none"));
+		}
+	}
+
+	/**
+	 * Reads the sources that an {@code init} record lists.
+	 *
+	 * @param init the record
+	 */
+	private void readInit(JsonNode init)
+	{
+		for (JsonNode skill : init.path("skills"))
+		{
+			if (skill.isString())
+				add("skill:" + skill.stringValue());
+		}
+		for (JsonNode agent : init.path("agents"))
+		{
+			if (agent.isString())
+				add("agent:" + agent.stringValue());
+		}
+		for (JsonNode plugin : init.path("plugins"))
+		{
+			add("plugin:" + plugin.path("name").asString("none") + " " + plugin.path("source").asString("none") +
+				" " + relativize(plugin.path("path").asString("none")));
+		}
+	}
+}

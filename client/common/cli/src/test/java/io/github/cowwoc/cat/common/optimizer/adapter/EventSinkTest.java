@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.codex.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -46,7 +46,8 @@ public final class EventSinkTest
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = new EventSink(JSON, new HarnessEvents(JSON), harnessDirectory, Map.of(), messages))
+			try (EventSink sink = new EventSink(JSON, new TestSessions.Events(JSON),
+				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
 					{"type":"started","runId":"r"}
@@ -78,7 +79,8 @@ public final class EventSinkTest
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = new EventSink(JSON, new HarnessEvents(JSON), harnessDirectory, Map.of(), messages))
+			try (EventSink sink = new EventSink(JSON, new TestSessions.Events(JSON),
+				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
 					{"type":"started","runId":"r"}

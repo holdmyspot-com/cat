@@ -57,16 +57,6 @@ public abstract class HarnessRunnerScope implements AutoCloseable
 	protected abstract HeartbeatTicker heartbeatTicker();
 
 	/**
-	 * Returns whether this scope is closed.
-	 *
-	 * @return true if this scope is closed
-	 */
-	public final boolean isClosed()
-	{
-		return closed;
-	}
-
-	/**
 	 * Prevents further service access.
 	 */
 	@Override

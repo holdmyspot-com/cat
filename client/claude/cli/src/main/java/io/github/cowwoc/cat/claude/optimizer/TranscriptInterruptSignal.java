@@ -2,20 +2,16 @@ package io.github.cowwoc.cat.claude.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
+import io.github.cowwoc.cat.common.optimizer.adapter.LogInterruptSignal;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Optional;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reports a user interrupt that Claude Code recorded in the host session's transcript (design &sect;3.8, H13).
@@ -26,14 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class TranscriptInterruptSignal implements HostInterruptSignal
+public final class TranscriptInterruptSignal extends LogInterruptSignal
 {
 	private static final String PREFIX = "[Request interrupted by user";
-	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private final LineTail tail;
-	private final Clock clock;
-	private Instant latest;
-	private final Object lock = new Object();
 
 	/**
 	 * Creates a signal that reads a transcript.
@@ -44,10 +35,7 @@ public final class TranscriptInterruptSignal implements HostInterruptSignal
 	 */
 	public TranscriptInterruptSignal(Path transcript, Clock clock)
 	{
-		requireThat(transcript, "transcript").isNotNull();
-		requireThat(clock, "clock").isNotNull();
-		this.tail = new LineTail(transcript);
-		this.clock = clock;
+		super(transcript, clock, PREFIX);
 	}
 
 	/**
@@ -97,42 +85,14 @@ public final class TranscriptInterruptSignal implements HostInterruptSignal
 		return Optional.empty();
 	}
 
-	@Override
-	public boolean isInterruptedAfter(Instant start) throws IOException
-	{
-		synchronized (lock)
-		{
-			requireThat(start, "start").isNotNull();
-			for (String line : tail.readNewLines())
-			{
-				if (!line.contains(PREFIX))
-					continue;
-				JsonNode record;
-				try
-				{
-					record = JSON.readTree(line);
-				}
-				catch (JacksonException _)
-				{
-					continue;
-				}
-				if (!isInterrupt(record))
-					continue;
-				Instant recorded = timestamp(record);
-				if (latest == null || recorded.isAfter(latest))
-					latest = recorded;
-			}
-			return latest != null && latest.isAfter(start);
-		}
-	}
-
 	/**
 	 * Indicates whether a transcript record is a user interrupt.
 	 *
 	 * @param record the record
 	 * @return {@code true} if the record is a user message whose text starts with {@value #PREFIX}
 	 */
-	private static boolean isInterrupt(JsonNode record)
+	@Override
+	protected boolean isInterrupt(JsonNode record)
 	{
 		if (!"user".equals(record.path("type").asString("")))
 			return false;
@@ -146,28 +106,5 @@ public final class TranscriptInterruptSignal implements HostInterruptSignal
 				first.path("text").asString("").startsWith(PREFIX);
 		}
 		return false;
-	}
-
-	/**
-	 * Returns when a record was written.
-	 *
-	 * @param record the record
-	 * @return the record's timestamp, or the current time if the record has none
-	 */
-	private Instant timestamp(JsonNode record)
-	{
-		JsonNode stamp = record.path("timestamp");
-		if (stamp.isString())
-		{
-			try
-			{
-				return Instant.parse(stamp.stringValue());
-			}
-			catch (DateTimeParseException _)
-			{
-				return clock.instant();
-			}
-		}
-		return clock.instant();
 	}
 }

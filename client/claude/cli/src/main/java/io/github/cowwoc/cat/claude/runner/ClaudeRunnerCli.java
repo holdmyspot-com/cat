@@ -34,9 +34,10 @@ import java.util.function.IntFunction;
 public final class ClaudeRunnerCli
 {
 	/**
-	 * Serves JSONL turns through one persistent isolated Claude process.
+	 * Prints the usage, resolves a profile, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
+	 * through one persistent isolated Claude process, as the arguments select.
 	 *
-	 * @param args bridge options
+	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
 	public static void main(String[] args) throws IOException

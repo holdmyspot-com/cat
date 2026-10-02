@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.codex.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -10,25 +10,23 @@ import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Derives the {@code PROMPT_SOURCES} measurement value from what a Codex session was observed loading (design
- * &sect;5, H21).
+ * Derives the {@code PROMPT_SOURCES} measurement value from what a session was observed loading (design &sect;5,
+ * H21).
  * <p>
- * The value lists the hooks that ran, with their source and source path, one entry per line in sorted order. A path
- * inside one of the supplied directories appears relative to that directory's placeholder, so the value does not
- * depend on where the run's files were staged. It records no file content and no content hash, so it does not change
- * when a candidate edits a prompt file. It changes only when the set of loaded sources changes.
+ * The value lists the sources that the harness's events report, one entry per line in sorted order. A subclass
+ * reads one harness's event format and adds an entry for each source. A path inside one of the supplied directories
+ * appears relative to that directory's placeholder, so the value does not depend on where the run's files were
+ * staged. The value records no file content and no content hash, so it does not change when a candidate edits a
+ * prompt file. It changes only when the set of loaded sources changes.
  * <p>
- * Codex does not report the instruction files ({@code AGENTS.md}) that it loaded (H21), so they are not part of the
- * value.
- * <p>
- * <b>Thread Safety:</b> This class is thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} runs while the observation holds its
+ * lock.
  */
-final class PromptSources
+public abstract class PromptSources
 {
 	private final JsonMapper json;
 	private final List<Map.Entry<String, String>> roots;
@@ -42,7 +40,7 @@ final class PromptSources
 	 * @param directories maps each placeholder to a directory whose staged location must not appear in the value
 	 * @throws NullPointerException if any argument is null
 	 */
-	PromptSources(JsonMapper json, Map<String, Path> directories)
+	protected PromptSources(JsonMapper json, Map<String, Path> directories)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(directories, "directories").isNotNull();
@@ -61,29 +59,34 @@ final class PromptSources
 	 * @param line the line. A line that is not a JSON object is ignored.
 	 * @throws NullPointerException if {@code line} is null
 	 */
-	void accept(String line)
+	public final void accept(String line)
 	{
-		requireThat(line, "line").isNotNull();
-		if (!line.startsWith("{"))
+		JsonNode event = EventLine.parse(json, line);
+		if (event == null)
 			return;
-		JsonNode event;
-		try
-		{
-			event = json.readTree(line);
-		}
-		catch (JacksonException _)
-		{
-			return;
-		}
-		String method = event.path("method").asString("");
-		if (!method.equals("hook/started") && !method.equals("hook/completed"))
-			return;
-		JsonNode run = event.path("params").path("run");
 		synchronized (lock)
 		{
-			entries.add("hook:" + run.path("eventName").asString("none") + " " + run.path("source").asString("none") + " " +
-				relativize(run.path("sourcePath").asString("none")));
+			read(event);
 		}
+	}
+
+	/**
+	 * Reads the sources that one harness event reports.
+	 *
+	 * @param event a JSON object
+	 */
+	protected abstract void read(JsonNode event);
+
+	/**
+	 * Adds a source.
+	 *
+	 * @param entry the source's entry
+	 * @throws NullPointerException if {@code entry} is null
+	 */
+	protected final void add(String entry)
+	{
+		requireThat(entry, "entry").isNotNull();
+		entries.add(entry);
 	}
 
 	/**
@@ -91,7 +94,7 @@ final class PromptSources
 	 *
 	 * @return the entries, one per line in sorted order, or {@code none} if the events showed nothing loading
 	 */
-	String value()
+	public final String value()
 	{
 		synchronized (lock)
 		{
@@ -107,7 +110,7 @@ final class PromptSources
 	 * @param path the path or name that the event reported
 	 * @return the normalized text
 	 */
-	private String relativize(String path)
+	protected final String relativize(String path)
 	{
 		for (Map.Entry<String, String> root : roots)
 		{

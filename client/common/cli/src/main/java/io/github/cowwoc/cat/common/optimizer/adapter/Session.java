@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.claude.optimizer;
+package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -60,15 +60,14 @@ final class Session implements SessionHandle
 	 * How long the runner may take to stop after an interrupt or after the last turn.
 	 */
 	private static final Duration GRACE = Duration.ofSeconds(30);
-	private static final String HARNESS = "claude";
-	private final ClaudeSessions.Settings settings;
+	private final RunnerSessions sessions;
+	private final RunnerSessions.Settings settings;
 	private final SessionRequest request;
-	private final Bridge bridge;
 	private final Clock clock;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 	private final LineFeed feed = new LineFeed();
-	private final HarnessEvents events = new HarnessEvents(json);
+	private final HarnessEvents events;
 	private final EventSink sink;
 	private final AtomicBoolean interruptRequested = new AtomicBoolean();
 	private final CompletableFuture<SessionResult> completion = new CompletableFuture<>();
@@ -86,18 +85,19 @@ final class Session implements SessionHandle
 	/**
 	 * Creates a session that has not started.
 	 *
-	 * @param settings how the runner is configured
+	 * @param sessions the port that starts the session
 	 * @param request what the session does
-	 * @param bridge runs the runner's bridge
 	 */
-	Session(ClaudeSessions.Settings settings, SessionRequest request, Bridge bridge)
+	Session(RunnerSessions sessions, SessionRequest request)
 	{
-		this.settings = settings;
+		this.sessions = sessions;
+		this.settings = sessions.settings();
 		this.request = request;
-		this.bridge = bridge;
 		this.clock = settings.clock();
+		this.events = sessions.newEvents(json);
 		Map<String, Path> placeholders = Map.of("source", request.source(), "artifact", settings.artifact());
-		this.sink = new EventSink(json, events, harnessDirectory(), placeholders, messages);
+		this.sink = new EventSink(json, events, directories -> sessions.newPromptSources(json, directories),
+			harnessDirectory(), placeholders, messages);
 	}
 
 	/**
@@ -197,7 +197,7 @@ final class Session implements SessionHandle
 		IOException problem = null;
 		try
 		{
-			bridge.serve(arguments(), feed, sink);
+			sessions.bridge().serve(arguments(), feed, sink);
 		}
 		catch (IOException e)
 		{
@@ -402,7 +402,7 @@ final class Session implements SessionHandle
 	{
 		List<RateLimitWindow> windows = events.windows();
 		if (ended != null)
-			new HarnessRunManager(settings.runRoot(), clock).pruneTerminalRuntimes(HARNESS);
+			new HarnessRunManager(settings.runRoot(), clock).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();
@@ -456,8 +456,7 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of("--effort", profile.effort()));
 		if (settings.installCat())
 			arguments.add("--install-cat");
-		for (Path evidence : request.readOnly())
-			arguments.addAll(List.of("--read-only-evidence", evidence.toString()));
+		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
 		return arguments;
 	}
 
@@ -479,7 +478,7 @@ final class Session implements SessionHandle
 	 */
 	private Path harnessDirectory()
 	{
-		return settings.runRoot().resolve(HARNESS);
+		return settings.runRoot().resolve(sessions.harness());
 	}
 
 	/**

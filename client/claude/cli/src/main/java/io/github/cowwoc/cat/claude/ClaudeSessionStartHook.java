@@ -9,14 +9,13 @@ import java.util.Map;
 
 /**
  * Injects CAT rules into a Claude SessionStart context.
- *
-	 * <p>
-	 * Unlike the other harness hooks, Claude stores the complete context in a CAT-owned file and injects only its
-	 * location. When Claude Code receives more than 10,000 characters of hook context, it writes that context to a long
-	 * internal path and asks the model to {@code Read} it. In a runner project, the generated path includes a sanitized
-	 * {@code -runs-claude-...} segment. The model can change that segment to {@code -runs/claude-...} in its
-	 * {@code Read} request, making the requested file nonexistent and leaving the complete rules unread. The short
-	 * CAT-owned path avoids Claude Code's spill mechanism and lets the model read the complete rules before acting.
+ * <p>
+ * Claude's rule-injection hooks store the complete context in a CAT-owned file and inject only its location. When
+ * Claude Code receives more than 10,000 characters of hook context, it writes that context to a long internal path and
+ * asks the model to {@code Read} it. In a runner project, the generated path includes a sanitized
+ * {@code -runs-claude-...} segment. The model can change that segment to {@code -runs/claude-...} in its
+ * {@code Read} request, making the requested file nonexistent and leaving the complete rules unread. The short
+ * CAT-owned path avoids Claude Code's spill mechanism and lets the model read the complete rules before acting.
  */
 public final class ClaudeSessionStartHook
 {

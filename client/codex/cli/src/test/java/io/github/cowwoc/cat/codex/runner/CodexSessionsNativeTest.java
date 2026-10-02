@@ -9,6 +9,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -116,7 +117,7 @@ public final class CodexSessionsNativeTest
 		Path source = Files.createDirectories(fixture.resolve("source"));
 		Files.writeString(source.resolve("README.md"), "fixture\n", UTF_8);
 		Path runRoot = fixture.resolve("runs");
-		CodexSessions sessions = new CodexSessions(new CodexSessions.Settings(artifact, runRoot, "", false,
+		CodexSessions sessions = new CodexSessions(new RunnerSessions.Settings(artifact, runRoot, "", false,
 			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
 		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}

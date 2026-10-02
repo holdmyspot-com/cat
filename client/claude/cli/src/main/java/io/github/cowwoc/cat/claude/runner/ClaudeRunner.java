@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.claude.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import io.github.cowwoc.cat.common.runner.HarnessCommand;
 import io.github.cowwoc.cat.common.runner.HarnessCredentials;
@@ -141,7 +142,7 @@ public final class ClaudeRunner
 			Path isolatedProcessHome = run.directory().resolve("home");
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
 			if (installCat && includeUserRules)
-				UserRuleTree.copy(userRulesRoot(environment), isolatedProcessHome.resolve(".cat/rules"));
+				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
 			ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
@@ -298,7 +299,7 @@ public final class ClaudeRunner
 		if (home == null || home.isBlank())
 			throw new IOException("Claude user rules require the parent HOME");
 		Path userHome = Path.of(home.strip()).toAbsolutePath().normalize();
-		return userHome.resolve(".cat/rules");
+		return ProjectRuleLoader.rulesDirectory(userHome);
 	}
 
 	/**
