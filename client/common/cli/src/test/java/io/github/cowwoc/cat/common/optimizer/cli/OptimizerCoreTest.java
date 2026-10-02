@@ -757,8 +757,8 @@ public final class OptimizerCoreTest
 			requireThat(result.proposal(), "proposal").
 				contains("Trial profile inventory (" + FakeProfileInventory.INVENTORY.source() + ")").
 				contains("agents/safety.agent binds bound-model/low (outside the inventory, used as written)").
-				contains("category safety: safety (bound-model/low)").
-				contains("category formatting: formatting (test-model/high)").
+				contains("category safety (1 cell, named by the category): bound-model/low").
+				contains("category formatting (1 cell, named by the category): test-model/high").
 				doesNotContain("unused-model").doesNotContain("not-a-binding-file").doesNotContain("empty.agent");
 
 			String id = result.status().campaignId();

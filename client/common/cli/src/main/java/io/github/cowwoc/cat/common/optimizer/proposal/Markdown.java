@@ -30,6 +30,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -464,10 +465,9 @@ final class Markdown
 			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
 				"reruns, author sessions and promotion runs.\n\n").
 			append("Minimum trials by cell:\n\n");
+		Map<String, List<Cell>> byTrials = new LinkedHashMap<>();
 		for (Cell cell : contract.cells())
 		{
-			text.append("- `").append(cell.id()).append("` (category `").append(cell.categoryId()).
-				append("`, profile ").append(cell.profile().label()).append("): ");
 			List<String> parts = new ArrayList<>();
 			for (RemainingWork.Entry entry : remaining.entries())
 			{
@@ -477,8 +477,50 @@ final class Markdown
 						entry.trials());
 				}
 			}
-			text.append(String.join(", ", parts)).append('\n');
+			byTrials.computeIfAbsent(String.join(", ", parts), _ -> new ArrayList<>()).add(cell);
 		}
+		for (Map.Entry<String, List<Cell>> entry : byTrials.entrySet())
+			text.append("- ").append(describeCells(entry.getValue())).append(": ").append(entry.getKey()).append('\n');
+	}
+
+	/**
+	 * Names cells compactly: a category with several cells, all of them present, as every cell of the category, and
+	 * each other cell by its identifier, with the cell count when there is more than one cell.
+	 *
+	 * @param group the cells
+	 * @return the description
+	 */
+	private String describeCells(List<Cell> group)
+	{
+		Map<String, Integer> cellsByCategory = new HashMap<>();
+		for (Cell cell : contract.cells())
+			cellsByCategory.merge(cell.categoryId(), 1, Integer::sum);
+		Map<String, List<Cell>> groupByCategory = new LinkedHashMap<>();
+		for (Cell cell : group)
+			groupByCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell);
+		List<String> whole = new ArrayList<>();
+		List<String> single = new ArrayList<>();
+		for (Map.Entry<String, List<Cell>> entry : groupByCategory.entrySet())
+		{
+			int size = entry.getValue().size();
+			if (size > 1 && size == cellsByCategory.get(entry.getKey()))
+				whole.add("`" + entry.getKey() + "`");
+			else
+			{
+				for (Cell cell : entry.getValue())
+					single.add("`" + cell.id() + "`");
+			}
+		}
+		List<String> names = new ArrayList<>();
+		if (whole.size() == 1)
+			names.add("every cell of category " + whole.getFirst());
+		else if (whole.size() > 1)
+			names.add("every cell of categories " + String.join(", ", whole));
+		names.addAll(single);
+		String description = String.join(", ", names);
+		if (group.size() > 1)
+			description += " (" + group.size() + " cells)";
+		return description;
 	}
 
 	/**

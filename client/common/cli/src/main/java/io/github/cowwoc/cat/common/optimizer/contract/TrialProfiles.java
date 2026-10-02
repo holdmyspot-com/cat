@@ -109,15 +109,53 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 		if (!restriction.isEmpty())
 			lines.add("Profile restriction: " + labels(restriction));
 		lines.add("Cells:");
-		Map<String, List<String>> byCategory = new LinkedHashMap<>();
+		Map<String, List<TrialProfile>> byCategory = new LinkedHashMap<>();
 		for (Cell cell : cells)
-		{
-			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).
-				add(cell.id() + " (" + cell.profile().label() + ")");
-		}
-		for (Map.Entry<String, List<String>> entry : byCategory.entrySet())
-			lines.add("  - category " + entry.getKey() + ": " + String.join(", ", entry.getValue()));
+			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell.profile());
+		Map<List<TrialProfile>, List<String>> byProfiles = new LinkedHashMap<>();
+		for (Map.Entry<String, List<TrialProfile>> entry : byCategory.entrySet())
+			byProfiles.computeIfAbsent(entry.getValue(), _ -> new ArrayList<>()).add(entry.getKey());
+		for (Map.Entry<List<TrialProfile>, List<String>> entry : byProfiles.entrySet())
+			lines.add("  - " + describeGroup(entry.getValue(), entry.getKey()));
 		return lines;
+	}
+
+	/**
+	 * Describes the categories that share a profile set: how many cells each has, how the cells are named and the
+	 * profiles.
+	 *
+	 * @param categoryIds the identifiers of the categories
+	 * @param profiles the profiles of each category's cells
+	 * @return the description
+	 */
+	private static String describeGroup(List<String> categoryIds, List<TrialProfile> profiles)
+	{
+		String categories;
+		String each;
+		if (categoryIds.size() == 1)
+		{
+			categories = "category ";
+			each = "";
+		}
+		else
+		{
+			categories = "categories ";
+			each = " each";
+		}
+		String count;
+		String naming;
+		if (profiles.size() == 1)
+		{
+			count = "1 cell";
+			naming = "named by the category";
+		}
+		else
+		{
+			count = profiles.size() + " cells";
+			naming = "named `<category>@<profile>`";
+		}
+		return categories + String.join(", ", categoryIds) + " (" + count + each + ", " + naming + "): " +
+			labels(profiles);
 	}
 
 	/**

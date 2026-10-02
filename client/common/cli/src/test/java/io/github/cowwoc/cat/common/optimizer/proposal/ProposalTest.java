@@ -551,9 +551,7 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("## Minimum session count").
 			contains("At least " + 2 * trials + " nested sessions remain if every trial passes: " + trials +
 				" trials, each with one trial session and one judge session.").
-			contains("- `formatting` (category `formatting`, profile " + ContractFixtures.PROFILE.label() +
-				"): readiness ").
-			contains("- `safety` (category `safety`, profile " + ContractFixtures.PROFILE.label() + "): readiness ");
+			contains("- `formatting`, `safety` (2 cells): readiness ");
 	}
 
 	/**
@@ -675,11 +673,36 @@ public final class ProposalTest
 		requireThat(text, "text").contains("## Trial profiles").
 			contains("Trial profile inventory (" + ContractFixtures.TWO_PROFILES.source() + "): big/high, small/high").
 			contains("rules/safety.md binds big/high").
-			contains("category formatting: " + ContractFixtures.BIG_CELL + " (big/high), " +
-				ContractFixtures.SMALL_CELL + " (small/high)").
-			contains("category safety: safety (big/high)").
+			contains("category formatting (2 cells, named `<category>@<profile>`): big/high, small/high").
+			contains("category safety (1 cell, named by the category): big/high").
 			contains("Minimum trials by cell:").
-			contains("- `" + ContractFixtures.SMALL_CELL + "` (category `formatting`, profile small/high): readiness ");
+			contains("- every cell of category `formatting`, `safety` (3 cells): readiness ");
+	}
+
+	/**
+	 * Verifies that categories with the same profile set share one line of trial profiles, and that cells with the
+	 * same minimum trials share one line of the session count, so that the proposal does not repeat the profile list
+	 * for every cell.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void groupsCellsThatShareProfilesAndCounts() throws InvalidProposalException
+	{
+		// Requirement: R-C10
+		ProfileCatalog inventory = new ProfileCatalog("test inventory of three profiles", List.of(
+			new TrialProfile("big", "high"), new TrialProfile("big", "low"), new TrialProfile("small", "high")));
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")),
+			new ProfileEvidence(inventory, Map.of()));
+		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(6);
+
+		String text = Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+		requireThat(text, "text").
+			contains("  - categories formatting, safety (3 cells each, named `<category>@<profile>`): big/high, " +
+				"big/low, small/high").
+			contains("- every cell of categories `formatting`, `safety` (6 cells): readiness ").
+			doesNotContain("formatting@big/high");
 	}
 
 	/**
