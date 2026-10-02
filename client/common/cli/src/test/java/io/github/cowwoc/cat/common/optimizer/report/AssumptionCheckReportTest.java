@@ -12,7 +12,6 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -42,7 +41,7 @@ public final class AssumptionCheckReportTest
 	 */
 	private static ReportEvidence evidence(List<Observation> observations, List<Path> accessed)
 	{
-		return new ReportEvidence(observations, Map.of(), accessed, List.of(PROTECTED), false, false, null);
+		return new ReportEvidence(observations, accessed, List.of(PROTECTED), false, false, null);
 	}
 
 	/**

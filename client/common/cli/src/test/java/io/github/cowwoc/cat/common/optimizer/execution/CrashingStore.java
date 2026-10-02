@@ -6,6 +6,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 
@@ -98,6 +100,13 @@ public final class CrashingStore implements CampaignStore
 		assignments.add(trial);
 		if (trigger == Write.ASSIGNMENT)
 			written = true;
+	}
+
+	@Override
+	public void writeTrialUsage(String campaignId, TrialKey key, TokenUsage usage) throws IOException
+	{
+		requireAlive();
+		delegate.writeTrialUsage(campaignId, key, usage);
 	}
 
 	@Override

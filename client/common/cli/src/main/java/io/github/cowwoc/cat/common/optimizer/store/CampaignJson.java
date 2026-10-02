@@ -68,6 +68,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -107,7 +109,7 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Unsupported format versions are refused rather than migrated.
+ * round-trip exactly. Formats 9 and 10 are readable; unsupported format versions are refused.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -117,9 +119,14 @@ import tools.jackson.databind.node.ObjectNode;
 final class CampaignJson
 {
 	/**
-	 * The version of the layout that this class writes and reads.
+	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 9;
+	private static final int FORMAT_VERSION = 10;
+	/**
+	 * The readable format whose records contain input counts without full session usage.
+	 */
+	private static final int INPUT_ONLY_FORMAT_VERSION = 9;
+	private static final String TOKEN_USAGE = "token_usage";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -287,7 +294,7 @@ final class CampaignJson
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
 			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
-			delivery, readOptimization(field(root, "optimization")));
+			delivery, readOptimization(field(root, "optimization"), integer(root, VERSION)));
 	}
 
 	/**
@@ -299,6 +306,14 @@ final class CampaignJson
 	private ObjectNode writeOptimization(OptimizationEvidence evidence)
 	{
 		ObjectNode node = json.createObjectNode();
+		ObjectNode usage = node.putObject(TOKEN_USAGE);
+		for (SessionRole role : SessionRole.values())
+		{
+			List<TokenUsage> sessions = evidence.tokenUsage().get(role);
+			if (sessions != null)
+				usage.set(role.name(), writeUsage(sessions));
+		}
+
 		ArrayNode authors = node.putArray("authors");
 		for (AuthorDiagnosis diagnosis : evidence.authors())
 		{
@@ -366,9 +381,10 @@ final class CampaignJson
 	 * Reads retained author diagnoses and removed hunks.
 	 *
 	 * @param node the document
+	 * @param version the enclosing snapshot's format version
 	 * @return the durable evidence
 	 */
-	private static OptimizationEvidence readOptimization(JsonNode node)
+	private static OptimizationEvidence readOptimization(JsonNode node, int version)
 	{
 		List<AuthorDiagnosis> authors = new ArrayList<>();
 		for (JsonNode author : elements(node, "authors"))
@@ -413,7 +429,8 @@ final class CampaignJson
 				readPromotionRuns(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
 				bool(attempt, "winner")));
 		}
-		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs, results);
+		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs, results,
+			readRoleUsage(node, version));
 	}
 
 	/**
@@ -490,6 +507,7 @@ final class CampaignJson
 		root.set("identity", writeIdentity(record.identity()));
 		root.set("allocation", writeAllocation(record.allocation()));
 		root.set("infrastructure_attempts", writeInfrastructureAttempts(record.infrastructureAttempts()));
+		root.set(TOKEN_USAGE, writeUsage(record.tokenUsage()));
 		CampaignEvent.Complete outcome = record.outcome();
 		if (outcome == null)
 			root.putNull("outcome");
@@ -527,7 +545,70 @@ final class CampaignJson
 			nullableLong(outcomeNode, "input_tokens"), readResponses(outcomeNode));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
-			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome);
+			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome,
+			readUsage(root, TOKEN_USAGE, integer(root, VERSION)));
+	}
+
+	/**
+	 * Writes the full token counts of finished sessions in completion order.
+	 *
+	 * @param sessions reported counts
+	 * @return the counts
+	 */
+	private ArrayNode writeUsage(List<TokenUsage> sessions)
+	{
+		ArrayNode array = json.createArrayNode();
+		for (TokenUsage usage : sessions)
+		{
+			ObjectNode node = array.addObject();
+			node.put("input", usage.input());
+			node.put("cached_input", usage.cachedInput());
+			node.put("output", usage.output());
+			node.put("reasoning_output", usage.reasoningOutput());
+		}
+		return array;
+	}
+
+	/**
+	 * Reads the counts reported by finished sessions of each role.
+	 *
+	 * @param node the optimization evidence
+	 * @param version the enclosing snapshot's format version
+	 * @return reported counts by role
+	 */
+	private static Map<SessionRole, List<TokenUsage>> readRoleUsage(JsonNode node, int version)
+	{
+		if (version == INPUT_ONLY_FORMAT_VERSION)
+			return Map.of();
+		Map<SessionRole, List<TokenUsage>> usage = new EnumMap<>(SessionRole.class);
+		JsonNode roles = object(node, TOKEN_USAGE);
+		for (Entry<String, JsonNode> entry : roles.properties())
+		{
+			SessionRole role = SessionRole.valueOf(entry.getKey());
+			usage.put(role, readUsage(roles, entry.getKey(), version));
+		}
+		return usage;
+	}
+
+	/**
+	 * Reads full reported counts without inferring counts from outcome input tokens.
+	 *
+	 * @param node the containing document
+	 * @param key the array's key
+	 * @param version the enclosing document's format version
+	 * @return the reported counts, in completion order
+	 */
+	private static List<TokenUsage> readUsage(JsonNode node, String key, int version)
+	{
+		if (version == INPUT_ONLY_FORMAT_VERSION)
+			return List.of();
+		List<TokenUsage> sessions = new ArrayList<>();
+		for (JsonNode usage : elements(node, key))
+		{
+			sessions.add(new TokenUsage(longInteger(usage, "input"), longInteger(usage, "cached_input"),
+				longInteger(usage, "output"), longInteger(usage, "reasoning_output")));
+		}
+		return sessions;
 	}
 
 	/**
@@ -1724,10 +1805,11 @@ final class CampaignJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
-		if (version != FORMAT_VERSION)
+		if (version != FORMAT_VERSION && version != INPUT_ONLY_FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
-				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
+				" campaign file, but this version of CAT reads versions " + INPUT_ONLY_FORMAT_VERSION + " and " +
+				FORMAT_VERSION + ". Start a new " +
 				"campaign.");
 		}
 	}

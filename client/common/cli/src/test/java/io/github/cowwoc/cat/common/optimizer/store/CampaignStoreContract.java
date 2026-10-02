@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
@@ -407,7 +408,51 @@ public abstract class CampaignStoreContract
 			AbstractCampaignStore reopened = (AbstractCampaignStore) fixture.reopen();
 			requireThat(reopened.readRecord("campaign-1", assigned.key()), "record").isEqualTo(Optional.of(
 				new TrialRecord(assigned.key(), assigned.instance(), assigned.identity(), assigned.allocation(),
-					attempts, outcome)));
+					attempts, outcome, List.of())));
+		}
+	}
+
+	/**
+	 * Full trial session usage survives assignment retries, outcome writes and store reopening.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-E12
+	@Test
+	public void trialUsageSurvivesRetries() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment("campaign-1", assigned);
+			List<TokenUsage> usage = List.of(new TokenUsage(100, 20, 30, 10), new TokenUsage(300, 60, 90, 30));
+			store.writeTrialUsage("campaign-1", assigned.key(), usage.getFirst());
+			store.writeAssignment("campaign-1", assigned);
+			store.writeTrialUsage("campaign-1", assigned.key(), usage.getLast());
+			CampaignEvent.Complete outcome = complete(assigned.key(), Verdict.PASS);
+			store.writeOutcome("campaign-1", outcome);
+			store.writeOutcome("campaign-1", outcome);
+			AbstractCampaignStore reopened = (AbstractCampaignStore) fixture.reopen();
+			requireThat(reopened.readRecord("campaign-1", assigned.key()).orElseThrow().tokenUsage(), "trialUsage").
+				isEqualTo(usage);
+		}
+	}
+
+	/**
+	 * A trial record accepts only reported counts, so an absent report cannot become an observation.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-E12
+	@Test(expectedExceptions = NullPointerException.class)
+	public void trialUsageRejectsAbsentCounts() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			fixture.store().writeAssignment("campaign-1", assigned);
+			fixture.store().writeTrialUsage("campaign-1", assigned.key(), null);
 		}
 	}
 

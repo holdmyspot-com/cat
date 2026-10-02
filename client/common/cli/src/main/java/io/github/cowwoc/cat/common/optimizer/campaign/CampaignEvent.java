@@ -9,6 +9,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 
 import java.nio.file.Path;
@@ -20,6 +22,28 @@ import java.util.List;
  */
 public sealed interface CampaignEvent
 {
+	/**
+	 * Records token counts reported by a finished nested session.
+	 *
+	 * @param role the session's role
+	 * @param usage the reported counts
+	 */
+	record ObserveTokenUsage(SessionRole role, TokenUsage usage) implements CampaignEvent
+	{
+		/**
+		 * Creates the observation.
+		 *
+		 * @param role the session's role
+		 * @param usage the reported counts
+		 * @throws NullPointerException if {@code role} or {@code usage} are null
+		 */
+		public ObserveTokenUsage
+		{
+			requireThat(role, "role").isNotNull();
+			requireThat(usage, "usage").isNotNull();
+		}
+	}
+
 	/**
 	 * The user confirmed a contract, which starts a new evidence history called a lineage.
 	 * <p>

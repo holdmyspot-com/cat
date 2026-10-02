@@ -28,6 +28,8 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import org.testng.annotations.DataProvider;
@@ -306,6 +308,7 @@ public final class OptimizerCoreTest
 		private final List<SessionRequest> requests = new ArrayList<>();
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
+		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
 
 		/**
 		 * Creates the port.
@@ -330,7 +333,16 @@ public final class OptimizerCoreTest
 		{
 			requests.add(request);
 			clock.advance(Duration.ofMinutes(1));
-			CompletableFuture<SessionResult> result = CompletableFuture.completedFuture(script.apply(request));
+			SessionResult response = script.apply(request);
+			List<TokenUsage> tokens = usage.getOrDefault(request.role(), List.of());
+			if (!tokens.isEmpty() && response instanceof SessionResult.Completed completed)
+			{
+				int index = (int) requests.stream().filter(started -> started.role() == request.role()).count() - 1;
+				response = new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
+					completed.model(), completed.reasoning(), tokens.get(index % tokens.size()), completed.windows(),
+					completed.promptSources(), completed.toolCalls());
+			}
+			CompletableFuture<SessionResult> result = CompletableFuture.completedFuture(response);
 			return new SessionHandle()
 			{
 				@Override
@@ -1065,6 +1077,83 @@ public final class OptimizerCoreTest
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").contains("missing/fixture.txt");
 			requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Status in a fresh command scope combines reported trial and judge usage across slices.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 * @throws CommandRefusedException if a command is refused
+	 * @throws InterruptedException if a command is interrupted
+	 */
+	// Requirement: R-E12
+	@Test
+	public void statusCombinesSliceUsage() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(output -> output.putArray("scope_conditions")));
+			TokenUsage trial = new TokenUsage(100, 20, 30, 10);
+			TokenUsage judge = new TokenUsage(200, 40, 60, 20);
+			repository.sessions().usage.put(SessionRole.TRIAL, List.of(trial));
+			repository.sessions().usage.put(SessionRole.JUDGE, List.of(judge));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id);
+			CommandResult first = repository.core().run(id);
+			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				repository.root()))
+			{
+				TokenStatistics reported = new OptimizerCore(fresh).status(id).status().tokens();
+				requireThat(reported, "reloadedUsage").isEqualTo(first.status().tokens());
+				requireThat(reported.roles().get(SessionRole.TRIAL).input().median(), "trialMedian").isEqualTo(100L);
+				requireThat(reported.roles().get(SessionRole.JUDGE).cachedInput().p90(), "judgeCachedP90").isEqualTo(40L);
+				CommandResult second = repository.core().run(id);
+				TokenStatistics combined = new OptimizerCore(fresh).status(id).status().tokens();
+				requireThat(combined, "combinedUsage").isEqualTo(second.status().tokens());
+				for (SessionRole role : List.of(SessionRole.TRIAL, SessionRole.JUDGE))
+				{
+					int count = (int) repository.sessions().roles().stream().filter(value -> value == role).count();
+					requireThat(combined.roles().get(role).sessions(), "sessions").isEqualTo(count);
+					requireThat(count, "combinedSessions").isGreaterThan(first.status().tokens().roles().get(role).sessions());
+				}
+				requireThat(combined.roles().containsKey(SessionRole.DERIVER), "missingDeriverUsage").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Every derivation contributes reported usage, including invalid proposals and revisions.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 * @throws CommandRefusedException if a command is refused
+	 * @throws InterruptedException if a command is interrupted
+	 */
+	// Requirement: R-E12
+	@Test
+	public void statusRetainsDeriverUsage() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, number ->
+			{
+				if (number == 0)
+					return "invalid";
+				return derivation(_ -> {});
+			});
+			List<TokenUsage> usage = List.of(new TokenUsage(100, 20, 30, 10), new TokenUsage(300, 60, 90, 30));
+			repository.sessions().usage.put(SessionRole.DERIVER, usage);
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().start(Path.of("CLAUDE.md"));
+			repository.core().revise(id, "Cover safety.");
+			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				repository.root()))
+			{
+				TokenStatistics.RoleUsage reported = new OptimizerCore(fresh).status(id).status().tokens().roles().
+					get(SessionRole.DERIVER);
+				requireThat(reported, "deriverUsage").isEqualTo(TokenStatistics.of(Map.of(SessionRole.DERIVER,
+					List.of(usage.get(0), usage.get(1), usage.get(0)))).roles().get(SessionRole.DERIVER));
+			}
 		}
 	}
 

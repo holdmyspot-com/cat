@@ -491,7 +491,7 @@ final class TrialAdoption
 			results.add(result);
 		results.sort(Comparator.comparingInt(AttemptResult::number));
 		draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
-			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results);
+			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage());
 	}
 
 	/**

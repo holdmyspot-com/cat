@@ -69,6 +69,9 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
+import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -107,6 +110,130 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class DriverTest
 {
+	/**
+	 * Reloaded status retains trial, judge and author usage, including rejected author outputs.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-E12
+	@Test
+	public void statusRetainsFinishedSessionUsage() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("session-usage"));
+			DriverHarness harness = new DriverHarness(directory, authoring().baseline("formatting", 49, 0).build());
+			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build());
+			store.replaceSnapshot(harness.campaign());
+			DriverContext original = harness.context();
+			DriverContext context = new DriverContext(store, original.sessions(), original.workspace(),
+				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.author(),
+				original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
+				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
+				original.random(), original.settings());
+			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
+			harness.trials(_ -> withUsage(harness.failed(), SessionRole.TRIAL, expected));
+			AtomicInteger judgments = new AtomicInteger();
+			harness.judges(request ->
+			{
+				if (judgments.getAndIncrement() == 0)
+					return withUsage(harness.judged("{}"), SessionRole.JUDGE, expected);
+				return withUsage(harness.scriptedJudgment(request), SessionRole.JUDGE, expected);
+			});
+			harness.authors(request -> withUsage((SessionResult.Completed) harness.edit(request, Path.of("README.md")),
+				SessionRole.AUTHOR, expected));
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
+			{
+				SliceResult result = harness.runSlice(driver);
+				TokenStatistics reported = StatusReport.of(new FileCampaignStore(directory, JsonMapper.builder().build()).
+					load(DriverHarness.CAMPAIGN).orElseThrow(), ReportEvidence.NONE).tokens();
+				requireThat(reported, "durableUsage").isEqualTo(TokenStatistics.of(expected));
+				requireThat(result.status().tokens(), "sliceUsage").isEqualTo(reported);
+				for (SessionRole role : List.of(SessionRole.TRIAL, SessionRole.JUDGE, SessionRole.AUTHOR))
+					requireThat(reported.roles().get(role).sessions(), "sessions").isPositive();
+			}
+		}
+	}
+
+	/**
+	 * Sessions with absent usage contribute no statistics and report the unavailable reason.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-E12
+	@Test
+	public void statusOmitsAbsentSessionUsage() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("absent-usage")),
+				new Builder().confirmed().build());
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.status().tokens().roles(), "roles").isEmpty();
+				requireThat(result.status().tokens().unavailable(), "reason").isEqualTo("The harness reported no token usage.");
+				requireThat(StatusReport.of(harness.campaign(), ReportEvidence.NONE).tokens(), "reloadedUsage").
+					isEqualTo(result.status().tokens());
+			}
+		}
+	}
+
+	/**
+	 * Missing usage in some trial sessions does not contribute zero-valued observations.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-E12
+	@Test
+	public void statusOmitsSomeSessionUsage() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("partial-usage")),
+				new Builder().confirmed().ceiling(1).build());
+			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
+			AtomicInteger trials = new AtomicInteger();
+			harness.trials(_ ->
+			{
+				SessionResult.Completed completed = harness.passed();
+				if (trials.incrementAndGet() % 2 == 0)
+					return completed;
+				return withUsage(completed, SessionRole.TRIAL, expected);
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, campaign -> campaign.evidenceRevision() >= 4);
+				harness.clock().advance(Duration.ofHours(1));
+				TokenStatistics reported = harness.runSlice(driver).status().tokens();
+				requireThat(reported, "partialUsage").isEqualTo(TokenStatistics.of(expected));
+				requireThat(reported.roles().get(SessionRole.TRIAL).sessions(), "reportedTrials").
+					isLessThan(trials.get());
+				requireThat(reported.roles().containsKey(SessionRole.JUDGE), "absentJudgeUsage").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Supplies distinct observed counts to the driver's completed session.
+	 *
+	 * @param completed the session result
+	 * @param role the role
+	 * @param expected the observations supplied to the driver
+	 * @return the result with reported usage
+	 */
+	private static SessionResult.Completed withUsage(SessionResult.Completed completed, SessionRole role,
+		Map<SessionRole, List<TokenUsage>> expected)
+	{
+		List<TokenUsage> sessions = expected.computeIfAbsent(role, _ -> new ArrayList<>());
+		int count = sessions.size() + 1;
+		TokenUsage usage = new TokenUsage(count * 100L, count * 20L, count * 30L, count * 10L);
+		sessions.add(usage);
+		return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
+			completed.model(), completed.reasoning(), usage, completed.windows(), completed.promptSources(),
+			completed.toolCalls());
+	}
+
 	/**
 	 * Weak authors receive identical evidence after older development trials settle, including when capacity delays
 	 * the third attempt.

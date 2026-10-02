@@ -3,7 +3,11 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -18,11 +22,12 @@ import java.util.HashMap;
  * @param promptSizes measured prompt sizes by snapshot
  * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
  * @param attempts retained original promotion results in launch order
+ * @param tokenUsage reported usage of every finished nested session, by role
  */
 public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
 	Map<Sha256, PromptSize> promptSizes,
 	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
-	List<AttemptResult> attempts)
+	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage)
 {
 	/**
 	 * No descriptive evidence has been recorded.
@@ -37,6 +42,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	 * @param promptSizes measured prompt sizes by snapshot
 	 * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
 	 * @param attempts retained original promotion results in launch order
+	 * @param tokenUsage reported usage of every finished nested session, by role
 	 * @throws NullPointerException if an argument or element is null
 	 */
 	public OptimizationEvidence
@@ -54,6 +60,10 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		}
 		trialInputs = Map.copyOf(copied);
 		attempts = List.copyOf(attempts);
+		Map<SessionRole, List<TokenUsage>> sessions = new EnumMap<>(SessionRole.class);
+		for (Map.Entry<SessionRole, List<TokenUsage>> entry : tokenUsage.entrySet())
+			sessions.put(entry.getKey(), List.copyOf(entry.getValue()));
+		tokenUsage = Map.copyOf(sessions);
 	}
 
 	/**
@@ -68,7 +78,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		Map<Sha256, PromptSize> promptSizes,
 		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs)
 	{
-		this(authors, removed, promptSizes, trialInputs, List.of());
+		this(authors, removed, promptSizes, trialInputs, List.of(), Map.of());
 	}
 
 	/**
@@ -94,6 +104,26 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
 		snapshots.put(snapshot, cells);
 		updated.put(identity, snapshots);
-		return new OptimizationEvidence(authors, removed, promptSizes, updated, attempts);
+		return new OptimizationEvidence(authors, removed, promptSizes, updated, attempts, tokenUsage);
+	}
+
+	/**
+	 * Adds a finished session's reported usage independently of its compliance outcome.
+	 *
+	 * @param role the session's role
+	 * @param usage the reported token counts
+	 * @return the updated evidence
+	 * @throws NullPointerException if {@code role} or {@code usage} are null
+	 */
+	public OptimizationEvidence addUsage(SessionRole role, TokenUsage usage)
+	{
+		requireThat(role, "role").isNotNull();
+		requireThat(usage, "usage").isNotNull();
+		Map<SessionRole, List<TokenUsage>> updated = new EnumMap<>(SessionRole.class);
+		updated.putAll(tokenUsage);
+		List<TokenUsage> sessions = new ArrayList<>(updated.getOrDefault(role, List.of()));
+		sessions.add(usage);
+		updated.put(role, sessions);
+		return new OptimizationEvidence(authors, removed, promptSizes, trialInputs, attempts, updated);
 	}
 }

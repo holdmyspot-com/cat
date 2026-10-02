@@ -115,7 +115,8 @@ public final class StatusReportTest
 		List<AttemptResult> results = List.of(
 			new AttemptResult(1, working, 1, "safety", Builder.snapshot("author-1"), passed, 4, true, true),
 			new AttemptResult(1, working, 2, "safety", Builder.snapshot("author-2"), failed, 2, false, false));
-		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), results);
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(),
+			results, Map.of());
 		StatusReport report = StatusReport.of(new Builder().confirmed().working(1).
 			optimization(evidence).build(), ReportEvidence.NONE);
 		JsonNode attempts = report.toJson(JsonMapper.builder().build()).get("author_attempts");
@@ -632,11 +633,11 @@ public final class StatusReportTest
 			Campaign campaign = confirmed().readyDevelopment().outcome(outcome).build();
 			reported.add(StatusReport.of(campaign, ReportEvidence.NONE).outcome());
 		}
-		ReportEvidence interrupted = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), false, true,
+		ReportEvidence interrupted = new ReportEvidence(List.of(), List.of(), List.of(), false, true,
 			null);
 		Campaign running = confirmed().readyDevelopment().build();
 		reported.add(StatusReport.of(running, interrupted).outcome());
-		ReportEvidence failed = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), false, false,
+		ReportEvidence failed = new ReportEvidence(List.of(), List.of(), List.of(), false, false,
 			"The runner exited with status 7");
 		StatusReport failure = StatusReport.of(running, failed);
 		reported.add(failure.outcome());
@@ -711,7 +712,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-W6
 		Campaign campaign = confirmed().readyDevelopment().build();
-		ReportEvidence links = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), true, false, null);
+		ReportEvidence links = new ReportEvidence(List.of(), List.of(), List.of(), true, false, null);
 		List<String> without = StatusReport.of(campaign, ReportEvidence.NONE).limitations();
 		List<String> with = StatusReport.of(campaign, links).limitations();
 		requireThat(with.size(), "size").isEqualTo(without.size() + 1);

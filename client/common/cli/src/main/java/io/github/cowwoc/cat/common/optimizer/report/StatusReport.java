@@ -321,7 +321,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
 			describe(campaign.pending()), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
-			TokenStatistics.of(evidence.tokenUsage()),
+			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
 			OptimizationReport.of(campaign));
 	}

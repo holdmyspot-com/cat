@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -47,7 +48,18 @@ abstract class AbstractCampaignStore implements CampaignStore
 		// A trial that returns to ASSIGNED after a run without an outcome is written again before its next session,
 		// which adds that run's infrastructure attempt to the record
 		writeRecord(campaignId, new TrialRecord(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
-			trial.infrastructureAttempts(), null));
+			trial.infrastructureAttempts(), null, existing.map(TrialRecord::tokenUsage).orElse(List.of())));
+	}
+
+	@Override
+	public final void writeTrialUsage(String campaignId, TrialKey key, TokenUsage usage) throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		requireThat(usage, "usage").isNotNull();
+		TrialRecord record = readRecord(campaignId, key).orElseThrow(() ->
+			new IllegalStateException("Trial " + key + " has no assignment record"));
+		writeRecord(campaignId, record.withUsage(usage));
 	}
 
 	@Override

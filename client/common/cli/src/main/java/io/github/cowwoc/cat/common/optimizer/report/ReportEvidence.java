@@ -3,12 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.report;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
-import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The observations that a status report needs and that the campaign state does not hold.
@@ -16,8 +13,6 @@ import java.util.Map;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
- * @param tokenUsage the token usage that the harness reported for each finished nested session, by role; a session
- *   whose harness reported no usage is absent
  * @param accessedPaths the absolute paths that trials accessed
  * @param protectedRoots the absolute roots of state that no trial may access, such as another trial's records
  * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
@@ -26,20 +21,19 @@ import java.util.Map;
  *   {@code null} if none did
  */
 public record ReportEvidence(List<AssumptionCheck.Observation> observations,
-	Map<SessionRole, List<TokenUsage>> tokenUsage, List<Path> accessedPaths, List<Path> protectedRoots,
+	List<Path> accessedPaths, List<Path> protectedRoots,
 	boolean symbolicLinks, boolean interrupted, String infrastructureFailure)
 {
 	/**
 	 * No observations beyond the campaign state.
 	 */
-	public static final ReportEvidence NONE = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), false,
+	public static final ReportEvidence NONE = new ReportEvidence(List.of(), List.of(), List.of(), false,
 		false, null);
 
 	/**
 	 * Creates evidence.
 	 *
 	 * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
-	 * @param tokenUsage the token usage that the harness reported for each finished nested session, by role
 	 * @param accessedPaths the absolute paths that trials accessed
 	 * @param protectedRoots the absolute roots of state that no trial may access
 	 * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
@@ -51,13 +45,11 @@ public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 	public ReportEvidence
 	{
 		requireThat(observations, "observations").isNotNull();
-		requireThat(tokenUsage, "tokenUsage").isNotNull();
 		requireThat(accessedPaths, "accessedPaths").isNotNull();
 		requireThat(protectedRoots, "protectedRoots").isNotNull();
 		if (infrastructureFailure != null)
 			requireThat(infrastructureFailure, "infrastructureFailure").isNotBlank();
 		observations = List.copyOf(observations);
-		tokenUsage = Map.copyOf(tokenUsage);
 		accessedPaths = List.copyOf(accessedPaths);
 		protectedRoots = List.copyOf(protectedRoots);
 	}

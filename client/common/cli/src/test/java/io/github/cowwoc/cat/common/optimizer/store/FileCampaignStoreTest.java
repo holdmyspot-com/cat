@@ -5,6 +5,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
+import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
+import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
@@ -467,10 +469,55 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(9);
+					"recordVersion").isEqualTo(10);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(9);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(10);
+		}
+	}
+
+	/**
+	 * Input-only records load without full session usage and retain the trial input median.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-E12
+	@Test
+	public void inputOnlyRecordsRetainCellMedian() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("input-only-record"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			Campaign campaign = start();
+			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+				Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
+				"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
+					Instant.parse("2026-10-01T12:00:00Z")))));
+			LogicalTrial trial = assigned.trials().getLast();
+			store.writeAssignment(ID, trial);
+			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
+			store.replaceSnapshot(running);
+			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", running.identity(), 123L,
+				List.of()));
+			Path directory = campaignDirectory(base);
+			Path record = list(directory.resolve("trials")).getFirst();
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(record));
+			stored.put("format_version", 9);
+			stored.remove("token_usage");
+			Files.writeString(record, JSON.writeValueAsString(stored));
+			Path snapshot = directory.resolve("campaign.json");
+			ObjectNode state = (ObjectNode) JSON.readTree(Files.readString(snapshot));
+			state.put("format_version", 9);
+			((ObjectNode) state.get("optimization")).remove("token_usage");
+			Files.writeString(snapshot, JSON.writeValueAsString(state));
+			FileCampaignStore reopened = new FileCampaignStore(base, JSON);
+			reconcile(reopened);
+			StatusReport report = StatusReport.of(reopened.load(ID).orElseThrow(), ReportEvidence.NONE);
+			requireThat(report.tokens().roles(), "roleUsage").isEmpty();
+			requireThat(report.tokens().unavailable(), "reason").isEqualTo("The harness reported no token usage.");
+			requireThat(report.optimization().inputs().stream().filter(cell -> cell.cell().equals("safety")).
+				findFirst().orElseThrow().workingMedian(), "workingMedian").isEqualTo(123L);
 		}
 	}
 
@@ -827,7 +874,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 10);
+			root.put("format_version", 11);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

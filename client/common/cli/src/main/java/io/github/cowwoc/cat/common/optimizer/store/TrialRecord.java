@@ -8,7 +8,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,9 +23,10 @@ import java.util.List;
  * @param allocation the allocation decision that assigned the trial
  * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
  * @param outcome the judged outcome, or null if the trial has none yet
+ * @param tokenUsage reported usage of each finished trial session, in completion order
  */
 record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
-	List<InfrastructureAttempt> infrastructureAttempts, CampaignEvent.Complete outcome)
+	List<InfrastructureAttempt> infrastructureAttempts, CampaignEvent.Complete outcome, List<TokenUsage> tokenUsage)
 {
 	/**
 	 * Creates a record.
@@ -34,6 +37,7 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 	 * @param allocation the allocation decision that assigned the trial
 	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
 	 * @param outcome the judged outcome, or null if the trial has none yet
+	 * @param tokenUsage reported usage of each finished trial session, in completion order
 	 * @throws NullPointerException if any argument other than {@code outcome} is null
 	 * @throws IllegalArgumentException if {@code outcome} belongs to a different trial
 	 */
@@ -47,6 +51,7 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 		if (outcome != null)
 			requireThat(outcome.key(), "outcome.key()").isEqualTo(key, "key");
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
+		tokenUsage = List.copyOf(tokenUsage);
 	}
 
 	/**
@@ -60,6 +65,21 @@ record TrialRecord(TrialKey key, TrialInstance instance, MeasurementIdentity ide
 	TrialRecord withOutcome(CampaignEvent.Complete judged)
 	{
 		requireThat(judged, "judged").isNotNull();
-		return new TrialRecord(key, instance, identity, allocation, infrastructureAttempts, judged);
+		return new TrialRecord(key, instance, identity, allocation, infrastructureAttempts, judged, tokenUsage);
+	}
+
+	/**
+	 * Appends one finished trial session's reported usage.
+	 *
+	 * @param usage the reported counts
+	 * @return the updated record
+	 * @throws NullPointerException if {@code usage} is null
+	 */
+	TrialRecord withUsage(TokenUsage usage)
+	{
+		requireThat(usage, "usage").isNotNull();
+		List<TokenUsage> sessions = new ArrayList<>(tokenUsage);
+		sessions.add(usage);
+		return new TrialRecord(key, instance, identity, allocation, infrastructureAttempts, outcome, sessions);
 	}
 }

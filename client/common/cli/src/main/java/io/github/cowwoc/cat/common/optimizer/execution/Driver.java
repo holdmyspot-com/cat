@@ -485,6 +485,8 @@ public final class Driver implements AutoCloseable
 		if (session == null)
 			return;
 		SessionResult result = event.result();
+		observeUsage(session, result);
+
 		if (result != null && !result.windows().isEmpty())
 			record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
 		switch (session)
@@ -493,6 +495,29 @@ public final class Driver implements AutoCloseable
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
 			case InFlight.Author author -> authorEnded(author, result, event.failure(), now);
 		}
+	}
+
+	/**
+	 * Persists reported counts before a finished session's output is validated or adopted.
+	 *
+	 * @param session the finished session
+	 * @param result the session's result, or {@code null} if it failed with an exception
+	 * @throws IOException if campaign evidence or the trial record cannot be written
+	 */
+	private void observeUsage(InFlight session, SessionResult result) throws IOException
+	{
+		if (!(result instanceof SessionResult.Completed completed) || completed.usage() == null)
+			return;
+		SessionRole role = switch (session)
+		{
+			case InFlight.Trial _ -> SessionRole.TRIAL;
+			case InFlight.Judge _ -> SessionRole.JUDGE;
+			case InFlight.Author _ -> SessionRole.AUTHOR;
+		};
+
+		record(new CampaignEvent.ObserveTokenUsage(role, completed.usage()));
+		if (session instanceof InFlight.Trial trial)
+			context.store().writeTrialUsage(campaign.header().id(), trial.key(), completed.usage());
 	}
 
 	/**
@@ -516,7 +541,6 @@ public final class Driver implements AutoCloseable
 			case SessionResult.Completed completed ->
 			{
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
-				evidence.addUsage(SessionRole.TRIAL, completed.usage());
 				if (findRunningTrial(key).isPresent())
 					decideChecks(trial, completed, now);
 			}
@@ -649,7 +673,6 @@ public final class Driver implements AutoCloseable
 			case null -> reason = "The judge session failed: " + describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				evidence.addUsage(SessionRole.JUDGE, completed.usage());
 				Optional<Judgment> judgment = context.judge().judgment(completed);
 				if (judgment.isPresent())
 				{
@@ -928,7 +951,6 @@ public final class Driver implements AutoCloseable
 				case null -> authorFailed("The author session failed: " + describe(failure));
 				case SessionResult.Completed completed ->
 				{
-					evidence.addUsage(SessionRole.AUTHOR, completed.usage());
 					submit(author, completed);
 				}
 				case SessionResult.RateLimited limited -> record(new CampaignEvent.ObserveRateLimit(

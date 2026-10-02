@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -36,6 +37,7 @@ import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.DeriverProtocol;
@@ -197,7 +199,7 @@ public final class OptimizerCore implements Core
 		Optional<DerivedProposal> stored = stored(root, campaign);
 		if (stored.isPresent())
 			return present(root, campaign, fork, stored.get());
-		return derive(root, campaign, fork, null, null);
+		return derive(root, store, campaign, fork, null, null);
 	}
 
 	/**
@@ -233,7 +235,7 @@ public final class OptimizerCore implements Core
 		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE);
 		Campaign campaign = Campaign.start(header, scope.ceiling(), incumbent.identity(), environment(inventory));
 		store.replaceSnapshot(campaign);
-		CommandResult result = derive(root, campaign, fork, null, null);
+		CommandResult result = derive(root, store, campaign, fork, null, null);
 		if (!fork.excludeAdded())
 			return result;
 		String message = "Added " + ForkView.EXCLUDE_ENTRY + " to the repository's local info/exclude.";
@@ -389,7 +391,7 @@ public final class OptimizerCore implements Core
 			apply(root, loaded, List.of(new CampaignEvent.Revise()));
 			loaded = require(store, campaign, true);
 		}
-		return derive(root, loaded, fork, previous, feedback);
+		return derive(root, store, loaded, fork, previous, feedback);
 	}
 
 	@Override
@@ -473,6 +475,7 @@ public final class OptimizerCore implements Core
 	 * Runs the deriver and presents its proposal.
 	 *
 	 * @param root the project root
+	 * @param store persists the campaign's observed usage
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param previous the proposal that the user gave feedback on, or {@code null} for the first derivation
@@ -481,7 +484,7 @@ public final class OptimizerCore implements Core
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
-	private CommandResult derive(Path root, Campaign campaign, ForkView fork,
+	private CommandResult derive(Path root, CampaignStore store, Campaign campaign, ForkView fork,
 		DerivedProposal previous, String feedback) throws IOException, InterruptedException
 	{
 		Path directory = directory(root, campaign.header().id());
@@ -501,6 +504,14 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The deriver session did not complete: " + result +
 				". Run `start` again to retry.");
 		}
+
+		if (completed.usage() != null)
+		{
+			campaign = Transitions.apply(campaign, new CampaignEvent.ObserveTokenUsage(SessionRole.DERIVER,
+				completed.usage()));
+			store.replaceSnapshot(campaign);
+		}
+
 		DerivedProposal derived;
 		try
 		{
@@ -617,7 +628,7 @@ public final class OptimizerCore implements Core
 			ForkView fork = scope.forks().open(root, directory);
 			links = !LinkReport.of(fork.inventory(), authority(root, campaign)).entries().isEmpty();
 		}
-		ReportEvidence evidence = new ReportEvidence(List.of(), Map.of(), List.of(), List.of(), links, false, null);
+		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null);
 		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
 			message);
 	}

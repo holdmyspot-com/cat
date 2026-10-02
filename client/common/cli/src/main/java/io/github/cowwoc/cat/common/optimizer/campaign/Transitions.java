@@ -54,6 +54,8 @@ public final class Transitions
 		Draft draft = new Draft(campaign);
 		switch (event)
 		{
+			case CampaignEvent.ObserveTokenUsage observed ->
+				draft.optimization = draft.optimization.addUsage(observed.role(), observed.usage());
 			case CampaignEvent.Confirm confirm -> confirm(draft, confirm);
 			case CampaignEvent.Revise _ -> revise(draft);
 			case CampaignEvent.Assign assign -> assign(draft, assign.admission());
@@ -75,14 +77,16 @@ public final class Transitions
 				Map<Sha256, PromptSize> sizes = new HashMap<>(draft.optimization.promptSizes());
 				sizes.put(measured.snapshot(), measured.size());
 				draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
-					sizes, draft.optimization.trialInputs(), draft.optimization.attempts());
+					sizes, draft.optimization.trialInputs(), draft.optimization.attempts(),
+					draft.optimization.tokenUsage());
 			}
 			case CampaignEvent.RetainAuthorDiagnosis retain ->
 			{
 				List<AuthorDiagnosis> authors = new ArrayList<>(draft.optimization.authors());
 				authors.add(retain.diagnosis());
 				draft.optimization = new OptimizationEvidence(authors, draft.optimization.removed(),
-					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts());
+					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
+					draft.optimization.tokenUsage());
 			}
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
@@ -598,7 +602,8 @@ public final class Transitions
 			List<String> removed = new ArrayList<>(draft.optimization.removed());
 			removed.addAll(next.removed());
 			draft.optimization = new OptimizationEvidence(draft.optimization.authors(), removed,
-				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts());
+				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
+				draft.optimization.tokenUsage());
 			TrialAdoption.promote(draft, new AuthorAttempt(author.number(), author.cell(), next.accepted(),
 				next.acceptedRuns(), next));
 			return;
