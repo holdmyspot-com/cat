@@ -16,6 +16,8 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.port.contract.SessionPortContract;
+import io.github.cowwoc.cat.common.optimizer.port.contract.SessionPortContract.Subject;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness.Turn;
@@ -37,6 +39,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link CodexSessions}' production decisions over recorded app-server streams, without starting a process.
@@ -103,6 +108,58 @@ public final class CodexSessionsContractTest
 		throws InterruptedException, ExecutionException, TimeoutException
 	{
 		return handle.completion().toCompletableFuture().get(HANG_SECONDS, TimeUnit.SECONDS);
+	}
+
+	/**
+	 * Verifies that the adapter interrupts an active turn through JSON-RPC, classifies the recorded terminal status
+	 * as interrupted within the contract's bound, and retains every event after a successful bridge shutdown.
+	 *
+	 * @throws Exception if the contract check or transcript verification fails
+	 */
+	@Test(timeOut = 60_000)
+	public void interruptEndsARunningTurnAsInterrupted() throws Exception
+	{
+		// Requirement: R-E10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			List<String> events = recorded("interrupt-turn-1.jsonl");
+			RecordedAppServer server = new RecordedAppServer(List.of(events));
+
+			new SessionPortContract(() -> new RecordedSubject(port(root, server), root, server)).
+				interruptEndsARunningTurnAsInterrupted();
+
+			requireThat(Files.readAllLines(server.transcript(), UTF_8), "transcript").isEqualTo(
+				RecordedAppServer.rebindResponse(events, 3));
+			List<JsonNode> interrupts = server.interrupts();
+			requireThat(interrupts.size(), "interrupts.size").isEqualTo(1);
+			JsonNode params = interrupts.getFirst().path("params");
+			JsonNode terminal = JsonMapper.builder().build().readTree(events.getLast()).path("params");
+			requireThat(params.path("threadId"), "threadId").isEqualTo(terminal.path("threadId"));
+			requireThat(params.path("turnId"), "turnId").isEqualTo(terminal.path("turn").path("id"));
+		}
+	}
+
+	/**
+	 * Verifies that an interrupt after a completed recorded session preserves its result and sends no interrupt
+	 * request to the app server.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void interruptAfterTheEndChangesNothing() throws Exception
+	{
+		// Requirement: R-E10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			RecordedAppServer server = new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl")));
+
+			new SessionPortContract(() -> new RecordedSubject(port(root, server), root, server)).
+				interruptAfterTheEndChangesNothing();
+
+			requireThat(server.interrupts().isEmpty(), "interrupts.isEmpty").isTrue();
+		}
 	}
 
 	/**
@@ -305,6 +362,68 @@ public final class CodexSessionsContractTest
 			requireThat(completed.toolCalls(), "rootToolCalls").isEqualTo(List.of(
 				new ToolCall("commandExecution", "/bin/bash -lc true", 1),
 				new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+		}
+	}
+
+	/**
+	 * Supplies the production port and an in-memory app server to the shared interrupt checks.
+	 *
+	 * @param port the production adapter
+	 * @param workspace the test-owned source directory
+	 * @param server the recorded external boundary
+	 */
+	private record RecordedSubject(CodexSessions port, Path workspace, RecordedAppServer server) implements Subject
+	{
+		/**
+		 * Creates a subject for the shared interrupt checks.
+		 *
+		 * @param port the production adapter
+		 * @param workspace the test-owned source directory
+		 * @param server the recorded external boundary
+		 * @throws NullPointerException if any argument is null
+		 */
+		private RecordedSubject
+		{
+			requireThat(port, "port").isNotNull();
+			requireThat(workspace, "workspace").isNotNull();
+			requireThat(server, "server").isNotNull();
+		}
+
+		@Override
+		public Set<HostLogin> acceptableLogins()
+		{
+			return Set.of(HostLogin.UNKNOWN);
+		}
+
+		@Override
+		public String quickPrompt()
+		{
+			return "Reply with the single word ok.";
+		}
+
+		@Override
+		public String longPrompt()
+		{
+			return "Keep working until interrupted.";
+		}
+
+		@Override
+		public void awaitTurnInProgress(SessionHandle session) throws InterruptedException
+		{
+			server.awaitTurnInProgress();
+			requireThat(session.completion().toCompletableFuture().isDone(), "endedEarly").isFalse();
+		}
+
+		@Override
+		public void finish(SessionHandle session)
+		{
+			// The app server supplies the complete trial recording in response to turn/start.
+		}
+
+		@Override
+		public void close()
+		{
+			server.close();
 		}
 	}
 }
