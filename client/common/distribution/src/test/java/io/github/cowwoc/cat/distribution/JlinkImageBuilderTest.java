@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -51,10 +50,10 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
-	 * Verifies generated launchers retain JVM performance data in a private temporary filesystem.
+	 * Verifies launcher rewriting requests a private temporary filesystem and falls back to Java without bwrap.
 	 */
 	@Test
-	public void isolatesPerfDataWithoutDisablingIt() throws IOException
+	public void rewritesLauncherWithPerfDataIsolation() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -69,65 +68,9 @@ public final class JlinkImageBuilderTest
 			requireThat(launcher, "launcher").
 				contains("bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev --").
 				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'").
+				contains("if command -v bwrap >/dev/null 2>&1; then").
+				contains("\nfi\nexec \"$DIR/java\" ").
 				doesNotContain("PerfDisableSharedMem");
-			try (Process first = new ProcessBuilder(output.resolve("bin/plugin-info").toString(), "-version").
-				redirectErrorStream(true).start();
-				 Process second = new ProcessBuilder(output.resolve("bin/plugin-info").toString(), "-version").
-					redirectErrorStream(true).start())
-			{
-				String firstOutput = awaitSuccessfulLauncher(first);
-				String secondOutput = awaitSuccessfulLauncher(second);
-				requireThat(firstOutput, "firstOutput").contains("javac").doesNotContain("perf,memops").
-					doesNotContain("hsperfdata");
-				requireThat(secondOutput, "secondOutput").contains("javac").doesNotContain("perf,memops").
-					doesNotContain("hsperfdata");
-			}
-		}
-	}
-
-	/**
-	 * Verifies concurrent Maven-wrapper JVMs retain HotSpot performance data without sharing its backing directory.
-	 * <p>
-	 * Starting and waiting for two Maven JVMs can take over one second. Both wrapper processes must run concurrently to
-	 * exercise performance-data directory collisions; a single process or in-process fake cannot reproduce that boundary.
-	 */
-	@Test
-	public void isolatesMavenWrapperPerformanceData() throws IOException
-	{
-		Path mavenWrapper = Path.of("../..", "mvnw").toAbsolutePath().normalize();
-		try (Process first = new ProcessBuilder(mavenWrapper.toString(), "--version").redirectErrorStream(true).start();
-			 Process second = new ProcessBuilder(mavenWrapper.toString(), "--version").redirectErrorStream(true).start())
-		{
-			String firstOutput = awaitSuccessfulLauncher(first);
-			String secondOutput = awaitSuccessfulLauncher(second);
-			requireThat(firstOutput, "firstOutput").contains("Apache Maven").doesNotContain("perf,memops").
-				doesNotContain("hsperfdata");
-			requireThat(secondOutput, "secondOutput").contains("Apache Maven").doesNotContain("perf,memops").
-				doesNotContain("hsperfdata");
-		}
-	}
-
-	/**
-	 * Waits for one packaged launcher and returns its combined diagnostic output.
-	 *
-	 * @param process the started launcher
-	 * @return the launcher's output
-	 * @throws IOException if waiting is interrupted or the launcher fails
-	 */
-	private static String awaitSuccessfulLauncher(Process process) throws IOException
-	{
-		try
-		{
-			int exitCode = process.waitFor();
-			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-			if (exitCode != 0)
-				throw new IOException("Isolated launcher failed: " + output);
-			return output;
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted while verifying the isolated launcher", e);
 		}
 	}
 

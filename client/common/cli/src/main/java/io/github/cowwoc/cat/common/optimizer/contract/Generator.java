@@ -89,7 +89,7 @@ public final class Generator
 	 * @param uniform a uniform value in [0, 1)
 	 * @return the selected value, which is the last one if rounding leaves the draw above the cumulative sum
 	 */
-	private static VariationValue select(VariationRule rule, double uniform)
+	static VariationValue select(VariationRule rule, double uniform)
 	{
 		List<VariationValue> values = rule.values();
 		double cumulative = 0;

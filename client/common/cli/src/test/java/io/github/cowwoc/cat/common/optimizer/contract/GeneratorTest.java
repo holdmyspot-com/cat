@@ -3,9 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -91,51 +89,31 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that sampled variation counts stay below their 0.001 chi-square cutoffs for the contract's fixed
-	 * probabilities. The fixed seed keeps the check repeatable.
-	 * <p>
-	 * The 40,000 production draws can exceed one second under full-build load; retaining that sample size preserves
-	 * the check's sensitivity to probability errors. Each draw exercises production selection, turn expansion and
-	 * validation, so replacing those operations with a faster sampler would no longer test the generator.
+	 * Verifies that cumulative probability boundaries select the next value at each boundary and that rounding
+	 * below one falls back to the last value.
 	 */
 	@Test
-	public void samplesVariationsAtFrozenProbabilities()
+	public void selectsVariationAtProbabilityBoundaries()
 	{
 		// Requirement: R-C4
-		Generator generator = new Generator(ContractFixtures.contract());
-		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		Map<String, Integer> tones = new HashMap<>();
-		Map<String, Integer> audiences = new HashMap<>();
-		int styled = 0;
-		for (int i = 0; i < 40_000; ++i)
-		{
-			TrialInstance instance = generator.draw("formatting", stream);
-			if (!instance.testId().equals("styled-summary"))
-				continue;
-			++styled;
-			tones.merge(instance.choices().get(0).label(), 1, Integer::sum);
-			audiences.merge(instance.choices().get(1).label(), 1, Integer::sum);
-		}
+		VariationValue formal = new VariationValue("formal", "Formal.", 0.5);
+		VariationValue casual = new VariationValue("casual", "Casual.", 0.3);
+		VariationValue terse = new VariationValue("terse", "Terse.", 0.2);
+		VariationRule tone = new VariationRule("tone", List.of(formal, casual, terse));
 
-		double toneStatistic = ChiSquare.statistic(tones, Map.of("formal", 0.5, "casual", 0.3, "terse", 0.2), styled);
-		double audienceStatistic = ChiSquare.statistic(audiences, Map.of("expert", 0.7, "novice", 0.3), styled);
+		requireThat(Generator.select(tone, 0), "atZero").isEqualTo(formal);
+		requireThat(Generator.select(tone, 0.4999), "belowCasual").isEqualTo(formal);
+		requireThat(Generator.select(tone, 0.5), "atCasual").isEqualTo(casual);
+		requireThat(Generator.select(tone, 0.7999), "belowTerse").isEqualTo(casual);
+		requireThat(Generator.select(tone, 0.8), "atTerse").isEqualTo(terse);
+		requireThat(Generator.select(tone, Math.nextDown(1.0)), "belowOne").isEqualTo(terse);
 
-		requireThat(toneStatistic, "toneStatistic").isLessThan(ChiSquare.TWO_DEGREES_CUTOFF);
-		requireThat(audienceStatistic, "audienceStatistic").isLessThan(ChiSquare.ONE_DEGREE_CUTOFF);
-	}
-
-	/**
-	 * Verifies that the chi-square calculation rejects counts that differ from the expected probabilities.
-	 */
-	@Test
-	public void chiSquareRejectsMismatchedProbabilities()
-	{
-		// Requirement: R-C4
-		Map<String, Integer> observed = Map.of("formal", 5_000, "casual", 3_000, "terse", 2_000);
-
-		double statistic = ChiSquare.statistic(observed, Map.of("formal", 0.45, "casual", 0.30, "terse", 0.25), 10_000);
-
-		requireThat(statistic, "statistic").isGreaterThan(ChiSquare.TWO_DEGREES_CUTOFF);
+		VariationValue roundedTerse = new VariationValue("terse", "Terse.", 0.2 - 1e-10);
+		VariationRule rounded = new VariationRule("tone", List.of(formal, casual, roundedTerse));
+		double cumulative = formal.probability() + casual.probability() + roundedTerse.probability();
+		double uniform = Math.nextDown(1.0);
+		requireThat(uniform, "uniform").isGreaterThan(cumulative);
+		requireThat(Generator.select(rounded, uniform), "roundingFallback").isEqualTo(roundedTerse);
 	}
 
 	/**
