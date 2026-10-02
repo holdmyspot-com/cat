@@ -122,6 +122,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-23 | `optimize-high` | Scenario discovery across module test resources, a rule edit, and moving 64 scenarios with their fixtures. |
 | WI-24 | `optimize-high` | A new deriver finding through the schema, parser, proposal rendering and the confirm command. |
 | WI-25 | `optimize-high` | New deriver and author outputs, a pause state with choices, a revision from a choice, and two prompt-wording changes. |
+| WI-26 | `optimize-xhigh` | The promotion and reduction rules and the author's approach decide which edits ship and when a campaign plateaus. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -224,6 +225,7 @@ requirement names.
 | Convention renames (convention-pass follow-up) | Done 2026-10-02 (Codex medium; full build 1612 tests, 0 failures, none at or over 1 s; bats 32/32). Campaign types no longer repeat their package: `Header`, `Registry`, `Transitions` and the test `Builder`; per-cell types and members say cell where they hold a cell (`CellCounts`, `CellDecision`). The two `ManualClock` doubles are one, in `common.fakes`. Codex had kept the old names in `toString` overrides with tests pinning them; both were removed, so diagnostics name the current record and its fields. |
 | WI-24 | Done 2026-10-02 (Codex high; full build 1625 tests, 0 failures, none at or over 1 s; bats 32/32). User ruling (`design.md` D31). The deriver findings gain a required `conflicts` array (at least two distinct requirement ids that name contract requirements, and non-blank evidence); the proposal renders a `## Conflicts` section before the certifiable scope; `confirm` is refused while a conflict is listed, naming both blocking links and conflicts in one refusal (`ProposalTest`, `OptimizerCoreTest.conflictRefusalAndRevision`, `confirmListsEveryBlocker`; each failed first). Resolutions follow in WI-25. |
 | WI-25 | Done 2026-10-02 (Codex xhigh; full build 1666 tests, 0 failures, none at or over 1 s; bats 32/32). User ruling (`design.md` D31, D32); the user approved the `first-use.md`, `deriver.md` and `author.md` wording, including the campaign-edits paragraph and the step 4 manifest sentence. Each deriver conflict carries at least two resolutions, the recommended one and its reason, rendered as a numbered list; the skill asks the user to choose before confirming. The author may classify a failure `conflict`, quoting text the confirmed prompt system already held (a quotation absent from the incumbent snapshot is a manifest violation); the report yields no candidate and pauses the campaign with one `resolution-<n>` choice per resolution plus `stop`, presented one conflict at a time, then one revision. The author brief carries the campaign's edits since confirmation as a unified diff. Campaign format 9 (`ProposalTest`, `AuthorManifestTest`, `AuthorTest`, `ConflictPauseTest`, `TransitionsTest`, `CommandsTest`, `OptimizerCoreTest`, `StatusReportTest`, `FileCampaignStoreTest`; each failed first). |
+| WI-26 | In progress. User ruling (`design.md` D30, D33, D34). |
 | Prompt sources at session start (WI-15 E5 finding) | Done 2026-10-02 (Codex high; full build 1676 tests, 0 failures, none at or over 1 s; bats 32/32). An E5 campaign paused `MEASUREMENT_CHANGED` on `PROMPT_SOURCES` because the value listed hooks of later events (Codex `subagentStart`) that run only when a trial takes that action. `design.md` §5 now limits the condition to sources loaded at session start; both readers keep only session-start hooks (`AppServerPromptSourcesTest`, `StreamJsonPromptSourcesTest`, each failed first; `DriverTest.certify` covers equal values not pausing). |
 | Proposal text names the user's project (WI-15 E1 finding) | Done 2026-10-02 (Codex high; full build 1702 tests, 0 failures; bats 32/32). The E1 proposal's conflict evidence linked the deriver's staged copy (`.cat/work/optimizer-runs/.../project/AGENTS.md:6`) instead of the user's file. `DeriverProtocol` now replaces the session's staged project root with the project root in every string of the deriver's output before validation and storage; paths to session artifacts outside the staged project stay unchanged (`ProposalTest`, 24 cases, 23 failed first). |
 | Skill launcher paths (WI-15 finding, R-I5) | Done (`a1d70a4bd`; full build 1568 tests, 0 failures, none at or over 1 s; bats 32/32). Codex still ran `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer` literally in 2 of 4 runs although the injected skill-environment rule named the plugin directory. The user chose skill-relative paths: every skill names `client/bin/<launcher>` in the plugin directory two levels above the skill's directory, and `BundledSkillLauncherTest` fails if a shipped skill writes the variable (it failed first on all 8 skills). After reinstalling, 6 of 6 Codex runs called the launcher by its absolute path first. |
@@ -282,6 +284,11 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.8: the Claude runner interrupts with a stream-json `control_request` (H29). §11: added H29.
 - `design.md` §6.1, §8, D13 and G10; plan R-I3, §1.1, WI-21 and §6: a guidance correction records its regression scenarios under `.cat/tests/`, they are recorded, not tested, until a covering campaign, and CAT refuses a proposal that omits one. Nothing ran the old rule suites once the prompt-evaluation runner was retired (user rulings, 2026-10-02).
 
+- `design.md` §2.7, §14 G1, D30, D33 and D34: an attempt that fixes at least one triggering instance without a
+  regression is promoted, a reduction keeps every fix, the attempts of a round follow distinct approaches, and authors
+  correct an instruction in the file that states it; R-D3, R-D11 and R-D12 reworded, R-D14 and WI-26 added with §1.1,
+  §2 and §6 (user ruling, 2026-10-02, after the E1 `gpt-6-luna`/low plateau).
+
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
 
@@ -311,7 +318,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 |---|---|---|---|---|
 | R-D1 | Readiness gate: at least 100 trials, at least 99%, latest two batches of 50 each at least 98%, no unresolved defect, baseline met. | §2.7 | WI-3 | U: `ReadinessGateTest` (each boundary on both sides) |
 | R-D2 | Edit-or-continue: pause admissions, up to 3 reruns, edit if reproduced or more than 2 failures, otherwise continue with the window reset to 1. | §2.7 | WI-3, WI-9 | U: `EditOrContinueTest`; U: `DriverTest` (pause and resume) |
-| R-D3 | Author attempts are validated, run twice on triggering instances and once on the regression set, and promoted by the §2.7 rule. Targeted runs never count. | §2.7 | WI-3, WI-9 | U: `PromotionTest`; U: `DriverTest` |
+| R-D3 | Author attempts are validated, run twice on triggering instances and once on the regression set, and promoted by the §2.7 rule: the attempt fixes (passes both runs of) at least one triggering instance and fails no regression instance that the working candidate passes. Targeted runs never count. | §2.7, D33 | WI-3, WI-9, WI-26 | U: `PromotionTest`; U: `DriverTest` |
 | R-D9 | Authors receive development instances and outcomes and the formal outcomes of ended attempts, never the instances of a certification attempt in progress. | §3.1 | WI-9 | U: `DriverTest` (author input during a formal attempt) |
 | R-D4 | A new candidate starts new counts; earlier outcomes are retained for diagnosis. | §2.7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-D5 | Review checkpoint at 200 unresolved trials: stop the category, offer choices, record the next review point. | §2.7 | WI-3 | U: `ReviewCheckpointTest` |
@@ -319,9 +326,10 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D7 | Incumbent baseline arm: 50 per category, plus 50 conditional. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3 | U: `BaselineTest`, `AdmissionTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25, D30 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
-| R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction judged by the promotion runs and rule, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
-| R-D12 | Concurrent attempts while weak: when any cell of a category the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts for that category from the same brief; each runs the same promotion runs; the accepted attempt with the most passing promotion runs wins, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results. | §2.7, D28 | WI-20 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
+| R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction run through the promotion runs and kept when it fixes every triggering instance that the attempt it reduces fixed and fails no regression instance that the working candidate passes, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
+| R-D12 | Concurrent attempts while weak: when any cell of a category the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts for that category from the same evidence; each runs the same promotion runs; the accepted attempt with the most passing promotion runs wins, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results. | §2.7, D28 | WI-20 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
 | R-D13 | An author conflict report whose quotations the confirmed snapshot holds pauses the campaign with each resolution and `stop`; a report quoting only campaign edits is rejected; a chosen resolution becomes a revision that needs confirmation and starts a new lineage. | §2.7, §7, D32 | WI-25 | U: `AuthorManifestTest`, `DriverTest`, `OptimizerCoreTest` |
+| R-D14 | The attempts a category receives in one round follow the §2.7 approaches in order: correct the instruction where it is stated (`AGENTS.md` and `CLAUDE.md` included), rewrite rather than add, add the missing guidance; a sequential round uses the first two. The author corrects an instruction in the file that states it and adds new guidance to `AGENTS.md` or `CLAUDE.md` only when it cannot otherwise reach the sessions that need it. | §2.7, D30, D34 | WI-26 | U: `AuthorTest`, `DriverTest` |
 
 ### 3.3 Formal certification
 
@@ -785,7 +793,7 @@ The riskiest pure code, built first.
   attempt that edits nothing produces no candidate; its classifications go to the round's diagnosis and to the
   review-checkpoint or plateau report.
 - **Minimality pass:** after the promotion runs pass, delta debugging over the attempt's hunks: start with two groups,
-  revert one group, rerun the same promotion runs under the same rule, keep the reduction if it passes, otherwise
+  revert one group, rerun the same promotion runs, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
   split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
   report names the removed hunks.
 - **Size report:** the status shows the working candidate's and the incumbent's prompt size (bytes and words) and the
@@ -831,6 +839,24 @@ The riskiest pure code, built first.
   `RegressionScenariosTest`, which fails when a scenario lies outside `.cat/tests/` or names no existing guidance file.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
   rules module.
+
+### WI-26 — Partial promotion and attempt approaches (user ruling, 2026-10-02)
+
+- **Promotion:** an attempt fixes a triggering instance when both of its runs there pass. It is promoted when it fixes
+  at least one triggering instance and fails no regression instance that the working candidate passes; it is rejected
+  as soon as no triggering instance can still be fixed or a regression is certain (`design.md` §2.7, D33). Winner
+  selection among a weak round's accepted attempts is unchanged.
+- **Minimality:** a reduction passes when it fixes every triggering instance that the attempt it reduces fixed and fails
+  no regression instance that the working candidate passes.
+- **Approaches:** each author attempt of a category in a round receives the §2.7 approach for its position in that
+  category's attempts; the author brief and prompt carry it (`design.md` §2.7, D34). `author.md` step 2 corrects an
+  instruction in the file that states it, `AGENTS.md` and `CLAUDE.md` included (D30).
+- **Closes:** R-D3 (rule change), R-D11 (reduction rule), R-D14.
+- **Tests:** `PromotionTest` (one of two triggering instances fixed is promoted; none fixed is rejected early; a
+  regression still rejects), `MinimalityTest` (a reduction that loses a fix fails; one that keeps every fix passes),
+  `AuthorTest` (each position's approach is rendered), `DriverTest` (a round's attempts receive distinct
+  approaches; a partially fixing attempt becomes the working candidate).
+- **Exit:** unit tests pass; the full build passes.
 
 ### WI-25 — Resolving conflicts with the user (user ruling, 2026-10-02)
 
@@ -978,6 +1004,7 @@ blocks only the part of a work item that it names.
 | WI-23 | WI-21 |
 | WI-24 | WI-22 |
 | WI-25 | WI-24 |
+| WI-26 | WI-18, WI-20, WI-25 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
