@@ -51,9 +51,10 @@ public final class LeftoverRuns
 	}
 
 	/**
-	 * Returns the processes of every run that is still marked {@code running}.
+	 * Finds the processes recorded by runs under this campaign's run root that are still marked {@code running}.
 	 *
-	 * @return the owner and harness processes, in directory order
+	 * @return the owner and harness processes whose identifiers and start times can be parsed, in directory order;
+	 *   empty if the run root is missing or is not a directory
 	 * @throws IOException if the run directories cannot be listed
 	 */
 	public List<RecordedProcess> find() throws IOException

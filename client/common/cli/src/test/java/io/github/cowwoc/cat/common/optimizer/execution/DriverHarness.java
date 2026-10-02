@@ -81,7 +81,10 @@ public final class DriverHarness
 	 * The permissions of every prompt file.
 	 */
 	private static final Set<PosixFilePermission> PERMISSIONS = PosixFilePermissions.fromString("rw-r--r--");
-	private static final int ITERATIONS = 100_000;
+	/**
+	 * Fail a test after this many driver steps instead of waiting indefinitely for its stopping condition.
+	 */
+	private static final int STEP_LIMIT = 100_000;
 	private final Path directory;
 	private final ManualClock clock = new ManualClock(START);
 	private final InMemoryCampaignStore store = new InMemoryCampaignStore();
@@ -360,7 +363,7 @@ public final class DriverHarness
 		FileInventory before = fakeWorkspace.scanAuthoringCopy(request.source());
 		Map<Path, FileEntry> entries = new HashMap<>(before.entries());
 		entries.put(file, new RegularFile(Sha256.of(content), PERMISSIONS));
-		// Throws if the session's project source is not an authoring copy that the driver prepared
+		// The fake rejects an unprepared copy, so an author request cannot edit a project the driver did not supply
 		fakeWorkspace.editAuthoringCopy(request.source(), new FileInventory(effects, entries));
 		return new SessionResult.Completed(directory.resolve("author-transcript"), List.of("done"), effects, MODEL,
 			"reasoning-1", null, List.of(), PROMPT_SOURCES);
@@ -387,7 +390,7 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Ends the oldest running session with its scripted result.
+	 * Indicates whether a running session was ended. Ends the oldest one with its scripted result.
 	 *
 	 * @return {@code true} if a session was running
 	 */
@@ -446,7 +449,7 @@ public final class DriverHarness
 	 */
 	public Step settle(Driver driver) throws IOException
 	{
-		for (int iteration = 0; iteration < ITERATIONS; ++iteration)
+		for (int iteration = 0; iteration < STEP_LIMIT; ++iteration)
 		{
 			Step step = driver.step();
 			int judges = 0;
@@ -461,7 +464,7 @@ public final class DriverHarness
 			if (judges == 0)
 				return step;
 		}
-		throw new AssertionError("The judges did not settle after " + ITERATIONS + " steps");
+		throw new AssertionError("The judges did not settle after " + STEP_LIMIT + " steps");
 	}
 
 	/**
@@ -509,7 +512,7 @@ public final class DriverHarness
 	 */
 	public SliceResult runSlice(Driver driver) throws IOException
 	{
-		for (int iteration = 0; iteration < ITERATIONS; ++iteration)
+		for (int iteration = 0; iteration < STEP_LIMIT; ++iteration)
 		{
 			Step step = driver.step();
 			switch (step)
@@ -525,7 +528,7 @@ public final class DriverHarness
 				}
 			}
 		}
-		throw new AssertionError("The slice did not stop after " + ITERATIONS + " steps");
+		throw new AssertionError("The slice did not stop after " + STEP_LIMIT + " steps");
 	}
 
 	/**
@@ -539,7 +542,7 @@ public final class DriverHarness
 	 */
 	public Campaign runUntil(Driver driver, Predicate<Campaign> condition) throws IOException
 	{
-		for (int iteration = 0; iteration < ITERATIONS; ++iteration)
+		for (int iteration = 0; iteration < STEP_LIMIT; ++iteration)
 		{
 			Step step = driver.step();
 			Campaign campaign = campaign();
@@ -555,7 +558,7 @@ public final class DriverHarness
 				}
 			}
 		}
-		throw new AssertionError("The condition did not hold after " + ITERATIONS + " steps");
+		throw new AssertionError("The condition did not hold after " + STEP_LIMIT + " steps");
 	}
 
 	/**

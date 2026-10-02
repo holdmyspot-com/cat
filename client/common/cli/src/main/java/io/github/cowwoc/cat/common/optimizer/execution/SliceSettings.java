@@ -5,12 +5,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.time.Duration;
 
 /**
- * The time limits of one slice: a {@code run} invocation of the {@link Driver}.
+ * The time limits of one slice: the bounded interval during which {@link SliceRunner} advances the {@link Driver}.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param budget how long after the slice starts new work may be admitted
- * @param grace how long after the budget in-flight sessions may finish before they are cancelled
+ * @param grace how long after the budget running sessions may finish before they are cancelled
  * @param pollInterval the longest time that {@link SliceRunner} waits before it checks for a host interrupt again
  */
 public record SliceSettings(Duration budget, Duration grace, Duration pollInterval)
@@ -26,7 +26,7 @@ public record SliceSettings(Duration budget, Duration grace, Duration pollInterv
 	 * Creates the settings.
 	 *
 	 * @param budget how long after the slice starts new work may be admitted
-	 * @param grace how long after the budget in-flight sessions may finish before they are cancelled
+	 * @param grace how long after the budget running sessions may finish before they are cancelled
 	 * @param pollInterval the longest time that {@link SliceRunner} waits before it checks for a host interrupt
 	 *   again
 	 * @throws NullPointerException if any of the arguments are null

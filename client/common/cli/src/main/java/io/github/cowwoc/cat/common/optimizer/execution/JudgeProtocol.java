@@ -12,16 +12,16 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Turns a trial's evidence into a judge session and the judge's output into a judgment, for the {@link Driver}.
+ * Creates a judge session request from a trial's evidence and parses its verdict and rationale, for the {@link Driver}.
  * <p>
- * This is the seam that the judge prompt fills: the driver supplies the contract's frozen judge profile as data and
- * never writes prompt text itself. The driver asks for a judge only after every deterministic check of the trial
- * passed and while a semantic requirement remains (design &sect;6.4).
+ * The driver supplies the contract's frozen judge profile; the protocol writes the prompt. The driver requests a
+ * judge only after every deterministic check of the trial passed and a requirement that needs the judge's
+ * interpretation remains (design &sect;6.4).
  */
 public interface JudgeProtocol
 {
 	/**
-	 * Returns the judge session for one trial. The driver sends the same request again when it reruns the judge
+	 * Creates the judge session request for one trial. The driver sends the same request again when it reruns the judge
 	 * after an invalid result.
 	 *
 	 * @param profile the contract's frozen judge profile

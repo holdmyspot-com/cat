@@ -36,10 +36,10 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The author prompt: tells an author session what it may see and what it may edit, and reads its report of the edits
- * it needed outside its authority (design &sect;2.7, &sect;3.1, &sect;4.3).
+ * Builds requests for sessions that edit prompt files, and reads their reports of needed edits outside the allowed
+ * paths and operations (design &sect;2.7, &sect;3.1, &sect;4.3).
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> Callers may build requests and read reports concurrently.
  */
 public final class AuthorPrompt implements AuthorProtocol
 {
@@ -61,7 +61,7 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * Creates the author prompt for the confirmed edit authority.
 	 *
 	 * @param json the operation-owned JSON mapper
-	 * @param schema the proposal schema, which writes the contract for the author
+	 * @param schema writes the confirmed requirements, tests and evaluation settings as JSON for the author
 	 * @param promptSources the in-project prompt files and directories, relative to the project directory, at or below
 	 *   which the author may edit, create, rename and delete ordinary files
 	 * @param loaderConfiguration the files and directories that decide which prompt files load, at or below which
@@ -121,7 +121,7 @@ public final class AuthorPrompt implements AuthorProtocol
 		ArrayNode failures = json.createArrayNode();
 		for (Failure failure : brief.developmentFailures())
 		{
-			ObjectNode node = failure(failure);
+			ObjectNode node = encodeFailure(failure);
 			ArrayNode reruns = node.putArray("diagnostic_reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -137,10 +137,10 @@ public final class AuthorPrompt implements AuthorProtocol
 			ObjectNode node = ended.addObject();
 			node.put("index", attempt.index());
 			node.put("outcome", attempt.outcome().label());
-			node.set("counts", counts(attempt.counts()));
+			node.set("counts", encodeCounts(attempt.counts()));
 			ArrayNode attemptFailures = node.putArray("failures");
 			for (Failure failure : attempt.failures())
-				attemptFailures.add(failure(failure));
+				attemptFailures.add(encodeFailure(failure));
 		}
 		String turn = prompt.fill(Map.of(
 			"prompt_sources", promptSources,
@@ -150,7 +150,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			"cell", brief.category(),
 			"contract", schema.toJson(brief.contract()),
 			"failures", pretty(failures),
-			"development_counts", pretty(counts(brief.developmentCounts())),
+			"development_counts", pretty(encodeCounts(brief.developmentCounts())),
 			"ended_attempts", pretty(ended),
 			"report_schema", reportSchema));
 		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT,
@@ -158,26 +158,26 @@ public final class AuthorPrompt implements AuthorProtocol
 	}
 
 	/**
-	 * Writes a failure.
+	 * Writes a failing trial instance and the evidence that explains its failure.
 	 *
-	 * @param failure the failure
+	 * @param failure the instance and rationale to show the author
 	 * @return the failing instance with the reason for its failure in {@code rationale}: the judge's rationale, or
 	 *   the record of each failed deterministic check
 	 */
-	private ObjectNode failure(Failure failure)
+	private ObjectNode encodeFailure(Failure failure)
 	{
-		ObjectNode node = InstanceJson.of(json, failure.instance());
+		ObjectNode node = InstanceJson.encode(json, failure.instance());
 		node.put("rationale", failure.rationale());
 		return node;
 	}
 
 	/**
-	 * Writes outcome counts per category.
+	 * Writes outcome counts per cell: one category under one trial profile.
 	 *
-	 * @param counts the counts of each category
-	 * @return an object with one {@code passes}, {@code failures} pair per category, in category order
+	 * @param counts the trial passes and failures to show the author, keyed by cell identifier
+	 * @return an object with one {@code passes}, {@code failures} pair per cell, in cell identifier order
 	 */
-	private ObjectNode counts(Map<String, CategoryCounts> counts)
+	private ObjectNode encodeCounts(Map<String, CategoryCounts> counts)
 	{
 		ObjectNode node = json.createObjectNode();
 		for (Map.Entry<String, CategoryCounts> entry : new TreeMap<>(counts).entrySet())
@@ -206,7 +206,8 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * The report is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
 	 * fence, that holds exactly a {@code needed_edits} array as the report schema requires. Each element holds exactly
 	 * a non-blank {@code requirement}, a {@code path}, an {@code operation} that names an {@link Operation} in lower
-	 * case and, optionally, a {@code target}; each path must be normalized and must not start with {@code ..}.
+	 * case and, optionally, a {@code target}. In addition to the schema, path validation requires non-empty, normalized
+	 * paths that do not start with {@code ..}.
 	 */
 	@Override
 	public Optional<List<NeededEdit>> neededEdits(SessionResult.Completed result)
@@ -221,7 +222,7 @@ public final class AuthorPrompt implements AuthorProtocol
 		List<NeededEdit> neededEdits = new ArrayList<>();
 		for (JsonNode edit : edits)
 		{
-			Optional<NeededEdit> neededEdit = neededEdit(edit);
+			Optional<NeededEdit> neededEdit = parseNeededEdit(edit);
 			if (neededEdit.isEmpty())
 				return Optional.empty();
 			neededEdits.add(neededEdit.get());
@@ -233,9 +234,9 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * Reads one element of the {@code needed_edits} array.
 	 *
 	 * @param node the element
-	 * @return the needed edit, or empty if the element does not satisfy the report schema
+	 * @return the needed edit, or empty if its fields or paths are invalid
 	 */
-	private static Optional<NeededEdit> neededEdit(JsonNode node)
+	private static Optional<NeededEdit> parseNeededEdit(JsonNode node)
 	{
 		if (!node.isObject())
 			return Optional.empty();
@@ -249,7 +250,7 @@ public final class AuthorPrompt implements AuthorProtocol
 		names.remove(TARGET);
 		if (!names.equals(REQUIRED_EDIT_PROPERTIES))
 			return Optional.empty();
-		Optional<Operation> operation = operation(node.get("operation").asString());
+		Optional<Operation> operation = findOperation(node.get("operation").asString());
 		if (operation.isEmpty())
 			return Optional.empty();
 		try
@@ -260,9 +261,9 @@ public final class AuthorPrompt implements AuthorProtocol
 			return Optional.of(new NeededEdit(node.get("requirement").asString(),
 				Path.of(node.get("path").asString()), operation.get(), target));
 		}
+		// Invalid path syntax and edits that violate NeededEdit's constraints both make the report malformed.
 		catch (IllegalArgumentException _)
 		{
-			// Includes InvalidPathException
 			return Optional.empty();
 		}
 	}
@@ -273,7 +274,7 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * @param name the operation's name in lower case
 	 * @return the operation, or empty if no operation has the name
 	 */
-	private static Optional<Operation> operation(String name)
+	private static Optional<Operation> findOperation(String name)
 	{
 		for (Operation operation : Operation.values())
 		{

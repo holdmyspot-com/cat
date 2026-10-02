@@ -88,7 +88,8 @@ public final class ProcessHandleTerminatorTest
 	}
 
 	/**
-	 * Verifies that a process whose identifier and start time match is terminated along with its descendants.
+	 * Verifies that a process whose identifier and start time match exits along with its descendants after termination
+	 * is requested.
 	 *
 	 * @throws IOException if the process cannot start or its output cannot be read
 	 * @throws InterruptedException if the test is interrupted
@@ -104,8 +105,8 @@ public final class ProcessHandleTerminatorTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
 			Files.createFile(directory.resolve("followed"));
-			// The child follows a file that never ends; its output is detached from the test's pipes, whose closing
-			// would end it once the shell exits
+			// The shell's child follows an empty file and writes to /dev/null, so it can outlive the shell without
+			// writing to the test's closed pipe. The test must observe the child's exit as well as the shell's
 			try (Process process = start(directory, "sh", "-c",
 				"tail -f followed >/dev/null 2>&1 & echo started; wait"))
 			{
@@ -165,7 +166,7 @@ public final class ProcessHandleTerminatorTest
 			{
 				ProcessHandle handle = process.toHandle();
 				Instant startedAt = startedAt(handle);
-				// cat exits at the end of its input
+				// Closing the parent's output endpoint sends EOF to the child process, so cat exits
 				process.getOutputStream().close();
 				requireThat(process.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "exited").isTrue();
 				requireThat(new ProcessHandleTerminator().terminate(handle.pid(), startedAt), "terminated").isFalse();

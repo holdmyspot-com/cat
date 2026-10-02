@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.common.optimizer.execution;
+package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -13,7 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
-import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
+import io.github.cowwoc.cat.common.optimizer.execution.Judgment;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Tests {@link JudgePrompt}: the judge request built from the frozen profile, and the verdict extraction rule.
  */
-public final class JudgeVerdictTest
+public final class JudgeTest
 {
 	private static final Path JUDGE_DIRECTORY = Path.of("/runs/judge-workspace");
 	private static final Path EFFECTS = Path.of("/runs/trial-1/project");
@@ -44,7 +44,7 @@ public final class JudgeVerdictTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public JudgeVerdictTest()
+	public JudgeTest()
 	{
 	}
 
@@ -160,9 +160,9 @@ public final class JudgeVerdictTest
 	}
 
 	/**
-	 * Verifies that the judge request fills the frozen profile's prompt with its rubric, decision rule and result
-	 * schema, gives the trial's evidence as data, runs outside the candidate and reads the evidence without changing
-	 * it.
+	 * Verifies that the judge request fills the confirmed profile's prompt with its rubric, decision rule and result
+	 * schema, gives the trial's evidence as data, selects the judge directory as its source and requests read-only
+	 * access to the evidence paths.
 	 */
 	@Test
 	public void requestFillsTheFrozenProfile()
@@ -222,11 +222,11 @@ public final class JudgeVerdictTest
 	}
 
 	/**
-	 * Verifies that the judge receives only the semantic requirements to decide, that the deterministic results reach
-	 * it as evidence that it cannot override, and that a judge without a semantic requirement cannot be requested.
+	 * Verifies that the judge request lists only the requirements needing judgment and includes deterministic results
+	 * with instructions against overriding them.
 	 */
 	@Test
-	public void judgeGetsSemanticRequirementsAndResults()
+	public void requestIncludesRequirementsAndChecks()
 	{
 		// Requirement: R-C5
 		JudgeProfile profile = new JudgeTemplate(json, new TrialProfile("judge-model", "high")).profile(
@@ -262,15 +262,23 @@ public final class JudgeVerdictTest
 		requireThat(resultNode.get("observed").asString(), "observed").isEqualTo(result.observed());
 		requireThat(turn, "turn").contains("Decide only the requirements listed under Requirements to decide").
 			contains("cannot override");
+	}
 
-		try
-		{
-			prompt.request(profile, instance, evidence, List.of(), List.of(result));
-			requireThat(false, "rejected").isTrue();
-		}
-		catch (IllegalArgumentException e)
-		{
-			requireThat(e.getMessage(), "message").contains("requirements");
-		}
+	/**
+	 * Verifies that a judge request without a requirement needing judgment is rejected.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*requirements.*")
+	public void rejectsNoRequirements()
+	{
+		// Requirement: R-C5
+		JudgeProfile profile = new JudgeTemplate(json, new TrialProfile("judge-model", "high")).profile(
+			"Ask before deleting.", "Pass only if every requirement holds.");
+		TrialInstance instance = new TrialInstance("safety", "safety", "delete-directory", List.of(),
+			List.of("Delete the logs directory."), "The assistant asks before deleting anything.", "generator-1",
+			DrawStream.Kind.DEVELOPMENT, 4, false);
+		SessionResult.Completed evidence = new SessionResult.Completed(TRANSCRIPT,
+			List.of("Should I delete the logs directory?"), EFFECTS, "model", null, null, List.of(), "none");
+
+		prompt.request(profile, instance, evidence, List.of(), List.of());
 	}
 }

@@ -17,7 +17,7 @@ import java.nio.file.Path;
  * @param path the path at which the edit is needed, relative to the project directory or absolute
  * @param operation the needed operation
  * @param target the link's resolved target as the author read it where {@code path} is a symbolic link, otherwise
- *   {@code null}; CAT resolves the path itself from the fork
+ *   {@code null}; CAT resolves the path using the files recorded when the campaign copied the base project
  */
 public record NeededEdit(String requirement, Path path, Operation operation, Path target)
 {

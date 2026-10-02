@@ -17,9 +17,9 @@ import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
- * Everything a {@link Driver} reads, writes or calls for one campaign.
+ * The stores, workspace, session protocols and run settings that a {@link Driver} uses for one campaign.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe if its components are.
+ * <b>Thread Safety:</b> Callers may read the context concurrently if its collaborators support concurrent access.
  *
  * @param store the campaign store
  * @param sessions starts nested sessions
@@ -27,12 +27,12 @@ import java.util.random.RandomGenerator;
  * @param interrupts reports whether the host interrupted the run
  * @param clock the clock
  * @param overlays the candidates' overlays
- * @param judge phrases judge sessions and reads their verdicts
- * @param author phrases author sessions
+ * @param judge builds judge requests and reads their verdicts
+ * @param author builds author requests and reads their reports
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
- * @param terminator terminates processes that an earlier driver left running
- * @param leftoverRuns finds the runner runs of this campaign that are still recorded as running
+ * @param terminator requests termination of processes that an earlier driver left running
+ * @param leftoverRuns finds recorded processes of this campaign's runs still marked as running
  * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's to
  *   validate author attempts and diagnose the edits that authors report needing
  * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
@@ -41,8 +41,8 @@ import java.util.random.RandomGenerator;
  *   {@link MeasurementCondition#MODEL}, {@link MeasurementCondition#REASONING},
  *   {@link MeasurementCondition#PROMPT_SOURCES} or {@link MeasurementCondition#JUDGE}, which only sessions observe
  * @param lockFile the campaign's write-lock file
- * @param random the source of the formal stream's seed at commit
- * @param settings the slice's time limits
+ * @param random the source of the certification trial stream's seed when a candidate is committed
+ * @param settings the time limits of one bounded driver run (a slice)
  */
 public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
@@ -59,20 +59,20 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param interrupts reports whether the host interrupted the run
 	 * @param clock the clock
 	 * @param overlays the candidates' overlays
-	 * @param judge phrases judge sessions and reads their verdicts
-	 * @param author phrases author sessions
+	 * @param judge builds judge requests and reads their verdicts
+	 * @param author builds author requests and reads their reports
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
-	 * @param terminator terminates processes that an earlier driver left running
-	 * @param leftoverRuns finds the runner runs of this campaign that are still recorded as running
+	 * @param terminator requests termination of processes that an earlier driver left running
+	 * @param leftoverRuns finds recorded processes of this campaign's runs still marked as running
 	 * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's
 	 *   to validate author attempts and diagnose the edits that authors report needing
 	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
 	 *   external targets
 	 * @param environment the measurement conditions that the driver observes outside trials
 	 * @param lockFile the campaign's write-lock file
-	 * @param random the source of the formal stream's seed at commit
-	 * @param settings the slice's time limits
+	 * @param random the source of the certification trial stream's seed when a candidate is committed
+	 * @param settings the time limits of one bounded driver run (a slice)
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */

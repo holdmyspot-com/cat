@@ -38,7 +38,7 @@ final class Reconciler
 	/**
 	 * Reconciles a campaign. In order, this:
 	 * <ol>
-	 *   <li>terminates the processes of runner runs that an earlier driver left running;</li>
+	 *   <li>requests termination of the recorded processes of runs that an earlier driver left running;</li>
 	 *   <li>adopts every recorded outcome that the snapshot does not hold yet;</li>
 	 *   <li>returns every trial that started without an outcome to the queue, to rerun as the same logical
 	 *   trial;</li>
@@ -121,7 +121,7 @@ final class Reconciler
 	}
 
 	/**
-	 * Looks up a trial.
+	 * Finds the trial with the given key in the campaign's persisted trial queue.
 	 *
 	 * @param campaign the campaign
 	 * @param key the trial's key

@@ -32,7 +32,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
-import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.SessionEvent;
+import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.Event;
 import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
@@ -53,6 +53,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -70,7 +71,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionException;
 
 /**
- * Advances one campaign during one slice (design §3.7 and §3.8).
+ * Advances one campaign during one bounded run, called a slice (design §3.7 and §3.8).
  * <p>
  * {@link #open(DriverContext, String) Opening} a driver takes the campaign's write lock and reconciles what an earlier
  * driver left behind. Each {@link #step()} then consumes the sessions that ended, judges and adopts their outcomes,
@@ -81,11 +82,11 @@ import java.util.concurrent.CompletionException;
 public final class Driver implements AutoCloseable
 {
 	/**
-	 * The judge attempts after which a trial's session counts as an infrastructure failure.
+	 * Count the trial's session as an infrastructure failure after this many failed judge attempts.
 	 */
 	static final int JUDGE_ATTEMPTS = 3;
 	/**
-	 * The failed author sessions after which a slice stops with an infrastructure failure.
+	 * Stop the slice with an infrastructure failure after this many author sessions fail.
 	 */
 	static final int AUTHOR_FAILURE_LIMIT = 3;
 	private final DriverContext context;
@@ -137,7 +138,8 @@ public final class Driver implements AutoCloseable
 	 * @param campaignId the campaign's identifier
 	 * @return the driver, or empty if another driver holds the campaign's lock
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the store holds no campaign with the identifier
+	 * @throws IllegalArgumentException if {@code campaignId} is blank or the store holds no campaign with that
+	 *   identifier
 	 * @throws IOException if the store, the lock file, the worktree or the run records cannot be read or written
 	 */
 	public static Optional<Driver> open(DriverContext context, String campaignId) throws IOException
@@ -168,7 +170,8 @@ public final class Driver implements AutoCloseable
 	 * @param campaignId the campaign's identifier
 	 * @return the result
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the store holds no campaign with the identifier
+	 * @throws IllegalArgumentException if {@code campaignId} is blank or the store holds no campaign with that
+	 *   identifier
 	 * @throws IOException if the store cannot be read
 	 */
 	public static SliceResult busy(DriverContext context, String campaignId) throws IOException
@@ -215,10 +218,10 @@ public final class Driver implements AutoCloseable
 		requireOpen();
 		switch (event)
 		{
+			// A user's command
 			case CampaignEvent.Confirm _, CampaignEvent.Revise _, CampaignEvent.Choose _, CampaignEvent.Cancel _,
 				CampaignEvent.Close _, CampaignEvent.ReportUnavailable _ ->
 			{
-				// A user's command
 			}
 			default -> throw new IllegalArgumentException("Only the driver applies " + event);
 		}
@@ -248,7 +251,7 @@ public final class Driver implements AutoCloseable
 		if (stopped)
 			return new Step.Stopped(result());
 		Instant now = context.clock().instant();
-		for (SessionEvent event : events.drain())
+		for (Event event : events.drain())
 			handle(event, now);
 		if (context.interrupts().isInterruptedAfter(sliceStart))
 		{
@@ -289,7 +292,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Waits until a session ends or the timeout elapses, whichever comes first.
+	 * Indicates whether a session completion is waiting before the timeout elapses. Waits for a completion if none
+	 * is available.
 	 *
 	 * @param timeout the longest time to wait
 	 * @return {@code true} if a session ended
@@ -411,12 +415,12 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Returns a running trial.
+	 * Finds a trial with the given key in the campaign's persisted queue if its state is running.
 	 *
 	 * @param key the trial's key
 	 * @return the trial, or empty if no running trial has the key
 	 */
-	private Optional<LogicalTrial> running(TrialKey key)
+	private Optional<LogicalTrial> findRunningTrial(TrialKey key)
 	{
 		return Reconciler.find(campaign, key).filter(trial -> trial.state() == TrialState.RUNNING);
 	}
@@ -434,7 +438,7 @@ public final class Driver implements AutoCloseable
 	private void fail(TrialKey key, RunFailure failure, String detail, Instant now, Instant resetsAt)
 		throws IOException
 	{
-		if (running(key).isPresent())
+		if (findRunningTrial(key).isPresent())
 			record(new CampaignEvent.Fail(key, failure, detail, now, resetsAt));
 	}
 
@@ -445,7 +449,7 @@ public final class Driver implements AutoCloseable
 	 * @param now the current time
 	 * @throws IOException if the store, the workspace or a session cannot be read or written
 	 */
-	private void handle(SessionEvent event, Instant now) throws IOException
+	private void handle(Event event, Instant now) throws IOException
 	{
 		InFlight session = inFlight.remove(event.token());
 		// A cancelled session's late result is ignored
@@ -484,7 +488,7 @@ public final class Driver implements AutoCloseable
 			{
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
 				evidence.addUsage(SessionRole.TRIAL, completed.usage());
-				if (running(key).isPresent())
+				if (findRunningTrial(key).isPresent())
 					decideChecks(trial, completed, now);
 			}
 			case SessionResult.Interrupted _ ->
@@ -561,7 +565,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Starts the judges of completed trials while capacity is free and no throttle holds admissions. The grace
+	 * Indicates whether a judge session was started or failed to start. Starts judges of completed trials while
+	 * capacity is free and no throttle holds admissions. The grace
 	 * period does not stop judges, since a trial without a verdict reruns.
 	 *
 	 * @param now the current time
@@ -574,7 +579,7 @@ public final class Driver implements AutoCloseable
 		while (!judgingQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
 		{
 			Judging judging = judgingQueue.removeFirst();
-			if (running(judging.key()).isEmpty())
+			if (findRunningTrial(judging.key()).isEmpty())
 				continue;
 			started = true;
 			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.instance(),
@@ -607,7 +612,7 @@ public final class Driver implements AutoCloseable
 	private void judgeEnded(Judging judging, SessionResult result, Throwable failure, Instant now)
 		throws IOException
 	{
-		if (running(judging.key()).isEmpty())
+		if (findRunningTrial(judging.key()).isEmpty())
 			return;
 		String reason;
 		switch (result)
@@ -659,8 +664,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Completes a labelled trial. An outcome observed under the campaign's measurement conditions is persisted before
-	 * it is adopted; an outcome observed under different conditions is not an outcome and pauses the campaign. A
+	 * Records a trial's verdict when its observed measurement conditions match the campaign's, persisting it before
+	 * adoption. Different conditions pause the campaign without recording the verdict. A
 	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
 	 *
 	 * @param key the logical trial
@@ -719,7 +724,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Commits the working candidate if the campaign is ready, calibrating the attempt's cap first.
+	 * Indicates whether a candidate commitment or calibration failure was recorded. Commits the working candidate
+	 * if the campaign is ready, calibrating the attempt's trial cap first.
 	 *
 	 * @return {@code true} if a commit or a calibration failure was recorded
 	 * @throws IOException if the store cannot be written
@@ -743,7 +749,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Starts an author session if a development round offers an author attempt and none runs.
+	 * Indicates whether an author session was started or failed to start. Starts one if a development round offers an
+	 * author attempt and none runs.
 	 *
 	 * @param now the current time
 	 * @return {@code true} if an author session was started or failed to start
@@ -946,9 +953,9 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Admits the trials that the scheduler plans, up to the first one that would not finish before the slice's
-	 * deadline. Each assignment is persisted, and the snapshot that holds the started trials replaced, before any of
-	 * their sessions start.
+	 * Indicates whether a trial was admitted. Admits the trials that the scheduler plans, stopping before the first
+	 * whose estimated duration would extend beyond the slice's deadline. Persists each assignment and the campaign
+	 * snapshot recording the trials' starts before starting their sessions.
 	 *
 	 * @param now the current time
 	 * @return {@code true} if a trial was admitted
@@ -972,7 +979,7 @@ public final class Driver implements AutoCloseable
 					yield next.trials().getLast();
 				}
 			};
-			Duration expected = evidence.expectedDuration(timeLimit(trial.instance()));
+			Duration expected = evidence.expectedDuration(findTimeLimit(trial.instance()));
 			if (now.plus(expected).isAfter(deadline))
 				break;
 			context.store().writeAssignment(campaignId, trial);
@@ -988,12 +995,12 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Returns a trial's time limit.
+	 * Finds a trial test's time limit in its category of the confirmed contract.
 	 *
 	 * @param instance the trial's instance
 	 * @return the time limit of the instance's test definition
 	 */
-	private Duration timeLimit(TrialInstance instance)
+	private Duration findTimeLimit(TrialInstance instance)
 	{
 		for (TestDefinition test : campaign.contract().findCategory(instance.categoryId()).orElseThrow().tests())
 		{
@@ -1021,7 +1028,7 @@ public final class Driver implements AutoCloseable
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.instance().cellId()).orElseThrow().profile();
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, source, trial.instance().turns(),
-				List.of(), timeLimit(trial.instance()), profile));
+				List.of(), findTimeLimit(trial.instance()), profile));
 		}
 		catch (IOException e)
 		{
@@ -1048,11 +1055,12 @@ public final class Driver implements AutoCloseable
 		++nextToken;
 		inFlight.put(token, session);
 		session.handle().completion().whenComplete((result, failure) ->
-			events.post(new SessionEvent(token, result, failure)));
+			events.post(new Event(token, result, failure)));
 	}
 
 	/**
-	 * Delivers the candidate that a finished campaign selected, once per slice.
+	 * Indicates whether delivery was attempted. Delivers the candidate that a finished campaign selected, once per
+	 * slice.
 	 *
 	 * @return {@code true} if a delivery was attempted
 	 * @throws IOException if the store, the overlays or a file cannot be read or written
@@ -1096,15 +1104,19 @@ public final class Driver implements AutoCloseable
 		List<TrialKey> abandoned = new ArrayList<>();
 		for (InFlight session : inFlight.values())
 		{
+			switch (session)
+			{
+				case InFlight.Trial trial -> abandoned.add(trial.key());
+				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
+				// The author copy is cleaned up by interrupt(); authors have no logical trial to queue.
+				case InFlight.Author _ ->
+				{
+				}
+			}
+
 			try
 			{
-				session.handle().interrupt();
-				switch (session)
-				{
-					case InFlight.Trial trial -> abandoned.add(trial.key());
-					case InFlight.Judge judge -> abandoned.add(judge.judging().key());
-					case InFlight.Author author -> context.workspace().deleteAuthoringCopy(author.copy());
-				}
+				interrupt(session);
 			}
 			catch (IOException e)
 			{
@@ -1112,10 +1124,6 @@ public final class Driver implements AutoCloseable
 					failure = e;
 				else
 					failure.addSuppressed(e);
-				if (session instanceof InFlight.Trial trial)
-					abandoned.add(trial.key());
-				else if (session instanceof InFlight.Judge judge)
-					abandoned.add(judge.judging().key());
 			}
 		}
 		for (Judging judging : judgingQueue)
@@ -1125,7 +1133,7 @@ public final class Driver implements AutoCloseable
 		Campaign before = campaign;
 		for (TrialKey key : abandoned)
 		{
-			if (running(key).isPresent())
+			if (findRunningTrial(key).isPresent())
 				campaign = CampaignTransitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, reason,
 					now, null));
 		}
@@ -1133,6 +1141,27 @@ public final class Driver implements AutoCloseable
 			context.store().replaceSnapshot(campaign);
 		if (failure != null)
 			throw failure;
+	}
+
+	/**
+	 * Interrupts a session and deletes its author copy even if the interrupt fails. If both operations fail, the
+	 * cleanup failure is suppressed on the interrupt failure.
+	 *
+	 * @param session the running session
+	 * @throws IOException if the interrupt cannot be delivered or the author copy cannot be deleted
+	 */
+	private void interrupt(InFlight session) throws IOException
+	{
+		if (session instanceof InFlight.Author author)
+		{
+			Closeable cleanup = () -> context.workspace().deleteAuthoringCopy(author.copy());
+			try (cleanup)
+			{
+				author.handle().interrupt();
+			}
+			return;
+		}
+		session.handle().interrupt();
 	}
 
 	/**

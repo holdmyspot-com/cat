@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class SessionEvents
 {
-	private final BlockingDeque<SessionEvent> events = new LinkedBlockingDeque<>();
+	private final BlockingDeque<Event> events = new LinkedBlockingDeque<>();
 
 	/**
 	 * Creates an empty queue.
@@ -36,7 +36,7 @@ final class SessionEvents
 	 * @param event the event
 	 * @throws NullPointerException if {@code event} is null
 	 */
-	void post(SessionEvent event)
+	void post(Event event)
 	{
 		requireThat(event, "event").isNotNull();
 		events.addLast(event);
@@ -47,15 +47,15 @@ final class SessionEvents
 	 *
 	 * @return the events, in posting order
 	 */
-	List<SessionEvent> drain()
+	List<Event> drain()
 	{
-		List<SessionEvent> drained = new ArrayList<>();
+		List<Event> drained = new ArrayList<>();
 		events.drainTo(drained);
 		return drained;
 	}
 
 	/**
-	 * Waits until an event is posted, without consuming it.
+	 * Indicates whether an event is available before the wait ends, without consuming it.
 	 *
 	 * @param timeout the longest time to wait
 	 * @return {@code true} if an event is waiting
@@ -63,7 +63,7 @@ final class SessionEvents
 	 */
 	boolean await(Duration timeout) throws InterruptedException
 	{
-		SessionEvent event = events.pollFirst(Math.max(0, timeout.toNanos()), TimeUnit.NANOSECONDS);
+		Event event = events.pollFirst(Math.max(0, timeout.toNanos()), TimeUnit.NANOSECONDS);
 		if (event == null)
 			return false;
 		events.addFirst(event);
@@ -79,7 +79,7 @@ final class SessionEvents
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param failure the exception, or {@code null} if the session returned a result
 	 */
-	record SessionEvent(long token, SessionResult result, Throwable failure)
+	record Event(long token, SessionResult result, Throwable failure)
 	{
 		/**
 		 * Creates an event.
@@ -89,7 +89,7 @@ final class SessionEvents
 		 * @param failure the exception, or {@code null} if the session returned a result
 		 * @throws IllegalArgumentException if {@code result} and {@code failure} are both null or both set
 		 */
-		SessionEvent
+		Event
 		{
 			requireThat(result == null, "resultIsNull").isEqualTo(failure != null, "failureIsSet");
 		}

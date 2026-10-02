@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ManualClock extends Clock
 {
 	private final AtomicReference<Instant> now;
+	private final ZoneId zone;
 
 	/**
 	 * Creates a clock.
@@ -28,6 +29,19 @@ public final class ManualClock extends Clock
 	{
 		requireThat(start, "start").isNotNull();
 		this.now = new AtomicReference<>(start);
+		zone = ZoneOffset.UTC;
+	}
+
+	/**
+	 * Creates a zone view sharing another clock's manually controlled time.
+	 *
+	 * @param now the shared time
+	 * @param zone the view's time zone
+	 */
+	private ManualClock(AtomicReference<Instant> now, ZoneId zone)
+	{
+		this.now = now;
+		this.zone = zone;
 	}
 
 	/**
@@ -43,9 +57,9 @@ public final class ManualClock extends Clock
 	}
 
 	/**
-	 * Moves the time forward.
+	 * Moves the time by a duration, forward for positive values and backward for negative ones.
 	 *
-	 * @param duration how far to move
+	 * @param duration the amount to add to the current instant
 	 * @throws NullPointerException if {@code duration} is null
 	 */
 	public void advance(Duration duration)
@@ -57,13 +71,16 @@ public final class ManualClock extends Clock
 	@Override
 	public ZoneId getZone()
 	{
-		return ZoneOffset.UTC;
+		return zone;
 	}
 
 	@Override
 	public Clock withZone(ZoneId zone)
 	{
-		throw new UnsupportedOperationException();
+		requireThat(zone, "zone").isNotNull();
+		if (this.zone.equals(zone))
+			return this;
+		return new ManualClock(now, zone);
 	}
 
 	@Override

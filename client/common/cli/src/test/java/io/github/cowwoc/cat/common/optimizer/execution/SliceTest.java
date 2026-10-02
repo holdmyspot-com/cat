@@ -42,9 +42,9 @@ import java.util.concurrent.TimeoutException;
 /**
  * Covers a slice's admission cutoff, its grace period and the runner that waits between steps.
  * <p>
- * Every test confirms the fixture contract with a 2-minute time limit on each test and runs a 3-minute slice with a
- * 1-minute grace period, so that a trial is admitted only up to 1 minute into the slice until the slice has measured
- * how long trials take.
+ * Tests that advance a driver use a contract with a 2-minute trial limit and a 3-minute slice with a 1-minute grace
+ * period.
+ * Until five trial durations are measured, another trial is admitted only within the first minute of the slice.
  */
 public final class SliceTest
 {
@@ -149,8 +149,8 @@ public final class SliceTest
 	}
 
 	/**
-	 * Returns how far into the slice the first trial ends, and whether a trial is admitted then: while the slice has
-	 * measured fewer than five trials, a trial is admitted only if its time limit ends by the slice's deadline.
+	 * Returns how far into the slice the first trial ends, and whether another trial is admitted then. Until five
+	 * trial durations are measured, a trial is admitted only if its time limit ends by the slice's deadline.
 	 *
 	 * @return the cases
 	 */
@@ -275,11 +275,10 @@ public final class SliceTest
 	}
 
 	/**
-	 * Verifies that the runner waits for a session to end rather than for the poll interval, and returns once the
-	 * grace period ended.
+	 * Verifies that completing a session wakes the runner and lets it return after the grace period ended.
 	 * <p>
-	 * The runner runs on its own thread with a one-hour poll interval, so that only the end of a session can wake it;
-	 * the test bounds each wait to {@value #WAIT_SECONDS} seconds.
+	 * The runner runs on its own thread. Its next timed wake is at the slice's 3-minute deadline; advancing the fixture
+	 * clock does not wake that wait. Completing the session lets it return within {@value #WAIT_SECONDS} real seconds.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the test is interrupted

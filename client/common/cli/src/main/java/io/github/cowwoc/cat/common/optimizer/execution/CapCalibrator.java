@@ -5,7 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 /**
- * Calibrates the cap of a certification attempt when the {@link Driver} commits a candidate.
+ * Determines the maximum trial count for a certification attempt when the {@link Driver} commits a candidate.
  * <p>
  * Production passes {@link CapCalibration#calibrate(SignificanceLevel)}; tests pass a precomputed calibration.
  */
@@ -13,7 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 public interface CapCalibrator
 {
 	/**
-	 * Calibrates the cap of a significance level.
+	 * Determines the trial cap that reaches the required certification power at a significance level.
 	 *
 	 * @param level the attempt's certification level
 	 * @return the calibration

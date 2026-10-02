@@ -12,13 +12,13 @@ import java.util.List;
 import java.util.StringJoiner;
 
 /**
- * The parts of a slice's status that the {@link Driver} knows and {@link StatusReport} does not: a revision that waits
- * for confirmation, a delivery that stopped, and the applicability of a delivered candidate.
+ * Adds the {@link Driver}'s run results to a {@link StatusReport}: a revision awaiting confirmation, a delivery that
+ * stopped, and whether a delivered candidate's result still applies to the current prompt and measurement conditions.
  */
 final class SliceReports
 {
 	/**
-	 * The decision that a campaign waits for after a revision request, once its in-flight trials drained.
+	 * The decision that a campaign waits for after a revision request, once its running trials have ended.
 	 */
 	static final String REVISION_PENDING = "A contract revision waits for confirmation";
 

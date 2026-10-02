@@ -32,7 +32,7 @@ sealed interface InFlight
 	 * @param key the logical trial
 	 * @param instance the trial's instance
 	 * @param startedAt when the session started
-	 * @param concurrency the number of trial sessions that ran once this one started
+	 * @param concurrency the number of trial sessions running immediately after this one started
 	 * @param handle the session
 	 */
 	record Trial(TrialKey key, TrialInstance instance, Instant startedAt, int concurrency, SessionHandle handle)
@@ -43,7 +43,7 @@ sealed interface InFlight
 	/**
 	 * A judge session.
 	 *
-	 * @param judging the trial that the judge judges
+	 * @param judging the completed trial whose evidence the judge evaluates
 	 * @param handle the session
 	 */
 	record Judge(Judging judging, SessionHandle handle) implements InFlight
@@ -53,10 +53,10 @@ sealed interface InFlight
 	/**
 	 * An author session.
 	 *
-	 * @param category the category that the attempt targets
+	 * @param category the identifier of the cell (one category under one trial profile) that the attempt targets
 	 * @param working the working candidate that the attempt edits
 	 * @param overlay the working candidate's overlay
-	 * @param copy the author's copy of the working candidate
+	 * @param copy the new project directory containing the working candidate, prepared for the author session
 	 * @param before the copy's inventory before the session
 	 * @param handle the session
 	 */
@@ -74,7 +74,7 @@ sealed interface InFlight
 	 * @param requirements the semantic requirements of the trial's test, which the judge decides
 	 * @param results the results of the test's deterministic checks, which the judge receives as evidence
 	 * @param attempt the judge attempt, from 1
-	 * @param concurrency the number of trial sessions that ran once the trial's session started
+	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
 	record Judging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence,
 		List<Requirement> requirements, List<CheckResult> results, int attempt, int concurrency)

@@ -40,7 +40,7 @@ final class CampaignLock implements AutoCloseable
 	 * @param file the campaign's lock file, which is created if needed
 	 * @return the lock, or empty if another driver holds it
 	 * @throws NullPointerException if {@code file} is null
-	 * @throws IOException if the lock file cannot be opened
+	 * @throws IOException if the lock directory cannot be created, the file cannot be opened, or locking fails
 	 */
 	static Optional<CampaignLock> tryAcquire(Path file) throws IOException
 	{
@@ -55,9 +55,9 @@ final class CampaignLock implements AutoCloseable
 			if (lock != null)
 				return Optional.of(new CampaignLock(channel, lock));
 		}
+		// Another driver in this process holds the lock
 		catch (OverlappingFileLockException _)
 		{
-			// Another driver in this process holds the lock
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -71,7 +71,7 @@ final class CampaignLock implements AutoCloseable
 	/**
 	 * Releases the lock.
 	 *
-	 * @throws IOException if the lock file cannot be closed
+	 * @throws IOException if the lock cannot be released or its file cannot be closed
 	 */
 	@Override
 	public void close() throws IOException

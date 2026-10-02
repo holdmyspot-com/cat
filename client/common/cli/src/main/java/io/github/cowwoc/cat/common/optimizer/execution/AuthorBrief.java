@@ -20,20 +20,21 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * What an author session may see: the contract, the working candidate's development instances and outcomes, and the
- * formal outcomes of certification attempts that have ended. It never holds an instance of an attempt in progress.
+ * The contract and outcomes that an author session may see: development failures and counts for the working
+ * candidate, and certification outcomes from attempts that have ended. It excludes trial instances and outcomes
+ * from certification attempts in progress.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param category the category that the author attempt targets
+ * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
  * @param contract the confirmed contract
  * @param developmentFailures the working candidate's development failures, in adoption order
- * @param developmentCounts the working candidate's development outcomes per category
+ * @param developmentCounts the working candidate's development outcomes per cell
  * @param endedAttempts the certification attempts that have ended, in index order
  * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
  *   to edit
- * @param links the resolved target of each symbolic link recorded at the fork, keyed by the link's path; a link whose
- *   links form a cycle is absent
+ * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
+ *   keyed by the link's path; a link whose links form a cycle is absent
  */
 public record AuthorBrief(String category, Contract contract, List<Failure> developmentFailures,
 	Map<String, CategoryCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
@@ -42,15 +43,15 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	/**
 	 * Creates a brief.
 	 *
-	 * @param category the category that the author attempt targets
+	 * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
 	 * @param contract the confirmed contract
 	 * @param developmentFailures the working candidate's development failures, in adoption order
-	 * @param developmentCounts the working candidate's development outcomes per category
+	 * @param developmentCounts the working candidate's development outcomes per cell
 	 * @param endedAttempts the certification attempts that have ended, in index order
 	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
 	 *   attempts to edit
-	 * @param links the resolved target of each symbolic link recorded at the fork, keyed by the link's path; a link
-	 *   whose links form a cycle is absent
+	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
+	 *   keyed by the link's path; a link whose links form a cycle is absent
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code category} is blank
 	 */
@@ -72,7 +73,7 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	 * Returns the brief of an author attempt.
 	 *
 	 * @param campaign a campaign with a confirmed contract
-	 * @param category the category that the author attempt targets
+	 * @param category the identifier of the cell (one category under one trial profile) that the author attempt targets
 	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
 	 * @return the brief
 	 */
@@ -99,14 +100,14 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 	}
 
 	/**
-	 * The formal outcomes of a certification attempt that has ended.
+	 * The certification outcomes of an attempt that has ended.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param index the attempt's certification index
 	 * @param outcome the attempt's outcome
-	 * @param counts the attempt's adopted formal outcomes per category
-	 * @param failures the attempt's formal failures, in adoption order
+	 * @param counts the attempt's adopted certification outcomes per cell
+	 * @param failures the attempt's certification failures, in adoption order
 	 */
 	public record EndedAttempt(int index, Outcome outcome, Map<String, CategoryCounts> counts,
 		List<Failure> failures)
@@ -116,8 +117,8 @@ public record AuthorBrief(String category, Contract contract, List<Failure> deve
 		 *
 		 * @param index the attempt's certification index
 		 * @param outcome the attempt's outcome
-		 * @param counts the attempt's adopted formal outcomes per category
-		 * @param failures the attempt's formal failures, in adoption order
+		 * @param counts the attempt's adopted certification outcomes per cell
+		 * @param failures the attempt's certification failures, in adoption order
 		 * @throws NullPointerException if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code index} is not positive
 		 */

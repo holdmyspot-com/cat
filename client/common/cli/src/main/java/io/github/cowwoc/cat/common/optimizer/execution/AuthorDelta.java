@@ -26,12 +26,12 @@ final class AuthorDelta
 	 * Applies an author attempt's target changes to the working candidate.
 	 *
 	 * @param working the working candidate's overlay
-	 * @param copy the author's copy, which holds the new content of each written target
+	 * @param effects the session's effects directory, which holds each written target's new content
 	 * @param changes the permitted target changes of the attempt's review
-	 * @return the candidate, or empty if a file in the copy no longer holds the content that the review recorded
-	 * @throws IOException if a file in the copy cannot be read
+	 * @return the candidate, or empty if an effects file no longer holds the content that the review recorded
+	 * @throws IOException if an effects file cannot be read
 	 */
-	static Optional<Overlay> apply(Overlay working, Path copy, List<TargetChange> changes)
+	static Optional<Overlay> apply(Overlay working, Path effects, List<TargetChange> changes)
 		throws IOException
 	{
 		Overlay candidate = working;
@@ -41,7 +41,7 @@ final class AuthorDelta
 			{
 				case TargetChange.TargetWrite write ->
 				{
-					FileContent content = new FileContent(Files.readAllBytes(copy.resolve(write.source())));
+					FileContent content = new FileContent(Files.readAllBytes(effects.resolve(write.source())));
 					if (!content.hash().equals(write.after().contentHash()))
 						return Optional.empty();
 					candidate = candidate.write(write.target(), content, write.after().permissions());

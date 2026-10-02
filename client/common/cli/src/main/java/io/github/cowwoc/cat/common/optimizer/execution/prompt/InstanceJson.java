@@ -24,13 +24,13 @@ final class InstanceJson
 	}
 
 	/**
-	 * Writes an instance.
+	 * Encodes the trial's category, test, variation choices, turns and expected behaviour as JSON.
 	 *
 	 * @param json the operation-owned JSON mapper
-	 * @param instance the instance
+	 * @param instance the trial data to show the author or judge
 	 * @return the JSON object
 	 */
-	static ObjectNode of(JsonMapper json, TrialInstance instance)
+	static ObjectNode encode(JsonMapper json, TrialInstance instance)
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("category", instance.categoryId());

@@ -438,13 +438,13 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Verifies that reconciliation terminates the owner and harness processes of every run that an earlier driver
-	 * left running, and ignores runs that ended.
+	 * Verifies that reconciliation requests termination of the recorded owner and harness processes of runs marked
+	 * running, and ignores runs that ended. The recording terminator records requests without stopping real processes.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void terminatesLeftoverRuns() throws IOException
+	public void requestsLeftoverRunTermination() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())

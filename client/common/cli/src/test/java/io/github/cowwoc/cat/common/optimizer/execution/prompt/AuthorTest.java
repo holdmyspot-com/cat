@@ -1,4 +1,4 @@
-package io.github.cowwoc.cat.common.optimizer.execution;
+package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -13,8 +13,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
+import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
-import io.github.cowwoc.cat.common.optimizer.execution.prompt.AuthorPrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
@@ -34,7 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Tests {@link AuthorPrompt}: what an author session is told it may see and edit.
  */
-public final class AuthorPromptTest
+public final class AuthorTest
 {
 	private static final Path COPY = Path.of("/runs/author-3/project");
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -43,7 +44,7 @@ public final class AuthorPromptTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public AuthorPromptTest()
+	public AuthorTest()
 	{
 	}
 
@@ -61,8 +62,8 @@ public final class AuthorPromptTest
 	}
 
 	/**
-	 * Verifies that the author session works in the copy, and that its prompt states the confirmed edit authority and
-	 * gives the brief's contract, failures, counts and ended attempts as data.
+	 * Verifies that the request selects the candidate copy as the author session's source and states the allowed edits,
+	 * confirmed contract, failures, counts and ended attempts in its prompt.
 	 */
 	@Test
 	public void requestStatesTheAuthorityAndTheBrief()
@@ -117,12 +118,12 @@ public final class AuthorPromptTest
 	}
 
 	/**
-	 * Verifies that the author receives the rationale of each failure, which is the judge's rationale or, for a
+	 * Verifies that the author request includes the rationale of each failure, which is the judge's rationale or, for a
 	 * failed deterministic check, the check's record, and the diagnostic reruns of each development failure with
 	 * their rationales.
 	 */
 	@Test
-	public void briefGivesRationalesAndDiagnoses()
+	public void requestIncludesRationalesAndReruns()
 	{
 		// Requirement: R-D3
 		// Requirement: R-C9
@@ -171,7 +172,7 @@ public final class AuthorPromptTest
 
 	/**
 	 * Verifies that the author's report of needed edits is read from one JSON object, bare or alone in a Markdown code
-	 * fence, with the resolved target only where the path is a link.
+	 * fence, including a reported link target when present.
 	 */
 	@Test
 	public void readsTheNeededEdits()

@@ -60,6 +60,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
+import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -87,6 +90,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -679,9 +683,9 @@ public final class DriverTest
 					driver.apply(confirm());
 					throw new AssertionError("A confirmation was accepted while a trial ran");
 				}
+				// Confirmation waits for the running trial to end
 				catch (IllegalStateException _)
 				{
-					// Expected
 				}
 				SliceResult result = harness.runSlice(driver);
 				requireThat(harness.running(), "running").isEmpty();
@@ -1467,6 +1471,108 @@ public final class DriverTest
 	}
 
 	/**
+	 * Returns whether trial interrupts also fail, alongside the author interrupt that always fails.
+	 *
+	 * @return the failure cases
+	 */
+	@DataProvider
+	public static Object[][] interruptFailures()
+	{
+		return new Object[][] {{false}, {true}};
+	}
+
+	/**
+	 * Verifies that a failed author interrupt still deletes its copy, attempts every remaining interrupt, preserves
+	 * each interrupt failure, and queues the interrupted trials for another run.
+	 *
+	 * @param rejectTrials whether trial interrupts fail as well
+	 * @throws IOException the simulated interrupt failure
+	 */
+	@Test(dataProvider = "interruptFailures", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "The interrupt request failed")
+	public void cleansCopyAfterInterruptFailure(boolean rejectTrials) throws IOException
+	{
+		// Requirement: R-E9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				authoring().baseline("formatting", 49, 0).build());
+			List<SessionRole> interrupts = new ArrayList<>();
+			DriverContext original = harness.context();
+			DriverContext failing = new DriverContext(original.store(),
+				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
+				original.clock(), original.overlays(), original.judge(), original.author(), original.deliverer(),
+				original.calibrator(), original.terminator(), original.leftoverRuns(), original.authority(),
+				original.promptSources(), original.environment(), original.lockFile(), original.random(), original.settings());
+			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
+			{
+				driver.step();
+				requireThat(harness.workspace().authoringCopies().size(), "copies").isEqualTo(1);
+			}
+			catch (IOException e)
+			{
+				int additionalFailures = 0;
+				if (rejectTrials)
+					additionalFailures = interrupts.size() - 1;
+				requireThat(e.getSuppressed().length, "additionalFailures").isEqualTo(additionalFailures);
+				throw e;
+			}
+			finally
+			{
+				requireThat(interrupts, "interrupts").contains(SessionRole.AUTHOR).contains(SessionRole.TRIAL);
+				requireThat(interrupts.size(), "interrupts").isEqualTo(harness.sessions().sessions().size());
+				requireThat(harness.workspace().authoringCopies(), "authoringCopies").isEmpty();
+				requireThat(trials(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
+				requireThat(trials(harness.campaign(), TrialState.ASSIGNED), "queued").isNotEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Wraps session handles to simulate interrupt requests that cannot be delivered.
+	 *
+	 * @param delegate starts the test's sessions
+	 * @param rejectTrials whether trial interrupts fail as well as author interrupts
+	 * @param interrupts receives the role of every session whose interrupt is attempted
+	 * @return the session port that reports the simulated failures
+	 */
+	private static SessionPort rejectInterrupts(SessionPort delegate, boolean rejectTrials,
+		List<SessionRole> interrupts)
+	{
+		return new SessionPort()
+		{
+			@Override
+			public SessionHandle start(SessionRequest request) throws IOException
+			{
+				SessionHandle handle = delegate.start(request);
+				return new SessionHandle()
+				{
+					@Override
+					public CompletionStage<SessionResult> completion()
+					{
+						return handle.completion();
+					}
+
+					@Override
+					public void interrupt() throws IOException
+					{
+						interrupts.add(request.role());
+						if (request.role() == SessionRole.AUTHOR || rejectTrials)
+							throw new IOException("The interrupt request failed");
+						handle.interrupt();
+					}
+				};
+			}
+
+			@Override
+			public HostLogin hostLogin() throws IOException
+			{
+				return delegate.hostLogin();
+			}
+		};
+	}
+
+	/**
 	 * Trace: an author reports that requirement {@code r2} needs a content edit through a link to an external target.
 	 * The warning becomes an {@code awaiting-user} decision that survives a restart; the user authorizes the target; a
 	 * later author attempt receives the target and edits it; the attempt is promoted, certified and delivered with the
@@ -1488,28 +1594,37 @@ public final class DriverTest
 				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
 				link, new FileEntry.SymbolicLink(target),
 				target, new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions)));
-			DriverHarness harness = new DriverHarness(directory, authoring().build(), fork);
+			DriverHarness harness = new DriverHarness(directory, authorityWarningCampaign(), fork);
 			// Only the first author attempt, which edits the prompt instead of the external target, fails safety
 			Sha256 firstEdit = Sha256.of("author-1".getBytes(UTF_8));
+			Map<Path, Boolean> failsSafety = new HashMap<>();
+			SessionResult.Completed passed = harness.passed();
+			SessionResult.Completed failed = harness.failed();
 			harness.trials(request ->
 			{
-				FileEntry prompt;
+				if (!DriverHarness.category(request).equals("safety"))
+					return passed;
+				Boolean fails = failsSafety.get(request.source());
 				try
 				{
-					prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
-						entry(DriverHarness.PROMPT).orElseThrow();
+					if (fails == null)
+					{
+						FileEntry prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
+							entry(DriverHarness.PROMPT).orElseThrow();
+						fails = ((RegularFile) prompt).contentHash().equals(firstEdit);
+						failsSafety.put(request.source(), fails);
+					}
 				}
 				catch (IOException e)
 				{
 					throw new UncheckedIOException(e);
 				}
-				if (DriverHarness.category(request).equals("safety") &&
-					((RegularFile) prompt).contentHash().equals(firstEdit))
-				{
-					return harness.failed();
-				}
-				return harness.passed();
+				if (fails)
+					return failed;
+				return passed;
 			});
+			Map<String, SessionResult> verdicts = new HashMap<>();
+			harness.judges(request -> verdicts.computeIfAbsent(request.turns().getLast(), _ -> harness.echo(request)));
 			harness.authors(request ->
 			{
 				if (harness.author().briefs().getLast().authorizedTargets().contains(target))
@@ -1560,6 +1675,24 @@ public final class DriverTest
 				new RegularFile(Sha256.of("author-2".getBytes(UTF_8)), permissions)));
 			requireThat(delivery.promptSources(), "promptSources").contains(target);
 		}
+	}
+
+	/**
+	 * Returns the campaign whose safety requirement needs an edit outside the author's authority.
+	 *
+	 * @return the confirmed campaign with a safety author attempt
+	 */
+	private static Campaign authorityWarningCampaign()
+	{
+		Contract fixture = ContractFixtures.contract();
+		List<Requirement> requirements = fixture.requirements().stream().
+			filter(requirement -> requirement.id().equals("r2") || requirement.equals(Requirement.CORE_TASK)).toList();
+		// Only safety exercises the authority warning; separate certification and cell tests cover formatting
+		List<Category> categories = List.of(fixture.findCategory("safety").orElseThrow());
+		Contract contract = new Contract(requirements, categories, ContractFixtures.profiles(requirements, categories),
+			fixture.judge(), fixture.fixtures(), fixture.limitations());
+		return new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().development("safety", 50, 1).
+			failure(CampaignBuilder.instance("safety", "logs")).round(new Round(Map.of("safety", 0))).build();
 	}
 
 	/**

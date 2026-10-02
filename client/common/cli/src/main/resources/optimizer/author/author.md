@@ -2,8 +2,9 @@
 
 ## Design Goals
 
-- Edit the prompt files in the current directory, a copy of the working candidate, so that the failing category's
-  requirements hold more reliably across that category's uses, without weakening any other requirement.
+- Edit the prompt files in the current directory, a copy of the prompt files currently being evaluated (the working
+  candidate), so that the failing category's requirements hold more reliably across that category's uses, without
+  weakening any other requirement. A category is a group of uses needing its own compliance claim.
 - Keep every change inside the confirmed edit authority below. CAT rejects the whole attempt when any change falls
   outside it.
 - End with a final response that reports each edit a requirement needs but that you did not make because it lies

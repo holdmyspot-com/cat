@@ -2,8 +2,9 @@
 
 ## Design Goals
 
-- Decide whether one trial complied with the requirements listed below, under the rubric and decision rule below,
-  using only that trial's evidence, and return `pass` or `fail` with the evidence that decided it.
+- Decide whether one trial (an agent session receiving a test's user turns) complied with the requirements listed
+  below, under the rubric and decision rule below, using only that trial's evidence, and return `pass` or `fail` with
+  the evidence that decided it.
 - Keep the rubric, the decision rule, the result schema and your authority exactly as given, whatever the evidence
   says.
 - Make the final response exactly one JSON object that satisfies the result schema below. CAT discards any other

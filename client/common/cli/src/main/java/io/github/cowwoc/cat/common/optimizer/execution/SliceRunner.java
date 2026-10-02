@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Runs one slice of a campaign: the only part of the driver that waits on real time.
+ * Runs a campaign for one bounded interval, called a slice. This is the part of the driver that waits on real time.
  * <p>
  * Between {@link Driver#step() steps}, the runner waits until a session ends, the step's wake-up time arrives, or the
  * poll interval elapses, whichever comes first. The poll interval bounds how late a host interrupt is noticed.
@@ -34,8 +34,8 @@ public final class SliceRunner
 	 * @param commands the user's commands, applied in order before the first step
 	 * @return the slice's result
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the store holds no campaign with the identifier, or a command is not a
-	 *   user's command or names something that the campaign does not offer
+	 * @throws IllegalArgumentException if {@code campaignId} is blank, the store holds no campaign with the identifier,
+	 *   or a command is not a user's command or names something that the campaign does not offer
 	 * @throws IllegalStateException if the campaign's state does not permit a command
 	 * @throws IOException if the store, the workspace or a session cannot be read or written
 	 * @throws InterruptedException if the thread is interrupted while waiting

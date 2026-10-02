@@ -13,17 +13,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What one slice observed that the campaign does not persist: trial durations, the concurrency at which each outcome
- * was observed, and token usage per session role.
+ * Observations from one driver run that the campaign does not persist: trial durations, the concurrency at which each
+ * outcome was observed, and token usage per session role.
  */
 final class SliceEvidence
 {
 	/**
-	 * The number of completed trials after which the admission cutoff uses observed durations instead of time limits.
+	 * Use observed durations to decide whether to admit another trial once this many trials have completed.
 	 */
 	private static final int DURATION_SAMPLES = 5;
 	/**
-	 * The percentile of observed durations that the admission cutoff expects a trial to take.
+	 * Use this percentile of completed trial durations to decide whether another trial can finish within the budget.
 	 */
 	private static final double DURATION_PERCENTILE = 0.9;
 	private final List<Duration> durations = new ArrayList<>();

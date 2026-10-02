@@ -33,8 +33,7 @@ public final class ProcessHandleTerminator implements ProcessTerminator
 		if (match.isEmpty() || !match.get().isAlive() || match.get().equals(ProcessHandle.current()))
 			return false;
 		ProcessHandle process = match.get();
-		// A Codex runner's app-server and sandboxed command outlive a killed driver (H20), so the recorded process's
-		// children are stopped along with it
+		// A runner's child processes can outlive a killed driver (H20), so request termination of descendants too
 		process.descendants().forEach(ProcessHandle::destroy);
 		process.destroy();
 		return true;

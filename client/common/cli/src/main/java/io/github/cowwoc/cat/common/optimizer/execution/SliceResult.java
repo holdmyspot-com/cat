@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 
 /**
- * What one slice returns to the host agent.
+ * The status and delivery outcome that one driver run returns to the host agent.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

@@ -28,10 +28,10 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The judge prompt: fills the contract's frozen judge profile with one trial's evidence, and reads the verdict from
- * the judge's final response (design &sect;3.1, &sect;6.4).
+ * Builds requests that evaluate one trial against the confirmed rubric and decision rule, and reads the verdict
+ * from the judge's final response (design &sect;3.1, &sect;6.4).
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> Callers may build requests and read verdicts concurrently.
  */
 public final class JudgePrompt implements JudgeProtocol
 {
@@ -44,8 +44,8 @@ public final class JudgePrompt implements JudgeProtocol
 	 * Creates the judge prompt.
 	 *
 	 * @param json the operation-owned JSON mapper
-	 * @param judgeDirectory the directory that judge sessions work in. It holds no prompt files, so a judge session
-	 *   loads none of the candidate's instructions.
+	 * @param judgeDirectory the existing directory that judge sessions work in; it must contain no prompt files, so
+	 *   those sessions do not load the candidate's instructions
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public JudgePrompt(JsonMapper json, Path judgeDirectory)
@@ -100,7 +100,7 @@ public final class JudgePrompt implements JudgeProtocol
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
 			"requirements", pretty(requirementArray),
-			"instance", pretty(InstanceJson.of(json, instance)),
+			"instance", pretty(InstanceJson.encode(json, instance)),
 			"responses", pretty(responseArray),
 			"effects", evidence.effects().toString(),
 			"transcript", evidence.transcript().toString(),

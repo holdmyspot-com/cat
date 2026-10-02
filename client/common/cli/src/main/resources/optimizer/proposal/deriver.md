@@ -61,8 +61,8 @@
   - `uncovered_interactions`: every material interaction this test cannot cover;
   - `variations`: every variation dimension and its values. The values' probabilities sum to 1;
   - `checks`: the deterministic check of each mechanical requirement that the test checks, as described below.
-- The benchmark is balanced: every test in a category has the same weight, and variation probabilities are chosen for
-  coverage. Do not try to estimate how often users make each request; those frequencies are unknown.
+- Every test in a category has the same weight, and variation probabilities are chosen for coverage. Do not try to
+  estimate how often users make each request; those frequencies are unknown.
 - A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
   agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
 
