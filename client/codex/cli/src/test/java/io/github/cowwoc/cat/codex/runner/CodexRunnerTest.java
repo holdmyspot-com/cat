@@ -33,4 +33,16 @@ public final class CodexRunnerTest
 			List.of("codex", "plugin", "marketplace", "add", "marketplace"),
 			List.of("codex", "plugin", "add", "cat@cat")));
 	}
+
+	/**
+	 * Verifies the app-server runs CAT's hooks when CAT is installed, and loads no plugin when it is not.
+	 */
+	@Test
+	public void startsAppServerForInstallation()
+	{
+		requireThat(CodexRunner.appServerCommand("codex", true), "withCat").isEqualTo(
+			List.of("codex", "app-server", "--stdio", "--enable", "hooks"));
+		requireThat(CodexRunner.appServerCommand("codex", false), "withoutCat").isEqualTo(
+			List.of("codex", "app-server", "--stdio", "--disable", "plugins"));
+	}
 }

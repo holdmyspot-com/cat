@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -207,11 +206,7 @@ public final class CodexRunner
 				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run, "marketplace-add");
 				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-add");
 			}
-			List<String> command = new ArrayList<>(List.of(executable, "app-server", "--stdio"));
-			if (installCat)
-				command.addAll(List.of("--enable", "hooks"));
-			else
-				command.addAll(List.of("--disable", "plugins"));
+			List<String> command = appServerCommand(executable, installCat);
 			manager.initialize(run, artifact, project, "codex-app-server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
@@ -259,6 +254,22 @@ public final class CodexRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Returns the command that starts the app-server. With CAT installed, the app-server enables hooks so CAT's hooks
+	 * run; without it, the app-server disables plugins so no installed plugin affects the run.
+	 *
+	 * @param executable the Codex executable
+	 * @param installCat {@code true} if CAT is installed into the isolated home
+	 * @return the app-server command
+	 */
+	static List<String> appServerCommand(String executable, boolean installCat)
+	{
+		requireThat(executable, "executable").isNotBlank();
+		if (installCat)
+			return List.of(executable, "app-server", "--stdio", "--enable", "hooks");
+		return List.of(executable, "app-server", "--stdio", "--disable", "plugins");
 	}
 
 	/**
