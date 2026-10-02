@@ -1,9 +1,0 @@
-## Scenario
-
-Create an implementation plan for AI agents migrating an offline archive format. The acceptance contract requires readers to retain access to the complete old archive until a complete new archive is published, and requires recovery after interruption. The agent-authored design puts converted entries on a new volume and then renames its index over the old index, assuming that this is an atomic replacement across volumes. That filesystem guarantee has not been established; the team can inspect the platform contract and run a bounded crash-recovery experiment. The byte-format conversion contract and its golden examples are already accepted, so a standalone converter can be implemented independently. The publication transition must preserve one consistent archive version. Plan the work, implementation boundaries, and verification without implementing, executing experiments, or delegating.
-
-## Assertions
-
-### observable-decisions
-
-Questions the cross-volume atomic-replacement premise, assigns the platform/recovery check before fixing dependent publication behavior, permits standalone conversion work, and keeps publication and recovery coherent. Does not require arbitrary per-entry publication slices that violate the archive contract.

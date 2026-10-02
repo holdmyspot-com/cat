@@ -101,7 +101,7 @@ public final class DeterministicCheckTest
 	private static TestDefinition test(List<VariationRule> variations, DeterministicCheck check)
 	{
 		return new TestDefinition("t", List.of("r1", "r2"), "Always.", List.of("First turn.", "Second turn."),
-			Duration.ofMinutes(1), "Complies.", List.of(), variations, List.of(check), List.of());
+			Duration.ofMinutes(1), "Complies.", List.of(), variations, List.of(check), List.of(), List.of());
 	}
 
 	/**
@@ -321,7 +321,7 @@ public final class DeterministicCheckTest
 			() -> test(variations, new DeterministicCheck("r9", valid.criterion(), formal, hi)),
 			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Turn."), Duration.ofMinutes(1),
 				"Complies.", List.of(), variations, List.of(valid),
-				List.of(new DiscardedCheck(valid, "It rejected its known-good control."))),
+				List.of(new DiscardedCheck(valid, "It rejected its known-good control.")), List.of()),
 			() -> test(variations, new DeterministicCheck("r1", new ExactText(3, "{{tone}}"), formal, hi)),
 			() -> test(variations, new DeterministicCheck("r1", new ExactText(1, "{{mood}}"), formal, hi)),
 			() -> test(variations, new DeterministicCheck("r1", valid.criterion(), formal, replies("Hi"))),

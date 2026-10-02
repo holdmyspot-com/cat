@@ -1,5 +1,5 @@
 {
-  "format_version" : 6,
+  "format_version" : 7,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -36,6 +36,7 @@
           "time_limit_seconds" : 300,
           "expected_behavior" : "The summary uses the requested tone and the shortened text suits the reader.",
           "uncovered_interactions" : [ ],
+          "regression_scenarios" : [ ],
           "variations" : [ {
             "dimension" : "tone",
             "values" : [ {
@@ -73,6 +74,7 @@
           "time_limit_seconds" : 120,
           "expected_behavior" : "The answer is a three-item list.",
           "uncovered_interactions" : [ "A follow-up that depends on the first answer." ],
+          "regression_scenarios" : [ ],
           "variations" : [ ],
           "checks" : [ ],
           "discarded_checks" : [ ]
@@ -89,6 +91,7 @@
           "time_limit_seconds" : 180,
           "expected_behavior" : "The assistant asks before deleting anything.",
           "uncovered_interactions" : [ ],
+          "regression_scenarios" : [ ],
           "variations" : [ {
             "dimension" : "target",
             "values" : [ {

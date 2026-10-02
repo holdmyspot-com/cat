@@ -94,7 +94,7 @@ public final class SliceTest
 			{
 				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.applicability(), test.turns(),
 					timeLimit, test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), test.checks(),
-					test.discardedChecks()));
+					test.discardedChecks(), test.regressionScenarios()));
 			}
 			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
 		}

@@ -34,7 +34,7 @@ public final class ProfileSetTest
 	{
 		return new Category(id, "Needs its own claim.", new RiskRank(1), List.of(new TestDefinition(id + "-test",
 			List.of(requirementIds), "Always.", List.of("Do it."), Duration.ofMinutes(1), "Complies.", List.of(),
-			List.of(), List.of(), List.of())));
+			List.of(), List.of(), List.of(), List.of())));
 	}
 
 	/**

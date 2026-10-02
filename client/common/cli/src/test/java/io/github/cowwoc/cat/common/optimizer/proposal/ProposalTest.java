@@ -65,7 +65,8 @@ public final class ProposalTest
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
-	private final DeriverProtocol deriver = new DeriverProtocol(json, schema, judge);
+	private final DeriverProtocol deriver = new DeriverProtocol(json, schema, judge,
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()));
 
 	/**
 	 * Creates the test fixture.
@@ -778,6 +779,84 @@ public final class ProposalTest
 		DerivedProposal derived = deriver.proposal(session(derivation), PROFILES);
 		return Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+	}
+
+	/**
+	 * Verifies that the deriver is instructed to turn recorded scenarios into cited test definitions.
+	 */
+	@Test
+	public void requestAsksForRegressionScenarios()
+	{
+		// Requirement: R-I3
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		requireThat(prompt, "prompt").contains("### Recorded regression scenarios").
+			contains("regression_scenarios").contains("test definition");
+	}
+
+	/**
+	 * Verifies that proposal refusal names every uncited scenario of a requirement or derived source.
+	 *
+	 * @throws InvalidProposalException when both recorded scenarios have no citing test
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*reported\\.md.*analogous\\.md.*")
+	public void refusesUncitedRegressionScenarios() throws InvalidProposalException
+	{
+		// Requirement: R-I3
+		regressionDeriver().proposal(session(fixture("derivation.json")), PROFILES);
+	}
+
+	/**
+	 * Verifies that a proposal citing every applicable scenario is accepted, and unrelated guidance requires no test.
+	 *
+	 * @throws InvalidProposalException if a complete proposal is rejected
+	 */
+	@Test
+	public void acceptsAllRegressionScenarios() throws InvalidProposalException
+	{
+		// Requirement: R-I3
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("categories").get(0).
+			get("tests").get(0)).putArray("regression_scenarios").add("reported.md").add("analogous.md"));
+		DerivedProposal proposal = regressionDeriver().proposal(session(output), PROFILES);
+		requireThat(proposal.contract().findTest("styled-summary").orElseThrow().regressionScenarios(), "citations").
+			isEqualTo(List.of("reported.md", "analogous.md"));
+		requireThat(Proposal.of(proposal, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "render").
+			contains("- Recorded regression scenarios:\n  - reported.md\n  - analogous.md\n");
+	}
+
+	/**
+	 * Returns a deriver with scenarios for a requirement source, a derived source and unrelated guidance.
+	 *
+	 * @return the deriver
+	 */
+	private DeriverProtocol regressionDeriver()
+	{
+		RegressionScenarios scenarios = new RegressionScenarios(PROMPT_SYSTEM, List.of(
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("rules/safety.md"), "reported.md", "Reported case"),
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), "analogous.md", "Analogous case"),
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("other.md"), "unrelated.md", "Unrelated case")));
+		return new DeriverProtocol(json, schema, judge, scenarios);
+	}
+
+	/**
+	 * Verifies that a loaded source with no requirement still requires citations for its recorded scenarios.
+	 *
+	 * @throws InvalidProposalException when the derived source's scenario has no citing test
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = ".*unrelated\\.md.*")
+	public void refusesScenarioOfDerivedSource() throws InvalidProposalException
+	{
+		// Requirement: R-I3
+		String output = changedDerivation(proposal ->
+		{
+			((ObjectNode) proposal.get("categories").get(0).get("tests").get(0)).
+				putArray("regression_scenarios").add("reported.md").add("analogous.md");
+			((ArrayNode) proposal.get("derived_sources")).addObject().put("path", "other.md").
+				put("rule", "The harness loads this instruction file.");
+		});
+		regressionDeriver().proposal(session(output), PROFILES);
 	}
 
 	/**

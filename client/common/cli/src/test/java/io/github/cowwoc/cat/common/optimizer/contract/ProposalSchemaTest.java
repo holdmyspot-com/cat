@@ -172,6 +172,50 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that every test lists its regression scenario citations explicitly, including an empty list.
+	 */
+	@Test
+	public void rejectsMissingScenarioCitations()
+	{
+		InvalidProposalException e = rejection(changed(
+			new String[]{"categories", "0", "tests", "0", "regression_scenarios"}, null));
+
+		requireThat(String.join(" | ", e.problems()), "problems").contains("regression_scenarios");
+	}
+
+	/**
+	 * Verifies that reading and writing a proposal preserves every cited scenario, in its original order.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void preservesScenarioCitations() throws InvalidProposalException
+	{
+		ArrayNode citations = json.createArrayNode().add(".cat/tests/rule/reported.md").
+			add(".cat/tests/rule/analogous.md");
+		Contract contract = schema().parse(changed(
+			new String[]{"categories", "0", "tests", "0", "regression_scenarios"}, citations));
+
+		JsonNode written = json.readTree(schema().toJson(contract));
+		requireThat(written.get("categories").get(0).get("tests").get(0).get("regression_scenarios"),
+			"regressionScenarios").isEqualTo(citations);
+	}
+
+	/**
+	 * Verifies that a proposal rejects a blank citation and a citation list represented by a string.
+	 */
+	@Test
+	public void rejectsInvalidScenarioCitations()
+	{
+		String[] location = {"categories", "0", "tests", "0", "regression_scenarios"};
+		InvalidProposalException blank = rejection(changed(location, json.createArrayNode().add(" ")));
+		InvalidProposalException scalar = rejection(text(location, ".cat/tests/rule/reported.md"));
+
+		requireThat(String.join(" | ", blank.problems()), "blank").contains("regression_scenarios[0]");
+		requireThat(String.join(" | ", scalar.problems()), "scalar").contains("regression_scenarios");
+	}
+
+	/**
 	 * Verifies that the schema text names every top-level item that a proposal lists, so the deriver prompt can
 	 * state its output schema.
 	 */
@@ -219,6 +263,7 @@ public final class ProposalSchemaTest
 				{"test variations", new String[]{"categories", "0", "tests", "0", "variations"}},
 				{"test checks", new String[]{"categories", "0", "tests", "0", "checks"}},
 				{"test discarded checks", new String[]{"categories", "0", "tests", "0", "discarded_checks"}},
+				{"test regression scenarios", new String[]{"categories", "0", "tests", "0", "regression_scenarios"}},
 				{"variation dimension", new String[]{"categories", "0", "tests", "0", "variations", "0", "dimension"}},
 				{"variation values", new String[]{"categories", "0", "tests", "0", "variations", "0", "values"}},
 				{"variation value label", new String[]{"categories", "0", "tests", "0", "variations", "0", "values", "0",
@@ -480,7 +525,7 @@ public final class ProposalSchemaTest
 		TestDefinition list = tests.get(1);
 		tests.set(1, new TestDefinition(list.id(), list.requirementIds(), list.applicability(), list.turns(),
 			list.timeLimit(), list.expectedBehaviour(), list.uncoveredInteractions(), list.variations(), checks,
-			discarded));
+			discarded, list.regressionScenarios()));
 		List<Category> categories = new ArrayList<>(fixture.categories());
 		categories.set(0, new Category(formatting.id(), formatting.rationale(), formatting.riskRank(), tests));
 		return new Contract(fixture.requirements(), categories, fixture.profiles(), fixture.judge(),

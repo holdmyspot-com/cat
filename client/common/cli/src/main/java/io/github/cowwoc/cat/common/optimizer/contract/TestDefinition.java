@@ -27,10 +27,12 @@ import java.util.Set;
  * @param checks the deterministic checks that passed both of their controls. A requirement that one of them decides
  *   is deterministic in this test; every other requirement is semantic.
  * @param discardedChecks the proposed checks that failed a control, with the reason
+ * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
  */
 public record TestDefinition(String id, List<String> requirementIds, String applicability, List<String> turns,
 	Duration timeLimit, String expectedBehaviour, List<String> uncoveredInteractions,
-	List<VariationRule> variations, List<DeterministicCheck> checks, List<DiscardedCheck> discardedChecks)
+	List<VariationRule> variations, List<DeterministicCheck> checks, List<DiscardedCheck> discardedChecks,
+	List<String> regressionScenarios)
 {
 	/**
 	 * Creates a test definition.
@@ -46,6 +48,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	 * @param variations the dimensions along which instances vary
 	 * @param checks the deterministic checks that passed both of their controls
 	 * @param discardedChecks the proposed checks that failed a control, with the reason
+	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if a text is blank, a list that must not be empty is empty, {@code timeLimit}
 	 *   is not positive or includes fractional seconds, two variation rules share a dimension, a turn or a check
@@ -67,18 +70,22 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		requireThat(variations, "variations").isNotNull();
 		requireThat(checks, "checks").isNotNull();
 		requireThat(discardedChecks, "discardedChecks").isNotNull();
+		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		turns = List.copyOf(turns);
 		uncoveredInteractions = List.copyOf(uncoveredInteractions);
 		variations = List.copyOf(variations);
 		checks = List.copyOf(checks);
 		discardedChecks = List.copyOf(discardedChecks);
+		regressionScenarios = List.copyOf(regressionScenarios);
 		for (String requirementId : requirementIds)
 			requireThat(requirementId, "requirementId").isNotBlank();
 		for (String turn : turns)
 			requireThat(turn, "turn").isNotBlank();
 		for (String interaction : uncoveredInteractions)
 			requireThat(interaction, "uncoveredInteraction").isNotBlank();
+		for (String scenario : regressionScenarios)
+			requireThat(scenario, "regressionScenario").isNotBlank();
 
 		Map<String, VariationRule> ruleByDimension = new HashMap<>();
 		for (VariationRule rule : variations)
@@ -225,7 +232,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		if (discarded.size() == discardedChecks.size())
 			return this;
 		return new TestDefinition(id, requirementIds, applicability, turns, timeLimit, expectedBehaviour,
-			uncoveredInteractions, variations, kept, discarded);
+			uncoveredInteractions, variations, kept, discarded, regressionScenarios);
 	}
 
 	/**

@@ -1567,7 +1567,7 @@ public final class DriverTest
 				List<DeterministicCheck> checks = checksByTest.getOrDefault(test.id(), List.of());
 				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.applicability(), test.turns(),
 					test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), checks,
-					List.of()));
+					List.of(), test.regressionScenarios()));
 			}
 			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
 		}

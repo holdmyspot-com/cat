@@ -10,6 +10,7 @@
   observed.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so
   CAT can show it to the user before confirmation.
+- Turn every recorded regression scenario of a prompt source into a test definition that cites that scenario.
 - Make the final response exactly one JSON object that satisfies the output schema below. CAT discards any other
   final response as an infrastructure failure.
 
@@ -61,10 +62,22 @@
   - `uncovered_interactions`: every material interaction this test cannot cover;
   - `variations`: every variation dimension and its values. The values' probabilities sum to 1;
   - `checks`: the deterministic check of each mechanical requirement that the test checks, as described below.
+  - `regression_scenarios`: the citation paths of recorded scenarios this test covers, or an empty list.
 - Every test in a category has the same weight, and variation probabilities are chosen for coverage. Do not try to
   estimate how often users make each request; those frequencies are unknown.
 - A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
   agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
+
+### Recorded regression scenarios
+
+CAT supplies the available recorded scenarios below, with their guidance source, citation path and complete content.
+For each scenario whose guidance belongs to this prompt system, create a test definition preserving its prewritten
+turns and expected behaviour, and put its exact citation path in that test's `regression_scenarios`. Preserve any
+required fixture context in the test and its trial fixtures. CAT refuses a proposal when no test cites a recorded
+scenario of one of its prompt sources, naming every missing scenario. Scenarios for guidance outside this prompt
+system impose no test obligation.
+
+{{regression_scenarios}}
 
 ### The core-task requirement
 

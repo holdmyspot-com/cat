@@ -40,10 +40,9 @@ final class ProposalFile
 	 */
 	static final String NAME = "proposal.json";
 	/**
-	 * The format version. Version 2 adds the profile inventory and the bindings. Version 3 stores a derivation whose
-	 * tests carry deterministic checks, and that CAT completes with the core-task requirement.
+	 * The version of the proposal layout, including regression scenario citations in each test definition.
 	 */
-	private static final int FORMAT_VERSION = 3;
+	private static final int FORMAT_VERSION = 4;
 	private final Path file;
 	private final JsonMapper json;
 

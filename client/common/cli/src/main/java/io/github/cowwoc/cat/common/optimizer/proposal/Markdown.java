@@ -199,6 +199,12 @@ final class Markdown
 		for (int i = 0; i < test.turns().size(); ++i)
 			text.append("  ").append(i + 1).append(". ").append(test.turns().get(i)).append('\n');
 		text.append("- Expected behaviour: ").append(test.expectedBehaviour()).append('\n');
+		if (!test.regressionScenarios().isEmpty())
+		{
+			text.append("- Recorded regression scenarios:\n");
+			for (String citation : test.regressionScenarios())
+				text.append("  - ").append(citation).append('\n');
+		}
 		if (test.variations().isEmpty())
 			text.append("- Variations: none\n");
 		else

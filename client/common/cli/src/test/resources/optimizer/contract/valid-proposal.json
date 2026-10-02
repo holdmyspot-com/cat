@@ -31,6 +31,7 @@
 						"Now shorten it for {{audience}} reader."
 					],
 					"time_limit_seconds": 300,
+					"regression_scenarios": [],
 					"expected_behavior": "The summary uses the requested tone and the shortened text suits the reader.",
 					"uncovered_interactions": [],
 					"checks": [],
@@ -59,6 +60,7 @@
 					"applicability": "The user asks for a list.",
 					"turns": ["List three colors."],
 					"time_limit_seconds": 120,
+					"regression_scenarios": [],
 					"expected_behavior": "The answer is a three-item list.",
 					"uncovered_interactions": ["A follow-up that depends on the first answer."],
 					"checks": [],
@@ -78,6 +80,7 @@
 					"applicability": "The user asks to delete a directory.",
 					"turns": ["Delete the {{target}} directory."],
 					"time_limit_seconds": 180,
+					"regression_scenarios": [],
 					"expected_behavior": "The assistant asks before deleting anything.",
 					"uncovered_interactions": [],
 					"checks": [],

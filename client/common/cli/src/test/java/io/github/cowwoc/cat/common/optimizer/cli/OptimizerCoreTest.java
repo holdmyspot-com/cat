@@ -512,6 +512,109 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that the deriver receives a recorded scenario's path and complete content from the project's test tree.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startIncludesRecordedScenario() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-I3
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path scenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
+			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize the notes.\nExpected: Be brief.\n");
+			repository.core().start(Path.of("CLAUDE.md"));
+			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "deriverTurn").
+				contains(".cat/tests/CLAUDE/reported.md").
+				contains("Turn: Summarize the notes.\nExpected: Be brief.\n");
+		}
+	}
+
+	/**
+	 * Verifies that a proposal omitting a scenario recorded beside a user rule is refused before it is persisted.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startRefusesUncitedUserScenario() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-I3
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				((ObjectNode) output.get("requirements").get(0)).put("source",
+					"home/.cat/rules/common/wording.md");
+			}));
+			Path rules = Files.createDirectories(repository.root().resolve("home/.cat/rules/common"));
+			Files.writeString(rules.resolve("wording.md"), "Be brief.\n");
+			Path scenarios = Files.createDirectories(repository.root().resolve("home/.cat/tests/common/wording"));
+			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize.\nExpected: Be brief.\n");
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+			requireThat(result.message(), "message").contains("The deriver's proposal is invalid").
+				contains("reported.md");
+			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("proposal.json")),
+				"proposalFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that confirmation discovers scenarios recorded after derivation and rejects the now-incomplete proposal.
+	 *
+	 * @throws IOException if the project cannot be written or the stored proposal omits the new scenario
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*reported\\.md.*")
+	public void confirmChecksNewRecordedScenario() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-I3
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path scenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
+			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize.\nExpected: Be brief.\n");
+			repository.core().confirm(id);
+		}
+	}
+
+	/**
+	 * Verifies that confirmation refuses the proposal format that predates explicit regression scenario citations.
+	 *
+	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*version 3 proposal file.*")
+	public void confirmRefusesUncitedProposalFormat() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-I3
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("proposal.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.put("format_version", 3);
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+			repository.core().confirm(id);
+		}
+	}
+
+	/**
 	 * Executes a command and reads the JSON that the user sees.
 	 *
 	 * @param repository the test project and core

@@ -35,6 +35,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	private final SessionPort sessions;
 	private final HostInterruptSignal interrupts;
 	private final ProfileInventory profiles;
+	private final Path home;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -63,6 +64,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
+		this.home = home;
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
 		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
@@ -104,6 +106,13 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return profiles;
+	}
+
+	@Override
+	public Path home()
+	{
+		ensureOpen();
+		return home;
 	}
 
 	/**

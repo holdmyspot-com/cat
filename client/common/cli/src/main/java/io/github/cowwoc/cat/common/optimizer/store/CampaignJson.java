@@ -101,17 +101,12 @@ import tools.jackson.databind.node.ObjectNode;
  * Converts campaign snapshots and trial records to and from JSON trees.
  * <p>
  * Every document starts with {@code format_version}. Keys are snake_case and constants are written by name. Maps are
- * written with sorted keys, except a {@link Round}, whose cell order is part of its state. Version 4 retains author
- * diagnoses, prompt sizes, trial input usage, and the original bytes, partitions and passing evidence of minimality
- * searches.
+ * written with sorted keys, except a {@link Round}, whose cell order is part of its state. Contracts retain each
+ * test's recorded regression scenario citations.
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
- * observed model and reasoning are recorded per cell. Version 3 adds the development cell tier: the cells in which a
- * candidate failed ({@code failed_cells}) and whether development has widened ({@code development.widened}). It also
- * stores a contract whose tests hold their deterministic checks with the checks' controls, their discarded checks and
- * the core-task requirement. Version 2 lacked these and version 1 keyed by category. Version 5 adds concurrent
- * attempt reservations, original promotion evidence and winner selection. Versions 1 through 4 are refused rather than
- * migrated. Big numbers and instants are written as strings so that they round-trip exactly.
+ * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
+ * round-trip exactly. Unsupported format versions are refused rather than migrated.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -123,7 +118,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 6;
+	private static final int FORMAT_VERSION = 7;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::category).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;

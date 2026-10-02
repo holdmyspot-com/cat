@@ -93,6 +93,14 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	public abstract Path directory();
 
 	/**
+	 * Returns the user's home directory supplied by the harness environment boundary.
+	 *
+	 * @return the directory whose {@code .cat/tests} tree holds scenarios for user rules
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public abstract Path home();
+
+	/**
 	 * Returns the harness that runs the launcher.
 	 *
 	 * @return the harness

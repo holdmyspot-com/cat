@@ -34,6 +34,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	private final SessionPort sessions;
 	private final HostInterruptSignal interrupts;
 	private final ProfileInventory profiles;
+	private final Path home;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -62,6 +63,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
+		this.home = home;
 		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
 			environment.get("CODEX_HOME"));
 		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
@@ -103,6 +105,13 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return profiles;
+	}
+
+	@Override
+	public Path home()
+	{
+		ensureOpen();
+		return home;
 	}
 
 	/**

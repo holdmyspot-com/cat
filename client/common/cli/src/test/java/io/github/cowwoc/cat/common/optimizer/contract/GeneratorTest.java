@@ -314,7 +314,7 @@ public final class GeneratorTest
 		VariationRule price = new VariationRule("price", List.of(new VariationValue("dollars", "$5 and \\1", 1.0)));
 		TestDefinition test = new TestDefinition("quote", List.of("r1", Requirement.CORE_TASK.id()), "Always.",
 			List.of("It costs {{price}}; repeat: {{price}}."), java.time.Duration.ofMinutes(1), "Complies.", List.of(),
-			List.of(price), List.of(), List.of());
+			List.of(price), List.of(), List.of(), List.of());
 		Contract original = ContractFixtures.contract();
 		List<Category> categories = List.of(new Category("quotes", "Why.", new RiskRank(1), List.of(test)));
 		Contract contract = new Contract(original.requirements(), categories,

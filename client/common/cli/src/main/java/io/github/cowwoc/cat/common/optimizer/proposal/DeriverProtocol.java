@@ -37,7 +37,8 @@ import tools.jackson.databind.node.ObjectNode;
  * harness event reports, the user's profile restriction, and the conditions that make certification unavailable.
  * CAT adds its judge fields and the core-task requirement, which every test checks, computes the trial profiles, and
  * runs each deterministic check against its controls before validating the proposal. It rejects
- * output that supplies a field that CAT owns or a requirement with the core-task requirement's identifier.
+ * output that supplies a field that CAT owns or a requirement with the core-task requirement's identifier, or omits
+ * a citation for a recorded regression scenario of a prompt source.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -64,6 +65,7 @@ public final class DeriverProtocol
 	private final PromptTemplate prompt;
 	private final String outputSchema;
 	private final String outputTurn;
+	private final RegressionScenarios scenarios;
 
 	/**
 	 * Creates the deriver request builder and response validator.
@@ -71,17 +73,20 @@ public final class DeriverProtocol
 	 * @param json the operation-owned JSON mapper
 	 * @param schema the proposal schema
 	 * @param judge the judge fields that CAT adds to every proposal
+	 * @param scenarios the available recorded scenarios that CAT supplies and checks
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws UncheckedIOException if a packaged prompt or schema cannot be read
 	 */
-	public DeriverProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge)
+	public DeriverProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge, RegressionScenarios scenarios)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(judge, "judge").isNotNull();
+		requireThat(scenarios, "scenarios").isNotNull();
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
+		this.scenarios = scenarios;
 		this.responses = new JsonResponse(json);
 		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
@@ -175,7 +180,7 @@ public final class DeriverProtocol
 				profiles.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 		}
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
-			profiles.toString(), "output_schema", outputSchema));
+			profiles.toString(), "output_schema", outputSchema, "regression_scenarios", scenarios.prompt()));
 		return new SessionRequest(SessionRole.DERIVER, promptSystem, List.of(turn, outputTurn), List.of(), TIME_LIMIT,
 			judge.role());
 	}
@@ -190,7 +195,8 @@ public final class DeriverProtocol
 	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
 	 *   Markdown code fence, or the object violates the deriver's output schema, supplies a judge field or the trial
 	 *   profiles that CAT owns, lists a requirement with the core-task requirement's identifier, restricts the
-	 *   profiles to a set that the inventory cannot satisfy, or breaks a rule of the contract model
+	 *   profiles to a set that the inventory cannot satisfy, omits a citation for a recorded scenario of a prompt source,
+	 *   or breaks a rule of the contract model
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles)
 		throws InvalidProposalException
@@ -233,6 +239,7 @@ public final class DeriverProtocol
 				TrialProfiles.compute(profiles.inventory(), profiles.bindingsOf(requirements), restriction,
 					requirements, categories, Set.of(Requirement.CORE_TASK.id())));
 			findings.checkRequirements(scopeNode, contract);
+			problems.addAll(scenarios.missingCitations(contract, derivedSources));
 		}
 		catch (InvalidProposalException e)
 		{

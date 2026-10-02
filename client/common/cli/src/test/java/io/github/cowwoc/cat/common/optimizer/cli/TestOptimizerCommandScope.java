@@ -125,6 +125,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	}
 
 	@Override
+	public Path home()
+	{
+		ensureOpen();
+		return directory.resolve("home");
+	}
+
+	@Override
 	Harness harness()
 	{
 		ensureOpen();

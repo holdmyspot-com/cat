@@ -52,6 +52,11 @@ public final class ProposalSchema
 	 * The property of a test that holds the checks that CAT discarded, which CAT computes rather than the deriver.
 	 */
 	private static final String DISCARDED_CHECKS = "discarded_checks";
+
+	/**
+	 * The proposal field holding the paths of recorded scenarios covered by a test.
+	 */
+	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
@@ -318,6 +323,8 @@ public final class ProposalSchema
 		node.put("expected_behavior", test.expectedBehaviour());
 		ArrayNode uncovered = node.putArray("uncovered_interactions");
 		test.uncoveredInteractions().forEach(uncovered::add);
+		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
+		test.regressionScenarios().forEach(scenarios::add);
 		ArrayNode variations = node.putArray("variations");
 		for (VariationRule rule : test.variations())
 		{
@@ -582,7 +589,8 @@ public final class ProposalSchema
 			return attempt(location, () -> new TestDefinition(text(node, "id"), strings(node.get("requirement_ids")),
 				text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
-				strings(node.get("uncovered_interactions")), variations, checks, discardedChecks).
+				strings(node.get("uncovered_interactions")), variations, checks, discardedChecks,
+				strings(node.get(REGRESSION_SCENARIOS))).
 				withValidatedControls());
 		}
 

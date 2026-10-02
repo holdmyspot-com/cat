@@ -40,6 +40,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.DeriverProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
+import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
@@ -86,11 +87,6 @@ public final class OptimizerCore implements Core
 	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
 	/**
-	 * The deriver protocol, created on first use because it reads the installed role profile.
-	 */
-	private DeriverProtocol deriver;
-
-	/**
 	 * Creates the core.
 	 *
 	 * @param scope the command's scope
@@ -104,19 +100,16 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the deriver protocol, which completes proposals with the harness's role profile.
+	 * Returns a deriver protocol with the current recorded scenarios and the harness's role profile.
 	 *
+	 * @param root the original project root, where scenarios are recorded
 	 * @return the protocol
-	 * @throws IOException if the installed role profile cannot be read
+	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
 	 */
-	private DeriverProtocol deriver() throws IOException
+	private DeriverProtocol deriver(Path root) throws IOException
 	{
-		if (deriver == null)
-		{
-			deriver = new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
-				scope.profiles().roleProfile()));
-		}
-		return deriver;
+		return new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
+			scope.profiles().roleProfile()), RegressionScenarios.read(root, scope.home()));
 	}
 
 	/**
@@ -473,7 +466,7 @@ public final class OptimizerCore implements Core
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), scope.json()).
 			require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent);
-		DeriverProtocol protocol = deriver();
+		DeriverProtocol protocol = deriver(root);
 		ProfileEvidence profiles = profileEvidence(staged);
 		SessionRequest request;
 		if (previous == null)
@@ -550,7 +543,7 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(deriver().proposal(stored.get().result(), stored.get().profiles()));
+			return Optional.of(deriver(root).proposal(stored.get().result(), stored.get().profiles()));
 		}
 		catch (InvalidProposalException e)
 		{
