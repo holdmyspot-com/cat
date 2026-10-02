@@ -11,6 +11,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class ClaudePluginInfo
 {
 	/**
+	 * The Claude harness identifier used in CAT records and runtime ownership.
+	 */
+	public static final String HARNESS_ID = "claude";
+
+	/**
 	 * Prints the Claude harness identity.
 	 *
 	 * @param args ignored command-line arguments
@@ -29,7 +34,7 @@ public final class ClaudePluginInfo
 	 */
 	public static PluginInfo info()
 	{
-		return new PluginInfo("claude", PluginInfo.CAT_VERSION, Platform.current());
+		return new PluginInfo(HARNESS_ID, PluginInfo.CAT_VERSION, Platform.current());
 	}
 
 	/**

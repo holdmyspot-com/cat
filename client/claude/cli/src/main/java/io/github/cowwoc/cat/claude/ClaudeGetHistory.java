@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.claude;
 
-import io.github.cowwoc.cat.claude.optimizer.TranscriptInterruptSignal;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -169,14 +168,15 @@ public final class ClaudeGetHistory
 		String configured = environment.get("CLAUDE_CONFIG_DIR");
 		String home = environment.get("HOME");
 		if (home != null && !home.isBlank())
-			return TranscriptInterruptSignal.configurationDirectory(Path.of(home.strip()), configured);
+			return ClaudeConfiguration.resolveDirectory(Path.of(home.strip()), configured);
 		if (configured == null || configured.isBlank())
 		{
 			throw new IOException("Neither CLAUDE_CONFIG_DIR nor HOME is set, so the Claude Code configuration " +
 				"directory that holds the transcripts cannot be located. Set HOME, or set CLAUDE_CONFIG_DIR to the Claude " +
 				"Code configuration directory.");
 		}
-		return Path.of(configured.strip());
+		// Preserve this command's path trimming when it receives only an explicit configuration directory.
+		return ClaudeConfiguration.resolveDirectory(null, configured.strip());
 	}
 
 	/**

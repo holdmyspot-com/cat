@@ -184,7 +184,7 @@ public final class CodexProfileInventory implements ProfileInventory
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
-		CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, BindingFiles.ROLE_AGENT);
+		CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, ROLE_AGENT);
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 }

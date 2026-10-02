@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.codex.runner;
 
+import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -9,7 +11,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessOneShotOptions;
 import io.github.cowwoc.cat.common.runner.HarnessOneShotRunner;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
-import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenanceOptions;
+import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenance;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
 
 import java.io.BufferedReader;
@@ -39,7 +41,7 @@ public final class CodexRunnerCli
 	public static void main(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		if (isMaintenanceCommand(args))
+		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
 			executeMaintenance(args);
 			return;
@@ -50,12 +52,12 @@ public final class CodexRunnerCli
 			throw new IOException("HOME is not set");
 		if (isOneShotCommand(args))
 		{
-			run(args, environment, HarnessCapacity.forHome(Path.of(home), "codex", HarnessCapacity.MAXIMUM_CONCURRENCY));
+			run(args, environment, HarnessCapacity.forHome(Path.of(home), HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
 			return;
 		}
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 			new OutputStreamWriter(System.out, UTF_8), environment,
-			maximum -> HarnessCapacity.forHome(Path.of(home), "codex", maximum));
+			maximum -> HarnessCapacity.forHome(Path.of(home), HARNESS_ID, maximum));
 	}
 
 	/**
@@ -99,14 +101,7 @@ public final class CodexRunnerCli
 		requireThat(args, "args").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
-			HarnessRunnerMaintenanceOptions options = HarnessRunnerMaintenanceOptions.parse(args, scope.catTemp());
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
-			if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.DELETE_RUN)
-				manager.deleteRun("codex", options.runId());
-			else if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.FAIL_RUN)
-				manager.fail("codex", options.runId(), options.diagnostic(), options.exitCode());
-			else
-				manager.deleteStaleRuns(options.retention());
+			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(), System.getenv(), System.out);
 		}
 	}
 
@@ -156,18 +151,6 @@ public final class CodexRunnerCli
 	{
 	}
 
-	/**
-	 * Determines whether the arguments select a lifecycle-only command.
-	 *
-	 * @param args command-line arguments
-	 * @return {@code true} if the first argument is a lifecycle command
-	 */
-	private static boolean isMaintenanceCommand(String[] args)
-	{
-		assert args != null;
-		return args.length > 0 && (args[0].equals("--delete-run") || args[0].equals("--delete-stale-runs") ||
-			args[0].equals("--fail-run"));
-	}
 
 	/**
 	 * Determines whether the arguments select a one-shot run.

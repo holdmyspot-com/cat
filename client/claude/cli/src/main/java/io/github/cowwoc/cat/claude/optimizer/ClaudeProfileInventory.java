@@ -209,7 +209,7 @@ public final class ClaudeProfileInventory implements ProfileInventory
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
-		ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, BindingFiles.ROLE_AGENT);
+		ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, ROLE_AGENT);
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 }

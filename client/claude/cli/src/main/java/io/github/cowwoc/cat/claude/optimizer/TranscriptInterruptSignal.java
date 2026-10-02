@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.claude.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.claude.ClaudeConfiguration;
+
 import io.github.cowwoc.cat.common.optimizer.adapter.LogInterruptSignal;
 
 import java.io.IOException;
@@ -39,26 +41,10 @@ public final class TranscriptInterruptSignal extends LogInterruptSignal
 	}
 
 	/**
-	 * Returns the directory that holds Claude Code's configuration and session transcripts.
-	 *
-	 * @param home the user's home directory
-	 * @param configured the value of {@code CLAUDE_CONFIG_DIR}, or {@code null} or blank if it is not set. Claude
-	 *   Code's tool commands do not always receive it, so it defaults to {@code .claude} below {@code home}.
-	 * @return the configuration directory
-	 * @throws NullPointerException if {@code home} is null
-	 */
-	public static Path configurationDirectory(Path home, String configured)
-	{
-		requireThat(home, "home").isNotNull();
-		if (configured == null || configured.isBlank())
-			return home.resolve(".claude");
-		return Path.of(configured);
-	}
-
-	/**
 	 * Finds the transcript of a session.
 	 *
-	 * @param configurationDirectory the directory that {@link #configurationDirectory(Path, String)} returned
+	 * @param configurationDirectory the directory returned by
+	 *   {@link ClaudeConfiguration#resolveDirectory(Path, String)}
 	 * @param sessionId the host session's identifier, from {@code CLAUDE_CODE_SESSION_ID}
 	 * @return the transcript, or empty if no project directory holds one for the session
 	 * @throws NullPointerException if any argument is null

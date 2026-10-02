@@ -16,6 +16,11 @@ import java.nio.file.Path;
 public interface ProfileInventory
 {
 	/**
+	 * The installed agent definition whose binding supplies the role profile: CAT's highest implementer tier.
+	 */
+	String ROLE_AGENT = "optimize-xhigh";
+
+	/**
 	 * Returns the harness's profile inventory: every model that it offers the user, each with every reasoning effort
 	 * that the model accepts.
 	 *

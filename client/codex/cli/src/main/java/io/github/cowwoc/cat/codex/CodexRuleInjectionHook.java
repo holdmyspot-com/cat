@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.codex;
 
+import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
+
 import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import java.io.IOException;
@@ -54,9 +56,9 @@ final class CodexRuleInjectionHook
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String context;
 			if (eventName.equals("SubagentStart"))
-				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "codex", scope.subagentType(event));
+				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID, scope.subagentType(event));
 			else
-				context = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "codex");
+				context = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
 			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 				"additionalContext", context))));
 			output.write('\n');

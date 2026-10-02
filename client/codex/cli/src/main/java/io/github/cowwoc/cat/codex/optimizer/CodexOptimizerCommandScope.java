@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
+import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
@@ -55,7 +57,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
 	{
-		super(CodexSessions.HARNESS, directory, LOADER_CONFIGURATION);
+		super(HARNESS_ID, directory, LOADER_CONFIGURATION);
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
@@ -117,9 +119,9 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
-		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(CodexSessions.HARNESS);
+		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS_ID);
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, "", true,
-			environment, configurationDirectory, HarnessCapacity.forHome(home, CodexSessions.HARNESS,
+			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new CodexSessions(settings);
 	}

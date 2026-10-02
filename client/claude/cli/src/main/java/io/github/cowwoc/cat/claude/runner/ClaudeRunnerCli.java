@@ -1,18 +1,19 @@
 package io.github.cowwoc.cat.claude.runner;
 
+import static io.github.cowwoc.cat.claude.ClaudePluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
-import io.github.cowwoc.cat.common.runner.HarnessDependencyCache;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import io.github.cowwoc.cat.common.runner.HarnessRunReceipt;
 import io.github.cowwoc.cat.common.runner.HarnessRunStarter;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
-import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenanceOptions;
+import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenance;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
 
 import java.io.BufferedReader;
@@ -58,7 +59,7 @@ public final class ClaudeRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".claude-plugin/plugin.json")));
 			return;
 		}
-		if (isMaintenanceCommand(args))
+		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
 			executeMaintenance(args);
 			return;
@@ -69,7 +70,7 @@ public final class ClaudeRunnerCli
 			throw new IOException("HOME is not set");
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 			new OutputStreamWriter(System.out, UTF_8), environment,
-			maximum -> HarnessCapacity.forHome(Path.of(home), "claude", maximum));
+			maximum -> HarnessCapacity.forHome(Path.of(home), HARNESS_ID, maximum));
 	}
 
 	/**
@@ -83,18 +84,7 @@ public final class ClaudeRunnerCli
 		requireThat(args, "args").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
-			HarnessRunnerMaintenanceOptions options = HarnessRunnerMaintenanceOptions.parse(args, scope.temporaryWorkRoot());
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
-			if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.DELETE_RUN)
-				manager.deleteRun("claude", options.runId());
-			else if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.FAIL_RUN)
-				manager.fail("claude", options.runId(), options.diagnostic(), options.exitCode());
-			else if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.PRUNE_TERMINAL_RUNTIMES)
-				manager.pruneTerminalRuntimes("claude");
-			else if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.VERIFY_DEPENDENCY_CACHE)
-				System.out.println(HarnessDependencyCache.verifyNpm(System.getenv()));
-			else
-				manager.deleteStaleRuns(options.retention());
+			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(), System.getenv(), System.out);
 		}
 	}
 
@@ -213,7 +203,7 @@ public final class ClaudeRunnerCli
 		assert owner != null;
 		assert model != null;
 		assert effort != null;
-		return "harness=claude\nowner=" + owner + "\nmodel=" + model + "\neffort=" + effort + "\n";
+		return "harness=" + HARNESS_ID + "\nowner=" + owner + "\nmodel=" + model + "\neffort=" + effort + "\n";
 	}
 
 	/**
@@ -293,19 +283,5 @@ public final class ClaudeRunnerCli
 			result.add(args[index]);
 		}
 		return result.toArray(String[]::new);
-	}
-
-	/**
-	 * Determines whether the arguments select a lifecycle-only command.
-	 *
-	 * @param args command-line arguments
-	 * @return {@code true} if the first argument is a lifecycle command
-	 */
-	private static boolean isMaintenanceCommand(String[] args)
-	{
-		assert args != null;
-		return args.length > 0 && (args[0].equals("--delete-run") || args[0].equals("--delete-stale-runs") ||
-			args[0].equals("--fail-run") || args[0].equals("--prune-terminal-runtimes") ||
-			args[0].equals("--verify-dependency-cache"));
 	}
 }

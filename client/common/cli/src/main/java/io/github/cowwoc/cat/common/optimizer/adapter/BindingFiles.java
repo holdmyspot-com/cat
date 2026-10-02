@@ -10,11 +10,6 @@ import java.nio.file.Path;
 public final class BindingFiles
 {
 	/**
-	 * The agent definition whose binding is the role profile: CAT's highest implementer tier.
-	 */
-	public static final String ROLE_AGENT = "optimize-xhigh";
-
-	/**
 	 * Prevents construction of utility class instances.
 	 */
 	private BindingFiles()

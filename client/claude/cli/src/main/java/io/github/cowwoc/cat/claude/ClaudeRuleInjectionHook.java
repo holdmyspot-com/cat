@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.claude;
 
+import static io.github.cowwoc.cat.claude.ClaudePluginInfo.HARNESS_ID;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.HookScope;
@@ -58,9 +60,9 @@ final class ClaudeRuleInjectionHook
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
-			String rules = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, "claude");
+			String rules = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
 			if (eventName.equals("SubagentStart"))
-				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, "claude", scope.subagentType(event));
+				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID, scope.subagentType(event));
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
 				Path contextFile = ClaudeSessionContext.write(toolScope.catTemp(), event, eventName, rules);

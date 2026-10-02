@@ -1,5 +1,9 @@
 package io.github.cowwoc.cat.claude.runner;
 
+import static io.github.cowwoc.cat.claude.ClaudePluginInfo.HARNESS_ID;
+
+import io.github.cowwoc.cat.claude.ClaudeConfiguration;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
@@ -127,7 +131,7 @@ public final class ClaudeRunner
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		HarnessArtifact.validate(artifact, Path.of(".claude-plugin/plugin.json"));
-		HarnessRun run = manager.create("claude");
+		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		HarnessRunnerScope scope = new MainHarnessRunnerScope();
 		try
@@ -277,13 +281,14 @@ public final class ClaudeRunner
 	private static Path claudeConfigDirectory(Map<String, String> environment)
 	{
 		assert environment != null;
-		String configured = environment.get("CLAUDE_CONFIG_DIR");
-		if (configured != null && !configured.isBlank())
-			return Path.of(configured);
 		String home = environment.get("HOME");
+		Path homeDirectory;
+		// Retain the runner's working-directory fallback for optional host settings.
 		if (home == null || home.isBlank())
-			return Path.of(".claude").toAbsolutePath();
-		return Path.of(home).resolve(".claude");
+			homeDirectory = Path.of("").toAbsolutePath();
+		else
+			homeDirectory = Path.of(home);
+		return ClaudeConfiguration.resolveDirectory(homeDirectory, environment.get("CLAUDE_CONFIG_DIR"));
 	}
 
 	/**

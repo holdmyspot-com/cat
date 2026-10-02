@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.codex.runner;
 
+import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
@@ -162,7 +164,7 @@ public final class CodexRunner
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
-		HarnessRun run = manager.create("codex");
+		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		try
 		{

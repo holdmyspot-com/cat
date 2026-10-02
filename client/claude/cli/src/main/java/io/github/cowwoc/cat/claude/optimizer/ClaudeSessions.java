@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
+import static io.github.cowwoc.cat.claude.ClaudePluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli;
@@ -30,11 +32,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeSessions extends RunnerSessions
 {
 	/**
-	 * The harness's identifier.
-	 */
-	static final String HARNESS = "claude";
-
-	/**
 	 * Creates a port that runs sessions through the real Claude runner.
 	 *
 	 * @param settings how the runner is configured
@@ -54,7 +51,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 */
 	ClaudeSessions(Settings settings, Bridge bridge)
 	{
-		super(HARNESS, settings, bridge);
+		super(HARNESS_ID, settings, bridge);
 	}
 
 	@Override

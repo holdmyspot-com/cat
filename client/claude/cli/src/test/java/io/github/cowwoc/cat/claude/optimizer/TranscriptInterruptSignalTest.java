@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
+import io.github.cowwoc.cat.claude.ClaudeConfiguration;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
@@ -195,12 +197,12 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
-			Path configuration = TranscriptInterruptSignal.configurationDirectory(home, null);
+			Path configuration = ClaudeConfiguration.resolveDirectory(home, null);
 			requireThat(configuration, "default").isEqualTo(home.resolve(".claude"));
 			String blank = "  ";
-			requireThat(TranscriptInterruptSignal.configurationDirectory(home, blank), "blank").
+			requireThat(ClaudeConfiguration.resolveDirectory(home, blank), "blank").
 				isEqualTo(configuration);
-			requireThat(TranscriptInterruptSignal.configurationDirectory(home, "/custom"), "configured").
+			requireThat(ClaudeConfiguration.resolveDirectory(home, "/custom"), "configured").
 				isEqualTo(Path.of("/custom"));
 
 			Path project = Files.createDirectories(configuration.resolve("projects").resolve("-work-fixture"));

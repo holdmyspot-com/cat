@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
+import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.codex.runner.CodexRunnerCli;
@@ -32,11 +34,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexSessions extends RunnerSessions
 {
 	/**
-	 * The harness's identifier.
-	 */
-	static final String HARNESS = "codex";
-
-	/**
 	 * Creates a port that runs sessions through the real Codex runner.
 	 *
 	 * @param settings how the runner is configured
@@ -56,7 +53,7 @@ public final class CodexSessions extends RunnerSessions
 	 */
 	CodexSessions(Settings settings, Bridge bridge)
 	{
-		super(HARNESS, settings, bridge);
+		super(HARNESS_ID, settings, bridge);
 	}
 
 	@Override
