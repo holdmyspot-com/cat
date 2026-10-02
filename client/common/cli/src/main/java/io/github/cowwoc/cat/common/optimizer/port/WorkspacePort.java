@@ -1,11 +1,13 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Prepares the directories that nested sessions work in, and keeps the optimization worktree in step with the working
@@ -21,6 +23,18 @@ import java.nio.file.Path;
  */
 public interface WorkspacePort
 {
+	/**
+	 * Reads a file from a saved candidate, resolving its recorded symbolic links. Live project files are not read.
+	 *
+	 * @param candidate the saved overlay on the fork
+	 * @param path the inventory path of the file
+	 * @return the recorded bytes, or empty if the snapshot contains no regular file at that path
+	 * @throws NullPointerException if an argument is null
+	 * @throws IllegalArgumentException if the candidate belongs to another fork or the path is invalid
+	 * @throws IOException if the recorded bytes cannot be read
+	 */
+	Optional<FileContent> readFile(Overlay candidate, Path path) throws IOException;
+
 	/**
 	 * Returns a staged source for a candidate, building it if it does not exist.
 	 *

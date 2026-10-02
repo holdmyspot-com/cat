@@ -16,7 +16,11 @@ public enum FailureKind
 	/**
 	 * A model, test, contract or infrastructure issue needs no prompt edit.
 	 */
-	NOT_GUIDANCE;
+	NOT_GUIDANCE,
+	/**
+	 * Confirmed requirements cannot be satisfied together and need the user's resolution.
+	 */
+	CONFLICT;
 
 	/**
 	 * Returns the classification label used by author reports and status.
@@ -30,6 +34,7 @@ public enum FailureKind
 			case ROUTING -> "routing";
 			case GUIDANCE -> "guidance";
 			case NOT_GUIDANCE -> "not guidance";
+			case CONFLICT -> "conflict";
 		};
 	}
 }

@@ -37,6 +37,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 	private final Object lock = new Object();
 	private final List<AuthorBrief> briefs = new ArrayList<>();
 	private Function<SessionResult.Completed, Optional<List<NeededEdit>>> reports = _ -> Optional.of(List.of());
+	private Function<AuthorBrief, List<AuthorConflict>> conflicts = _ -> List.of();
 
 	/**
 	 * Creates a protocol that has written no brief.
@@ -76,6 +77,12 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 			Map<String, FailureKind> classifications = new HashMap<>();
 			for (String identifier : briefs.getLast().failureIds())
 				classifications.put(identifier, FailureKind.GUIDANCE);
+			List<AuthorConflict> reportedConflicts = conflicts.apply(briefs.getLast());
+			for (AuthorConflict conflict : reportedConflicts)
+			{
+				for (String identifier : conflict.instances())
+					classifications.put(identifier, FailureKind.CONFLICT);
+			}
 			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
 			try
 			{
@@ -95,7 +102,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 				throw new UncheckedIOException(e);
 			}
 			return reports.apply(result).map(edits -> new AuthorReport(edits, new AuthorManifest(classifications,
-				evidence)));
+				evidence), reportedConflicts));
 		}
 	}
 
@@ -109,6 +116,19 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 		synchronized (lock)
 		{
 			this.reports = script;
+		}
+	}
+
+	/**
+	 * Supplies reported conflict evidence for the driver's validation and pause decision.
+	 *
+	 * @param script the conflict reports based on the supplied brief
+	 */
+	public void conflicts(Function<AuthorBrief, List<AuthorConflict>> script)
+	{
+		synchronized (lock)
+		{
+			conflicts = script;
 		}
 	}
 

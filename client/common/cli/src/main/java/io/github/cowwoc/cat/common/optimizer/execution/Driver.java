@@ -40,6 +40,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
@@ -230,7 +231,8 @@ public final class Driver implements AutoCloseable
 	 * candidate in the optimization worktree, so the change is never incorporated.
 	 *
 	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.Revise}, {@link CampaignEvent.Choose},
-	 *   {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close} or {@link CampaignEvent.ReportUnavailable}
+	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close} or
+	 *   {@link CampaignEvent.ReportUnavailable}
 	 * @throws NullPointerException if {@code event} is null
 	 * @throws IllegalArgumentException if the event is not a user's command, or names a choice, trial or attempt that
 	 *   the campaign does not offer
@@ -244,8 +246,9 @@ public final class Driver implements AutoCloseable
 		switch (event)
 		{
 			// A user's command
-			case CampaignEvent.Confirm _, CampaignEvent.Revise _, CampaignEvent.Choose _, CampaignEvent.Cancel _,
-				CampaignEvent.Close _, CampaignEvent.ReportUnavailable _ ->
+			case CampaignEvent.Confirm _, CampaignEvent.Revise _, CampaignEvent.Choose _,
+				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
+				CampaignEvent.ReportUnavailable _ ->
 			{
 			}
 			default -> throw new IllegalArgumentException("Only the driver applies " + event);
@@ -856,7 +859,9 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
-			AuthorBrief brief = AuthorBrief.of(campaign, cell, overlay.fork());
+			Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
+			String edits = CampaignEdits.of(context.workspace(), incumbent, overlay, context.promptSources());
+			AuthorBrief brief = AuthorBrief.of(campaign, cell, overlay.fork(), edits);
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
 			register(new InFlight.Author(number, cell, working, overlay, copy, before, brief, handle));
@@ -942,7 +947,8 @@ public final class Driver implements AutoCloseable
 	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
 	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
 	 * malformed report contributes no candidate and counts as an infrastructure failure. A needed
-	 * edit outside the authority raises an {@code awaiting-user} decision that holds the warnings.
+	 * edit outside the authority raises an {@code awaiting-user} decision that holds the warnings. A valid conflict
+	 * report discards the candidate and pauses for the user's resolution.
 	 *
 	 * @param author the session
 	 * @param completed the session's result
@@ -985,13 +991,21 @@ public final class Driver implements AutoCloseable
 		}
 		List<Hunk> hunks = changes.get().stream().flatMap(change -> Hunks.between(change).stream()).toList();
 		Set<String> received = author.brief().failureIds();
-		List<String> violations = report.get().manifest().violations(received, hunks);
+		Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
+		List<String> violations = report.get().manifest().violations(received, hunks, campaign.contract(),
+			incumbent.snapshot(), confirmedContents(incumbent, report.get().conflicts()), report.get().conflicts());
 		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.cell(),
 			author.working().snapshot(), report.get().manifest().classifications(), violations, completed.transcript(),
 			completed.effects())));
 		if (!violations.isEmpty())
 		{
 			authorFailed("The author manifest is invalid: " + violations);
+			return;
+		}
+		if (!report.get().conflicts().isEmpty())
+		{
+			if (campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() && !campaign.revisionRequested())
+				record(new CampaignEvent.FindConflict(report.get().conflicts()));
 			return;
 		}
 		if (offersAuthorAttempt(author))
@@ -1009,6 +1023,30 @@ public final class Driver implements AutoCloseable
 		{
 			record(new CampaignEvent.WarnAuthority(warnings));
 		}
+	}
+
+	/**
+	 * Reads quotation sources from the saved confirmed prompt system rather than the working candidate.
+	 *
+	 * @param incumbent the confirmed overlay
+	 * @param conflicts the reports whose quotations need validation
+	 * @return recorded file bytes keyed by resolved path; absent files remain absent for manifest validation
+	 * @throws IOException if recorded content cannot be read
+	 */
+	private Map<Path, FileContent> confirmedContents(Overlay incumbent, List<AuthorConflict> conflicts)
+		throws IOException
+	{
+		Map<Path, FileContent> contents = new HashMap<>();
+		for (AuthorConflict conflict : conflicts)
+		{
+			for (AuthorConflict.Quotation quotation : conflict.quotations())
+			{
+				Path target = incumbent.snapshot().resolve(quotation.path()).orElse(quotation.path());
+				if (!contents.containsKey(target))
+					context.workspace().readFile(incumbent, target).ifPresent(content -> contents.put(target, content));
+			}
+		}
+		return Map.copyOf(contents);
 	}
 
 	/**

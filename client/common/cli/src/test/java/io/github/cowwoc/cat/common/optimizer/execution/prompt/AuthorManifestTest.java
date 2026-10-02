@@ -8,10 +8,18 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import java.nio.charset.StandardCharsets;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import org.testng.annotations.Test;
 import org.testng.annotations.DataProvider;
 
@@ -46,11 +54,126 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		String response = """
-			{"needed_edits": [], "classifications": [], "hunks": []}
+			{"needed_edits": [], "classifications": [], "hunks": [], "conflicts": []}
 			""";
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.neededEdits(result).isPresent(), "accepted").isTrue();
+	}
+
+	/**
+	 * Verifies that a conflict report is read with its ordered resolutions and exact quotation.
+	 */
+	@Test
+	public void readsConflictReport()
+	{
+		// Requirement: R-D13
+		JsonMapper json = JsonMapper.builder().build();
+		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
+		String response = """
+			{"needed_edits":[],"classifications":[{"instance":"f","classification":"conflict"}],"hunks":[],
+			 "conflicts":[{"instances":["f"],"requirement_ids":["r1","r2"],
+			 "quotations":[{"path":"CLAUDE.md","text":"Ask first."}],
+			 "resolutions":["Keep asking","Allow deletion"],"recommended":1,"reason":"Keeps permission."}]}
+			""";
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
+			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
+		requireThat(prompt.report(result).isPresent(), "accepted").isTrue();
+		AuthorConflict conflict = prompt.report(result).orElseThrow().conflicts().getFirst();
+		requireThat(conflict.resolutions(), "resolutions").isEqualTo(List.of("Keep asking", "Allow deletion"));
+		requireThat(conflict.quotations().getFirst().text(), "quotation").isEqualTo("Ask first.");
+		requireThat(conflict.recommended(), "recommended").isEqualTo(1);
+	}
+
+	/**
+	 * Returns malformed conflict fields that the report reader must reject.
+	 *
+	 * @return property names and invalid JSON values
+	 */
+	@DataProvider
+	public static Object[][] invalidConflictFields()
+	{
+		return new Object[][]
+			{
+				{"instances", "[]"}, {"requirement_ids", "[\"r1\"]"},
+				{"requirement_ids", "[\"r1\",\"r1\"]"}, {"quotations", "[]"},
+				{"quotations", "[{\"path\":\"../rules.md\",\"text\":\"Ask\"}]"},
+				{"quotations", "[{\"path\":\"rules.md\",\"text\":\" \"}]"},
+				{"resolutions", "[\"One\"]"}, {"resolutions", "[\"One\",\"One\"]"},
+				{"resolutions", "[\"One\",\" \"]"}, {"recommended", "1.5"}, {"reason", "\" \""}
+			};
+	}
+
+	/**
+	 * Verifies that malformed conflicts cannot become domain reports.
+	 *
+	 * @param property the invalid field
+	 * @param value its JSON value
+	 */
+	@Test(dataProvider = "invalidConflictFields")
+	public void rejectsMalformedConflict(String property, String value)
+	{
+		// Requirement: R-D13
+		JsonMapper json = JsonMapper.builder().build();
+		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
+		JsonNode report = json.readTree("""
+			{"needed_edits":[],"classifications":[],"hunks":[],"conflicts":[
+			 {"instances":["f"],"requirement_ids":["r1","r2"],"quotations":[{"path":"CLAUDE.md","text":"Ask"}],
+			 "resolutions":["First","Second"],"recommended":1,"reason":"Reason"}]}
+			""");
+		((ObjectNode) report.get("conflicts").get(0)).set(property, json.readTree(value));
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"),
+			List.of(List.of(json.writeValueAsString(report))), Path.of("/effects"), "model", null, null,
+			List.of(), "none", List.of());
+		requireThat(prompt.report(result), "malformed").isEmpty();
+	}
+
+	/**
+	 * Verifies that only confirmed file content can support a reported contract conflict.
+	 */
+	@Test
+	public void validatesConfirmedQuotation()
+	{
+		// Requirement: R-D13
+		Path path = Path.of("CLAUDE.md");
+		FileContent content = new FileContent("Ask first.".getBytes(StandardCharsets.UTF_8));
+		FileInventory incumbent = new FileInventory(Path.of("/project"),
+			Map.of(path, new FileEntry.RegularFile(content.hash(), Set.of())));
+		AuthorConflict conflict = new AuthorConflict(List.of("f"), List.of("r1", "r2"),
+			List.of(new AuthorConflict.Quotation(path, "Ask first.")), List.of("Keep asking", "Allow deletion"),
+			1, "Keeps permission.");
+		AuthorManifest manifest = new AuthorManifest(Map.of("f", FailureKind.CONFLICT), List.of());
+		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
+			Map.of(path, content), List.of(conflict)), "confirmed").isEmpty();
+		FileContent edited = new FileContent("Delete immediately.".getBytes(StandardCharsets.UTF_8));
+		AuthorConflict introduced = new AuthorConflict(List.of("f"), List.of("r1", "r2"),
+			List.of(new AuthorConflict.Quotation(path, "Delete immediately.")), conflict.resolutions(), 1,
+			conflict.reason());
+		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
+			Map.of(path, content), List.of(introduced)).toString(), "introduced").contains("CLAUDE.md");
+		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
+			Map.of(path, edited), List.of(introduced)).toString(), "wrongSnapshot").contains("CLAUDE.md");
+	}
+
+	/**
+	 * Verifies that classifications, contract ids and recommendation positions agree with conflict citations.
+	 */
+	@Test
+	public void validatesConflictReferences()
+	{
+		// Requirement: R-D13
+		FileInventory incumbent = new FileInventory(Path.of("/project"), Map.of());
+		AuthorConflict conflict = new AuthorConflict(List.of("f"), List.of("r1", "unknown"),
+			List.of(new AuthorConflict.Quotation(Path.of("missing.md"), "Missing text")),
+			List.of("First", "Second"), 3, "Reason");
+		AuthorManifest guidance = new AuthorManifest(Map.of("f", FailureKind.GUIDANCE), List.of());
+		List<String> violations = guidance.violations(Set.of("f"), List.of(), ContractFixtures.contract(),
+			incumbent, Map.of(), List.of(conflict));
+		requireThat(violations.toString(), "violations").contains("not classified conflict").contains("unknown").
+			contains("recommended").contains("missing.md");
+		AuthorManifest classified = new AuthorManifest(Map.of("f", FailureKind.CONFLICT), List.of());
+		requireThat(classified.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
+			Map.of(), List.of()).toString(), "uncited").contains("no conflict");
 	}
 
 	/**
@@ -64,7 +187,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Set.of(), Map.of());
+			Set.of(), Map.of(), "");
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
@@ -99,7 +222,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
 		String response = """
 			{"needed_edits":[{"requirement":"R1","path":"%s","operation":"create"}],
-			 "classifications":[],"hunks":[]}
+			 "classifications":[],"hunks":[],"conflicts":[]}
 			""".formatted(path);
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
@@ -138,7 +261,7 @@ public final class AuthorManifestTest
 		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),
-				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of());
+				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of(), "");
 		requireThat(brief.failureIds().size(), "classifiedFailures").isEqualTo(3);
 		requireThat(brief.endedId(1, 0), "firstAttempt").isNotEqualTo(brief.endedId(2, 0));
 	}

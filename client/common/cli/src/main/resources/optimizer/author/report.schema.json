@@ -6,7 +6,8 @@
 	"required": [
 		"needed_edits",
 		"classifications",
-		"hunks"
+		"hunks",
+		"conflicts"
 	],
 	"$defs": {
 		"path": {
@@ -35,7 +36,8 @@
 						"enum": [
 							"routing",
 							"guidance",
-							"not guidance"
+							"not guidance",
+							"conflict"
 						]
 					}
 				}
@@ -127,6 +129,86 @@
 					},
 					"target": {
 						"$ref": "#/$defs/path"
+					}
+				}
+			}
+		},
+		"conflicts": {
+			"description": "Conflicts already held by the confirmed prompt system. Empty when no supplied failure is classified conflict.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"instances",
+					"requirement_ids",
+					"quotations",
+					"resolutions",
+					"recommended",
+					"reason"
+				],
+				"properties": {
+					"instances": {
+						"description": "The supplied failure ids explained by this conflict.",
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
+					},
+					"requirement_ids": {
+						"description": "The distinct confirmed contract requirement ids that cannot be satisfied together.",
+						"type": "array",
+						"minItems": 2,
+						"uniqueItems": true,
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
+					},
+					"quotations": {
+						"description": "Exact text from the confirmed prompt files that causes the conflict, rather than text introduced by campaign edits.",
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"path",
+								"text"
+							],
+							"properties": {
+								"path": {
+									"$ref": "#/$defs/path"
+								},
+								"text": {
+									"description": "Non-blank text copied exactly from the file in the confirmed prompt system.",
+									"type": "string",
+									"pattern": "\\S"
+								}
+							}
+						}
+					},
+					"resolutions": {
+						"description": "Distinct changes to the requirements that resolve the conflict, in presentation order.",
+						"type": "array",
+						"minItems": 2,
+						"uniqueItems": true,
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
+					},
+					"recommended": {
+						"description": "The 1-based position of the recommended resolution in resolutions.",
+						"type": "integer",
+						"minimum": 1
+					},
+					"reason": {
+						"description": "Why the recommended resolution best preserves what the prompt evidently intends.",
+						"type": "string",
+						"pattern": "\\S"
 					}
 				}
 			}

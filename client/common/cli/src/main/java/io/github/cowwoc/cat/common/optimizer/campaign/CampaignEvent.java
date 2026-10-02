@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -357,6 +358,46 @@ public sealed interface CampaignEvent
 		public CalibrationFailed
 		{
 			requireThat(detail, "detail").isNotBlank();
+		}
+	}
+
+	/**
+	 * A valid author report found conflicts in confirmed requirements.
+	 *
+	 * @param conflicts the conflicts, in report order
+	 */
+	record FindConflict(List<AuthorConflict> conflicts) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param conflicts the ordered conflicts
+		 * @throws NullPointerException if the list or an element is null
+		 * @throws IllegalArgumentException if {@code conflicts} is empty
+		 */
+		public FindConflict
+		{
+			conflicts = List.copyOf(conflicts);
+			requireThat(conflicts, "conflicts").isNotEmpty();
+		}
+	}
+
+	/**
+	 * The user selects a resolution of the first unanswered conflict.
+	 *
+	 * @param resolution the 1-based resolution position
+	 */
+	record ResolveConflict(int resolution) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param resolution the 1-based resolution position
+		 * @throws IllegalArgumentException if {@code resolution} is not positive
+		 */
+		public ResolveConflict
+		{
+			requireThat(resolution, "resolution").isPositive();
 		}
 	}
 

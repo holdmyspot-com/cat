@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -21,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 
 /**
  * A {@link WorkspacePort} that keeps every directory and inventory in memory.
@@ -44,6 +46,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 	private final Path project;
 	private final Set<Sha256> staged = new LinkedHashSet<>();
 	private final Map<Path, FileInventory> authoringCopies = new HashMap<>();
+	private final Map<Path, FileContent> contents = new HashMap<>();
 	private final Map<Path, FileInventory> authorEffects = new HashMap<>();
 	private final List<Overlay> materialized = new ArrayList<>();
 	private FileInventory worktree;
@@ -81,6 +84,40 @@ public final class FakeWorkspacePort implements WorkspacePort
 		this.root = root;
 		this.project = project;
 		this.worktree = worktree;
+	}
+
+	/**
+	 * Supplies the immutable fork bytes that a snapshot reader may request.
+	 *
+	 * @param path the resolved recorded file
+	 * @param content its bytes
+	 */
+	public void supplyFile(Path path, FileContent content)
+	{
+		synchronized (lock)
+		{
+			contents.put(path, content);
+		}
+	}
+
+	@Override
+	public Optional<FileContent> readFile(Overlay candidate, Path path) throws IOException
+	{
+		FileInventory.requireInventoryPath(path, "path");
+		Path target = candidate.snapshot().resolve(path).orElse(null);
+		if (target == null || !candidate.snapshot().entries().containsKey(target))
+			return Optional.empty();
+		if (candidate.entries().get(target) instanceof Write write)
+			return Optional.of(write.content());
+		if (project != null)
+			return Optional.of(new FileContent(Files.readAllBytes(project.resolve(target))));
+		synchronized (lock)
+		{
+			FileContent content = contents.get(target);
+			if (content == null)
+				throw new IOException("The in-memory workspace has no supplied content for " + target);
+			return Optional.of(content);
+		}
 	}
 
 	@Override

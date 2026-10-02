@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorReport;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
@@ -156,6 +157,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("links", links(brief.links())),
 			Map.entry("cell", brief.cell()),
 			Map.entry("contract", schema.toJson(brief.contract())),
+			Map.entry("campaign_edits", brief.campaignEdits()),
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
 			Map.entry("ended_attempts", pretty(ended)),
@@ -230,7 +232,8 @@ public final class AuthorPrompt implements AuthorProtocol
 	{
 		requireThat(result, "result").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
-		if (output.isEmpty() || !properties(output.get()).equals(Set.of(NEEDED_EDITS, "classifications", "hunks")))
+		if (output.isEmpty() ||
+			!properties(output.get()).equals(Set.of(NEEDED_EDITS, "classifications", "hunks", "conflicts")))
 			return Optional.empty();
 		JsonNode edits = output.get().get(NEEDED_EDITS);
 		if (edits == null || !edits.isArray())
@@ -286,12 +289,67 @@ public final class AuthorPrompt implements AuthorProtocol
 					hunk.get("before_end").asInt(), hunk.get("after_start").asInt(), hunk.get("after_end").asInt(),
 					instances, text(hunk, "analogous"), text(hunk, "dissimilar")));
 			}
-			return Optional.of(new AuthorReport(neededEdits, new AuthorManifest(classifications, evidence)));
+			List<AuthorConflict> conflicts = new ArrayList<>();
+			if (!output.get().get("conflicts").isArray())
+				return Optional.empty();
+			for (JsonNode conflict : output.get().get("conflicts"))
+				conflicts.add(parseConflict(conflict));
+			return Optional.of(new AuthorReport(neededEdits, new AuthorManifest(classifications, evidence), conflicts));
 		}
 		catch (IllegalArgumentException _)
 		{
 			return Optional.empty();
 		}
+	}
+
+	/**
+	 * Reads a conflict's complete shape and constrained values.
+	 *
+	 * @param node the conflict object
+	 * @return the conflict
+	 * @throws IllegalArgumentException if its shape or values are invalid
+	 */
+	private static AuthorConflict parseConflict(JsonNode node)
+	{
+		if (!properties(node).equals(Set.of("instances", "requirement_ids", "quotations", "resolutions",
+			"recommended", "reason")) || !isRangeInteger(node, "recommended") ||
+			!node.get("quotations").isArray())
+		{
+			throw new IllegalArgumentException("Invalid conflict properties");
+		}
+		List<AuthorConflict.Quotation> quotations = new ArrayList<>();
+		for (JsonNode quotation : node.get("quotations"))
+		{
+			if (!properties(quotation).equals(Set.of("path", "text")) || !quotation.get("path").isString())
+				throw new IllegalArgumentException("Invalid quotation properties");
+			quotations.add(new AuthorConflict.Quotation(Path.of(quotation.get("path").asString()),
+				text(quotation, "text")));
+		}
+		return new AuthorConflict(texts(node, "instances"), texts(node, "requirement_ids"), quotations,
+			texts(node, "resolutions"), node.get("recommended").asInt(), text(node, "reason"));
+	}
+
+	/**
+	 * Reads an array of non-blank strings.
+	 *
+	 * @param node the containing object
+	 * @param name the array property
+	 * @return its text values, in order
+	 * @throws IllegalArgumentException if the array or an element is invalid
+	 */
+	private static List<String> texts(JsonNode node, String name)
+	{
+		JsonNode array = node.get(name);
+		if (array == null || !array.isArray())
+			throw new IllegalArgumentException("Missing text array: " + name);
+		List<String> result = new ArrayList<>();
+		for (JsonNode value : array)
+		{
+			if (!value.isString() || value.asString().isBlank())
+				throw new IllegalArgumentException("Invalid text in array: " + name);
+			result.add(value.asString());
+		}
+		return result;
 	}
 
 	/**

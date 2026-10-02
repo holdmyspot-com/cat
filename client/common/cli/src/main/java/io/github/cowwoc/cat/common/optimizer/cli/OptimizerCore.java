@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
@@ -398,6 +399,32 @@ public final class OptimizerCore implements Core
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
 		return apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint, target)));
+	}
+
+	@Override
+	public CommandResult resolveConflict(String campaign, int resolution)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		Path root = scope.projectRoot();
+		Campaign loaded = require(scope.store(), campaign, true);
+		if (loaded.lifecycle() != Lifecycle.ACTIVE ||
+			!(loaded.pending() instanceof PendingDecision.ConflictFound conflicts))
+		{
+			throw new CommandRefusedException("Campaign " + campaign + " does not offer a conflict resolution now.");
+		}
+		List<Integer> chosen;
+		try
+		{
+			chosen = conflicts.choose(resolution);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw new CommandRefusedException("Campaign " + campaign + " does not offer resolution-" +
+				resolution + ": " + e.getMessage(), e);
+		}
+		if (chosen.size() == conflicts.conflicts().size())
+			return revise(campaign, conflicts.feedback(resolution));
+		return apply(root, loaded, List.of(new CampaignEvent.ResolveConflict(resolution)));
 	}
 
 	@Override

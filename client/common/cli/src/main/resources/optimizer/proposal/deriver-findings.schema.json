@@ -33,13 +33,23 @@
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["requirement_ids", "evidence"],
+				"required": ["requirement_ids", "evidence", "resolutions", "recommended", "reason"],
 				"properties": {
 					"requirement_ids": {
 						"type": "array", "minItems": 2, "uniqueItems": true,
 						"items": {"type": "string", "pattern": "\\S"}
 					},
-					"evidence": {"description": "The file and the text that show the conflict.", "type": "string", "pattern": "\\S"}
+					"evidence": {"description": "The file and the text that show the conflict.", "type": "string", "pattern": "\\S"},
+					"resolutions": {
+						"description": "Changes to the requirements that resolve the conflict.",
+						"type": "array", "minItems": 2, "uniqueItems": true,
+						"items": {"type": "string", "pattern": "\\S"}
+					},
+					"recommended": {
+						"description": "The 1-based position of the recommended resolution in resolutions.",
+						"type": "integer", "minimum": 1
+					},
+					"reason": {"description": "Why this resolution best preserves the prompt intent.", "type": "string", "pattern": "\\S"}
 				}
 			}
 		},

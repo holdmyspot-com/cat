@@ -79,6 +79,7 @@ final class UserChoices
 			}
 			case AUTHORIZE_TARGET -> authorize(draft, (PendingDecision.AuthorityWarnings) pending, choose.target());
 			case USE_AUTHORIZED_SOURCE -> draft.resolve();
+			case RESOLUTION -> throw new IllegalArgumentException("Choose a numbered resolution of the conflict");
 		}
 	}
 

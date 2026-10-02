@@ -301,6 +301,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				else
 					choices.add(Choice.NEW_IDENTITY);
 			}
+			case PendingDecision.ConflictFound _ -> choices.add(Choice.RESOLUTION);
 			case PendingDecision.UnownedChange _ -> choices.add(Choice.RESUME);
 			case PendingDecision.TrialFailures _, PendingDecision.CalibrationFailure _ -> choices.add(Choice.RETRY);
 			case PendingDecision.CheckpointReached _ ->

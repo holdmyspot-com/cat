@@ -87,6 +87,20 @@ public interface Core
 		throws CommandRefusedException, IOException;
 
 	/**
+	 * Records a resolution of the current conflict. After the final conflict's choice, regenerates the proposal
+	 * from every chosen resolution, awaiting confirmation.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param resolution the 1-based position among the current conflict's resolutions
+	 * @return the next conflict's status, or the revised proposal
+	 * @throws CommandRefusedException if the campaign does not offer this resolution now
+	 * @throws IOException if the store, workspace or session fails
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	CommandResult resolveConflict(String campaign, int resolution)
+		throws CommandRefusedException, IOException, InterruptedException;
+
+	/**
 	 * Cancels a campaign, keeping its history and spent allowance.
 	 *
 	 * @param campaign the campaign's identifier

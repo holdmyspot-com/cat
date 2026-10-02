@@ -352,7 +352,7 @@ public final class DriverTest
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of("""
 					{"needed_edits": [], "classifications": [
-					  {"instance":"%s","classification":"guidance"}], "hunks": []}
+					  {"instance":"%s","classification":"guidance"}], "hunks": [], "conflicts": []}
 					""".formatted(harness.author().briefs().getLast().developmentId(0)))), edited.effects(), edited.model(),
 					edited.reasoning(), edited.usage(), edited.windows(),
 					edited.promptSources(), edited.toolCalls());
@@ -426,7 +426,7 @@ public final class DriverTest
 				String response = """
 					{"needed_edits":[],"classifications":[{"instance":"%s","classification":"guidance"}],
 					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
-					 "instances":["unknown"],"analogous":"related case","dissimilar":"unrelated case"}]}
+					 "instances":["unknown"],"analogous":"related case","dissimilar":"unrelated case"}],"conflicts":[]}
 					""".formatted(harness.author().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.model(),
@@ -458,7 +458,8 @@ public final class DriverTest
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
 					failure(Builder.targeted("safety", "cache")).build());
 			harness.authors(_ -> harness.completed("""
-				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not guidance"}],"hunks":[]}
+				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not guidance"}],
+				 "hunks":[],"conflicts":[]}
 				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
 			try (Driver driver = harness.open())
 			{

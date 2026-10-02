@@ -536,12 +536,18 @@ final class Markdown
 			return;
 		}
 		text.append("No reply can satisfy each group of requirements below together. Confirmation is refused " +
-			"until your feedback resolves each conflict, for example by exempting one requirement from another or " +
-			"by dropping one:\n\n");
+			"until your feedback resolves each conflict, for example with one of the resolutions listed under it:\n\n");
 		for (Conflict conflict : derived.conflicts())
 		{
 			text.append("- `").append(String.join("`, `", conflict.requirementIds())).append("`: ").
 				append(conflict.evidence()).append('\n');
+			for (int i = 0; i < conflict.resolutions().size(); ++i)
+			{
+				text.append("  ").append(i + 1).append(". ").append(conflict.resolutions().get(i));
+				if (i + 1 == conflict.recommended())
+					text.append(" (recommended: ").append(conflict.reason()).append(')');
+				text.append('\n');
+			}
 		}
 	}
 

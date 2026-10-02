@@ -173,8 +173,8 @@ final class Findings
 				if (outcome == null)
 					problems.add(itemLocation + ".condition: must be one of " + CONDITION_NAMES);
 			}
-			Optional<List<String>> requirementIds = requirementIds(item.get("requirement_ids"),
-				itemLocation + ".requirement_ids", 1, false);
+			Optional<List<String>> requirementIds = strings(item.get("requirement_ids"),
+				itemLocation + ".requirement_ids", 1, false, "requirement identifier");
 			String evidence = text(item, "evidence", itemLocation);
 			if (outcome != null && requirementIds.isPresent() && evidence != null)
 				conditions.add(new ScopeCondition(outcome, requirementIds.get(), evidence));
@@ -198,15 +198,52 @@ final class Findings
 		{
 			String itemLocation = location + "[" + i + "]";
 			JsonNode item = node.get(i);
-			if (!isObject(item, itemLocation, Set.of("requirement_ids", "evidence")))
+			if (!isObject(item, itemLocation, Set.of("requirement_ids", "evidence",
+				"resolutions", "recommended", "reason")))
 				continue;
-			Optional<List<String>> requirementIds = requirementIds(item.get("requirement_ids"),
-				itemLocation + ".requirement_ids", 2, true);
+			Optional<List<String>> requirementIds = strings(item.get("requirement_ids"),
+				itemLocation + ".requirement_ids", 2, true, "requirement identifier");
 			String evidence = text(item, "evidence", itemLocation);
-			if (requirementIds.isPresent() && evidence != null)
-				conflicts.add(new Conflict(requirementIds.get(), evidence));
+			Optional<List<String>> resolutions = strings(item.get("resolutions"), itemLocation + ".resolutions",
+				2, true, "resolution");
+			Integer recommended = recommended(item.get("recommended"), itemLocation + ".recommended",
+				item.path("resolutions").size());
+			String reason = text(item, "reason", itemLocation);
+			if (requirementIds.isPresent() && evidence != null && resolutions.isPresent() && recommended != null &&
+				reason != null)
+			{
+				conflicts.add(new Conflict(requirementIds.get(), evidence, resolutions.get(), recommended, reason));
+			}
 		}
 		return conflicts;
+	}
+
+	/**
+	 * Reads the 1-based position of a recommended resolution.
+	 *
+	 * @param node the recommendation, or null if missing
+	 * @param location its JSON location
+	 * @param count the number of resolutions
+	 * @return the position, or null if invalid
+	 */
+	private Integer recommended(JsonNode node, String location, int count)
+	{
+		if (node == null)
+		{
+			problems.add(location + ": required property is missing");
+			return null;
+		}
+		if (!node.isIntegralNumber())
+		{
+			problems.add(location + ": expected integer but found " + typeOf(node));
+			return null;
+		}
+		if (!node.canConvertToInt() || node.asInt() < 1 || node.asInt() > count)
+		{
+			problems.add(location + ": must be between 1 and " + count);
+			return null;
+		}
+		return node.asInt();
 	}
 
 	/**
@@ -239,15 +276,17 @@ final class Findings
 	}
 
 	/**
-	 * Reads the requirement identifiers of a finding.
+	 * Reads non-blank strings of a finding.
 	 *
 	 * @param node the value, or null if it is missing
 	 * @param location the location of the value
-	 * @param minimum the minimum number of identifiers
-	 * @param distinct whether duplicate identifiers are rejected
-	 * @return the identifiers, or empty if the value is invalid
+	 * @param minimum the minimum number of strings
+	 * @param distinct whether duplicate strings are rejected
+	 * @param itemName the item name used to report a duplicate
+	 * @return the strings, or empty if the value is invalid
 	 */
-	private Optional<List<String>> requirementIds(JsonNode node, String location, int minimum, boolean distinct)
+	private Optional<List<String>> strings(JsonNode node, String location, int minimum, boolean distinct,
+		String itemName)
 	{
 		if (!isArray(node, location))
 			return Optional.empty();
@@ -266,7 +305,7 @@ final class Findings
 				valid = false;
 			else if (distinct && !seen.add(id))
 			{
-				problems.add(location + "[" + i + "]: duplicate requirement identifier " + id);
+				problems.add(location + "[" + i + "]: duplicate " + itemName + " " + id);
 				valid = false;
 			}
 			else

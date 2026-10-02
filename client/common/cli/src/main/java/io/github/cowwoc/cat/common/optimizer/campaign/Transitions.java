@@ -90,6 +90,14 @@ public final class Transitions
 				requireActive(draft);
 				draft.raise(new PendingDecision.CalibrationFailure(failed.detail()));
 			}
+			case CampaignEvent.FindConflict found ->
+			{
+				requireConfirmed(draft);
+				if (draft.revisionRequested)
+					throw new IllegalStateException("The campaign waits for a contract revision");
+				draft.raise(new PendingDecision.ConflictFound(found.conflicts(), List.of()));
+			}
+			case CampaignEvent.ResolveConflict resolve -> resolveConflict(draft, resolve.resolution());
 			case CampaignEvent.Choose choose -> UserChoices.apply(draft, campaign, choose);
 			case CampaignEvent.Cancel _ ->
 			{
@@ -196,6 +204,29 @@ public final class Transitions
 		draft.endRunningAttempt(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 		draft.revisionRequested = true;
 		draft.pendingDecisions.clear();
+	}
+
+	/**
+	 * Records one resolution, retaining the next conflict or requesting a revision after the last choice.
+	 *
+	 * @param draft the state
+	 * @param resolution the 1-based resolution position
+	 * @throws IllegalStateException if the campaign has no active conflict pause
+	 * @throws IllegalArgumentException if the position is out of range
+	 */
+	private static void resolveConflict(Draft draft, int resolution)
+	{
+		requireConfirmed(draft);
+		if (!(draft.pending() instanceof PendingDecision.ConflictFound conflicts))
+			throw new IllegalStateException("No conflict awaits a resolution");
+		List<Integer> chosen = conflicts.choose(resolution);
+		if (chosen.size() == conflicts.conflicts().size())
+			revise(draft);
+		else
+		{
+			draft.resolve();
+			draft.pendingDecisions.addFirst(new PendingDecision.ConflictFound(conflicts.conflicts(), chosen));
+		}
 	}
 
 	/**

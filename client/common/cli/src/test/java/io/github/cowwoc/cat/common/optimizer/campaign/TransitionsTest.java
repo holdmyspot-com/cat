@@ -4,6 +4,8 @@ import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import java.nio.file.Path;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
@@ -32,6 +34,86 @@ public final class TransitionsTest
 	 */
 	public TransitionsTest()
 	{
+	}
+
+	/**
+	 * Returns two independently resolvable conflicts in report order.
+	 *
+	 * @return the conflicts
+	 */
+	private static List<AuthorConflict> conflicts()
+	{
+		return List.of(new AuthorConflict(List.of("f1"), List.of("r1", "r2"),
+			List.of(new AuthorConflict.Quotation(Path.of("CLAUDE.md"), "Be brief.")),
+			List.of("Exempt explanations.", "Drop brevity."), 1, "Keeps brevity elsewhere."),
+			new AuthorConflict(List.of("f2"), List.of("r3", "r4"),
+				List.of(new AuthorConflict.Quotation(Path.of("rules.md"), "Always explain.")),
+				List.of("Exempt greetings.", "Drop explanations."), 2, "Keeps the core task."));
+	}
+
+	/**
+	 * Verifies that author conflicts pause the campaign without changing its candidate.
+	 */
+	@Test
+	public void conflictReportPausesCampaign()
+	{
+		// Requirement: R-D13
+		Campaign original = new Builder().confirmed().working(1).build();
+		Campaign paused = Transitions.apply(original, new CampaignEvent.FindConflict(conflicts()));
+		requireThat(paused.pending(), "pending").isEqualTo(new PendingDecision.ConflictFound(conflicts(), List.of()));
+		requireThat(paused.development().working(), "working").isEqualTo(original.development().working());
+		requireThat(Scheduler.plan(paused, NOW, 1), "admission").isEmpty();
+	}
+
+	/**
+	 * Verifies that choices advance one conflict at a time, then stop certification for a confirmed revision.
+	 */
+	@Test
+	public void conflictChoicesRequestOneRevision()
+	{
+		// Requirement: R-D13
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).campaign().
+			pending(new PendingDecision.ConflictFound(conflicts(), List.of())).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ResolveConflict(2));
+		requireThat(campaign.pending(), "nextConflict").isEqualTo(new PendingDecision.ConflictFound(conflicts(),
+			List.of(2)));
+		requireThat(campaign.revisionRequested(), "revisionRequested").isFalse();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ResolveConflict(1));
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
+		requireThat(campaign.attempts().getFirst().outcome(), "attemptOutcome").
+			isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(campaign.contract(), REVISED, 5L));
+		requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
+		requireThat(campaign.revisionRequested(), "revisionRequested").isFalse();
+	}
+
+	/**
+	 * Verifies that a user can supply free-form feedback during a conflict pause.
+	 */
+	@Test
+	public void revisesDuringConflictPause()
+	{
+		// Requirement: R-D13
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).campaign().
+			pending(new PendingDecision.ConflictFound(conflicts(), List.of(2))).build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
+		requireThat(campaign.attempts().getFirst().outcome(), "attemptOutcome").
+			isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
+	}
+
+	/**
+	 * Verifies that a resolution beyond the offered range is refused.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesConflictResolutionOutOfRange()
+	{
+		// Requirement: R-D13
+		Campaign campaign = new Builder().confirmed().pending(new PendingDecision.ConflictFound(conflicts(),
+			List.of())).build();
+		Transitions.apply(campaign, new CampaignEvent.ResolveConflict(3));
 	}
 
 	/**

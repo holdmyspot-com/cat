@@ -24,6 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -375,6 +376,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 					names.add(condition.name());
 				yield "the measurement conditions changed: " + String.join(", ", names);
 			}
+			case PendingDecision.ConflictFound conflicts -> describeConflict(conflicts.current());
 			case PendingDecision.UnownedChange change -> "a change that CAT did not make: " + change.description();
 			case PendingDecision.TrialFailures _ -> "a trial ran without an outcome and needs a retry";
 			case PendingDecision.CalibrationFailure failure -> "calibration failed: " + failure.detail();
@@ -395,6 +397,28 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				yield "an author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
 		};
+	}
+
+	/**
+	 * Describes the first unresolved conflict and its offered resolutions.
+	 *
+	 * @param conflict the conflict
+	 * @return its requirements, quotations and numbered resolutions
+	 */
+	private static String describeConflict(AuthorConflict conflict)
+	{
+		StringBuilder text = new StringBuilder(256);
+		text.append("conflicting requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
+		for (AuthorConflict.Quotation quotation : conflict.quotations())
+			text.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
+		for (int i = 0; i < conflict.resolutions().size(); ++i)
+		{
+			text.append("  ").append(i + 1).append(". ").append(conflict.resolutions().get(i));
+			if (i + 1 == conflict.recommended())
+				text.append(" (recommended: ").append(conflict.reason()).append(')');
+			text.append('\n');
+		}
+		return text.toString().stripTrailing();
 	}
 
 	/**
@@ -426,6 +450,12 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		{
 			switch (choice)
 			{
+				case RESOLUTION ->
+				{
+					AuthorConflict conflict = ((PendingDecision.ConflictFound) campaign.pending()).current();
+					for (int i = 1; i <= conflict.resolutions().size(); ++i)
+						items.add(new ChoiceItem(choice, 0, false, 0, conflict, i));
+				}
 				case KEEP_IMPROVEMENT ->
 				{
 					for (ImprovementOffer offer : KeepImprovement.offers(campaign))

@@ -163,6 +163,7 @@ public final class DriverHarness
 			this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"), working);
 		else
 			this.fakeWorkspace = new FakeWorkspacePort(directory.resolve("workspace"), working, project);
+		fakeWorkspace.supplyFile(PROMPT, new FileContent("fork".getBytes(UTF_8)));
 		store.replaceSnapshot(campaign);
 	}
 

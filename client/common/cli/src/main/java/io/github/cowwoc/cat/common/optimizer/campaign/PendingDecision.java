@@ -3,7 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -213,6 +215,88 @@ public sealed interface PendingDecision
 		{
 			requireThat(outcome, "outcome").isNotNull();
 			requireThat(outcome.isUnavailable(), "outcome.isUnavailable()").isTrue();
+		}
+	}
+
+	/**
+	 * An author reported conflicts held by the confirmed prompt system. Answers follow report order.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param conflicts the conflicts, in report order
+	 * @param resolutions the 1-based positions already selected, in conflict order
+	 */
+	record ConflictFound(List<AuthorConflict> conflicts, List<Integer> resolutions) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param conflicts the ordered conflicts
+		 * @param resolutions the selected 1-based resolution positions
+		 * @throws NullPointerException if an argument or collection element is null
+		 * @throws IllegalArgumentException if no conflicts exist, every conflict is answered, or an answer is out of range
+		 */
+		public ConflictFound
+		{
+			conflicts = List.copyOf(conflicts);
+			resolutions = List.copyOf(resolutions);
+			requireThat(conflicts, "conflicts").isNotEmpty();
+			requireThat(resolutions.size(), "resolutions.size()").isLessThan(conflicts.size());
+			for (int i = 0; i < resolutions.size(); ++i)
+			{
+				requireThat(resolutions.get(i), "resolution").isPositive().
+					isLessThanOrEqualTo(conflicts.get(i).resolutions().size());
+			}
+		}
+
+		/**
+		 * Returns the first unanswered conflict.
+		 *
+		 * @return the conflict
+		 */
+		public AuthorConflict current()
+		{
+			return conflicts.get(resolutions.size());
+		}
+
+		/**
+		 * Adds the user's answer for the current conflict.
+		 *
+		 * @param resolution the 1-based position of its resolution
+		 * @return all selected positions, including that answer
+		 * @throws IllegalArgumentException if the position is out of range
+		 */
+		public List<Integer> choose(int resolution)
+		{
+			requireThat(resolution, "resolution").isPositive().isLessThanOrEqualTo(current().resolutions().size());
+			List<Integer> chosen = new ArrayList<>(resolutions);
+			chosen.add(resolution);
+			return List.copyOf(chosen);
+		}
+
+		/**
+		 * Builds revision feedback from each answered conflict's requirements, quotations and selected resolution.
+		 *
+		 * @param resolution the last conflict's 1-based resolution position
+		 * @return the feedback for all conflicts
+		 * @throws IllegalArgumentException if the position is out of range
+		 * @throws IllegalStateException if more than one conflict remains unanswered
+		 */
+		public String feedback(int resolution)
+		{
+			List<Integer> chosen = choose(resolution);
+			if (chosen.size() != conflicts.size())
+				throw new IllegalStateException("More than one conflict still needs a resolution");
+			StringBuilder feedback = new StringBuilder(256);
+			for (int i = 0; i < chosen.size(); ++i)
+			{
+				AuthorConflict conflict = conflicts.get(i);
+				feedback.append("Requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
+				for (AuthorConflict.Quotation quotation : conflict.quotations())
+					feedback.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
+				feedback.append("Resolution: ").append(conflict.resolutions().get(chosen.get(i) - 1)).append('\n');
+			}
+			return feedback.toString();
 		}
 	}
 

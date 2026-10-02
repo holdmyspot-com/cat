@@ -1032,9 +1032,13 @@ public final class ProposalTest
 	public void parsesAndRendersConflict() throws InvalidProposalException
 	{
 		// Requirement: R-C13
+		// Requirement: R-C14
 		String output = changedDerivation(root ->
 		{
 			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("resolutions").add("Exempt explanations from brevity.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps brevity elsewhere.");
 			conflict.putArray("requirement_ids").add("r1").add("r2");
 			conflict.put("evidence", "CLAUDE.md: always be brief; always give a full explanation.");
 		});
@@ -1043,16 +1047,81 @@ public final class ProposalTest
 			## Conflicts
 
 			No reply can satisfy each group of requirements below together. Confirmation is refused until your \
-			feedback resolves each conflict, for example by exempting one requirement from another or by dropping one:
+			feedback resolves each conflict, for example with one of the resolutions listed under it:
 
 			- `r1`, `r2`: CLAUDE.md: always be brief; always give a full explanation.
+			  1. Exempt explanations from brevity. (recommended: Keeps brevity elsewhere.)
+			  2. Drop brevity.
 
 			## Certifiable scope
 			""");
 		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		Conflict conflict = derived.conflicts().getFirst();
+		requireThat(conflict.resolutions(), "resolutions").isEqualTo(
+			List.of("Exempt explanations from brevity.", "Drop brevity."));
+		requireThat(conflict.recommended(), "recommended").isEqualTo(1);
+		requireThat(conflict.reason(), "reason").isEqualTo("Keeps brevity elsewhere.");
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(proposal.isConfirmable(), "confirmable").isFalse();
+	}
+
+	/**
+	 * Supplies malformed conflict resolutions and their validation locations.
+	 *
+	 * @return the property, its malformed JSON value and the expected diagnostic
+	 */
+	@DataProvider
+	public Object[][] invalidResolutions()
+	{
+		return new Object[][] {
+			{"resolutions", "[]", "resolutions: must list at least 2 item(s) but lists 0"},
+			{"resolutions", "[\"Only one\"]", "resolutions: must list at least 2 item(s) but lists 1"},
+			{"resolutions", "[\"same\",\"same\"]", "resolutions[1]: duplicate resolution same"},
+			{"resolutions", "[\"valid\",\"  \"]", "resolutions[1]: must not be blank"},
+			{"recommended", "0", "recommended: must be between 1 and 2"},
+			{"recommended", "3", "recommended: must be between 1 and 2"},
+			{"recommended", "1.5", "recommended: expected integer but found number"},
+			{"reason", "\"  \"", "reason: must not be blank"},
+			{"resolutions", null, "resolutions: required property is missing"},
+			{"recommended", null, "recommended: required property is missing"},
+			{"reason", null, "reason: required property is missing"}
+		};
+	}
+
+	/**
+	 * Verifies malformed resolution choices are rejected as findings problems.
+	 *
+	 * @param property the conflict property
+	 * @param value its malformed JSON value, or null to omit it
+	 * @param problem the expected diagnostic suffix
+	 */
+	@Test(dataProvider = "invalidResolutions")
+	public void rejectsInvalidResolutions(String property, String value, String problem)
+	{
+		// Requirement: R-C14
+		String output = changedDerivation(root ->
+		{
+			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("requirement_ids").add("r1").add("r2");
+			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
+			conflict.putArray("resolutions").add("Exempt explanations from brevity.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps brevity elsewhere.");
+			if (value == null)
+				conflict.remove(property);
+			else
+				conflict.set(property, json.readTree(value));
+		});
+		try
+		{
+			deriver.proposal(session(output), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").contains("$.conflicts[0]." + problem);
+		}
 	}
 
 	/**
@@ -1100,9 +1169,13 @@ public final class ProposalTest
 	public void rejectsInvalidConflicts(String ids, String evidence, String problem)
 	{
 		// Requirement: R-C13
+		// Requirement: R-C14
 		String output = changedDerivation(root ->
 		{
 			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("resolutions").add("Exempt explanations from brevity.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps brevity elsewhere.");
 			conflict.set("requirement_ids", json.readTree(ids));
 			conflict.put("evidence", evidence);
 		});
@@ -1126,9 +1199,13 @@ public final class ProposalTest
 	public void conflictBlocksConfirmation() throws InvalidProposalException
 	{
 		// Requirement: R-C13
+		// Requirement: R-C14
 		String output = changedDerivation(root ->
 		{
 			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("resolutions").add("Exempt explanations from brevity.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps brevity elsewhere.");
 			conflict.putArray("requirement_ids").add("r1").add("r2");
 			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
 		});
@@ -1143,8 +1220,9 @@ public final class ProposalTest
 	public void requestRequiresConflicts()
 	{
 		// Requirement: R-C13
+		// Requirement: R-C14
 		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
-		requireThat(prompt, "prompt").contains("### Conflicts\n\n").
+		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
 		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
@@ -1182,9 +1260,13 @@ public final class ProposalTest
 	public void rejectsObjectConflictIds() throws InvalidProposalException
 	{
 		// Requirement: R-C13
+		// Requirement: R-C14
 		String output = changedDerivation(root ->
 		{
 			ObjectNode conflict = root.putArray("conflicts").addObject();
+			conflict.putArray("resolutions").add("Exempt explanations from brevity.").add("Drop brevity.");
+			conflict.put("recommended", 1);
+			conflict.put("reason", "Keeps brevity elsewhere.");
 			conflict.putObject("requirement_ids").put("unexpected", "r1");
 			conflict.put("evidence", "CLAUDE.md: conflicting instructions.");
 		});

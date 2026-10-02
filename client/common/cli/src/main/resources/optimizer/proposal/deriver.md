@@ -155,10 +155,12 @@ the `evidence`: the file and the text that show it.
 
 ### Conflicts
 
-`conflicts` lists every set of requirements that no reply can satisfy together, with the `requirement_ids` and the
-`evidence`: the file and the text that show the conflict. Report the conflict; do not decide which requirement
-prevails, and do not narrow a requirement to remove it. On a revision, drop a conflict that the user's feedback
-resolves and apply the resolution to the requirements it affects.
+`conflicts` lists every set of requirements that no reply can satisfy together, with the `requirement_ids`, the
+`evidence` (the file and the text that show the conflict), at least two `resolutions` and the `recommended` one with its
+`reason`. A resolution states how the requirements change, such as exempting one requirement from another or dropping
+one. Recommend the resolution that keeps the most of what the prompt evidently intends. Report the conflict; do not
+decide which requirement prevails, and do not narrow a requirement to remove it. On a revision, drop a conflict that the
+user's feedback resolves and apply the resolution to the requirements it affects.
 
 ### Profile restriction
 

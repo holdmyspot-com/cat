@@ -4,6 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import java.nio.charset.StandardCharsets;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -54,13 +59,67 @@ public record AuthorManifest(Map<String, FailureKind> classifications, List<Evid
 	}
 
 	/**
+	 * Checks manifest citations against supplied failures, confirmed requirements and confirmed file content.
+	 *
+	 * @param received the supplied failure identifiers
+	 * @param changed the actual changed hunks
+	 * @param contract the confirmed requirements
+	 * @param incumbent the confirmed snapshot's inventory
+	 * @param confirmedText the confirmed file bytes, keyed by resolved path
+	 * @param conflicts the reported conflicts in presentation order
+	 * @return the manifest rejection reasons
+	 */
+	public List<String> violations(Set<String> received, List<Hunk> changed, Contract contract,
+		FileInventory incumbent, Map<Path, FileContent> confirmedText, List<AuthorConflict> conflicts)
+	{
+		List<String> violations = new ArrayList<>(hunkViolations(received, changed));
+		Set<String> cited = new HashSet<>();
+		Set<String> requirementIds = new HashSet<>();
+		for (Requirement requirement : contract.requirements())
+			requirementIds.add(requirement.id());
+		for (AuthorConflict conflict : conflicts)
+		{
+			for (String instance : conflict.instances())
+			{
+				cited.add(instance);
+				if (classifications.get(instance) != FailureKind.CONFLICT)
+					violations.add("Failure " + instance + " cited by a conflict is not classified conflict");
+			}
+			for (String requirement : conflict.requirementIds())
+			{
+				if (!requirementIds.contains(requirement))
+					violations.add("Unknown contract requirement cited by a conflict: " + requirement);
+			}
+			if (conflict.recommended() < 1 || conflict.recommended() > conflict.resolutions().size())
+				violations.add("Conflict recommended position is outside its resolutions: " + conflict.recommended());
+			for (AuthorConflict.Quotation quotation : conflict.quotations())
+			{
+				Path path = incumbent.resolve(quotation.path()).orElse(quotation.path());
+				FileContent content = confirmedText.get(path);
+				if (!(incumbent.entries().get(path) instanceof FileEntry.RegularFile file) || content == null ||
+					!file.contentHash().equals(content.hash()) ||
+					!new String(content.bytes(), StandardCharsets.UTF_8).contains(quotation.text()))
+				{
+					violations.add("Conflict quotation is absent from the confirmed prompt system: " + quotation.path());
+				}
+			}
+		}
+		for (Map.Entry<String, FailureKind> classification : classifications.entrySet())
+		{
+			if (classification.getValue() == FailureKind.CONFLICT && !cited.contains(classification.getKey()))
+				violations.add("Failure " + classification.getKey() + " is classified conflict but no conflict cites it");
+		}
+		return List.copyOf(violations);
+	}
+
+	/**
 	 * Checks completeness and citations, without judging the semantic quality of an edit.
 	 *
 	 * @param received the exact failure identifiers supplied to this author
 	 * @param changed the actual changed hunks
 	 * @return rejection reasons, empty if the manifest covers exactly the changes and supplied failures
 	 */
-	public List<String> violations(Set<String> received, List<Hunk> changed)
+	private List<String> hunkViolations(Set<String> received, List<Hunk> changed)
 	{
 		List<String> violations = new ArrayList<>();
 		if (!classifications.keySet().equals(received))

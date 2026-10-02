@@ -56,6 +56,11 @@ The confirmed contract, as JSON:
 
 {{contract}}
 
+The edits that this campaign made to the prompt files since the contract was confirmed, as a unified diff from the
+confirmed prompt system to the working candidate. It is empty when there are none:
+
+{{campaign_edits}}
+
 The development instances that failed for the working candidate, as JSON. Each one carries the reason for its failure
 in `rationale`, and the targeted reruns of the same instance against the working candidate in `diagnostic_reruns`, each
 with its verdict and its `rationale`. A `rationale` is the judge's rationale or, when no judge ran, a record of
@@ -83,15 +88,22 @@ The formal outcomes of the certification attempts that have ended, as JSON. Each
    An interim message, such as a progress note before a tool call, is part of the turn's reply. Whether a prompt can
    stop the agent from sending one is not known, but the prompt can shape its wording. Classify a failure in an
    interim message as `routing` or `guidance`, and correct the prompt so that every message of the reply complies.
+   Classify a failure as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
+   confirmed with the contract already held the text that causes it: quote that text with its file, give at least two
+   resolutions, recommend one with its reason, and make no edit for it. CAT pauses the campaign for the user's choice. A
+   contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
+   resolve it.
 2. Make the smallest correction supported by the evidence in the file that owns the decision. Prefer editing or
    creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session. Edit one of them only
    when the correction cannot otherwise reach the sessions that need it, such as adding the reference that loads a new
-   file. Remove a contradiction or ambiguity before adding emphasis. Capitals, "important" markers and repeated
-   instructions are not corrections.
+   file. Remove a contradiction or ambiguity before adding emphasis.
+   Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
+   repeated instructions are not corrections.
 3. For each change, name an analogous case that needs the same path and a dissimilar case that must not receive the
    new guidance. Word the correction for the invariant shared by the failing and analogous cases.
-4. Emit the manifest: every supplied failure's classification, and every changed hunk's motivating failure ids,
-   analogous case and dissimilar case. CAT rejects an uncited hunk or a citation to a failure you did not receive.
+4. Emit the manifest: every supplied failure's classification, every changed hunk's motivating failure ids,
+   analogous case and dissimilar case, and each conflict with the failure ids it explains, its requirement ids,
+   quotations, resolutions and recommended one. CAT rejects an uncited hunk or a citation to a failure you did not receive.
    When no edit is needed, report the classifications with an empty `hunks` array; the attempt produces no candidate.
 
 - Diagnose why the failing instances failed by comparing each one's turns with its expected behaviour, with the

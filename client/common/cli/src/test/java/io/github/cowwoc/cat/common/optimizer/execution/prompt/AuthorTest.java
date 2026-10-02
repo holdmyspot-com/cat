@@ -76,7 +76,7 @@ public final class AuthorTest
 			Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
 				List.of(failure()))), Set.of(Path.of("/shared/rules.md")),
-			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")));
+			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "");
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -108,7 +108,7 @@ public final class AuthorTest
 		// Requirement: R-C12
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(failure()), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(failure()))), Set.of(), Map.of());
+			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(failure()))), Set.of(), Map.of(), "");
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
@@ -129,7 +129,7 @@ public final class AuthorTest
 		// Requirement: R-E13
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Set.of(), Map.of());
+			Set.of(), Map.of(), "");
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -159,7 +159,7 @@ public final class AuthorTest
 			List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(development, checked),
 			Map.of(), List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))), Set.of(),
-			Map.of());
+			Map.of(), "");
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -180,6 +180,23 @@ public final class AuthorTest
 	}
 
 	/**
+	 * Verifies that the author receives the campaign's prompt-file diff, including an empty diff.
+	 */
+	@Test
+	public void requestIncludesCampaignEdits()
+	{
+		// Requirement: R-D13
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		for (String diff : List.of("", "--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ -1,1 +1,1 @@\n-old\n+new\n"))
+		{
+			AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+				Set.of(), Map.of(), diff);
+			String turn = prompt.request(brief, COPY).turns().getFirst();
+			requireThat(turn, "diff").contains("It is empty when there are none:\n\n" + diff + "\n");
+		}
+	}
+
+	/**
 	 * Returns the result of an author session whose final response is the given text.
 	 *
 	 * @param response the final response
@@ -188,7 +205,7 @@ public final class AuthorTest
 	private static SessionResult.Completed completed(String response)
 	{
 		String report = response.replace("{\"needed_edits\":",
-			"{\"classifications\": [], \"hunks\": [], \"needed_edits\":");
+			"{\"classifications\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
 		return new SessionResult.Completed(Path.of("/runs/author-3/artifacts/transcript.jsonl"),
 			List.of(List.of("working", report)), COPY, "author-model", null, null, List.of(), "none", List.of());
 	}

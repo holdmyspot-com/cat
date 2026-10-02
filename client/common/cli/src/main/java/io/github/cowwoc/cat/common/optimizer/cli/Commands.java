@@ -125,6 +125,12 @@ public final class Commands
 				"[--attempt N | --review-point N | --target <path>]");
 		}
 		String campaign = campaign(rest.getFirst());
+		String answer = rest.get(1);
+		if (answer.startsWith("resolution-"))
+		{
+			expect("choose", rest, 2, "<campaign> resolution-<n>");
+			return new Command.ResolveConflict(campaign, positive("resolution", answer.substring(11)));
+		}
 		Choice choice = choice(rest.get(1));
 		int attempt = 0;
 		int reviewPoint = 0;
@@ -243,7 +249,7 @@ public final class Commands
 	private static Choice choice(String value)
 	{
 		for (Choice choice : Choice.values())
-			if (new ChoiceItem(choice, 0, false, 0).id().equals(value))
+			if (choice != Choice.RESOLUTION && new ChoiceItem(choice, 0, false, 0).id().equals(value))
 				return choice;
 		throw new InvalidCommandException("Unknown choice: '" + value + "'");
 	}
@@ -337,6 +343,7 @@ public final class Commands
 			case Command.Revise revise -> core.revise(revise.campaign(), revise.feedback());
 			case Command.Choose choose ->
 				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint(), choose.target());
+			case Command.ResolveConflict resolve -> core.resolveConflict(resolve.campaign(), resolve.resolution());
 			case Command.Cancel cancel -> core.cancel(cancel.campaign());
 		};
 	}

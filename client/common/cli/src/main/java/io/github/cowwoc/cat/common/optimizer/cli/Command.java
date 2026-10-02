@@ -152,6 +152,29 @@ public sealed interface Command
 	}
 
 	/**
+	 * Selects a numbered resolution of the conflict currently awaiting the user's answer.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param resolution the 1-based resolution position
+	 */
+	record ResolveConflict(String campaign, int resolution) implements Command
+	{
+		/**
+		 * Creates the command.
+		 *
+		 * @param campaign the campaign's identifier
+		 * @param resolution the 1-based resolution position
+		 * @throws NullPointerException if {@code campaign} is null
+		 * @throws IllegalArgumentException if {@code resolution} is not positive
+		 */
+		public ResolveConflict
+		{
+			requireThat(campaign, "campaign").isNotNull();
+			requireThat(resolution, "resolution").isPositive();
+		}
+	}
+
+	/**
 	 * Cancels a campaign, keeping its history and spent allowance.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.

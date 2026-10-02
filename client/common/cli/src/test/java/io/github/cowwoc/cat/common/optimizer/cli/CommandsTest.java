@@ -114,6 +114,13 @@ public final class CommandsTest
 		}
 
 		@Override
+		public CommandResult resolveConflict(String campaign, int resolution)
+			throws CommandRefusedException, IOException
+		{
+			return answer("resolve " + campaign + " " + resolution);
+		}
+
+		@Override
 		public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 		{
 			return answer("cancel " + campaign);
@@ -190,6 +197,19 @@ public final class CommandsTest
 		requireThat(core.calls, "calls").isEqualTo(List.of(
 			"choose c1 AUTHORIZE_TARGET 0 0 /external/shared.md",
 			"choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+	}
+
+	/**
+	 * Verifies that a numbered conflict resolution is accepted by the command parser.
+	 */
+	@Test
+	public void parsesConflictResolution()
+	{
+		// Requirement: R-D13
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		requireThat(run(core, List.of("choose", "c1", "resolution-2"), output), "exit").isEqualTo(0);
+		requireThat(core.calls, "calls").isEqualTo(List.of("resolve c1 2"));
 	}
 
 	/**

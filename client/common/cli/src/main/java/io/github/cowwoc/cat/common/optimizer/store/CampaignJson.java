@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
@@ -118,7 +119,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 8;
+	private static final int FORMAT_VERSION = 9;
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -1153,6 +1154,12 @@ final class CampaignJson
 				for (MeasurementCondition condition : changed.changed())
 					conditions.add(condition.name());
 			}
+			case PendingDecision.ConflictFound conflicts ->
+			{
+				node.put("type", "CONFLICT_FOUND");
+				node.set("conflicts", writeConflicts(conflicts.conflicts()));
+				node.set("resolutions", writeIntegers(conflicts.resolutions()));
+			}
 			case PendingDecision.UnownedChange change ->
 			{
 				node.put("type", "UNOWNED_CHANGE");
@@ -1228,6 +1235,8 @@ final class CampaignJson
 					changed.add(constantValue(element, "changed", MeasurementCondition.class));
 				yield new PendingDecision.MeasurementChanged(readIdentity(field(node, "observed")), changed);
 			}
+			case "CONFLICT_FOUND" ->
+				new PendingDecision.ConflictFound(readConflicts(node), readIntegers(node, "resolutions"));
 			case "UNOWNED_CHANGE" -> new PendingDecision.UnownedChange(text(node, "description"));
 			case "TRIAL_FAILURES" -> new PendingDecision.TrialFailures(readKey(field(node, "key")));
 			case "CALIBRATION_FAILURE" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
@@ -1254,6 +1263,63 @@ final class CampaignJson
 			}
 			default -> throw new IllegalArgumentException("pending_decisions: unknown type " + type);
 		};
+	}
+
+	/**
+	 * Writes ordered author conflicts for a pending decision.
+	 *
+	 * @param conflicts the conflicts
+	 * @return their JSON array
+	 */
+	private ArrayNode writeConflicts(List<AuthorConflict> conflicts)
+	{
+		ArrayNode array = json.createArrayNode();
+		for (AuthorConflict conflict : conflicts)
+		{
+			ObjectNode node = array.addObject();
+			ArrayNode instances = node.putArray("instances");
+			for (String instance : conflict.instances())
+				instances.add(instance);
+			ArrayNode requirements = node.putArray("requirement_ids");
+			for (String requirement : conflict.requirementIds())
+				requirements.add(requirement);
+			ArrayNode quotations = node.putArray("quotations");
+			for (AuthorConflict.Quotation quotation : conflict.quotations())
+			{
+				ObjectNode entry = quotations.addObject();
+				entry.put("path", quotation.path().toString());
+				entry.put("text", quotation.text());
+			}
+			ArrayNode resolutions = node.putArray("resolutions");
+			for (String resolution : conflict.resolutions())
+				resolutions.add(resolution);
+			node.put("recommended", conflict.recommended());
+			node.put("reason", conflict.reason());
+		}
+		return array;
+	}
+
+	/**
+	 * Reads ordered author conflicts from a pending-decision document.
+	 *
+	 * @param node the pending decision
+	 * @return its conflicts
+	 */
+	private static List<AuthorConflict> readConflicts(JsonNode node)
+	{
+		List<AuthorConflict> conflicts = new ArrayList<>();
+		for (JsonNode element : elements(node, "conflicts"))
+		{
+			List<AuthorConflict.Quotation> quotations = new ArrayList<>();
+			for (JsonNode quotation : elements(element, "quotations"))
+			{
+				quotations.add(new AuthorConflict.Quotation(pathValue(field(quotation, "path"), "path"),
+					text(quotation, "text")));
+			}
+			conflicts.add(new AuthorConflict(readStrings(element, "instances"), readStrings(element, "requirement_ids"),
+				quotations, readStrings(element, "resolutions"), integer(element, "recommended"), text(element, "reason")));
+		}
+		return conflicts;
 	}
 
 	/**

@@ -116,7 +116,7 @@ public final class Hunks
 	 * @param content the bytes, or {@code null} for an absent file
 	 * @return lines including their terminators, or empty for an absent or binary file
 	 */
-	private static Optional<List<String>> lines(FileContent content)
+	static Optional<List<String>> lines(FileContent content)
 	{
 		if (content == null)
 			return Optional.empty();

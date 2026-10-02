@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.execution.Driver;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.execution.DriverHarness;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -63,6 +64,35 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class StatusReportTest
 {
+	/**
+	 * Verifies that status offers numbered resolutions, their recommendation and its reason, then stop.
+	 */
+	@Test
+	public void reportsConflictResolutionChoices()
+	{
+		// Requirement: R-D13
+		AuthorConflict conflict = new AuthorConflict(List.of("f1"), List.of("r1", "r2"),
+			List.of(new AuthorConflict.Quotation(Path.of("CLAUDE.md"), "Be brief.")),
+			List.of("Exempt explanations.", "Drop brevity."), 2, "Keeps the core task.");
+		Campaign campaign = new Builder().confirmed().pending(new PendingDecision.ConflictFound(List.of(conflict),
+			List.of())).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode choices = report.toJson(JsonMapper.builder().build()).get("choices");
+
+		requireThat(choices.size(), "choiceCount").isEqualTo(3);
+		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("resolution-1");
+		requireThat(choices.get(0).get("label").asString(), "firstLabel").isEqualTo("Exempt explanations.");
+		requireThat(choices.get(0).get("recommended").asBoolean(), "firstRecommended").isFalse();
+		requireThat(choices.get(0).has("reason"), "firstReason").isFalse();
+		requireThat(choices.get(1).get("id").asString(), "secondId").isEqualTo("resolution-2");
+		requireThat(choices.get(1).get("recommended").asBoolean(), "secondRecommended").isTrue();
+		requireThat(choices.get(1).get("reason").asString(), "reason").isEqualTo("Keeps the core task.");
+		requireThat(choices.get(2).get("id").asString(), "lastId").isEqualTo("stop");
+		requireThat(report.summary(), "summary").contains("r1").contains("r2").contains("CLAUDE.md").
+			contains("Be brief.").contains("1. Exempt explanations.").
+			contains("2. Drop brevity. (recommended: Keeps the core task.)");
+	}
+
 	/**
 	 * Every retained round attempt reports its passing and total promotion runs, acceptance, and winner.
 	 */

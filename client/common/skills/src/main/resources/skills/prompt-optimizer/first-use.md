@@ -19,8 +19,11 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
 1. **Start.** Run `start <target>` with the prompt file or directory the user named. It creates a campaign or resumes
    the one that already exists for that target. Use its `campaign` value in every later command.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
-   the contract, the warnings and the minimum session count. If the result holds a `message` instead, show it. Then ask
-   the user to confirm or to give feedback.
+   the contract, the warnings and the minimum session count. If the result holds a `message` instead, show it.
+   - If the proposal lists conflicts, confirmation is refused until each is resolved. For each conflict, ask the user to
+     choose one of its resolutions, naming the recommended one and its reason, or to describe another. Do not offer
+     confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and repeat this step with its result.
+   - Otherwise, ask the user to confirm or to give feedback.
    - On feedback, run `revise <campaign> <feedback>` with the user's words and repeat this step with its result.
    - On confirmation, run `confirm <campaign>`.
    - Never confirm on the user's behalf.
@@ -34,6 +37,9 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    - For an entry of `authorityWarnings`, show its `requirement`, `path`, `target` and `limit`. Pass `authorize-target`
      as `choose <campaign> authorize-target --target <target>`, `use-authorized-source` and `stop` as
      `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>` with the user's words.
+   - For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
+     true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
+     <campaign> <feedback>`.
    - Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its

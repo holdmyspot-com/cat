@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
@@ -105,6 +106,12 @@ final class ReportJson
 			ObjectNode node = array.addObject();
 			node.put("id", choice.id());
 			node.put("label", choice.label());
+			if (choice.choice() == Choice.RESOLUTION)
+			{
+				node.put("recommended", choice.recommended());
+				if (choice.recommended())
+					node.put("reason", choice.reason());
+			}
 			if (choice.attempt() > 0)
 			{
 				node.put("attempt", choice.attempt());

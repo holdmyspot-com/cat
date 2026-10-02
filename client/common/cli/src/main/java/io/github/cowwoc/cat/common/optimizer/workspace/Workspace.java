@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -19,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * The file-system implementation of {@link WorkspacePort}: staged sources, authoring copies, and the optimization
@@ -59,6 +61,17 @@ public final class Workspace implements WorkspacePort
 		this.authoringCopies = new AuthoringCopies(tree, normalizedStorage.resolve("authoring"));
 		this.worktree = worktree.toAbsolutePath().normalize();
 		this.worktreeMirror = normalizedStorage.resolve("worktree-external");
+	}
+
+	@Override
+	public Optional<FileContent> readFile(Overlay candidate, Path path) throws IOException
+	{
+		tree.requireSameFork(candidate);
+		FileInventory.requireInventoryPath(path, "path");
+		Path target = candidate.snapshot().resolve(path).orElse(null);
+		if (target == null || !(candidate.snapshot().entries().get(target) instanceof RegularFile))
+			return Optional.empty();
+		return Optional.of(tree.readFile(candidate, target));
 	}
 
 	@Override

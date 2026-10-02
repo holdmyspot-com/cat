@@ -65,5 +65,9 @@ public enum Choice
 	/**
 	 * Continue development within the confirmed edit authority, leaving the warned edit unmade.
 	 */
-	USE_AUTHORIZED_SOURCE
+	USE_AUTHORIZED_SOURCE,
+	/**
+	 * Select a numbered resolution of the first unanswered conflict and revise once every conflict has an answer.
+	 */
+	RESOLUTION
 }

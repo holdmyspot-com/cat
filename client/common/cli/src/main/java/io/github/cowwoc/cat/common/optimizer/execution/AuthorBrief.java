@@ -38,10 +38,11 @@ import java.nio.charset.StandardCharsets;
  *   to edit
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
  *   keyed by the link's path; a link whose links form a cycle is absent
+ * @param campaignEdits the unified diff of prompt files from confirmation to the working candidate
  */
 public record AuthorBrief(String cell, Contract contract, List<Failure> developmentFailures,
 	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
-	Map<Path, Path> links)
+	Map<Path, Path> links, String campaignEdits)
 {
 	/**
 	 * Creates a brief.
@@ -55,6 +56,7 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 	 *   attempts to edit
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
 	 *   keyed by the link's path; a link whose links form a cycle is absent
+	 * @param campaignEdits the unified diff since confirmation, empty if there are no prompt edits
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
@@ -70,6 +72,7 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 		endedAttempts = List.copyOf(endedAttempts);
 		authorizedTargets = Set.copyOf(authorizedTargets);
 		links = Map.copyOf(links);
+		requireThat(campaignEdits, "campaignEdits").isNotNull();
 	}
 
 	/**
@@ -140,10 +143,11 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 	 *
 	 * @param campaign a campaign with a confirmed contract
 	 * @param cell the identifier of the cell (one category under one trial profile) that the author attempt targets
+	 * @param campaignEdits the unified diff since confirmation, restricted to prompt files
 	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
 	 * @return the brief
 	 */
-	static AuthorBrief of(Campaign campaign, String cell, FileInventory fork)
+	static AuthorBrief of(Campaign campaign, String cell, FileInventory fork, String campaignEdits)
 	{
 		Development development = campaign.development();
 		List<EndedAttempt> ended = new ArrayList<>();
@@ -162,7 +166,7 @@ public record AuthorBrief(String cell, Contract contract, List<Failure> developm
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
 		return new AuthorBrief(cell, campaign.contract(), development.failures(), development.counts(), ended,
-			campaign.authorizedTargets(), links);
+			campaign.authorizedTargets(), links, campaignEdits);
 	}
 
 	/**

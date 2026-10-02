@@ -445,6 +445,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	public void storesSnapshotAndOneRecordPerTrial() throws IOException
 	{
 		// Requirement: R-W1
+		// Requirement: R-D13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-layout-"));
@@ -466,10 +467,68 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(8);
+					"recordVersion").isEqualTo(9);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(8);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(9);
+		}
+	}
+
+	/**
+	 * Verifies that the store preserves ordered conflicts and the resolutions already chosen.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void storesConflictChoices() throws IOException
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-conflict-store-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
+			document.set("pending_decisions", JSON.readTree("""
+				[{"type":"CONFLICT_FOUND", "conflicts":[
+				  {"instances":["failure-1"], "requirement_ids":["r1","r2"],
+				   "quotations":[{"path":"CLAUDE.md","text":"Be brief."}],
+				   "resolutions":["Exempt explanations.","Drop brevity."], "recommended":1,
+				   "reason":"Keeps brevity elsewhere."},
+				  {"instances":["failure-2"], "requirement_ids":["r3","r4"],
+				   "quotations":[{"path":"rules.md","text":"Always explain."}],
+				   "resolutions":["Exempt greetings.","Drop explanations."], "recommended":2,
+				   "reason":"Keeps the core task."}], "resolutions":[2]}]
+				"""));
+			Files.writeString(snapshot, JSON.writeValueAsString(document));
+			Campaign loaded = store.load(ID).orElseThrow();
+			store.replaceSnapshot(loaded);
+			requireThat(JSON.readTree(Files.readString(snapshot)).get("pending_decisions"), "pending").
+				isEqualTo(document.get("pending_decisions"));
+		}
+	}
+
+	/**
+	 * Verifies that a campaign without conflict choices cannot be read as the current format.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 8 campaign.*[Ss]tart a new campaign.*")
+	public void refusesFormatWithoutConflictChoices() throws IOException
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-conflict-version-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
+			document.put("format_version", 8);
+			Files.writeString(snapshot, JSON.writeValueAsString(document));
+			store.load(ID);
 		}
 	}
 
@@ -760,6 +819,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		expectedExceptionsMessageRegExp = "(?s).*format_version.*")
 	public void rejectsUnknownFormatVersion() throws IOException
 	{
+		// Requirement: R-D13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-"));
@@ -767,7 +827,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 9);
+			root.put("format_version", 10);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

@@ -5,6 +5,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -347,6 +348,21 @@ public final class ForkTree
 	}
 
 	/**
+	 * Reads a regular file's bytes from its overlay or the immutable fork storage.
+	 *
+	 * @param candidate the saved candidate on this fork
+	 * @param key the resolved regular-file path
+	 * @return its recorded content
+	 * @throws IOException if the recorded file cannot be read
+	 */
+	FileContent readFile(Overlay candidate, Path key) throws IOException
+	{
+		if (candidate.entries().get(key) instanceof Write write)
+			return write.content();
+		return new FileContent(Files.readAllBytes(physical(key)));
+	}
+
+	/**
 	 * Writes a regular file of a candidate: the overlay's content if the overlay writes the file, otherwise the
 	 * recorded content, with the mode that the candidate's snapshot records.
 	 *
@@ -358,10 +374,7 @@ public final class ForkTree
 	 */
 	void writeFile(Overlay candidate, Path key, RegularFile file, Path location) throws IOException
 	{
-		if (candidate.entries().get(key) instanceof Write write)
-			Files.write(location, write.content().bytes());
-		else
-			Files.copy(physical(key), location);
+		Files.write(location, readFile(candidate, key).bytes());
 		Files.setPosixFilePermissions(location, file.permissions());
 	}
 

@@ -5,6 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
@@ -803,6 +805,150 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Returns the conflicts used to exercise sequential resolution choices.
+	 *
+	 * @return the conflicts
+	 */
+	private static List<AuthorConflict> reportedConflicts()
+	{
+		return List.of(new AuthorConflict(List.of("f1"), List.of("r1", "r2"),
+			List.of(new AuthorConflict.Quotation(Path.of("CLAUDE.md"), "Be brief.")),
+			List.of("Exempt explanations.", "Drop brevity."), 1, "Keeps brevity elsewhere."),
+			new AuthorConflict(List.of("f2"), List.of("r3", "r4"),
+				List.of(new AuthorConflict.Quotation(Path.of("rules.md"), "Always explain.")),
+				List.of("Exempt greetings.", "Drop explanations."), 2, "Keeps the core task."));
+	}
+
+	/**
+	 * Installs an author-conflict decision as the current persisted pause.
+	 *
+	 * @param repository the owned campaign repository
+	 * @param id the campaign identifier
+	 * @throws IOException if the store fails
+	 * @throws CommandRefusedException if the owned project cannot be opened
+	 */
+	private static void pauseConflicts(Repository repository, String id)
+		throws IOException, CommandRefusedException
+	{
+		Campaign c = repository.load(id);
+		repository.scope().store().replaceSnapshot(new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(),
+			c.incumbent(), c.candidates(), c.authorAttempts(), c.development(), c.failedCells(), c.baseline(),
+			c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
+			c.authorizedTargets(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
+			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization()));
+	}
+
+	/**
+	 * Verifies that numbered choices advance conflicts and derive one proposal containing all selected feedback.
+	 *
+	 * @throws IOException if the owned repository or store fails
+	 * @throws CommandRefusedException if an authorized command is refused
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	@Test
+	public void choosesConflictsBeforeRevision() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id);
+			pauseConflicts(repository, id);
+			ObjectNode first = output(repository, List.of("choose", id, "resolution-2"));
+			requireThat(first.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(first.get("choices").get(0).get("label").asString(), "nextResolution").
+				isEqualTo("Exempt greetings.");
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
+			ObjectNode last = output(repository, List.of("choose", id, "resolution-1"));
+			requireThat(last.get("proposal").asString(), "proposal").contains("## Requirements");
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+			requireThat(repository.load(id).pending(), "pending").isNull();
+			requireThat(repository.sessions().roles().stream().filter(role -> role == SessionRole.DERIVER).count(),
+				"deriverCalls").isEqualTo(2L);
+			SessionRequest request = repository.sessions().requests.getLast();
+			requireThat(request.turns().getFirst(), "feedback").contains("r1, r2").contains("r3, r4").
+				contains("CLAUDE.md: Be brief.").contains("rules.md: Always explain.").contains("Drop brevity.").
+				contains("Exempt greetings.");
+			repository.core().confirm(id);
+			requireThat(repository.load(id).lineages().size(), "lineages").isEqualTo(2);
+		}
+	}
+
+	/**
+	 * Verifies that feedback supplied during a conflict pause derives a proposal and clears the pause.
+	 *
+	 * @throws IOException if the owned repository or store fails
+	 * @throws CommandRefusedException if an authorized command is refused
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	@Test
+	public void revisesPausedConflicts() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id);
+			pauseConflicts(repository, id);
+			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			requireThat(revised.proposal(), "proposal").contains("## Requirements");
+			requireThat(repository.load(id).pending(), "pending").isNull();
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+			requireThat(repository.sessions().requests.getLast().turns().getFirst(), "feedback").
+				contains("Exempt detailed safety explanations.");
+		}
+	}
+
+	/**
+	 * Verifies that a resolution outside a conflict pause is refused, and an out-of-range choice preserves the pause.
+	 *
+	 * @throws IOException if the owned repository or store fails
+	 * @throws CommandRefusedException if an authorized setup command is refused
+	 * @throws InterruptedException if derivation is interrupted
+	 */
+	@Test
+	public void refusesUnlistedResolution() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id);
+			try
+			{
+				repository.core().resolveConflict(id, 1);
+				requireThat(false, "refusedOutsidePause").isTrue();
+			}
+			catch (CommandRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").contains("does not offer a conflict resolution now");
+			}
+			pauseConflicts(repository, id);
+			String before = Files.readString(repository.directory(id).resolve("campaign.json"));
+			try
+			{
+				repository.core().resolveConflict(id, 3);
+				requireThat(false, "refused").isTrue();
+			}
+			catch (CommandRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").contains("does not offer resolution-3");
+			}
+			requireThat(Files.readString(repository.directory(id).resolve("campaign.json")), "unchanged").
+				isEqualTo(before);
+		}
+	}
+
+	/**
 	 * Verifies that {@code revise} regenerates the complete proposal from the feedback and stores it.
 	 */
 	@Test
@@ -1049,6 +1195,9 @@ public final class OptimizerCoreTest
 					ObjectNode conflict = conflicts.addObject();
 					conflict.putArray("requirement_ids").add("r1").add("r2");
 					conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
+					conflict.putArray("resolutions").add("Exempt explanations.").add("Drop brevity.");
+					conflict.put("recommended", 1);
+					conflict.put("reason", "Keeps the most intent.");
 				}
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
@@ -1106,9 +1255,15 @@ public final class OptimizerCoreTest
 				ObjectNode first = conflicts.addObject();
 				first.putArray("requirement_ids").add("r1").add("r2").add("core-task");
 				first.put("evidence", "CLAUDE.md: three incompatible instructions.");
+				first.putArray("resolutions").add("Exempt explanations.").add("Drop brevity.");
+				first.put("recommended", 1);
+				first.put("reason", "Keeps the most intent.");
 				ObjectNode second = conflicts.addObject();
 				second.putArray("requirement_ids").add("r2").add("r1");
 				second.put("evidence", "rules/safety.md: another conflict.");
+				second.putArray("resolutions").add("Exempt explanations.").add("Drop brevity.");
+				second.put("recommended", 1);
+				second.put("reason", "Keeps the most intent.");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			if (brokenLink)
