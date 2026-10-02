@@ -9,7 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
-import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Added;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Modified;
@@ -153,14 +152,7 @@ public final class Workspace implements WorkspacePort
 		Files.deleteIfExists(location);
 		switch (entry)
 		{
-			case RegularFile file ->
-			{
-				if (candidate.entries().get(key) instanceof Write write)
-					Files.write(location, write.content().bytes());
-				else
-					Files.copy(tree.physical(key), location);
-				Files.setPosixFilePermissions(location, file.permissions());
-			}
+			case RegularFile file -> tree.writeFile(candidate, key, file, location);
 			case SymbolicLink link -> Files.createSymbolicLink(location, link.target());
 			case SpecialFile _ -> throw new IOException("The fork records " + key + " as a special file, which a " +
 				"worktree cannot hold.");

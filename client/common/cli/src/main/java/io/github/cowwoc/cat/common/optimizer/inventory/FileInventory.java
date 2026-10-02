@@ -108,6 +108,17 @@ public final class FileInventory
 	}
 
 	/**
+	 * Indicates whether this inventory records a path or any path below it.
+	 *
+	 * @param path a relative project path or an absolute external path
+	 * @return {@code true} if an entry is recorded at or below {@code path}
+	 */
+	public boolean holds(Path path)
+	{
+		return entries.keySet().stream().anyMatch(key -> key.startsWith(path));
+	}
+
+	/**
 	 * Returns the first recorded path strictly below a path, which shows that the path is a directory.
 	 *
 	 * @param path a relative project path or an absolute external path
@@ -163,44 +174,47 @@ public final class FileInventory
 	 */
 	private Optional<Path> resolveFirstLink(Path path)
 	{
+		Optional<Path> found = firstLinkPrefix(path);
+		if (found.isEmpty())
+			return Optional.empty();
+		Path prefix = found.get();
+		SymbolicLink link = (SymbolicLink) entries.get(prefix);
+		Path destination = root.resolve(prefix).getParent().resolve(link.target()).normalize();
 		int count = path.getNameCount();
-		for (int i = 1; i <= count; ++i)
+		int linkCount = prefix.getNameCount();
+		if (linkCount < count)
+			destination = destination.resolve(path.subpath(linkCount, count));
+		return Optional.of(keyOf(root, destination));
+	}
+
+	/**
+	 * Returns the shortest prefix of a path that is a recorded symbolic link.
+	 *
+	 * @param path a relative project path or an absolute external path
+	 * @return the prefix, which is absolute if {@code path} is absolute and may be {@code path} itself, or empty if no
+	 *   prefix of {@code path} is a recorded link
+	 */
+	Optional<Path> firstLinkPrefix(Path path)
+	{
+		for (int i = 1; i <= path.getNameCount(); ++i)
 		{
-			Path prefix = prefix(path, i);
-			if (entries.get(prefix) instanceof SymbolicLink link)
-			{
-				Path location = root.resolve(prefix);
-				Path destination = location.getParent().resolve(link.target()).normalize();
-				if (i < count)
-					destination = destination.resolve(path.subpath(i, count));
-				return Optional.of(toKey(destination));
-			}
+			Path prefix = path.subpath(0, i);
+			if (path.isAbsolute())
+				prefix = path.getRoot().resolve(prefix);
+			if (entries.get(prefix) instanceof SymbolicLink)
+				return Optional.of(prefix);
 		}
 		return Optional.empty();
 	}
 
 	/**
-	 * Returns the first elements of a path.
+	 * Converts an absolute path to the key under which an inventory records it.
 	 *
-	 * @param path a relative project path or an absolute external path
-	 * @param count the number of name elements to keep
-	 * @return the prefix, absolute if {@code path} is absolute
-	 */
-	private static Path prefix(Path path, int count)
-	{
-		Path names = path.subpath(0, count);
-		if (path.isAbsolute())
-			return path.getRoot().resolve(names);
-		return names;
-	}
-
-	/**
-	 * Converts an absolute path to the key under which this inventory records it.
-	 *
+	 * @param root the inventory's absolute, normalized project directory
 	 * @param absolute a normalized absolute path
-	 * @return the path relative to the project directory if it lies inside it; otherwise {@code absolute}
+	 * @return the path relative to {@code root} if it lies inside it; otherwise {@code absolute}
 	 */
-	private Path toKey(Path absolute)
+	static Path keyOf(Path root, Path absolute)
 	{
 		if (absolute.startsWith(root))
 			return root.relativize(absolute);

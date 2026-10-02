@@ -290,7 +290,7 @@ public final class Commands
 		}
 		catch (InvalidCommandException e)
 		{
-			out.println(failure("invalid-input", e.getMessage() + "\n" + USAGE));
+			out.println(failure(json, "invalid-input", e.getMessage() + "\n" + USAGE));
 			return 2;
 		}
 		try
@@ -301,18 +301,18 @@ public final class Commands
 		}
 		catch (CommandRefusedException e)
 		{
-			out.println(failure("refused", e.getMessage()));
+			out.println(failure(json, "refused", e.getMessage()));
 			return 1;
 		}
 		catch (IOException e)
 		{
-			out.println(failure("error", e.getClass().getSimpleName() + ": " + e.getMessage()));
+			out.println(failure(json, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
 			return 1;
 		}
 		catch (InterruptedException _)
 		{
 			Thread.currentThread().interrupt();
-			out.println(failure("error", "Interrupted."));
+			out.println(failure(json, "error", "Interrupted."));
 			return 1;
 		}
 	}
@@ -370,11 +370,12 @@ public final class Commands
 	/**
 	 * Renders a failure.
 	 *
+	 * @param json the JSON mapper
 	 * @param status {@code "refused"}, {@code "invalid-input"} or {@code "error"}
 	 * @param message the explanation
 	 * @return the JSON text
 	 */
-	private String failure(String status, String message)
+	static String failure(JsonMapper json, String status, String message)
 	{
 		ObjectNode root = json.createObjectNode();
 		root.put("status", status);

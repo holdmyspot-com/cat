@@ -5,9 +5,12 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
@@ -19,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -33,8 +37,6 @@ import java.util.stream.Collectors;
 public final class ForkTree
 {
 	private static final String FORK = "fork";
-	private static final Path GIT_METADATA = Path.of(".git");
-	private static final Path WORK_DIRECTORY = Path.of(".cat/work");
 	private final Path directory;
 	private final Path project;
 	private final Path external;
@@ -90,22 +92,8 @@ public final class ForkTree
 		{
 			Files.createDirectories(empty.project);
 			Files.createDirectories(empty.external);
-			Set<Path> omitted = Set.of(normalizedBase.resolve(GIT_METADATA), normalizedBase.resolve(WORK_DIRECTORY),
-				normalizedCampaign);
-			for (Path path : paths)
-			{
-				Path source;
-				if (path.isAbsolute())
-					source = path;
-				else
-					source = normalizedBase.resolve(path);
-				if (Files.notExists(source, NOFOLLOW_LINKS))
-				{
-					throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
-						"recorded in the fork.");
-				}
-				FileTree.copy(source, FileTree.locate(empty.project, empty.external, path), omitted);
-			}
+			Predicate<Path> omitted = omittedSources(normalizedBase, normalizedCampaign);
+			empty.copyPaths(normalizedBase, paths, omitted);
 			ForkTree recorded = new ForkTree(directory, FileTree.scan(normalizedBase, empty.project, empty.external));
 			return recorded.recordLinkTargets(normalizedBase, absolutePaths(paths), Set.of(), omitted);
 		}
@@ -143,17 +131,31 @@ public final class ForkTree
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		for (Path path : paths)
 			requireRecordable(normalizedBase, path);
-		Set<Path> omitted = Set.of(normalizedBase.resolve(GIT_METADATA), normalizedBase.resolve(WORK_DIRECTORY),
-			directory.getParent());
+		Predicate<Path> omitted = omittedSources(normalizedBase, directory.getParent());
+		copyPaths(normalizedBase, paths.stream().filter(path -> !inventory.holds(path)).collect(Collectors.toSet()),
+			omitted);
+		ForkTree extended = new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
+		return extended.recordLinkTargets(normalizedBase, absolutePaths(paths), inventory.entries().keySet(), omitted);
+	}
+
+	/**
+	 * Copies paths from a project into this tree's storage.
+	 *
+	 * @param base the normalized project directory
+	 * @param paths the paths to copy, named as in {@link #record(Path, Path, Set)}
+	 * @param omitted accepts the absolute source paths whose subtrees are never copied
+	 * @throws WorkspaceException if a path does not exist
+	 * @throws IOException if the files cannot be copied
+	 */
+	private void copyPaths(Path base, Set<Path> paths, Predicate<Path> omitted) throws IOException
+	{
 		for (Path path : paths)
 		{
-			if (inventory.entries().keySet().stream().anyMatch(key -> key.startsWith(path)))
-				continue;
 			Path source;
 			if (path.isAbsolute())
 				source = path;
 			else
-				source = normalizedBase.resolve(path);
+				source = base.resolve(path);
 			if (Files.notExists(source, NOFOLLOW_LINKS))
 			{
 				throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
@@ -161,8 +163,20 @@ public final class ForkTree
 			}
 			FileTree.copy(source, FileTree.locate(project, external, path), omitted);
 		}
-		ForkTree extended = new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
-		return extended.recordLinkTargets(normalizedBase, absolutePaths(paths), inventory.entries().keySet(), omitted);
+	}
+
+	/**
+	 * Returns the test for the absolute source paths that recording never copies: the project's Git metadata and
+	 * CAT's work directory, which {@link InventoryScanner#isOmitted(Path)} names, and the campaign storage directory.
+	 *
+	 * @param base the normalized project directory
+	 * @param campaign the normalized campaign storage directory
+	 * @return the test, which accepts each such path and every path below it
+	 */
+	private static Predicate<Path> omittedSources(Path base, Path campaign)
+	{
+		return source -> source.startsWith(campaign) ||
+			(source.startsWith(base) && InventoryScanner.isOmitted(base.relativize(source)));
 	}
 
 	/**
@@ -189,11 +203,11 @@ public final class ForkTree
 	 * @param base the normalized project directory
 	 * @param copied the absolute paths that this recording copied whole
 	 * @param previous the keys that the tree held before this recording; a target with a key at or below it is held
-	 * @param omitted absolute source paths whose subtrees are never copied
+	 * @param omitted accepts the absolute source paths whose subtrees are never copied
 	 * @return the tree, rescanned
 	 * @throws IOException if a target cannot be copied
 	 */
-	private ForkTree recordLinkTargets(Path base, Set<Path> copied, Set<Path> previous, Set<Path> omitted)
+	private ForkTree recordLinkTargets(Path base, Set<Path> copied, Set<Path> previous, Predicate<Path> omitted)
 		throws IOException
 	{
 		Set<Path> roots = new HashSet<>(copied);
@@ -282,7 +296,7 @@ public final class ForkTree
 			return;
 		}
 		requireThat(path.getName(0).toString(), "path.getName(0)").isNotEqualTo("..");
-		if (isNeverRecorded(path))
+		if (InventoryScanner.isOmitted(path))
 		{
 			throw new IllegalArgumentException("The path " + path + " lies in Git metadata or CAT's work directory, " +
 				"which a fork never records.");
@@ -333,6 +347,25 @@ public final class ForkTree
 	}
 
 	/**
+	 * Writes a regular file of a candidate: the overlay's content if the overlay writes the file, otherwise the
+	 * recorded content, with the mode that the candidate's snapshot records.
+	 *
+	 * @param candidate an overlay on this tree's fork
+	 * @param key the file's key in the candidate's snapshot
+	 * @param file the snapshot's entry at {@code key}
+	 * @param location the file to create, whose parent directory exists
+	 * @throws IOException if the file cannot be written
+	 */
+	void writeFile(Overlay candidate, Path key, RegularFile file, Path location) throws IOException
+	{
+		if (candidate.entries().get(key) instanceof Write write)
+			Files.write(location, write.content().bytes());
+		else
+			Files.copy(physical(key), location);
+		Files.setPosixFilePermissions(location, file.permissions());
+	}
+
+	/**
 	 * Returns the directory that holds the tree.
 	 *
 	 * @return the directory
@@ -352,17 +385,6 @@ public final class ForkTree
 	{
 		if (!candidate.fork().equals(inventory))
 			throw new IllegalArgumentException("The candidate is an overlay on a different fork than this workspace.");
-	}
-
-	/**
-	 * Indicates whether a path lies in Git metadata or CAT's work directory, which a fork never records.
-	 *
-	 * @param path a path relative to the project directory
-	 * @return {@code true} if the fork never records the path
-	 */
-	static boolean isNeverRecorded(Path path)
-	{
-		return path.startsWith(GIT_METADATA) || path.startsWith(WORK_DIRECTORY);
 	}
 
 	@Override

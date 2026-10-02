@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 import java.io.PrintStream;
 import java.util.List;
@@ -51,10 +50,7 @@ public final class PromptOptimizerCli
 		requireThat(json, "json").isNotNull();
 		requireThat(out, "out").isNotNull();
 		requireThat(message, "message").isNotNull();
-		ObjectNode root = json.createObjectNode();
-		root.put("status", "error");
-		root.put("message", message);
-		out.println(json.writeValueAsString(root));
+		out.println(Commands.failure(json, "error", message));
 		return 1;
 	}
 }

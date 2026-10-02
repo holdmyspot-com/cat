@@ -27,6 +27,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -302,9 +303,9 @@ public final class OptimizerCore implements Core
 		for (String fixture : proposal.contract().fixtures().ignoredPaths())
 		{
 			Path path = Path.of(fixture);
-			if (isHeld(held, path))
+			if (held.holds(path))
 				continue;
-			if (path.startsWith(".git") || path.startsWith(".cat/work") ||
+			if (InventoryScanner.isOmitted(path) ||
 				Files.notExists(root.resolve(path), LinkOption.NOFOLLOW_LINKS))
 			{
 				missing.add(fixture);
@@ -322,7 +323,7 @@ public final class OptimizerCore implements Core
 			Path location = source;
 			if (!source.isAbsolute())
 				location = root.resolve(source);
-			if (!isHeld(held, source) && Files.exists(location, LinkOption.NOFOLLOW_LINKS))
+			if (!held.holds(source) && Files.exists(location, LinkOption.NOFOLLOW_LINKS))
 				needed.add(source);
 		}
 		if (needed.isEmpty())
@@ -341,18 +342,6 @@ public final class OptimizerCore implements Core
 			campaign.identity());
 		store.replaceSnapshot(rebound);
 		return rebound;
-	}
-
-	/**
-	 * Indicates whether the fork already holds a path.
-	 *
-	 * @param inventory the fork's files
-	 * @param path the path, relative to the project or absolute
-	 * @return {@code true} if the fork holds the path or files below it
-	 */
-	private static boolean isHeld(FileInventory inventory, Path path)
-	{
-		return inventory.entries().keySet().stream().anyMatch(entry -> entry.startsWith(path));
 	}
 
 	/**
@@ -382,7 +371,7 @@ public final class OptimizerCore implements Core
 				continue;
 			}
 			Path relative = root.relativize(absolute);
-			if (!relative.toString().isEmpty() && !relative.startsWith(".git") && !relative.startsWith(".cat/work"))
+			if (!relative.toString().isEmpty() && !InventoryScanner.isOmitted(relative))
 				paths.add(relative);
 		}
 		return paths;
@@ -748,10 +737,7 @@ public final class OptimizerCore implements Core
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, scope.harness().name().toLowerCase(java.util.Locale.ROOT));
-		String version = scope.harnessVersion();
-		if (version.isBlank())
-			version = "unknown";
-		values.put(MeasurementCondition.HARNESS_VERSION, version);
+		values.put(MeasurementCondition.HARNESS_VERSION, scope.harnessVersion());
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(inventory));

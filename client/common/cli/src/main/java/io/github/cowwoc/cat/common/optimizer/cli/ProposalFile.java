@@ -169,9 +169,10 @@ final class ProposalFile
 		{
 			throw new IOException(file + " holds invalid trial profiles: " + e.getMessage(), e);
 		}
-		Path none = file.getParent();
+		// The deriver protocol reads only the responses and the prompt sources, so this file stands in for the
+		// session's transcript and the campaign directory for its effects directory
 		SessionResult.Completed result = new SessionResult.Completed(file, List.of(root.get("derivation").asString()),
-			none, null, null, null, List.of(), root.get("observed_sources").asString());
+			file.getParent(), null, null, null, List.of(), root.get("observed_sources").asString());
 		return Optional.of(new Stored(result, profiles));
 	}
 

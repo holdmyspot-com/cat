@@ -8,6 +8,7 @@ import static java.nio.file.StandardOpenOption.CREATE;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 
 import java.io.IOException;
@@ -87,11 +88,11 @@ public final class Fork implements ForkView
 		for (String tracked : new String(git.bytes("ls-files", "-z"), UTF_8).split("\0"))
 		{
 			Path path = Path.of(tracked);
-			if (!tracked.isEmpty() && !ForkTree.isNeverRecorded(path))
+			if (!tracked.isEmpty() && !InventoryScanner.isOmitted(path))
 				paths.add(path);
 		}
 		ForkTree tree = ForkTree.record(normalizedBase, normalizedCampaign, paths);
-		Path worktree = normalizedCampaign.resolve("worktree");
+		Path worktree = worktreeOf(normalizedCampaign);
 		boolean worktreeAdded = false;
 		try
 		{
@@ -179,10 +180,21 @@ public final class Fork implements ForkView
 		requireThat(campaign, "campaign").isNotNull();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		ForkTree tree = ForkTree.open(base, normalizedCampaign);
-		Path worktree = normalizedCampaign.resolve("worktree");
+		Path worktree = worktreeOf(normalizedCampaign);
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
 		return new Fork(tree, new Workspace(tree, normalizedCampaign, worktree), worktree, false);
+	}
+
+	/**
+	 * Returns where a campaign holds its optimization worktree.
+	 *
+	 * @param campaign the campaign storage directory
+	 * @return the worktree's directory
+	 */
+	static Path worktreeOf(Path campaign)
+	{
+		return campaign.resolve("worktree");
 	}
 
 	/**
@@ -279,16 +291,6 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Returns the recorded files.
-	 *
-	 * @return the fork's tree
-	 */
-	public ForkTree tree()
-	{
-		return tree;
-	}
-
-	/**
 	 * Returns the workspace that stages sources and manages the optimization worktree.
 	 *
 	 * @return the workspace
@@ -297,16 +299,6 @@ public final class Fork implements ForkView
 	public Workspace workspace()
 	{
 		return workspace;
-	}
-
-	/**
-	 * Returns the optimization worktree's directory.
-	 *
-	 * @return the directory of the detached worktree
-	 */
-	public Path worktree()
-	{
-		return worktree;
 	}
 
 	/**

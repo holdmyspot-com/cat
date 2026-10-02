@@ -5,8 +5,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
-import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Status;
 
 import java.io.IOException;
@@ -30,15 +30,14 @@ import java.util.TreeSet;
  * resolved target.
  * <p>
  * The tree is computed over the inventory, without touching the file system. A link to a directory expands to the
- * directory's recorded files, nested links included. CAT's work directory and Git metadata never appear, because a
- * trial agent must not read other trials or formal assignments.
+ * directory's recorded files, nested links included. Git metadata never appears, and neither does CAT's work
+ * directory, because a trial agent must not read other trials or formal assignments.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
 final class Dereferenced
 {
 	private static final Path PROJECT = Path.of("");
-	private static final List<Path> OMITTED = List.of(Path.of(".git"), Path.of(".cat/work"));
 	private final FileInventory inventory;
 	private final Map<Path, SortedSet<Path>> children = new HashMap<>();
 	private final List<Placement> placements = new ArrayList<>();
@@ -77,31 +76,24 @@ final class Dereferenced
 		Dereferenced tree = new Dereferenced(inventory);
 		for (Path key : inventory.entries().keySet())
 		{
-			if (!isOmitted(key))
+			if (!InventoryScanner.isOmitted(key))
 				tree.index(key);
 		}
 		tree.walkDirectory(PROJECT, PROJECT, new HashSet<>());
-		// Links that the project's files do not reach, such as links inside a recorded external directory, still count
+		// Links that the project's files do not reach, such as links inside a recorded external directory, are still
+		// checked for cycles and missing targets, but the files that they would place are discarded
 		int placed = tree.placements.size();
 		for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
 		{
 			Path key = entry.getKey();
-			if (entry.getValue() instanceof SymbolicLink && !isOmitted(key) && !tree.reached.contains(key))
+			if (entry.getValue() instanceof SymbolicLink && !InventoryScanner.isOmitted(key) &&
+				!tree.reached.contains(key))
+			{
 				tree.expandLink(key, PROJECT, new HashSet<>());
+			}
 		}
 		tree.placements.subList(placed, tree.placements.size()).clear();
 		return tree;
-	}
-
-	/**
-	 * Indicates whether a key is CAT's work directory or Git metadata, or lies inside one.
-	 *
-	 * @param key a key of the inventory
-	 * @return {@code true} if the key never appears in a dereferenced tree
-	 */
-	private static boolean isOmitted(Path key)
-	{
-		return OMITTED.stream().anyMatch(key::startsWith);
 	}
 
 	/**
@@ -175,7 +167,7 @@ final class Dereferenced
 			return;
 		}
 		Path target = resolved.get();
-		if (isOmitted(target))
+		if (InventoryScanner.isOmitted(target))
 		{
 			problems.putIfAbsent(link, Status.MISSING_TARGET);
 			return;
@@ -248,11 +240,7 @@ final class Dereferenced
 		{
 			Path file = directory.resolve(placement.destination());
 			Files.createDirectories(file.getParent());
-			if (overlay.entries().get(placement.source()) instanceof Write write)
-				Files.write(file, write.content().bytes());
-			else
-				Files.copy(tree.physical(placement.source()), file);
-			Files.setPosixFilePermissions(file, placement.file().permissions());
+			tree.writeFile(overlay, placement.source(), placement.file(), file);
 		}
 	}
 }

@@ -812,7 +812,8 @@ public final class OptimizerCoreTest
 				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
 				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 				AuthorityWarning.Choice.REVISE_CAMPAIGN));
-			// The scripted deriver yields no supported output, so drop that unrelated decision first.
+			// The scripted deriver yields no supported output, which leaves a pending decision about it; clear the
+			// pending decisions so that the authority warning becomes the decision asked now
 			Campaign c = repository.load(id);
 			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
 				c.candidates(), c.authorAttempts(), c.development(), c.failedCells(), c.baseline(), c.attempts(),

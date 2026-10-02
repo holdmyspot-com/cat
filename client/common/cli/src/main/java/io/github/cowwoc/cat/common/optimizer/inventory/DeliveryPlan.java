@@ -115,7 +115,7 @@ public final class DeliveryPlan
 		if (!current.resolve(target).equals(Optional.of(target)))
 		{
 			conflicts.add(new DeliveryConflict(Kind.TARGET_IDENTITY_MISMATCH, target,
-				firstLinkPrefix(target, current)));
+				current.firstLinkPrefix(target).orElse(target)));
 		}
 		if (!conflicts.isEmpty())
 			return conflicts;
@@ -138,27 +138,6 @@ public final class DeliveryPlan
 		if (collision.isPresent())
 			return List.of(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, collision.get()));
 		return List.of(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
-	}
-
-	/**
-	 * Returns the first prefix of a path that is a symbolic link in an inventory.
-	 *
-	 * @param path a relative project path or an absolute external path
-	 * @param inventory the inventory
-	 * @return the shortest such prefix, or {@code path} if none is a recorded link
-	 */
-	private static Path firstLinkPrefix(Path path, FileInventory inventory)
-	{
-		int count = path.getNameCount();
-		for (int i = 1; i <= count; ++i)
-		{
-			Path prefix = path.subpath(0, i);
-			if (path.isAbsolute())
-				prefix = path.getRoot().resolve(prefix);
-			if (inventory.entry(prefix).orElse(null) instanceof SymbolicLink)
-				return prefix;
-		}
-		return path;
 	}
 
 	/**

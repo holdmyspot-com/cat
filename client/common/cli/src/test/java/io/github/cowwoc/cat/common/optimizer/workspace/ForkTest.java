@@ -208,7 +208,7 @@ public final class ForkTest
 			requireThat(second.excludeAdded(), "secondAdded").isFalse();
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
 				"excludeLines").isEqualTo(1L);
-			requireThat(second.worktree(), "secondWorktree").isDirectory();
+			requireThat(base.resolve(".cat/work/optimizer/c2/worktree"), "secondWorktree").isDirectory();
 		}
 	}
 
@@ -231,18 +231,20 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(Path.of("ignored.md"), external));
 
-			Git worktree = new Git(fork.worktree());
+			Path worktreeDirectory = base.resolve(".cat/work/optimizer/c1/worktree");
+			Git worktree = new Git(worktreeDirectory);
 			String head = git.lines("rev-parse", "HEAD").getFirst();
 			requireThat(worktree.lines("rev-parse", "HEAD").getFirst(), "worktreeHead").isEqualTo(head);
 			requireThat(worktree.lines("rev-parse", "--abbrev-ref", "HEAD").getFirst(), "branch").isEqualTo("HEAD");
-			requireThat(Files.readString(fork.worktree().resolve("prompt.md"), UTF_8), "trackedFile").isEqualTo("prompt");
-			requireThat(Files.isSymbolicLink(fork.worktree().resolve("alias.md")), "trackedLink").isTrue();
-			requireThat(Files.readString(fork.worktree().resolve("ignored.md"), UTF_8), "ignoredParticipant").
+			requireThat(Files.readString(worktreeDirectory.resolve("prompt.md"), UTF_8), "trackedFile").
+				isEqualTo("prompt");
+			requireThat(Files.isSymbolicLink(worktreeDirectory.resolve("alias.md")), "trackedLink").isTrue();
+			requireThat(Files.readString(worktreeDirectory.resolve("ignored.md"), UTF_8), "ignoredParticipant").
 				isEqualTo("ignored");
 			requireThat(worktree.lines("status", "--porcelain"), "worktreeStatus").isEmpty();
 			requireThat(git.lines("worktree", "list"), "worktrees").size().isEqualTo(2);
 			requireThat(fork.workspace().scanWorktree().entries(), "worktreeEntries").
-				isEqualTo(fork.tree().inventory().entries());
+				isEqualTo(fork.inventory().entries());
 		}
 	}
 
@@ -265,13 +267,13 @@ public final class ForkTest
 			Forks forks = new GitForks();
 			ForkView fork = forks.create(base, campaign, Set.of());
 
-			Fork extended = (Fork) fork.addParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
+			ForkView extended = fork.addParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
 				external));
 
-			FileInventory inventory = extended.tree().inventory();
+			FileInventory inventory = extended.inventory();
 			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
 			requireThat(inventory.entries().containsKey(external), "external").isTrue();
-			requireThat(Files.readString(extended.worktree().resolve("ignored.md"), UTF_8), "worktreeFile").
+			requireThat(Files.readString(campaign.resolve("worktree/ignored.md"), UTF_8), "worktreeFile").
 				isEqualTo("ignored");
 			requireThat(extended.workspace().scanWorktree().entries(), "worktreeEntries").
 				isEqualTo(inventory.entries());
@@ -308,7 +310,7 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(Path.of("ignored.md"), external));
 
-			FileInventory inventory = fork.tree().inventory();
+			FileInventory inventory = fork.inventory();
 			requireThat(inventory.root(), "root").isEqualTo(base);
 			requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
 			requireThat(inventory.entries().get(Path.of("run.sh")), "executable").
@@ -319,7 +321,7 @@ public final class ForkTest
 			requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
 			requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
 				"campaignFiles").isEmpty();
-			requireThat(Fork.open(base, base.resolve(".cat/work/optimizer/c1")).tree().inventory(), "reopened").
+			requireThat(Fork.open(base, base.resolve(".cat/work/optimizer/c1")).inventory(), "reopened").
 				isEqualTo(inventory);
 		}
 	}
@@ -393,9 +395,9 @@ public final class ForkTest
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8), "exclude").contains(EXCLUDE_LINE);
 			Files.delete(blocker);
 
-			Fork retry = Fork.create(base, campaign, Set.of(external));
+			Fork.create(base, campaign, Set.of(external));
 
-			requireThat(retry.worktree(), "worktree").isDirectory();
+			requireThat(campaign.resolve("worktree"), "worktree").isDirectory();
 			requireThat(git.lines("worktree", "list"), "retryWorktrees").size().isEqualTo(2);
 		}
 	}
@@ -432,9 +434,9 @@ public final class ForkTest
 			requireThat(Files.readString(foreign, UTF_8), "foreign").isEqualTo("not CAT's");
 			Files.delete(foreign);
 
-			Fork retry = Fork.create(base, campaign, Set.of());
+			Fork.create(base, campaign, Set.of());
 
-			requireThat(retry.worktree().resolve("prompt.md"), "prompt").isRegularFile();
+			requireThat(campaign.resolve("worktree/prompt.md"), "prompt").isRegularFile();
 		}
 	}
 

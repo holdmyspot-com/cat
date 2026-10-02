@@ -34,6 +34,6 @@ public final class GitForks implements Forks
 	@Override
 	public boolean exists(Path campaign)
 	{
-		return Files.isDirectory(campaign.resolve("worktree"));
+		return Files.isDirectory(Fork.worktreeOf(campaign));
 	}
 }

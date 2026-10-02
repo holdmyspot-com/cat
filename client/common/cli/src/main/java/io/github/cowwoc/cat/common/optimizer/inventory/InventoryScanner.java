@@ -16,6 +16,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,8 +31,10 @@ import java.util.Set;
  */
 public final class InventoryScanner
 {
-	private static final Path GIT_METADATA = Path.of(".git");
-	private static final Path WORK_DIRECTORY = Path.of(".cat/work");
+	/**
+	 * The project paths that every scan omits: Git metadata and CAT's work directory.
+	 */
+	private static final List<Path> OMITTED = List.of(Path.of(".git"), Path.of(".cat/work"));
 	private static final int BUFFER_SIZE = 8192;
 
 	/**
@@ -97,7 +100,7 @@ public final class InventoryScanner
 			@Override
 			public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
 			{
-				if (isOmitted(project, dir))
+				if (isOmitted(FileInventory.keyOf(project, dir)))
 					return FileVisitResult.SKIP_SUBTREE;
 				return FileVisitResult.CONTINUE;
 			}
@@ -105,40 +108,26 @@ public final class InventoryScanner
 			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException
 			{
-				if (!isOmitted(project, file))
-					entries.put(keyOf(project, file), entryOf(file, attrs));
+				Path key = FileInventory.keyOf(project, file);
+				if (!isOmitted(key))
+					entries.put(key, entryOf(file, attrs));
 				return FileVisitResult.CONTINUE;
 			}
 		});
 	}
 
 	/**
-	 * Indicates whether the scan omits a path.
+	 * Indicates whether a path lies in the project's Git metadata at {@code .git} or CAT's work directory at
+	 * {@code .cat/work}, which every scan omits and a fork never records.
 	 *
-	 * @param project the absolute, normalized project directory
-	 * @param path an absolute path
-	 * @return {@code true} if the path is the project's Git metadata or CAT work directory
+	 * @param path a path relative to the project directory, or an absolute path outside it
+	 * @return {@code true} if {@code path} is or lies below an omitted directory
+	 * @throws NullPointerException if {@code path} is null
 	 */
-	private static boolean isOmitted(Path project, Path path)
+	public static boolean isOmitted(Path path)
 	{
-		if (!path.startsWith(project) || path.equals(project))
-			return false;
-		Path relative = project.relativize(path);
-		return relative.equals(GIT_METADATA) || relative.equals(WORK_DIRECTORY);
-	}
-
-	/**
-	 * Returns the inventory key of a path.
-	 *
-	 * @param project the absolute, normalized project directory
-	 * @param path an absolute path
-	 * @return the path relative to {@code project} if it lies inside it; otherwise {@code path}
-	 */
-	private static Path keyOf(Path project, Path path)
-	{
-		if (path.startsWith(project))
-			return project.relativize(path);
-		return path;
+		requireThat(path, "path").isNotNull();
+		return OMITTED.stream().anyMatch(path::startsWith);
 	}
 
 	/**

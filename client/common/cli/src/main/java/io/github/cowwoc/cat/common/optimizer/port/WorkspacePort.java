@@ -8,7 +8,16 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Stages candidate sources, prepares and scans authoring copies, and scans or updates the optimization worktree.
+ * Prepares the directories that nested sessions work in, and keeps the optimization worktree in step with the working
+ * candidate.
+ * <ul>
+ *   <li>A staged source is a directory without symbolic links that holds one candidate's files. The runner copies it
+ *   for each trial session.</li>
+ *   <li>An authoring copy is a directory that holds the working candidate's files for one author session to edit.
+ *   Scanning it after the session yields the author's changes.</li>
+ *   <li>The optimization worktree is CAT's detached Git worktree of the base, which holds the working candidate's
+ *   files.</li>
+ * </ul>
  */
 public interface WorkspacePort
 {

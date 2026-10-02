@@ -16,6 +16,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * File-system helpers that copy and scan trees without following symbolic links.
@@ -35,17 +36,17 @@ final class FileTree
 	 *
 	 * @param source the path to copy
 	 * @param destination where the copy goes
-	 * @param omitted absolute source paths whose subtrees are not copied
+	 * @param omitted accepts the absolute source paths whose subtrees are not copied
 	 * @throws IOException if a file cannot be copied
 	 */
-	static void copy(Path source, Path destination, Set<Path> omitted) throws IOException
+	static void copy(Path source, Path destination, Predicate<Path> omitted) throws IOException
 	{
 		Files.walkFileTree(source, new SimpleFileVisitor<>()
 		{
 			@Override
 			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 			{
-				if (omitted.contains(directory))
+				if (omitted.test(directory))
 					return FileVisitResult.SKIP_SUBTREE;
 				Files.createDirectories(destination.resolve(source.relativize(directory)));
 				return FileVisitResult.CONTINUE;
@@ -54,7 +55,7 @@ final class FileTree
 			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 			{
-				if (omitted.contains(file))
+				if (omitted.test(file))
 					return FileVisitResult.CONTINUE;
 				Path copy = destination.resolve(source.relativize(file));
 				Files.createDirectories(copy.getParent());
