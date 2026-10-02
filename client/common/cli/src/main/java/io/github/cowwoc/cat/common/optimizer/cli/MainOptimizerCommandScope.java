@@ -14,7 +14,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
-import java.util.Locale;
 import java.util.random.RandomGenerator;
 
 /**
@@ -34,19 +33,18 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	/**
 	 * Creates an open scope.
 	 *
-	 * @param harness             the name of the harness that runs the launcher, {@code claude} or {@code codex}
+	 * @param harness             the harness that runs the launcher
 	 * @param directory           the launcher's working directory, below the project
 	 * @param loaderConfiguration the files, relative to the project, that decide which prompt files the harness
 	 *                            loads
 	 * @throws NullPointerException     if any argument is null
-	 * @throws IllegalArgumentException if {@code harness} names no harness
 	 */
-	protected MainOptimizerCommandScope(String harness, Path directory, List<Path> loaderConfiguration)
+	protected MainOptimizerCommandScope(Harness harness, Path directory, List<Path> loaderConfiguration)
 	{
 		requireThat(harness, "harness").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		requireThat(loaderConfiguration, "loaderConfiguration").isNotNull();
-		this.harness = Harness.valueOf(harness.toUpperCase(Locale.ROOT));
+		this.harness = harness;
 		this.directory = directory;
 		this.loaderConfiguration = List.copyOf(loaderConfiguration);
 	}

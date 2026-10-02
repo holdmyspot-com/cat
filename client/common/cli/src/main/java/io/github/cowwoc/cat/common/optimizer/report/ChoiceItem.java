@@ -4,8 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 
-import java.util.Locale;
-
 /**
  * One answer that the user may give now. The command that passes an answer back accepts only listed choices.
  * <p>
@@ -66,6 +64,6 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	 */
 	private String words(char separator)
 	{
-		return choice.name().toLowerCase(Locale.ROOT).replace('_', separator);
+		return EnumNames.lowerCase(choice).replace('_', separator);
 	}
 }

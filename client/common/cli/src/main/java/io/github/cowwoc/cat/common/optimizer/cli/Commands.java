@@ -350,7 +350,7 @@ public final class Commands
 	private String render(CommandResult result)
 	{
 		ObjectNode root = result.status().toJson(json);
-		root.put("harness", result.harness().name().toLowerCase(java.util.Locale.ROOT));
+		root.put("harness", result.harness().commandName());
 		root.put("summary", result.status().summary());
 		if (result.proposal() == null)
 			root.putNull("proposal");

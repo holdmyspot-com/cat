@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -58,7 +59,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	ClaudeOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
 	{
-		super(HARNESS_ID, directory, LOADER_CONFIGURATION);
+		super(Harness.CLAUDE, directory, LOADER_CONFIGURATION);
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();

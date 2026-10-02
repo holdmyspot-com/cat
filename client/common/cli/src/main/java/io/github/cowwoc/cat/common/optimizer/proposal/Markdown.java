@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork;
 import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
@@ -30,7 +31,6 @@ import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -406,7 +406,7 @@ final class Markdown
 					if (entry.editLimit().isEmpty())
 						text.append("its content may be edited");
 					else
-						text.append(entry.editLimit().get().name().toLowerCase(Locale.ROOT).replace('_', ' '));
+						text.append(EnumNames.lowerCase(entry.editLimit().get()).replace('_', ' '));
 				}
 			}
 			text.append('\n');
@@ -467,7 +467,7 @@ final class Markdown
 			{
 				if (entry.cell().equals(cell.id()))
 				{
-					parts.add(entry.kind().name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " +
+					parts.add(EnumNames.lowerCase(entry.kind()).replace('_', ' ') + " " +
 						entry.trials());
 				}
 			}

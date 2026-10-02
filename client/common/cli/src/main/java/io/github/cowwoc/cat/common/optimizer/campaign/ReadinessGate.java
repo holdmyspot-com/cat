@@ -41,13 +41,27 @@ public final class ReadinessGate
 	{
 		requireThat(counts, "counts").isNotNull();
 		int outcomes = counts.outcomes();
-		if (outcomes < MINIMUM_TRIALS || 100L * counts.passes() < 99L * outcomes)
+		if (outcomes < MINIMUM_TRIALS || !meetsPassRateThreshold(counts))
 			return false;
 		List<Integer> completed = counts.completedBatchFailures();
 		if (completed.size() < 2)
 			return false;
 		return completed.getLast() <= BATCH_FAILURE_LIMIT &&
 			completed.get(completed.size() - 2) <= BATCH_FAILURE_LIMIT;
+	}
+
+	/**
+	 * Indicates whether at least 99% of a cell's development outcomes are passes. Empty counts meet this rate
+	 * check; the readiness gate separately requires a minimum number of outcomes.
+	 *
+	 * @param counts the cell's development counts
+	 * @return {@code true} if the cell meets the pass-rate threshold
+	 * @throws NullPointerException if {@code counts} is null
+	 */
+	public static boolean meetsPassRateThreshold(CategoryCounts counts)
+	{
+		requireThat(counts, "counts").isNotNull();
+		return 100L * counts.passes() >= 99L * counts.outcomes();
 	}
 
 	/**

@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
+import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.directory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PluginInfo;
@@ -175,7 +176,7 @@ public final class OptimizerCore implements Core
 	 */
 	private static CommandRefusedException refused(CampaignHeader header)
 	{
-		String owner = header.harness().name().toLowerCase(java.util.Locale.ROOT);
+		String owner = header.harness().commandName();
 		return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() +
 			" was started by " + owner + " and can only be resumed there. Use `status " + header.id() +
 			"` to read it from here.");
@@ -742,7 +743,7 @@ public final class OptimizerCore implements Core
 	private MeasurementIdentity environment(FileInventory inventory)
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.put(MeasurementCondition.PROVIDER, scope.harness().name().toLowerCase(java.util.Locale.ROOT));
+		values.put(MeasurementCondition.PROVIDER, scope.harness().commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, scope.harnessVersion());
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
@@ -777,17 +778,5 @@ public final class OptimizerCore implements Core
 			lines.append('\n');
 		}
 		return Sha256.of(lines.toString().getBytes(StandardCharsets.UTF_8)).hex();
-	}
-
-	/**
-	 * Returns a campaign's directory.
-	 *
-	 * @param root the project root
-	 * @param id the campaign's identifier
-	 * @return the directory
-	 */
-	private static Path directory(Path root, String id)
-	{
-		return root.resolve(".cat").resolve("work").resolve("optimizer").resolve(id);
 	}
 }

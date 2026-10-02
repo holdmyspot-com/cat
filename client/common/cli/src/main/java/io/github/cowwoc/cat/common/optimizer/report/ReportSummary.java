@@ -35,7 +35,7 @@ final class ReportSummary
 	{
 		List<String> lines = new ArrayList<>();
 		lines.add("Campaign " + report.campaignId() + ": " + report.status().label() + " (phase " +
-			report.phase().name().toLowerCase(Locale.ROOT) + ", candidate " + report.candidate() + ")");
+			EnumNames.lowerCase(report.phase()) + ", candidate " + report.candidate() + ")");
 		if (report.outcome() != null)
 		{
 			StringBuilder outcome = new StringBuilder("Outcome: ").append(report.outcome());
@@ -151,7 +151,7 @@ final class ReportSummary
 		}
 		return "Authority warning: requirement " + warning.requirement() + " needs an edit at " + warning.path() +
 			", which resolves to " + warning.target() + " (limit: " +
-			warning.limit().name().toLowerCase(Locale.ROOT).replace('_', ' ') + "); choices: " +
+			EnumNames.lowerCase(warning.limit()).replace('_', ' ') + "); choices: " +
 			String.join(", ", choices);
 	}
 
@@ -281,7 +281,7 @@ final class ReportSummary
 			TokenStatistics.RoleUsage usage = tokens.roles().get(role);
 			if (usage == null)
 				continue;
-			lines.add("  " + role.name().toLowerCase(Locale.ROOT) + " (" + usage.sessions() + " sessions): input " +
+			lines.add("  " + EnumNames.lowerCase(role) + " (" + usage.sessions() + " sessions): input " +
 				pair(usage.input()) + ", cached input " + pair(usage.cachedInput()) + ", output " +
 				pair(usage.output()) + ", reasoning output " + pair(usage.reasoningOutput()));
 		}

@@ -7,12 +7,12 @@ import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.file.Path;
-import java.util.Locale;
 
 /**
  * Renders a {@link DeliveryReport} into the command output schema.
@@ -62,7 +62,7 @@ final class DeliveryJson
 				for (DeliveryConflict conflict : conflicted.conflicts())
 				{
 					ObjectNode node = array.addObject();
-					node.put("kind", conflict.kind().name().toLowerCase(Locale.ROOT).replace('_', '-'));
+					node.put("kind", EnumNames.lowerCase(conflict.kind()).replace('_', '-'));
 					node.put("target", conflict.target().toString());
 					node.put("path", conflict.path().toString());
 				}
@@ -106,7 +106,7 @@ final class DeliveryJson
 	 */
 	private static void applicability(ObjectNode node, Applicability applicability)
 	{
-		node.put("status", applicability.status().name().toLowerCase(Locale.ROOT));
+		node.put("status", EnumNames.lowerCase(applicability.status()));
 		node.put("promptContentChanged", applicability.promptContentChanged());
 		ArrayNode changed = node.putArray("changed");
 		for (MeasurementCondition condition : applicability.changed())

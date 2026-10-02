@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
-import java.util.Locale;
 import java.util.random.RandomGenerator;
 
 /**
@@ -176,7 +175,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 */
 	final String harnessVersion()
 	{
-		return HarnessVersion.read(harness().name().toLowerCase(Locale.ROOT), harnessVersionLauncher());
+		return HarnessVersion.read(harness().commandName(), harnessVersionLauncher());
 	}
 
 	/**

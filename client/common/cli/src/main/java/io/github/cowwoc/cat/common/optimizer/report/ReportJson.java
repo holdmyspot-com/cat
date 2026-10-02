@@ -10,7 +10,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -40,8 +39,8 @@ final class ReportJson
 		ObjectNode root = mapper.createObjectNode();
 		root.put("status", report.status().label());
 		root.put("campaign", report.campaignId());
-		root.put("lifecycle", report.lifecycle().name().toLowerCase(Locale.ROOT));
-		root.put("phase", report.phase().name().toLowerCase(Locale.ROOT));
+		root.put("lifecycle", EnumNames.lowerCase(report.lifecycle()));
+		root.put("phase", EnumNames.lowerCase(report.phase()));
 		root.put("attempt", report.attempt());
 		ObjectNode candidate = root.putObject("candidate");
 		candidate.put("number", report.candidate());
@@ -130,7 +129,7 @@ final class ReportJson
 			node.put("requirement", warning.requirement());
 			node.put("path", warning.path().toString());
 			node.put("target", warning.target().toString());
-			node.put("limit", warning.limit().name().toLowerCase(Locale.ROOT).replace('_', '-'));
+			node.put("limit", EnumNames.lowerCase(warning.limit()).replace('_', '-'));
 			ArrayNode choices = node.putArray("choices");
 			for (AuthorityWarning.Choice choice : warning.choices())
 				choices.add(command(choice));
@@ -321,7 +320,7 @@ final class ReportJson
 	 */
 	private static void remaining(ObjectNode node, RemainingWork remaining)
 	{
-		node.put("phase", remaining.phase().name().toLowerCase(Locale.ROOT));
+		node.put("phase", EnumNames.lowerCase(remaining.phase()));
 		if (remaining.total() == null)
 			node.putNull("total");
 		else
@@ -332,7 +331,7 @@ final class ReportJson
 		{
 			ObjectNode entryNode = entries.addObject();
 			entryNode.put("cell", entry.cell());
-			entryNode.put("kind", entry.kind().name().toLowerCase(Locale.ROOT));
+			entryNode.put("kind", EnumNames.lowerCase(entry.kind()));
 			if (entry.trials() == null)
 				entryNode.putNull("trials");
 			else
@@ -356,7 +355,7 @@ final class ReportJson
 			TokenStatistics.RoleUsage usage = tokens.roles().get(role);
 			if (usage == null)
 				continue;
-			ObjectNode roleNode = roles.putObject(role.name().toLowerCase(Locale.ROOT));
+			ObjectNode roleNode = roles.putObject(EnumNames.lowerCase(role));
 			roleNode.put("sessions", usage.sessions());
 			percentiles(roleNode.putObject("input"), usage.input());
 			percentiles(roleNode.putObject("cachedInput"), usage.cachedInput());

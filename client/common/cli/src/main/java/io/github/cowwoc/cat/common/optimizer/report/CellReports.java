@@ -141,7 +141,7 @@ final class CellReports
 		int trials = counts.outcomes();
 		if (trials < ReadinessGate.MINIMUM_TRIALS)
 			reasons.add("fewer than " + ReadinessGate.MINIMUM_TRIALS + " outcomes");
-		if (100L * counts.passes() < 99L * trials)
+		if (!ReadinessGate.meetsPassRateThreshold(counts))
 			reasons.add("fewer than 99% passes");
 		List<Integer> batches = counts.completedBatchFailures();
 		if (batches.size() < 2)

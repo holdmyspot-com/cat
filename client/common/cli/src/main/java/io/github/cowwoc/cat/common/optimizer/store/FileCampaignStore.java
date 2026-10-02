@@ -37,7 +37,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
 	private static final String MALFORMED = "is malformed";
-	private final Path root;
+	private final Path base;
 	private final JsonMapper json;
 	private final CampaignJson codec;
 	private final DeliveryJournalJson journalCodec;
@@ -71,17 +71,43 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		requireThat(base, "base").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
-		this.root = base.resolve(".cat/work/optimizer");
+		this.base = base;
 		this.json = json;
 		this.codec = new CampaignJson(json);
 		this.journalCodec = new DeliveryJournalJson(json);
 		this.afterStep = afterStep;
 	}
 
+	/**
+	 * Returns the directory that holds a campaign's files.
+	 *
+	 * @param base the base worktree
+	 * @param campaignId the campaign's identifier
+	 * @return the campaign directory below {@code .cat/work/optimizer}
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Path directory(Path base, String campaignId)
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(campaignId, "campaignId").isNotNull();
+		return root(base).resolve(campaignId);
+	}
+
+	/**
+	 * Returns the directory that holds all campaigns of a worktree.
+	 *
+	 * @param base the base worktree
+	 * @return the campaigns directory
+	 */
+	private static Path root(Path base)
+	{
+		return base.resolve(".cat/work/optimizer");
+	}
+
 	@Override
 	Optional<Campaign> readSnapshot(String campaignId) throws IOException
 	{
-		Path file = root.resolve(campaignId).resolve(SNAPSHOT);
+		Path file = directory(base, campaignId).resolve(SNAPSHOT);
 		if (Files.notExists(file))
 			return Optional.empty();
 		Campaign campaign = JsonFiles.read(json, file, codec::readCampaign, MALFORMED);
@@ -92,7 +118,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	void writeSnapshot(Campaign campaign) throws IOException
 	{
-		Path directory = root.resolve(campaign.header().id());
+		Path directory = directory(base, campaign.header().id());
 		AtomicFiles.createDirectories(directory);
 		JsonFiles.replace(json, directory.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
 	}
@@ -124,6 +150,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	public List<CampaignHeader> listHeaders() throws IOException
 	{
+		Path root = root(base);
 		if (Files.notExists(root))
 			return List.of();
 		List<Path> directories;
@@ -147,7 +174,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	Optional<DeliveryJournal> readJournal(String campaignId) throws IOException
 	{
-		Path file = root.resolve(campaignId).resolve(JOURNAL);
+		Path file = directory(base, campaignId).resolve(JOURNAL);
 		if (Files.notExists(file))
 			return Optional.empty();
 		return Optional.of(JsonFiles.read(json, file, journalCodec::read, MALFORMED));
@@ -156,7 +183,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
 	{
-		Path directory = root.resolve(campaignId);
+		Path directory = directory(base, campaignId);
 		AtomicFiles.createDirectories(directory);
 		JsonFiles.replace(json, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
 	}
@@ -172,7 +199,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
 			key.category() + "\n" + key.sequence();
-		return root.resolve(campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
+		return directory(base, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
 			RECORD_SUFFIX);
 	}
 
