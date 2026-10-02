@@ -3,22 +3,20 @@ package io.github.cowwoc.cat.common.git.replay;
 import io.github.cowwoc.cat.common.git.Git;
 
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.initializeRepository;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.commit;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invocationDirectory;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invocationManifest;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayCandidateUniverseFixtures.recordCandidateUniverseEvidence;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewEvidenceFixtures.recordReviewEvidence;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.originReviews;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 import org.testng.annotations.Test;
 
 /**
@@ -34,314 +32,228 @@ public final class FinalizationTest
 	}
 
 	/**
-	 * Verifies a manually reworded composite source has no finalization proof even when its patch is unchanged.
+	 * Verifies a missing receipt leaves replay history unreviewed regardless of how that history was edited.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
-	@Test
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*receipt is missing.*this history is unreviewed.*")
 	public void rejectsManualRewordWithoutReceipt() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("feature.txt"), "feature\n");
-			Files.writeString(repository.resolve("documentation.txt"), "documentation\n");
-			git.run("add", "feature.txt", "documentation.txt");
-			git.run("commit", "--quiet", "--message", "composite source");
-			String composite = git.run("rev-parse", "HEAD").trim();
-			Path manifest = invocationManifest(repository);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, composite, manifest);
-			String reworded = git.run("commit-tree", composite + "^{tree}", "-p", base, "-m", "renamed composite").trim();
-			git.run("update-ref", "HEAD", reworded, composite);
-			try
-			{
-				editor.verifyFinalization(manifest, base, reworded);
-				throw new AssertionError("Expected a manually reworded composite to be unreviewed");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("history is unreviewed");
-			}
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-missing-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+
+			ReceiptFixtures.finalization(scope, directory).requireReceipt(manifest);
 		}
 	}
 
 	/**
-	 * Verifies replay refuses unresolved adversarial review evidence before creating any replacement output.
-	 * <p>
-	 * This test takes about 0.8 seconds alone and can exceed 1 second under full-build load. Each later claim needs the
-	 * real Git chain before it, so splitting the test would repeat that chain. It starts 227 Git processes: about 0.23
-	 * seconds builds and seals a two-source, two-output manifest; about 0.19 seconds runs eight rejected replays and
-	 * three draft-acceptance worktrees; and about 0.35 seconds replays, gates each output in its own worktree, and
-	 * finalizes and verifies the result.
+	 * Verifies canonical receipt publication binds ordered outputs, selection, source facts, and filesystem evidence.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if receipt evidence cannot be published or read
 	 */
 	@Test
-	public void rejectsUnresolvedChallengesBeforeReplay() throws IOException
+	public void publishesCapturedReceiptFacts() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+			ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-facts-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			ReceiptFixtures.writeGates(manifest);
+			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization.FinalizationReceipt captured = ReceiptFixtures.capture(finalization, manifest);
+
+			finalization.requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
+			finalization.publishReceipt(manifest, captured);
+
+			Finalization.FinalizationReceipt receipt = scope.json().readValue(finalization.requireReceipt(manifest).toFile(),
+				Finalization.FinalizationReceipt.class);
+			requireThat(receipt, "publishedReceipt").isEqualTo(captured);
+			requireThat(Finalization.matchesSelection(receipt, "base", "replacement-2"), "selectedReplay").isTrue();
+			requireThat(Finalization.matchesSelection(receipt, "other-base", "replacement-2"), "differentBase").isFalse();
+			requireThat(Finalization.matchesSelection(receipt, "base", "other-tip"), "differentTip").isFalse();
+			requireThat(Finalization.matchesSourceFacts(receipt, ReceiptFixtures.replay()), "capturedSources").isTrue();
+			Finalization.Replay changed = new Finalization.Replay("base", "source-2", "changed-tree", "tree-2",
+				ReceiptFixtures.replay().outputs(), ReceiptFixtures.replay().witnesses());
+			requireThat(Finalization.matchesSourceFacts(receipt, changed), "changedSource").isFalse();
+			requireThat(Finalization.matchesChainOutputs(receipt, ReceiptFixtures.replay(), ReceiptFixtures.chain()),
+				"orderedOutputs").isTrue();
+			requireThat(Finalization.matchesChainOutputs(receipt, ReceiptFixtures.replay(), List.of(
+				new History.RangeCommit("replacement-2", "base"),
+				new History.RangeCommit("replacement-1", "replacement-2"))), "reorderedOutputs").isFalse();
+			finalization.verifyManifestDigest(manifest, receipt);
+			finalization.verifyFinalizationEvidence(manifest, receipt.evidence());
+			requireThat(receipt.evidence().stream().map(Finalization.ArtifactDigest::path).toList(), "evidencePaths").
+				contains(Path.of("gates", "replay-result.log").toString()).
+				doesNotContain("manifest.json.finalization-receipt.json");
+		}
+	}
+
+	/**
+	 * Verifies changed gate bytes invalidate a receipt captured and published by production.
+	 *
+	 * @throws IOException for the expected changed evidence
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*evidence changed or is missing.*")
+	public void rejectsChangedEvidence() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-evidence-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			ReceiptFixtures.writeGates(manifest);
+			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization.FinalizationReceipt receipt = ReceiptFixtures.capture(finalization, manifest);
+			finalization.publishReceipt(manifest, receipt);
+			Files.writeString(manifest.resolveSibling("gates/replay-result.log"), "tampered\n");
+
+			finalization.verifyFinalizationEvidence(manifest, receipt.evidence());
+		}
+	}
+
+	/**
+	 * Verifies changed manifest bytes invalidate the production-captured digest.
+	 *
+	 * @throws IOException for the expected changed manifest
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*does not match its manifest.*")
+	public void rejectsChangedManifest() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-manifest-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization.FinalizationReceipt receipt = ReceiptFixtures.capture(finalization, manifest);
+			Files.writeString(manifest, "{\"changed\":true}\n");
+
+			finalization.verifyManifestDigest(manifest, receipt);
+		}
+	}
+
+	/**
+	 * Verifies every retained output needs build evidence; discarded outputs require no logs.
+	 *
+	 * @throws IOException for the expected missing build
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-build.*")
+	public void rejectsMissingOutputBuild() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-build-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			ReceiptFixtures.writeGates(manifest);
+			Files.delete(manifest.resolveSibling("gates/per-output-build-first.log"));
+
+			ReceiptFixtures.finalization(scope, directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
+		}
+	}
+
+	/**
+	 * Verifies an existing build log cannot substitute for retained-output behavior acceptance evidence.
+	 *
+	 * @throws IOException for the expected missing acceptance
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-acceptance.*")
+	public void rejectsMissingOutputAcceptance() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-acceptance-"));
+			Path manifest = directory.resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			ReceiptFixtures.writeGates(manifest);
+			Files.delete(manifest.resolveSibling("gates/per-output-acceptance-first.log"));
+
+			ReceiptFixtures.finalization(scope, directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
+		}
+	}
+
+	/**
+	 * Verifies CAT interprets four identity fields as the approved author and committer.
+	 *
+	 * @throws IOException if approved captured identities are rejected
+	 */
+	@Test
+	public void acceptsApprovedIdentity() throws IOException
+	{
+		byte[] identity = "Approved\0approved@example.invalid\0Approved\0approved@example.invalid\n".getBytes(UTF_8);
+		Finalization.verifyCommitIdentity("replacement", identity, "Approved", "approved@example.invalid");
+	}
+
+	/**
+	 * Verifies a different committer cannot satisfy the approved identity policy.
+	 *
+	 * @throws IOException for the expected identity mismatch
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*approved author and committer.*")
+	public void rejectsUnapprovedIdentity() throws IOException
+	{
+		byte[] identity = "Approved\0approved@example.invalid\0Other\0other@example.invalid\n".getBytes(UTF_8);
+		Finalization.verifyCommitIdentity("replacement", identity, "Approved", "approved@example.invalid");
+	}
+
+	/**
+	 * Verifies an actual Git chain publishes and reuses one receipt and accepts symbolic or resolved tips.
+	 *
+	 * @throws IOException if Git or receipt publication fails
+	 * @throws NoSuchAlgorithmException if the JDK lacks SHA-256
+	 */
+	@Test
+	public void publishAndVerifyGitReceipt() throws IOException, NoSuchAlgorithmException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new ToolScope())
+		{
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-git-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			String feature = commit(git, repository, "feature.txt", "original\n", "feature");
-			Files.writeString(repository.resolve("feature.txt"), "corrected\n");
-			Files.writeString(repository.resolve("note.txt"), "supplemental\n");
-			git.run("add", "feature.txt", "note.txt");
-			git.run("commit", "--quiet", "--message", "split");
-			String split = git.run("rev-parse", "HEAD").trim();
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, split, manifest);
-			Path featurePatch = replay.resolve("feature.patch");
-			Path splitPatch = replay.resolve("split.patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, split, splitPatch);
-			editor.captureSourcePathPatch(manifest, split, replay.resolve("split-feature.patch"), List.of("feature.txt"));
-			editor.captureSourcePathPatch(manifest, split, replay.resolve("split-note.patch"), List.of("note.txt"));
-			Path output1 = replay.resolve("output-1.json");
-			Path output2 = replay.resolve("output-2.json");
-			Files.writeString(output1, """
-				[{"id":"feature","source":"%s","patch":"feature.patch"},
-				{"id":"split-feature","source":"%s","patch":"split-feature.patch"}]
-				""".formatted(feature, split));
-			Files.writeString(output2, """
-				[{"id":"split-note","source":"%s","patch":"split-note.patch"}]
-				""".formatted(split));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, split, splitPatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"No earlier output needs this source because it supplies the first retained output.",
-				"evidence":"The source has no predecessor in the selected range."},
-				{"source":"%s","disposition":"split","destinations":["output-1","output-2"],
-				"placements":[{"inventoryId":"%s:1","affectedUnit":"feature",
-				"owningResponsibility":"feature","destination":"output-1",
-				"evidence":"The feature file completes the feature output."},
-				{"inventoryId":"%s:2","affectedUnit":"supplemental note",
-				"owningResponsibility":"supplemental note","destination":"output-2",
-				"evidence":"The note has its own reader and output."}],
-				"counterfactual":"The corrected feature and supplemental note belong to different retained outputs.",
-				"evidence":"The two batches have different declared destinations."}]
-				""".formatted(feature, split, split, split));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"retained","batches":%s}]
-				""".formatted(Files.readString(output1), Files.readString(output2)));
-			editor.sealOutputPlan(manifest, plan);
-			editor.recordPlannedOutput(manifest, "output-1");
-			editor.recordPlannedOutput(manifest, "output-2");
-			git.run("branch", "backup/unrelated");
-			recordCandidateUniverseEvidence(manifest);
-			Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".review-packet.md"),
-				"fixture artifact inventory reviewed\n");
-			Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".adversarial-challenges.json"),
-				"[{\"operation\":\"add\",\"status\":\"resolved\",\"evidence\":\"fixture review completed\"}]\n");
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject a missing semantic plan");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("requires an auditable semantic plan");
-			}
-			recordReviewEvidence(manifest);
-			Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".adversarial-challenges.json"),
-				"[{\"operation\":\"add\",\"status\":\"open\",\"evidence\":\"fixture review is incomplete\"}]\n");
+			String base = git.lines("rev-parse", "HEAD").getFirst();
+			git.lines("commit", "--allow-empty", "--quiet", "-m", "feat: first");
+			String first = git.lines("rev-parse", "HEAD").getFirst();
+			git.lines("commit", "--allow-empty", "--quiet", "-m", "feat: second");
+			String tip = git.lines("rev-parse", "HEAD").getFirst();
+			String tree = git.lines("rev-parse", "HEAD^{tree}").getFirst();
+			Path manifest = invocationDirectory(repository, "receipt").resolve("manifest.json");
+			Files.writeString(manifest, "{}\n");
+			ReceiptFixtures.writeGates(manifest);
+			Finalization.Replay replay = new Finalization.Replay(base, tip, tree, tree,
+				List.of(new Finalization.Output("first", true), new Finalization.Output("second", true)),
+				List.of(new Finalization.OutputWitness("first", tree, tree),
+					new Finalization.OutputWitness("second", tree, tree)));
+			Finalization finalization = ReceiptFixtures.finalization(scope, repository);
 
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject unresolved adversarial review evidence");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains(
-					"adversarial challenge ledger must resolve every challenge");
-			}
-			recordReviewEvidence(manifest);
-			editor.validateDraftDeclaredOutputAcceptance(manifest, plan);
-			requireThat(Files.isRegularFile(replay.resolve("gates/draft-per-output-acceptance-output-1.log")),
-				"firstDraftAcceptanceGateLog").isTrue();
-			requireThat(Files.isRegularFile(replay.resolve("gates/draft-per-output-acceptance-output-2.log")),
-				"secondDraftAcceptanceGateLog").isTrue();
-			Path semanticPlan = manifest.resolveSibling(manifest.getFileName() + ".semantic-plan.json");
-			String validSemanticPlan = Files.readString(semanticPlan);
-			editor.runGate(manifest, "candidate-fixture-build", List.of("/bin/sh", "-c", "test -f feature.txt"));
-			Files.writeString(semanticPlan,
-				validSemanticPlan.replaceFirst(",\\\"candidateDiscovery\\\":\\\"[^\\\"]*\\\"", ""));
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject a candidate without behavior-first discovery evidence");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("behavior-first discovery basis");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-			Files.writeString(semanticPlan,
-				validSemanticPlan.replaceFirst(",\\\"splitCounterfactual\\\":\\\"[^\\\"]*\\\"", ""));
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject a candidate without a split counterfactual");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("split counterfactual");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-			int omittedCandidate = validSemanticPlan.lastIndexOf("{\"id\":\"output-2-0\"");
-			Files.writeString(semanticPlan, validSemanticPlan.substring(0, omittedCandidate - 1) + "]\n");
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject an omitted independent candidate after a passing build");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("account for every source-neutral reviewer");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-			Files.writeString(semanticPlan, validSemanticPlan.replace("fixture evidence output-1-0",
-				"changed fixture evidence output-1-0"));
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject a semantic plan that diverges from its ledger");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("exactly reproduce the declared");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-			Files.writeString(semanticPlan, validSemanticPlan.replace(
-				"\"rejectedEarlierOutputs\":[{\"output\":\"output-1\",\"reason\":\"Fixture output lacks " +
-					"the later behavior.\"}]",
-				"\"rejectedEarlierOutputs\":[]"));
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject an unreviewed earlier output");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("must reject every earlier retained output");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-			Files.writeString(semanticPlan, validSemanticPlan.replace(
-				"\"combinedCandidateBlockers\":[{\"candidateId\":\"output-1-1\",\"reason\":\"Fixture artifacts " +
-					"require one output.\"}]", "\"combinedCandidateBlockers\":[]"));
-			try
-			{
-				editor.replay(manifest);
-				throw new AssertionError("Expected replay to reject an undocumented combined output");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("require a split blocker");
-			}
-			Files.writeString(semanticPlan, validSemanticPlan);
-
-			editor.replay(manifest);
-
-			String backup = git.run("for-each-ref", "--format=%(refname:short)", "refs/heads/backup/topic-replay-*").trim();
-			requireThat(backup, "backup").isNotBlank();
-			requireThat(Integer.parseInt(git.run("rev-list", "--count", base + "..HEAD").trim()), "replacementCount").
-				isEqualTo(2);
-			requireThat(Files.readString(repository.resolve("feature.txt")).strip(), "feature").isEqualTo("corrected");
-			requireThat(Files.readString(repository.resolve("note.txt")).strip(), "note").isEqualTo("supplemental");
-			editor.runGate(manifest, "replay-result", List.of("/bin/sh", "-c", "test -f feature.txt -a -f note.txt"));
-			requireThat(Files.isRegularFile(replay.resolve("gates/replay-result.log")), "gateLog").isTrue();
-			try
-			{
-				editor.finalizeReplay(manifest);
-				throw new AssertionError("Expected finalization to reject missing per-output gates");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("per-output-build");
-			}
-			try
-			{
-				editor.runOutputGate(manifest, "per-output-build", List.of("true"));
-				throw new AssertionError("Expected per-output evidence to reject a no-op command");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("no-op command");
-			}
-			editor.runOutputGate(manifest, "per-output-build", "output-1",
-				List.of("/bin/sh", "-c", "test -f feature.txt"));
-			requireThat(Files.isRegularFile(replay.resolve("gates/per-output-build-output-1.log")), "firstBuildGateLog").
-				isTrue();
-			requireThat(Files.exists(replay.resolve("gates/per-output-build-output-2.log")), "secondBuildGateLog").isFalse();
-			editor.runOutputGate(manifest, "per-output-build", List.of("/bin/sh", "-c", "test -f feature.txt"));
-			requireThat(Files.isRegularFile(replay.resolve("gates/per-output-build-output-2.log")), "secondBuildGateLog").
-				isTrue();
-			editor.runDeclaredOutputAcceptance(manifest, null);
-			requireThat(Files.isRegularFile(replay.resolve("gates/per-output-acceptance-output-1.log")),
-				"firstAcceptanceGateLog").isTrue();
-			requireThat(Files.isRegularFile(replay.resolve("gates/per-output-acceptance-output-2.log")),
-				"secondAcceptanceGateLog").isTrue();
-			editor.verifyIdentity(base, "HEAD", "CAT Test", "cat-test@example.invalid");
-			git.run("branch", "-D", backup);
-			try
-			{
-				editor.finalizeReplay(manifest);
-				throw new AssertionError("Expected finalization to retain its receipt when backup cleanup fails");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("recorded backup branch is missing");
-			}
-			Path receipt = replay.resolve("manifest.json.finalization-receipt.json");
-			requireThat(Files.isRegularFile(receipt), "finalizationReceipt").isTrue();
-			git.run("branch", backup, split);
-			editor.finalizeReplay(manifest);
-			editor.verifyFinalization(manifest, base, "HEAD");
-			editor.verifyFinalization(manifest, base, git.run("rev-parse", "HEAD").trim());
-			Files.writeString(replay.resolve("gates/replay-result.log"), "tampered\n");
-			try
-			{
-				editor.verifyFinalization(manifest, base, git.run("rev-parse", "HEAD").trim());
-				throw new AssertionError("Expected finalization verification to reject changed gate evidence");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("evidence changed");
-			}
-			Files.writeString(featurePatch, Files.readString(featurePatch) + "\n");
-			try
-			{
-				editor.verifyFinalization(manifest, base, git.run("rev-parse", "HEAD").trim());
-				throw new AssertionError("Expected finalization verification to reject a changed source patch");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("source-patch hash does not match");
-			}
-			requireThat(git.run("for-each-ref", "--format=%(refname:short)", "refs/heads/" + backup).trim(),
-				"deletedBackup").isEmpty();
-			requireThat(git.run("for-each-ref", "--format=%(refname:short)", "refs/heads/backup/unrelated").trim(),
-				"unrelatedBackup").isEqualTo("backup/unrelated");
+			finalization.publish(manifest, replay, tip);
+			Path receiptFile = finalization.requireReceipt(manifest);
+			String published = Files.readString(receiptFile);
+			Finalization.FinalizationReceipt receipt = scope.json().readValue(receiptFile.toFile(),
+				Finalization.FinalizationReceipt.class);
+			requireThat(receipt.outputs().stream().map(Finalization.FinalizedOutput::commit).toList(), "replacementCommits").
+				isEqualTo(List.of(first, tip));
+			requireThat(receipt.outputs().stream().map(Finalization.FinalizedOutput::parent).toList(), "replacementParents").
+				isEqualTo(List.of(base, first));
+			byte[] identities = git.bytes("show", "-s", "--format=%H%x00%an%x00%ae%x00%cn%x00%ce", first, tip);
+			requireThat(receipt.identityDigest(), "identityDigest").isEqualTo(
+				HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(identities)));
+			finalization.verify(manifest, replay, base, "HEAD");
+			finalization.verify(manifest, replay, base, tip);
+			finalization.publish(manifest, replay, tip);
+			finalization.verifyIdentity(base, tip, "CAT Test", "cat-test@example.invalid");
+			requireThat(Files.readString(receiptFile), "reusedReceipt").isEqualTo(published);
 		}
 	}
 }

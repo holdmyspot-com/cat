@@ -34,7 +34,7 @@ public final class OutputPlanInputExportTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-plan-export-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-replay-plan-export-"));
 			Path previousDirectory = Files.createDirectories(root.resolve("previous"));
 			Path replacementDirectory = Files.createDirectories(root.resolve("replacement"));
 			Path previousManifest = Files.writeString(previousDirectory.resolve("manifest.json"), "{}\n");

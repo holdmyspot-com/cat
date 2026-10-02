@@ -116,8 +116,47 @@ final class TopicReplayCompletion
 		requireThat(rewrittenTip, "rewrittenTip").isNotBlank();
 		BatchManifest manifest = completedManifests.read(manifestFile);
 		verification.verify(manifestFile, manifest, manifest.base(), rewrittenTip);
-		finalization.publish(manifestFile, Finalization.replay(manifest), rewrittenTip);
-		return finalizeBackup(manifestFile, rewrittenTip);
+		return publishThenFinalize(() -> finalization.publish(manifestFile, Finalization.replay(manifest), rewrittenTip),
+			() -> finalizeBackup(manifestFile, rewrittenTip));
+	}
+
+	/**
+	 * Publishes durable replay evidence before attempting recovery-branch cleanup.
+	 *
+	 * @param publication the receipt publication or verification operation
+	 * @param completion the recorded-backup cleanup operation
+	 * @return the deleted backup branch
+	 * @throws IOException if publication or cleanup fails
+	 */
+	static String publishThenFinalize(ReceiptPublication publication, BackupCompletion completion) throws IOException
+	{
+		publication.publish();
+		return completion.complete();
+	}
+
+	/** Publishes or verifies the durable receipt before cleanup. */
+	@FunctionalInterface
+	interface ReceiptPublication
+	{
+		/**
+		 * Establishes durable finalization evidence.
+		 *
+		 * @throws IOException if the receipt cannot be published or verified
+		 */
+		void publish() throws IOException;
+	}
+
+	/** Completes the cleanup of the replay's recorded backup. */
+	@FunctionalInterface
+	interface BackupCompletion
+	{
+		/**
+		 * Removes the recorded recovery branch after receipt publication.
+		 *
+		 * @return the deleted branch
+		 * @throws IOException if cleanup fails
+		 */
+		String complete() throws IOException;
 	}
 
 	/**

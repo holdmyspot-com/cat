@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  */
 final class OriginReviewValidation
 {
-	private final History history;
+	private final PathStateReader pathStates;
 
 	/**
 	 * Creates an origin-review policy validator.
@@ -23,7 +23,17 @@ final class OriginReviewValidation
 	 */
 	OriginReviewValidation(History history)
 	{
-		this.history = history;
+		this(history::pathState);
+	}
+
+	/**
+	 * Creates an origin-review policy validator from captured path-state access.
+	 *
+	 * @param pathStates reads the immutable state of one path in a captured tree
+	 */
+	OriginReviewValidation(PathStateReader pathStates)
+	{
+		this.pathStates = pathStates;
 	}
 
 	/**
@@ -205,8 +215,8 @@ final class OriginReviewValidation
 		{
 			if (!batch.source().equals(item.source()) || !batch.destination().equals(destination))
 				continue;
-			PathState stateBeforeBatch = history.pathState(batch.destinationWitness().beforeTree(), item.path());
-			PathState stateAfterBatch = history.pathState(batch.destinationWitness().afterTree(), item.path());
+			PathState stateBeforeBatch = pathStates.read(batch.destinationWitness().beforeTree(), item.path());
+			PathState stateAfterBatch = pathStates.read(batch.destinationWitness().afterTree(), item.path());
 			if (!stateBeforeBatch.equals(stateAfterBatch))
 				return true;
 		}
@@ -345,6 +355,23 @@ final class OriginReviewValidation
 			destination)).
 			findFirst().orElseThrow(() -> new IOException("Topic-replay manifest does not contain retained output: " +
 				destination));
-		return history.pathState(source.tree(), item.path()).equals(history.pathState(output.afterTree(), item.path()));
+		return pathStates.read(source.tree(), item.path()).equals(pathStates.read(output.afterTree(), item.path()));
+	}
+
+	/**
+	 * Reads captured path facts used by {@link OriginReviewValidation} to check output placement.
+	 */
+	@FunctionalInterface
+	interface PathStateReader
+	{
+		/**
+		 * Reads a repository-relative path's state in one immutable tree.
+		 *
+		 * @param tree the captured tree identity
+		 * @param path the repository-relative path
+		 * @return the path's captured state, including absence
+		 * @throws IOException if the tree's path facts cannot be read
+		 */
+		PathState read(String tree, String path) throws IOException;
 	}
 }

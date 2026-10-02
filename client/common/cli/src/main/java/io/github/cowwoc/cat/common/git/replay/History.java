@@ -8,13 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Reads the Git history facts that define one topic-replay range.
@@ -29,7 +23,7 @@ final class History
 	 * Path states already read from a full object ID. An object ID names immutable content, so its path states cannot
 	 * change; a symbolic revision such as {@code HEAD} is read on every request.
 	 */
-	private final Map<ObjectPath, PathState> objectPathStates = new ConcurrentHashMap<>();
+	private final PathStates pathStates = new PathStates();
 
 	/**
 	 * Creates a history reader for one replay repository.
@@ -51,15 +45,10 @@ final class History
 	 */
 	void verifyPlanningRepositoryState(String expectedTip) throws IOException
 	{
-		if (isInteractiveRebaseInProgress())
-			throw new IOException("Topic-replay planning cannot run while Git is rebasing");
+		PlanningState.rejectRebase(isInteractiveRebaseInProgress());
 		String actualTip = git.lines("rev-parse", "HEAD").getFirst();
-		if (!actualTip.equals(expectedTip))
-		{
-			throw new IOException("Topic-replay planning expected source tip " + expectedTip + " but found " + actualTip);
-		}
-		if (!git.lines("status", "--porcelain", "--untracked-files=no").isEmpty())
-			throw new IOException("Topic-replay planning requires no tracked worktree or index changes");
+		PlanningState.verifyTip(expectedTip, actualTip);
+		PlanningState.rejectTrackedChanges(git.lines("status", "--porcelain", "--untracked-files=no"));
 	}
 
 	/**
@@ -211,16 +200,7 @@ final class History
 	 */
 	PathState pathState(String revision, String path) throws IOException
 	{
-		if (!revision.matches("[0-9a-f]{40}"))
-			return readPathState(revision, path);
-		ObjectPath key = new ObjectPath(revision, path);
-		PathState state = objectPathStates.get(key);
-		if (state == null)
-		{
-			state = readPathState(revision, path);
-			objectPathStates.put(key, state);
-		}
-		return state;
+		return pathStates.read(revision, path, () -> readPathState(revision, path));
 	}
 
 	/**
@@ -251,109 +231,7 @@ final class History
 	 */
 	List<ExposedEntryPoint> exposedEntryPoints(List<InventoryEntry> inventory) throws IOException
 	{
-		Map<String, Set<String>> pathsByEntryPoint = new HashMap<>();
-		for (InventoryEntry item : inventory)
-		{
-			if (isCustomAgentManifest(item.path()))
-			{
-				for (String blob : List.of(item.beforeBlob(), item.afterBlob()))
-				{
-					if (blob.equals("0000000000000000000000000000000000000000"))
-						continue;
-					addExposedEntryPoint(pathsByEntryPoint, "agent:" + customAgentName(blob, item.path()), item.path());
-				}
-				continue;
-			}
-			String entryPoint = declaredEntryPoint(item.path());
-			if (entryPoint != null)
-				addExposedEntryPoint(pathsByEntryPoint, entryPoint, item.path());
-		}
-		return pathsByEntryPoint.entrySet().stream().map(entry -> new ExposedEntryPoint(entry.getKey(), "custom-agent",
-			entry.getValue().stream().sorted().toList())).sorted(Comparator.comparing(ExposedEntryPoint::id)).toList();
-	}
-
-	/**
-	 * Adds one immutable path to a logical entry point.
-	 *
-	 * @param pathsByEntryPoint paths indexed by logical entry point
-	 * @param entryPoint the logical entry point
-	 * @param path the changed path that exposes it
-	 */
-	private void addExposedEntryPoint(Map<String, Set<String>> pathsByEntryPoint, String entryPoint, String path)
-	{
-		pathsByEntryPoint.computeIfAbsent(entryPoint, ignored -> new HashSet<>()).add(path);
-	}
-
-	/**
-	 * Returns the logical name of one non-agent product entry point.
-	 *
-	 * @param path a repository-relative changed path
-	 * @return the entry point, or {@code null} when the path does not directly declare one
-	 */
-	private String declaredEntryPoint(String path)
-	{
-		String skillPrefix = "client/";
-		if (path.matches("client/(codex|claude)/skills/src/main/resources/skills/[^/]+/SKILL\\.md"))
-		{
-			String[] segments = path.substring(skillPrefix.length()).split("/");
-			return "skill:" + segments[6];
-		}
-		String installerPrefix = "client/lifecycle/src/main/resources/install/";
-		if (path.matches(installerPrefix + "(bootstrap(-[a-z]+)?|install-[a-z]+|uninstall-[a-z]+)\\.sh"))
-			return "installer:" + path.substring(installerPrefix.length(), path.length() - ".sh".length());
-		if (path.equals("client/common/cli/src/main/java/io/github/cowwoc/cat/common/git/replay/GitTopicReplayEditor.java"))
-			return "command:git-topic-replay";
-		return null;
-	}
-
-	/**
-	 * Returns whether a path declares a harness-specific custom agent.
-	 *
-	 * @param path a repository-relative path
-	 * @return whether the path is a supported custom-agent manifest
-	 */
-	private boolean isCustomAgentManifest(String path)
-	{
-		return path.matches("client/(codex|claude)/plugin/src/main/resources/agents/(codex|claude)/[^/]+\\.(toml|md)");
-	}
-
-	/**
-	 * Reads the selectable agent name from one immutable custom-agent manifest.
-	 *
-	 * @param blob the manifest blob
-	 * @param path the manifest path for diagnostics
-	 * @return the harness-neutral selectable name
-	 * @throws IOException if the manifest has no supported name declaration
-	 */
-	private String customAgentName(String blob, String path) throws IOException
-	{
-		String contents = new String(git.bytes("cat-file", "-p", blob), UTF_8);
-		for (String line : contents.split("\\R"))
-		{
-			String trimmed = line.trim();
-			if (trimmed.startsWith("name = \"") && trimmed.endsWith("\""))
-				return removeCatPrefix(trimmed.substring("name = \"".length(), trimmed.length() - 1));
-			if (trimmed.startsWith("name:"))
-			{
-				String name = trimmed.substring("name:".length()).trim();
-				if (!name.isEmpty())
-					return removeCatPrefix(name.replace("\"", ""));
-			}
-		}
-		throw new IOException("Custom-agent manifest must declare a selectable name: " + path);
-	}
-
-	/**
-	 * Normalizes the harness-specific CAT prefix from an agent name.
-	 *
-	 * @param name a harness manifest's selectable agent name
-	 * @return the shared logical agent name
-	 */
-	private String removeCatPrefix(String name)
-	{
-		if (name.startsWith("cat-"))
-			return name.substring("cat-".length());
-		return name;
+		return EntryPoints.collect(inventory, blob -> new String(git.bytes("cat-file", "-p", blob), UTF_8));
 	}
 
 	/**
@@ -379,16 +257,6 @@ final class History
 	 */
 	record InventoryEntry(String id, String source, String path, String beforeMode, String beforeBlob,
 		String afterMode, String afterBlob)
-	{
-	}
-
-	/**
-	 * One path within an immutable Git object.
-	 *
-	 * @param objectId the full commit or tree object ID
-	 * @param path the repository-relative path
-	 */
-	private record ObjectPath(String objectId, String path)
 	{
 	}
 }

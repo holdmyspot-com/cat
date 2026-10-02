@@ -39,6 +39,8 @@ final class TopicReplaySemanticPlacementFixtures
 		try (ToolScope scope = new ToolScope())
 		{
 			JsonNode replay = scope.json().readTree(Files.readString(manifest));
+			String acceptanceCommand = scope.json().writeValueAsString(
+				GateCommandFixture.command(GateCommandFixture.Mode.CHECK_FEATURE));
 			StringBuilder candidates = new StringBuilder(800).append('[');
 			List<JsonNode> inventory = new ArrayList<>();
 			for (JsonNode item : replay.path("inventory"))
@@ -81,7 +83,7 @@ final class TopicReplaySemanticPlacementFixtures
 						append("\",\"reason\":\"Fixture artifacts require one output.\"}");
 					firstBlocker = false;
 				}
-				candidates.append("],\"acceptanceCommand\":[\"/bin/sh\",\"-c\",\"test -f feature.txt\"],").append(
+				candidates.append("],\"acceptanceCommand\":").append(acceptanceCommand).append(',').append(
 					"\"evidence\":\"fixture evidence ").append(candidateId).append("\"}");
 			}
 			candidates.append("]\n");

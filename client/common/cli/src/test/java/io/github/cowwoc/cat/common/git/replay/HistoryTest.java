@@ -3,17 +3,21 @@ package io.github.cowwoc.cat.common.git.replay;
 import io.github.cowwoc.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static io.github.cowwoc.cat.common.git.replay.ReplayFixtures.addedPath;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.testng.annotations.Test;
 
 /**
- * Tests Git history facts used to define a topic-replay range.
+ * Tests CAT's interpretation of immutable history facts and its actual Git inventory-format integration.
  */
 public final class HistoryTest
 {
@@ -25,63 +29,50 @@ public final class HistoryTest
 	}
 
 	/**
-	 * Verifies an orphan-root replay preserves its explicit base and receives Git's empty tree.
+	 * Verifies an orphan-root replay preserves its explicit base and receives CAT's empty-tree identity without Git.
 	 *
-	 * @throws IOException if the isolated repository directory cannot be created
+	 * @throws IOException if the root sentinel unexpectedly reaches Git
 	 */
 	@Test
 	public void resolvesOrphanRootBase() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
-			History history = new History(repository, new Git(repository));
+		Path repository = Path.of("unused-history-repository");
+		History history = new History(repository, new Git(repository));
 
-			requireThat(history.resolveBase("--root"), "base").isEqualTo("--root");
-			requireThat(history.baseTree("--root"), "tree").isEqualTo(
-				"4b825dc642cb6eb9a060e54bf8d69288fbee4904");
-		}
+		requireThat(history.resolveBase("--root"), "base").isEqualTo("--root");
+		requireThat(history.baseTree("--root"), "tree").isEqualTo(
+			"4b825dc642cb6eb9a060e54bf8d69288fbee4904");
 	}
 
 	/**
-	 * Verifies planning rejects tracked worktree changes after its source tip is captured.
+	 * Verifies planning rejects parsed tracked changes after its source tip is captured.
 	 *
-	 * @throws IOException if the isolated repository cannot be created or Git cannot prepare the fixture
+	 * @throws IOException for the expected tracked-change rejection
 	 */
 	@Test(expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = ".*planning requires no tracked worktree or index changes.*")
 	public void rejectsDirtyPlanningRepository() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
-			TopicReplayRepository.initializeRepository(repository);
-			Git git = new Git(repository);
-			String tip = TopicReplayRepository.commit(git, repository, "rules/example.md", "original\n", "add rule");
-			Files.writeString(repository.resolve("rules/example.md"), "changed\n");
-
-			new History(repository, git).verifyPlanningRepositoryState(tip);
-		}
+		PlanningState.rejectTrackedChanges(List.of(" M rules/example.md"));
 	}
 
 	/**
-	 * Verifies history reads one committed path change with its prior and resulting blob identities.
+	 * Verifies CAT reads Git's actual inventory format as immutable prior and resulting path identities.
 	 *
-	 * @throws IOException if the isolated repository cannot be created or Git cannot create its fixture commits
+	 * @throws IOException if the isolated repository or its inventory cannot be created
 	 */
 	@Test
 	public void inventoriesSourcePathStates() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "history-"));
 			TopicReplayRepository.initializeRepository(repository);
 			Git git = new Git(repository);
 			TopicReplayRepository.commit(git, repository, "rules/example.md", "first\n", "add rule");
 			String source = TopicReplayRepository.commit(git, repository, "rules/example.md", "second\n", "revise rule");
 
-			History.InventoryEntry entry = new History(repository, git).inventory(source).
-				getFirst();
+			History.InventoryEntry entry = new History(repository, git).inventory(source).getFirst();
 
 			requireThat(entry.id(), "id").isEqualTo(source + ":1");
 			requireThat(entry.source(), "source").isEqualTo(source);
@@ -93,57 +84,50 @@ public final class HistoryTest
 	}
 
 	/**
-	 * Verifies history derives the stable skill and custom-agent entry points from committed path facts.
+	 * Verifies CAT derives stable skill and custom-agent entry points from captured paths and manifest contents.
 	 *
-	 * @throws IOException if the isolated repository cannot be created or Git cannot create its fixture commits
+	 * @throws IOException if a valid captured agent declaration is rejected
 	 */
 	@Test
 	public void discoversProductEntryPoints() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
-			TopicReplayRepository.initializeRepository(repository);
-			Git git = new Git(repository);
-			String skill = TopicReplayRepository.commit(git, repository,
-				"client/codex/skills/src/main/resources/skills/diagnose/SKILL.md", "---\nname: diagnose\n", "add skill");
-			String agent = TopicReplayRepository.commit(git, repository,
-				"client/codex/plugin/src/main/resources/agents/codex/reviewer.toml", "name = \"cat-reviewer\"\n",
-				"add agent");
-			History history = new History(repository, git);
-			List<History.InventoryEntry> inventory = List.of(history.inventory(skill).getFirst(),
-				history.inventory(agent).getFirst());
+		List<History.InventoryEntry> inventory = List.of(
+			addedPath("client/codex/skills/src/main/resources/skills/diagnose/SKILL.md", "skill"),
+			addedPath("client/codex/plugin/src/main/resources/agents/codex/reviewer.toml", "agent"));
+		Map<String, String> manifests = Map.of("agent", "name = \"cat-reviewer\"\n");
 
-			List<ExposedEntryPoint> entries = history.exposedEntryPoints(inventory);
+		List<ExposedEntryPoint> entries = EntryPoints.collect(inventory, manifests::get);
 
-			requireThat(entries.stream().map(ExposedEntryPoint::id).toList(), "entryPoints").
-				isEqualTo(List.of("agent:reviewer", "skill:diagnose"));
-		}
+		requireThat(entries.stream().map(ExposedEntryPoint::id).toList(), "entryPoints").
+			isEqualTo(List.of("agent:reviewer", "skill:diagnose"));
 	}
 
 	/**
-	 * Verifies a path state read through a symbolic revision follows that revision after it moves, while a full object
-	 * ID keeps naming the content it named before.
+	 * Verifies CAT rereads a movable symbolic revision and retains the state already read for a full object identity.
+	 * The reader supplies path facts directly; its invocation count observes CAT's caching decision.
 	 *
-	 * @throws IOException if the isolated repository cannot be created or Git cannot create its fixture commits
+	 * @throws IOException if supplied path facts cannot be read
 	 */
 	@Test
 	public void rereadsSymbolicRevisionAfterItMoves() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		PathStates states = new PathStates();
+		String first = "a".repeat(40);
+		PathState firstState = new PathState("100644", "first");
+		AtomicReference<PathState> current = new AtomicReference<>(firstState);
+		AtomicInteger reads = new AtomicInteger();
+		PathStates.Reader reader = () ->
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-history-"));
-			TopicReplayRepository.initializeRepository(repository);
-			Git git = new Git(repository);
-			String first = TopicReplayRepository.commit(git, repository, "rules/example.md", "first\n", "add rule");
-			History history = new History(repository, git);
-			PathState firstState = history.pathState(first, "rules/example.md");
-			requireThat(history.pathState("HEAD", "rules/example.md"), "headBeforeMove").isEqualTo(firstState);
+			reads.incrementAndGet();
+			return current.get();
+		};
+		requireThat(states.read(first, "rules/example.md", reader), "firstState").isEqualTo(firstState);
+		requireThat(states.read("HEAD", "rules/example.md", reader), "headBeforeMove").isEqualTo(firstState);
 
-			TopicReplayRepository.commit(git, repository, "rules/example.md", "second\n", "revise rule");
+		current.set(new PathState("100644", "second"));
 
-			requireThat(history.pathState("HEAD", "rules/example.md"), "headAfterMove").isNotEqualTo(firstState);
-			requireThat(history.pathState(first, "rules/example.md"), "firstAfterMove").isEqualTo(firstState);
-		}
+		requireThat(states.read("HEAD", "rules/example.md", reader), "headAfterMove").isNotEqualTo(firstState);
+		requireThat(states.read(first, "rules/example.md", reader), "firstAfterMove").isEqualTo(firstState);
+		requireThat(reads.get(), "pathReads").isEqualTo(3);
 	}
 }

@@ -87,17 +87,29 @@ final class PatchApplication
 			Path patchFile = resolveDeclaredSourcePatch(manifestFile, reconstruction);
 			git.lines(index, "apply", "--cached", patchFile.toAbsolutePath().normalize().toString());
 			String actualTree = git.lines(index, "write-tree").getFirst();
-			if (!actualTree.equals(reconstruction.afterTree()))
-			{
-				throw new IOException("Source reconstruction for " + reconstruction.source() + " produced tree " + actualTree +
-					" instead of declared tree " + reconstruction.afterTree());
-			}
-			verifiedSourceReconstructions.add(reconstruction);
+			recordVerifiedSourceTree(reconstruction, actualTree);
 		}
 		finally
 		{
 			Files.deleteIfExists(index);
 		}
+	}
+
+	/**
+	 * Accepts the tree produced by applying a source patch and remembers the matching reconstruction.
+	 *
+	 * @param reconstruction the declared source transition
+	 * @param actualTree the tree produced by Git's isolated index
+	 * @throws IOException if the resulting tree differs from the declared source tree
+	 */
+	void recordVerifiedSourceTree(SourceReconstruction reconstruction, String actualTree) throws IOException
+	{
+		if (!actualTree.equals(reconstruction.afterTree()))
+		{
+			throw new IOException("Source reconstruction for " + reconstruction.source() + " produced tree " + actualTree +
+				" instead of declared tree " + reconstruction.afterTree());
+		}
+		verifiedSourceReconstructions.add(reconstruction);
 	}
 
 	/**

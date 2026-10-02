@@ -57,19 +57,39 @@ final class DeclaredOutputAcceptance
 			Collectors.toSet()), true, reviewEvidence.semanticPlanFile(manifestFile), candidateUniverseEvidence);
 		Map<String, OutputWitness> witnessesByOutput = manifest.outputWitnesses().stream().collect(Collectors.toMap(
 			OutputWitness::outputId, witness -> witness));
-		for (SemanticCandidate candidate : candidates)
+		for (SemanticCandidate candidate : selectCandidates(candidates, outputId))
+			outputGates.run(manifestFile, "per-output-acceptance", List.of(target(candidate, witnessesByOutput)));
+	}
+
+	/**
+	 * Selects declared behavior checks while retaining their reviewer-authored order.
+	 *
+	 * @param candidates the declared behavior checks
+	 * @param outputId one selected output, or {@code null} for every declaration
+	 * @return selected checks; an unknown selection remains empty
+	 */
+	static List<SemanticCandidate> selectCandidates(List<SemanticCandidate> candidates, String outputId)
+	{
+		return candidates.stream().filter(candidate -> outputId == null || candidate.output().equals(outputId)).toList();
+	}
+
+	/**
+	 * Resolves one declared behavior check to its sealed output tree.
+	 *
+	 * @param candidate the reviewer-declared behavior and command
+	 * @param witnesses the retained transitions indexed by output
+	 * @return the command and its witnessed result tree
+	 * @throws IOException if the behavior names an output without a retained witness
+	 */
+	static OutputGates.Target target(SemanticCandidate candidate, Map<String, OutputWitness> witnesses)
+		throws IOException
+	{
+		OutputWitness witness = witnesses.get(candidate.output());
+		if (witness == null)
 		{
-			if (outputId == null || candidate.output().equals(outputId))
-			{
-				OutputWitness witness = witnessesByOutput.get(candidate.output());
-				if (witness == null)
-				{
-					throw new IOException("Topic-replay output gate cannot find retained output " + candidate.output() +
-						" in the sealed manifest");
-				}
-				outputGates.run(manifestFile, "per-output-acceptance", List.of(new OutputGates.Target(
-					candidate.output(), witness.afterTree(), candidate.acceptanceCommand())));
-			}
+			throw new IOException("Topic-replay output gate cannot find retained output " + candidate.output() +
+				" in the sealed manifest");
 		}
+		return new OutputGates.Target(candidate.output(), witness.afterTree(), candidate.acceptanceCommand());
 	}
 }

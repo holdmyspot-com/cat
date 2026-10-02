@@ -57,6 +57,25 @@ final class TopicOutputDeclaration
 			manifest);
 		reviewEvidence.validateScopeAttestation(manifestFile, manifest);
 		TopicOutputRequest[] requests = json.readValue(outputFile.toFile(), TopicOutputRequest[].class);
+		List<Output> outputs = convertDeclarations(requests);
+		BatchManifest declared = new BatchManifest(manifest.version(), manifest.base(), manifest.tipTree(),
+			manifest.sources(), outputs, manifest.inventory(), manifest.batches(), manifest.sourceReconstructions(),
+			manifest.outputWitnesses(), manifest.discardedOutputs(), manifest.sourceReviews(), manifest.fixedSources(),
+			manifest.outputPlan());
+		semanticEvidence.validatePlacementLedger(manifestFile, declared, outputs.stream().map(Output::id).collect(
+			Collectors.toSet()), candidateUniverseEvidence);
+		manifests.write(manifestFile, declared);
+	}
+
+	/**
+	 * Converts reviewer declarations into ordered topics after validating their identifiers and subjects.
+	 *
+	 * @param requests the reviewer-authored declarations in final-history order
+	 * @return the corresponding topic outputs without an assumed source owner
+	 * @throws IOException if the declarations are empty, duplicated, blank, or use an unsupported subject
+	 */
+	static List<Output> convertDeclarations(TopicOutputRequest[] requests) throws IOException
+	{
 		if (requests.length == 0)
 			throw new IOException("Topic-output declarations must contain at least one output");
 		Set<String> ids = new HashSet<>();
@@ -71,13 +90,7 @@ final class TopicOutputDeclaration
 			}
 			outputs.add(new Output(request.id(), null, request.subject()));
 		}
-		BatchManifest declared = new BatchManifest(manifest.version(), manifest.base(), manifest.tipTree(),
-			manifest.sources(), outputs, manifest.inventory(), manifest.batches(), manifest.sourceReconstructions(),
-			manifest.outputWitnesses(), manifest.discardedOutputs(), manifest.sourceReviews(), manifest.fixedSources(),
-			manifest.outputPlan());
-		semanticEvidence.validatePlacementLedger(manifestFile, declared, outputs.stream().map(Output::id).collect(
-			Collectors.toSet()), candidateUniverseEvidence);
-		manifests.write(manifestFile, declared);
+		return outputs;
 	}
 
 	/**

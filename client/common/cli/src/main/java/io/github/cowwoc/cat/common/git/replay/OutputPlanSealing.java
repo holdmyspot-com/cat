@@ -67,10 +67,25 @@ final class OutputPlanSealing
 		sourceReviewValidation.validateInput(manifest, sourceReviews, true);
 		OutputPlanRequest[] entries = json.readValue(planFile.toFile(), OutputPlanRequest[].class);
 		ValidatedOutputPlan validated = outputPlan.validate(manifestFile, manifest, List.of(entries), sources);
+		sealValidatedPlan(manifestFile, manifest, validated);
+	}
+
+	/**
+	 * Publishes a validated plan only after its projected path changes satisfy every recorded origin decision.
+	 *
+	 * @param manifestFile the manifest that receives the sealed plan
+	 * @param manifest the unsealed state used to validate the complete output plan
+	 * @param validated the complete plan and tree witnesses produced by output-plan validation
+	 * @throws IOException if origin decisions contradict the projected state or the manifest cannot be written;
+	 *         an origin-validation failure leaves the stored manifest unchanged
+	 */
+	void sealValidatedPlan(Path manifestFile, BatchManifest manifest, ValidatedOutputPlan validated)
+		throws IOException
+	{
 		BatchManifest projected = manifest.withBatches(validated.batches()).withOutputWitnesses(validated.witnesses()).
 			withDiscardedOutputs(validated.discardedOutputs()).withOutputPlan(validated.plan());
 		originReviewValidation.validate(projected, originCandidates(projected),
-			reviewEvidence.readOriginReviews(manifestFile), sourceReviews, true, sourceReviewValidation);
+			reviewEvidence.readOriginReviews(manifestFile), sourceReviews(manifest), true, sourceReviewValidation);
 		manifests.write(manifestFile, manifest.withOutputPlan(validated.plan()));
 	}
 

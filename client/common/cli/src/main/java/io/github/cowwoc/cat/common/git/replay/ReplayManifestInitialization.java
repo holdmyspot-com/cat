@@ -58,13 +58,28 @@ final class ReplayManifestInitialization
 			inventory.addAll(history.inventory(source).stream().map(entry -> new InventoryItem(entry.id(), entry.source(),
 				entry.path(), entry.beforeMode(), entry.beforeBlob(), entry.afterMode(), entry.afterBlob())).toList());
 		}
+		BatchManifest manifest = initialManifest(base, git.lines("rev-parse", resolvedTip + "^{tree}").getFirst(),
+			sourceSnapshots, inventory);
+		manifests.write(manifestFile, manifest);
+	}
+
+	/**
+	 * Creates ordered, unreviewed outputs from captured source snapshots.
+	 *
+	 * @param base the resolved range base or orphan-root sentinel
+	 * @param tipTree the captured final tree
+	 * @param sources the source snapshots in chronological order
+	 * @param inventory the captured changed paths
+	 * @return the initial manifest with one unassigned output per source
+	 */
+	static BatchManifest initialManifest(String base, String tipTree, List<SourceSnapshot> sources,
+		List<InventoryItem> inventory)
+	{
 		List<Output> outputs = new ArrayList<>(sources.size());
 		for (int index = 0; index < sources.size(); ++index)
-			outputs.add(new Output("output-" + (index + 1), sources.get(index), "Unassigned topic " + (index + 1)));
-		BatchManifest manifest = new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base,
-			git.lines("rev-parse", resolvedTip + "^{tree}").getFirst(), sourceSnapshots, outputs, inventory, List.of(),
-			List.of(), List.of(), List.of(), List.of(), List.of(), null);
-		manifests.write(manifestFile, manifest);
+			outputs.add(new Output("output-" + (index + 1), sources.get(index).hash(), "Unassigned topic " + (index + 1)));
+		return new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base, tipTree, sources, outputs, inventory,
+			List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
 	}
 
 	/**
@@ -92,11 +107,24 @@ final class ReplayManifestInitialization
 				"tip " + resolvedTip + ". Select the unchanged completed prefix or prepare the full range.", e);
 		}
 		List<String> fixedSources = history.range(manifest.base(), resolvedFixedTip);
+		manifests.write(manifestFile, withFixedPrefix(manifest, fixedSources));
+	}
+
+	/**
+	 * Marks a captured strict source prefix as already complete.
+	 *
+	 * @param manifest the captured range
+	 * @param fixedSources the source hashes from the verified ancestor range
+	 * @return the manifest with that fixed prefix
+	 * @throws IOException if the prefix is empty or consumes the complete range
+	 */
+	static BatchManifest withFixedPrefix(BatchManifest manifest, List<String> fixedSources) throws IOException
+	{
 		if (fixedSources.isEmpty() || fixedSources.size() == manifest.sources().size())
 		{
 			throw new IOException("Topic-replay fixed prefix must contain at least one completed commit and leave later " +
 				"commits to review");
 		}
-		manifests.write(manifestFile, manifest.withFixedSources(fixedSources));
+		return manifest.withFixedSources(fixedSources);
 	}
 }

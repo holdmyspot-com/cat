@@ -94,11 +94,10 @@ final class Finalization
 		requirePerOutputGateEvidence(manifestFile, replay.outputs());
 		List<History.RangeCommit> chain = history.rangeWithParents(replay.base(), rewrittenTip);
 		List<FinalizedOutput> outputs = finalizedOutputs(replay, chain);
-		FinalizationReceipt receipt = new FinalizationReceipt(RECEIPT_VERSION, sha256(manifestFile), replay.base(),
-			replay.sourceTip(), replay.sourceTipTree(), replay.finalTree(), rewrittenTip, outputs,
-			replayIdentityDigest(chain), finalizationEvidence(manifestFile, receiptFile));
-		writeAtomically(receiptFile, receipt);
-		System.out.println("finalizationReceipt=" + receiptFile);
+		String manifestDigest = sha256(manifestFile);
+		String identityDigest = replayIdentityDigest(chain);
+		publishReceipt(manifestFile, captureReceipt(manifestFile, replay, rewrittenTip, outputs, manifestDigest,
+			identityDigest));
 	}
 
 	/**
@@ -119,24 +118,21 @@ final class Finalization
 		String expectedRewrittenTip = git.lines("rev-parse", rewrittenTip).getFirst();
 		Path receiptFile = requireReceipt(manifestFile);
 		FinalizationReceipt receipt = json.readValue(receiptFile.toFile(), FinalizationReceipt.class);
-		if (receipt.version() != RECEIPT_VERSION || !receipt.base().equals(rebaseBase) ||
-			!receipt.rewrittenTip().equals(expectedRewrittenTip) ||
+		if (!matchesSelection(receipt, rebaseBase, expectedRewrittenTip) ||
 			!git.lines("rev-parse", "HEAD").getFirst().equals(expectedRewrittenTip))
 		{
 			throw new IOException("Topic-replay finalization receipt does not bind the requested base and HEAD; " +
 				"prepare a fresh whole-range replay");
 		}
-		if (!receipt.manifestSha256().equals(sha256(manifestFile)))
-			throw new IOException("Topic-replay finalization receipt does not match its manifest: " + receiptFile);
-		if (!receipt.base().equals(replay.base()) || !receipt.sourceTip().equals(replay.sourceTip()) ||
-			!receipt.sourceTipTree().equals(replay.sourceTipTree()) || !receipt.finalTree().equals(replay.finalTree()) ||
+		verifyManifestDigest(manifestFile, receipt);
+		if (!matchesSourceFacts(receipt, replay) ||
 			!git.lines("rev-parse", replay.sourceTip() + "^{tree}").getFirst().equals(replay.sourceTipTree()))
 		{
 			throw new IOException("Topic-replay finalization receipt no longer matches captured source facts: " +
 				receiptFile);
 		}
 		List<History.RangeCommit> chain = history.rangeWithParents(rebaseBase, expectedRewrittenTip);
-		if (!receipt.outputs().equals(finalizedOutputs(replay, chain)) ||
+		if (!matchesChainOutputs(receipt, replay, chain) ||
 			!receipt.identityDigest().equals(replayIdentityDigest(chain)))
 		{
 			throw new IOException("Topic-replay finalization receipt does not match the ordered replacement chain: " +
@@ -182,15 +178,120 @@ final class Finalization
 		requireThat(email, "email").isNotBlank();
 		for (String commit : history.range(history.resolveBase(rebaseBase), rewrittenTip))
 		{
-			String[] identity = new String(git.bytes("show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", commit), UTF_8).
-				strip().split("\\x00", -1);
-			if (identity.length != 4 || !identity[0].equals(name) || !identity[1].equals(email) ||
-				!identity[2].equals(name) || !identity[3].equals(email))
-			{
-				throw new IOException("Topic-replay commit " + commit + " does not use the approved author and committer " +
-					"identity " + name + " <" + email + ">; correct Git identity, restart from the recorded backup, and " +
-					"replay the manifest");
-			}
+			verifyCommitIdentity(commit, git.bytes("show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", commit), name,
+				email);
+		}
+	}
+
+	/**
+	 * Captures canonical receipt facts and current filesystem evidence after their repository facts are verified.
+	 *
+	 * @param manifestFile the manifest owning the evidence
+	 * @param replay the captured replay facts
+	 * @param rewrittenTip the verified replacement tip
+	 * @param outputs the ordered verified replacement transitions
+	 * @param manifestDigest the manifest digest acquired before the identity digest
+	 * @param identityDigest the replacement identity digest
+	 * @return the receipt ready for atomic publication
+	 * @throws IOException if retained evidence cannot be captured
+	 */
+	FinalizationReceipt captureReceipt(Path manifestFile, Replay replay, String rewrittenTip,
+		List<FinalizedOutput> outputs, String manifestDigest, String identityDigest) throws IOException
+	{
+		return new FinalizationReceipt(RECEIPT_VERSION, manifestDigest, replay.base(), replay.sourceTip(),
+			replay.sourceTipTree(), replay.finalTree(), rewrittenTip, outputs, identityDigest,
+			finalizationEvidence(manifestFile, receiptFile(manifestFile)));
+	}
+
+	/**
+	 * Atomically publishes receipt facts acquired by the finalization owner.
+	 *
+	 * @param manifestFile the manifest owning the receipt
+	 * @param receipt the captured facts and evidence
+	 * @throws IOException if atomic receipt publication fails
+	 */
+	void publishReceipt(Path manifestFile, FinalizationReceipt receipt) throws IOException
+	{
+		Path receiptFile = receiptFile(manifestFile);
+		writeAtomically(receiptFile, receipt);
+		System.out.println("finalizationReceipt=" + receiptFile);
+	}
+
+	/**
+	 * Checks whether a decoded receipt binds the selected base and resolved replacement tip.
+	 *
+	 * @param receipt the decoded receipt
+	 * @param base the selected base
+	 * @param tip the resolved selected tip
+	 * @return whether the recorded selection matches
+	 */
+	static boolean matchesSelection(FinalizationReceipt receipt, String base, String tip)
+	{
+		return receipt.version() == RECEIPT_VERSION && receipt.base().equals(base) && receipt.rewrittenTip().equals(tip);
+	}
+
+	/**
+	 * Checks whether a decoded receipt retains the captured source and final-tree facts.
+	 *
+	 * @param receipt the decoded receipt
+	 * @param replay the captured replay facts
+	 * @return whether all captured facts match
+	 */
+	static boolean matchesSourceFacts(FinalizationReceipt receipt, Replay replay)
+	{
+		return receipt.base().equals(replay.base()) && receipt.sourceTip().equals(replay.sourceTip()) &&
+			receipt.sourceTipTree().equals(replay.sourceTipTree()) && receipt.finalTree().equals(replay.finalTree());
+	}
+
+	/**
+	 * Checks whether a receipt binds the ordered replacement transitions.
+	 *
+	 * @param receipt the decoded receipt
+	 * @param replay the sealed output decisions
+	 * @param chain the captured replacement commits and parents
+	 * @return whether the ordered output facts match
+	 * @throws IOException if the replacement chain cannot be bound to the sealed outputs
+	 */
+	static boolean matchesChainOutputs(FinalizationReceipt receipt, Replay replay, List<History.RangeCommit> chain)
+		throws IOException
+	{
+		return receipt.outputs().equals(finalizedOutputs(replay, chain));
+	}
+
+	/**
+	 * Verifies a receipt's manifest content using the actual filesystem digest.
+	 *
+	 * @param manifestFile the manifest bound by the receipt
+	 * @param receipt the decoded receipt
+	 * @throws IOException if the manifest changed or cannot be read
+	 */
+	void verifyManifestDigest(Path manifestFile, FinalizationReceipt receipt) throws IOException
+	{
+		if (!receipt.manifestSha256().equals(sha256(manifestFile)))
+		{
+			throw new IOException("Topic-replay finalization receipt does not match its manifest: " +
+				receiptFile(manifestFile));
+		}
+	}
+
+	/**
+	 * Interprets Git's four identity fields and requires the approved author and committer.
+	 *
+	 * @param commit the inspected replacement commit
+	 * @param bytes the NUL-delimited author and committer name/email fields
+	 * @param name the approved name
+	 * @param email the approved email
+	 * @throws IOException if any decoded identity differs or a field is missing
+	 */
+	static void verifyCommitIdentity(String commit, byte[] bytes, String name, String email) throws IOException
+	{
+		String[] identity = new String(bytes, UTF_8).strip().split("\\x00", -1);
+		if (identity.length != 4 || !identity[0].equals(name) || !identity[1].equals(email) ||
+			!identity[2].equals(name) || !identity[3].equals(email))
+		{
+			throw new IOException("Topic-replay commit " + commit + " does not use the approved author and committer " +
+				"identity " + name + " <" + email + ">; correct Git identity, restart from the recorded backup, and " +
+				"replay the manifest");
 		}
 	}
 
@@ -213,7 +314,7 @@ final class Finalization
 	 * @return the receipt-ready ordered outputs
 	 * @throws IOException if the replacement chain is incomplete or a witness is absent
 	 */
-	private List<FinalizedOutput> finalizedOutputs(Replay replay, List<History.RangeCommit> chain) throws IOException
+	static List<FinalizedOutput> finalizedOutputs(Replay replay, List<History.RangeCommit> chain) throws IOException
 	{
 		List<Output> expected = replay.outputs().stream().filter(Output::retained).toList();
 		if (chain.size() != expected.size())
@@ -259,7 +360,7 @@ final class Finalization
 	 * @param evidence the digests read from the receipt
 	 * @throws IOException if evidence is absent, escapes the directory, is missing, or changed
 	 */
-	private void verifyFinalizationEvidence(Path manifestFile, List<ArtifactDigest> evidence) throws IOException
+	void verifyFinalizationEvidence(Path manifestFile, List<ArtifactDigest> evidence) throws IOException
 	{
 		if (evidence == null || evidence.isEmpty())
 			throw new IOException("Topic-replay finalization receipt has no evidence artifact digests");
@@ -362,7 +463,7 @@ final class Finalization
 	 * @return the lowercase hexadecimal digest
 	 * @throws IOException if the artifact cannot be read or SHA-256 is unavailable
 	 */
-	private String sha256(Path file) throws IOException
+	String sha256(Path file) throws IOException
 	{
 		try
 		{
@@ -449,17 +550,46 @@ final class Finalization
 	{
 	}
 
-	private record FinalizationReceipt(int version, String manifestSha256, String base, String sourceTip,
+	/**
+	 * Binds the finalized replay to its manifest, replacement chain, identities, and retained evidence.
+	 *
+	 * @param version the receipt schema version
+	 * @param manifestSha256 the finalized manifest digest
+	 * @param base the commit preceding the replay
+	 * @param sourceTip the captured original tip
+	 * @param sourceTipTree the original tip tree
+	 * @param finalTree the required final replacement tree
+	 * @param rewrittenTip the final replacement commit
+	 * @param outputs the ordered replacement transitions
+	 * @param identityDigest the ordered replacement identity digest
+	 * @param evidence the retained artifact digests
+	 */
+	record FinalizationReceipt(int version, String manifestSha256, String base, String sourceTip,
 		String sourceTipTree, String finalTree, String rewrittenTip, List<FinalizedOutput> outputs,
 		String identityDigest, List<ArtifactDigest> evidence)
 	{
 	}
 
-	private record FinalizedOutput(String outputId, String commit, String parent, String beforeTree, String afterTree)
+	/**
+	 * Captures one replacement commit and the sealed tree transition it implements.
+	 *
+	 * @param outputId the reviewed output identifier
+	 * @param commit the replacement commit
+	 * @param parent its preceding commit
+	 * @param beforeTree the sealed starting tree
+	 * @param afterTree the sealed result tree
+	 */
+	record FinalizedOutput(String outputId, String commit, String parent, String beforeTree, String afterTree)
 	{
 	}
 
-	private record ArtifactDigest(String path, String sha256)
+	/**
+	 * Identifies retained receipt evidence by manifest-relative path and content digest.
+	 *
+	 * @param path the manifest-relative artifact path
+	 * @param sha256 the captured artifact digest
+	 */
+	record ArtifactDigest(String path, String sha256)
 	{
 	}
 }

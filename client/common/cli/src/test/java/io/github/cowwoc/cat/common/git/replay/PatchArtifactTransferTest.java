@@ -33,7 +33,7 @@ public final class PatchArtifactTransferTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-patch-transfer-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "patch-transfer-"));
 			Path previousDirectory = Files.createDirectories(root.resolve("previous"));
 			Path replacementDirectory = Files.createDirectories(root.resolve("replacement"));
 			Path previousManifest = Files.writeString(previousDirectory.resolve("manifest.json"), "{}\n");

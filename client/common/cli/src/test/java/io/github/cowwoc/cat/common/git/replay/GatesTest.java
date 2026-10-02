@@ -6,7 +6,6 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -31,12 +30,12 @@ public final class GatesTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 
 			new Gates(new CommandRunner(directory)).run(manifest, "fixture-build",
-				List.of("/bin/sh", "-c", "printf passed"));
+				GateCommandFixture.command(GateCommandFixture.Mode.SUCCESS));
 
 			requireThat(Files.readString(directory.resolve("gates/fixture-build.log")), "gateLog").isEqualTo("passed");
 		}

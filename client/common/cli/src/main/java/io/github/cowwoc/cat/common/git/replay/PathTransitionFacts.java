@@ -42,19 +42,38 @@ final class PathTransitionFacts
 		List<PathTransitionFact> facts = new ArrayList<>();
 		for (SourceSnapshot source : manifest.sources())
 		{
-			int index = 0;
-			for (String line : git.lines("diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "-M",
-				source.hash()))
+			facts.addAll(parse(source.hash(), outputs.get(source.hash()), git.lines("diff-tree", "--root",
+				"--no-commit-id", "--name-status", "-r", "-M", source.hash())));
+		}
+		return facts;
+	}
+
+	/**
+	 * Interprets raw Git name-status lines without assigning semantic path decisions.
+	 *
+	 * @param source the captured source hash
+	 * @param outputId its default output, or {@code null} when the topic has no default source owner
+	 * @param lines the tab-separated Git name-status records
+	 * @return additions, deletions, and rename candidates with their original record positions
+	 */
+	static List<PathTransitionFact> parse(String source, String outputId, List<String> lines)
+	{
+		List<PathTransitionFact> facts = new ArrayList<>();
+		int index = 0;
+		for (String line : lines)
+		{
+			index += 1;
+			String[] fields = line.split("\\t");
+			String status = fields[0];
+			if (status.startsWith("R") && fields.length == 3)
 			{
-				index += 1;
-				String[] fields = line.split("\\t");
-				String status = fields[0];
-				if (status.startsWith("R") && fields.length == 3)
-					facts.add(new PathTransitionFact(source.hash() + ":transition:" + index, source.hash(),
-						outputs.get(source.hash()), status, fields[1], fields[2]));
-				else if ((status.equals("A") || status.equals("D")) && fields.length == 2)
-					facts.add(new PathTransitionFact(source.hash() + ":transition:" + index, source.hash(),
-						outputs.get(source.hash()), status, fields[1], null));
+				facts.add(new PathTransitionFact(source + ":transition:" + index, source, outputId, status,
+					fields[1], fields[2]));
+			}
+			else if ((status.equals("A") || status.equals("D")) && fields.length == 2)
+			{
+				facts.add(new PathTransitionFact(source + ":transition:" + index, source, outputId, status,
+					fields[1], null));
 			}
 		}
 		return facts;

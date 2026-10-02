@@ -1556,7 +1556,21 @@ public final class GitTopicReplayEditor
 		if (outputId != null)
 			requireThat(outputId, "outputId").isNotBlank();
 		BatchManifest manifest = readBatchManifest(manifestFile);
-		List<OutputWitness> witnesses = manifest.outputWitnesses();
+		outputGates.run(manifestFile, gateName, selectOutputTargets(manifest.outputWitnesses(), outputId, command));
+	}
+
+	/**
+	 * Selects chronological witnessed output trees for one command.
+	 *
+	 * @param witnesses the sealed output transitions
+	 * @param outputId one selected output, or {@code null} for every retained output
+	 * @param command the command assigned to each selected tree
+	 * @return the selected output commands in witnessed order
+	 * @throws IOException if the selected output has no retained witness
+	 */
+	static List<OutputGates.Target> selectOutputTargets(List<OutputWitness> witnesses, String outputId,
+		List<String> command) throws IOException
+	{
 		if (outputId != null)
 		{
 			witnesses = witnesses.stream().filter(witness -> witness.outputId().equals(outputId)).toList();
@@ -1566,9 +1580,8 @@ public final class GitTopicReplayEditor
 					" in the sealed manifest");
 			}
 		}
-		List<OutputGates.Target> targets = witnesses.stream().map(witness ->
+		return witnesses.stream().map(witness ->
 			new OutputGates.Target(witness.outputId(), witness.afterTree(), command)).toList();
-		outputGates.run(manifestFile, gateName, targets);
 	}
 
 	/**

@@ -109,6 +109,27 @@ final class OutputPlanValidation
 			else
 				projectedDiscardedOutputs.add(output.id());
 		}
+		validateSourceDestinations(manifest, plannedOutputs, destinationsBySource);
+		if (!manifest.tipTree().equals(currentTree))
+		{
+			throw new IOException("Topic-replay output plan produces tree " + currentTree + " instead of captured tip tree " +
+				manifest.tipTree() + ". Inspect the tree difference and add the missing reviewed batch before sealing.");
+		}
+		return new ValidatedOutputPlan(new OutputPlan(plannedOutputs), projectedBatches, projectedWitnesses,
+			projectedDiscardedOutputs);
+	}
+
+	/**
+	 * Verifies projected batch destinations agree with the completed source reviews.
+	 *
+	 * @param manifest the completed source reviews and source-to-output associations
+	 * @param plannedOutputs the projected retained-or-discarded output decisions
+	 * @param destinationsBySource the projected batch destinations for each source
+	 * @throws IOException if a source placement contradicts its completed review
+	 */
+	static void validateSourceDestinations(BatchManifest manifest, List<PlannedOutput> plannedOutputs,
+		Map<String, Set<String>> destinationsBySource) throws IOException
+	{
 		for (SourceReview review : sourceReviews(manifest))
 		{
 			Set<String> destinations = destinationsBySource.getOrDefault(review.source(), Set.of());
@@ -127,13 +148,6 @@ final class OutputPlanValidation
 					" do not match its completed source review");
 			}
 		}
-		if (!manifest.tipTree().equals(currentTree))
-		{
-			throw new IOException("Topic-replay output plan produces tree " + currentTree + " instead of captured tip tree " +
-				manifest.tipTree() + ". Inspect the tree difference and add the missing reviewed batch before sealing.");
-		}
-		return new ValidatedOutputPlan(new OutputPlan(plannedOutputs), projectedBatches, projectedWitnesses,
-			projectedDiscardedOutputs);
 	}
 
 	/**
@@ -184,18 +198,30 @@ final class OutputPlanValidation
 				{
 					throw new IOException("Topic-replay draft output requires an id, captured source, and patch: " + output.id());
 				}
-				SourceReview review = reviewsBySource.get(batch.source());
-				if (review != null && !review.destinations().contains(output.id()))
-				{
-					throw new IOException("Draft batch " + batch.id() + " places source " + batch.source() + " in " +
-						output.id() + ", but its completed review assigns it only to: " + String.join(", ",
-						review.destinations()) + ". Move the batch to one of those outputs, or revise the review.");
-				}
+				validateDraftDestination(batch, output, reviewsBySource.get(batch.source()));
 				Path patch = patches.resolve(manifestFile, batch.patch());
 				currentTree = patchApplication.apply(manifestFile, patch, currentTree);
 			}
 		}
 		return currentTree;
+	}
+
+	/**
+	 * Verifies one draft batch respects a completed source review's destination choices.
+	 *
+	 * @param batch the draft batch declaration
+	 * @param output the proposed destination output
+	 * @param review the completed source review, or {@code null} if the source is not yet reviewed
+	 * @throws IOException if the proposed destination is excluded by the completed review
+	 */
+	static void validateDraftDestination(BatchRequest batch, Output output, SourceReview review) throws IOException
+	{
+		if (review != null && !review.destinations().contains(output.id()))
+		{
+			throw new IOException("Draft batch " + batch.id() + " places source " + batch.source() + " in " +
+				output.id() + ", but its completed review assigns it only to: " + String.join(", ",
+				review.destinations()) + ". Move the batch to one of those outputs, or revise the review.");
+		}
 	}
 
 	/**
@@ -288,7 +314,7 @@ final class OutputPlanValidation
 	 * @param manifest the replay manifest
 	 * @return the declared or implied source reviews
 	 */
-	private List<SourceReview> sourceReviews(BatchManifest manifest)
+	private static List<SourceReview> sourceReviews(BatchManifest manifest)
 	{
 		if (manifest.sourceReviews() == null)
 			return List.of();
@@ -334,7 +360,7 @@ final class OutputPlanValidation
 	 * @param source the reviewed source commit
 	 * @return {@code true} if the source has a discarded logical output
 	 */
-	private boolean isPlannedSourceOutputDiscarded(BatchManifest manifest, List<PlannedOutput> plannedOutputs,
+	private static boolean isPlannedSourceOutputDiscarded(BatchManifest manifest, List<PlannedOutput> plannedOutputs,
 		String source)
 	{
 		for (Output output : manifest.outputs())

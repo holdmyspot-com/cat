@@ -45,7 +45,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			new ReviewEvidence(scope.json()).readSemanticCandidates(
 				root.resolve("semantic-plan.json"), "semantic plan");
 		}
@@ -62,7 +63,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			Path packet = root.resolve("review-packet.md");
 			Path ledger = root.resolve("adversarial-challenges.json");
 			Files.writeString(packet, " \n\t");
@@ -83,7 +85,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			Path packet = root.resolve("review-packet.md");
 			Path ledger = root.resolve("adversarial-challenges.json");
 			Files.writeString(packet, "reviewed inventory\n");
@@ -104,7 +107,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			Path evidence = root.resolve("passes.json");
 			Files.writeString(evidence, """
 				{"passes":[
@@ -129,7 +133,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			Path matrix = root.resolve("action-result-matrix.json");
 			Files.writeString(matrix, """
 				{"rows":[
@@ -154,7 +159,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			CandidateUniverseRequirements requirements = new CandidateUniverseRequirements(Set.of("inventory-a"),
 				List.of(), Set.of(), false);
 			CandidateUniverse universe = new CandidateUniverse("topic reviewer", List.of(), List.of());
@@ -175,7 +181,8 @@ public final class ReviewEvidenceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-review-evidence-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-review-evidence-"));
 			SemanticCandidate candidate = new SemanticCandidate("candidate-a", "outcome", "discovery", "split",
 				List.of("unknown"), "output-a", List.of(), List.of(), List.of(), List.of(), List.of(), "evidence");
 			CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("reviewer-a"),

@@ -33,8 +33,10 @@ public final class ManifestStoreTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path temporaryRoot = cleanup.add(Files.createTempDirectory("cat-work-temporary-root-"));
-			Path externalManifest = cleanup.add(Files.createTempDirectory("cat-topic-replay-")).resolve("manifest.json");
+			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"cat-work-temporary-root-"));
+			Path externalManifest = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"cat-topic-replay-")).resolve("manifest.json");
 			ManifestStore<ManifestStore.Manifest> store =
 				new ManifestStore<>(temporaryRoot, scope.json(), ManifestStore.Manifest.class);
 
@@ -60,7 +62,8 @@ public final class ManifestStoreTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path temporaryRoot = cleanup.add(Files.createTempDirectory("cat-work-temporary-root-"));
+			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"cat-work-temporary-root-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
 			ManifestStore<FixtureManifest> store = new ManifestStore<>(temporaryRoot,
 				scope.json(), FixtureManifest.class);

@@ -34,7 +34,8 @@ public final class DraftOutputPlanTransferTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("topic-replay-draft-transfer-"));
+			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+				"topic-replay-draft-transfer-"));
 			Path previousDirectory = Files.createDirectories(root.resolve("previous"));
 			Path replacementDirectory = Files.createDirectories(root.resolve("replacement"));
 			Path previousManifest = Files.writeString(previousDirectory.resolve("manifest.json"), "{}\n");

@@ -6,6 +6,7 @@ import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invoc
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,7 +36,7 @@ public final class EditorPatchWorkflowTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = git.run("rev-parse", "HEAD").trim();
@@ -79,25 +80,16 @@ public final class EditorPatchWorkflowTest
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			writeSourceManifest(git, manifest, base, source);
 			Path sourcePatch = replay.resolve("source.patch");
 			editor.captureSourcePathPatch(manifest, source, sourcePatch, List.of("Plugin.java"));
-			Path index = cleanup.add(Files.createTempFile("cat-topic-replay-", ".index"));
-			Files.delete(index);
-			git.lines(index, "read-tree", target + "^{tree}");
-			try
-			{
-				git.lines(index, "apply", "--cached", sourcePatch.toString());
-				throw new AssertionError("Expected the source patch to require adaptation for the earlier target tree");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "sourcePatchFailure").contains("Git command failed");
-			}
+			Path index = replay.resolve("inspection.index");
+			requireThat(Files.readString(sourcePatch), "sourcePatch").contains(
+				"diff --git a/Plugin.java b/Plugin.java").contains("+\t\tbuildWithCleanup();");
 			Path candidate = replay.resolve("Plugin.java");
 			editor.writeThreeWayMergeCandidate(manifest, source, target, "Plugin.java", candidate);
 			requireThat(Files.readString(candidate), "mergeCandidate").contains("buildWithCleanup();").doesNotContain(
-				"<<<<<<");
+				"<<<<<<").doesNotContain("void preservesExecutableResource()");
 			Path replacementTree = replay.resolve("replacement-tree.txt");
 			editor.writeReplacementTree(manifest, target, "Plugin.java", candidate, replacementTree);
 			String replacementTreeId = Files.readString(replacementTree).strip();
@@ -122,7 +114,7 @@ public final class EditorPatchWorkflowTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = commit(git, repository, "Plugin.java", """
@@ -163,11 +155,10 @@ public final class EditorPatchWorkflowTest
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			writeSourceManifest(git, manifest, base, source);
 			Path patch = replay.resolve("feature.patch");
 			editor.captureThreeWayAdaptedSourceHunkPatch(manifest, source, patch, target, "Plugin.java", 1);
-			Path index = cleanup.add(Files.createTempFile("cat-topic-replay-", ".index"));
-			Files.delete(index);
+			Path index = replay.resolve("inspection.index");
 			git.lines(index, "read-tree", target + "^{tree}");
 			git.lines(index, "apply", "--cached", patch.toString());
 			String actual = String.join("\n", git.lines(index, "show", ":Plugin.java"));
@@ -186,7 +177,7 @@ public final class EditorPatchWorkflowTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = git.run("rev-parse", "HEAD").trim();
@@ -194,7 +185,7 @@ public final class EditorPatchWorkflowTest
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			writeSourceManifest(git, manifest, base, source);
 			editor.captureSourcePatch(manifest, source, replay.resolve("feature.patch"));
 			Path plan = replay.resolve("output-plan.json");
 			Files.writeString(plan, """
@@ -204,6 +195,29 @@ public final class EditorPatchWorkflowTest
 			String tree = editor.writeDraftOutputTree(manifest, plan, "output-1");
 			requireThat(tree, "draftTree").isEqualTo(git.run("rev-parse", source + "^{tree}").trim());
 			requireThat(git.run("rev-parse", "HEAD").trim(), "head").isEqualTo(source);
+		}
+	}
+
+	/**
+	 * Writes the captured source facts needed by patch and draft-tree operations without running inventory preparation.
+	 *
+	 * @param git Git access for the isolated integration repository
+	 * @param manifestFile the manifest-local input file
+	 * @param base the commit preceding the selected source range
+	 * @param source the selected source commit
+	 * @throws IOException if Git cannot read the source trees or the manifest cannot be written
+	 */
+	private void writeSourceManifest(Git git, Path manifestFile, String base, String source) throws IOException
+	{
+		SourceSnapshot snapshot = new SourceSnapshot(source, git.run("rev-parse", source + "^^{tree}").trim(),
+			git.run("rev-parse", source + "^{tree}").trim());
+		BatchManifest manifest = new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base, snapshot.tree(),
+			List.of(snapshot),
+			List.of(new Output("output-1", source, "test: selected source")), List.of(), List.of(), List.of(), List.of(),
+			List.of(), List.of(), List.of(), null);
+		try (ToolScope scope = new ToolScope())
+		{
+			scope.json().writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), manifest);
 		}
 	}
 }

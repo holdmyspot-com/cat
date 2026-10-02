@@ -1,15 +1,12 @@
 package io.github.cowwoc.cat.common.git.replay;
 
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.commit;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.initializeRepository;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invocationManifest;
+import static io.github.cowwoc.cat.common.git.replay.OriginReviewFixtures.writeManifest;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.originReviews;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.predecessors;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
-import io.github.cowwoc.cat.common.git.Git;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -41,22 +38,9 @@ public final class EditorOriginReviewTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("feature.txt"), "original\n");
-			Files.writeString(repository.resolve("secondary.txt"), "original\n");
-			git.run("add", "feature.txt", "secondary.txt");
-			git.run("commit", "--quiet", "--message", "feature");
-			String feature = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("feature.txt"), "corrected\n");
-			Files.writeString(repository.resolve("secondary.txt"), "corrected\n");
-			git.run("add", "feature.txt", "secondary.txt");
-			git.run("commit", "--quiet", "--message", "correction");
-			Path manifest = invocationManifest(repository);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path manifest = writeManifest(scope.json(), repository, false, "feature.txt", "secondary.txt");
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
@@ -79,7 +63,7 @@ public final class EditorOriginReviewTest
 			requireThat(audit.get(0).path("classification").stringValue(), "firstClassification").isEqualTo("same-unit");
 			requireThat(audit.get(0).path("destination").stringValue(), "firstDestination").isEqualTo("output-1");
 			requireThat(scope.json().readTree(Files.readString(manifest.resolveSibling("manifest.json.origin-reviews.json"))).
-				get(0).path("predecessors").get(0).stringValue(), "recordedPredecessor").isEqualTo(feature);
+				get(0).path("predecessors").get(0).stringValue(), "recordedPredecessor").isEqualTo("source-1");
 		}
 	}
 
@@ -88,36 +72,22 @@ public final class EditorOriginReviewTest
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
-	@Test
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		"(?s).*feature.txt.*earlier possible output.*Select the earlier output.*required prerequisite.*")
 	public void rejectsUnexplainedLaterOriginDecision() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			commit(git, repository, "feature.txt", "original\n", "feature");
-			commit(git, repository, "feature.txt", "corrected\n", "correction");
-			Path manifest = invocationManifest(repository);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path manifest = writeManifest(scope.json(), repository, false, "feature.txt");
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
 			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
 			Files.writeString(reviews, originReviews(scaffold, "output-2"));
 
-			try
-			{
-				editor.recordOriginReviews(manifest, reviews);
-				throw new AssertionError("Expected the unexplained later origin decision to be rejected");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("feature.txt").contains(
-					"earlier possible output").contains("Select the earlier output").contains("required prerequisite");
-			}
+			editor.recordOriginReviews(manifest, reviews);
 		}
 	}
 
@@ -131,15 +101,9 @@ public final class EditorOriginReviewTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			commit(git, repository, "shared.txt", "feature\n", "feature");
-			commit(git, repository, "shared.txt", "independent note\n", "note");
-			Path manifest = invocationManifest(repository);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path manifest = writeManifest(scope.json(), repository, false, "shared.txt");
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
@@ -170,17 +134,9 @@ public final class EditorOriginReviewTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			commit(git, repository, "feature.txt", "feature\n", "feature");
-			Files.delete(repository.resolve("feature.txt"));
-			git.run("add", "--all");
-			git.run("commit", "--quiet", "--message", "revert feature");
-			Path manifest = invocationManifest(repository);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path manifest = writeManifest(scope.json(), repository, true, "feature.txt");
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode candidate = scope.json().readTree(output.toString(StandardCharsets.UTF_8)).get(0);

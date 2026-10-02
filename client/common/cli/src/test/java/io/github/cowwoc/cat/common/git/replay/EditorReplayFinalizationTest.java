@@ -1,27 +1,22 @@
 package io.github.cowwoc.cat.common.git.replay;
 
-import io.github.cowwoc.cat.common.git.Git;
-
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.commit;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.initializeRepository;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invocationDirectory;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.originReviews;
-import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewEvidenceFixtures.recordReviewEvidence;
 
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import java.io.ByteArrayOutputStream;
+import io.github.cowwoc.cat.common.ToolScope;
+import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.testng.annotations.Test;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests replay finalization and absorbed-source outcomes.
+ * Tests absorbed-source and origin-placement decisions before a validated plan is published.
  */
 public final class EditorReplayFinalizationTest
 {
@@ -33,483 +28,286 @@ public final class EditorReplayFinalizationTest
 	}
 
 	/**
-	 * Verifies replay handles a fully absorbed correction when a tag has the current branch's name.
+	 * Verifies an absorbed correction may contribute its batch to the retained feature output.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if the manifest or origin evidence cannot be written
 	 */
 	@Test
-	public void replaysAbsorbedSourceWithMatchingTag() throws IOException
+	public void sealsAbsorbedCorrection() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			String feature = commit(git, repository, "feature.txt", "original\n", "feature");
-			String correction = commit(git, repository, "feature.txt", "corrected\n", "correction");
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, correction, manifest);
-			Path featurePatch = replay.resolve("feature.patch");
-			Path correctionPatch = replay.resolve("correction.patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, correction, correctionPatch);
-			Path batches = replay.resolve("output-1.json");
-			Files.writeString(batches, """
-				[{"id":"feature","source":"%s","patch":"feature.patch"},
-				{"id":"correction","source":"%s","patch":"correction.patch"}]
-				""".formatted(feature, correction));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, correction, correctionPatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature supplies the first retained output.",
-				"evidence":"The feature patch is the complete first output."},
-				{"source":"%s","disposition":"absorbed","destinations":["output-1"],
-				"counterfactual":"The correction completes the earlier feature and leaves no independent output.",
-				"evidence":"The correction patch is included in output-1 and output-2 is discarded."}]
-				""".formatted(feature, correction));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"discarded","batches":[]}]
-				""".formatted(Files.readString(batches)));
-			editor.sealOutputPlan(manifest, plan);
-			editor.recordPlannedOutput(manifest, "output-1");
-			editor.discardOutput(manifest, "output-2");
-			recordReviewEvidence(manifest);
-			String branch = git.run("branch", "--show-current").trim();
-			git.run("tag", branch);
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.correction();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
 
-			editor.replay(manifest);
+			validateSourcePlacements(facts);
+			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(Integer.parseInt(git.run("rev-list", "--count", base + "..HEAD").trim()), "replacementCount").
-				isEqualTo(1);
-			requireThat(Files.readString(repository.resolve("feature.txt")).strip(), "feature").isEqualTo("corrected");
+			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
+			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
+				List.of("source-1", "source-2"));
 		}
 	}
 
 	/**
-	 * Verifies plan sealing rejects batches that contradict recorded origin placement decisions.
+	 * Verifies origin contradictions report both paths and the selected output without publishing a plan or witness.
 	 *
-	 * @throws IOException if the fixture cannot be created
+	 * @throws IOException if the plan conflicts with recorded origin decisions
 	 */
-	@Test
-	public void rejectsPlanConflictingWithOriginReview() throws IOException
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		"(?s).*Topic-replay output plan conflicts with recorded origin decisions.*feature.txt.*output-1.*secondary.txt.*")
+	public void rejectsConflictingOriginPlan() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("feature.txt"), "original\n");
-			Files.writeString(repository.resolve("secondary.txt"), "original\n");
-			git.run("add", "feature.txt", "secondary.txt");
-			git.run("commit", "--quiet", "--message", "feature");
-			String feature = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("feature.txt"), "corrected\n");
-			Files.writeString(repository.resolve("secondary.txt"), "corrected\n");
-			git.run("add", "feature.txt", "secondary.txt");
-			git.run("commit", "--quiet", "--message", "correction");
-			String correction = git.run("rev-parse", "HEAD").trim();
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, "HEAD", manifest);
-			editor.captureSourcePatch(manifest, feature, replay.resolve("feature.patch"));
-			editor.captureSourcePatch(manifest, correction, replay.resolve("correction.patch"));
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature begins the first output.","evidence":"The feature has no predecessor."},
-				{"source":"%s","disposition":"whole","destinations":["output-2"],
-				"counterfactual":"The correction is planned in the later output.",
-				"evidence":"The reviewed plan separates it."}]
-				""".formatted(feature, correction));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginReviewScaffold(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":[{"id":"feature","source":"%s",
-				"patch":"feature.patch"}]},{"outputId":"output-2","disposition":"retained",
-				"batches":[{"id":"correction","source":"%s","patch":"correction.patch"}]}]
-				""".formatted(feature, correction));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.conflict();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			String original = Files.readString(manifestFile);
+			validateSourcePlacements(facts);
 
 			try
 			{
-				editor.sealOutputPlan(manifest, plan);
-				throw new AssertionError("Expected a plan that contradicts origin placement to be rejected");
+				sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 			}
-			catch (IOException e)
+			finally
 			{
-				requireThat(e.getMessage(), "failureMessage").contains(
-					"Topic-replay output plan conflicts with recorded origin decisions").contains("feature.txt").contains(
-					"secondary.txt").contains("output-1");
+				requireThat(Files.readString(manifestFile), "storedManifest").isEqualTo(original);
+				BatchManifest unchanged = readManifest(scope.json(), manifestFile);
+				requireThat(unchanged.outputPlan(), "outputPlan").isNull();
+				requireThat(unchanged.outputWitnesses(), "outputWitnesses").isEmpty();
 			}
-			JsonNode unchanged = scope.json().readTree(Files.readString(manifest));
-			requireThat(unchanged.path("outputPlan").isNull(), "outputPlan").isTrue();
-			requireThat(unchanged.path("outputWitnesses").size(), "outputWitnessCount").isEqualTo(0);
 		}
 	}
 
 	/**
-	 * Verifies a later same-output correction preserves the earlier origin review and the final feature state.
+	 * Verifies a later same-output correction may supersede an earlier reviewed source's path state.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if the manifest or origin evidence cannot be written
 	 */
 	@Test
-	public void acceptsLaterSameOutputCorrection() throws IOException
+	public void sealsLaterSameOutputCorrection() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			String feature = commit(git, repository, "feature.txt", "original\n", "feature");
-			String correction = commit(git, repository, "feature.txt", "corrected\n", "correction");
-			String documentation = commit(git, repository, "feature.txt", "documented correction\n", "documentation");
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, documentation, manifest);
-			Path featurePatch = replay.resolve(feature + ".patch");
-			Path correctionPatch = replay.resolve(correction + ".patch");
-			Path documentationPatch = replay.resolve(documentation + ".patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, correction, correctionPatch);
-			editor.captureSourcePatch(manifest, documentation, documentationPatch);
-			Path batches = replay.resolve("output-1.json");
-			Files.writeString(batches, """
-				[{"id":"feature","source":"%s","patch":"%s.patch"},
-				{"id":"correction","source":"%s","patch":"%s.patch"},
-				{"id":"documentation","source":"%s","patch":"%s.patch"}]
-				""".formatted(feature, feature, correction, correction, documentation, documentation));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, correction, correctionPatch);
-			editor.recordSourcePatchReconstruction(manifest, documentation, documentationPatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"All reviewed work belongs to the one feature output.",
-				"evidence":"The output contains the reviewed feature work."},
-				{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"All reviewed work belongs to the one feature output.",
-				"evidence":"The output contains the reviewed feature work."},
-				{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"All reviewed work belongs to the one feature output.",
-				"evidence":"The output contains the reviewed feature work."}]
-				""".formatted(feature, correction, documentation));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"discarded","batches":[]},
-				{"outputId":"output-3","disposition":"discarded","batches":[]}]
-				""".formatted(Files.readString(batches)));
-			editor.sealOutputPlan(manifest, plan);
-			editor.recordPlannedOutput(manifest, "output-1");
-			editor.discardOutput(manifest, "output-2");
-			editor.discardOutput(manifest, "output-3");
-			recordReviewEvidence(manifest);
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.laterCorrection();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
 
-			editor.replay(manifest);
+			validateSourcePlacements(facts);
+			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(Files.readString(repository.resolve("feature.txt")).strip(), "feature").isEqualTo(
-				"documented correction");
+			BatchManifest stored = readManifest(scope.json(), manifestFile);
+			requireThat(stored.outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(stored.outputPlan().outputs().getFirst().batches().stream().map(PlannedBatch::source).toList(),
+				"batchOrder").isEqualTo(List.of("source-1", "source-2", "source-3"));
+			requireThat(facts.plan().witnesses().getFirst().afterTree(), "retainedFinalTree").isEqualTo("tree-3");
+			requireThat(facts.read("tree-2", "feature.txt"), "earlierCorrection").isNotEqualTo(
+				facts.read("tree-3", "feature.txt"), "retainedResult");
 		}
 	}
 
 	/**
 	 * Verifies an absorbed source needs no batch when the retained target-relative patch already contains its state.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if the manifest or origin evidence cannot be written
 	 */
 	@Test
-	public void acceptsAbsorbedSourceWithoutBatch() throws IOException
+	public void sealsAbsorbedSourceWithoutBatch() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			commit(git, repository, "feature.txt", "initial\n", "baseline");
-			String base = git.run("rev-parse", "HEAD").trim();
-			String feature = commit(git, repository, "feature.txt", "feature\n", "feature");
-			String absorbed = commit(git, repository, "feature.txt", "feature with cleanup\n", "absorbed-cleanup");
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, absorbed, manifest);
-			Path featurePatch = replay.resolve("feature.patch");
-			Path absorbedPatch = replay.resolve("absorbed.patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, absorbed, absorbedPatch);
-			Path finalFeature = replay.resolve("feature.txt");
-			editor.writeTreePath(manifest, absorbed, "feature.txt", finalFeature);
-			Path finalPatch = replay.resolve("feature-final.patch");
-			editor.captureTargetAdaptedPathPatch(manifest, feature, finalPatch, base, "feature.txt", finalFeature);
-			Path batches = replay.resolve("output-1.json");
-			Files.writeString(batches, """
-				[{"id":"feature","source":"%s","patch":"feature-final.patch"}]
-				""".formatted(feature));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, absorbed, absorbedPatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature supplies the retained output.",
-				"evidence":"The feature patch is the complete first output."},
-				{"source":"%s","disposition":"absorbed","destinations":["output-1"],
-				"counterfactual":"The cleanup completes the earlier feature and leaves no independent output.",
-				"evidence":"The retained feature patch already contains the cleanup state and the source output is discarded."}]
-				""".formatted(feature, absorbed));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"discarded","batches":[]}]
-				""".formatted(Files.readString(batches)));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.absorbedWithoutBatch();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
 
-			editor.sealOutputPlan(manifest, plan);
+			validateSourcePlacements(facts);
+			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(scope.json().readTree(Files.readString(manifest)).path("outputPlan").isNull(), "outputPlan").
-				isFalse();
+			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
+				List.of("source-1"));
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
+			requireThat(facts.read("tree-2", "feature.txt"), "absorbedState").isEqualTo(
+				facts.read(facts.plan().witnesses().getFirst().afterTree(), "feature.txt"));
 		}
 	}
 
 	/**
-	 * Verifies an absorbed source needs no batch when a retained target-relative patch supersedes its path state.
+	 * Verifies a discarded absorbed source needs no batch even when a later retained result supersedes its path state.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if the manifest or origin evidence cannot be written
 	 */
 	@Test
-	public void acceptsSupersededAbsorbedSource() throws IOException
+	public void sealsSupersededAbsorbedSource() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			commit(git, repository, "feature.txt", "initial\n", "baseline");
-			String base = git.run("rev-parse", "HEAD").trim();
-			String feature = commit(git, repository, "feature.txt", "feature\n", "feature");
-			String absorbed = commit(git, repository, "feature.txt", "feature with cleanup\n", "absorbed-cleanup");
-			String finalRevision = commit(git, repository, "feature.txt", "feature with later revision\n",
-				"later-revision");
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, finalRevision, manifest);
-			Path featurePatch = replay.resolve("feature.patch");
-			Path absorbedPatch = replay.resolve("absorbed.patch");
-			Path finalRevisionPatch = replay.resolve("final-revision.patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, absorbed, absorbedPatch);
-			editor.captureSourcePatch(manifest, finalRevision, finalRevisionPatch);
-			Path finalFeature = replay.resolve("feature.txt");
-			editor.writeTreePath(manifest, finalRevision, "feature.txt", finalFeature);
-			Path finalPatch = replay.resolve("feature-final.patch");
-			editor.captureTargetAdaptedPathPatch(manifest, feature, finalPatch, base, "feature.txt", finalFeature);
-			Path batches = replay.resolve("output-1.json");
-			Files.writeString(batches, """
-				[{"id":"feature","source":"%s","patch":"feature-final.patch"}]
-				""".formatted(feature));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, absorbed, absorbedPatch);
-			editor.recordSourcePatchReconstruction(manifest, finalRevision, finalRevisionPatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature supplies the retained output.",
-				"evidence":"The feature patch is the complete first output."},
-				{"source":"%s","disposition":"absorbed","destinations":["output-1"],
-				"counterfactual":"The cleanup is superseded by the retained feature result and leaves no independent output.",
-				"evidence":"The retained feature patch includes the later revision and output-2 is discarded."},
-				{"source":"%s","disposition":"absorbed","destinations":["output-1"],
-				"counterfactual":"The later revision is included in the retained feature result and has no independent output.",
-				"evidence":"The retained feature patch contains the final revision and output-3 is discarded."}]
-				""".formatted(feature, absorbed, finalRevision));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, originReviews(scope.json().readTree(output.toString(StandardCharsets.UTF_8))));
-			editor.recordOriginReviews(manifest, originReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"discarded","batches":[]},
-				{"outputId":"output-3","disposition":"discarded","batches":[]}]
-				""".formatted(Files.readString(batches)));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.supersededAbsorbed();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
 
-			editor.sealOutputPlan(manifest, plan);
+			validateSourcePlacements(facts);
+			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(scope.json().readTree(Files.readString(manifest)).path("outputPlan").isNull(), "outputPlan").
-				isFalse();
-			editor.recordPlannedOutput(manifest, "output-1");
-			editor.discardOutput(manifest, "output-2");
-			editor.discardOutput(manifest, "output-3");
-			recordReviewEvidence(manifest);
-
-			editor.replay(manifest);
-
-			requireThat(Files.readString(repository.resolve("feature.txt")).strip(), "feature").isEqualTo(
-				"feature with later revision");
+			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
+				List.of("source-1"));
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2", "output-3"));
+			requireThat(facts.plan().witnesses().getFirst().afterTree(), "retainedFinalTree").isEqualTo("tree-3");
+			requireThat(facts.read("tree-2", "feature.txt"), "absorbedIntermediateState").isNotEqualTo(
+				facts.read("tree-3", "feature.txt"), "retainedResult");
 		}
 	}
 
 	/**
-	 * Verifies a mixed source folds an invalid test removal into its feature while retaining independent routing work.
+	 * Verifies a split source cannot leave the removed invalid test without an explicit placement decision.
 	 *
-	 * @throws IOException if the fixture or replay operation cannot be created
+	 * @throws IOException if the source review leaves a changed path unreviewed
 	 */
-	@Test
-	public void foldsInvalidTestRemovalIntoFeature() throws IOException
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*explicitly place every changed path.*")
+	public void rejectsUnplacedSplitArtifact() throws IOException
+	{
+		OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
+		SourceReview complete = facts.manifest().sourceReviews().getLast();
+		SourceReview incomplete = new SourceReview(complete.source(), complete.disposition(), complete.destinations(),
+			List.of(complete.placements().getFirst()), complete.counterfactual(), complete.evidence());
+
+		new SourceReviewValidation().validateInput(facts.manifest(),
+			List.of(facts.manifest().sourceReviews().getFirst(), incomplete), true);
+	}
+
+	/**
+	 * Verifies a removal with an exact-path predecessor needs an origin review before the plan is published.
+	 *
+	 * @throws IOException if required origin reviews are absent
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires origin reviews.*")
+	public void rejectsMissingRemovalOrigin() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			 ToolScope scope = new ToolScope())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory("cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			String base = git.run("rev-parse", "HEAD").trim();
-			Files.writeString(repository.resolve("structural-test.txt"), "claims runtime behavior but reads a manifest\n");
-			Files.writeString(repository.resolve("feature.txt"), "feature implementation\n");
-			git.run("add", "structural-test.txt", "feature.txt");
-			git.run("commit", "--quiet", "--message", "feature");
-			String feature = git.run("rev-parse", "HEAD").trim();
-			git.run("rm", "--quiet", "structural-test.txt");
-			Files.writeString(repository.resolve("runtime-routing.txt"), "generated launcher runs routing behavior\n");
-			git.run("add", "runtime-routing.txt");
-			git.run("commit", "--quiet", "--message", "runtime-routing");
-			String routing = git.run("rev-parse", "HEAD").trim();
-			Path replay = invocationDirectory(repository, "replay");
-			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
-			editor.prepare(base, routing, manifest);
-			Path featurePatch = replay.resolve("feature.patch");
-			Path routingSourcePatch = replay.resolve("routing-source.patch");
-			editor.captureSourcePatch(manifest, feature, featurePatch);
-			editor.captureSourcePatch(manifest, routing, routingSourcePatch);
-			Path removalPatch = replay.resolve("remove-test.patch");
-			Path routingPatch = replay.resolve("routing.patch");
-			editor.captureSourcePathPatch(manifest, routing, removalPatch, List.of("structural-test.txt"));
-			editor.captureSourcePathPatch(manifest, routing, routingPatch, List.of("runtime-routing.txt"));
-			Path output1 = replay.resolve("output-1.json");
-			Path output2 = replay.resolve("output-2.json");
-			Files.writeString(output1, """
-				[{"id":"feature","source":"%s","patch":"feature.patch"},
-				{"id":"remove-test","source":"%s","patch":"remove-test.patch"}]
-				""".formatted(feature, routing));
-			Files.writeString(output2, """
-				[{"id":"routing","source":"%s","patch":"routing.patch"}]
-				""".formatted(routing));
-			editor.recordSourcePatchReconstruction(manifest, feature, featurePatch);
-			editor.recordSourcePatchReconstruction(manifest, routing, routingSourcePatch);
-			Path sourceReviews = replay.resolve("source-reviews.json");
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature output introduces the implementation and must not retain the invalid test.",
-				"evidence":"The feature batch contains its implementation and the later test removal."},
-				{"source":"%s","disposition":"split","destinations":["output-1","output-2"],
-				"placements":[{"inventoryId":"%s:1","affectedUnit":"runtime routing",
-				"owningResponsibility":"runtime routing","destination":"output-2",
-				"evidence":"The runtime routing file introduces the independent routing behavior."}],
-				"counterfactual":"The invalid test removal belongs with the feature while routing is independent.",
-				"evidence":"The reviewed batches have different output destinations."}]
-				""".formatted(feature, routing, routing));
-			try
-			{
-				editor.recordSourceReviews(manifest, sourceReviews);
-				throw new AssertionError("Expected an unreviewed split-source artifact to be rejected");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "failureMessage").contains("explicitly place every changed path");
-			}
-			Files.writeString(sourceReviews, """
-				[{"source":"%s","disposition":"whole","destinations":["output-1"],
-				"counterfactual":"The feature output introduces the implementation and must not retain the invalid test.",
-				"evidence":"The feature batch contains its implementation and the later test removal."},
-				{"source":"%s","disposition":"split","destinations":["output-1","output-2"],
-				"placements":[{"inventoryId":"%s:1","affectedUnit":"runtime routing",
-				"owningResponsibility":"runtime routing","destination":"output-2",
-				"evidence":"The runtime routing file introduces the independent routing behavior."},
-				{"inventoryId":"%s:2","affectedUnit":"structural test removal",
-				"owningResponsibility":"feature","destination":"output-1",
-				"evidence":"The removed test belongs with the feature it previously described."}],
-				"counterfactual":"The invalid test removal belongs with the feature while routing is independent.",
-				"evidence":"The reviewed batches have different output destinations."}]
-				""".formatted(feature, routing, routing, routing));
-			editor.recordSourceReviews(manifest, sourceReviews);
-			Path plan = replay.resolve("output-plan.json");
-			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":%s},
-				{"outputId":"output-2","disposition":"retained","batches":%s}]
-				""".formatted(Files.readString(output1), Files.readString(output2)));
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, List.of());
+			String original = Files.readString(manifestFile);
+			validateSourcePlacements(facts);
 
 			try
 			{
-				editor.sealOutputPlan(manifest, plan);
-				throw new AssertionError("Expected a plan without an origin review to be rejected");
+				sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 			}
-			catch (IOException e)
+			finally
 			{
-				requireThat(e.getMessage(), "missingReviewMessage").contains("requires origin reviews");
+				requireThat(Files.readString(manifestFile), "storedManifest").isEqualTo(original);
 			}
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			editor.writeOriginCandidates(manifest, output);
-			JsonNode candidate = scope.json().readTree(output.toString(StandardCharsets.UTF_8)).get(0);
-			Path originReviews = replay.resolve("origin-reviews.json");
-			Files.writeString(originReviews, """
-				[{"inventoryId":"%s","affectedUnit":"structural-test.txt","owningResponsibility":"feature",
-				"predecessorRelationship":"removes-invalid-predecessor","destination":"output-1",
-				"rejectedDestinations":[],"evidence":
-				"The feature output removes the test whose claim exceeds its exercised boundary."}]
-				""".formatted(candidate.path("inventoryId").stringValue()));
-			editor.recordOriginReviews(manifest, originReviews);
-			editor.sealOutputPlan(manifest, plan);
-			editor.recordPlannedOutput(manifest, "output-1");
-			editor.recordPlannedOutput(manifest, "output-2");
-			recordReviewEvidence(manifest);
-
-			editor.replay(manifest);
-
-			requireThat(Files.exists(repository.resolve("structural-test.txt")), "structuralTest").isFalse();
-			requireThat(Files.readString(repository.resolve("feature.txt")).strip(), "feature").isEqualTo(
-				"feature implementation");
-			requireThat(Files.readString(repository.resolve("runtime-routing.txt")).strip(), "routing").isEqualTo(
-				"generated launcher runs routing behavior");
 		}
+	}
+
+	/**
+	 * Verifies invalid-test removal seals with its feature while an independent routing batch stays in another output.
+	 *
+	 * @throws IOException if the manifest or origin evidence cannot be written
+	 */
+	@Test
+	public void sealsRemovalAndIndependentRouting() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			 ToolScope scope = new ToolScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
+			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+
+			validateSourcePlacements(facts);
+			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+
+			OutputPlan stored = readManifest(scope.json(), manifestFile).outputPlan();
+			requireThat(stored, "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(stored.outputs().getFirst().batches().stream().map(PlannedBatch::id).toList(), "featureBatches").
+				isEqualTo(List.of("feature", "removal"));
+			requireThat(stored.outputs().getLast().batches().stream().map(PlannedBatch::id).toList(), "routingBatches").
+				isEqualTo(List.of("routing"));
+		}
+	}
+
+	/**
+	 * Runs the production source-placement policies against captured projected batches.
+	 *
+	 * @param facts the captured manifest and projected output decisions
+	 * @throws IOException if a completed source review contradicts its projected destinations
+	 */
+	private static void validateSourcePlacements(OriginPlanFixtures.Facts facts) throws IOException
+	{
+		SourceReviewValidation validation = new SourceReviewValidation();
+		validation.validateInput(facts.manifest(), facts.manifest().sourceReviews(), true);
+		Map<String, Set<String>> destinations = facts.plan().batches().stream().collect(Collectors.groupingBy(
+			Batch::source, Collectors.mapping(Batch::destination, Collectors.toSet())));
+		OutputPlanValidation.validateSourceDestinations(facts.manifest(), facts.plan().plan().outputs(), destinations);
+		BatchManifest projected = facts.manifest().withBatches(facts.plan().batches()).withOutputWitnesses(
+			facts.plan().witnesses()).withDiscardedOutputs(facts.plan().discardedOutputs());
+		validation.validateRecordedReviews(projected, projected.sources().stream().map(SourceSnapshot::hash).
+			collect(Collectors.toSet()));
+	}
+
+	/**
+	 * Writes the original unsealed manifest and its origin decisions.
+	 *
+	 * @param json the JSON mapper
+	 * @param directory the owned manifest directory
+	 * @param facts the captured manifest
+	 * @param origins the origin decisions to record
+	 * @return the manifest file
+	 * @throws IOException if either evidence artifact cannot be written
+	 */
+	private static Path writeInputs(JsonMapper json, Path directory, OriginPlanFixtures.Facts facts,
+		List<OriginReview> origins) throws IOException
+	{
+		Path file = directory.resolve("manifest.json");
+		json.writeValue(file.toFile(), facts.manifest());
+		new ReviewEvidence(json).writeOriginReviews(file, origins);
+		return file;
+	}
+
+	/**
+	 * Creates the production publication boundary using captured origin facts.
+	 *
+	 * @param json the JSON mapper
+	 * @param directory the owned manifest directory
+	 * @param facts captured tree-path states
+	 * @return the publication boundary
+	 */
+	private static OutputPlanSealing sealing(JsonMapper json, Path directory, OriginPlanFixtures.Facts facts)
+	{
+		ManifestStore<BatchManifest> manifests = new ManifestStore<>(directory, json, BatchManifest.class);
+		Git git = new Git(directory);
+		History history = new History(directory, git);
+		PatchArtifacts patches = new PatchArtifacts();
+		OutputPlanValidation outputPlan = new OutputPlanValidation(history, patches,
+			new PatchApplication(git, manifests, patches));
+		return new OutputPlanSealing(json, manifests, new SourceReviewValidation(), new OriginCandidates(),
+			new OriginReviewValidation(facts::read), outputPlan, new ReviewEvidence(json));
+	}
+
+	/**
+	 * Reads the plan publication's stored manifest.
+	 *
+	 * @param json the JSON mapper
+	 * @param file the published manifest
+	 * @return the stored manifest
+	 * @throws IOException if the manifest cannot be read
+	 */
+	private static BatchManifest readManifest(JsonMapper json, Path file) throws IOException
+	{
+		return json.readValue(file.toFile(), BatchManifest.class);
 	}
 }

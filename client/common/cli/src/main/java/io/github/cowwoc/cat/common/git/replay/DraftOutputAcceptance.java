@@ -66,16 +66,26 @@ final class DraftOutputAcceptance
 		Map<String, String> treesByOutput = validated.witnesses().stream().collect(Collectors.toMap(
 			OutputWitness::outputId, OutputWitness::afterTree));
 		for (SemanticCandidate candidate : candidates)
+			outputGates.runDraft(manifestFile, "draft-per-output-acceptance", target(candidate, treesByOutput));
+	}
+
+	/**
+	 * Resolves one declared behavior check to its proposed retained tree.
+	 *
+	 * @param candidate the reviewer-declared behavior and command
+	 * @param trees the proposed retained trees indexed by output
+	 * @return the command and its proposed result tree
+	 * @throws IOException if the behavior has no proposed retained tree
+	 */
+	static OutputGates.Target target(SemanticCandidate candidate, Map<String, String> trees) throws IOException
+	{
+		String tree = trees.get(candidate.output());
+		if (tree == null)
 		{
-			String tree = treesByOutput.get(candidate.output());
-			if (tree == null)
-			{
-				throw new IOException("Topic-replay draft acceptance cannot find a retained tree for " +
-					candidate.output());
-			}
-			outputGates.runDraft(manifestFile, "draft-per-output-acceptance",
-				new OutputGates.Target(candidate.output(), tree, candidate.acceptanceCommand()));
+			throw new IOException("Topic-replay draft acceptance cannot find a retained tree for " +
+				candidate.output());
 		}
+		return new OutputGates.Target(candidate.output(), tree, candidate.acceptanceCommand());
 	}
 
 	/**

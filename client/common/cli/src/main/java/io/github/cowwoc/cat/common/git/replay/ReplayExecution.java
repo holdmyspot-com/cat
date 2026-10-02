@@ -76,12 +76,8 @@ final class ReplayExecution
 			String rewrittenTip = null;
 			if (!manifest.base().equals(History.ROOT_BASE))
 				rewrittenTip = manifest.base();
-			for (Output output : manifest.outputs())
-			{
-				if (manifest.batches().stream().noneMatch(batch -> batch.destination().equals(output.id())))
-					continue;
+			for (Output output : retainedOutputs(manifest))
 				rewrittenTip = applyOutput(manifestFile, manifest, index, output, rewrittenTip);
-			}
 			if (!git.lines(index, "write-tree").getFirst().equals(manifest.tipTree()))
 				throw new IOException("Topic replay did not produce the manifest's required final tree");
 			return rewrittenTip;
@@ -90,6 +86,18 @@ final class ReplayExecution
 		{
 			Files.deleteIfExists(index);
 		}
+	}
+
+	/**
+	 * Selects the outputs whose recorded batches create replacement commits.
+	 *
+	 * @param manifest the sealed replay decisions
+	 * @return retained outputs in declared chronological order
+	 */
+	static List<Output> retainedOutputs(BatchManifest manifest)
+	{
+		return manifest.outputs().stream().filter(output -> manifest.batches().stream().anyMatch(batch ->
+			batch.destination().equals(output.id()))).toList();
 	}
 
 	/**
@@ -113,24 +121,41 @@ final class ReplayExecution
 			throw new IOException("Topic-replay output " + output.id() + " requires tree " + witness.beforeTree() +
 				" but the preceding output produced " + beforeTree);
 		}
-		for (Batch batch : manifest.batches())
-		{
-			if (batch.destination().equals(output.id()))
-				applyBatch(manifestFile, index, batch);
-		}
+		for (Batch batch : outputBatches(manifest, output.id()))
+			applyBatch(manifestFile, index, batch);
 		String outputTree = git.lines(index, "write-tree").getFirst();
 		if (!outputTree.equals(witness.afterTree()))
 		{
 			throw new IOException("Topic-replay output " + output.id() + " produced tree " + outputTree +
 				" instead of " + witness.afterTree());
 		}
-		String authorSource = output.source();
-		if (authorSource == null)
-		{
-			authorSource = manifest.batches().stream().filter(batch -> batch.destination().equals(output.id())).findFirst().
-				orElseThrow().source();
-		}
-		return commitOutput(output, authorSource, outputTree, parent);
+		return commitOutput(output, authorSource(manifest, output), outputTree, parent);
+	}
+
+	/**
+	 * Selects one retained output's batches in their recorded application order.
+	 *
+	 * @param manifest the recorded replay batches
+	 * @param outputId the destination whose batches are selected
+	 * @return batches assigned to that output
+	 */
+	static List<Batch> outputBatches(BatchManifest manifest, String outputId)
+	{
+		return manifest.batches().stream().filter(batch -> batch.destination().equals(outputId)).toList();
+	}
+
+	/**
+	 * Selects the source whose author identity a retained output preserves.
+	 *
+	 * @param manifest the recorded source placements
+	 * @param output the output being committed
+	 * @return its declared source, or the first contributing batch's source for a reviewer-declared topic
+	 */
+	static String authorSource(BatchManifest manifest, Output output)
+	{
+		if (output.source() != null)
+			return output.source();
+		return outputBatches(manifest, output.id()).stream().findFirst().orElseThrow().source();
 	}
 
 	/**
@@ -173,11 +198,24 @@ final class ReplayExecution
 			"GIT_AUTHOR_NAME", git.lines("show", "-s", "--format=%an", authorSource).getFirst(),
 			"GIT_AUTHOR_EMAIL", git.lines("show", "-s", "--format=%ae", authorSource).getFirst(),
 			"GIT_AUTHOR_DATE", git.lines("show", "-s", "--format=%aI", authorSource).getFirst());
+		return git.lines(environment, commitArguments(output, tree, parent).toArray(String[]::new)).getFirst();
+	}
+
+	/**
+	 * Constructs the replacement commit command with its reviewed subject and preceding commit.
+	 *
+	 * @param output the reviewed output declaration
+	 * @param tree the verified output tree
+	 * @param parent the preceding commit, or {@code null} for an orphan-root output
+	 * @return the ordered Git command arguments
+	 */
+	static List<String> commitArguments(Output output, String tree, String parent)
+	{
 		List<String> arguments = new ArrayList<>(List.of("commit-tree", tree));
 		if (parent != null)
 			arguments.addAll(List.of("-p", parent));
 		arguments.addAll(List.of("-m", output.subject()));
-		return git.lines(environment, arguments.toArray(String[]::new)).getFirst();
+		return arguments;
 	}
 
 	/**
