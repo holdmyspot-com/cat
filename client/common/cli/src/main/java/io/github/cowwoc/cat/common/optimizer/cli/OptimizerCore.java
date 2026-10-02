@@ -238,7 +238,13 @@ public final class OptimizerCore implements Core
 		CampaignHeader header = new CampaignHeader(id, root, target, scope.harness(), Lifecycle.ACTIVE);
 		Campaign campaign = Campaign.start(header, scope.ceiling(), incumbent.identity(), environment(inventory));
 		store.replaceSnapshot(campaign);
-		return derive(root, campaign, fork, null, null);
+		CommandResult result = derive(root, campaign, fork, null, null);
+		if (!fork.excludeAdded())
+			return result;
+		String message = "Added " + ForkView.EXCLUDE_ENTRY + " to the repository's local info/exclude.";
+		if (result.message() != null)
+			message += "\n" + result.message();
+		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);
 	}
 
 	@Override

@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
+import io.github.cowwoc.cat.common.optimizer.workspace.Fork;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
@@ -36,6 +37,7 @@ final class InMemoryForks implements Forks
 	private final Map<Path, FileInventory> inventories = new HashMap<>();
 	private final List<Set<Path>> added = new ArrayList<>();
 	private boolean dirty;
+	private boolean excludeAdded;
 
 	/**
 	 * Creates the forks of a project.
@@ -58,6 +60,15 @@ final class InMemoryForks implements Forks
 	}
 
 	/**
+	 * Models the creation result that {@link Fork} records when
+	 * Git does not already ignore CAT's work directory, as verified by its workspace tests.
+	 */
+	void addExcludeOnCreate()
+	{
+		excludeAdded = true;
+	}
+
+	/**
 	 * Returns the participants that {@code addParticipants} received, one set per call.
 	 *
 	 * @return the sets, in call order
@@ -74,7 +85,7 @@ final class InMemoryForks implements Forks
 			throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes.");
 		Set<Path> paths = new LinkedHashSet<>(tracked);
 		paths.addAll(participants);
-		return new InMemoryFork(campaign, scan(Map.of(), paths));
+		return new InMemoryFork(campaign, scan(Map.of(), paths), excludeAdded);
 	}
 
 	@Override
@@ -83,7 +94,7 @@ final class InMemoryForks implements Forks
 		FileInventory inventory = inventories.get(campaign);
 		if (inventory == null)
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no fork.");
-		return new InMemoryFork(campaign, inventory);
+		return new InMemoryFork(campaign, inventory, false);
 	}
 
 	@Override
@@ -127,19 +138,28 @@ final class InMemoryForks implements Forks
 		private final Path campaign;
 		private final FileInventory inventory;
 		private final FakeWorkspacePort workspace;
+		private final boolean excludeAdded;
 
 		/**
 		 * Creates a fork and registers its inventory.
 		 *
 		 * @param campaign the campaign storage directory
 		 * @param inventory the recorded files
+		 * @param excludeAdded whether creation added the local exclude
 		 */
-		InMemoryFork(Path campaign, FileInventory inventory)
+		InMemoryFork(Path campaign, FileInventory inventory, boolean excludeAdded)
 		{
 			this.campaign = campaign;
+			this.excludeAdded = excludeAdded;
 			this.inventory = inventory;
 			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
 			inventories.put(campaign, inventory);
+		}
+
+		@Override
+		public boolean excludeAdded()
+		{
+			return excludeAdded;
 		}
 
 		@Override
@@ -160,7 +180,7 @@ final class InMemoryForks implements Forks
 			added.add(Set.copyOf(participants));
 			Set<Path> missing = new LinkedHashSet<>(participants);
 			missing.removeIf(path -> inventory.entries().containsKey(path));
-			return new InMemoryFork(campaign, scan(inventory.entries(), missing));
+			return new InMemoryFork(campaign, scan(inventory.entries(), missing), excludeAdded);
 		}
 	}
 }

@@ -16,6 +16,12 @@ import java.util.Set;
 public interface ForkView
 {
 	/**
+	 * The line that creating a fork appends to the repository's local exclude when CAT's work directory is not
+	 * already ignored.
+	 */
+	String EXCLUDE_ENTRY = "/.cat/work/";
+
+	/**
 	 * Returns the recorded files.
 	 *
 	 * @return the fork's inventory
@@ -28,6 +34,14 @@ public interface ForkView
 	 * @return the workspace
 	 */
 	WorkspacePort workspace();
+
+	/**
+	 * Indicates whether creating this fork appended CAT's work directory to the repository's local exclude.
+	 * Opening an existing fork returns {@code false}, so the notice belongs only to the command that created it.
+	 *
+	 * @return {@code true} if creation appended the line
+	 */
+	boolean excludeAdded();
 
 	/**
 	 * Records further participants in the fork. A participant that the fork already holds is left alone.

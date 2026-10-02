@@ -29,6 +29,8 @@ import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
@@ -506,6 +508,82 @@ public final class OptimizerCoreTest
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
 			requireThat(repository.directory(id).resolve("proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+		}
+	}
+
+	/**
+	 * Executes a command and reads the JSON that the user sees.
+	 *
+	 * @param repository the test project and core
+	 * @param arguments the command arguments
+	 * @return the command output
+	 */
+	private static ObjectNode output(Repository repository, List<String> arguments)
+	{
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		{
+			requireThat(new Commands(repository.core(), JSON).execute(arguments, out), "exitCode").isEqualTo(0);
+		}
+		return (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * Verifies that the start command reports a local exclude addition supplied by the fork boundary, and that
+	 * confirmation and resumption do not repeat the notice. Real Git's creation decision is covered by fork tests.
+	 */
+	@Test
+	public void startReportsAddedExclude() throws Exception
+	{
+		// Requirement: R-W1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.forks().addExcludeOnCreate();
+			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
+			requireThat(started.get("message").asString(), "message").
+				contains("Added /.cat/work/").contains("info/exclude");
+			requireThat(started.get("proposal").isNull(), "missingProposal").isFalse();
+			String id = started.get("campaign").asString();
+			requireThat(output(repository, List.of("confirm", id)).get("message").isNull(), "confirmNotice").isTrue();
+			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").isNull(), "resumeNotice").
+				isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the start command emits no notice when the fork boundary reports that Git already ignores the
+	 * work directory. Real Git's ignore check is covered by fork tests.
+	 */
+	@Test
+	public void startDoesNotReportExistingExclude() throws Exception
+	{
+		// Requirement: R-W1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").isNull(), "notice").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that reporting an added exclude preserves the deriver's invalid-proposal diagnostic.
+	 */
+	@Test
+	public void startReportsExcludeAndDeriverFailure() throws Exception
+	{
+		// Requirement: R-W1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> "invalid proposal");
+			repository.forks().addExcludeOnCreate();
+			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
+			requireThat(started.get("message").asString(), "message").
+				contains("Added /.cat/work/").contains("info/exclude").contains("The deriver's proposal is invalid");
 		}
 	}
 

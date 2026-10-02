@@ -30,7 +30,6 @@ import java.util.Set;
  */
 public final class Fork implements ForkView
 {
-	private static final String EXCLUDE_ENTRY = "/.cat/work/";
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index", ".cat/work/probe"};
 	private static final String CLEAN_PATHSPEC_EXCLUDING_WORK = ":(exclude).cat/work";
 	private final ForkTree tree;
@@ -301,12 +300,7 @@ public final class Fork implements ForkView
 		return workspace;
 	}
 
-	/**
-	 * Indicates whether creating this fork appended CAT's work directory to the local exclude, which CAT then tells
-	 * the user.
-	 *
-	 * @return {@code true} if this fork appended the line
-	 */
+	@Override
 	public boolean excludeAdded()
 	{
 		return excludeAdded;
