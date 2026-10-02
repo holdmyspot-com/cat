@@ -47,8 +47,8 @@ The shared narrative is tested through one parameterized scenario rather than a 
   conclusion, or intended fix; assess its decisions against all six assertions.
 - Source quality and distribution assembly: complete project Maven `verify`, with a retained terminal exit receipt.
 - Installed organic routing and statistical certification: not established by the source application check or a
-  successful build. The suite declares those measurements for subsequent native execution; no certified compliance
-  rate is claimed here.
+  successful build. The suite declares those measurements for a later run in an installed harness; no certified
+  compliance rate is claimed here.
 
 Invocation-local evidence belongs to the implementing agent under the `.cat/work/temp/` directory that
 `workflow-temp create` returned. Its terminal record must contain the independent executor's

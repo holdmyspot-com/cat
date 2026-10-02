@@ -16,5 +16,5 @@ shell command; never expand `${CAT_PLUGIN_ROOT}` from the environment.
 
 `CAT_TEMP` means the absolute `.cat/work/temp` directory below the current CAT project root. In the same shell
 command that needs it, derive it with `<plugin directory>/client/bin/workflow-temp root`, where `<plugin directory>`
-is the directory above. The command finds the project root, creates the directory if it is missing, and prints its
-absolute path on one line with no prefix; do not reconstruct that path from the current directory.
+is CAT's installed plugin directory. The command finds the project root, creates the directory if it is missing, and
+prints its absolute path on one line with no prefix; do not reconstruct that path from the current directory.

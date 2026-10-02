@@ -27,7 +27,7 @@ Classify every decision that the design and plan leave open before acting on it:
   requirement the documents already state without later rework. Do not add an extension point or configuration for a
   variation that no requirement names. Report the choice and its reason with your result.
 - **External:** the choice changes what the user sees, a statistical claim or its error budget, a documented interface,
-  persisted data, or delivery to the user's base worktree. Stop the work that depends on it and report the alternatives
+  persisted data, or delivery to the user's worktree. Stop the work that depends on it and report the alternatives
   you found.
 
 Judge cost over the lifetime of the requirements that already exist, including their maintenance, not over speculative

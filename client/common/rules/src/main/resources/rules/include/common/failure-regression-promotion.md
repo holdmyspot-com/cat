@@ -39,7 +39,7 @@ governing rule. Its regression belongs with progress-claim routing: without an e
 the response reports uncertainty, while a complete inventory produces only the supported calculation. Do not create a
 second progress-estimation rule.
 
-Accept a promotion only after rerunning the reported regression, its analogous and dissimilar cases, and prompt or
+Accept a correction only after rerunning the reported regression, its analogous and dissimilar cases, and prompt or
 rule validation for every changed source directory. Retain one test matrix organized by reader decision and trigger;
 periodically merge duplicate rows that prove the same branch without losing an independently observable boundary.
 

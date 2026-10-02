@@ -4,6 +4,6 @@ allowed-tools: [Bash]
 ---
 
 The launcher is `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer`. Run each `run` command with a Bash timeout of 600000
-milliseconds, which outlasts the time slice of one run.
+milliseconds; each `run` returns its status before that timeout.
 
 <!-- cat:include ../shared-lazy-body.md -->

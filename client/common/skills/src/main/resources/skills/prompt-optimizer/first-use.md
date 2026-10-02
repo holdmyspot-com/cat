@@ -9,7 +9,7 @@
 
 ## Workflow
 
-Run the launcher that the harness wrapper names. Each command prints one JSON object. Exit code 0 means its `status`
+Run the launcher that this skill's `SKILL.md` names. Each command prints one JSON object. Exit code 0 means its `status`
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
 and stop.
 
@@ -26,7 +26,8 @@ and stop.
    `label`, then ask the user to choose. Never choose on the user's behalf.
    - Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
      `attempt`. For `more-evidence`, ask the user for a review point above the entry's `reviewPointAbove` and add
-     `--review-point <N>`.
+     `--review-point <N>`. A review point is the trial count at which the campaign next pauses the entry's category
+     for review.
    - For an entry of `authorityWarnings`, show its `requirement`, `path`, `target` and `limit`. Pass `authorize-target`
      as `choose <campaign> authorize-target --target <target>`, `use-authorized-source` and `stop` as
      `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>` with the user's words.

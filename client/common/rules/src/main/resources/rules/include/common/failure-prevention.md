@@ -78,8 +78,8 @@ the active harness's `workflow-temp create mutation-transaction` operation. Unde
 launcher creates a unique `.cat/work/temp/mutation-transaction-<unique>/` directory and prints its absolute path on one
 line with no prefix; retain the snapshot below its
 `snapshot/` child and the manifest and terminal receipt in that transaction directory. Use the printed path
-rather than synthesizing its unique suffix or substituting `/tmp` or a repository path. It then runs the tool,
-inventories actual changed paths and post-image hashes, and accepts the result
+rather than synthesizing its unique suffix or substituting `/tmp` or a repository path. The operation then runs
+the tool, inventories actual changed paths and post-image hashes, and accepts the result
 only when all changes are inside the declared allowlist and the required parse, compile, test, and scoped static checks
 pass.
 
