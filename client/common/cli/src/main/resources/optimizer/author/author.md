@@ -78,8 +78,14 @@ The formal outcomes of the certification attempts that have ended, as JSON. Each
 1. Classify every supplied failure before editing: `routing` when an existing instruction was not loaded or applied;
    `guidance` when an instruction is missing, ambiguous or contradictory; `not guidance` for a model limitation,
    a test or contract defect, or infrastructure failure. Make no prompt edit for a failure classified `not guidance`.
-2. Make the smallest correction supported by the evidence in the file that owns the decision. Remove a contradiction
-   or ambiguity before adding emphasis. Capitals, "important" markers and repeated instructions are not corrections.
+   An interim message, such as a progress note before a tool call, is part of the turn's reply. Whether a prompt can
+   stop the agent from sending one is not known, but the prompt can shape its wording. Classify a failure in an
+   interim message as `routing` or `guidance`, and correct the prompt so that every message of the reply complies.
+2. Make the smallest correction supported by the evidence in the file that owns the decision. Prefer editing or
+   creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session. Edit one of them only
+   when the correction cannot otherwise reach the sessions that need it, such as adding the reference that loads a new
+   file. Remove a contradiction or ambiguity before adding emphasis. Capitals, "important" markers and repeated
+   instructions are not corrections.
 3. For each change, name an analogous case that needs the same path and a dissimilar case that must not receive the
    new guidance. Word the correction for the invariant shared by the failing and analogous cases.
 4. Emit the manifest: every supplied failure's classification, and every changed hunk's motivating failure ids,

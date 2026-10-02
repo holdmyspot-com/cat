@@ -358,9 +358,15 @@ deterministic-check results, the diagnoses and the contract. The author works as
    - *guidance*: an instruction is missing, ambiguous or contradicts another, so the author amends it;
    - *not guidance*: a model limitation, a test or contract defect, or an infrastructure fault, so the author makes no
      prompt edit for it.
-2. **Make the smallest correction** that the evidence supports, in the prompt file that owns the decision. Removing a
-   contradiction or an ambiguity comes before adding emphasis. Capitals, "important" markers and repeated instructions
-   are not corrections.
+
+   An interim message belongs to the reply (D29). Whether a prompt can stop a harness from posting one is not yet
+   known, but the prompt can shape its wording, so a failure in an interim message is *routing* or *guidance*, and the
+   author corrects the prompt so that every message of the reply complies.
+2. **Make the smallest correction** that the evidence supports, in the prompt file that owns the decision. The author
+   prefers editing or creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session, and
+   edits one of them only when the correction cannot otherwise reach the sessions that need it, such as adding the
+   reference that loads a new file (D30). Removing a contradiction or an ambiguity comes before adding emphasis.
+   Capitals, "important" markers and repeated instructions are not corrections.
 3. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
    dissimilar case that must not receive the new guidance, and word the change for the shared invariant.
 4. **Cite evidence.** The attempt carries a manifest:
@@ -1312,7 +1318,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D26 | Reduce each promoted attempt by delta debugging before it becomes the working candidate (user ruling, 2026-10-01). | Keeping every added hunk lets prompts grow with unneeded text. Removing hunks after representative sampling would discard counts. | Extra targeted runs per promotion, growing at most with the square of the hunk count. A needed hunk can be removed by chance; representative trials then catch the weaker candidate. |
 | D27 | Develop each candidate in its active cells first and widen to every cell once they are ready (user ruling, 2026-10-01). | Sampling every cell during development spends most trials on cells whose counts the next edit resets. | Readiness and certification still cover every cell, so the claim is unchanged; the risk is finding a failure in a rarely sampled cell late, which widening catches before commit. |
 | D28 | Make 3 concurrent author attempts while the working candidate is weak, and promote the best (user ruling, 2026-10-01). | One attempt at a time is cheaper per round, but early rounds then spend representative trials discovering that a weak edit is weak, and a failed promotion costs a whole round. Three attempts in every round roughly break even: late rounds rarely gain from a second attempt. | Two extra author sessions and their promotion runs per weak round; all are targeted and consume no allowance. The benefit is estimated, not measured; the recorded per-attempt promotion results measure it. |
-| D29 | A turn's reply is every assistant message of the turn, including interim messages, not only its final response (user ruling, 2026-10-02). | The user sees the interim messages. Judging only the final response would certify a prompt whose agent says prohibited things before it answers, and the checks and the judge would disagree about what a reply is (E1, H31). | Narration that a harness adds by itself, such as Codex's note before a tool call, counts against requirements on reply content. A prompt that cannot suppress it, or avoid the tool call, cannot certify those requirements. |
+| D29 | A turn's reply is every assistant message of the turn, including interim messages, not only its final response (user ruling, 2026-10-02). | The user sees the interim messages. Judging only the final response would certify a prompt whose agent says prohibited things before it answers, and the checks and the judge would disagree about what a reply is (E1, H31). | Narration that a harness adds by itself, such as Codex's note before a tool call, counts against requirements on reply content. Whether a prompt can suppress it is not yet known, but a prompt can shape its wording, so a failure there is a prompt defect (user ruling, 2026-10-02). |
+| D30 | Authors prefer editing or creating prompt files other than `AGENTS.md` and `CLAUDE.md`, and edit those only when a correction cannot otherwise reach the sessions that need it (user ruling, 2026-10-02). | Both files load into every session, so guidance added there costs context in every task and applies to uses it was not written for. A file that loads only where it applies keeps the always-loaded files small. | A correction in a separate file may need a reference from `AGENTS.md` or `CLAUDE.md` to load. Reading a referenced file can cost a tool call, and with it an interim message whose wording the prompt must keep compliant (D29). |
 
 ## 14. Acceptance evidence
 
