@@ -120,6 +120,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-21 | `optimize-high` | A proposal check, a rule edit under CAT's prompt rules, and a migration whose completeness an audit must prove. |
 | WI-22 | `optimize-high` | A result-shape change through both adapters, the checks, the judge and the author evidence, with recorded-event tests per harness. |
 | WI-23 | `optimize-high` | Scenario discovery across module test resources, a rule edit, and moving 64 scenarios with their fixtures. |
+| WI-24 | `optimize-high` | A new deriver finding through the schema, parser, proposal rendering and the confirm command. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -219,6 +220,7 @@ requirement names.
 | WI-23 | Done 2026-10-02 (full build 1611 tests, 0 failures; bats 32/32). User ruling: scenarios for guidance packaged as a module resource, such as CAT's plugin rules, skills and optimizer prompts, live in the module's `src/test/resources/<path>/<case>/scenario.md`; `.cat/tests/` holds project and user guidance scenarios. The 61 rule scenarios are back in `client/common/rules/src/test/resources/` with their fixtures at their earlier paths and fixed links; the `first-use.md` scenarios are in `client/common/skills/src/test/resources/prompt-optimizer/first-use/`. `RegressionScenarios` finds module scenarios through each module's test resources, and a `scenario.md` belongs only to the guidance its parent's parent names (`RegressionScenariosTest.readsModuleScenario` and `nestedGuidanceKeepsItsScenarios` failed first; the latter attributed a nested scenario to the enclosing guidance too). `everyScenarioNamesGuidance` and `moduleGuidanceScenariosStayInModule` audit the repository. Three git-replay tests took 1.5 to 1.7 s in this run (`FinalizationTest.publishAndVerifyGitReceipt`, `OutputGatesTest.draftOutputWorktreeLifecycle`, `retainedOutputWorktreeLifecycle`) and under 1 s in the run before it: open. |
 | Proposal cell listing (E1 finding) | Done 2026-10-02 (full build 1612 tests, 0 failures, none at or over 1 s; bats 32/32). On the final build, Codex E1's first proposal was 84 KB: six unbound categories under the 44-profile inventory made 264 cells, each listed under trial profiles and again under the minimum session count, and the agent replied with one sentence instead of the proposal. The proposal now lists categories that share a profile set once, with their cell count and naming, and cells that share minimum trials once, naming every cell of a category together (`ProposalTest.groupsCellsThatShareProfilesAndCounts` failed first). The revised 16 KB proposal was shown verbatim. |
 | Convention renames (convention-pass follow-up) | Done 2026-10-02 (Codex medium; full build 1612 tests, 0 failures, none at or over 1 s; bats 32/32). Campaign types no longer repeat their package: `Header`, `Registry`, `Transitions` and the test `Builder`; per-cell types and members say cell where they hold a cell (`CellCounts`, `CellDecision`). The two `ManualClock` doubles are one, in `common.fakes`. Codex had kept the old names in `toString` overrides with tests pinning them; both were removed, so diagnostics name the current record and its fields. |
+| WI-24 | In progress (user ruling 2026-10-02, `design.md` D31). E1 showed a proposal whose certifiable scope said nothing made certification unavailable while its limitations said the motto conflict did. |
 | Skill launcher paths (WI-15 finding, R-I5) | Done (`a1d70a4bd`; full build 1568 tests, 0 failures, none at or over 1 s; bats 32/32). Codex still ran `${CAT_PLUGIN_ROOT}/client/bin/prompt-optimizer` literally in 2 of 4 runs although the injected skill-environment rule named the plugin directory. The user chose skill-relative paths: every skill names `client/bin/<launcher>` in the plugin directory two levels above the skill's directory, and `BundledSkillLauncherTest` fails if a shipped skill writes the variable (it failed first on all 8 skills). After reinstalling, 6 of 6 Codex runs called the launcher by its absolute path first. |
 | Real Git in tests (user ruling 2026-10-02: assume third-party tools work as documented) | Done (`18891bd45`, `f8f57259c`; full builds 1463 and 1461 tests, 0 failures; bats 32/32). The runner tests no longer use Git: `HarnessProjectRepository` and `CodexCuratedPluginCache` expose the commands and environment they give Git, and their tests assert those. `JlinkImageBuilderTest` asserts the launcher text instead of starting launchers and Maven wrappers; `GeneratorTest` checks `Generator.select` at each probability boundary instead of 40,000 draws. git-replay (`04ec22dfd`, one commit per the user's ruling; full build 1567 tests, 0 failures, none at or over 1 s; bats 32/32): its decisions are extracted and tested over captured facts, Git processes fall from 1,845 to 264, and nine integration tests keep real Git, one per Git operation, each under 1 s. §8 lists them and `GitTest`. |
 | Fake contracts (doubles audit follow-up) | Done (`06515f1c8`, `7e8a2795d`; full builds 1514 and 1510 tests; bats 32/32). Shared contracts run `FakeWorkspacePort` against `Workspace` and `FakeHostInterruptSignal` against both harnesses' interrupt signals; the fakes were corrected where checks failed. `FakeJudgeProtocol` is deleted: the driver tests use the real `JudgePrompt` and script only the judge session's JSON judgment. |
@@ -382,6 +384,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per category and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
 | R-C11 | Cells are the statistical unit: every §2 and §3 rule that names a category applies per cell, and `K` counts cells. | §2.1 | WI-16 | U: `SchedulerTest`, `ReadinessGateTest`, `CommitTest` (a two-profile category gives two cells with separate counts, gates and decisions) |
 | R-C12 | A turn's reply is every assistant message of the turn; deterministic checks of reply text, the judge's evidence and the author's failure records all use it. | §1.2, §6.4, D29 | WI-22 | U: per-harness adapter tests over recorded events, `DeterministicCheckTest`, `JudgeVerdictTest`, `DriverTest`; E: E1 per harness |
+| R-C13 | A proposal lists every conflict between requirements with its evidence, and `confirm` is refused while one is listed. | §6.1, D31 | WI-24 | U: `ProposalTest`, `OptimizerCoreTest` |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -822,6 +825,21 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
   rules module.
 
+### WI-24 — Conflicting requirements block confirmation (user ruling, 2026-10-02)
+
+- **Findings:** the deriver's findings gain a required `conflicts` list. Each entry names at least two contract
+  requirements that no reply can satisfy together and the evidence: the file and the text that show the conflict. The
+  deriver reports a conflict instead of settling which requirement prevails, and drops it from a revision once the
+  user's feedback resolves it (`design.md` §6.1, D31).
+- **Proposal:** a `Conflicts` section lists each conflict, or states that the deriver found none.
+- **Confirmation:** `confirm` is refused while the stored proposal lists a conflict, and the refusal names each conflict
+  and says that feedback must resolve it. Nothing is recorded on refusal.
+- **Closes:** R-C13.
+- **Tests:** the findings parser accepts a valid conflict and rejects one that names fewer than two requirements or an
+  unknown requirement; the proposal renders the section in both states; `confirm` is refused with a conflict and
+  succeeds after a revision without one.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-23 — Module scenario location (user ruling, 2026-10-02)
 
 - **Location:** a scenario for guidance packaged as a module resource, `<module>/src/main/resources/<top>/<path>.md`,
@@ -925,6 +943,7 @@ blocks only the part of a work item that it names.
 | WI-21 | WI-14, WI-10 |
 | WI-22 | WI-8, WI-17 |
 | WI-23 | WI-21 |
+| WI-24 | WI-22 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
