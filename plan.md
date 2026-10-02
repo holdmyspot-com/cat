@@ -34,14 +34,14 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Requirement tags:** Every test method that proves a requirement carries a comment `// Requirement: R-…` naming each
   requirement ID it proves. The final gate counts these tags.
 - **Test tiers:**
-  - **Unit:** runs in the default build under TestNG parallel methods. It includes file-system and real-Git tests that
-    use test-owned temporary directories.
-  - Java tests are unit tests. None starts a runner, a harness process or a model (user ruling, 2026-10-01: only
-    prompt tests use a model). Session adapters are tested against recorded native events and fakes.
+  - **Unit:** every Java test. It runs in the default build under TestNG parallel methods, and includes file-system and
+    real-Git tests that use test-owned temporary directories. `design.md` [§10](design.md#10-testability-contract) T3
+    governs it: no Java test starts a runner, a harness process or a model (user ruling, 2026-10-01).
   - **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
     systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
-    in each harness. Fixtures consumed by a runner live under the CAT work temp root, not the system temp directory.
-    Each run records a receipt: commands, versions, outcome, and paths to retained evidence.
+    in each harness. Fixtures consumed by a runner live under the directory that `workflow-temp root` prints
+    (`.cat/work/temp`), not the system temp directory. Each run records a receipt: commands, versions, outcome, and
+    paths to retained evidence.
 - **Build check:** `./mvnw verify` from `client/` is the unrestricted build. A work item is not done until it passes,
   along with the work item's focused tests.
 
@@ -117,8 +117,8 @@ A mismatch is fixed in the agent definition before any delegation.
 
 **When to delegate:**
 
-- Delegate a work item once every predecessor in [§6](#6-dependency-order) is integrated. Each work item is one
-  verification-closed unit, and its exit check is its acceptance evidence.
+- Delegate a work item once every predecessor in [§6](#6-dependency-order) is integrated. Each work item can be
+  verified on its own, and its exit check is its acceptance evidence.
 - Run independent work items concurrently, each in its own isolated worktree created from the same integrated snapshot
   (`isolation: "worktree"` in Claude Code). At the start these are WI-0's probe scripts, WI-1, WI-2, WI-5 and WI-6.
 - Run deterministic checks as scripts, not agents: requirement-tag traceability, the reference audit, and link and
@@ -149,9 +149,9 @@ reports it.
   The orchestrator decides when the documents' goals and decision records settle it, asks the user when they don't,
   and records a lasting choice in `design.md` §13.
 
-"Long-term" means the lifetime cost of the requirements that already exist, including their maintenance, not of
-speculative ones. An option whose cost buys protection against no failure that a requirement names is rejected as
-overkill.
+Judge an option's long-term cost over the lifetime of the requirements that already exist, including their
+maintenance, not over speculative ones. Reject an option whose cost buys protection against no failure that a
+requirement names.
 
 **Acceptance and escalation:**
 
@@ -239,9 +239,9 @@ evidence depended on changes.
 
 ## 3. Requirement inventory
 
-Each requirement points to the `design.md` section that defines it, its owning work item and its proof. A requirement
-is closed only when every listed proof passes at its tier. Tier abbreviations: U = unit, E = end-to-end. Proofs that
-named the retired native tier (N) now name the end-to-end scenario that covers them.
+Each requirement points to the `design.md` section that defines it, its owning work item and its proof. Section
+numbers in this inventory refer to `design.md`. A requirement is closed only when every listed proof passes at its
+tier. Tier abbreviations: U = unit, E = end-to-end.
 
 ### 3.1 Statistics
 
@@ -306,7 +306,7 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 | R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, author and deriver sessions per harness |
 | R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
-| R-E16 | The observed model comes from native events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
+| R-E16 | The observed model comes from harness events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
 | R-E17 | A trial session starts under its cell's profile and the deriver, judge and author sessions under the role profile (the `optimize-xhigh` binding); each runner passes the model and effort to its harness; the observed profile is recorded per cell and decides comparability. | §3.1, §5, §6.6 | WI-16 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (requested profile reaches the harness arguments), `MeasurementIdentityTest`; E: E1 per harness |
 
 ### 3.5 Workspace
@@ -369,8 +369,8 @@ named the retired native tier (N) now name the end-to-end scenario that covers t
 Run these before writing the code that depends on them. Use the existing runners and the probe method behind
 `design.md` [§11](design.md#11-harness-evidence): a script that starts a plain, a `setsid` and a `nohup` child and
 records heartbeats and signals, and that is driven through a real interactive host where ESC matters. Record each
-result in `design.md` §11 as a new H-row with its date and versions. If a gate fails, apply its fallback from §12 and
-update §3.7 or §3.8 as needed.
+result in `design.md` §11 as a new H-row with its date and versions. If a gate fails, apply its fallback from
+`design.md` §12 and update `design.md` §3.7 or §3.8 as needed.
 
 | Gate | Probe | Blocks |
 |---|---|---|
@@ -379,8 +379,8 @@ update §3.7 or §3.8 as needed.
 | P4, P5 | Read the runner event archives of one nested session per harness, searching for rate-limit utilization, reset times and usage. | WI-8 event parsing, WI-3 throttle inputs |
 | P6 | Inspect each harness's credential sources in the runner's isolated home, for both a subscription login and an API key. | WI-8 classification |
 | P7 | A nested trial delegates to a child, which delegates again, and two children use separate worktrees; the probe interrupts and restarts. | R-E14 |
-| P8 | Kill a driver-like parent during a nested session and check for live native processes. | WI-9 reconciliation |
-| P9 | Search the native events for prompt-source loading records in each harness. | WI-10 loading |
+| P8 | Kill a driver-like parent during a nested session and check for live harness processes. | WI-9 reconciliation |
+| P9 | Search the harness events for prompt-source loading records in each harness. | WI-10 loading |
 | P10 | A Codex host command runs past 10 minutes; record the timeout behaviour. | WI-13 slice default for Codex |
 | P11 | Run 20 judge sessions per harness on fixed evidence; record the rate of schema-valid output. | WI-10 judge profile |
 | P14 | Run the E1 deficient fixture (`optimizer/e2e/deficient`) through plain `codex exec` on one Codex model, `gpt-6.1-sol`, at efforts `low`, `medium`, `high` and `xhigh`, 20 trials each (80 trials, about 7M tokens, under 1% of a week). Score each reply against the fixture's motto requirement and its question. H0: the four efforts have the same compliance rate. Test it with the 2×4 Fisher–Freeman–Halton exact test, two-sided, α = 0.05, fixed before the run (not lowest against highest observed, which picks the comparison after seeing the data). With 20 trials per effort only differences of roughly 40 percentage points or more are reliably detectable. If H0 is rejected, effort stays in the tests. A non-rejection is not evidence that the rates are equal; supporting fewer efforts would need an equivalence test with a stated margin and far more trials. If every effort is at 0% or 100%, the result is inconclusive (floor or ceiling), not "the same": rerun on the pilot's fixed variant before concluding (user request, 2026-10-01). | The profile-set default of `design.md` §6.6 |
@@ -388,15 +388,17 @@ update §3.7 or §3.8 as needed.
 
 Exit check: every gate has a recorded result (pass, or the fallback applied) and `design.md` §11 and §12 are updated.
 
-Results (2026-10-01; facts in `design.md` §11 H11–H23, results in §12):
+Results (2026-10-01; facts in `design.md` §11 H11–H23, results in `design.md` §12):
 
 - P1, P2, P3, P4, P5, P10: passed. P10 reached no limit in 662 seconds, so the over-limit behaviour is unobserved.
 - P6: passed on the documented credential fields; only Claude subscription and Codex API-key logins were available.
 - P7: partly passed. Completion and parallelism are observable once the runner fixes in WI-8 land; no Claude grandchild
-  was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in §3.2.
+  was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in
+  `design.md` §3.2.
 - P8: passed for Claude; failed for Codex. Fallback applied: reconciliation terminates recorded processes (WI-9).
 - P9: failed for instruction files. Fallback applied: documented derivation (WI-10).
 - P11: passed with the extraction rule; Claude fenced every judge response, Codex returned bare JSON.
+
 Cleanup: the probes create their directories with `workflow-temp create` and delete them once their facts are
 recorded.
 
@@ -424,10 +426,10 @@ The riskiest pure code, built first.
   use.
 - **Closes:** R-S1–R-S8, R-T1 and R-T2. `TestabilityAuditTest` is created here and scans every optimizer package
   as later work items add them; every work item's exit runs it.
-- **Tests:** `CapCalibrationTest` checks the §2.4 table and is the only test
-  that runs calibration. Every other test injects small handwritten `DecisionBoundaries`, or uses the `i = 1` table
-  through a test fixture that builds it lazily once per JVM in an immutable holder. That holder is safe under parallel
-  methods: it is computed once and never mutated.
+- **Tests:** `CapCalibrationTest` checks the `design.md` §2.4 table and is the only test that runs calibration. Every
+  other test injects small handwritten `DecisionBoundaries`, or uses the `i = 1` table through a test fixture that
+  builds it lazily once per JVM in an immutable holder. That holder is safe under parallel methods: it is computed once
+  and never mutated.
 - **Exit:** the focused tests pass. Each test's Javadoc tabulates the `design.md` §2.4, §2.5 and §13 numbers that it
   checks. An independent script computed them during design, with exact rational decision
   boundaries and a double-precision probability sum. A disagreement is a defect in one of the two: investigate it, and
@@ -457,7 +459,7 @@ The riskiest pure code, built first.
     outcome, promotion, commit, decision, user choice (including keep improvement),
     revision, cancellation, measurement change and unowned change;
   - `ReadinessGate`, `EditOrContinue`, `Promotion`, `Plateau`, `ReviewCheckpoint`, `Baseline`, `DecisionTable`
-    (the §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
+    (the `design.md` §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
   - `Scheduler`, a pure admission plan: given the state, the clock reading, the throttle state and free capacity, it
     returns the next admissions, each with a category, purpose and snapshot;
   - `ConcurrencyPolicy`, `Throttle` and the dependence check (`AssumptionCheck`);
@@ -535,12 +537,12 @@ The riskiest pure code, built first.
 - **Contents:**
   - `ClaudeSessions` and `CodexSessions` implement `SessionPort` over `ClaudeRunner` and `CodexRunner`. They acquire one
     `HarnessCapacity` permit per session, pass evidence read-only to judges, collect transcripts and effects, and parse
-    native events for the observed model, usage and rate limits. They classify outcomes as completed, interrupted at
+    harness events for the observed model, usage and rate limits. They classify outcomes as completed, interrupted at
     CAT's request (H10) or infrastructure failure.
   - Credential classification for each harness.
   - `RolloutInterruptSignal` (Codex) and `TranscriptInterruptSignal` (Claude) implement `HostInterruptSignal` from an
     injected path and clock.
-  - Shared `SessionPortContract` tests run against the fake and against each adapter fed recorded native events.
+  - Shared `SessionPortContract` tests run against the fake and against each adapter fed recorded harness events.
   - Runner fixes the adapters depend on (`design.md` §11 H17, H19):
     - the Claude runner ends a turn only when the root reply has arrived and `background_tasks_changed` lists no task,
       relaying `task_notification` records and the follow-up reply in the same turn;
@@ -551,7 +553,8 @@ The riskiest pure code, built first.
   of R-M1.
 - **Allowlist note:** the runner fixes above write the runner sources under `client/claude/cli`, `client/codex/cli` and
   `client/common/cli`.
-- **Tests:** event-parsing tests feed recorded native lines captured during WI-0 into the parser as in-memory input.
+- **Tests:** event-parsing tests feed recorded harness event lines captured during WI-0 into the parser as in-memory
+  input.
   Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. WI-15's
   end-to-end runs exercise each operation in both harnesses.
 - **Exit:** unit tests pass.
@@ -564,9 +567,9 @@ The riskiest pure code, built first.
   `HostInterruptSignal` and the slice deadline.
 - **`SliceRunner`:** the only class that blocks on real time. It waits on the event queue until the next deadline and
   is covered by one focused threaded test.
-- **Also:** reconciliation (including terminating the recorded `ownerPid` and `nativePid` of runs left by an earlier
-  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice cutoff
-  and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
+- **Also:** reconciliation (including terminating the recorded `ownerPid` and `harnessPid` of runs left by an earlier
+  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice
+  cutoff and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
   safe-checkpoint handling for revision.
 - **Closes:** R-D2, R-D3 (driver side), R-D9, the driver side of R-F6, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3,
   the driver side of R-M5, R-C2, R-L3 and R-W7 (checkpoints).
@@ -584,7 +587,8 @@ The riskiest pure code, built first.
   from `design.md` §3.1 and §4.3 and its output schema.
 - **Driver handling:** proposal rendering, feedback regeneration and confirmation; loading observation or documented
   derivation (P9: hooks and Claude's skill inventory are observed, instruction files are derived, H21); the judge and
-  deriver output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the authentication and link warnings in the proposal; and the judge profile freeze.
+  deriver output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the authentication
+  and link warnings in the proposal; and the judge profile freeze.
 - **Closes:** R-C1, R-C2 (rendering), R-C5, R-C6 (detection in proposals), R-C7, R-E7 (warning), R-E13 (schemas).
 - **Tests:** `ProposalTest` uses fixture deriver outputs, valid and invalid, to check every required item and the
   rejection of aggregate-only summaries. E1 runs the deriver, judge and author in both harnesses.
@@ -634,8 +638,8 @@ The riskiest pure code, built first.
 
 ### WI-14 — Skill replacement and rule updates
 
-- **Skill:** replace the `skills/prompt-optimizer/first-use.md` body with the §8 loop, and update both `SKILL.md`
-  wrappers, including their descriptions and allowed tools.
+- **Skill:** replace the `skills/prompt-optimizer/first-use.md` body with the `design.md` §8 loop, and update both
+  `SKILL.md` wrappers, including their descriptions and allowed tools.
 - **Rules:** apply D13 to `failure-regression-promotion.md` and `default-rules.md`, keeping the route's rule that a
   subagent reports a confirmed failure to the agent that delegated its work instead of correcting the guidance.
   Update the test resources that cite the old skill (`check-assumptions/existing-route-before-new-wrapper/scenario.md`,
@@ -647,7 +651,8 @@ The riskiest pure code, built first.
   `cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
   parsing tests. Before deleting the session tests, run `SessionPortContract` against the real `ClaudeSessions` and
   `CodexSessions` over `FakeHarnessCli` replaying recorded events (`design.md` §10 T3), so the fake stays
-  checked against the real adapters. Each recording names the harness version that produced it. List each deleted assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
+  checked against the real adapters. Each recording names the harness version that produced it. List each deleted
+  assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
   The existing recordings cannot satisfy every contract check (they are trimmed, and none records an interrupted
   turn), so the session contract tests, the deletion of `ClaudeSessionsNativeTest` and `CodexSessionsNativeTest` and
   the removal of the `native` profile and its properties move to WI-15's **Contract tests** step.
@@ -722,8 +727,8 @@ The riskiest pure code, built first.
 
 ### WI-19 — Development cell tiering (user ruling, 2026-10-01)
 
-- **Scheduler:** the §3.3 rule 2 cell tier and the §6.6 screen, active set, lowest-effort priority and widening, in `optimizer.campaign`. The
-  active set is persisted with the campaign and survives restart.
+- **Scheduler:** the `design.md` §3.3 rule 2 cell tier and the `design.md` §6.6 screen, active set, lowest-effort
+  priority and widening, in `optimizer.campaign`. The active set is persisted with the campaign and survives restart.
 - **Report:** the status shows each category's active cells and whether development has widened.
 - **Closes:** R-E19 and the tier part of R-E3.
 - **Tests:** `SchedulerTest`, `StatusReportTest`, `DriverTest` trace 19.
@@ -731,9 +736,10 @@ The riskiest pure code, built first.
 
 ### WI-20 — Concurrent attempts while the candidate is weak (user ruling, 2026-10-01)
 
-- **Policy:** the §2.7 weak test, the 3 concurrent attempts, winner selection and its tie-breaks, in `optimizer.campaign`.
-  The driver starts the attempts concurrently within the shared harness capacity and runs each attempt's promotion runs;
-  only the winner enters the minimality pass. A round that is not weak keeps one attempt at a time.
+- **Policy:** the `design.md` §2.7 weak test, the 3 concurrent attempts, winner selection and its tie-breaks, in
+  `optimizer.campaign`. The driver starts the attempts concurrently within the shared harness capacity and runs each
+  attempt's promotion runs; only the winner enters the minimality pass. A round that is not weak keeps one attempt at a
+  time.
 - **Report:** the status lists each attempt of a round with its promotion results and whether it won.
 - **Closes:** R-D12.
 - **Tests:** `AttemptSelectionTest`, `StatusReportTest`, `DriverTest` trace 20.
@@ -775,7 +781,7 @@ The riskiest pure code, built first.
 - **Fixtures:** small prompt systems under `client/common/cli/src/test/resources/optimizer/e2e/`, with a deliberately
   deficient rule, a rule that is easy to satisfy, a link fixture and an unsupported-case fixture. Lower the cost
   through the contract's category count, not by weakening the statistics: use 1–2 categories.
-- **Closes:** every N and E proof in §3, and the G1–G10 gates of `design.md` §14.
+- **Closes:** every E proof in §3, and the G1–G10 gates of `design.md` §14.
 - **Exit:** see [§9](#9-final-gates).
 
 ## 6. Dependency order
@@ -807,20 +813,23 @@ Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of 
 
 ## 7. Handoffs and use-case traces
 
-Each cross-component handoff is declared once here. Other sections refer to these declarations.
+Each cross-component handoff is declared once here. Other sections refer to these declarations. Handoff IDs `H-n` are
+distinct from the harness-evidence IDs `Hn` of `design.md` §11.
 
 | Handoff | Producer → consumer | Ready when | Identity and authority | Failure and resumption | Proof |
 |---|---|---|---|---|---|
 | H-1 Confirmed contract | WI-10 → WI-3, WI-2 | The user's `confirm` on proposal revision `r` | Contract hash and lineage `ℓ`. Only the confirmation event freezes it. | A missing confirmation blocks every admission. A revision creates `ℓ + 1`. | `DriverTest` "nothing runs before confirmation" |
 | H-2 Assignment | WI-3 `Scheduler` → WI-4 → WI-9 → WI-8 | The assignment record is durable | Campaign, purpose, snapshot, category, sequence and instance. The draw comes from the stream's persisted position. | Started without an outcome means rerun, same identity. | `ReconciliationTest` |
-| H-3 Trial result → judge | WI-8 → WI-9 → WI-8 (judge) | Session completed and children reconciled | Logical trial identity. The judge receives read-only evidence. | Interruption or infrastructure failure means rerun the trial. An invalid judge result means rerun the judge with the same evidence. | `DriverTest`, `JudgeVerdictTest` |
+| H-3 Trial result → judge | WI-8 → WI-9 (WI-17 checks) → WI-8 (judge) | Session completed, children reconciled, every deterministic check passed and a semantic requirement remains. Otherwise CAT records the outcome without a judge session (`design.md` §6.4). | Logical trial identity. The judge receives read-only evidence and the deterministic results, which it cannot override. | Interruption or infrastructure failure means rerun the trial. An invalid judge result means rerun the judge with the same evidence. | `DriverTest` (trace 16), `DeterministicCheckTest`, `JudgeVerdictTest` |
 | H-4 Outcome → adoption | WI-9 → WI-3 | Outcome durable, and every earlier sequence number adopted | Sequence order per category and purpose | A crash between write and adoption is adopted during reconciliation. | `AdoptionTest`, `ReconciliationTest` |
-| H-5 Author delta → candidate | WI-7 → WI-6 → WI-3 → WI-7 | Delta captured and validated, promotion runs passed | Overlay hash. Authority comes from the contract. | A rejected attempt is retained with no candidate. The author reruns as a new attempt. | `InventoryDiffTest`, `PromotionTest`, `DriverTest` |
+| H-5 Author delta → candidate | WI-7 → WI-6, WI-18 → WI-3, WI-20 → WI-7 | Delta captured; inventory and manifest validated; promotion runs passed; in a weak round, the attempt won the selection; the minimality pass finished (`design.md` §2.7) | Overlay hash. Authority comes from the contract. | A rejected attempt is retained with no candidate. The author reruns as a new attempt. | `InventoryDiffTest`, `AuthorManifestTest`, `PromotionTest`, `AttemptSelectionTest`, `MinimalityTest`, `DriverTest` |
 | H-6 Commit | WI-3 → WI-1 → WI-4 | Readiness and baseline met | Certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionBoundaries` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest` |
 | H-7 Decision → delivery or user | WI-3 → WI-11 or WI-12 → skill | Attempt terminal and in-flight trials drained | Attempt and candidate identity. A keep-improvement choice names the qualifying attempt. | A pending choice, including the keep-improvement pause, survives restart. Delivery resumes from the journal. | `DecisionTableTest`, `KeepImprovementTest`, `DeliveryTest` |
 | H-8 Status → skill → choice | WI-12 → WI-14 → WI-13 | `run` returned | Campaign identity and choice identifier. Only listed choices are accepted. | An unknown or stale choice is rejected with no change. | `CommandsTest`, E-scenarios |
 | H-9 Capacity permit | WI-5 → WI-8 | `tryAcquire` succeeded | One permit per nested session | Process death releases the file lock. | `HarnessCapacityTest` |
 | H-10 Host interrupt | WI-8 → WI-9 | An interrupt record later than the driver start | Host thread or session ID from the environment | Stop admissions, interrupt sessions, persist, exit within 15 seconds. | `RolloutInterruptSignalTest`, `DriverTest`, E2 |
+| H-11 Trial profile | WI-16 (`ProfileInventory`, profile sets) → WI-9 → WI-8 | Confirmation froze the profile set | Cell (category, profile). A trial session runs under its cell's profile; deriver, judge and author sessions run under the role profile. The observed profile in the harness events decides comparability. | A run whose observed profile differs from its trial's measurement identity yields no outcome, and CAT pauses as `MEASUREMENT_CHANGED` (`design.md` §5). | `ProfileSetTest`, `ClaudeSessionsTest`, `CodexSessionsTest`, `MeasurementIdentityTest`, `DriverTest` (trace 15) |
+| H-12 Failure evidence → author | WI-9 → WI-10, WI-18 (author prompt) | A development round starts its author attempts (`design.md` §2.7) | The failing instances' identities, which the manifest must cite, with their judge rationales or failed-check records and diagnostic reruns. Never an instance of a certification attempt in progress. | An attempt that cites an unknown instance is rejected and retained (H-5). | `DriverTest` (author input during a formal attempt; traces 16 and 17), `AuthorManifestTest` |
 
 Use-case traces that `DriverTest` must cover, each as one test that starts from builder state:
 
@@ -877,8 +886,8 @@ These rules restate `design.md` §10 as checks for reviewers:
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
   directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
-- A fake has only behaviour its shared contract checks, and that contract also runs against the real adapter (`design.md` §10 T3).
-  Reviewers check this; there is no coverage tool (user ruling, 2026-10-01).
+- A fake has only behaviour its shared contract checks, and that contract also runs against the real adapter
+  (`design.md` §10 T3). Reviewers check this; there is no coverage tool (user ruling, 2026-10-01).
 - A unit test that takes 1 second or longer records its reason in its Javadoc (`design.md` §10 T7). Without one, it is a
   review defect. Every integration lists the tests at or over 1 second from the surefire reports.
 

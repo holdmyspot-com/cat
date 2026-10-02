@@ -2,18 +2,19 @@
 
 This is the product and technical design of CAT's prompt optimizer. It is written for the AI agents that implement and
 maintain the feature; a user should still be able to audit every promise in it. `plan.md` is the implementation plan
-that turns this design into code and acceptance evidence.
+that turns this design into code and acceptance evidence. [§1.2](#12-terms) defines the project terms that the goals and
+later sections use.
 
 ## Design Goals
 
 - **G1 — Improve and deliver for review:** Given a prompt system in a clean Git worktree, produce a stronger candidate.
   Merge it into that worktree as uncommitted changes only after it satisfies G3. For every other outcome, leave the
   worktree unchanged unless the user explicitly chooses one of two alternatives. They can keep a candidate proven better
-  than the incumbent, labelled `improved, not certified` ([§2.10](#210-keeping-a-proven-improvement)), or accept an
-  uncertified candidate, labelled `not certified`.
+  than the incumbent under the conditions of [§2.10](#210-keeping-a-proven-improvement), labelled
+  `improved, not certified`, or accept an uncertified candidate, labelled `not certified`.
 - **G2 — Let the user define compliance:** Derive a complete compliance contract proposal from the prompt system. The
-  proposal covers requirements, categories, tests, trial profiles, the judge rubric and the test distribution. Run no trial until the
-  user confirms it.
+  proposal covers requirements, categories, tests, trial profiles, the judge rubric and the test distribution. Run no
+  trial until the user confirms it.
 - **G3 — Certify a joint claim:** Report a candidate `certified` only when both claims hold, with at most a 5%
   probability that any certification, deficiency or improvement claim in the campaign is false:
   - **(a)** in every category, under each trial profile that can run it, the candidate's future pass rate under the
@@ -54,9 +55,9 @@ The user names a prompt file or prompt system in a Git worktree. CAT:
    user to confirm or revise it;
 4. measures the incumbent and develops candidates, testing the riskiest categories first;
 5. commits a candidate to formal certification once it passes the readiness gate;
-6. certifies it under the joint claim or reports why it could not. If an uncertified attempt proves the candidate
-   better than the incumbent ([§2.10](#210-keeping-a-proven-improvement)), CAT pauses and asks the user whether to keep
-   the best proven candidate so far and stop optimizing, continue optimizing, or stop without delivering; and
+6. certifies it under the joint claim or reports why it could not. If an uncertified attempt meets the
+   keep-improvement conditions of [§2.10](#210-keeping-a-proven-improvement), CAT pauses and asks the user whether to
+   keep the best proven candidate so far and stop optimizing, continue optimizing, or stop without delivering; and
 7. merges the selected candidate into the user's worktree for Git review. That is either a certified candidate proven
    worse than the incumbent in no category, or a candidate the user explicitly chose to keep.
 
@@ -105,21 +106,32 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Cell | One category under one trial profile. Every cell needs its own claim, because averaging profiles could hide a weak one. |
 | Core-task requirement | The requirement, present in every contract, that each reply correctly and completely does what the turn asked. |
 | Deterministic check | Code that decides one requirement from a trial's evidence, validated against a known-good and a known-bad control ([§6.4](#64-judge)). |
+| Decision procedure | The deterministic checks plus the frozen judge, which together give each trial its pass label ([§2.1](#21-claims), [§6.4](#64-judge)). |
 | Incumbent | The prompt system snapshot recorded at the fork, before any optimization. It never changes, and every candidate is compared with it. |
 | Candidate | One exact snapshot: the incumbent plus an overlay of edits. The incumbent is the first candidate, with no edits. |
 | Working candidate | The candidate that development currently samples and improves. It starts as the incumbent, and each promotion replaces it. The optimization worktree holds it. |
 | Author attempt | One author session's edits. It becomes a candidate only after validation and promotion. |
 | Promotion | Making a validated candidate the working candidate. It never consumes allowance. |
+| Development | The phase that samples and edits the working candidate before a commit ([§2.7](#27-development-readiness-and-edit-or-continue)). Development outcomes never count as certification evidence. |
+| Readiness gate | The development conditions that a candidate must meet in every cell before it can be committed ([§2.7](#27-development-readiness-and-edit-or-continue)). |
+| Allowance | A certification attempt's shares `α_i` and `β_i` of the campaign's error budget ([§2.2](#22-joint-error-budget)). |
 | Commit | Freezing the working candidate into a certification attempt, which permanently consumes that attempt's allowance ([§2.2](#22-joint-error-budget)). |
 | Certification attempt | One frozen candidate, committed after the readiness gate, tested on fresh formal trials under one frozen procedure and cap. Its trials test the joint claim and measure improvement over the incumbent. Its certification index `i` numbers it within the campaign. |
+| Formal trial | A trial of a certification attempt, drawn from the formal stream after the commit ([§6.3](#63-generators)). |
 | Logical trial | One assigned instance for one snapshot, judged once. Retries keep its identity. |
+| Adoption | Counting a recorded outcome into its cell's passes `S` and failures `F`, strictly in assignment order ([§3.4](#34-adoption-order-and-draining)). |
 | Representative trial | A trial drawn from the confirmed distribution and counted in rates. Targeted reruns, promotion runs and regression runs are not representative. |
+| Targeted run | A rerun, promotion run or regression run of a chosen instance. It is marked before execution and never enters representative or formal counts ([§6.3](#63-generators)). |
 | Baseline arm | The incumbent's representative trials, used for the deficiency claim and comparisons. |
+| Four outputs | The estimated pass rate, the improvement over the incumbent, the comparison with 95% and the error bars, shown in both phases ([§2.9](#29-four-outputs)). |
+| Measurement identity | The recorded conditions that a result was measured under. A result is current while CAT knows of no material change to them, and historical after one ([§5](#5-measurement-identity-and-applicability)). |
 | Campaign | One explicitly started effort, with its own 5% joint budget and a fixed starting harness. |
 | Lineage | The evidence history under one confirmed contract within a campaign. |
-| Base worktree | The user's Git worktree. Only delivery writes to it. |
+| Base worktree | The user's Git worktree. Apart from campaign storage in its Git-ignored `.cat/work/` directory ([§4.1](#41-storage)), only delivery writes to it. |
 | Optimization worktree | CAT's fork of the base, holding the working candidate. |
 | Staged source | A symbolic-link-free directory for one snapshot, which the runner copies for each trial. |
+| Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`). |
+| Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
 | Slice | One time-bounded run of the driver inside a foreground command. |
 
 ## 2. Statistical design
@@ -237,7 +249,8 @@ floating-point arithmetic; a decision against a frozen `t` uses the exact rules 
 
 Before a certification attempt's first draw, CAT freezes `α_i`, `β_i`, `UI(k)` and `LI(k)`, the bets and weights, the
 allocation policy, and a per-category cap. The cap is the smallest number of adopted outcomes
-at which the probability of certifying reaches 90% for a category whose true pass rate is 99%, given both early stops.
+at which the probability of certifying reaches 90% for a category whose true pass rate is 99%, counting the attempts
+that stop early because the category certifies or is clearly below.
 CAT computes it with an exact absorbing-state calculation over `(S, F)`. Calibration that fails or is unavailable blocks
 admission; CAT never runs an attempt without a cap.
 
@@ -310,10 +323,10 @@ creates a new candidate with new counts. Earlier outcomes remain available for d
 - latest two completed batches of 50 each at 98% or more;
 - no unresolved reproducible defect or known regression.
 
-The incumbent's baseline targets must also be met ([§2.5](#25-incumbent-baseline)). The gate is a cost control, not
-evidence. It keeps weak candidates from spending allowance on a commit they will probably fail. Within the first
-attempt's cap of 262 trials, a candidate certifies with probability 0.90 if its true rate is 99%, 0.49 if it is 98%, and
-only 0.17 if it is 97%.
+The first three are the gate's **count conditions**. The incumbent's baseline targets must also be met
+([§2.5](#25-incumbent-baseline)). The gate is a cost control, not evidence. It keeps weak candidates from spending
+allowance on a commit they will probably fail. Within the first attempt's cap of 262 trials, a candidate certifies with
+probability 0.90 if its true rate is 99%, 0.49 if it is 98%, and only 0.17 if it is 97%.
 
 **Edit-or-continue.** After an adopted representative failure, CAT:
 
@@ -350,9 +363,9 @@ received. A rejected attempt contributes no candidate. Its evidence is retained,
 produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review checkpoint or
 plateau, so the user can revise the contract when a test is at fault.
 
-CAT validates the attempt's file inventory, then runs the attempt on the triggering
-instances twice each and on the lineage's regression set once each. The regression set is every instance that failed
-representatively for any earlier candidate. These runs are targeted and never counted. CAT **promotes** the attempt to
+CAT validates the attempt's file inventory, then runs the attempt on the triggering instances twice each and on the
+lineage's regression set once each. The regression set is every instance that failed representatively for any earlier
+candidate. These **promotion runs** are targeted and never counted. CAT **promotes** the attempt to
 working candidate when every triggering-instance run passes and it fails no regression instance that the current
 working candidate passes. The working candidate's result on an instance is its latest outcome there. An instance that
 failed only in the incumbent's baseline arm may have none; the promotion runs then also run the working candidate on
@@ -383,18 +396,19 @@ changed, so the result stays inside the attempt's authority. The minimal attempt
 working candidate then receives representative trials from zero.
 
 For `h` hunks, the pass needs at most a number of reduction runs that grows with the square of `h`, and usually far
-fewer. Each reduction run repeats the promotion runs. Because the promotion rule samples each triggering instance only twice, a needed hunk can be removed
-by chance. The representative trials that follow catch that, as they catch any other weak candidate.
+fewer. Each reduction run repeats the promotion runs. Because the promotion rule samples each triggering instance only
+twice, a needed hunk can be removed by chance. The representative trials that follow catch that, as they catch any other
+weak candidate.
 
 **Review checkpoint.** At 200 representative trials in a category for an unchanged candidate with that category still
 unresolved, CAT stops scheduling that category. It shows the evidence and offers more evidence, targeted optimization,
 or stopping. An authorized extension names its next review point.
 
-**Rounds and plateau.** In a development round, every currently failing category receives a bounded diagnosis and up
-to 2 author attempts made one at a time, or 3 concurrent attempts while the working candidate is weak. A round that promotes a stronger candidate still below readiness starts the next round
-automatically. `not certified: plateau` requires a complete round that produced no promotable attempt. An interrupted
-round or an infrastructure failure never establishes a plateau. CAT never predicts a plateau from elapsed time or
-tokens.
+**Rounds and plateau.** In a development round, every currently failing category receives a bounded diagnosis and up to
+2 author attempts made one at a time, or 3 concurrent attempts while the working candidate is weak. A round that
+promotes a stronger candidate still below readiness starts the next round automatically. `not certified: plateau`
+requires a complete round that produced no promotable attempt. An interrupted round or an infrastructure failure never
+establishes a plateau. CAT never predicts a plateau from elapsed time or tokens.
 
 Development estimates use exploratory 95% Wilson intervals. They are labelled `development estimate` and
 `not certified`, and they are never presented as simultaneous guarantees.
@@ -410,14 +424,13 @@ Formal decisions, per certification attempt:
 | Every category certified | No category proven worse | `certified`. Every deficient category is improved by construction. Deliver automatically ([§4.7](#47-delivery)). |
 | Every category certified | Some category proven worse | `certified`, but retain the incumbent by default. Delivery requires the user to explicitly accept the regression trade-off. |
 
-When a certification attempt ends `not certified` and its evidence meets the keep-improvement conditions
-([§2.10](#210-keeping-a-proven-improvement)), CAT pauses instead of returning to development automatically. It offers
-`keep improvement`, which delivers a proven candidate ([§2.10](#210-keeping-a-proven-improvement)) and ends
-optimization, `optimize further` or `stop`, so the user decides whether more optimization is worth its cost.
+When a certification attempt ends `not certified` and its evidence meets the keep-improvement conditions, CAT pauses
+instead of returning to development automatically. [§2.10](#210-keeping-a-proven-improvement) states that pause and
+every later offer of `keep improvement`.
 
-The user can stop at any point. At a plateau, a stop or another uncertified outcome, CAT offers `keep improvement` when
-any attempt has met those conditions, and may offer `accept without certification`. Each is a separate explicit choice
-and never the default. CAT labels the merged result `improved, not certified` or `not certified` respectively.
+The user can stop at any point. At a plateau, a stop or another uncertified outcome, CAT may offer `accept without
+certification`. `keep improvement` and `accept without certification` are separate explicit choices and never the
+default. CAT labels the merged result `improved, not certified` or `not certified` respectively.
 Certification status and delivery status are always reported separately.
 
 ### 2.9 Four outputs
@@ -471,9 +484,10 @@ the best attempt of each identity as its own choice: the current identity first,
 historical and naming each condition that differs from the current identity.
 
 **When CAT offers it.** When a certification attempt ends without certification and its evidence meets the conditions,
-CAT pauses and offers `keep improvement` ([§2.8](#28-decision-table)). At a later review checkpoint, plateau or stop,
-CAT offers `keep improvement` again whenever any attempt qualifies. `keep improvement` delivers the candidate the
-user chose from those offers and ends optimization.
+CAT pauses instead of returning to development ([§2.8](#28-decision-table)). It offers `keep improvement`,
+`optimize further` or `stop`, so the user decides whether more optimization is worth its cost. At a later review
+checkpoint, plateau, stop or other uncertified outcome, CAT offers `keep improvement` again whenever any attempt
+qualifies. `keep improvement` delivers the candidate the user chose from those offers and ends optimization.
 
 **Report.** Each category shows its difference interval. A category that is not proven better might still be slightly
 worse within that interval, and the report says so. Keeping an improvement is always an explicit user choice. It never
@@ -495,18 +509,18 @@ CAT runs four kinds of work in nested sessions, each started through the current
 | Author | Copy of the working candidate and the failure evidence | Edited prompt files in its copy, and the evidence manifest ([§2.7](#27-development-readiness-and-edit-or-continue)) |
 
 Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The deriver, judge and author
-sessions run under the harness's **role profile**: the model and effort that CAT's highest implementer tier binds
-(`optimize-xhigh`). The contract records the role profile as part of the frozen judge. Changing it is a judge change
-([§5](#5-measurement-identity-and-applicability)).
+sessions run under the harness's **role profile**: the model and effort that the agent definition of `optimize-xhigh`,
+the most capable of CAT's implementation agents, binds in that harness. The contract records the role profile as part of
+the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
 
 A trial needs a judge session only for its semantic requirements. When every requirement it checks is deterministic,
 or a deterministic check has already failed, CAT records the outcome without starting a judge ([§6.4](#64-judge)).
 
-A judge or deriver output that does not match its schema is an infrastructure failure. The output is the final
-response when that response is exactly one JSON object, either bare or alone inside one Markdown code fence; any other
-response is invalid (Claude fences its JSON, H23). Candidate and trial content
-cannot change the judge's rubric, schema or authority. Every nested session is counted against the campaign ceiling and
-the shared harness capacity ([§3.6](#36-shared-harness-capacity)).
+A judge or deriver output that does not match its schema is an infrastructure failure. The output is the final response
+when that response is exactly one JSON object, either bare or alone inside one Markdown code fence; any other response
+is invalid (Claude fences its JSON, H23). Candidate and trial content cannot change the judge's rubric, schema or
+authority. Every nested session is counted against the campaign ceiling and the shared harness capacity
+([§3.6](#36-shared-harness-capacity)).
 
 Authors may see development instances and outcomes, and the formal outcomes of attempts that have ended. They never see
 the instances of a certification attempt in progress.
@@ -525,7 +539,8 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   - the generator identity, draw stream and position;
   - the complete turn sequence;
   - the snapshot and its purpose (development, targeted, baseline or certification attempt `i`);
-  - the allocation decision with the evidence revision it used, and the assignment time.
+  - the allocation decision with the evidence revision it used (the number of the campaign's adopted outcomes when CAT
+    decided), and the assignment time.
   The judged outcome, the judge identity and every infrastructure attempt are added later. The record establishes
   ordering and guards against selecting favourable instances; it does not claim the execution is reproducible.
 - Each logical trial starts one fresh root session, and every turn of a multi-turn test runs in that session. A turn
@@ -544,10 +559,10 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
   count toward that limit; they follow the backoff in [§3.5](#35-volume-safeguards).
-- A trial agent may use the harness's own subagents, recursive delegation and child Git worktrees. All of it belongs to one logical
-  trial and yields one judged outcome. Child disposition and merges are reconciled before judging. If they cannot be
-  determined, the trial records an observation limit and receives no invented label. Codex trials cannot create child
-  worktrees under the runner's sandbox (H18); the judge sees that failure as part of the evidence.
+- A trial agent may use the harness's own subagents, recursive delegation and child Git worktrees. All of it belongs to
+  one logical trial and yields one judged outcome. Child disposition and merges are reconciled before judging. If they
+  cannot be determined, the trial records an observation limit and receives no invented label. Codex trials cannot
+  create child worktrees under the runner's sandbox (H18); the judge sees that failure as part of the evidence.
 - Exceeding the test definition's time limit is behaviour: CAT judges the trial on its evidence and does not retry it.
 
 ### 3.3 Allocation and concurrency
@@ -556,9 +571,10 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 priority first:
 
 1. pending targeted work, which is reruns, promotion runs and regression runs;
-2. development only: the cell tier of [§6.6](#66-trial-profiles). Representative assignments go only to active
-   cells, and among them the coverage floor applies: no cell may be more than 50 representative assignments ahead of
-   the least-sampled eligible active cell. Within the floor, each model's lowest-effort active cell goes first;
+2. development only: the cell tier of [§6.6](#66-trial-profiles) decides which cells receive representative
+   assignments: the screen, then the active cells, then every cell once development has widened. Among those cells
+   the **coverage floor** applies: no cell may be more than 50 representative assignments ahead of the least-sampled
+   eligible cell. Within the floor, each model's lowest-effort active cell goes first;
 3. development: the lowest exploratory Wilson 95% lower bound for the current candidate. An empty category counts as 0.
    Ties are broken by fewer outcomes, then the contract's risk rank, then category order;
 4. formal: one trial per category first, then the category furthest from certifying: the lowest current lower bound
@@ -616,15 +632,12 @@ CAT cannot know the threshold at which a provider flags automated volume, so it 
 
 ### 3.6 Shared harness capacity
 
-`HarnessConcurrencyLimit` currently lets every caller acquire one of N file-lock slots under
-`$HOME/.cat/locks/harness-capacity`. The slots are static and shared by all harnesses, and `ClaudeRunnerCli` is the
-only caller. Removing the lock is not safe: it is the only bound on the total number of nested sessions across
-independent CAT processes, and the optimizer is designed to start many.
+`HarnessCapacity` bounds the total number of nested sessions per harness across independent CAT processes. The
+optimizer starts many nested sessions, and this bound is the only limit on their total across processes
+([§13](#13-decision-records), D7):
 
-The redesign keeps the cross-process bound and removes its test and coupling hazards:
-
-- Capacity becomes an instance created by `main` from `HOME` and passed to whatever needs it. It applies per harness,
-  under `$HOME/.cat/locks/harness-capacity/<harness>/`, so Claude and Codex sessions do not compete.
+- `main` creates the capacity instance from `HOME` and passes it to whatever needs it. Each harness has its own
+  file-lock slots under `$HOME/.cat/locks/harness-capacity/<harness>/`, so Claude and Codex sessions do not compete.
 - Both `ClaudeRunnerCli` and `CodexRunnerCli` acquire it. The optimizer acquires one permit per nested session from the
   same instance type.
 - Acquisition waits through an injected pause, not `Thread.sleep`. A non-blocking `tryAcquire` lets the driver keep
@@ -640,7 +653,7 @@ The driver therefore runs as a foreground command in time-bounded **slices**:
 
 - Each `prompt-optimizer run` reconciles state, advances the campaign, and returns a status within its slice. The
   default slice budget is 8 minutes, and the skill invokes it with a tool timeout longer than the slice (10 minutes in
-  Claude; Codex is premise P10).
+  Claude; a Codex host command ran 662 seconds with no limit, premise P10 and H22).
 - Admission stops when the current time plus the 90th-percentile trial duration in this campaign would pass the slice
   deadline. Before 5 trials have completed, CAT uses the test definition's time limit instead.
 - In-flight trials may finish within a 1-minute grace period. CAT then cancels the remainder, which rerun later as the
@@ -717,9 +730,10 @@ creating anything and tells the user to commit, stash or remove the changes. CAT
 bytes, modes and symbolic links. It copies participating files that are ignored by Git, or that lie outside the
 project, into campaign storage. It then adds a detached optimization worktree at the base `HEAD`, which always holds
 the current working candidate for the user to inspect.
-Confirmation records the confirmed contract's trial fixtures, and the derived prompt sources that the fork does not yet
-hold, the same way before anything runs, so trials never read a live fixture or source. A revision after
-confirmation that needs a file the fork does not hold is refused, and the user starts a new campaign.
+
+At confirmation, before anything runs, CAT records and copies the confirmed contract's trial fixtures and the derived
+prompt sources that the fork does not yet hold in the same way, so trials never read a live fixture or source. A
+revision after confirmation that needs a file the fork does not hold is refused, and the user starts a new campaign.
 
 Base-worktree edits after the fork do not invalidate the campaign; delivery handles them ([§4.7](#47-delivery)).
 
@@ -871,8 +885,8 @@ each differing condition instead of reducing the check to one opaque hash.
 A deriver session inspects the prompt system and proposes the complete contract. Loading follows production behaviour:
 CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's documented
 loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude exposes its skill
-and command inventory; no harness names the instruction files it loaded, so those are derived (H21). Aggregate counts never stand in for the items themselves. The
-proposal lists:
+and command inventory; no harness names the instruction files it loaded, so those are derived (H21). Aggregate counts
+never stand in for the items themselves. The proposal lists:
 
 - every requirement and its source, including files reached through links and readable files outside the project.
   The list always includes the core-task requirement, with CAT as its source, and every test checks it. Each
@@ -1035,8 +1049,8 @@ A category whose file binds one profile needs 93, 100 and 50.
 ## 7. Campaign lifecycle
 
 - **Campaign:** one explicitly started effort, with its own joint budget and a starting harness that is fixed for its
-  lifetime, including across restarts and target renames. A
-  canonical project root and target have at most one resumable campaign. The other harness can show that campaign and
+  lifetime, including across restarts and target renames. A canonical project root and target have at most one
+  resumable campaign. The other harness can show that campaign and
   its starting harness, but cannot advance, dispatch, allocate allowance or start a concurrent campaign, and its refusal
   changes no state.
 - **Lineage:** the evidence history under one confirmed contract. A confirmed material revision starts a new lineage.
@@ -1078,11 +1092,11 @@ The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `statu
 `cancel`. Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for
 the user and any choices. The skill never interprets statistics itself.
 
-**Retirement of the existing skill:** the observe-diagnose-retest body (`skills/prompt-optimizer/first-use.md`) and its
-wrapper text are replaced. `failure-regression-promotion.md` currently invokes `cat:prompt-optimizer` for every
-qualifying failure. Under this design it instead applies its own correction and regression procedure, and it may
-recommend a campaign when the user wants certified compliance ([§13](#13-decision-records), D13). `default-rules.md`
-routing and the test resources that mention the old skill are updated to match.
+**Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
+replace the observe-diagnose-retest procedure. `failure-regression-promotion.md` applies its own correction and
+regression procedure instead of invoking `cat:prompt-optimizer` for every qualifying failure, and it may recommend a
+campaign when the user wants certified compliance ([§13](#13-decision-records), D13). No `default-rules.md` route or
+test resource refers to the old procedure.
 
 ## 9. Architecture
 
@@ -1104,10 +1118,10 @@ and launchers live in `client/claude/cli` and `client/codex/cli`.
 
 The core owns these ports; adapters implement them at the edges:
 
-- **`SessionPort`** starts a nested session for a role ([§3.1](#31-nested-sessions)) under a trial or role profile,
-  from a source directory and its inputs. The returned handle can await completion, delivering the transcript, project effects, observed model and
-  token usage, and can interrupt the session. It also reports rate-limit observations. The Claude and Codex
-  implementations wrap the existing runners.
+- **`SessionPort`** starts a nested session for a role ([§3.1](#31-nested-sessions)) under a trial or role profile, from
+  a source directory and its inputs. The returned handle can await completion, delivering the transcript, project
+  effects, observed model and token usage, and can interrupt the session. It also reports rate-limit observations. The
+  Claude and Codex implementations wrap the existing runners.
 - **`WorkspacePort`** stages sources, scans inventories and captures author deltas, so the driver can be tested without
   a file system.
 - **`CampaignStore`** is the file-system boundary for campaign persistence. Production has one implementation. Driver
@@ -1178,7 +1192,7 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 |---|---|---|
 | H1 | Claude's PreToolUse input provides the session, prompt, tool-use and transcript-path identities, but no model or effort. | CAT probe; https://code.claude.com/docs/en/hooks#common-input-fields |
 | H2 | In one persisted sample, the transcript's assistant record with the matching tool use appeared about 0.085 seconds after PreToolUse. | One print-mode sample; no latency guarantee. |
-| H3 | A nested Claude launched with the `haiku` alias reported `gpt-5.6-luna` in its harness assistant events, and `perTurnEffort` was null. | The observed model must come from native events, not configuration. |
+| H3 | A nested Claude launched with the `haiku` alias reported `gpt-5.6-luna` in its harness assistant events, and `perTurnEffort` was null. | The observed model must come from harness events, not configuration. |
 | H4 | The runner copies the project into its run directory, skips `.git`, creates a fresh Git baseline, and rejects any project containing a symbolic link. | `HarnessRunManager.copyProject`. |
 | H5 | Nested processes cannot reach the outer Codex daemon socket. | Earlier CAT probe. |
 | H6 | In the sandboxed Claude Bash tool, the command ran in its own PID namespace. When the command ended normally, all three children stopped within one second. On ESC, the command and every child stopped at once, with no catchable signal recorded. | 2026-09-30 probe, sandboxed host only (premise P2). |
@@ -1218,9 +1232,9 @@ records with the evidence.
 | P4 | Both harnesses expose rate-limit utilization and reset times through the runner's harness events. | React only to rate-limit rejections, and say so in the volume warning. | Passed (H14). |
 | P5 | Both harnesses expose per-session token usage. | Omit token statistics. | Passed (H15). |
 | P6 | CAT can tell a subscription login from an API key in each harness's credentials. | Show the authentication warning unconditionally. | Passed on the documented fields; one login kind per harness observed (H16). |
-| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19). Fallback applied to Codex child worktrees; §3.2 and §3.8 updated. |
-| P8 | Runner harness processes are descendants of the driver, so killing the driver leaves no live harness session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordHarnessProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied; §3.8 updated. |
-| P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. | Failed for instruction files (H21). Fallback applied; §5 updated. |
+| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19). Fallback applied to Codex child worktrees in §3.2 and §3.8. |
+| P8 | Runner harness processes are descendants of the driver, so killing the driver leaves no live harness session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordHarnessProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied in §3.8. |
+| P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. | Failed for instruction files (H21). Fallback applied in §6.1. |
 | P10 | Codex lets a command run for the slice budget, and reports what happens when a command exceeds its limit. | Shorten Codex slices to fit the observed limit. | Passed for the 8-minute slice; no limit was reached in 662 seconds, so the over-limit behaviour is unobserved (H22). |
 | P11 | Judge sessions read the evidence read-only and return schema-valid results reliably in both harnesses. | Measure the invalid-output rate. Retries of the same logical trial cover the rate if it is low; otherwise the judge profile cannot be confirmed. | Passed with the §3.1 extraction rule (H23). |
 | P12 | Claude Code's documentation names the model aliases a user can select and the reasoning efforts each one accepts. | Ship the aliases with every documented effort level, and record as a limitation that an unsupported combination fails its first trial as an infrastructure failure. | Open until E1 runs a Claude trial per alias. Claude Code 2.1.287: `claude --help` names `opus`, `sonnet` and `fable` and the efforts low to max; `haiku` is named only in the changelog, and the local model-catalog cache (`~/.claude/cache/model-catalog/`, undocumented) gives it no effort options. CAT ships these as its inventory resource and does not read the cache at run time. |
@@ -1256,11 +1270,11 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D20 | A new measurement identity ends a running certification attempt, and qualifying attempts are ranked only within their own identity. | Counting the old and new outcomes together supports only the claim that some condition exceeds 95%, which nobody needs. Counting only the new outcomes under the same `α_i` tests the same claim twice and can double its error. Pausing until the condition is restored blocks a user who cannot restore it, so it remains one choice rather than the rule. Dropping earlier-identity attempts would discard valid claims whose allowance is already spent. Re-certifying an earlier candidate under the new identity needs a way to make it the working candidate again, plus a readiness gate and a full attempt; the user can still optimize further. | The stopped attempt's allowance is lost. The user may have to choose between candidates whose results cannot be compared. |
 | D21 | Treat a runner or CAT version change as a material measurement change. | Recording versions only for information would keep certifications current across runner changes, but a runner change has altered trial outcomes (H17), and the runner ships with CAT. | Every CAT upgrade during a campaign pauses it as `MEASUREMENT_CHANGED`, and certifications made under an earlier version become historical. |
 | D22 | Give every category one cell per trial profile that can run its prompt files: the profile a file binds, otherwise every profile in the harness's inventory (user ruling, 2026-10-01). | Certifying one default profile says nothing about the others, and compliance does not grow reliably with model size or reasoning. Certifying a mixture of profiles costs about one profile's trials, but a weak profile can hide behind the average. Borrowing strength across profiles with item-response models estimates averages and is not anytime-valid. | Trial counts multiply by the number of profiles for every category whose files bind none. The proposal shows this cost, and the user can restrict the profile set. |
-| D23 | Decide mechanical requirements with validated deterministic checks, and use the judge only for the semantic remainder (user ruling, 2026-10-01). This replaces the earlier rule that objective assertions could only inform the judge. | A judge that decides everything adds its own errors to mechanical requirements. Checks written as code by the deriver could not be validated or contained. | A closed set of check kinds to implement and maintain. A requirement that no kind fits stays semantic. |
+| D23 | Decide mechanical requirements with validated deterministic checks, and use the judge only for the semantic remainder (user ruling, 2026-10-01). | A judge that decides everything adds its own errors to mechanical requirements. Checks written as code by the deriver could not be validated or contained. | A closed set of check kinds to implement and maintain. A requirement that no kind fits stays semantic. |
 | D24 | Add the core-task requirement to every contract (user ruling, 2026-10-01). | Contracts derived only from the prompt's text can certify a candidate that obeys every rule but does the user's task worse. | The judge also decides task correctness. That can expose failures that the prompt's own rules would not. |
 | D25 | Require authors to classify failures, make the smallest owning-boundary correction, generalize against analogous and dissimilar cases, and cite the failing instances for each hunk. CAT checks the citations (user ruling, 2026-10-01). | Unconstrained authors add emphasis and special cases that pass the triggering instances and grow the prompt. Judging the quality of each edit with a model would add an unvalidated decision. | Authors write a manifest. CAT can check only that the citations exist, not that they are apt. |
 | D26 | Reduce each promoted attempt by delta debugging before it becomes the working candidate (user ruling, 2026-10-01). | Keeping every added hunk lets prompts grow with unneeded text. Removing hunks after representative sampling would discard counts. | Extra targeted runs per promotion, growing at most with the square of the hunk count. A needed hunk can be removed by chance; representative trials then catch the weaker candidate. |
-| D27 | Develop each candidate in its active cells first and widen to every cell once they are ready (user ruling, 2026-10-01). | Sampling every cell during development spends most trials on cells whose counts the next edit resets. Readiness and certification still cover every cell, so the claim is unchanged; the risk is finding a failure in a rarely sampled cell late, which widening catches before commit. |
+| D27 | Develop each candidate in its active cells first and widen to every cell once they are ready (user ruling, 2026-10-01). | Sampling every cell during development spends most trials on cells whose counts the next edit resets. | Readiness and certification still cover every cell, so the claim is unchanged; the risk is finding a failure in a rarely sampled cell late, which widening catches before commit. |
 | D28 | Make 3 concurrent author attempts while the working candidate is weak, and promote the best (user ruling, 2026-10-01). | One attempt at a time is cheaper per round, but early rounds then spend representative trials discovering that a weak edit is weak, and a failed promotion costs a whole round. Three attempts in every round roughly break even: late rounds rarely gain from a second attempt. | Two extra author sessions and their promotion runs per weak round; all are targeted and consume no allowance. The benefit is estimated, not measured; the recorded per-attempt promotion results measure it. |
 
 ## 14. Acceptance evidence
