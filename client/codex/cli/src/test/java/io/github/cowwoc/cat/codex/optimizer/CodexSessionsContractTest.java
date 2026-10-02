@@ -1,0 +1,310 @@
+package io.github.cowwoc.cat.codex.optimizer;
+
+import static io.github.cowwoc.cat.codex.optimizer.RecordedAppServer.recorded;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
+import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
+import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
+import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness.Turn;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.testng.annotations.Test;
+
+/**
+ * Tests {@link CodexSessions}' production decisions over recorded app-server streams, without starting a process.
+ * <p>
+ * The package gives the test access to the adapter's existing bridge seam. Recording provenance, substitutions,
+ * and the limits of replay evidence are documented in {@code optimizer/sessions/README.md}.
+ */
+public final class CodexSessionsContractTest
+{
+	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
+	private static final Duration LIMIT = Duration.ofMinutes(5);
+	/**
+	 * How long a replay may run before the test treats it as hung. Replays finish in well under a second; the margin
+	 * keeps a loaded build machine from failing a correct adapter.
+	 */
+	private static final long HANG_SECONDS = 30;
+	private static final List<RateLimitWindow> WINDOWS = List.of(
+		new RateLimitWindow(0.45, Instant.ofEpochSecond(1_791_046_710L)));
+
+	/**
+	 * Creates the test.
+	 */
+	public CodexSessionsContractTest()
+	{
+	}
+
+	/**
+	 * Creates a port over an explicitly supplied bridge and test-owned configuration directory.
+	 *
+	 * @param root the directory holding configuration and session artifacts
+	 * @param bridge the external app-server replacement
+	 * @return the production adapter
+	 */
+	private static CodexSessions port(Path root, Bridge bridge)
+	{
+		return new CodexSessions(new RunnerSessions.Settings(root, root.resolve("runs"), "", false, Map.of(),
+			root, HarnessCapacity.unlimited(), Clock.systemUTC()), bridge);
+	}
+
+	/**
+	 * Creates a request whose requested alias differs from the recorded model.
+	 *
+	 * @param root the test-owned source directory
+	 * @param role the session's purpose
+	 * @param prompts prompts sent to the adapter, in turn order
+	 * @return the request
+	 */
+	private static SessionRequest request(Path root, SessionRole role, String... prompts)
+	{
+		return new SessionRequest(role, root, List.of(prompts), List.of(), LIMIT,
+			new TrialProfile("requested-alias", "low"));
+	}
+
+	/**
+	 * Waits for the adapter to classify the session.
+	 *
+	 * @param handle the session
+	 * @return its result
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	private static SessionResult await(SessionHandle handle)
+		throws InterruptedException, ExecutionException, TimeoutException
+	{
+		return handle.completion().toCompletableFuture().get(HANG_SECONDS, TimeUnit.SECONDS);
+	}
+
+	/**
+	 * Verifies that the adapter completes a real two-turn stream, retains both turns in order, reports the final
+	 * cumulative usage rather than adding repeated totals, selects the effects directory, and removes the runtime home.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	@Test
+	public void completesWithEvidenceOfEveryTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		// Requirement: R-E16
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			List<String> first = recorded("deriver-turn-1.jsonl");
+			List<String> second = recorded("deriver-turn-2.jsonl");
+			CodexSessions sessions = port(root, new RecordedAppServer(List.of(first, second)));
+
+			SessionResult result = await(sessions.start(request(root, SessionRole.DERIVER, "inspect", "propose")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.responses().size(), "responses.size").isEqualTo(2);
+			requireThat(completed.responses().getFirst(), "firstResponse").isEqualTo(List.of(
+				"I’ll inspect the prompt sources and apply your feedback to the complete proposal " +
+					"without changing any files.\n",
+				"The inspection is complete, and the revised proposal is settled with only direct-factual-answers, " +
+					"gpt-6.1-sol/low, and the requested motto exemption."));
+			requireThat(completed.responses().getLast().size(), "secondResponse.size").isEqualTo(1);
+			requireThat(completed.responses().getLast().getFirst(), "proposal").contains("\"requirements\": [");
+			List<String> all = new ArrayList<>(RecordedAppServer.rebindResponse(first, 3));
+			all.addAll(RecordedAppServer.rebindResponse(second, 4));
+			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
+			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(291_014, 232_960, 4_804, 1_490));
+			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+				resolve("project"));
+			requireThat(completed.effects(), "effects").isDirectory();
+			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
+			requireThat(completed.promptSources(), "promptSources").isNotBlank();
+		}
+	}
+
+	/**
+	 * Verifies that the observed model, reasoning effort, cumulative usage and normalized rate-limit utilization
+	 * come from harness notifications rather than the requested alias.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	@Test
+	public void reportsTheObservedModelUsageAndWindows()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E16
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			CodexSessions sessions = port(root, new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl"))));
+
+			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "answer")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.model(), "model").isEqualTo("gpt-6.1-sol");
+			requireThat(completed.reasoning(), "reasoning").isEqualTo("medium");
+			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(62_269, 29_312, 113, 0));
+			requireThat(completed.windows(), "windows").isEqualTo(WINDOWS);
+		}
+	}
+
+	/**
+	 * Verifies subscription classification from a configuration fixture rather than host credentials.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void classifiesTheHostLogin() throws IOException
+	{
+		// Requirement: R-E7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+			CodexSessions sessions = port(root, (_, _, _) ->
+			{
+				throw new AssertionError("Login classification must not start a session");
+			});
+
+			requireThat(sessions.hostLogin(), "login").isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
+
+	/**
+	 * Verifies API-key classification without starting a session, then rejects an unsupported credential-key type.
+	 * Fixture values are placeholders, never real credentials.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void reportsTheHostLoginWithoutASession() throws IOException
+	{
+		// Requirement: R-E7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			CodexSessions sessions = port(root, (_, _, _) ->
+			{
+				throw new AssertionError("Login classification must not start a session");
+			});
+			Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":\"placeholder\"}", UTF_8);
+
+			requireThat(sessions.hostLogin(), "apiKeyLogin").isEqualTo(HostLogin.API_KEY);
+			Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":{}}", UTF_8);
+			requireThat(sessions.hostLogin(), "unsupportedKeyType").isEqualTo(HostLogin.UNKNOWN);
+		}
+	}
+
+	/**
+	 * Verifies that each role starts an independent session, with its own transcript and effects directory.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	@Test
+	public void runsOneSessionPerRole()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			List<List<String>> events = List.of(recorded("trial-turn-1.jsonl"), recorded("judge-turn-1.jsonl"),
+				recorded("author-turn-1.jsonl"), recorded("deriver-turn-1.jsonl"));
+			AtomicInteger next = new AtomicInteger();
+			CodexSessions sessions = port(root, (arguments, input, output) ->
+				new RecordedAppServer(List.of(events.get(next.getAndIncrement()))).
+					serve(arguments, input, output));
+			Set<Path> transcripts = new HashSet<>();
+			Set<Path> effects = new HashSet<>();
+			for (SessionRole role : SessionRole.values())
+			{
+				SessionResult result = await(sessions.start(request(root, role, role.name())));
+
+				requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses().size(), "responses.size").isEqualTo(1);
+				requireThat(completed.responses().getFirst().size(), "messages.size").
+					isEqualTo(List.of(1, 2, 3, 2).get(role.ordinal()));
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
+					RecordedAppServer.rebindResponse(events.get(role.ordinal()), 3));
+				transcripts.add(completed.transcript());
+				effects.add(completed.effects());
+			}
+			requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
+			requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
+			requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
+		}
+	}
+
+	/**
+	 * Verifies that the session archives a recorded child command and its root relationship, while excluding the
+	 * child's command from root tool-call accounting. The recording shows a failed command attempt; replay does not
+	 * create a child file or claim that the command succeeded.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	@Test
+	public void recordsAChildOfTheSession()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			List<String> events = recorded("child-work.jsonl");
+			CodexSessions sessions = port(root, (options, input, output) -> ScriptedHarness.serve(
+				Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+				List.of(Turn.replies("done", events.toArray(String[]::new))), input, output));
+
+			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "delegate")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(events);
+			requireThat(completed.toolCalls(), "rootToolCalls").isEqualTo(List.of(
+				new ToolCall("commandExecution", "/bin/bash -lc true", 1),
+				new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+		}
+	}
+}
