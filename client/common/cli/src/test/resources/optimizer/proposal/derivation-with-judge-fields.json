@@ -30,6 +30,7 @@
 					"time_limit_seconds": 300,
 					"expected_behavior": "The summary uses the requested tone and the shortened text suits the reader.",
 					"uncovered_interactions": [],
+					"checks": [],
 					"variations": [
 						{
 							"dimension": "tone",
@@ -82,6 +83,7 @@
 					"uncovered_interactions": [
 						"A follow-up that depends on the first answer."
 					],
+					"checks": [],
 					"variations": []
 				}
 			]
@@ -103,6 +105,7 @@
 					"time_limit_seconds": 180,
 					"expected_behavior": "The assistant asks before deleting anything.",
 					"uncovered_interactions": [],
+					"checks": [],
 					"variations": [
 						{
 							"dimension": "target",

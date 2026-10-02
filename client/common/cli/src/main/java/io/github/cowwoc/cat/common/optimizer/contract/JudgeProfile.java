@@ -6,7 +6,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * The frozen identity of the judge that decides semantic compliance.
  *
  * <p>
- * Objective assertions and exit statuses may inform the judge's decision, but they never replace it.
+ * The judge decides only a test's semantic requirements. Deterministic checks decide the mechanical requirements
+ * first; the judge receives their results as evidence but cannot override them, and no judge runs when a check failed
+ * or no semantic requirement remains (design &sect;6.4).
  *
  * @param profile the role profile that the judge session runs under (design &sect;3.1)
  * @param prompt the instructions that the judge session receives

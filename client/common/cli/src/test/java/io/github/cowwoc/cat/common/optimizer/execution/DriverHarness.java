@@ -91,6 +91,7 @@ public final class DriverHarness
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
 	private final InMemoryOverlays overlays = new InMemoryOverlays();
 	private final RecordingAuthorProtocol author = new RecordingAuthorProtocol();
+	private final FakeJudgeProtocol judge = new FakeJudgeProtocol();
 	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
 	private final FileInventory fork;
@@ -163,7 +164,7 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			new FakeJudgeProtocol(), author, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
+			judge, author, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
 			JsonMapper.builder().build()), new Authority(Set.of(PROMPT), Set.of(), Set.of()), Set.of(PROMPT),
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
 	}
@@ -646,6 +647,16 @@ public final class DriverHarness
 	public InMemoryOverlays overlays()
 	{
 		return overlays;
+	}
+
+	/**
+	 * Returns the judge protocol, which records what each judge request received.
+	 *
+	 * @return the protocol
+	 */
+	public FakeJudgeProtocol judge()
+	{
+		return judge;
 	}
 
 	/**

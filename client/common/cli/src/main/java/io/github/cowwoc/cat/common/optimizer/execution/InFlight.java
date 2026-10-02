@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -10,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * A nested session that a {@link Driver} started and that has not ended yet.
@@ -63,16 +66,18 @@ sealed interface InFlight
 	}
 
 	/**
-	 * A completed trial session that waits for, or is in, its judge session.
+	 * A completed trial session whose deterministic checks passed and that waits for, or is in, its judge session.
 	 *
 	 * @param key the logical trial
 	 * @param instance the trial's instance
 	 * @param evidence the trial session's result, which every judge attempt receives unchanged
+	 * @param requirements the semantic requirements of the trial's test, which the judge decides
+	 * @param results the results of the test's deterministic checks, which the judge receives as evidence
 	 * @param attempt the judge attempt, from 1
 	 * @param concurrency the number of trial sessions that ran once the trial's session started
 	 */
-	record Judging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence, int attempt,
-		int concurrency)
+	record Judging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence,
+		List<Requirement> requirements, List<CheckResult> results, int attempt, int concurrency)
 	{
 		/**
 		 * Returns the next judge attempt with the same evidence.
@@ -81,7 +86,7 @@ sealed interface InFlight
 		 */
 		Judging retry()
 		{
-			return new Judging(key, instance, evidence, attempt + 1, concurrency);
+			return new Judging(key, instance, evidence, requirements, results, attempt + 1, concurrency);
 		}
 	}
 }

@@ -1,18 +1,22 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
  * Turns a trial's evidence into a judge session and the judge's output into a judgment, for the {@link Driver}.
  * <p>
  * This is the seam that the judge prompt fills: the driver supplies the contract's frozen judge profile as data and
- * never writes prompt text itself.
+ * never writes prompt text itself. The driver asks for a judge only after every deterministic check of the trial
+ * passed and while a semantic requirement remains (design &sect;6.4).
  */
 public interface JudgeProtocol
 {
@@ -23,10 +27,16 @@ public interface JudgeProtocol
 	 * @param profile the contract's frozen judge profile
 	 * @param instance the trial's instance
 	 * @param evidence the trial session's result, which the judge reads without changing it
+	 * @param requirements the semantic requirements of the trial's test, which are the only requirements that the
+	 *   judge decides
+	 * @param results the results of the test's deterministic checks, which the judge receives as evidence but cannot
+	 *   override
 	 * @return a request whose role is {@link SessionRole#JUDGE}
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code requirements} is empty
 	 */
-	SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence);
+	SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence,
+		List<Requirement> requirements, List<CheckResult> results);
 
 	/**
 	 * Extracts the verdict and its rationale from a judge session.

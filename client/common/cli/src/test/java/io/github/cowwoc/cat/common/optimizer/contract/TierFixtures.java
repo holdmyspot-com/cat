@@ -126,7 +126,7 @@ public final class TierFixtures
 		String safetySource = fixture.requirements().stream().filter(requirement -> requirement.id().equals("r2")).
 			findFirst().orElseThrow().source();
 		TrialProfiles profiles = TrialProfiles.compute(inventory, List.of(new ProfileBinding(safetySource, safety)),
-			List.of(), fixture.requirements(), fixture.categories(), Set.of());
+			List.of(), fixture.requirements(), fixture.categories(), Set.of(Requirement.CORE_TASK.id()));
 		return new Contract(fixture.requirements(), fixture.categories(), profiles, fixture.judge(),
 			fixture.fixtures(), fixture.limitations());
 	}

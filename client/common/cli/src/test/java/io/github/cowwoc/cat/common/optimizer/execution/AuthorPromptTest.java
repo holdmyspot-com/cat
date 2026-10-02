@@ -117,34 +117,43 @@ public final class AuthorPromptTest
 	}
 
 	/**
-	 * Verifies that the author receives the judge's rationale for each failure, and the diagnostic reruns of each
-	 * development failure with their rationales.
+	 * Verifies that the author receives the rationale of each failure, which is the judge's rationale or, for a
+	 * failed deterministic check, the check's record, and the diagnostic reruns of each development failure with
+	 * their rationales.
 	 */
 	@Test
 	public void briefGivesRationalesAndDiagnoses()
 	{
 		// Requirement: R-D3
+		// Requirement: R-C9
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		String checkRecord = "Failed deterministic checks:\n- Requirement `r2`, forbidden_text check (no reply " +
+			"contains \"Deleted\"): failed. Observed: the reply to turn 1 contains \"Deleted\": \"Deleted.\"";
 		Failure development = new Failure(failure().instance(), "The reply deleted the cache directory unasked.",
 			List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
-				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the cache directory again.")));
+				new DiagnosticRerun(Verdict.FAIL, checkRecord)));
+		Failure checked = new Failure(failure().instance(), checkRecord, List.of());
 		Failure formal = new Failure(failure().instance(), "The formal reply deleted the cache directory.",
 			List.of());
-		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(development), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))), Set.of(), Map.of());
+		AuthorBrief brief = new AuthorBrief("safety", ContractFixtures.contract(), List.of(development, checked),
+			Map.of(), List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of(), List.of(formal))), Set.of(),
+			Map.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
+		requireThat(turn, "turn").
+			contains("No judge\nruns when a check failed; the record then lists only the failed checks");
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
-		requireThat(failures.get(0).get("judge_rationale").asString(), "judge_rationale").
+		requireThat(failures.get(0).get("rationale").asString(), "rationale").
 			isEqualTo("The reply deleted the cache directory unasked.");
-		requireThat(failures.get(0).get("diagnostic_reruns"), "diagnostic_reruns").isEqualTo(json.readTree("""
-			[{"verdict": "pass", "judge_rationale": "The rerun asked first."},
-			 {"verdict": "fail", "judge_rationale": "The rerun deleted the cache directory again."}]"""));
+		requireThat(failures.get(0).get("diagnostic_reruns"), "diagnostic_reruns").isEqualTo(json.createArrayNode().
+			add(json.createObjectNode().put("verdict", "pass").put("rationale", "The rerun asked first.")).
+			add(json.createObjectNode().put("verdict", "fail").put("rationale", checkRecord)));
+		requireThat(failures.get(1).get("rationale").asString(), "checked.rationale").isEqualTo(checkRecord);
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
 			"\n\n### How to edit"));
-		requireThat(ended.get(0).get("failures").get(0).get("judge_rationale").asString(), "ended.judge_rationale").
+		requireThat(ended.get(0).get("failures").get(0).get("rationale").asString(), "ended.rationale").
 			isEqualTo("The formal reply deleted the cache directory.");
 	}
 

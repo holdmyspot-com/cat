@@ -2,6 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.PatternMatch;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -155,7 +161,7 @@ public final class ProposalSchemaTest
 		TestDefinition styled = contract.categories().get(0).tests().get(0);
 		requireThat(styled.timeLimit().toSeconds(), "timeLimitSeconds").isEqualTo(300L);
 		requireThat(styled.turns().size(), "turns.size()").isEqualTo(2);
-		requireThat(contract.fixtures().ignoredPaths(), "ignoredPaths").isEqualTo(java.util.List.of(".env.example"));
+		requireThat(contract.fixtures().ignoredPaths(), "ignoredPaths").isEqualTo(List.of(".env.example"));
 	}
 
 	/**
@@ -219,6 +225,8 @@ public final class ProposalSchemaTest
 				{"test expected behavior", path("categories", "0", "tests", "0", "expected_behavior")},
 				{"test uncovered interactions", path("categories", "0", "tests", "0", "uncovered_interactions")},
 				{"test variations", path("categories", "0", "tests", "0", "variations")},
+				{"test checks", path("categories", "0", "tests", "0", "checks")},
+				{"test discarded checks", path("categories", "0", "tests", "0", "discarded_checks")},
 				{"variation dimension", path("categories", "0", "tests", "0", "variations", "0", "dimension")},
 				{"variation values", path("categories", "0", "tests", "0", "variations", "0", "values")},
 				{"variation value label", path("categories", "0", "tests", "0", "variations", "0", "values", "0",
@@ -458,5 +466,118 @@ public final class ProposalSchemaTest
 		requireThat(judge.decisionRule(), "decisionRule").isEqualTo("Pass only if every rubric item holds.");
 		requireThat(json.readTree(judge.resultSchema()).get("required").get(0).asString(), "required").
 			isEqualTo("verdict");
+	}
+
+	/**
+	 * Returns the fixture contract with checks on its {@code plain-list} test, which checks {@code r1} and the
+	 * core-task requirement in one turn.
+	 *
+	 * @param checks the test's checks
+	 * @param discarded the test's discarded checks
+	 * @return the contract
+	 */
+	private static Contract withChecks(List<DeterministicCheck> checks, List<DiscardedCheck> discarded)
+	{
+		Contract fixture = ContractFixtures.contract();
+		Category formatting = fixture.categories().getFirst();
+		List<TestDefinition> tests = new ArrayList<>(formatting.tests());
+		TestDefinition list = tests.get(1);
+		tests.set(1, new TestDefinition(list.id(), list.requirementIds(), list.applicability(), list.turns(),
+			list.timeLimit(), list.expectedBehaviour(), list.uncoveredInteractions(), list.variations(), checks,
+			discarded));
+		List<Category> categories = new ArrayList<>(fixture.categories());
+		categories.set(0, new Category(formatting.id(), formatting.rationale(), formatting.riskRank(), tests));
+		return new Contract(fixture.requirements(), categories, fixture.profiles(), fixture.judge(),
+			fixture.fixtures(), fixture.limitations());
+	}
+
+	/**
+	 * Verifies that a check of each kind, with its parameters and controls, and a discarded check with its reason
+	 * survive writing the contract and reading it back, and that they are part of the contract's identity.
+	 *
+	 * @param kind the kind's name
+	 * @param criterion the check's criterion
+	 * @param good evidence that the check must accept
+	 * @param bad evidence that the check must reject
+	 * @throws InvalidProposalException if the written contract is rejected
+	 */
+	@Test(dataProvider = "kinds", dataProviderClass = DeterministicCheckTest.class)
+	public void checksRoundTripThroughTheStoredContract(String kind, CheckCriterion criterion, ControlEvidence good,
+		ControlEvidence bad) throws InvalidProposalException
+	{
+		// Requirement: R-C9
+		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), criterion, good, bad);
+		DiscardedCheck discarded = new DiscardedCheck(new DeterministicCheck("r1", criterion, bad, good),
+			"It rejected its known-good control: the evidence differs.");
+		Contract original = withChecks(List.of(check), List.of(discarded));
+
+		String written = schema().toJson(original);
+		Contract reread = schema().parse(written);
+
+		requireThat(reread, "reread").isEqualTo(original);
+		requireThat(written, "written").contains("\"kind\":\"" + kind + "\"");
+		ProposalSchema schema = schema();
+		requireThat(ContractIdentity.of(schema, original), "identity").
+			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+		requireThat(ContractIdentity.of(schema, withChecks(List.of(), List.of(discarded))), "identityWithoutCheck").
+			isNotEqualTo(ContractIdentity.of(schema, original));
+	}
+
+	/**
+	 * Verifies that loading a stored contract runs each check against its controls again: a check that accepts its
+	 * known-bad control is discarded, with the reason, and its requirement becomes semantic.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void loadingDiscardsACheckThatFailsAControl() throws InvalidProposalException
+	{
+		// Requirement: R-C9
+		ControlEvidence list = new ControlEvidence(List.of("- red\n- green\n- blue"), List.of(), List.of(), Map.of());
+		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), new PatternMatch(1, "red"),
+			list, list);
+		JsonNode stored = json.readTree(schema().toJson(ContractFixtures.contract()));
+		JsonNode written = json.readTree(schema().toJson(withChecks(List.of(), List.of(new DiscardedCheck(lenient,
+			"placeholder")))));
+		JsonNode check = written.get("categories").get(0).get("tests").get(1).get("discarded_checks").get(0).
+			get("check");
+		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
+
+		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain-list").orElseThrow();
+
+		requireThat(loaded.checks(), "checks").isEmpty();
+		requireThat(loaded.discardedChecks().size(), "discardedChecks.size()").isEqualTo(1);
+		DiscardedCheck discarded = loaded.discardedChecks().getFirst();
+		requireThat(discarded.check(), "discarded.check()").isEqualTo(lenient);
+		requireThat(discarded.reason(), "discarded.reason()").startsWith("It accepted its known-bad control: ");
+		requireThat(loaded.semanticRequirementIds(), "semanticRequirementIds").
+			isEqualTo(List.of("r1", Requirement.CORE_TASK.id()));
+	}
+
+	/**
+	 * Verifies that a check whose parameters do not suit its kind is rejected with the kind's parameters.
+	 */
+	@Test
+	public void rejectsParametersThatDoNotSuitTheKind()
+	{
+		// Requirement: R-C9
+		ObjectNode check = json.createObjectNode();
+		check.put("requirement_id", "r1");
+		check.put("kind", "exact_text");
+		check.putObject("parameters").put("pattern", "x");
+		ObjectNode control = json.createObjectNode();
+		control.putArray("replies").add("x");
+		control.putArray("files");
+		control.putArray("tool_calls");
+		control.putArray("choices");
+		check.set("known_good", control);
+		check.set("known_bad", control.deepCopy());
+		ArrayNode checks = json.createArrayNode().add(check);
+
+		InvalidProposalException e = rejection(changed(path("categories", "0", "tests", "1", "checks"), checks));
+
+		requireThat(String.join(" | ", e.problems()), "problems").
+			contains("$.categories[0].tests[1].checks[0].parameters").
+			contains("The kind 'exact_text' does not take the parameter 'pattern'");
 	}
 }

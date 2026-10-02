@@ -96,14 +96,15 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * The judge labelled a running logical trial.
+	 * A running logical trial was labelled by its deterministic checks or by its judge.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param key the trial
-	 * @param verdict the judge's label
-	 * @param rationale the judge's explanation of the label
-	 * @param observed the conditions that the trial and judge sessions observed
+	 * @param verdict the trial's label
+	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
+	 *   deterministic checks
+	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 */
 	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed)
 		implements CampaignEvent
@@ -112,9 +113,10 @@ public sealed interface CampaignEvent
 		 * Creates the event.
 		 *
 		 * @param key the trial
-		 * @param verdict the judge's label
-		 * @param rationale the judge's explanation of the label
-		 * @param observed the conditions that the trial and judge sessions observed
+		 * @param verdict the trial's label
+		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
+		 *   deterministic checks
+		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @throws NullPointerException if any argument is null
 		 */
 		public Complete

@@ -7,16 +7,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param verdict the judge's label
- * @param rationale the judge's explanation of the label
+ * @param verdict the rerun's label
+ * @param rationale the judge's explanation of the label or, when no judge ran, the record of the rerun's
+ *   deterministic checks
  */
 public record DiagnosticRerun(Verdict verdict, String rationale)
 {
 	/**
 	 * Creates a rerun outcome.
 	 *
-	 * @param verdict the judge's label
-	 * @param rationale the judge's explanation of the label
+	 * @param verdict the rerun's label
+	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the rerun's
+	 *   deterministic checks
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public DiagnosticRerun

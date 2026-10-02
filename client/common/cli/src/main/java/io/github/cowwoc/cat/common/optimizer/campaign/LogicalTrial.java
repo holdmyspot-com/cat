@@ -17,7 +17,8 @@ import java.util.List;
  * @param allocation the allocation decision that assigned the trial
  * @param state where the trial is in its life
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
- * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
+ * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
+ *   deterministic checks, or {@code null} if the trial is not judged
  * @param infrastructureFailures the runs that ended without an outcome and count toward
  *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}; a {@link Choice#RETRY} resets it to 0
  * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
@@ -36,7 +37,8 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param allocation the allocation decision that assigned the trial
 	 * @param state where the trial is in its life
 	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
-	 * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
+	 * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
+	 *   deterministic checks, or {@code null} if the trial is not judged
 	 * @param infrastructureFailures the runs that ended without an outcome and count toward
 	 *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}
 	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended

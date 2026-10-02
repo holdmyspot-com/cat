@@ -134,7 +134,7 @@ public final class ProfileTypesTest
 		// Requirement: R-C10
 		Category category = new Category("formatting", "Needs its own claim.", new RiskRank(1),
 			List.of(new TestDefinition("formatting-test", List.of("missing"), "Always.", List.of("Do it."),
-				Duration.ofMinutes(1), "Complies.", List.of(), List.of())));
+				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of())));
 		List<Requirement> requirements = List.of(new Requirement("skill", "Follows the skill.",
 			"skills/a/SKILL.md"));
 		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, List.of(), List.of(), requirements,

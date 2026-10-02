@@ -54,9 +54,11 @@ The confirmed contract, as JSON:
 
 {{contract}}
 
-The development instances that failed for the working candidate, as JSON. Each one carries the judge's rationale for
-its failure in `judge_rationale`, and the targeted reruns of the same instance against the working candidate in
-`diagnostic_reruns`, each with its verdict and the judge's rationale:
+The development instances that failed for the working candidate, as JSON. Each one carries the reason for its failure
+in `rationale`, and the targeted reruns of the same instance against the working candidate in `diagnostic_reruns`, each
+with its verdict and its `rationale`. A `rationale` is the judge's rationale or, when no judge ran, a record of
+deterministic checks that names, for each check, the requirement, the check and the value that it observed. No judge
+runs when a check failed; the record then lists only the failed checks:
 
 {{failures}}
 
@@ -64,15 +66,15 @@ The development counts of the working candidate per cell, as JSON:
 
 {{development_counts}}
 
-The formal outcomes of the certification attempts that have ended, as JSON. Each formal failure carries the judge's
-rationale in `judge_rationale`:
+The formal outcomes of the certification attempts that have ended, as JSON. Each formal failure carries its
+`rationale`, as above:
 
 {{ended_attempts}}
 
 ### How to edit
 
 - Diagnose why the failing instances failed by comparing each one's turns with its expected behaviour, with the
-  requirement text and with the judge's rationales. Reruns that passed show the failure is intermittent; reruns that
+  requirement text and with the rationales. Reruns that passed show the failure is intermittent; reruns that
   failed show it reproduces.
 - Fix the instruction for every use in the category, not only the wording of one failing instance. New instances are
   drawn from the same tests, and every earlier failing instance is run again against your attempt.

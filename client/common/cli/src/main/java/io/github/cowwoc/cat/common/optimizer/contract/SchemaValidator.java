@@ -11,7 +11,8 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Checks a JSON value against the subset of JSON Schema that {@code proposal.schema.json} uses.
+ * Checks a JSON value against the subset of JSON Schema that {@code proposal.schema.json} uses, including references
+ * to the root schema's {@code $defs}.
  *
  * <p>
  * The proposal schema is the single definition of the proposal's shape, so the validator reads it rather than repeating
@@ -90,6 +91,11 @@ final class SchemaValidator
 							check(argument, value.get(i), location + "[" + i + "]", violations);
 					}
 				}
+				case "$ref" -> check(definition(argument.asString(), location), value, location, violations);
+				case "$defs" ->
+				{
+					// Definitions constrain a value only where a $ref names them.
+				}
 				default ->
 				{
 					if (!ANNOTATIONS.contains(name))
@@ -99,6 +105,30 @@ final class SchemaValidator
 		}
 		if (value.isObject())
 			checkProperties(schema, value, location, violations);
+	}
+
+	/**
+	 * Resolves a {@code $ref} to a definition in the root schema's {@code $defs}.
+	 *
+	 * @param reference the reference, such as {@code #/$defs/check}
+	 * @param location the location of the value
+	 * @return the definition's schema
+	 * @throws IllegalArgumentException if the reference does not name a definition of the root schema
+	 */
+	private JsonNode definition(String reference, String location)
+	{
+		String prefix = "#/$defs/";
+		if (reference.startsWith(prefix))
+		{
+			JsonNode definitions = rootSchema.get("$defs");
+			if (definitions != null)
+			{
+				JsonNode definition = definitions.get(reference.substring(prefix.length()));
+				if (definition != null)
+					return definition;
+			}
+		}
+		throw new IllegalArgumentException("Unsupported schema reference '" + reference + "' at " + location);
 	}
 
 	/**

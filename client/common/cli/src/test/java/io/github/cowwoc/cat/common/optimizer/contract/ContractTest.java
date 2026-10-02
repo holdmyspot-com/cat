@@ -32,7 +32,7 @@ public final class ContractTest
 	private static TestDefinition test(String id, List<String> turns, List<VariationRule> variations)
 	{
 		return new TestDefinition(id, List.of("r1"), "Always.", turns, Duration.ofMinutes(1), "Complies.",
-			List.of(), variations);
+			List.of(), variations, List.of(), List.of());
 	}
 
 	/**
@@ -97,7 +97,7 @@ public final class ContractTest
 
 		requirements.clear();
 
-		requireThat(contract.requirements().size(), "requirements.size()").isEqualTo(2);
+		requireThat(contract.requirements().size(), "requirements.size()").isEqualTo(3);
 		boolean modified = true;
 		try
 		{
@@ -122,10 +122,10 @@ public final class ContractTest
 		Category safety = valid.categories().get(1);
 		Requirement r1 = valid.requirements().get(0);
 		TestDefinition orphan = new TestDefinition("orphan", List.of("r99"), "Always.", List.of("Hello."),
-			Duration.ofMinutes(1), "Complies.", List.of(), List.of());
+			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of());
 		Category orphaned = new Category("orphaned", "Why.", new RiskRank(3), List.of(orphan));
 		TestDefinition duplicate = new TestDefinition("plain-list", List.of("r1"), "Always.", List.of("Hello."),
-			Duration.ofMinutes(1), "Complies.", List.of(), List.of());
+			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of());
 		Category duplicating = new Category("duplicating", "Why.", new RiskRank(3), List.of(duplicate));
 		List<Runnable> inconsistent = List.of(
 			() -> new Contract(List.of(r1, r1), valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
@@ -150,6 +150,47 @@ public final class ContractTest
 			catch (IllegalArgumentException _)
 			{
 				rejected = true;
+			}
+			requireThat(rejected, "rejected").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a contract lists CAT's core-task requirement and that every test checks it.
+	 */
+	@Test
+	public void everyTestChecksTheCoreTask()
+	{
+		// Requirement: R-C8
+		Contract valid = ContractFixtures.contract();
+		requireThat(valid.requirements(), "requirements").contains(Requirement.CORE_TASK);
+		requireThat(Requirement.CORE_TASK.source(), "source").isEqualTo("CAT");
+		Category formatting = valid.categories().get(0);
+		TestDefinition unchecked = new TestDefinition("unchecked", List.of("r1"), "Always.", List.of("Hello."),
+			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of());
+		Category withUnchecked = new Category("formatting", formatting.rationale(), formatting.riskRank(),
+			List.of(formatting.tests().get(0), unchecked));
+		List<Requirement> withoutCoreTask = valid.requirements().stream().
+			filter(requirement -> !requirement.equals(Requirement.CORE_TASK)).toList();
+		List<Requirement> rewritten = new ArrayList<>(withoutCoreTask);
+		rewritten.add(new Requirement(Requirement.CORE_TASK.id(), "Answers the question.", "CLAUDE.md"));
+		List<Runnable> invalid = List.of(
+			() -> new Contract(withoutCoreTask, valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
+				valid.limitations()),
+			() -> new Contract(rewritten, valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
+				valid.limitations()),
+			() -> new Contract(valid.requirements(), List.of(withUnchecked, valid.categories().get(1)),
+				valid.profiles(), valid.judge(), valid.fixtures(), valid.limitations()));
+		for (Runnable build : invalid)
+		{
+			boolean rejected = false;
+			try
+			{
+				build.run();
+			}
+			catch (IllegalArgumentException e)
+			{
+				rejected = e.getMessage().contains(Requirement.CORE_TASK.id());
 			}
 			requireThat(rejected, "rejected").isTrue();
 		}
@@ -206,15 +247,15 @@ public final class ContractTest
 			() -> test("t", List.of("Say {{mood}}."), List.of(tone)),
 			() -> test("t", List.of("Say {{tone}}."), List.of(tone, tone)),
 			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ZERO, "Complies.",
-				List.of(), List.of()),
+				List.of(), List.of(), List.of(), List.of()),
 			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ofMillis(1500),
-				"Complies.", List.of(), List.of()),
+				"Complies.", List.of(), List.of(), List.of(), List.of()),
 			() -> new TestDefinition("t", List.of(), "Always.", List.of("Hi."), Duration.ofMinutes(1), "Complies.",
-				List.of(), List.of()),
+				List.of(), List.of(), List.of(), List.of()),
 			() -> new TestDefinition("t", List.of("r1"), "", List.of("Hi."), Duration.ofMinutes(1), "Complies.",
-				List.of(), List.of()),
+				List.of(), List.of(), List.of(), List.of()),
 			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ofMinutes(1), "",
-				List.of(), List.of()));
+				List.of(), List.of(), List.of(), List.of()));
 		for (Runnable build : invalid)
 		{
 			boolean rejected = false;

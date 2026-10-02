@@ -10,7 +10,7 @@ import java.util.Set;
 /**
  * The confirmed definition of compliance that every trial measures.
  *
- * @param requirements every requirement and its source
+ * @param requirements every requirement and its source, including CAT's {@link Requirement#CORE_TASK}
  * @param categories the categories, in the order that breaks allocation ties last
  * @param profiles the trial profiles and the cells, which are the statistical units
  * @param judge the frozen judge profile
@@ -32,8 +32,8 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
 	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
-	 *   requirement that the contract does not list, a category has no cell, or a cell names a category that the
-	 *   contract does not list
+	 *   requirement that the contract does not list, the contract does not list {@link Requirement#CORE_TASK} or a
+	 *   test does not check it, a category has no cell, or a cell names a category that the contract does not list
 	 */
 	public Contract
 	{
@@ -54,6 +54,12 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 		{
 			if (!requirementIds.add(requirement.id()))
 				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' is listed twice");
+		}
+		String coreTask = Requirement.CORE_TASK.id();
+		if (!requirements.contains(Requirement.CORE_TASK))
+		{
+			throw new IllegalArgumentException("The contract must list CAT's requirement '" + coreTask + "' as " +
+				Requirement.CORE_TASK + ", but it lists " + requirements);
 		}
 		Set<String> categoryIds = new HashSet<>();
 		Set<String> testIds = new HashSet<>();
@@ -76,6 +82,11 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 							requirementId + "', which the contract does not list. Listed requirements: " +
 							requirementIds);
 					}
+				}
+				if (!test.requirementIds().contains(coreTask))
+				{
+					throw new IllegalArgumentException("The test '" + test.id() + "' does not check the requirement '" +
+						coreTask + "', which every test checks");
 				}
 			}
 			if (profiles.cellsOf(category.id()).isEmpty())
@@ -100,6 +111,18 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	public Optional<Category> findCategory(String id)
 	{
 		return categories.stream().filter(category -> category.id().equals(id)).findFirst();
+	}
+
+	/**
+	 * Finds a test definition.
+	 *
+	 * @param id a test identifier
+	 * @return the test with that identifier, or empty if the contract has none
+	 */
+	public Optional<TestDefinition> findTest(String id)
+	{
+		return categories.stream().flatMap(category -> category.tests().stream()).
+			filter(test -> test.id().equals(id)).findFirst();
 	}
 
 	/**

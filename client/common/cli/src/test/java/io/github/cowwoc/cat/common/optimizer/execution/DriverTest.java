@@ -32,13 +32,23 @@ import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
+import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
+import io.github.cowwoc.cat.common.optimizer.execution.FakeJudgeProtocol.JudgeCall;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
@@ -70,6 +80,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -1047,6 +1058,270 @@ public final class DriverTest
 					count();
 				requireThat(inactive, "secondCandidateInactiveCellTrials").isEqualTo(0L);
 			}
+		}
+	}
+
+	/**
+	 * The reply that fails the {@code core-task} check of {@link #checkedContract()}.
+	 */
+	private static final String BROKEN = "BROKEN";
+	/**
+	 * The reply of a {@code delete-directory} trial that passes both of its checks.
+	 */
+	private static final String ASKS = "Should I delete the directory?";
+
+	/**
+	 * Returns the fixture contract with deterministic checks. In {@code plain-list}, a check decides
+	 * {@code core-task} and the judge decides {@code r1}. In {@code delete-directory}, checks decide both
+	 * requirements, so no semantic requirement remains. {@code styled-summary} has no check.
+	 *
+	 * @return the contract
+	 */
+	private static Contract checkedContract()
+	{
+		DeterministicCheck intact = new DeterministicCheck(Requirement.CORE_TASK.id(),
+			new CheckCriterion.ForbiddenText(null, BROKEN), reply("red, green, blue"), reply(BROKEN));
+		DeterministicCheck asks = new DeterministicCheck("r2", new CheckCriterion.PatternMatch(1, "\\?"), reply(ASKS),
+			reply("Deleted."));
+		return withChecks(Map.of("plain-list", List.of(intact), "delete-directory", List.of(asks, intact)));
+	}
+
+	/**
+	 * Returns the fixture contract with deterministic checks.
+	 *
+	 * @param checksByTest the checks of each test that has checks
+	 * @return the contract
+	 */
+	private static Contract withChecks(Map<String, List<DeterministicCheck>> checksByTest)
+	{
+		Contract fixture = ContractFixtures.contract();
+		List<Category> categories = new ArrayList<>();
+		for (Category category : fixture.categories())
+		{
+			List<TestDefinition> tests = new ArrayList<>();
+			for (TestDefinition test : category.tests())
+			{
+				List<DeterministicCheck> checks = checksByTest.getOrDefault(test.id(), List.of());
+				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.applicability(), test.turns(),
+					test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), checks,
+					List.of()));
+			}
+			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
+		}
+		return new Contract(fixture.requirements(), categories,
+			ContractFixtures.profiles(fixture.requirements(), categories), fixture.judge(), fixture.fixtures(),
+			fixture.limitations());
+	}
+
+	/**
+	 * Returns the evidence of a single-turn trial.
+	 *
+	 * @param text the trial's reply
+	 * @return the evidence
+	 */
+	private static ControlEvidence reply(String text)
+	{
+		return new ControlEvidence(List.of(text), List.of(), List.of(), Map.of());
+	}
+
+	/**
+	 * Returns a trial session of {@link #checkedContract()} that passes every check and that the judge passes.
+	 *
+	 * @param harness the test's harness
+	 * @param request the trial session's request
+	 * @return the result
+	 */
+	private static SessionResult.Completed compliant(DriverHarness harness, SessionRequest request)
+	{
+		if (DriverHarness.category(request).equals("safety"))
+			return harness.completed(ASKS, DriverHarness.MODEL);
+		return harness.passed();
+	}
+
+	/**
+	 * Indicates whether a trial session runs the {@code plain-list} test.
+	 *
+	 * @param request the trial session's request
+	 * @return {@code true} for {@code plain-list}
+	 */
+	private static boolean isPlainList(SessionRequest request)
+	{
+		return request.turns().getFirst().startsWith("List");
+	}
+
+	/**
+	 * Trace 16: a trial fails a deterministic check, no judge session runs, and the failed check's record, which names
+	 * the check and its observed value, reaches the author brief in place of a judge rationale, for the failure and
+	 * for the rerun that reproduced it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws UndecidableCheckException never
+	 */
+	@Test
+	public void failedCheckRunsNoJudge() throws IOException, UndecidableCheckException
+	{
+		// Requirement: R-C9
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().
+					development("formatting", 50, 0).development("safety", 50, 0).build());
+			Sha256 first = CampaignBuilder.snapshot("candidate-1");
+			harness.trials(request ->
+			{
+				if (isPlainList(request) && harness.snapshot(request).equals(first))
+					return harness.completed(BROKEN, DriverHarness.MODEL);
+				return compliant(harness, request);
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().working().number() == 2);
+			}
+			TestDefinition plainList = contract.findTest("plain-list").orElseThrow();
+			String record = "Failed deterministic checks:\n- " +
+				plainList.decide(List.of(), reply(BROKEN)).getFirst().describe();
+			AuthorBrief brief = harness.author().briefs().getFirst();
+			requireThat(brief.category(), "category").isEqualTo("formatting");
+			Failure failure = brief.developmentFailures().getFirst();
+			requireThat(failure.instance().testId(), "testId").isEqualTo("plain-list");
+			requireThat(failure.rationale(), "rationale").isEqualTo(record);
+			requireThat(failure.reruns(), "reruns").isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, record)));
+			for (FakeSession session : harness.sessions().sessions())
+			{
+				SessionRequest request = session.request();
+				if (request.role() == SessionRole.JUDGE)
+				{
+					requireThat(request.turns(), "judgeTurns").
+						doesNotContain(FakeJudgeProtocol.PREFIX + BROKEN);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Trace 16: a trial whose checks pass runs its judge, which receives only the test's semantic requirements and,
+	 * as evidence, the deterministic results. A test without checks gives the judge every requirement.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws UndecidableCheckException never
+	 */
+	@Test
+	public void passingChecksRunTheJudge() throws IOException, UndecidableCheckException
+	{
+		// Requirement: R-C9
+		// Requirement: R-C5
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(request -> compliant(harness, request));
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> judged(harness, "plain-list") && judged(harness, "styled-summary"));
+			}
+			Requirement r1 = contract.requirements().getFirst();
+			List<CheckResult> plainListResults = contract.findTest("plain-list").orElseThrow().
+				decide(List.of(), reply("pass"));
+			for (JudgeCall call : harness.judge().calls())
+			{
+				String testId = call.instance().testId();
+				switch (testId)
+				{
+					case "plain-list" ->
+					{
+						requireThat(call.requirements(), "plainListRequirements").isEqualTo(List.of(r1));
+						requireThat(call.results(), "plainListResults").isEqualTo(plainListResults);
+					}
+					case "styled-summary" ->
+					{
+						requireThat(call.requirements(), "styledRequirements").
+							isEqualTo(List.of(r1, Requirement.CORE_TASK));
+						requireThat(call.results(), "styledResults").isEmpty();
+					}
+					default -> throw new AssertionError("A judge ran for the test '" + testId + "'");
+				}
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether a judge was asked to decide a trial of a test.
+	 *
+	 * @param harness the test's harness
+	 * @param testId the test
+	 * @return {@code true} if a judge request named a trial of the test
+	 */
+	private static boolean judged(DriverHarness harness, String testId)
+	{
+		return harness.judge().calls().stream().anyMatch(call -> call.instance().testId().equals(testId));
+	}
+
+	/**
+	 * Trace 16: a trial of a test whose checks decide every requirement completes from its checks without a judge
+	 * session.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void mechanicalTestRunsNoJudge() throws IOException
+	{
+		// Requirement: R-C9
+		Contract contract = checkedContract();
+		requireThat(contract.findTest("delete-directory").orElseThrow().semanticRequirementIds(), "semantic").
+			isEmpty();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(request -> compliant(harness, request));
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, state -> state.development().count("safety").passes() >= 10);
+			}
+			requireThat(campaign.development().count("safety").failures(), "safetyFailures").isEqualTo(0);
+			requireThat(judged(harness, "delete-directory"), "judgedSafety").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a check whose kind the trial's evidence does not record, such as a tool-use check on a harness
+	 * whose results hold no tool calls, makes the run an infrastructure failure rather than a pass or a fail, so that
+	 * repeated runs pause the campaign.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void undecidableCheckIsInfrastructure() throws IOException
+	{
+		// Requirement: R-C9
+		DeterministicCheck wrote = new DeterministicCheck(Requirement.CORE_TASK.id(),
+			new CheckCriterion.ToolUsed("Write", true),
+			new ControlEvidence(List.of("Done."), List.of(), List.of(new ToolCall("Write", null, null)), Map.of()),
+			reply("Done."));
+		Contract contract = withChecks(Map.of("plain-list", List.of(wrote)));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new CampaignBuilder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(_ -> harness.passed());
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, state -> state.pending() != null);
+			}
+			requireThat(campaign.pending(), "pending").isInstanceOf(PendingDecision.TrialFailures.class);
+			LogicalTrial failed = campaign.trials().stream().
+				filter(trial -> trial.infrastructureFailures() == Campaign.INFRASTRUCTURE_FAILURE_LIMIT).
+				findFirst().orElseThrow();
+			requireThat(failed.instance().testId(), "testId").isEqualTo("plain-list");
+			requireThat(failed.verdict(), "verdict").isNull();
+			requireThat(failed.infrastructureAttempts().getLast().detail(), "detail").
+				isEqualTo("The deterministic checks could not be decided: The trial's evidence records no tool calls, " +
+					"so a tool_used check cannot be decided");
+			requireThat(judged(harness, "plain-list"), "judgedPlainList").isFalse();
 		}
 	}
 

@@ -9,9 +9,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
+import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
+import io.github.cowwoc.cat.common.optimizer.contract.DiscardedCheck;
+import io.github.cowwoc.cat.common.optimizer.contract.EvidenceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
+import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -23,8 +28,10 @@ import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Writes a {@link Proposal} as Markdown, listing every item of design &sect;6.1 itself rather than a count of the
@@ -180,9 +187,9 @@ final class ProposalText
 	 */
 	private void test(TestDefinition test, int tests)
 	{
-		text.append("\n#### Test `").append(test.id()).append("`\n\n").
-			append("- Checks: ").append(String.join(", ", test.requirementIds())).append('\n').
-			append("- Applies when: ").append(test.applicability()).append('\n').
+		text.append("\n#### Test `").append(test.id()).append("`\n\n");
+		requirements(test);
+		text.append("- Applies when: ").append(test.applicability()).append('\n').
 			append("- Weight within the category: 1/").append(tests).append('\n').
 			append("- Time limit: ").append(test.timeLimit().toSeconds()).append(" seconds\n").
 			append("- Turns:\n");
@@ -214,6 +221,97 @@ final class ProposalText
 			for (String interaction : test.uncoveredInteractions())
 				text.append("  - ").append(interaction).append('\n');
 		}
+	}
+
+	/**
+	 * Marks each requirement of a test as deterministic, with its check and controls, or semantic, and lists the
+	 * checks that CAT discarded with the reason (design &sect;6.1).
+	 *
+	 * @param test the test definition
+	 */
+	private void requirements(TestDefinition test)
+	{
+		Map<String, DeterministicCheck> checkByRequirement = new HashMap<>();
+		for (DeterministicCheck check : test.checks())
+			checkByRequirement.put(check.requirementId(), check);
+		text.append("- Requirements:\n");
+		for (String requirementId : test.requirementIds())
+		{
+			text.append("  - `").append(requirementId).append("`: ");
+			DeterministicCheck check = checkByRequirement.get(requirementId);
+			if (check == null)
+			{
+				text.append("semantic; the judge decides it\n");
+				continue;
+			}
+			text.append("deterministic; a ").append(check.criterion().kind()).append(" check decides it: ").
+				append(check.criterion().describe()).append('\n').
+				append("    - Known-good control, which the check must accept:\n");
+			control(check.knownGood());
+			text.append("    - Known-bad control, which the check must reject:\n");
+			control(check.knownBad());
+		}
+		if (test.discardedChecks().isEmpty())
+		{
+			text.append("- Discarded checks: none\n");
+			return;
+		}
+		text.append("- Discarded checks:\n");
+		for (DiscardedCheck discarded : test.discardedChecks())
+		{
+			DeterministicCheck check = discarded.check();
+			text.append("  - `").append(check.requirementId()).append("`, ").append(check.criterion().kind()).
+				append(" check (").append(check.criterion().describe()).append("): ").append(discarded.reason()).
+				append(" The judge decides `").append(check.requirementId()).append("` instead.\n");
+		}
+	}
+
+	/**
+	 * Lists the evidence of a check's control.
+	 *
+	 * @param control the control
+	 */
+	private void control(ControlEvidence control)
+	{
+		String indent = "      - ";
+		for (int i = 0; i < control.replies().size(); ++i)
+		{
+			text.append(indent).append("Reply to turn ").append(i + 1).append(": ").
+				append(quote(control.replies().get(i))).append('\n');
+		}
+		for (EvidenceFile file : control.files())
+		{
+			text.append(indent).append("File `").append(file.path()).append("`: ").append(quote(file.content())).
+				append('\n');
+		}
+		for (ToolCall call : control.calls())
+		{
+			text.append(indent).append("Tool call: `").append(call.tool()).append('`');
+			if (call.command() != null)
+				text.append(" running `").append(call.command()).append('`');
+			if (call.exitStatus() != null)
+				text.append(", exit status ").append(call.exitStatus());
+			text.append('\n');
+		}
+		for (Map.Entry<String, String> choice : control.choices().entrySet())
+		{
+			text.append(indent).append("Variation value of `").append(choice.getKey()).append("`: `").
+				append(choice.getValue()).append("`\n");
+		}
+		if (control.replies().isEmpty() && control.files().isEmpty() && control.calls().isEmpty())
+			text.append(indent).append("no replies, files or tool calls\n");
+	}
+
+	/**
+	 * Quotes text on one line.
+	 *
+	 * @param value the text
+	 * @return the text in double quotes, with backslashes, double quotes and line breaks escaped
+	 */
+	private static String quote(String value)
+	{
+		return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").
+			replace("\n", "\\n") + "\"";
 	}
 
 	/**

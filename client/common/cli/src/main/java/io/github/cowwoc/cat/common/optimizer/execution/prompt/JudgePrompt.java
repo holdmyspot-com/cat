@@ -3,7 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.execution.JudgeProtocol;
 import io.github.cowwoc.cat.common.optimizer.execution.Judgment;
@@ -58,27 +60,51 @@ public final class JudgePrompt implements JudgeProtocol
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The profile's prompt receives the rubric, the decision rule and the result schema, then the evidence as data: the
-	 * instance and the responses as JSON, and the paths of the effects directory and the transcript, which the
-	 * session may read but not change.
+	 * The profile's prompt receives the rubric, the decision rule, the semantic requirements to decide and the result
+	 * schema, then the evidence as data: the instance, the responses and the deterministic results as JSON, and the
+	 * paths of the effects directory and the transcript, which the session may read but not change.
 	 *
-	 * @throws IllegalArgumentException if the profile's prompt lacks a placeholder of CAT's judge prompt
+	 * @throws IllegalArgumentException if {@code requirements} is empty, or the profile's prompt lacks a placeholder
+	 *   of CAT's judge prompt
 	 */
 	@Override
-	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence)
+	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence,
+		List<Requirement> requirements, List<CheckResult> results)
 	{
 		requireThat(profile, "profile").isNotNull();
 		requireThat(instance, "instance").isNotNull();
 		requireThat(evidence, "evidence").isNotNull();
+		requireThat(requirements, "requirements").isNotEmpty();
+		requireThat(results, "results").isNotNull();
 		ArrayNode responseArray = json.createArrayNode();
 		evidence.responses().forEach(responseArray::add);
+		ArrayNode requirementArray = json.createArrayNode();
+		for (Requirement requirement : requirements)
+		{
+			requirementArray.addObject().
+				put("id", requirement.id()).
+				put("description", requirement.description()).
+				put("source", requirement.source());
+		}
+		ArrayNode resultArray = json.createArrayNode();
+		for (CheckResult result : results)
+		{
+			resultArray.addObject().
+				put("requirement_id", result.check().requirementId()).
+				put("kind", result.check().criterion().kind()).
+				put("check", result.check().criterion().describe()).
+				put("passed", result.passed()).
+				put("observed", result.observed());
+		}
 		String turn = new PromptTemplate(profile.prompt()).fill(Map.of(
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
+			"requirements", pretty(requirementArray),
 			"instance", pretty(InstanceJson.of(json, instance)),
 			"responses", pretty(responseArray),
 			"effects", evidence.effects().toString(),
 			"transcript", evidence.transcript().toString(),
+			"deterministic_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
 
 		List<Path> readOnly = new ArrayList<>();

@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -31,10 +32,12 @@ import tools.jackson.databind.node.ObjectNode;
  * Turns a prompt system into a deriver session, and the deriver's output into a validated proposal (design
  * &sect;6.1).
  * <p>
- * The deriver's output follows the proposal schema without the judge fields and the trial profiles that CAT owns,
- * plus the deriver's findings that the contract does not hold: the prompt files whose loading no harness event
- * reports, the user's profile restriction, and the conditions that make certification unavailable. CAT adds its judge
- * fields and computes the trial profiles before validating the proposal, and rejects output that supplies them.
+ * The deriver's output follows the proposal schema without the judge fields, the trial profiles and the discarded
+ * checks that CAT owns, plus the deriver's findings that the contract does not hold: the prompt files whose loading no
+ * harness event reports, the user's profile restriction, and the conditions that make certification unavailable.
+ * CAT adds its judge fields and the core-task requirement, which every test checks, computes the trial profiles, and
+ * runs each deterministic check against its controls before validating the proposal (design &sect;6.1). It rejects
+ * output that supplies a field that CAT owns or a requirement with the core-task requirement's identifier.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -86,8 +89,8 @@ public final class DeriverProtocol
 	}
 
 	/**
-	 * Returns the schema of the deriver's output: the proposal schema without the judge fields and the trial profiles
-	 * that CAT owns, plus the deriver's findings.
+	 * Returns the schema of the deriver's output: the proposal schema without the judge fields, the trial profiles and
+	 * the discarded checks that CAT owns, plus the deriver's findings.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schema the proposal schema
@@ -95,15 +98,7 @@ public final class DeriverProtocol
 	 */
 	private static String outputSchema(JsonMapper json, ProposalSchema schema)
 	{
-		ObjectNode root = (ObjectNode) json.readTree(schema.schemaText());
-		((ObjectNode) root.get("properties")).remove(ProposalSchema.TRIAL_PROFILES);
-		ArrayNode required = json.createArrayNode();
-		for (JsonNode name : root.get("required"))
-		{
-			if (!name.asString().equals(ProposalSchema.TRIAL_PROFILES))
-				required.add(name);
-		}
-		root.set("required", required);
+		ObjectNode root = schema.derivationSchema();
 		ObjectNode judgeSchema = (ObjectNode) root.get("properties").get("judge");
 		((ObjectNode) judgeSchema.get("properties")).remove(JudgeTemplate.OWNED_FIELDS);
 		ArrayNode judgeRequired = json.createArrayNode();
@@ -194,8 +189,8 @@ public final class DeriverProtocol
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
 	 *   Markdown code fence, or the object violates the deriver's output schema, supplies a judge field or the trial
-	 *   profiles that CAT owns, restricts the profiles to a set that the inventory cannot satisfy, or breaks a rule of
-	 *   the contract model
+	 *   profiles that CAT owns, lists a requirement with the core-task requirement's identifier, restricts the
+	 *   profiles to a set that the inventory cannot satisfy, or breaks a rule of the contract model
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles)
 		throws InvalidProposalException
@@ -230,12 +225,13 @@ public final class DeriverProtocol
 			judgeNode.remove(JudgeTemplate.OWNED_FIELDS);
 			judge.complete(judgeNode);
 		}
+		addCoreTask(output, problems);
 		Contract contract = null;
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(output), (requirements, categories) ->
 				TrialProfiles.compute(profiles.inventory(), profiles.bindingsOf(requirements), restriction,
-					requirements, categories, Set.of()));
+					requirements, categories, Set.of(Requirement.CORE_TASK.id())));
 			findings.checkRequirements(scopeNode, contract);
 		}
 		catch (InvalidProposalException e)
@@ -245,5 +241,57 @@ public final class DeriverProtocol
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
 		return new DerivedProposal(contract, derivedSources, scopeConditions, result.promptSources(), derivation);
+	}
+
+	/**
+	 * Adds the core-task requirement to the deriver's requirements and to every test that does not list it already.
+	 * <p>
+	 * A test may already list it, because a deterministic check of a mechanical test may decide it. A shape that the
+	 * schema rejects is left alone so that the schema reports it.
+	 *
+	 * @param output the deriver's output
+	 * @param problems receives a problem if the deriver lists a requirement with the core-task requirement's identifier
+	 */
+	private static void addCoreTask(ObjectNode output, List<String> problems)
+	{
+		Requirement coreTask = Requirement.CORE_TASK;
+		if (output.get("requirements") instanceof ArrayNode requirements)
+		{
+			for (int i = requirements.size() - 1; i >= 0; --i)
+			{
+				JsonNode id = requirements.get(i).get("id");
+				if (id != null && id.asString().equals(coreTask.id()))
+				{
+					problems.add("$.requirements[" + i + "]: CAT adds the requirement '" + coreTask.id() + "', so the " +
+						"deriver must leave it out");
+					// Validate the rest of the output against CAT's requirement, so that each problem is reported once
+					requirements.remove(i);
+				}
+			}
+			ObjectNode node = requirements.addObject();
+			node.put("id", coreTask.id());
+			node.put("description", coreTask.description());
+			node.put("source", coreTask.source());
+		}
+		if (!(output.get("categories") instanceof ArrayNode categories))
+			return;
+		for (JsonNode category : categories)
+		{
+			if (!(category.get("tests") instanceof ArrayNode tests))
+				continue;
+			for (JsonNode test : tests)
+			{
+				if (!(test.get("requirement_ids") instanceof ArrayNode requirementIds))
+					continue;
+				boolean listed = false;
+				for (JsonNode id : requirementIds)
+				{
+					if (id.asString().equals(coreTask.id()))
+						listed = true;
+				}
+				if (!listed)
+					requirementIds.add(coreTask.id());
+			}
+		}
 	}
 }

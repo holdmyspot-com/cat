@@ -86,8 +86,10 @@ import tools.jackson.databind.node.ObjectNode;
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell
  * (design &sect;2.1), and the observed model and reasoning are recorded per cell. Version 3 adds the development cell
  * tier (design &sect;6.6): the cells in which a candidate failed ({@code failed_cells}) and whether development has
- * widened ({@code development.widened}). Version 2 lacked the cell tier and version 1 keyed by category; both are
- * refused rather than migrated. Big numbers and instants are written as strings so that they round-trip exactly.
+ * widened ({@code development.widened}). It also stores a contract whose tests hold their deterministic checks with
+ * the checks' controls, their discarded checks and the core-task requirement (design &sect;6.4). Version 2 lacked
+ * these and version 1 keyed by category; both are refused rather than migrated. Big numbers and instants are written
+ * as strings so that they round-trip exactly.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.

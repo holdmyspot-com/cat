@@ -510,6 +510,40 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code confirm} refuses a proposal file of format version 2, which predates deterministic checks
+	 * and the core-task requirement, and asks for a new derivation instead of misreading it.
+	 */
+	@Test
+	public void confirmRefusesVersionTwoProposalFile() throws Exception
+	{
+		// Requirement: R-C9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("proposal.json");
+			JsonMapper json = JsonMapper.builder().build();
+			ObjectNode stored = (ObjectNode) json.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.put("format_version", 2);
+			Files.writeString(file, json.writeValueAsString(stored), StandardCharsets.UTF_8);
+			IOException refusal = null;
+			try
+			{
+				repository.core().confirm(id);
+			}
+			catch (IOException e)
+			{
+				refusal = e;
+			}
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(refusal.getMessage(), "message").contains("is a version 2 proposal file").
+				contains("Run `start` again");
+		}
+	}
+
+	/**
 	 * Verifies that {@code start} reads the bindings from the staged prompt system: a requirement whose source binds a
 	 * profile gives its category one cell under that profile, while an unbound category has a cell for each inventory
 	 * profile. Only files that the harness can bind are read, and a binding file that binds nothing is ignored. The

@@ -458,8 +458,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * A campaign of format version 2, which lacks the development cell tier, is refused with a message that names its
-	 * version and asks for a new campaign.
+	 * A campaign of format version 2, which lacks the development cell tier, deterministic checks and the core-task
+	 * requirement, is refused with a message that names its version and asks for a new campaign.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -468,6 +468,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	public void refusesVersionTwoCampaign() throws IOException
 	{
 		// Requirement: R-E19
+		// Requirement: R-C9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-2-"));

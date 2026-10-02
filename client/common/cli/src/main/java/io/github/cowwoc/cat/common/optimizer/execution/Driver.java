@@ -23,10 +23,13 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
 import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.SessionEvent;
@@ -460,8 +463,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Consumes the end of a trial session. A completed session waits for its judge; any other result returns the
-	 * trial to the queue.
+	 * Consumes the end of a trial session. A completed session's deterministic checks decide it or send it to its
+	 * judge; any other result returns the trial to the queue.
 	 *
 	 * @param trial the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception
@@ -482,7 +485,7 @@ public final class Driver implements AutoCloseable
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
 				evidence.addUsage(SessionRole.TRIAL, completed.usage());
 				if (running(key).isPresent())
-					judgingQueue.add(new Judging(key, trial.instance(), completed, 1, trial.concurrency()));
+					decideChecks(trial, completed, now);
 			}
 			case SessionResult.Interrupted _ ->
 				fail(key, RunFailure.INTERRUPTED, "The trial session was interrupted", now, null);
@@ -490,6 +493,71 @@ public final class Driver implements AutoCloseable
 				"The provider rejected the trial session because of a rate limit", now, limited.resetsAt());
 			case SessionResult.Failed failed -> fail(key, RunFailure.INFRASTRUCTURE, failed.reason(), now, null);
 		}
+	}
+
+	/**
+	 * Runs a completed trial's deterministic checks first (design &sect;6.4). A failed check fails the trial with the
+	 * record of each failed check, and a trial whose checks decide every requirement passes with the record of its
+	 * checks; neither runs a judge. Otherwise the trial waits for a judge of its semantic requirements, which
+	 * receives the check results as evidence. A check that the evidence cannot decide makes the run an
+	 * infrastructure failure.
+	 *
+	 * @param trial the trial session
+	 * @param completed the trial session's result
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void decideChecks(InFlight.Trial trial, SessionResult.Completed completed, Instant now)
+		throws IOException
+	{
+		TrialInstance instance = trial.instance();
+		TestDefinition test = campaign.contract().findTest(instance.testId()).orElseThrow();
+		List<CheckResult> results;
+		try
+		{
+			results = test.decide(instance.choices(), new TrialEvidence(completed));
+		}
+		catch (IOException | UndecidableCheckException e)
+		{
+			fail(trial.key(), RunFailure.INFRASTRUCTURE, "The deterministic checks could not be decided: " +
+				describe(e), now, null);
+			return;
+		}
+		List<CheckResult> failed = results.stream().filter(result -> !result.passed()).toList();
+		if (!failed.isEmpty())
+		{
+			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL,
+				checkRecord("Failed deterministic checks:", failed), null);
+			return;
+		}
+		List<String> semanticIds = test.semanticRequirementIds();
+		if (semanticIds.isEmpty())
+		{
+			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.PASS,
+				checkRecord("Passed deterministic checks:", results), null);
+			return;
+		}
+		Map<String, Requirement> requirementById = new HashMap<>();
+		for (Requirement requirement : campaign.contract().requirements())
+			requirementById.put(requirement.id(), requirement);
+		List<Requirement> semantic = semanticIds.stream().map(requirementById::get).toList();
+		judgingQueue.add(new Judging(trial.key(), instance, completed, semantic, results, 1, trial.concurrency()));
+	}
+
+	/**
+	 * Returns the record of deterministic checks that labels a trial in place of a judge's rationale.
+	 *
+	 * @param heading the record's first line
+	 * @param results the checks' results
+	 * @return the record: the heading, then one line per check naming its requirement, kind, parameters and
+	 *   observed value
+	 */
+	private static String checkRecord(String heading, List<CheckResult> results)
+	{
+		StringBuilder record = new StringBuilder(heading);
+		for (CheckResult result : results)
+			record.append("\n- ").append(result.describe());
+		return record.toString();
 	}
 
 	/**
@@ -510,7 +578,7 @@ public final class Driver implements AutoCloseable
 				continue;
 			started = true;
 			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.instance(),
-				judging.evidence());
+				judging.evidence(), judging.requirements(), judging.results());
 			SessionHandle handle;
 			try
 			{
@@ -551,7 +619,8 @@ public final class Driver implements AutoCloseable
 				Optional<Judgment> judgment = context.judge().judgment(completed);
 				if (judgment.isPresent())
 				{
-					complete(judging, judgment.get(), completed);
+					complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(),
+						judgment.get().verdict(), judgment.get().rationale(), completed.model());
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -590,24 +659,29 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Completes a judged trial. An outcome observed under the campaign's measurement conditions is persisted before
+	 * Completes a labelled trial. An outcome observed under the campaign's measurement conditions is persisted before
 	 * it is adopted; an outcome observed under different conditions is not an outcome and pauses the campaign. A
 	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
 	 *
-	 * @param judging the judged trial
-	 * @param judgment the judge's verdict and rationale
-	 * @param judge the judge session's result
+	 * @param key the logical trial
+	 * @param instance the trial's instance
+	 * @param concurrency the number of trial sessions that ran once the trial's session started
+	 * @param trial the trial session's result
+	 * @param verdict the trial's label
+	 * @param rationale the judge's rationale or, when no judge ran, the record of the trial's deterministic checks
+	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
+	 *   not name one
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void complete(Judging judging, Judgment judgment, SessionResult.Completed judge) throws IOException
+	private void complete(TrialKey key, TrialInstance instance, int concurrency, SessionResult.Completed trial,
+		Verdict verdict, String rationale, String judgeModel) throws IOException
 	{
-		MeasurementIdentity observed = observedIdentity(judging, judge);
-		CampaignEvent.Complete complete = new CampaignEvent.Complete(judging.key(), judgment.verdict(),
-			judgment.rationale(), observed);
+		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
+		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, observed);
 		if (campaign.identity().differences(observed).isEmpty())
 		{
 			context.store().writeOutcome(campaignId, complete);
-			evidence.observe(new AssumptionCheck.Observation(judging.concurrency(), judgment.verdict()));
+			evidence.observe(new AssumptionCheck.Observation(concurrency, verdict));
 		}
 		Candidate previous = campaign.development().working();
 		Campaign next = CampaignTransitions.apply(campaign, complete);
@@ -619,27 +693,29 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, the judge session's model, and the trial session's model and reasoning
-	 * configuration, which are recorded for the trial's cell.
+	 * session's loaded prompt sources, the judge session's model if a judge ran, and the trial session's model and
+	 * reasoning configuration, which are recorded for the trial's cell.
 	 *
-	 * @param judging the judged trial
-	 * @param judge the judge session's result
+	 * @param instance the trial's instance
+	 * @param trial the trial session's result
+	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
+	 *   not name one
 	 * @return the conditions
 	 */
-	private MeasurementIdentity observedIdentity(Judging judging, SessionResult.Completed judge)
+	private MeasurementIdentity observedIdentity(TrialInstance instance, SessionResult.Completed trial,
+		String judgeModel)
 	{
-		SessionResult.Completed trial = judging.evidence();
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(context.environment().values());
 		values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
-		if (judge.model() != null)
-			values.put(MeasurementCondition.JUDGE, judge.model());
+		if (judgeModel != null)
+			values.put(MeasurementCondition.JUDGE, judgeModel);
 		Map<MeasurementCondition, String> cell = new EnumMap<>(MeasurementCondition.class);
 		if (trial.model() != null)
 			cell.put(MeasurementCondition.MODEL, trial.model());
 		if (trial.reasoning() != null)
 			cell.put(MeasurementCondition.REASONING, trial.reasoning());
-		return new MeasurementIdentity(values, Map.of(judging.instance().cellId(), cell));
+		return new MeasurementIdentity(values, Map.of(instance.cellId(), cell));
 	}
 
 	/**

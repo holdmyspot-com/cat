@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DiscardedCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -48,6 +49,7 @@ import java.util.function.Consumer;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -732,5 +734,168 @@ public final class ProposalTest
 		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
 		requireThat(deriver.request(PROMPT_SYSTEM, plain).turns().getFirst(), "plainPrompt").
 			contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
+	}
+
+	/**
+	 * Verifies that the deriver's request asks it to mark each requirement as deterministic or semantic and to give
+	 * each deterministic requirement a check of one of CAT's kinds with both controls, and that its output schema
+	 * holds the checks but neither the discarded checks nor the core-task requirement, which CAT owns.
+	 */
+	@Test
+	public void requestAsksForChecksWithControls()
+	{
+		// Requirement: R-C9
+		// Requirement: R-C8
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+
+		requireThat(prompt, "prompt").contains("### Deterministic and semantic requirements").
+			contains("`known_good`").contains("`known_bad`").contains("Never write code").
+			contains("Leave out the core-task requirement `core-task`");
+		for (String kind : List.of("exact_text", "forbidden_text", "pattern", "count", "file_exists", "file_content",
+			"exit_status", "tool_used"))
+		{
+			requireThat(prompt, "prompt").contains("- `" + kind + "` (");
+		}
+		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
+		JsonNode test = outputSchema.get("properties").get("categories").get("items").get("properties").
+			get("tests").get("items");
+		List<String> required = test.get("required").valueStream().map(JsonNode::asString).toList();
+		requireThat(required, "required").contains("checks").doesNotContain("discarded_checks");
+		requireThat(test.get("properties").has("discarded_checks"), "hasDiscardedChecks").isFalse();
+		requireThat(outputSchema.get("$defs").has("check"), "hasCheckDefinition").isTrue();
+	}
+
+	/**
+	 * Returns the proposal of a deriver output.
+	 *
+	 * @param derivation the deriver's output
+	 * @return the rendered proposal
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	private String rendered(String derivation) throws InvalidProposalException
+	{
+		DerivedProposal derived = deriver.proposal(session(derivation), PROFILES);
+		return Proposal.of(derived, new CampaignBuilder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+	}
+
+	/**
+	 * Verifies that CAT adds the core-task requirement, with CAT as its source, to the requirements and to every
+	 * test; that a test whose deterministic check decides it lists it once; that the proposal shows it; and that the
+	 * deriver cannot supply the requirement itself.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void catAddsTheCoreTaskToEveryTest() throws InvalidProposalException
+	{
+		// Requirement: R-C8
+		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES).contract();
+
+		Requirement coreTask = Requirement.CORE_TASK;
+		requireThat(coreTask.source(), "coreTask.source()").isEqualTo("CAT");
+		requireThat(coreTask.description(), "coreTask.description()").
+			isEqualTo("Each reply correctly and completely does what the turn asked.");
+		requireThat(contract.requirements().getLast(), "requirements.getLast()").isEqualTo(coreTask);
+		for (Category category : contract.categories())
+		{
+			for (TestDefinition test : category.tests())
+			{
+				requireThat(test.requirementIds().stream().filter(id -> id.equals(coreTask.id())).count(),
+					test.id() + ".coreTaskCount").isEqualTo(1L);
+			}
+		}
+		requireThat(rendered(fixture("derivation.json")), "text").
+			contains("- `core-task`: Each reply correctly and completely does what the turn asked.\n  Source: CAT\n");
+
+		String supplied = changedDerivation(output -> ((ArrayNode) output.get("requirements")).addObject().
+			put("id", coreTask.id()).put("description", "Do the task.").put("source", "CLAUDE.md"));
+		try
+		{
+			deriver.proposal(session(supplied), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").isEqualTo(List.of("$.requirements[2]: CAT adds the requirement " +
+				"'core-task', so the deriver must leave it out"));
+		}
+	}
+
+	/**
+	 * Verifies that confirmation runs each proposed check against its controls: a check that holds decides its
+	 * requirement, while a check that rejects its known-good control is discarded, its requirement becomes semantic
+	 * and the proposal says why. The deriver cannot report discarded checks itself.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void confirmationDiscardsFailingCheck() throws InvalidProposalException
+	{
+		// Requirement: R-C9
+		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES).contract();
+
+		TestDefinition list = contract.findTest("plain-list").orElseThrow();
+		requireThat(list.checks().size(), "list.checks().size()").isEqualTo(1);
+		requireThat(list.semanticRequirementIds(), "list.semanticRequirementIds()").isEqualTo(List.of("r1"));
+		TestDefinition deletion = contract.findTest("delete-directory").orElseThrow();
+		requireThat(deletion.checks(), "deletion.checks()").isEmpty();
+		requireThat(deletion.semanticRequirementIds(), "deletion.semanticRequirementIds()").
+			isEqualTo(List.of("r2", Requirement.CORE_TASK.id()));
+		requireThat(deletion.discardedChecks().size(), "deletion.discardedChecks().size()").isEqualTo(1);
+		DiscardedCheck discarded = deletion.discardedChecks().getFirst();
+		requireThat(discarded.check().requirementId(), "discarded.requirementId()").isEqualTo("r2");
+		requireThat(discarded.reason(), "discarded.reason()").startsWith("It rejected its known-good control: ");
+
+		String text = rendered(fixture("derivation-with-checks.json"));
+		requireThat(text, "text").contains("  - `r2`, file_exists check (`{{target}}` exists after the trial): " +
+			discarded.reason() + " The judge decides `r2` instead.\n");
+
+		String reported = changedDerivation(output -> ((ObjectNode) output.get("categories").get(0).get("tests").
+			get(0)).putArray("discarded_checks"));
+		try
+		{
+			deriver.proposal(session(reported), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").contains("$.categories[0].tests[0].discarded_checks: unexpected " +
+				"property");
+		}
+	}
+
+	/**
+	 * Verifies that the proposal marks each requirement of each test as deterministic or semantic, and shows each
+	 * deterministic requirement's check with both controls.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void rendersRequirementKindsAndChecks() throws InvalidProposalException
+	{
+		// Requirement: R-C9
+		// Requirement: R-C8
+		String text = rendered(fixture("derivation-with-checks.json"));
+
+		requireThat(text, "text").contains("""
+			#### Test `plain-list`
+
+			- Requirements:
+			  - `r1`: semantic; the judge decides it
+			  - `core-task`: deterministic; a count check decides it: the reply to turn 1 has exactly 3 \
+			matches of the regular expression `(?m)^- \\S`
+			    - Known-good control, which the check must accept:
+			      - Reply to turn 1: "- red\\n- green\\n- blue"
+			    - Known-bad control, which the check must reject:
+			      - Reply to turn 1: "- red\\n- green"
+			- Discarded checks: none
+			""").contains("""
+			#### Test `delete-directory`
+
+			- Requirements:
+			  - `r2`: semantic; the judge decides it
+			  - `core-task`: semantic; the judge decides it
+			""");
 	}
 }

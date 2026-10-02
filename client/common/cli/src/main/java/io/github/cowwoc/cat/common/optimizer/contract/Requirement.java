@@ -12,6 +12,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public record Requirement(String id, String description, String source)
 {
 	/**
+	 * The requirement, present in every contract and checked by every test, that each reply correctly and completely
+	 * does what the turn asked (design &sect;1.2, D24). CAT adds it, so its source is CAT.
+	 */
+	public static final Requirement CORE_TASK = new Requirement("core-task",
+		"Each reply correctly and completely does what the turn asked.", "CAT");
+
+	/**
 	 * Creates a requirement.
 	 *
 	 * @param id the identifier that is unique within the contract

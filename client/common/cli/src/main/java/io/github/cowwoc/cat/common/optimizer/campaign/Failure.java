@@ -13,7 +13,7 @@ import java.util.List;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param instance the targeted copy of the instance that failed
- * @param rationale the judge's explanation of the failure
+ * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
  * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
  */
 public record Failure(TrialInstance instance, String rationale, List<DiagnosticRerun> reruns)
@@ -22,7 +22,7 @@ public record Failure(TrialInstance instance, String rationale, List<DiagnosticR
 	 * Creates a failure.
 	 *
 	 * @param instance the targeted copy of the instance that failed
-	 * @param rationale the judge's explanation of the failure
+	 * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
 	 * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
 	 * @throws NullPointerException if any of the arguments are null or {@code reruns} contains null
 	 */

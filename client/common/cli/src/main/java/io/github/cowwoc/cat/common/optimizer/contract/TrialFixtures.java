@@ -30,15 +30,10 @@ public record TrialFixtures(List<String> ignoredPaths)
 		for (String path : ignoredPaths)
 		{
 			requireThat(path, "path").isNotBlank();
-			// Each segment must be a plain name, so a path cannot start at the file-system root, climb out of the
-			// project, or spell one location two ways.
-			for (String segment : path.split("/", -1))
+			if (!ProjectPaths.isNormalized(path))
 			{
-				if (segment.isEmpty() || segment.equals(".") || segment.equals("..") || segment.contains("\\"))
-				{
-					throw new IllegalArgumentException("Fixture path '" + path + "' must be a normalized path that is " +
-						"relative to the project and uses / as the separator");
-				}
+				throw new IllegalArgumentException("Fixture path '" + path + "' must be a normalized path that is " +
+					"relative to the project and uses / as the separator");
 			}
 			if (!seen.add(path))
 				throw new IllegalArgumentException("Fixture path '" + path + "' is listed twice");

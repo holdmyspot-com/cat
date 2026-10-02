@@ -5,9 +5,86 @@
 	"type": "object",
 	"additionalProperties": false,
 	"required": ["requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations"],
+	"$defs": {
+		"check": {
+			"description": "A deterministic check: code that CAT implements decides one requirement of this test from the trial's recorded evidence alone. The kind is one of a closed set and takes only its own parameters. A string parameter may contain {{dimension}} placeholders, which the trial's variation value fills; a regular expression matches the inserted value literally. Kinds and parameters: exact_text (text; optional turn): the reply, without leading and trailing whitespace, is exactly the text. forbidden_text (text; optional turn): the reply does not contain the text. pattern (pattern; optional turn): the reply contains a match of the Java regular expression. count (pattern, and minimum, maximum or both; optional turn): the number of matches lies within the inclusive bounds. file_exists (path, exists): the project-relative path exists, or does not exist, after the trial. file_content (path, text): the file holds exactly the text, ignoring trailing whitespace. exit_status (command, status): the last command that the trial ran and whose command line matches the Java regular expression exited with the status; CAT never runs a command. tool_used (tool, used): the trial called, or never called, the tool. A reply kind with turn examines the reply to that turn, counted from 1; without turn it examines every reply, and count counts across them.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["requirement_id", "kind", "parameters", "known_good", "known_bad"],
+			"properties": {
+				"requirement_id": {"description": "The requirement that the check decides. The test must check it.", "type": "string", "pattern": "\\S"},
+				"kind": {"type": "string", "pattern": "^(exact_text|forbidden_text|pattern|count|file_exists|file_content|exit_status|tool_used)$"},
+				"parameters": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"turn": {"type": "integer", "minimum": 1},
+						"text": {"type": "string"},
+						"pattern": {"type": "string"},
+						"minimum": {"type": "integer", "minimum": 0},
+						"maximum": {"type": "integer", "minimum": 0},
+						"path": {"type": "string"},
+						"exists": {"type": "boolean"},
+						"command": {"type": "string"},
+						"status": {"type": "integer"},
+						"tool": {"type": "string"},
+						"used": {"type": "boolean"}
+					}
+				},
+				"known_good": {"description": "Evidence of a compliant trial, which the check must accept.", "$ref": "#/$defs/control"},
+				"known_bad": {"description": "Evidence of a non-compliant trial, which the check must reject.", "$ref": "#/$defs/control"}
+			}
+		},
+		"control": {
+			"description": "The evidence of one trial, written to validate a check: the final reply to each turn, the project's files after the trial that the check reads, the tool calls in order, and the variation value drawn for each dimension that the check's parameters name.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["replies", "files", "tool_calls", "choices"],
+			"properties": {
+				"replies": {"type": "array", "items": {"type": "string"}},
+				"files": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["path", "content"],
+						"properties": {
+							"path": {"description": "Project-relative, using / as the separator.", "type": "string", "pattern": "\\S"},
+							"content": {"type": "string"}
+						}
+					}
+				},
+				"tool_calls": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["tool"],
+						"properties": {
+							"tool": {"type": "string", "pattern": "\\S"},
+							"command": {"type": "string", "pattern": "\\S"},
+							"exit_status": {"type": "integer"}
+						}
+					}
+				},
+				"choices": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["dimension", "label"],
+						"properties": {
+							"dimension": {"type": "string", "pattern": "\\S"},
+							"label": {"type": "string", "pattern": "\\S"}
+						}
+					}
+				}
+			}
+		}
+	},
 	"properties": {
 		"requirements": {
-			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project.",
+			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project. CAT adds its core-task requirement, `core-task` with CAT as its source, and every test checks it.",
 			"type": "array",
 			"minItems": 1,
 			"items": {
@@ -40,7 +117,7 @@
 						"items": {
 							"type": "object",
 							"additionalProperties": false,
-							"required": ["id", "requirement_ids", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations"],
+							"required": ["id", "requirement_ids", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "checks", "discarded_checks"],
 							"properties": {
 								"id": {"type": "string", "pattern": "\\S"},
 								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
@@ -78,6 +155,24 @@
 													}
 												}
 											}
+										}
+									}
+								},
+								"checks": {
+									"description": "The deterministic checks of this test, at most one per requirement that the test checks. A requirement with a check is deterministic in this test; every other requirement is semantic and the judge decides it. Empty if none.",
+									"type": "array",
+									"items": {"$ref": "#/$defs/check"}
+								},
+								"discarded_checks": {
+									"description": "The proposed checks that CAT discarded because one failed a control, with the reason. Their requirements are semantic.",
+									"type": "array",
+									"items": {
+										"type": "object",
+										"additionalProperties": false,
+										"required": ["check", "reason"],
+										"properties": {
+											"check": {"$ref": "#/$defs/check"},
+											"reason": {"type": "string", "pattern": "\\S"}
 										}
 									}
 								}
@@ -136,8 +231,8 @@
 				"model": {"description": "The role profile's model.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"effort": {"description": "The role profile's reasoning effort. Empty for the harness's default.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"prompt": {"type": "string", "pattern": "\\S"},
-				"rubric": {"type": "string", "pattern": "\\S"},
-				"decision_rule": {"type": "string", "pattern": "\\S"},
+				"rubric": {"description": "What the judge checks for the semantic requirements, which are the requirements without a check, in a trial's text, file effects and tool effects.", "type": "string", "pattern": "\\S"},
+				"decision_rule": {"description": "How the judge turns its findings on the semantic requirements into a pass or a failure. The judge cannot override a check.", "type": "string", "pattern": "\\S"},
 				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}
 			}
 		},

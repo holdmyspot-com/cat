@@ -127,7 +127,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			{
 				ObjectNode rerunNode = reruns.addObject();
 				rerunNode.put("verdict", rerun.verdict().name().toLowerCase(Locale.ROOT));
-				rerunNode.put("judge_rationale", rerun.rationale());
+				rerunNode.put("rationale", rerun.rationale());
 			}
 			failures.add(node);
 		}
@@ -161,12 +161,13 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * Writes a failure.
 	 *
 	 * @param failure the failure
-	 * @return the failing instance with the judge's rationale in {@code judge_rationale}
+	 * @return the failing instance with the reason for its failure in {@code rationale}: the judge's rationale, or
+	 *   the record of each failed deterministic check
 	 */
 	private ObjectNode failure(Failure failure)
 	{
 		ObjectNode node = InstanceJson.of(json, failure.instance());
-		node.put("judge_rationale", failure.rationale());
+		node.put("rationale", failure.rationale());
 		return node;
 	}
 

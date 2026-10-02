@@ -28,6 +28,11 @@
   `judge.decision_rule`.
 - Leave out `trial_profiles`. CAT computes each category's trial profiles from the requirements' source files, and
   rejects a proposal that contains them.
+- Leave out the core-task requirement `core-task` from `requirements`. CAT adds it, with CAT as its source, to the
+  requirements and to every test, and rejects a proposal that lists it.
+- Leave out `discarded_checks`. CAT runs each check against its controls and discards a check that fails one.
+- Never write code. A deterministic check names one of CAT's check kinds and its parameters; CAT implements every
+  kind.
 
 ### What to inspect
 
@@ -54,18 +59,60 @@
   - `time_limit_seconds`: how long a compliant agent needs, with margin;
   - `expected_behavior`: what a compliant response does, observable in text, file effects or tool effects;
   - `uncovered_interactions`: every material interaction this test cannot cover;
-  - `variations`: every variation dimension and its values. The values' probabilities sum to 1.
+  - `variations`: every variation dimension and its values. The values' probabilities sum to 1;
+  - `checks`: the deterministic check of each mechanical requirement that the test checks, as described below.
 - The benchmark is balanced: every test in a category has the same weight, and variation probabilities are chosen for
   coverage. Do not try to estimate how often users make each request; those frequencies are unknown.
 - A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
   agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
 
+### The core-task requirement
+
+CAT adds the requirement `core-task`, "Each reply correctly and completely does what the turn asked.", with CAT as its
+source, to every test. A test that lists it in `requirement_ids` is accepted; one that does not is given it. It keeps a
+candidate that obeys every rule of the prompt system from doing the user's task worse. It is semantic unless the
+test's expected result is itself mechanical, such as an exact file content; only then give it a check.
+
+### Deterministic and semantic requirements
+
+Mark each requirement of each test as deterministic or semantic. A requirement is deterministic in a test when the
+test's `checks` hold a check for it, and semantic otherwise. Give a check only when the requirement is mechanical: when
+one of the kinds below observes everything that compliance means. Whether a reply is correct, relevant, complete or
+appropriate stays semantic. When no kind fits, leave the requirement semantic.
+
+A check belongs to one test and one requirement that the test checks, with at most one check per requirement. Give
+its `requirement_id`, its `kind` and only the `parameters` of that kind:
+
+- `exact_text` (`text`; optional `turn`): the reply, without leading and trailing whitespace, is exactly the text;
+- `forbidden_text` (`text`; optional `turn`): the reply does not contain the text;
+- `pattern` (`pattern`; optional `turn`): the reply contains a match of the Java regular expression;
+- `count` (`pattern`, and `minimum`, `maximum` or both; optional `turn`): the number of matches of the Java regular
+  expression lies within the inclusive bounds;
+- `file_exists` (`path`, `exists`): the project-relative path exists, or does not, after the trial;
+- `file_content` (`path`, `text`): the file holds exactly the text, ignoring trailing whitespace;
+- `exit_status` (`command`, `status`): the last command that the trial ran whose command line matches the Java
+  regular expression exited with the status. CAT reads the status from the trial's record and never runs a command;
+- `tool_used` (`tool`, `used`): the trial called the tool, or never called it.
+
+A reply kind with `turn` examines the reply to that turn, counted from 1; without `turn` it examines every reply, and
+`count` counts across them. A string parameter may insert a variation value by writing `{{` and `}}` around a
+`dimension` name of the test's `variations`; a regular expression matches the inserted value literally.
+
+Give every check two controls, each the evidence of one imagined trial: `known_good`, a compliant trial that the
+check must accept, and `known_bad`, a non-compliant trial that it must reject. A control lists the final reply to
+each turn (`replies`), the project files after the trial that the check reads (`files`), the tool calls in order
+(`tool_calls`), and the variation value drawn for each dimension that the check's parameters name (`choices`). CAT
+runs every check against both controls before confirmation and whenever it loads the contract. A check that rejects
+its known-good control or accepts its known-bad control is discarded, its requirement becomes semantic, and the
+proposal says why.
+
 ### Judge rubric and decision rule
 
-- `judge.rubric`: the semantic criteria that a judge applies to one trial's text, file effects and tool effects.
-  Objective checks, such as whether a file exists or a command succeeded, may inform the judge but never replace its
-  semantic judgment.
-- `judge.decision_rule`: exactly when a trial passes and when it fails.
+- `judge.rubric`: the semantic criteria that a judge applies to one trial's text, file effects and tool effects. Cover
+  every requirement that is semantic in some test, including `core-task`. The judge decides only a test's semantic
+  requirements; it sees the deterministic results as evidence but cannot override them.
+- `judge.decision_rule`: exactly when a trial passes and when it fails on its semantic requirements. A trial fails
+  whenever one of its checks fails, without a judge.
 
 ### Fixtures and limitations
 
