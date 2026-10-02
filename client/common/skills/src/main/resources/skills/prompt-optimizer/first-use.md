@@ -13,6 +13,9 @@ Run the launcher that this skill's `SKILL.md` names. Each command prints one JSO
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
 and stop.
 
+To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
+excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows.
+
 1. **Start.** Run `start <target>` with the prompt file or directory the user named. It creates a campaign or resumes
    the one that already exists for that target. Use its `campaign` value in every later command.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
