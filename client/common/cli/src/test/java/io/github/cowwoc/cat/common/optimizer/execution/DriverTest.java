@@ -602,6 +602,7 @@ public final class DriverTest
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
+	// Requirement: R-D14
 	// Requirement: R-D3
 	@Test
 	public void sequentialApproachSurvivesRestart() throws IOException

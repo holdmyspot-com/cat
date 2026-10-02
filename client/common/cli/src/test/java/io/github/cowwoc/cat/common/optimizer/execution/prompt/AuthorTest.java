@@ -55,6 +55,7 @@ public final class AuthorTest
 	 * @param approach the assigned approach
 	 * @param expected its exact instruction
 	 */
+	// Requirement: R-D14
 	// Requirement: R-D3
 	@Test(dataProvider = "approaches")
 	public void requestStatesApproachAndInstructionOwner(AuthorApproach approach, String expected)
@@ -97,6 +98,7 @@ public final class AuthorTest
 	/**
 	 * A brief rejects an absent approach before an author request can be constructed.
 	 */
+	// Requirement: R-D14
 	// Requirement: R-D3
 	@Test(expectedExceptions = NullPointerException.class)
 	public void briefRejectsMissingApproach()
@@ -108,6 +110,7 @@ public final class AuthorTest
 	/**
 	 * The rendered editing instructions direct correction to the file that states a misapplied instruction.
 	 */
+	// Requirement: R-D14
 	// Requirement: R-D3
 	@Test
 	public void requestNamesTheInstructionOwner()
