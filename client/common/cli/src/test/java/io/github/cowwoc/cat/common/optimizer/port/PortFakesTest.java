@@ -101,7 +101,8 @@ public final class PortFakesTest
 	}
 
 	/**
-	 * Verifies that the fake workspace tracks staged sources, authoring copies and materialized candidates.
+	 * Verifies the fake workspace's test-support records of staged sources, authoring copies and materialization
+	 * requests. Shared workspace checks establish the corresponding adapter behavior.
 	 *
 	 * @throws IOException if the fake fails
 	 */
@@ -118,17 +119,12 @@ public final class PortFakesTest
 		requireThat(workspace.staged(), "staged").isEmpty();
 
 		Path copy = workspace.prepareAuthoringCopy(incumbent);
-		requireThat(workspace.scanAuthoringCopy(copy), "scan").isEqualTo(incumbent.snapshot());
-		FileInventory edited = new FileInventory(Path.of("/edited"), Map.of());
-		workspace.editAuthoringCopy(copy, edited);
-		requireThat(workspace.scanAuthoringCopy(copy), "scan").isEqualTo(edited);
-		requireThat(workspace.scanAuthorEffects(copy, Path.of("/effects")), "effects").isEqualTo(edited);
+		requireThat(workspace.authoringCopies(), "preparedCopies").containsExactly(List.of(copy));
 		workspace.deleteAuthoringCopy(copy);
 		requireThat(workspace.authoringCopies(), "authoringCopies").isEmpty();
 
 		workspace.materialize(incumbent);
 		requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(incumbent));
-		requireThat(workspace.scanWorktree(), "worktree").isEqualTo(incumbent.snapshot());
 	}
 
 	/**

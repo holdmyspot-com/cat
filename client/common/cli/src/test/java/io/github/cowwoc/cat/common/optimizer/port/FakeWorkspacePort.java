@@ -2,10 +2,14 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.contract.WorkspaceContract;
+import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
+import io.github.cowwoc.pouch10.core.WrappedCheckedException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,10 +26,11 @@ import java.util.Set;
  * A {@link WorkspacePort} that keeps every directory and inventory in memory.
  * <p>
  * Returned paths are names under a root that the fake never reads or writes, except that a fake created with a project
- * directory writes each staged source: the fork's project files, copied from the project directory. An authoring copy,
- * and the effects of
- * an author session that ran on it, scan as the working candidate's snapshot unless the test records an author's
- * edits with {@link #editAuthoringCopy(Path, FileInventory)}.
+ * directory writes each staged source: the fork's project files, copied from the project directory. Each authoring
+ * copy scans as the working candidate's snapshot rooted at the copy. Author edits are supplied with
+ * {@link #editAuthoringCopy(Path, FileInventory)}; an inventory rooted at a session's effects directory changes those
+ * effects independently of the source copy. {@link WorkspaceContract} checks these operations against
+ * {@link Workspace}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -39,6 +44,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 	private final Path project;
 	private final Set<Sha256> staged = new LinkedHashSet<>();
 	private final Map<Path, FileInventory> authoringCopies = new HashMap<>();
+	private final Map<Path, FileInventory> authorEffects = new HashMap<>();
 	private final List<Overlay> materialized = new ArrayList<>();
 	private FileInventory worktree;
 	private int copiesPrepared;
@@ -84,8 +90,9 @@ public final class FakeWorkspacePort implements WorkspacePort
 		{
 			requireThat(candidate, "candidate").isNotNull();
 			Sha256 identity = candidate.identity();
-			staged.add(identity);
 			Path directory = root.resolve("staged").resolve(identity.hex());
+			if (project == null && staged.contains(identity) || project != null && Files.isDirectory(directory))
+				return directory;
 			if (project != null)
 			{
 				for (Path file : candidate.snapshot().entries().keySet())
@@ -101,6 +108,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 				}
 				Files.createDirectories(directory);
 			}
+			staged.add(identity);
 			return directory;
 		}
 	}
@@ -111,6 +119,17 @@ public final class FakeWorkspacePort implements WorkspacePort
 		synchronized (lock)
 		{
 			requireThat(candidate, "candidate").isNotNull();
+			if (project != null)
+			{
+				try
+				{
+					TemporaryDirectories.deleteRecursively(root.resolve("staged").resolve(candidate.hex()));
+				}
+				catch (IOException e)
+				{
+					throw WrappedCheckedException.wrap(e);
+				}
+			}
 			staged.remove(candidate);
 		}
 	}
@@ -136,17 +155,17 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(working, "working").isNotNull();
 			++copiesPrepared;
 			Path copy = root.resolve("authoring").resolve(String.valueOf(copiesPrepared));
-			authoringCopies.put(copy, working.snapshot());
+			authoringCopies.put(copy, new FileInventory(copy.toAbsolutePath().normalize(), working.snapshot().entries()));
 			return copy;
 		}
 	}
 
 	/**
-	 * Records what an author left in an authoring copy, which both the copy and the effects of a session that ran on
-	 * it scan as.
+	 * Records an author's edits to a copy or to the session's separate effects directory. An inventory rooted at the
+	 * copy changes the copy; one rooted at an effects directory changes only those effects.
 	 *
 	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned
-	 * @param edited the copy's inventory after the author's edits
+	 * @param edited the edited inventory, rooted at the copy or the session's effects directory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code copy} does not exist
 	 */
@@ -157,7 +176,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(copy, "copy").isNotNull();
 			requireThat(edited, "edited").isNotNull();
 			requireThat(authoringCopies.containsKey(copy), "authoringCopies.containsKey(copy)").isTrue();
-			authoringCopies.put(copy, edited);
+			if (edited.root().equals(copy.toAbsolutePath().normalize()))
+				authoringCopies.put(copy, edited);
+			else
+				authorEffects.put(copy, edited);
 		}
 	}
 
@@ -178,7 +200,11 @@ public final class FakeWorkspacePort implements WorkspacePort
 		synchronized (lock)
 		{
 			requireThat(effects, "effects").isNotNull();
-			return scanAuthoringCopy(copy);
+			FileInventory source = scanAuthoringCopy(copy);
+			FileInventory edited = authorEffects.get(copy);
+			if (edited != null && edited.root().equals(effects.toAbsolutePath().normalize()))
+				return edited;
+			return new FileInventory(effects.toAbsolutePath().normalize(), source.entries());
 		}
 	}
 
@@ -189,6 +215,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 		{
 			requireThat(copy, "copy").isNotNull();
 			authoringCopies.remove(copy);
+			authorEffects.remove(copy);
 		}
 	}
 

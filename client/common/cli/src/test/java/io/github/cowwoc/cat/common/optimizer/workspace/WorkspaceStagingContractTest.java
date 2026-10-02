@@ -1,36 +1,19 @@
 package io.github.cowwoc.cat.common.optimizer.workspace;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
-import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
-import io.github.cowwoc.cat.common.optimizer.port.FakeWorkspacePort;
-import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
+import io.github.cowwoc.cat.common.optimizer.port.contract.WorkspaceContract;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Set;
-import org.testng.annotations.DataProvider;
+
 import org.testng.annotations.Test;
 
 /**
- * Verifies the staged file contents used by driver measurements in both workspace implementations.
+ * Runs {@link WorkspaceContract} against {@link Workspace}.
  */
 public final class WorkspaceStagingContractTest
 {
-	/**
-	 * The workspace implementations under the same contract.
-	 */
-	public enum Kind
-	{
-		FAKE,
-		FILES
-	}
-
 	/**
 	 * Creates the test.
 	 */
@@ -39,47 +22,165 @@ public final class WorkspaceStagingContractTest
 	}
 
 	/**
-	 * Returns the implementations.
+	 * Verifies that staging preserves candidate bytes and omits deleted files.
 	 *
-	 * @return the implementations
+	 * @throws IOException if the fixture or check fails
 	 */
-	@DataProvider
-	public Object[][] kinds()
-	{
-		return new Object[][] {{Kind.FAKE}, {Kind.FILES}};
-	}
-
-	/**
-	 * Verifies that staging reflects writes, creations and deletions from the candidate.
-	 *
-	 * @param kind the implementation
-	 * @throws IOException if the fixture cannot be used
-	 */
-	@Test(dataProvider = "kinds")
-	public void stagesCandidateBytes(Kind kind) throws IOException
+	@Test
+	public void stagesCandidateBytes() throws IOException
 	{
 		// Requirement: R-E18
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("workspace-staging"));
-			Path project = Files.createDirectories(root.resolve("project"));
-			Files.writeString(project.resolve("prompt.md"), "original", UTF_8);
-			Files.writeString(project.resolve("deleted.md"), "delete", UTF_8);
-			Path storage = root.resolve("campaign");
-			ForkTree tree = ForkTree.record(project, storage, Set.of(Path.of("prompt.md"), Path.of("deleted.md")));
-			WorkspacePort workspace = switch (kind)
-			{
-				case FAKE -> new FakeWorkspacePort(root.resolve("fake"), tree.inventory(), project);
-				case FILES -> new Workspace(tree, storage, root.resolve("worktree"));
-			};
-			Overlay candidate = Overlay.of(tree.inventory()).write(Path.of("prompt.md"),
-				new FileContent("edited".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--")).
-				write(Path.of("new.md"), new FileContent("created".getBytes(UTF_8)),
-					PosixFilePermissions.fromString("rw-r--r--")).delete(Path.of("deleted.md"));
-			Path staged = workspace.stage(candidate);
-			requireThat(Files.readString(staged.resolve("prompt.md"), UTF_8), "edited").isEqualTo("edited");
-			requireThat(Files.readString(staged.resolve("new.md"), UTF_8), "created").isEqualTo("created");
-			requireThat(Files.exists(staged.resolve("deleted.md")), "deleted").isFalse();
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				stagesCandidateBytes();
+		}
+	}
+
+	/**
+	 * Verifies that repeated staging reuses the cached source.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void reusesStagedSource() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				reusesStagedSource();
+		}
+	}
+
+	/**
+	 * Verifies that staged deletion is idempotent and the source can be rebuilt.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void deletesAndRebuildsStagedSource() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				deletesAndRebuildsStagedSource();
+		}
+	}
+
+	/**
+	 * Verifies that authoring copies are rooted at their directories and remain independent.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void preparesIndependentAuthoringCopies() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				preparesIndependentAuthoringCopies();
+		}
+	}
+
+	/**
+	 * Verifies that effects are separate from their source authoring copy.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void scansIndependentAuthorEffects() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				scansIndependentAuthorEffects();
+		}
+	}
+
+	/**
+	 * Verifies that a session without edits scans as an unchanged effects tree.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void scansUnchangedAuthorEffects() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).scansUnchangedAuthorEffects();
+		}
+	}
+
+	/**
+	 * Verifies that relative workspace and effects paths produce inventories with absolute roots.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void acceptsRelativeDirectories() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			Path relativeRoot = Path.of("").toAbsolutePath().relativize(root);
+			WorkspaceContract contract = new WorkspaceContract(new ContractWorkspace(relativeRoot, false, true));
+			contract.preparesIndependentAuthoringCopies();
+			contract.scansUnchangedAuthorEffects();
+			contract.scansIndependentAuthorEffects();
+		}
+	}
+
+	/**
+	 * Verifies that deleting an authoring copy leaves another copy available.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void deletesOnlySelectedAuthoringCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				deletesOnlySelectedAuthoringCopy();
+		}
+	}
+
+	/**
+	 * Verifies that worktree scans observe edits made outside the workspace port.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void scansWorktreeChanges() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				scansWorktreeChanges();
+		}
+	}
+
+	/**
+	 * Verifies that materialization applies the candidate and can restore the fork.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void materializesCandidateAndRestoresFork() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				materializesCandidateAndRestoresFork();
 		}
 	}
 }

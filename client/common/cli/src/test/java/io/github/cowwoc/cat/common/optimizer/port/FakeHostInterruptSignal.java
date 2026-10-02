@@ -2,11 +2,15 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.port.contract.HostInterruptSignalContract;
+
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A {@link HostInterruptSignal} whose interrupt record the test writes.
+ * <p>
+ * {@link HostInterruptSignalContract} checks its timestamp behavior against the real host signals.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -22,7 +26,7 @@ public final class FakeHostInterruptSignal implements HostInterruptSignal
 	}
 
 	/**
-	 * Records a user interrupt.
+	 * Records a user interrupt, retaining the latest timestamp when records arrive out of order.
 	 *
 	 * @param at when the host recorded the interrupt
 	 * @throws NullPointerException if {@code at} is null
@@ -30,7 +34,12 @@ public final class FakeHostInterruptSignal implements HostInterruptSignal
 	public void interrupt(Instant at)
 	{
 		requireThat(at, "at").isNotNull();
-		interruptedAt.set(at);
+		interruptedAt.updateAndGet(latest ->
+		{
+			if (latest == null || at.isAfter(latest))
+				return at;
+			return latest;
+		});
 	}
 
 	@Override
