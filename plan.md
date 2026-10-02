@@ -32,7 +32,11 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Rules:** Follow the CAT rules the session routes for Java, Javadoc, testing, error handling and TDD. Subagents
   receive the same routing. Write a failing test before each behaviour change.
 - **Requirement tags:** Every test method that proves a requirement carries a comment `// Requirement: R-…` naming each
-  requirement ID it proves. The final gate counts these tags.
+  requirement ID it proves. The final gate counts these tags, and gate 8 then removes them.
+- **No references to this plan or `design.md`:** both files are deleted once the implementation is complete (user
+  ruling, 2026-10-01). Code, tests, resources and prompts never cite either file, its section numbers or its
+  identifiers (H, D, G, P, T, E, WI, handoff and trace numbers); they state the rule, number or reason itself. The
+  requirement tags are the only exception until gate 8.
 - **Test tiers:**
   - **Unit:** every Java test. It runs in the default build under TestNG parallel methods, and includes file-system and
     real-Git tests that use test-owned temporary directories. `design.md` [§10](design.md#10-testability-contract) T3
@@ -241,6 +245,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §11 H28 and §12 P14 result: a rule without a conflict on `gpt-6-luna` also varies with effort (user request, 2026-10-01).
 - `design.md` §11 H27 and §12 P14 result: the intermediate-compliance rerun shows reasoning effort changes compliance (user request, 2026-10-01).
 - `design.md` §12: added P14 (does reasoning effort change compliance?); plan §4 adds its probe and §2 its row (user request, 2026-10-01).
+- §1 and §9 gate 8: the codebase never cites `design.md` or this plan, which are deleted after implementation; the
+  requirement tags stay until the traceability gate passes, then a last commit removes them (user ruling, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
@@ -922,6 +928,9 @@ unrun; an unrun gate is unmet.
    nonexistent directory, passes.
 7. **Documentation:** `design.md` §11 and §12 reflect the WI-0 results; decisions changed during implementation are
    recorded in §13; this plan's §2 shows every work item done.
+8. **Standalone codebase:** after gates 1–7 pass, a last commit removes every `// Requirement:` tag, and a search of
+   `client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, or their section numbers and
+   identifiers (§1).
 
 A mock-only run, a successful contract extraction, a candidate diff or a statistical unit test is intermediate
 evidence. None of them proves the product outcome by itself.
