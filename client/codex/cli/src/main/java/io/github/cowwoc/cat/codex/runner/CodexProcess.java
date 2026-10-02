@@ -160,8 +160,9 @@ public final class CodexProcess implements HarnessProcess
 	/**
 	 * Sends one text turn and reads through the root thread's turn completion.
 	 * <p>
-	 * The result's assistant messages contain every {@code agentMessage} item that the root thread completed during
-	 * the turn, in completion order. Its assistant response is the last of those messages, or empty when none completed.
+	 * The result's assistant messages contain every non-blank {@code agentMessage} item that the root thread completed
+	 * during the turn, in completion order. Its assistant response is the last of those messages, or empty when none
+	 * were collected.
 	 * Messages from child threads are excluded. A turn that ends because the caller interrupted it through
 	 * {@link #interrupt()} is a completed turn.
 	 *
@@ -203,7 +204,7 @@ public final class CodexProcess implements HarnessProcess
 				JsonNode event = parse(line);
 				identifyTurn(event, turnRequestId);
 				String rootMessage = rootAgentMessage(event);
-				if (rootMessage != null)
+				if (rootMessage != null && !rootMessage.isBlank())
 					assistantMessages.add(rootMessage);
 				if (turnCompletedFor(line, threadId))
 				{
@@ -440,7 +441,7 @@ public final class CodexProcess implements HarnessProcess
 	 *
 	 * @param events the captured app-server event stream
 	 * @param notification the terminal turn notification
-	 * @param assistantMessages every completed root-thread assistant message in completion order; read without mutation
+	 * @param assistantMessages non-blank completed root-thread messages in completion order; read without mutation
 	 * @param interruptRequested whether the caller interrupted the turn
 	 * @return a successful result only when Codex completed the turn successfully, or ended it as {@code interrupted}
 	 *   after the caller interrupted it

@@ -192,14 +192,15 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies each root text block keeps its exact bytes and a terminal-only reply remains available.
+	 * Verifies blank root text blocks and result text add no messages, non-blank blocks keep their exact bytes,
+	 * and a terminal-only reply remains available.
 	 * Assistant and result envelopes follow the neighboring Claude recordings; text values are controlled inputs.
 	 *
-	 * @throws IOException if either turn fails
+	 * @throws IOException if a turn fails
 	 */
 	// Requirement: R-C12
-	@Test
-	public void retainsEveryRootTextBlock() throws IOException
+	@Test(timeOut = 1000)
+	public void skipsBlankRootTextBlocks() throws IOException
 	{
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
@@ -208,17 +209,24 @@ public final class ClaudeProcessTest
 		{
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, """
 				{"type":"assistant","message":{"role":"assistant","content":[
-				{"type":"text","text":"interim"},{"type":"text","text":" "},{"type":"text","text":"LAUNCHED"}]},
+				{"type":"text","text":" interim "},{"type":"text","text":""},
+				{"type":"text","text":" "},{"type":"text","text":"LAUNCHED"}]},
 				"parent_tool_use_id":null,"session_id":"s"}
-				""".replace("\n", ""), ROOT_RESULT, STATE_IDLE);
+				""".replace("\n", ""), ROOT_RESULT.replace("LAUNCHED", " "), STATE_IDLE);
 
 			HarnessProcessResult reply = process.sendTurn("Reply in multiple text blocks.");
 
-			requireThat(reply.assistantMessages(), "messages").isEqualTo(List.of("interim", " ", "LAUNCHED"));
+			requireThat(reply.assistantMessages(), "messages").isEqualTo(List.of(" interim ", "LAUNCHED"));
+			requireThat(reply.assistantResponse(), "response").isEqualTo("LAUNCHED");
 			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, SECOND_RESULT, STATE_IDLE);
 			HarnessProcessResult terminalOnly = process.sendTurn("Reply TWO.");
 			requireThat(terminalOnly.assistantMessages(), "terminalOnlyMessages").isEqualTo(List.of("TWO"));
 			requireThat(terminalOnly.assistantResponse(), "terminalOnlyResponse").isEqualTo("TWO");
+
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_RESULT.replace("LAUNCHED", ""), STATE_IDLE);
+			HarnessProcessResult blank = process.sendTurn("Run the blank-result task.");
+			requireThat(blank.assistantMessages(), "blankMessages").isEmpty();
+			requireThat(blank.assistantResponse(), "blankResponse").isEmpty();
 		}
 	}
 

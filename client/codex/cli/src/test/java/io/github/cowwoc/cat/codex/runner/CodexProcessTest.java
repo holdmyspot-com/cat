@@ -78,6 +78,32 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies empty and whitespace-only root messages are skipped while non-blank messages keep their exact text
+	 * and order. Event envelopes follow the recorded app-server evidence documented by {@link AppServer}; text
+	 * values are controlled inputs.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 1000)
+	public void skipsBlankRootAgentMessages() throws IOException
+	{
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, " interim "),
+			agentMessage(ROOT_THREAD, ""),
+			agentMessage(ROOT_THREAD, " \t\n"),
+			agentMessage(ROOT_THREAD, "final"),
+			agentMessage(ROOT_THREAD, " \t\n"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+		try (CodexProcess process = server.start())
+		{
+			HarnessProcessResult result = process.sendTurn("Run the blank-message task.");
+
+			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of(" interim ", "final"));
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("final");
+		}
+	}
+
+	/**
 	 * Verifies that recorded root progress messages before a command and the final response are collected in order.
 	 * The recorded thread and turn identifiers are replaced with this fixture's controlled identifiers.
 	 *

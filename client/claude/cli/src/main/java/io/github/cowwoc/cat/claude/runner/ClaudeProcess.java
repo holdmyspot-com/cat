@@ -255,12 +255,12 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Extracts the root session's ordered assistant text blocks and distinct final response for a completed turn.
+	 * Extracts the root session's ordered non-blank assistant text blocks and distinct final response.
 	 *
 	 * @param events the complete harness event stream for the turn
 	 * @param replyEvents the part of {@code events} that belongs to the turn's own reply
 	 * @param diagnostics the turn's diagnostics, one per line, or an empty string if there are none
-	 * @return a completed result carrying every assistant text block and the final assistant response
+	 * @return a completed result carrying every non-blank assistant text block and the final assistant response
 	 */
 	private HarnessProcessResult completedTurn(String events, String replyEvents, String diagnostics)
 	{
@@ -289,8 +289,9 @@ public final class ClaudeProcess implements HarnessProcess
 					if (!content.path("type").asString().equals("text") || !content.path("text").isString())
 						continue;
 					String text = content.path("text").asString();
-					if (!text.isBlank())
-						response = text;
+					if (text.isBlank())
+						continue;
+					response = text;
 					if (event.path("type").asString().equals("assistant"))
 						assistantMessages.add(text);
 				}
