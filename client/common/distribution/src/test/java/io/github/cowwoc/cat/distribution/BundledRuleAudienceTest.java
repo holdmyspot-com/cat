@@ -68,6 +68,30 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
+	 */
+	@Test
+	public void packagedPathRulesMatchOnlyInsideProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			Path direct = Files.createDirectories(plugin.resolve("rules/common")).resolve("path.md");
+			Files.writeString(direct, "---\npaths: [\"**/rules/**/*.md\"]\n---\nBundled rule body");
+
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "codex");
+
+			requireThat(context, "context").contains("Load `" + plugin.resolve("rules/include/common/path.md") +
+				"` only when you read or edit a file inside the project `" + project +
+				"` whose path relative to it matches [**/rules/**/*.md].").doesNotContain("Bundled rule body");
+			requireThat(Files.readString(plugin.resolve("rules/include/common/path.md")), "lazyRule").
+				isEqualTo("Bundled rule body");
+		}
+	}
+
+	/**
 	 * Copies every bundled rule tree on the test class path into one plugin rule directory.
 	 *
 	 * @param target the plugin's {@code rules} directory

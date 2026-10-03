@@ -191,3 +191,9 @@ turn with one sentence saying that the inspection is complete; do not write the 
 the proposal as one JSON object that satisfies this schema:
 
 {{output_schema}}
+
+## Rules
+
+These rules are in force for this session and are already complete; do not read them again.
+
+{{rules}}

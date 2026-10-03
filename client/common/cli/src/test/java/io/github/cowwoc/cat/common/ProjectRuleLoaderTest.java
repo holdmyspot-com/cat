@@ -47,13 +47,74 @@ public final class ProjectRuleLoaderTest
 
 			requireThat(context, "context").contains("plugin common").contains("plugin harnessa").
 				contains("project common").contains("project harnessa").
-				contains("Load `.cat/rules/harnessa/path.md` only when an accessed file matches [*.java].").
+				contains("Load `" + project.resolve(".cat/rules/harnessa/path.md") +
+					"` only when you read or edit a file inside the project `" + project +
+					"` whose path relative to it matches [*.java].").
 				doesNotContain("## Design Goals").doesNotContain("### CAT rule:").
 				doesNotContain("### CAT path-scoped rule:").doesNotContain("plugin harnessb").
 				doesNotContain("project harnessb").doesNotContain("project Java rule");
 			requireThat(context, "context").contains("plugin common\n\n---\n# Plugin Harness");
 			requireThat(Files.readString(plugin.resolve("rules/common/common.md")), "sourceRule").
 			contains("## Design Goals");
+		}
+	}
+
+	/**
+	 * Verifies bundled path triggers name the installed rule and restrict matching to project-relative paths.
+	 */
+	@Test
+	public void restrictsBundledPathRulesToProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/path.md", "---\npaths: [\"**/rules/**/*.md\"]\n---\nBundled rule body");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+
+			requireThat(context, "context").isEqualTo("Load `" + plugin.resolve("rules/common/path.md") +
+				"` only when you read or edit a file inside the project `" + project +
+				"` whose path relative to it matches [**/rules/**/*.md].");
+		}
+	}
+
+	/**
+	 * Verifies explicit installed rules use the loader's body rendering and absolute lazy-load paths.
+	 */
+	@Test
+	public void rendersInstalledRuleForRole() throws IOException
+	{
+		// Requirement: R-E20
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(plugin, "rules/include/common/role.md", "---\npaths: [\"*.md\"]\n---\n# Role\n\n" +
+				"<!-- cat:include ../shared/details.md -->\n\n" +
+				"Root: <!-- cat:plugin-root -->. Lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/lazy.md`.");
+			write(plugin, "rules/include/shared/details.md", "Complete included guidance. Lazy load `../common/lazy.md`.");
+			write(plugin, "rules/include/common/lazy.md", "Lazy guidance");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadRule(plugin, Path.of("include/common/role.md"));
+
+			requireThat(context, "context").isEqualTo("# Role\n\nComplete included guidance. Lazy load `" +
+				plugin.resolve("rules/include/common/lazy.md") + "`.\n\nRoot: " + plugin + ". Lazy load `" +
+				plugin.resolve("rules/include/common/lazy.md") + "`.");
+		}
+	}
+
+	/**
+	 * Verifies an explicitly requested installed rule cannot be silently omitted when its file is missing.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*rules[/\\\\]include[/\\\\]common[/\\\\]missing\\.md.*")
+	public void rejectsMissingInstalledRule() throws IOException
+	{
+		// Requirement: R-E20
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			new ProjectRuleLoader(scope.yaml()).loadRule(plugin, Path.of("include/common/missing.md"));
 		}
 	}
 

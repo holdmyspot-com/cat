@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -34,6 +35,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -109,6 +111,56 @@ public final class CodexSessionsTest
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex", script, input,
 				output, requests);
 		});
+	}
+
+	/**
+	 * Returns the roles whose runner options are checked.
+	 *
+	 * @return the session roles
+	 */
+	@DataProvider
+	public Object[][] sessionRoles()
+	{
+		return new Object[][] {{SessionRole.TRIAL}, {SessionRole.JUDGE}, {SessionRole.AUTHOR},
+			{SessionRole.DERIVER}};
+	}
+
+	/**
+	 * Verifies that a port configured to install CAT passes {@code --install-cat} only for trial sessions.
+	 *
+	 * @param role the session's role
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
+	public void passesInstallCatOnlyForTrialSessions(SessionRole role)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E20
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), "", true,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
+				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+			requireThat(arguments.get(0).contains("--install-cat"), "installCat").isEqualTo(role == SessionRole.TRIAL);
+		}
 	}
 
 	/**

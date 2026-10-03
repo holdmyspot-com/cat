@@ -33,10 +33,15 @@ public final class ProjectRuleLoader
 	/**
 	 * The directive that a bundled rule writes where the injected context must state CAT's installation directory.
 	 * <p>
-	 * The loader replaces it only in direct rules from the plugin's rule tree, including the source-only Markdown they
+	 * The loader replaces it in rendered bodies from the plugin's rule tree, including the source-only Markdown they
 	 * include. Project and user rules receive it unchanged.
 	 */
 	public static final String PLUGIN_ROOT_DIRECTIVE = "<!-- cat:plugin-root -->";
+
+	/**
+	 * The directive replaced by the absolute project directory in injected path-routing context.
+	 */
+	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -67,6 +72,51 @@ public final class ProjectRuleLoader
 	{
 		requireThat(root, "root").isNotNull();
 		return root.resolve(RULES_DIRECTORY);
+	}
+
+	/**
+	 * Renders a path trigger whose globs apply only within the named project.
+	 *
+	 * @param rule the rule path, absolute or containing an installation directive
+	 * @param projectRoot the project path, absolute or containing a project directive
+	 * @param globs the project-relative path patterns
+	 * @return the one-sentence lazy-loading instruction
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if either path is blank
+	 */
+	public static String pathScopedInstruction(String rule, String projectRoot, List<String> globs)
+	{
+		requireThat(rule, "rule").isNotBlank();
+		requireThat(projectRoot, "projectRoot").isNotBlank();
+		requireThat(globs, "globs").isNotNull();
+		return "Load `" + rule + "` only when you read or edit a file inside the project `" + projectRoot +
+			"` whose path relative to it matches " + globs + ".";
+	}
+
+	/**
+	 * Renders an explicitly selected installed rule as a complete body with absolute plugin references.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param rule a non-null rule path relative to the installation's {@code rules} directory
+	 * @return the frontmatter-free rule body with direct includes expanded
+	 * @throws NullPointerException if either argument is null
+	 * @throws IllegalArgumentException if {@code rule} is absolute
+	 * @throws IOException if the rule leaves the rule directory, is unavailable, or has invalid content
+	 */
+	public String loadRule(Path pluginRoot, Path rule) throws IOException
+	{
+		requireThat(pluginRoot, "pluginRoot").isNotNull();
+		requireThat(rule, "rule").isNotNull();
+		requireThat(rule.isAbsolute(), "rule.isAbsolute()").isFalse();
+		Path absoluteRoot = pluginRoot.toAbsolutePath().normalize();
+		Path ruleRoot = absoluteRoot.resolve("rules");
+		Path file = ruleRoot.resolve(rule).normalize();
+		if (!file.startsWith(ruleRoot))
+			throw new IOException("CAT rule leaves its installed rule directory: " + file);
+		String content = readRule(absoluteRoot, file, RuleRoot.PLUGIN);
+		Frontmatter frontmatter = frontmatter(content, file.toString());
+		return renderBody(absoluteRoot, file, ruleRoot, RuleRoot.PLUGIN, frontmatter, content).
+			replace("${CAT_PLUGIN_ROOT}", absoluteRoot.toString());
 	}
 
 	/**
@@ -162,16 +212,22 @@ public final class ProjectRuleLoader
 			throw new IllegalArgumentException("Invalid CAT harness: " + harness);
 		List<Rule> rules = new ArrayList<>();
 		Path pluginRules = pluginRoot.resolve("rules");
-		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience, rules);
-		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN, audience, rules);
+		loadDirectory(projectRoot, pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
+			rules);
+		loadDirectory(projectRoot, pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN,
+			audience, rules);
 		if (userRulesRoot != null)
 		{
-			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER, audience, rules);
-			loadDirectory(userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER, audience, rules);
+			loadDirectory(projectRoot, userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
+				audience, rules);
+			loadDirectory(projectRoot, userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER,
+				audience, rules);
 		}
 		Path projectRules = rulesDirectory(projectRoot);
-		loadDirectory(projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT, audience, rules);
-		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT, audience, rules);
+		loadDirectory(projectRoot, projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT,
+			audience, rules);
+		loadDirectory(projectRoot, projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT,
+			audience, rules);
 		List<String> context = new ArrayList<>(ordered(rules).stream().map(Rule::context).toList());
 		if (userRulesRoot != null)
 		{
@@ -236,6 +292,7 @@ public final class ProjectRuleLoader
 	/**
 	 * Loads one direct rule directory.
 	 *
+	 * @param projectRoot the project directory that bounds path-trigger matching
 	 * @param ownerRoot a non-null rule-source owner directory
 	 * @param directory a non-null rule directory
 	 * @param ruleRoot the source root that bounds included rules
@@ -244,8 +301,8 @@ public final class ProjectRuleLoader
 	 * @param rules a non-null list of discovered rules
 	 * @throws IOException if the directory is not a real directory or one of its rules is invalid
 	 */
-	private void loadDirectory(Path ownerRoot, Path directory, Path ruleRoot, RuleRoot root, RuleAudience audience,
-		List<Rule> rules)
+	private void loadDirectory(Path projectRoot, Path ownerRoot, Path directory, Path ruleRoot, RuleRoot root,
+		RuleAudience audience, List<Rule> rules)
 		throws IOException
 	{
 		if (!Files.exists(directory, NOFOLLOW_LINKS))
@@ -265,7 +322,7 @@ public final class ProjectRuleLoader
 			for (Path file : entries.filter(path -> path.getFileName().toString().endsWith(".md")).sorted(
 				Comparator.comparing(this::ruleOrder).thenComparing(path -> path.getFileName().toString())).toList())
 			{
-				Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
+				Rule rule = render(projectRoot, ownerRoot, file, ruleRoot, root, audience);
 				if (rule != null)
 					rules.add(rule);
 			}
@@ -289,6 +346,7 @@ public final class ProjectRuleLoader
 	/**
 	 * Renders one rule as immediate or lazy context.
 	 *
+	 * @param projectRoot the project directory that bounds path-trigger matching
 	 * @param ownerRoot a non-null rule-source owner directory. For a bundled rule, it is the CAT installation directory
 	 *   that replaces each {@link #PLUGIN_ROOT_DIRECTIVE} in the rule's context.
 	 * @param file a non-null rule file
@@ -298,23 +356,11 @@ public final class ProjectRuleLoader
 	 * @return the rule's dependency metadata and context block
 	 * @throws IOException if the rule is not a regular file, is too large, or has invalid content
 	 */
-	private Rule render(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root, RuleAudience audience)
+	private Rule render(Path projectRoot, Path ownerRoot, Path file, Path ruleRoot, RuleRoot root,
+		RuleAudience audience)
 		throws IOException
 	{
-		if (Files.isSymbolicLink(file))
-		{
-			throw new IOException("CAT rule must be a regular file, not a symbolic link: " + displayPath(ownerRoot, root,
-				file) +
-				". Replace the symbolic link with a regular Markdown rule file inside the rule root.");
-		}
-		if (!Files.isRegularFile(file, NOFOLLOW_LINKS))
-		{
-			throw new IOException("CAT rule must be a regular file: " + displayPath(ownerRoot, root, file) +
-				". Replace it with a regular Markdown rule file inside the rule root.");
-		}
-		if (Files.size(file) > MAXIMUM_RULE_BYTES)
-			throw new IOException("CAT rule is too large: " + displayPath(ownerRoot, root, file));
-		String content = Files.readString(file, UTF_8);
+		String content = readRule(ownerRoot, file, root);
 		String path = rulePath(ownerRoot, ruleRoot, root, file);
 		Frontmatter frontmatter = frontmatter(content, path);
 		if (!matches(frontmatter, path, audience))
@@ -324,13 +370,8 @@ public final class ProjectRuleLoader
 			paths = frontmatter.metadata().get("paths");
 		if (paths == null)
 		{
-			String body = content;
-			if (frontmatter != null)
-				body = frontmatter.body();
-			String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, root, new HashSet<>()),
-				file, ruleRoot, root);
-			if (root == RuleRoot.PLUGIN)
-				injected = injected.replace(PLUGIN_ROOT_DIRECTIVE, ownerRoot.toAbsolutePath().normalize().toString());
+			String injected = renderBody(ownerRoot, file, ruleRoot, root, frontmatter, content).
+				replace(PROJECT_ROOT_DIRECTIVE, projectRoot.toAbsolutePath().normalize().toString());
 			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
 				injected);
 		}
@@ -345,9 +386,60 @@ public final class ProjectRuleLoader
 				throw new IOException("Invalid paths frontmatter: " + path);
 			globs.add(glob.asString());
 		}
-		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), "Load `" +
-			displayPath(ownerRoot, root, file) +
-			"` only when an accessed file matches " + globs + ".");
+		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), pathScopedInstruction(
+			file.toAbsolutePath().normalize().toString(), projectRoot.toAbsolutePath().normalize().toString(), globs));
+	}
+
+	/**
+	 * Reads a bounded regular rule file.
+	 *
+	 * @param ownerRoot the rule-source owner directory
+	 * @param file the rule file
+	 * @param root the source kind
+	 * @return the UTF-8 rule content
+	 * @throws IOException if the file is unavailable, symbolic, or too large
+	 */
+	private static String readRule(Path ownerRoot, Path file, RuleRoot root) throws IOException
+	{
+		if (Files.isSymbolicLink(file))
+		{
+			throw new IOException("CAT rule must be a regular file, not a symbolic link: " + displayPath(ownerRoot, root,
+				file) +
+				". Replace the symbolic link with a regular Markdown rule file inside the rule root.");
+		}
+		if (!Files.isRegularFile(file, NOFOLLOW_LINKS))
+		{
+			throw new IOException("CAT rule must be a regular file: " + displayPath(ownerRoot, root, file) +
+				". Replace it with a regular Markdown rule file inside the rule root.");
+		}
+		if (Files.size(file) > MAXIMUM_RULE_BYTES)
+			throw new IOException("CAT rule is too large: " + displayPath(ownerRoot, root, file));
+		return Files.readString(file, UTF_8);
+	}
+
+	/**
+	 * Renders a rule's body using the same includes and references as injected session context.
+	 *
+	 * @param ownerRoot the rule-source owner directory
+	 * @param file the rule file
+	 * @param ruleRoot the source root that bounds included rules
+	 * @param root the source kind
+	 * @param frontmatter the optional parsed metadata
+	 * @param content the complete source text
+	 * @return the rendered rule body
+	 * @throws IOException if direct includes cannot be expanded
+	 */
+	private String renderBody(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root, Frontmatter frontmatter,
+		String content) throws IOException
+	{
+		String body = content;
+		if (frontmatter != null)
+			body = frontmatter.body();
+		String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, root, new HashSet<>()),
+			file, ruleRoot, root);
+		if (root == RuleRoot.PLUGIN)
+			injected = injected.replace(PLUGIN_ROOT_DIRECTIVE, ownerRoot.toAbsolutePath().normalize().toString());
+		return injected;
 	}
 
 	/**

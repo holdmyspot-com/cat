@@ -135,3 +135,9 @@ The hunk definition used by both manifest validation and reduction:
 
 Report an empty `needed_edits` array when every edit you needed lies inside your authority. CAT treats any other final
 response as a failed attempt.
+
+## Rules
+
+These rules are in force for this session and are already complete; do not read them again.
+
+{{rules}}

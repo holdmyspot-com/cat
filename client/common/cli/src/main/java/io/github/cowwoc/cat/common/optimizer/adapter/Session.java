@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 
@@ -169,6 +170,8 @@ final class Session implements SessionHandle
 	 */
 	private SessionResult drive() throws IOException
 	{
+		String brief = RoleRules.fill(settings.artifact(), request.role(), request.turns().getFirst());
+
 		Thread runner = Thread.ofPlatform().daemon().name("optimizer-runner").start(this::serve);
 		startupDeadline = clock.instant().plus(STARTUP_LIMIT);
 		Outcome outcome = awaitOutcome(0);
@@ -179,7 +182,10 @@ final class Session implements SessionHandle
 			while (turn < request.turns().size() && !isStopping())
 			{
 				turn += 1;
-				feed.send(turnRequest(request.turns().get(turn - 1)));
+				String prompt = request.turns().get(turn - 1);
+				if (turn == 1)
+					prompt = brief;
+				feed.send(turnRequest(prompt));
 				outcome = awaitOutcome(turn);
 				if (outcome != Outcome.TURN_COMPLETED)
 					break;
@@ -454,7 +460,7 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of("--model", profile.model()));
 		if (!profile.effort().isEmpty())
 			arguments.addAll(List.of("--effort", profile.effort()));
-		if (settings.installCat())
+		if (settings.installCat() && request.role() == SessionRole.TRIAL)
 			arguments.add("--install-cat");
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
 		return arguments;

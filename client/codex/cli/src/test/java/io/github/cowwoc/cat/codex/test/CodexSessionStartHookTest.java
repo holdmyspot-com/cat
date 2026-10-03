@@ -39,7 +39,9 @@ public final class CodexSessionStartHookTest
 				Path.of("."));
 			String context = context(result);
 			requireThat(context, "context").contains("z rule").
-				contains("Load `.cat/rules/common/a.md` only when an accessed file matches [*.java].").
+				contains("Load `" + rules.resolve("a.md") +
+					"` only when you read or edit a file inside the project `" + project +
+					"` whose path relative to it matches [*.java].").
 				doesNotContain("java rule");
 			requireThat(result.error(), "error").isEmpty();
 		}
@@ -138,8 +140,9 @@ public final class CodexSessionStartHookTest
 				"---\npaths: [\"*.java\"]\n---\nbundled java rule");
 			String context = context(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
-			requireThat(context, "context").contains("Load `rules/common/path.md` only when an accessed file matches " +
-				"[*.java].").doesNotContain("bundled java rule");
+			requireThat(context, "context").contains("Load `" + plugin.resolve("rules/common/path.md") +
+				"` only when you read or edit a file inside the project `" + project +
+				"` whose path relative to it matches [*.java].").doesNotContain("bundled java rule");
 		}
 	}
 

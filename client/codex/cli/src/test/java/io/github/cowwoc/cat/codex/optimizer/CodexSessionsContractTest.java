@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -175,12 +176,15 @@ public final class CodexSessionsContractTest
 	public void completesWithEvidenceOfEveryTurn()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
+		// Requirement: R-E20
 		// Requirement: R-E13
 		// Requirement: R-E16
 		// Requirement: R-E6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			Path rules = Files.createDirectories(root.resolve("rules/include/common"));
+			Files.writeString(rules.resolve("contract-design.md"), "# Contract design\nDefine the contract.\n", UTF_8);
 			List<String> first = recorded("deriver-turn-1.jsonl");
 			List<String> second = recorded("deriver-turn-2.jsonl");
 			CodexSessions sessions = port(root, new RecordedAppServer(List.of(first, second)));
@@ -299,10 +303,12 @@ public final class CodexSessionsContractTest
 	public void runsOneSessionPerRole()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
+		// Requirement: R-E20
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
+			RoleRuleFixtures.write(root);
 			List<List<String>> events = List.of(recorded("trial-turn-1.jsonl"), recorded("judge-turn-1.jsonl"),
 				recorded("author-turn-1.jsonl"), recorded("deriver-turn-1.jsonl"));
 			AtomicInteger next = new AtomicInteger();

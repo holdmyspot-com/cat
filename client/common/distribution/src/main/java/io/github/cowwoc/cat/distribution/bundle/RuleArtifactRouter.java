@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -209,8 +210,8 @@ public final class RuleArtifactRouter
 		StringBuilder result = new StringBuilder(128);
 		result.append("# CAT Path-Scoped Rules\n\n");
 		for (Route route : routes)
-			result.append("Load `").append(route.path()).append("` only when an accessed file matches ").
-				append(route.paths()).append(".\n");
+			result.append(ProjectRuleLoader.pathScopedInstruction(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + '/' +
+				route.path(), ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE, route.paths())).append('\n');
 		return result.toString();
 	}
 

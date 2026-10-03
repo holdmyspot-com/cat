@@ -223,7 +223,9 @@ public final class ClaudeSessionStartHookTest
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), harnessProject));
 
 			requireThat(context, "context").contains("harness project").
-				contains("Load `.cat/rules/claude/path.md` only when an accessed file matches [*.java].").
+				contains("Load `" + harnessProject.resolve(".cat/rules/claude/path.md") +
+					"` only when you read or edit a file inside the project `" + harnessProject +
+					"` whose path relative to it matches [*.java].").
 				doesNotContain("configured project").
 				doesNotContain("project Java rule");
 		}

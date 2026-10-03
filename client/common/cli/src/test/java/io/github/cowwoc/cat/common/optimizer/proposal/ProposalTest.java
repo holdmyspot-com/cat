@@ -215,6 +215,7 @@ public final class ProposalTest
 	@Test
 	public void requestCarriesTheDeriverSchema()
 	{
+		// Requirement: R-E20
 		// Requirement: R-E13
 		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES.inventory());
 
@@ -226,13 +227,26 @@ public final class ProposalTest
 			contains("do not write the proposal yet");
 		requireThat(request.turns().getLast(), "finalTurn").contains("Send the complete proposal now").
 			contains("its first character is `{` and its last character is `}`");
-		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
+		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode judgeProperties = outputSchema.get("properties").get("judge").get("properties");
 		requireThat(List.copyOf(judgeProperties.propertyNames()), "judge.properties").
 			isEqualTo(List.of("rubric", "decision_rule"));
 		List<String> required = outputSchema.get("required").valueStream().map(JsonNode::asString).toList();
 		requireThat(required, "required").contains("derived_sources").contains("scope_conditions").
 			contains("requirements");
+	}
+
+	/**
+	 * Reads the schema from the deriver's Output section before its Rules section.
+	 *
+	 * @param prompt the rendered deriver prompt
+	 * @return the output schema
+	 */
+	private JsonNode readOutputSchema(String prompt)
+	{
+		int start = prompt.indexOf('{', prompt.indexOf("### Output"));
+		int end = prompt.indexOf("\n\n## Rules", start);
+		return json.readTree(prompt.substring(start, end));
 	}
 
 	/**
@@ -938,6 +952,7 @@ public final class ProposalTest
 	@Test
 	public void requestAsksForChecksWithControls()
 	{
+		// Requirement: R-E20
 		// Requirement: R-C9
 		// Requirement: R-C8
 		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
@@ -950,7 +965,7 @@ public final class ProposalTest
 		{
 			requireThat(prompt, "prompt").contains("- `" + kind + "` (");
 		}
-		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
+		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("categories").get("items").get("properties").
 			get("tests").get("items");
 		List<String> required = test.get("required").valueStream().map(JsonNode::asString).toList();
@@ -1367,13 +1382,14 @@ public final class ProposalTest
 	@Test
 	public void requestRequiresConflicts()
 	{
+		// Requirement: R-E20
 		// Requirement: R-C13
 		// Requirement: R-C14
 		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
 		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
-		JsonNode outputSchema = json.readTree(prompt.substring(prompt.indexOf('{', prompt.indexOf("### Output"))));
+		JsonNode outputSchema = readOutputSchema(prompt);
 		requireThat(outputSchema.get("required").valueStream().map(JsonNode::asString).toList(), "required").
 			contains("conflicts");
 		JsonNode conflicts = outputSchema.get("properties").get("conflicts");
