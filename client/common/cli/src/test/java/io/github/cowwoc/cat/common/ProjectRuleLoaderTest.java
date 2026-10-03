@@ -273,6 +273,30 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies a direct rule that mentions the include directive within a line keeps that text, because only a line
+	 * that consists of the directive includes a file.
+	 */
+	@Test
+	public void keepsIncludeDirectiveMentionedInText() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			String mention = "Use `<!-- cat:include path -->` only to assemble source-only Markdown.";
+			write(plugin, "rules/common/direct.md", "# Direct\n\n" + mention + "\n");
+
+			String context;
+			try (ToolScope scope = new ToolScope())
+			{
+				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+			}
+
+			requireThat(context, "context").contains(mention);
+		}
+	}
+
+	/**
 	 * Verifies a bundled rule states the plugin root in place of the plugin-root directive, including in source-only
 	 * Markdown that it includes.
 	 */

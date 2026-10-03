@@ -134,16 +134,16 @@ public final class PluginArtifactBuilderTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-agent-rule-assembly-"));
 			Path common = jar(temporary.resolve("common.jar"), List.of(
-				new JarResource("agents/common/review.md", "Follow <!-- cat:include ../../rules/common/audience.md -->\\n"),
+				new JarResource("agents/common/review.md", "Follow:\n<!-- cat:include ../../rules/common/audience.md -->\n"),
 				new JarResource("rules/common/audience.md", "the authoritative language rule\\n")));
 			Path codex = jar(temporary.resolve("codex.jar"),
-				"agents/codex/reviewer.toml", "<!-- cat:include ../common/review.md -->\\n");
+				"agents/codex/reviewer.toml", "<!-- cat:include ../common/review.md -->\n");
 
 			Path artifact = buildMinimal(temporary, List.of(new ArtifactLayer("common", common),
 				new ArtifactLayer("codex", codex)));
 
 			requireThat(Files.readString(artifact.resolve("agents/codex/reviewer.toml")), "reviewer").
-				contains("Follow the authoritative language rule").doesNotContain("cat:include");
+				contains("Follow:\nthe authoritative language rule").doesNotContain("cat:include");
 			requireThat(Files.exists(artifact.resolve("agents/common/review.md")), "sourceOnlyAgentBody").isFalse();
 			requireThat(Files.readString(artifact.resolve("rules/common/audience.md")), "authoritativeRule").
 			isEqualTo("the authoritative language rule\\n");

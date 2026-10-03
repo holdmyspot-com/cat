@@ -13,8 +13,12 @@ import java.util.regex.Pattern;
  */
 public final class MarkdownIncludes
 {
-	/** Matches one CAT Markdown include directive and captures its relative target path. */
-	public static final Pattern DIRECTIVE = Pattern.compile("<!-- cat:include ([A-Za-z0-9_./-]+) -->");
+	/**
+	 * Matches one CAT Markdown include directive, a line that consists of the directive alone, and captures its
+	 * relative target path. Text that mentions the directive within a longer line is not a directive.
+	 */
+	public static final Pattern DIRECTIVE = Pattern.compile("^<!-- cat:include ([A-Za-z0-9_./-]+) -->$",
+		Pattern.MULTILINE);
 
 	/**
 	 * Resolves one relative include target without allowing a symbolic link or a path outside the supplied source roots.
