@@ -50,10 +50,13 @@ Every assistant message is part of the reply and must satisfy the requirements o
 
 {{responses}}
 
-Read these paths for file and tool effects:
+The trial's tool calls, child activity and hook outcomes, in turn order, followed by every file change against the
+source the trial started from:
 
-- the trial's project directory after the trial: {{effects}}
-- the trial's harness event transcript, one JSON event per line: {{transcript}}
+{{evidence}}
+
+The trial's project directory after the trial, {{effects}}, is available read-only so that you can open a whole file
+when its diff or note is not enough.
 
 ### Deterministic results
 
@@ -72,7 +75,7 @@ checks, whether it passed and the value that it observed. The array is empty whe
 - Apply the decision rule exactly to the requirements you decide. Return `pass` only when the evidence shows that
   the decision rule's pass condition holds for every one of them.
 - In `rationale`, cite the evidence that decided the verdict: quote the response text, or name the file or the
-  transcript event.
+  evidence entry.
 
 ### Output
 

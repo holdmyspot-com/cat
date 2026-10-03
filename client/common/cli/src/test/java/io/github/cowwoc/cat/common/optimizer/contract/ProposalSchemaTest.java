@@ -169,10 +169,14 @@ public final class ProposalSchemaTest
 	@Test
 	public void parsesValidProposal() throws InvalidProposalException
 	{
+		// Requirement: R-E21
 		// Requirement: R-C1
 		Contract contract = schema().parse(ContractFixtures.resource("valid-proposal.json"));
+		Contract fixture = ContractFixtures.contract();
+		Contract expected = new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(),
+			frozenJudge(), fixture.fixtures(), fixture.limitations());
 
-		requireThat(contract, "contract").isEqualTo(ContractFixtures.contract());
+		requireThat(contract, "contract").isEqualTo(expected);
 		requireThat(contract.requirements().get(1).source(), "source").isEqualTo("rules/safety.md");
 		TestDefinition styled = contract.categories().get(0).tests().get(0);
 		requireThat(styled.timeLimit().toSeconds(), "timeLimitSeconds").isEqualTo(300L);
@@ -523,15 +527,29 @@ public final class ProposalSchemaTest
 	@Test
 	public void judgeProfileCarriesFrozenFields() throws InvalidProposalException
 	{
+		// Requirement: R-E21
 		// Requirement: R-C5
 		JudgeProfile judge = schema().parse(ContractFixtures.resource("valid-proposal.json")).judge();
 
 		requireThat(judge.profile(), "profile").isEqualTo(new TrialProfile("judge-model", "high"));
-		requireThat(judge.prompt(), "prompt").isEqualTo(ContractFixtures.judge().prompt());
+		requireThat(judge.prompt(), "prompt").isEqualTo(frozenJudge().prompt());
 		requireThat(judge.rubric(), "rubric").isEqualTo("The response follows the requirement.");
 		requireThat(judge.decisionRule(), "decisionRule").isEqualTo("Pass only if every rubric item holds.");
 		requireThat(json.readTree(judge.resultSchema()).get("required").get(0).asString(), "required").
 			isEqualTo("verdict");
+	}
+
+	/**
+	 * Returns the expected judge profile with the exact prompt frozen in the proposal fixture.
+	 *
+	 * @return the frozen profile
+	 */
+	private JudgeProfile frozenJudge()
+	{
+		JudgeProfile judge = ContractFixtures.judge();
+		String prompt = json.readTree(ContractFixtures.resource("valid-proposal.json")).path("judge").
+			path("prompt").asString();
+		return new JudgeProfile(judge.profile(), prompt, judge.rubric(), judge.decisionRule(), judge.resultSchema());
 	}
 
 	/**

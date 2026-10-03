@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
 import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * Starts nested sessions through the current harness's runner.
@@ -19,6 +20,17 @@ public interface SessionPort
 	 * @throws IOException if the session cannot be started
 	 */
 	SessionHandle start(SessionRequest request) throws IOException;
+
+	/**
+	 * Renders a completed trial's recorded activity and file changes for the judge.
+	 *
+	 * @param evidence the trial's retained transcript and effects
+	 * @param source the staged source copied at the start of the trial
+	 * @return the complete evidence section, without injected instructions, streaming fragments or telemetry
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the transcript, source or effects cannot be read
+	 */
+	String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException;
 
 	/**
 	 * Classifies the host's login for this harness, so that the confirmation step can warn about a subscription before

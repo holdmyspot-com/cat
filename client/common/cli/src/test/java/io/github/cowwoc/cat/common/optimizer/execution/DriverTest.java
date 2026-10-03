@@ -45,6 +45,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
 import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
@@ -2253,6 +2254,7 @@ public final class DriverTest
 	@Test
 	public void failedCheckRunsNoJudge() throws IOException, UndecidableCheckException
 	{
+		// Requirement: R-E21
 		// Requirement: R-C9
 		// Requirement: R-C12
 		Contract contract = checkedContract();
@@ -2295,7 +2297,7 @@ public final class DriverTest
 				{
 					String turn = request.turns().getFirst();
 					String responsesSection = turn.substring(turn.indexOf("The trial agent's reply to each turn"),
-						turn.indexOf("Read these paths"));
+						turn.indexOf("The trial's tool calls"));
 					JsonNode responses = JsonMapper.builder().build().readTree(responsesSection.substring(
 						responsesSection.indexOf('[')));
 					for (JsonNode response : responses)
@@ -2318,6 +2320,7 @@ public final class DriverTest
 	@Test
 	public void passingChecksRunTheJudge() throws IOException, UndecidableCheckException
 	{
+		// Requirement: R-E21
 		// Requirement: R-C9
 		// Requirement: R-C5
 		Contract contract = checkedContract();
@@ -2368,10 +2371,100 @@ public final class DriverTest
 				requireThat(request.source(), "judgeDirectory").isEqualTo(harness.directory().resolve("judge"));
 				Path effects = request.readOnly().getFirst();
 				requireThat(request.readOnly(), "readOnly").
-					isEqualTo(List.of(effects, effects.getParent().resolve("artifacts")));
+					isEqualTo(List.of(effects));
 				requireThat(turn, "turn").contains(contract.judge().rubric()).contains(contract.judge().decisionRule());
 				requireThat(request.timeLimit(), "timeLimit").isEqualTo(Duration.ofMinutes(10));
 			}
+		}
+	}
+
+	/**
+	 * Checks that the driver includes rendered trial activity in the judge's request.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void judgeReceivesEvidenceSection() throws IOException
+	{
+		// Requirement: R-E21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			String section = """
+				Turn 1
+				Tool: shell
+				Input:
+				printf original
+				Exit status: 0
+				Output:
+				complete {{responses}}
+
+				File changes
+				Created: note.txt
+				--- /dev/null
+				+++ b/note.txt
+				@@ -0,0 +1,1 @@
+				+created
+				""";
+			AtomicReference<SessionResult.Completed> evidence = new AtomicReference<>();
+			AtomicReference<Path> source = new AtomicReference<>();
+			harness.trials(request ->
+			{
+				SessionResult.Completed completed = harness.passed();
+				harness.sessions().supplyEvidence(completed.transcript(), section);
+				evidence.set(completed);
+				source.set(request.source());
+				return completed;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !judgeRequests(harness).isEmpty());
+			}
+			SessionRequest request = judgeRequests(harness).getFirst();
+			requireThat(request.turns().getFirst(), "turn").contains(section);
+			requireThat(harness.sessions().evidenceSources().get(evidence.get().transcript()), "source").
+				isEqualTo(source.get());
+			requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(request.readOnly().getFirst()));
+		}
+	}
+
+	/**
+	 * Checks that a stored frozen path prompt loads and grants transcript access without rendering new evidence.
+	 *
+	 * @throws IOException if the fixture cannot be stored or read
+	 */
+	@Test
+	public void storedPathPromptKeepsItsEvidenceContract() throws IOException
+	{
+		// Requirement: R-E21
+		Contract fixture = ContractFixtures.contract();
+		JudgeProfile judge = fixture.judge();
+		JudgeProfile paths = new JudgeProfile(judge.profile(), "{{responses}} {{effects}} {{transcript}}",
+			judge.rubric(), judge.decisionRule(), judge.resultSchema());
+		Contract contract = new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(), paths,
+			fixture.fixtures(), fixture.limitations());
+		Campaign original = new Builder().confirmed(contract, 1).working(1).readyBaseline().build();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("frozen-judge"));
+			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build());
+			store.replaceSnapshot(original);
+			Campaign loaded = store.load(DriverHarness.CAMPAIGN).orElseThrow();
+			requireThat(loaded.contract().judge(), "frozenProfile").isEqualTo(paths);
+			DriverHarness harness = new DriverHarness(directory, loaded);
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !judgeRequests(harness).isEmpty());
+			}
+			SessionRequest request = judgeRequests(harness).getFirst();
+			Path effects = request.readOnly().getFirst();
+			Path transcriptDirectory = effects.getParent().resolve("artifacts");
+			requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(effects, transcriptDirectory));
+			requireThat(request.turns().getFirst(), "turn").contains(effects.toString()).
+				contains(transcriptDirectory.resolve("transcript").toString()).doesNotContain("{{effects}}").
+				doesNotContain("{{transcript}}");
+			requireThat(harness.sessions().evidenceSources(), "renderedSources").isEmpty();
 		}
 	}
 
@@ -2684,6 +2777,12 @@ public final class DriverTest
 	{
 		return new SessionPort()
 		{
+			@Override
+			public String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException
+			{
+				return delegate.renderEvidence(evidence, source);
+			}
+
 			@Override
 			public SessionHandle start(SessionRequest request) throws IOException
 			{

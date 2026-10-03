@@ -18,6 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -26,6 +27,7 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -341,6 +343,12 @@ public final class SliceTest
 		{
 			this.delegate = delegate;
 			this.started = started;
+		}
+
+		@Override
+		public String renderEvidence(SessionResult.Completed evidence, Path source)
+		{
+			return delegate.renderEvidence(evidence, source);
 		}
 
 		@Override

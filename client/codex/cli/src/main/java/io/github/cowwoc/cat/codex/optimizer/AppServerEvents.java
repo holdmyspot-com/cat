@@ -16,19 +16,19 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's Codex app-server notifications say about the model, token usage, rate limits, errors and
- * root tool calls.
+ * Reads a session's recorded Codex app-server activity and its model, token usage, rate limits and errors.
  * <p>
  * The parser follows the notifications that the runner captured:
  * <ul>
- *   <li>the first {@code thread/started} notification names the root thread, its model and its reasoning effort;</li>
+ *   <li>{@code thread/started} names the root thread, its model and its reasoning effort; an archive without thread
+ *   initialization names the root in its first {@code turn/started} notification;</li>
  *   <li>{@code thread/tokenUsage/updated} carries each thread's cumulative {@code total}, and the session's usage is
  *   the sum over every thread, so that child threads count;</li>
  *   <li>{@code account/rateLimits/updated} carries the {@code primary} and {@code secondary} windows, which are
  *   reported in that order;</li>
- *   <li>{@code item/started} records a root tool call's position, and {@code item/completed} updates that same
- *   item; command items report their command and numeric {@code exitCode}, while collaboration items name their
- *   tool and built-in non-command items use their reported type;</li>
+ *   <li>{@code item/started} records an activity's position, and {@code item/completed} updates that same item;
+ *   root and child tools retain their complete input and output, while root-call accounting excludes child calls;</li>
+ *   <li>hook notifications retain only their status, and root assistant items retain only response positions;</li>
  *   <li>a {@code turn/completed} notification of the root thread whose status is neither {@code completed} nor
  *   {@code interrupted} reports an error, without Codex's error text.</li>
  * </ul>
@@ -40,6 +40,7 @@ final class AppServerEvents extends HarnessEvents
 	private static final double PERCENT = 100.0;
 	private final Map<String, TokenUsage> totals = new HashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
+	private final AppServerEvidence evidence = new AppServerEvidence();
 	private String rootThread;
 
 	/**
@@ -62,8 +63,14 @@ final class AppServerEvents extends HarnessEvents
 			case "thread/started" -> readThreadStarted(params.path("thread"));
 			case "thread/tokenUsage/updated" -> readTokenUsage(params);
 			case "account/rateLimits/updated" -> readRateLimits(params.path("rateLimits"));
+			case "turn/started" -> readTurnStarted(params);
 			case "turn/completed" -> readTurnCompleted(params);
-			case "item/started", "item/completed" -> readToolCall(params);
+			case "item/started", "item/completed" -> readItem(params);
+			case "hook/started", "hook/completed" ->
+			{
+				evidence.readHook(params, rootThread);
+				setEvidence(evidence.snapshot());
+			}
 			default ->
 			{
 			}
@@ -71,19 +78,21 @@ final class AppServerEvents extends HarnessEvents
 	}
 
 	/**
-	 * Records a root tool item once, updating its completion without changing its invocation order.
+	 * Records an activity item once, updating its completion without changing its invocation order. Only root tool
+	 * calls contribute to the session's root-call accounting.
 	 *
 	 * @param params the notification's parameters, including the owning thread and tool item
 	 */
-	private void readToolCall(JsonNode params)
+	private void readItem(JsonNode params)
 	{
-		if (rootThread == null || !params.path("threadId").asString("").equals(rootThread))
+		if (rootThread == null || text(params.path("threadId")) == null)
 			return;
 		JsonNode item = params.path("item");
 		String id = text(item.path("id"));
 		if (id == null)
 			return;
 		String type = item.path("type").asString("");
+		evidence.readActivity(params, rootThread);
 		ToolCall call = switch (type)
 		{
 			case "commandExecution" -> commandCall(item);
@@ -99,10 +108,18 @@ final class AppServerEvents extends HarnessEvents
 			default -> null;
 		};
 		if (call == null)
+		{
+			setEvidence(evidence.snapshot());
 			return;
+		}
 
-		calls.put(id, call);
-		setToolCalls(new ArrayList<>(calls.values()));
+		evidence.readTool(params, rootThread, call);
+		setEvidence(evidence.snapshot());
+		if (params.path("threadId").asString("").equals(rootThread))
+		{
+			calls.put(id, call);
+			setToolCalls(new ArrayList<>(calls.values()));
+		}
 	}
 
 	/**
@@ -128,11 +145,24 @@ final class AppServerEvents extends HarnessEvents
 	 */
 	private void readThreadStarted(JsonNode thread)
 	{
-		if (rootThread != null)
+		String id = text(thread.path("id"));
+		if (id == null || rootThread != null && !rootThread.equals(id))
 			return;
-		rootThread = thread.path("id").asString("");
+		rootThread = id;
 		setModel(text(thread.path("model")));
 		setReasoning(text(thread.path("reasoningEffort")));
+	}
+
+	/**
+	 * Names the root from its first turn when the archive omits thread initialization, and records turn ordering.
+	 *
+	 * @param params the turn-start notification's parameters
+	 */
+	private void readTurnStarted(JsonNode params)
+	{
+		if (rootThread == null)
+			rootThread = text(params.path("threadId"));
+		evidence.readTurn(params, rootThread);
 	}
 
 	/**

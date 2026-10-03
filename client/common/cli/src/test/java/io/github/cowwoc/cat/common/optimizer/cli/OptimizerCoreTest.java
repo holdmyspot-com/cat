@@ -326,6 +326,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public String renderEvidence(SessionResult.Completed evidence, Path source)
+		{
+			return "No tool or hook activity.\n\nFile changes\nNo file changes.\n";
+		}
+
+		@Override
 		public HostLogin hostLogin()
 		{
 			return HostLogin.UNKNOWN;

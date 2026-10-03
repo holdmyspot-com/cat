@@ -18,6 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,20 +63,22 @@ public final class JudgePrompt implements JudgeProtocol
 	 * <p>
 	 * The profile's prompt receives the rubric, the decision rule, the semantic requirements to decide and the result
 	 * schema, then the evidence as data: the instance, the responses and the deterministic results as JSON, and the
-	 * paths of the effects directory and the transcript, which the session may read but not change.
+	 * rendered trial activity and file changes. The effects directory is readable. A template that names the effects
+	 * or transcript placeholders receives those paths, and naming the transcript grants read-only access to its
+	 * directory.
 	 *
-	 * @throws IllegalArgumentException if {@code requirements} is empty, or the profile's prompt lacks a placeholder
-	 *   of CAT's judge prompt
+	 * @throws IllegalArgumentException if {@code requirements} is empty
 	 */
 	@Override
 	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence,
-		List<Requirement> requirements, List<CheckResult> results)
+		List<Requirement> requirements, List<CheckResult> results, String evidenceSection)
 	{
 		requireThat(profile, "profile").isNotNull();
 		requireThat(instance, "instance").isNotNull();
 		requireThat(evidence, "evidence").isNotNull();
 		requireThat(requirements, "requirements").isNotEmpty();
 		requireThat(results, "results").isNotNull();
+		requireThat(evidenceSection, "evidenceSection").isNotNull();
 		ArrayNode responseArray = json.createArrayNode();
 		for (List<String> turn : evidence.responses())
 		{
@@ -100,7 +103,7 @@ public final class JudgePrompt implements JudgeProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
-		String turn = new PromptTemplate(profile.prompt()).fill(Map.of(
+		Map<String, String> values = new HashMap<>(Map.of(
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
 			"requirements", pretty(requirementArray),
@@ -108,13 +111,17 @@ public final class JudgePrompt implements JudgeProtocol
 			"responses", pretty(responseArray),
 			"effects", evidence.effects().toString(),
 			"transcript", evidence.transcript().toString(),
+			"evidence", evidenceSection,
 			"deterministic_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
+		values.keySet().removeIf(name -> !profile.prompt().contains("{{" + name + "}}"));
+		String turn = new PromptTemplate(profile.prompt()).fill(values);
 
 		List<Path> readOnly = new ArrayList<>();
 		readOnly.add(evidence.effects());
 		Path transcriptDirectory = evidence.transcript().getParent();
-		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
+		if (profile.prompt().contains("{{transcript}}") && transcriptDirectory != null &&
+			!readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
 		return new SessionRequest(SessionRole.JUDGE, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
 			profile.profile());

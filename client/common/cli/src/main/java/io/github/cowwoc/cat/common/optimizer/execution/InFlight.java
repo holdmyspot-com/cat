@@ -31,11 +31,13 @@ sealed interface InFlight
 	 *
 	 * @param key the logical trial
 	 * @param instance the trial's instance
+	 * @param source the staged source copied at the start of the trial
 	 * @param startedAt when the session started
 	 * @param concurrency the number of trial sessions running immediately after this one started
 	 * @param handle the session
 	 */
-	record Trial(TrialKey key, TrialInstance instance, Instant startedAt, int concurrency, SessionHandle handle)
+	record Trial(TrialKey key, TrialInstance instance, Path source, Instant startedAt, int concurrency,
+		SessionHandle handle)
 		implements InFlight
 	{
 	}
@@ -73,13 +75,14 @@ sealed interface InFlight
 	 * @param key the logical trial
 	 * @param instance the trial's instance
 	 * @param evidence the trial session's result, which every judge attempt receives unchanged
+	 * @param evidenceSection the rendered trial activity and file changes, unchanged across judge attempts
 	 * @param requirements the semantic requirements of the trial's test, which the judge decides
 	 * @param results the results of the test's deterministic checks, which the judge receives as evidence
 	 * @param attempt the judge attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
 	record Judging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence,
-		List<Requirement> requirements, List<CheckResult> results, int attempt, int concurrency)
+		String evidenceSection, List<Requirement> requirements, List<CheckResult> results, int attempt, int concurrency)
 	{
 		/**
 		 * Returns the next judge attempt with the same evidence.
@@ -88,7 +91,7 @@ sealed interface InFlight
 		 */
 		Judging retry()
 		{
-			return new Judging(key, instance, evidence, requirements, results, attempt + 1, concurrency);
+			return new Judging(key, instance, evidence, evidenceSection, requirements, results, attempt + 1, concurrency);
 		}
 	}
 }

@@ -5,8 +5,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.evidence.FileChanges;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
@@ -64,6 +69,25 @@ public abstract class RunnerSessions implements SessionPort
 		Session session = new Session(this, request);
 		session.begin();
 		return session;
+	}
+
+	@Override
+	public final String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException
+	{
+		requireThat(evidence, "evidence").isNotNull();
+		requireThat(source, "source").isNotNull();
+		HarnessEvents events = newEvents(JsonMapper.builder().build());
+		try (BufferedReader reader = Files.newBufferedReader(evidence.transcript()))
+		{
+			String line = reader.readLine();
+			while (line != null)
+			{
+				events.accept(line);
+				line = reader.readLine();
+			}
+		}
+		return "Effects directory: " + evidence.effects() + "\n\n" + events.evidence().render() +
+			"\nFile changes\n" + FileChanges.render(source, evidence.effects());
 	}
 
 	/**

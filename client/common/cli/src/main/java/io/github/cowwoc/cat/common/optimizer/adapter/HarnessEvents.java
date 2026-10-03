@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
@@ -32,6 +33,7 @@ public abstract class HarnessEvents
 	private Rejection rejection;
 	private String error;
 	private List<ToolCall> toolCalls = List.of();
+	private SessionEvidence evidence = new SessionEvidence(List.of());
 
 	/**
 	 * Creates a parser that has seen no events.
@@ -187,6 +189,31 @@ public abstract class HarnessEvents
 	protected final void setToolCalls(List<ToolCall> toolCalls)
 	{
 		this.toolCalls = List.copyOf(toolCalls);
+	}
+
+	/**
+	 * Returns the recorded tools, hooks and assistant positions, including child activity.
+	 *
+	 * @return the activity in invocation order, without streaming fragments or session instructions
+	 */
+	public final SessionEvidence evidence()
+	{
+		synchronized (lock)
+		{
+			return evidence;
+		}
+	}
+
+	/**
+	 * Records the tools, hooks and assistant positions observed so far.
+	 *
+	 * @param evidence the activity in invocation order
+	 * @throws NullPointerException if {@code evidence} is null
+	 */
+	protected final void setEvidence(SessionEvidence evidence)
+	{
+		requireThat(evidence, "evidence").isNotNull();
+		this.evidence = evidence;
 	}
 
 	/**

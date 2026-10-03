@@ -2,8 +2,13 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
+
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -17,6 +22,8 @@ public final class FakeSessionPort implements SessionPort
 {
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
+	private final Map<Path, String> evidence = new HashMap<>();
+	private final Map<Path, Path> evidenceSources = new HashMap<>();
 
 	/**
 	 * Creates a port that has started no sessions and whose host login is not identified.
@@ -42,6 +49,48 @@ public final class FakeSessionPort implements SessionPort
 	public HostLogin hostLogin()
 	{
 		return login;
+	}
+
+	@Override
+	public String renderEvidence(SessionResult.Completed result, Path source)
+	{
+		requireThat(result, "result").isNotNull();
+		requireThat(source, "source").isNotNull();
+		synchronized (sessions)
+		{
+			evidenceSources.put(result.transcript(), source);
+			return evidence.getOrDefault(result.transcript(), new SessionEvidence(List.of()).render() +
+				"\nFile changes\nNo file changes.\n");
+		}
+	}
+
+	/**
+	 * Supplies a rendered section for a retained trial transcript.
+	 *
+	 * @param transcript the trial transcript
+	 * @param section the complete section returned by the evidence renderer
+	 */
+	public void supplyEvidence(Path transcript, String section)
+	{
+		requireThat(transcript, "transcript").isNotNull();
+		requireThat(section, "section").isNotNull();
+		synchronized (sessions)
+		{
+			evidence.put(transcript, section);
+		}
+	}
+
+	/**
+	 * Returns the staged sources supplied to evidence rendering.
+	 *
+	 * @return each transcript's original source
+	 */
+	public Map<Path, Path> evidenceSources()
+	{
+		synchronized (sessions)
+		{
+			return Map.copyOf(evidenceSources);
+		}
 	}
 
 	@Override

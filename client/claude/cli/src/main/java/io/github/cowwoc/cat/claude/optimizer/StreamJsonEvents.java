@@ -1,13 +1,20 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
+import static io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence.ROOT_AGENT;
+
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reads what a session's Claude {@code stream-json} records say about the model, token usage, rate limits,
- * errors and root tool calls.
+ * errors, root tool calls and ordered trial activity.
  * <p>
  * The parser follows the records that the runner captured:
  * <ul>
@@ -44,6 +51,16 @@ final class StreamJsonEvents extends HarnessEvents
 	private static final Pattern EXIT_CODE = Pattern.compile("Error: Exit code (\\d{1,9})(?:\n|$)");
 	private final Map<String, RateLimitWindow> windows = new LinkedHashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
+	private final List<SessionEvidence.Entry> entries = new ArrayList<>();
+	private final Map<String, Integer> toolEntries = new HashMap<>();
+	private final Map<String, Integer> hookEntries = new HashMap<>();
+	private final Map<String, Integer> messageEntries = new HashMap<>();
+	private final Map<String, String> messageTexts = new HashMap<>();
+	private final Map<String, Integer> assistantCounts = new HashMap<>();
+	private final Map<String, String> lastTexts = new HashMap<>();
+	private int turn = 1;
+	private long anonymousMessage;
+	private boolean turnCompleted;
 	private Instant lastResetsAt;
 
 	/**
@@ -64,8 +81,14 @@ final class StreamJsonEvents extends HarnessEvents
 		{
 			case "system" ->
 			{
-				if (event.path("subtype").asString("").equals("init"))
-					readInit(event);
+				switch (event.path("subtype").asString(""))
+				{
+					case "init" -> readInit(event);
+					case "hook_started", "hook_response" -> readHook(event);
+					default ->
+					{
+					}
+				}
 			}
 			case "assistant" -> readToolCalls(event);
 			case "user" -> readToolResults(event);
@@ -78,65 +101,264 @@ final class StreamJsonEvents extends HarnessEvents
 	}
 
 	/**
-	 * Records root tool-use blocks without mistaking reply text or child calls for tool calls.
+	 * Records tool-use blocks for root checks and trial evidence, interleaving assistant positions.
 	 *
 	 * @param event the assistant message event
 	 */
 	private void readToolCalls(JsonNode event)
 	{
-		JsonNode parent = event.path("parent_tool_use_id");
-		if (!parent.isNull() && !parent.isMissingNode())
-			return;
 		JsonNode content = event.path("message").path("content");
 		if (!content.isArray())
 			return;
+		String agent = agent(event);
+		if (agent.equals(ROOT_AGENT))
+			beginTurn();
+		int eventTurn = turnFor(agent);
+		String message = event.path("message").path("id").asString("");
+		if (message.isBlank())
+			message = event.path("uuid").asString("");
+		if (message.isBlank())
+		{
+			anonymousMessage += 1;
+			message = "anonymous-" + anonymousMessage;
+		}
+		int blockIndex = 0;
 		for (JsonNode block : content)
 		{
-			if (!block.path("type").asString("").equals("tool_use"))
-				continue;
-			String id = block.path("id").asString("");
-			String tool = block.path("name").asString("");
-			if (id.isBlank() || tool.isBlank())
-				continue;
-			String command = null;
-			JsonNode input = block.path("input").path("command");
-			if (tool.equals("Bash") && input.isString() && !input.stringValue().isBlank())
-				command = input.stringValue();
-			calls.putIfAbsent(id, new ToolCall(tool, command, null));
+			switch (block.path("type").asString(""))
+			{
+				case "tool_use" -> readToolCall(block, eventTurn, agent);
+				case "text" -> recordAssistant(eventTurn, agent, message + ":" + blockIndex,
+					block.path("text").asString(""));
+				default ->
+				{
+				}
+			}
+			blockIndex += 1;
 		}
 		setToolCalls(calls.values().stream().toList());
+		setEvidence(new SessionEvidence(entries));
 	}
 
 	/**
-	 * Records the exit status of each root command that a {@code tool_result} answers.
+	 * Records a tool invocation once, sharing command extraction with root tool-call checks.
+	 *
+	 * @param block the tool-use block
+	 * @param eventTurn the root turn that owns the call
+	 * @param agent the root name or child identity
+	 */
+	private void readToolCall(JsonNode block, int eventTurn, String agent)
+	{
+		String id = block.path("id").asString("");
+		String tool = block.path("name").asString("");
+		if (id.isBlank() || tool.isBlank() || toolEntries.containsKey(id))
+			return;
+		String command = null;
+		JsonNode input = block.path("input");
+		JsonNode commandNode = input.path("command");
+		if (tool.equals("Bash") && commandNode.isString() && !commandNode.stringValue().isBlank())
+			command = commandNode.stringValue();
+		if (agent.equals(ROOT_AGENT))
+			calls.put(id, new ToolCall(tool, command, null));
+		String arguments = command;
+		if (arguments == null)
+			arguments = contentText(input);
+		toolEntries.put(id, entries.size());
+		entries.add(new SessionEvidence.Tool(eventTurn, agent, tool, arguments, null, ""));
+	}
+
+	/**
+	 * Records tool outputs and the exit status of each command that a {@code tool_result} answers.
 	 *
 	 * @param event the user message event
 	 */
 	private void readToolResults(JsonNode event)
 	{
-		JsonNode parent = event.path("parent_tool_use_id");
-		if (!parent.isNull() && !parent.isMissingNode())
-			return;
 		JsonNode content = event.path("message").path("content");
 		if (!content.isArray())
 			return;
-		boolean changed = false;
 		for (JsonNode block : content)
 		{
 			if (!block.path("type").asString("").equals("tool_result"))
 				continue;
 			String id = block.path("tool_use_id").asString("");
+			Integer index = toolEntries.get(id);
+			if (index == null)
+				continue;
+			SessionEvidence.Tool tool = (SessionEvidence.Tool) entries.get(index);
+			JsonNode result = event.path("tool_use_result");
+			Integer status = null;
+			if (tool.tool().equals("Bash"))
+				status = exitStatus(block.path("is_error").asBoolean(false), result);
+			if (status == null)
+				status = tool.exitStatus();
+			entries.set(index, new SessionEvidence.Tool(tool.turn(), tool.agent(), tool.tool(), tool.input(), status,
+				toolOutput(tool.tool(), result, block.path("content"))));
+
 			ToolCall call = calls.get(id);
-			if (call == null || call.command() == null || call.exitStatus() != null)
-				continue;
-			Integer exitStatus = exitStatus(block.path("is_error").asBoolean(false), event.path("tool_use_result"));
-			if (exitStatus == null)
-				continue;
-			calls.put(id, new ToolCall(call.tool(), call.command(), exitStatus));
-			changed = true;
+			if (call != null && call.command() != null && call.exitStatus() == null && status != null)
+				calls.put(id, new ToolCall(call.tool(), call.command(), status));
 		}
-		if (changed)
-			setToolCalls(calls.values().stream().toList());
+		setToolCalls(calls.values().stream().toList());
+		setEvidence(new SessionEvidence(entries));
+	}
+
+	/**
+	 * Selects complete command output or tool content while omitting metadata outside the result's content.
+	 *
+	 * @param tool the tool name
+	 * @param result the record's structured result
+	 * @param content the tool-result content shown to the assistant
+	 * @return the complete reported output
+	 */
+	private static String toolOutput(String tool, JsonNode result, JsonNode content)
+	{
+		if (result.isString())
+			return result.stringValue();
+		if (tool.equals("Bash") && result.isObject() && !result.has("backgroundTaskId") &&
+			(result.has("stdout") || result.has("stderr")))
+		{
+			return result.path("stdout").asString("") + result.path("stderr").asString("");
+		}
+		JsonNode reportedContent = result.path("content");
+		if (!reportedContent.isMissingNode() && !reportedContent.isNull())
+			return contentText(reportedContent);
+		return contentText(content);
+	}
+
+	/**
+	 * Converts tool content without limiting text or dropping non-text content blocks.
+	 *
+	 * @param content the reported content
+	 * @return its text, or JSON for non-text content
+	 */
+	private static String contentText(JsonNode content)
+	{
+		if (content.isString())
+			return content.stringValue();
+		if (content.isMissingNode() || content.isNull())
+			return "";
+		if (!content.isArray())
+			return content.toString();
+		StringJoiner result = new StringJoiner("\n");
+		for (JsonNode block : content)
+		{
+			if (block.path("type").asString("").equals("text") && block.path("text").isString())
+				result.add(block.path("text").stringValue());
+			else
+				result.add(block.toString());
+		}
+		return result.toString();
+	}
+
+	/**
+	 * Records an assistant position once and replaces cumulative text with its complete form.
+	 *
+	 * @param eventTurn the root turn that owns the message
+	 * @param agent the root name or child identity
+	 * @param message the message and content-block identity
+	 * @param text the assistant text
+	 */
+	private void recordAssistant(int eventTurn, String agent, String message, String text)
+	{
+		if (text.isBlank())
+			return;
+		String actorTurn = eventTurn + ":" + agent;
+		String key = actorTurn + ":" + message;
+		String previous = messageTexts.get(key);
+		if (previous != null && previous.startsWith(text))
+			return;
+		String evidenceText = text;
+		if (agent.equals(ROOT_AGENT))
+			evidenceText = "";
+		if (previous != null && text.startsWith(previous))
+		{
+			int index = messageEntries.get(key);
+			SessionEvidence.Assistant assistant = (SessionEvidence.Assistant) entries.get(index);
+			entries.set(index, new SessionEvidence.Assistant(eventTurn, agent, assistant.position(), evidenceText));
+		}
+		else
+		{
+			int position = assistantCounts.merge(actorTurn, 1, Integer::sum);
+			messageEntries.put(key, entries.size());
+			entries.add(new SessionEvidence.Assistant(eventTurn, agent, position, evidenceText));
+		}
+		messageTexts.put(key, text);
+		lastTexts.put(actorTurn, text);
+	}
+
+	/**
+	 * Records a hook's status, replacing an unreported outcome when its response arrives.
+	 *
+	 * @param event the hook event
+	 */
+	private void readHook(JsonNode event)
+	{
+		String hook = event.path("hook_name").asString("");
+		if (hook.isBlank())
+			return;
+		String agent = agent(event);
+		if (agent.equals(ROOT_AGENT) && event.path("hook_event").asString("").equals("SessionStart"))
+			beginTurn();
+		int eventTurn = turnFor(agent);
+		String id = event.path("hook_id").asString(hook);
+		String key = eventTurn + ":" + agent + ":" + id;
+		Integer index = hookEntries.get(key);
+		if (index != null && event.path("subtype").asString("").equals("hook_started"))
+			return;
+		String status = event.path("outcome").asString("");
+		if (status.isBlank())
+			status = event.path("status").asString("not reported");
+		if (status.isBlank())
+			status = "not reported";
+		SessionEvidence.Hook entry = new SessionEvidence.Hook(eventTurn, agent, hook, status);
+		if (index == null)
+		{
+			hookEntries.put(key, entries.size());
+			entries.add(entry);
+		}
+		else
+			entries.set(index, entry);
+		setEvidence(new SessionEvidence(entries));
+	}
+
+	/**
+	 * Returns the root name or the parent tool-use identity that identifies a child's records.
+	 *
+	 * @param event the harness record
+	 * @return the actor
+	 */
+	private static String agent(JsonNode event)
+	{
+		String parent = event.path("parent_tool_use_id").asString("");
+		if (parent.isBlank())
+			return ROOT_AGENT;
+		return parent;
+	}
+
+	/**
+	 * Returns the turn that spawned a child, or the current turn for a root or an unobserved parent call.
+	 *
+	 * @param agent the root name or parent tool-use identity
+	 * @return the owning root turn
+	 */
+	private int turnFor(String agent)
+	{
+		Integer parent = toolEntries.get(agent);
+		if (parent == null)
+			return turn;
+		return entries.get(parent).turn();
+	}
+
+	/**
+	 * Advances to the next root turn after a completed result, without advancing for background child records.
+	 */
+	private void beginTurn()
+	{
+		if (!turnCompleted)
+			return;
+		turn += 1;
+		turnCompleted = false;
 	}
 
 	/**
@@ -171,6 +393,8 @@ final class StreamJsonEvents extends HarnessEvents
 	 */
 	private void readInit(JsonNode event)
 	{
+		if (agent(event).equals(ROOT_AGENT))
+			beginTurn();
 		JsonNode modelNode = event.path("model");
 		if (modelNode.isString() && !modelNode.stringValue().isBlank())
 			setModel(modelNode.stringValue());
@@ -214,6 +438,15 @@ final class StreamJsonEvents extends HarnessEvents
 	 */
 	private void readResult(JsonNode event)
 	{
+		String agent = agent(event);
+		int eventTurn = turnFor(agent);
+		String text = event.path("result").asString("");
+		if (!text.isBlank() && !text.equals(lastTexts.get(eventTurn + ":" + agent)))
+			recordAssistant(eventTurn, agent, "result", text);
+		if (agent.equals(ROOT_AGENT))
+			turnCompleted = true;
+		setEvidence(new SessionEvidence(entries));
+
 		JsonNode models = event.path("modelUsage");
 		if (models.isObject() && !models.isEmpty())
 		{

@@ -598,7 +598,22 @@ public final class Driver implements AutoCloseable
 		for (Requirement requirement : campaign.contract().requirements())
 			requirementById.put(requirement.id(), requirement);
 		List<Requirement> semantic = semanticIds.stream().map(requirementById::get).toList();
-		judgingQueue.add(new Judging(trial.key(), instance, completed, semantic, results, 1, trial.concurrency()));
+		String section = "";
+		if (campaign.contract().judge().prompt().contains("{{evidence}}"))
+		{
+			try
+			{
+				section = context.sessions().renderEvidence(completed, trial.source());
+			}
+			catch (IOException e)
+			{
+				fail(trial.key(), RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " +
+					describe(e), now, null);
+				return;
+			}
+		}
+		judgingQueue.add(new Judging(trial.key(), instance, completed, section, semantic, results, 1,
+			trial.concurrency()));
 	}
 
 	/**
@@ -636,7 +651,7 @@ public final class Driver implements AutoCloseable
 				continue;
 			started = true;
 			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.instance(),
-				judging.evidence(), judging.requirements(), judging.results());
+				judging.evidence(), judging.requirements(), judging.results(), judging.evidenceSection());
 			SessionHandle handle;
 			try
 			{
@@ -1201,10 +1216,11 @@ public final class Driver implements AutoCloseable
 	{
 		TrialKey key = trial.key();
 		SessionHandle handle;
+		Path source;
 		try
 		{
 			Overlay candidate = context.overlays().require(key.snapshot());
-			Path source = context.workspace().stage(candidate);
+			source = context.workspace().stage(candidate);
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.instance().cellId()).orElseThrow().profile();
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, source, trial.instance().turns(),
@@ -1221,7 +1237,7 @@ public final class Driver implements AutoCloseable
 			if (session instanceof InFlight.Trial)
 				++concurrency;
 		}
-		register(new InFlight.Trial(key, trial.instance(), now, concurrency, handle));
+		register(new InFlight.Trial(key, trial.instance(), source, now, concurrency, handle));
 	}
 
 	/**

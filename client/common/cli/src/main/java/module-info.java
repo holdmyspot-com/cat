@@ -13,6 +13,8 @@ module io.github.cowwoc.cat.common.cli
 		io.github.cowwoc.cat.codex.cli;
 	exports io.github.cowwoc.cat.common.optimizer.cli;
 	exports io.github.cowwoc.cat.common.optimizer.contract;
+	exports io.github.cowwoc.cat.common.optimizer.evidence to io.github.cowwoc.cat.claude.cli,
+		io.github.cowwoc.cat.codex.cli;
 	exports io.github.cowwoc.cat.common.optimizer.execution.prompt;
 	exports io.github.cowwoc.cat.common.optimizer.port;
 	exports io.github.cowwoc.cat.common.optimizer.proposal;

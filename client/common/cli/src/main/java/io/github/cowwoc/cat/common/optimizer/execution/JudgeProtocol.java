@@ -31,12 +31,14 @@ public interface JudgeProtocol
 	 *   judge decides
 	 * @param results the results of the test's deterministic checks, which the judge receives as evidence but cannot
 	 *   override
+	 * @param evidenceSection the rendered trial activity and file changes; empty when the frozen template does not
+	 *   name it
 	 * @return a request whose role is {@link SessionRole#JUDGE}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code requirements} is empty
 	 */
 	SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence,
-		List<Requirement> requirements, List<CheckResult> results);
+		List<Requirement> requirements, List<CheckResult> results, String evidenceSection);
 
 	/**
 	 * Extracts the verdict and its rationale from a judge session.

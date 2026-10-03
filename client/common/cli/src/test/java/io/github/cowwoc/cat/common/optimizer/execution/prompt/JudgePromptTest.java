@@ -28,6 +28,7 @@ public final class JudgePromptTest
 {
 	private static final Path EFFECTS = Path.of("contract-evidence/trial/project");
 	private static final Path TRANSCRIPT = EFFECTS.getParent().resolve("artifacts/transcript.jsonl");
+	private static final String SECTION = "Turn 1\nTool: shell\nInput:\ntrue\nExit status: 0\nOutput:\ncomplete\n";
 	private static final Requirement REQUIREMENT = new Requirement("ask-first", "Ask before deleting.",
 		"rules/safety.md");
 	private static final String OUTPUT = "{\"verdict\":\"pass\",\"rationale\":\" It asked. \"}";
@@ -47,10 +48,11 @@ public final class JudgePromptTest
 	@Test
 	public void requestSelectsFrozenProfile()
 	{
+		// Requirement: R-E21
 		// Requirement: R-E13
 		JudgeProfile profile = profile();
 		SessionRequest request = prompt.request(profile, instance(),
-			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of());
+			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of(), SECTION);
 		requireThat(request.role(), "role").isEqualTo(SessionRole.JUDGE);
 		requireThat(request.profile(), "profile").isEqualTo(profile.profile());
 		requireThat(request.turns().size(), "turns.size()").isEqualTo(1);
@@ -63,35 +65,37 @@ public final class JudgePromptTest
 	@Test
 	public void requestDefinesEveryMessageAsReply()
 	{
+		// Requirement: R-E21
 		// Requirement: R-C12
 		List<List<String>> replies = List.of(List.of("Checking the directory.", "Should I delete?"),
 			List.of("Checking the backup.", "Backup retained."));
 		String turn = prompt.request(profile(), instance(), completed(replies), List.of(REQUIREMENT),
-			List.of()).turns().getFirst();
+			List.of(), SECTION).turns().getFirst();
 		requireThat(turn, "turn").contains("Every assistant message is part of the reply");
 		int start = turn.indexOf("\n\n[", turn.indexOf("The trial agent's reply"));
-		int end = turn.indexOf("\n\nRead these paths", start);
+		int end = turn.indexOf("\n\nThe trial's tool calls", start);
 		JsonMapper json = JsonMapper.builder().build();
 		requireThat(json.readTree(turn.substring(start, end)), "responses").isEqualTo(json.valueToTree(replies));
 	}
 
 	/**
-	 * Checks that both trial effects and the transcript directory are read-only evidence.
+	 * Checks that the effects directory is read-only and the transcript is excluded from evidence templates.
 	 */
 	@Test
 	public void requestProtectsEvidence()
 	{
+		// Requirement: R-E21
 		// Requirement: R-E13
 		SessionRequest request = prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))),
-			List.of(REQUIREMENT), List.of());
-		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
+			List.of(REQUIREMENT), List.of(), SECTION);
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS));
 		SessionRequest colocated = prompt.request(profile(), instance(),
 			completed(List.of(List.of("Should I delete?")), EFFECTS.resolve("transcript.jsonl"), EFFECTS),
-			List.of(REQUIREMENT), List.of());
+			List.of(REQUIREMENT), List.of(), SECTION);
 		requireThat(colocated.readOnly(), "colocated.readOnly").isEqualTo(List.of(EFFECTS));
 		SessionRequest parentless = prompt.request(profile(), instance(),
 			completed(List.of(List.of("Should I delete?")), Path.of("transcript.jsonl"), EFFECTS),
-			List.of(REQUIREMENT), List.of());
+			List.of(REQUIREMENT), List.of(), SECTION);
 		requireThat(parentless.readOnly(), "parentless.readOnly").isEqualTo(List.of(EFFECTS));
 	}
 
@@ -101,12 +105,68 @@ public final class JudgePromptTest
 	@Test
 	public void requestIncludesProfileAndEvidence()
 	{
+		// Requirement: R-E21
 		// Requirement: R-E13
 		JudgeProfile profile = profile();
 		SessionRequest request = prompt.request(profile, instance(),
-			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of());
+			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(REQUIREMENT), List.of(), SECTION);
 		requireThat(request.turns().getFirst(), "turn").contains(profile.rubric()).contains(profile.decisionRule()).
 			contains(REQUIREMENT.description()).contains("Earlier reply.").contains("Delete logs.");
+	}
+
+	/**
+	 * Checks that the evidence section replaces the transcript path and the prompt names the effects directory.
+	 */
+	@Test
+	public void requestRendersEvidenceSection()
+	{
+		// Requirement: R-E21
+		JudgeProfile frozen = profile();
+		String template = frozen.prompt();
+		JudgeProfile profile = new JudgeProfile(frozen.profile(), template, frozen.rubric(), frozen.decisionRule(),
+			frozen.resultSchema());
+		SessionRequest request = prompt.request(profile, instance(), completed(List.of(List.of("Should I delete?"))),
+			List.of(REQUIREMENT), List.of(), SECTION);
+		requireThat(request.turns().getFirst(), "turn").contains(SECTION).doesNotContain("{{evidence}}").
+			contains(EFFECTS.toString()).doesNotContain(TRANSCRIPT.toString());
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS));
+	}
+
+	/**
+	 * Checks that frozen path templates still fill every value they name and protect the transcript.
+	 */
+	@Test
+	public void requestRendersFrozenPaths()
+	{
+		// Requirement: R-E21
+		JudgeProfile frozen = profile();
+		String template = """
+			{{rubric}} {{decision_rule}} {{requirements}} {{instance}} {{responses}}
+			{{effects}} {{transcript}} {{deterministic_results}} {{result_schema}}
+			""";
+		JudgeProfile profile = new JudgeProfile(frozen.profile(), template, frozen.rubric(), frozen.decisionRule(),
+			frozen.resultSchema());
+		SessionRequest request = prompt.request(profile, instance(), completed(List.of(List.of("Should I delete?"))),
+			List.of(REQUIREMENT), List.of(), SECTION);
+		requireThat(request.turns().getFirst(), "turn").contains(EFFECTS.toString()).contains(TRANSCRIPT.toString()).
+			doesNotContain("{{effects}}").doesNotContain("{{transcript}}");
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
+	}
+
+	/**
+	 * Checks that a judge template may omit values it does not use.
+	 */
+	@Test
+	public void requestSuppliesOnlyNamedValues()
+	{
+		// Requirement: R-E21
+		JudgeProfile frozen = profile();
+		JudgeProfile profile = new JudgeProfile(frozen.profile(), "{{responses}}", frozen.rubric(),
+			frozen.decisionRule(), frozen.resultSchema());
+		SessionRequest request = prompt.request(profile, instance(), completed(List.of(List.of("Should I delete?"))),
+			List.of(REQUIREMENT), List.of(), SECTION);
+		requireThat(request.turns().getFirst(), "turn").contains("Should I delete?");
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS));
 	}
 
 	/**
@@ -115,9 +175,10 @@ public final class JudgePromptTest
 	@Test
 	public void requestIsolatesJudgeDirectory()
 	{
+		// Requirement: R-E21
 		// Requirement: R-E13
 		SessionRequest request = prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))),
-			List.of(REQUIREMENT), List.of());
+			List.of(REQUIREMENT), List.of(), SECTION);
 		requireThat(request.source(), "source").isNotEqualTo(EFFECTS);
 	}
 
@@ -129,8 +190,10 @@ public final class JudgePromptTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*requirements.*")
 	public void rejectsNoRequirements()
 	{
+		// Requirement: R-E21
 		// Requirement: R-E13
-		prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))), List.of(), List.of());
+		prompt.request(profile(), instance(), completed(List.of(List.of("Should I delete?"))), List.of(), List.of(),
+			SECTION);
 	}
 
 	/**
