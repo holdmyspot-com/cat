@@ -123,6 +123,8 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-24 | `optimize-high` | A new deriver finding through the schema, parser, proposal rendering and the confirm command. |
 | WI-25 | `optimize-high` | New deriver and author outputs, a pause state with choices, a revision from a choice, and two prompt-wording changes. |
 | WI-26 | `optimize-xhigh` | The promotion and reduction rules and the author's approach decide which edits ship and when a campaign plateaus. |
+| WI-27 | `optimize-high` | Per-role session setup in both runners, rule delivery from the installed artifact, and the rule loader's path-trigger text. |
+| WI-28 | `optimize-xhigh` | The judge's evidence decides verdicts; one renderer per harness must lose nothing the judge needs, and frozen judge prompts must keep working. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -226,6 +228,9 @@ requirement names.
 | WI-24 | Done 2026-10-02 (Codex high; full build 1625 tests, 0 failures, none at or over 1 s; bats 32/32). User ruling (`design.md` D31). The deriver findings gain a required `conflicts` array (at least two distinct requirement ids that name contract requirements, and non-blank evidence); the proposal renders a `## Conflicts` section before the certifiable scope; `confirm` is refused while a conflict is listed, naming both blocking links and conflicts in one refusal (`ProposalTest`, `OptimizerCoreTest.conflictRefusalAndRevision`, `confirmListsEveryBlocker`; each failed first). Resolutions follow in WI-25. |
 | WI-25 | Done 2026-10-02 (Codex xhigh; full build 1666 tests, 0 failures, none at or over 1 s; bats 32/32). User ruling (`design.md` D31, D32); the user approved the `first-use.md`, `deriver.md` and `author.md` wording, including the campaign-edits paragraph and the step 4 manifest sentence. Each deriver conflict carries at least two resolutions, the recommended one and its reason, rendered as a numbered list; the skill asks the user to choose before confirming. The author may classify a failure `conflict`, quoting text the confirmed prompt system already held (a quotation absent from the incumbent snapshot is a manifest violation); the report yields no candidate and pauses the campaign with one `resolution-<n>` choice per resolution plus `stop`, presented one conflict at a time, then one revision. The author brief carries the campaign's edits since confirmation as a unified diff. Campaign format 9 (`ProposalTest`, `AuthorManifestTest`, `AuthorTest`, `ConflictPauseTest`, `TransitionsTest`, `CommandsTest`, `OptimizerCoreTest`, `StatusReportTest`, `FileCampaignStoreTest`; each failed first). |
 | WI-26 | Done 2026-10-02 (Codex xhigh, three jobs; integrated full build 1760 tests, 0 failures, none at or over 1 s; bats 32/32). User rulings (`design.md` D30, D33, D34, D35, and a revert going back one promotion). An attempt fixes a triggering instance when every run there passes and the streak is unlikely for the working candidate (`p = (s+1)/(n+2)`, `p^k < 0.10`, compared exactly); runs start at 2 and extend to at most 4 as targeted, resumable promotion runs. Promotion needs at least one fix and no regression where the working candidate passes; a minimality reduction must keep every fix of the attempt it reduces. Promotion records the predecessor (snapshot, counts, instance outcomes, review points, regression verdicts, round); a promoted, unedited candidate whose development Wilson upper bound in an addressed cell falls below the predecessor's observed rate reverts before edit-or-continue, and the status shows the revert. A cell's attempts in one round carry the approaches in order (`AuthorApproach`), derived from the round's reservations; `author.md` has the approved step 2 and a `Your approach` section. Stored format 11 (predecessor, reverts, instance outcomes); formats 9 and 10 load and never revert. |
+| WI-27 | In progress 2026-10-02 (Codex high). User ruling (`design.md` D37); the user's and the project's rules do not reach the deriver, judge or author. |
+| WI-28 | In progress 2026-10-02 (Codex xhigh). User ruling (`design.md` D36, H32). |
+| Status comparability (WI-15 E1 and E7 finding) | In progress 2026-10-02 (Codex high). Every campaign's status said the improvement over the incumbent and the median trial input tokens were unavailable, with the raw text `INDETERMINATE: [JUDGE, MODEL, REASONING, HOST_TOOLS, EXTERNAL_SOURCES]`: the campaign and baseline identities never record the observed judge, model and reasoning, and no runner observes host tools or external sources. |
 | Round position, shared references and stopped status (WI-15 E1 finding) | Done 2026-10-02 (Codex xhigh; in the WI-26 build). The status showed the second round as "Round 4" (the round's first reserved attempt number); it now shows each round's position in text and JSON. A weak round's three attempts each ran their own working-candidate reference runs (27 targeted trials instead of 9); a reference run for an instance is now planned once per working candidate, serves every attempt, is excluded from the attempts' counts, and resumes once after a restart. A campaign stopped at a plateau reported `awaiting-user` and the pending plateau; it now reports its outcome (`not certified: plateau`), "The user stopped the campaign." and its choices. |
 | Prompt sources at session start (WI-15 E5 finding) | Done 2026-10-02 (Codex high; full build 1676 tests, 0 failures, none at or over 1 s; bats 32/32). An E5 campaign paused `MEASUREMENT_CHANGED` on `PROMPT_SOURCES` because the value listed hooks of later events (Codex `subagentStart`) that run only when a trial takes that action. `design.md` §5 now limits the condition to sources loaded at session start; both readers keep only session-start hooks (`AppServerPromptSourcesTest`, `StreamJsonPromptSourcesTest`, each failed first; `DriverTest.certify` covers equal values not pausing). |
 | Proposal text names the user's project (WI-15 E1 finding) | Done 2026-10-02 (Codex high; full build 1702 tests, 0 failures; bats 32/32). The E1 proposal's conflict evidence linked the deriver's staged copy (`.cat/work/optimizer-runs/.../project/AGENTS.md:6`) instead of the user's file. `DeriverProtocol` now replaces the session's staged project root with the project root in every string of the deriver's output before validation and storage; paths to session artifacts outside the staged project stay unchanged (`ProposalTest`, 24 cases, 23 failed first). |
@@ -293,6 +298,10 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §2.7, §14 G1 and D35: an instance counts as fixed only when the attempt's streak there is unlikely for
   the working candidate, with up to 4 runs, and a promoted candidate that falls clearly below its predecessor is
   reverted; R-D3 reworded, R-D15 added to WI-26 (user ruling, 2026-10-02).
+- `design.md` §3.1, §11 H33 and D37: the deriver, judge and author run without CAT's plugin and receive their role's
+  rules in the brief; R-E20 and WI-27 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
+- `design.md` §3.1, §6.4, §11 H32 and D36: the judge receives a rendered evidence section instead of the trial's log;
+  R-E21 and WI-28 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -371,6 +380,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
 | R-E16 | The observed model comes from harness events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
 | R-E17 | A trial session starts under its cell's profile and the deriver, judge and author sessions under the role profile (the `optimize-xhigh` binding); each runner passes the model and effort to its harness; the observed profile is recorded per cell and decides comparability. | §3.1, §5, §6.6 | WI-16 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (requested profile reaches the harness arguments), `MeasurementIdentityTest`; E: E1 per harness |
+| R-E20 | The deriver, judge and author sessions run without CAT's plugin in both harnesses; trial sessions keep it. The author brief carries the complete text of its six role rules and the deriver brief the contract-design rule, read from the installed artifact with lazy-load paths naming its files; the judge brief carries none. | §3.1, D37 | WI-27 | U: runner session tests per harness, `AuthorTest`, deriver prompt test |
+| R-E21 | The judge receives a rendered evidence section per turn (tool calls with input, exit status when reported and complete output; child activity; hook status) and the trial's file changes against the staged source, without streaming fragments, telemetry or injected session-start text, from each harness's events; a frozen judge prompt with the earlier placeholders still renders. | §6.4, D36 | WI-28 | U: evidence renderer tests on recorded events per harness, `JudgePromptTest` |
 
 ### 3.5 Workspace
 
@@ -846,6 +857,33 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
   rules module.
 
+### WI-28 — Judge evidence section (user ruling, 2026-10-02)
+
+- **Renderer:** one evidence renderer per harness turns the trial's recorded events (Codex app-server events, Claude
+  stream-json) into the `design.md` §6.4 evidence section; file changes come from the effects copy against the staged
+  source. The judge prompt gains an `{evidence}` placeholder; the judge reads no log or transcript path. A frozen judge
+  prompt that still names `{effects}` and `{transcript}` renders with the values those placeholders had.
+- **Closes:** R-E21.
+- **Tests:** renderer tests on recorded events of both harnesses (tool call with output and exit status, child activity,
+  hook status, no streaming fragments or injected rules); `JudgePromptTest` for the new and the frozen template.
+- **Validation:** the new judge reaches the recorded verdict on recorded E1 trials; judge input tokens are compared with
+  the H32 measurement.
+- **Exit:** unit tests pass; the full build passes.
+
+### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
+
+- **Sessions:** the runner settings decide plugin installation per session role: trials install CAT; the deriver, judge
+  and author do not (`design.md` §3.1, D37), in both harnesses.
+- **Role rules:** the author and deriver briefs carry their rules' complete text from the installed artifact; the list
+  is declared once.
+- **Path trigger:** the rule loader's path-scoped rule text names the rule by its absolute installed path and limits
+  the trigger to files inside the current project, so reading CAT's installed rule files never matches it.
+- **Closes:** R-E20.
+- **Tests:** session-argument tests per harness for each role; brief tests for the delivered rules; `ProjectRuleLoaderTest`
+  for the path-trigger text.
+- **Validation:** author promotion and judge verdicts on a short Codex campaign compared with E1.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-26 — Partial promotion and attempt approaches (user ruling, 2026-10-02)
 
 - **Promotion:** an attempt fixes a triggering instance when both of its runs there pass. It is promoted when it fixes
@@ -1016,6 +1054,8 @@ blocks only the part of a work item that it names.
 | WI-24 | WI-22 |
 | WI-25 | WI-24 |
 | WI-26 | WI-18, WI-20, WI-25 |
+| WI-27 | WI-26 |
+| WI-28 | WI-22, WI-26 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
