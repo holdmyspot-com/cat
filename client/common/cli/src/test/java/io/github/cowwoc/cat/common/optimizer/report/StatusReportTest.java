@@ -424,6 +424,55 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Unobserved tools and sources limit the claim without hiding the improvement.
+	 */
+	// Requirement: R-M4, R-P1
+	@Test
+	public void unobservedToolsAndSourcesAreLimitations()
+	{
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.EXTERNAL_SOURCES);
+		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
+			development("formatting", 90, 10).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		requireThat(cell(report, "formatting").improvement().unavailable(), "improvement").isNull();
+		requireThat(String.join(" ", report.limitations()), "limitations").contains("host tools").
+			contains("external sources");
+		requireThat(report.summary(), "summary").contains("host tools").contains("external sources");
+		requireThat(report.toJson(JsonMapper.builder().build()).path("limitations").toString(), "jsonLimitations").
+			contains("host tools").contains("external sources");
+	}
+
+	/**
+	 * Each cell reports its token medians even when its observed trial model differs.
+	 */
+	// Requirement: R-E18
+	@Test
+	public void tokenMediansDoNotDependOnComparability()
+	{
+		MeasurementIdentity working = Builder.confirmedIdentity("model-b");
+		MeasurementIdentity incumbent = Builder.confirmedIdentity("model-a");
+		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
+			working, Map.of(Builder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(2, List.of(30L, 50L)))),
+			incumbent, Map.of(Builder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(70L, 90L))))));
+		Campaign campaign = confirmed().identity(working).baselineIdentity(incumbent).optimization(evidence).
+			development("safety", 2, 0).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		OptimizationReport.InputComparison inputs = report.optimization().inputs().stream().
+			filter(input -> input.cell().equals("safety")).findFirst().orElseThrow();
+		requireThat(inputs.workingMedian(), "workingMedian").isEqualTo(30L);
+		requireThat(inputs.incumbentMedian(), "incumbentMedian").isEqualTo(70L);
+		requireThat(inputs.unavailable(), "tokenReason").isNull();
+		String reason = cell(report, "safety").improvement().unavailable();
+		requireThat(reason, "improvementReason").contains("trial model").contains("safety");
+		requireThat(report.summary(), "summary").contains(reason);
+		JsonNode output = report.toJson(JsonMapper.builder().build());
+		requireThat(output.path("cells").path(1).path("improvement").path("unavailable").asString(),
+			"jsonReason").isEqualTo(reason);
+	}
+
+	/**
 	 * Returns a builder of a confirmed campaign whose working candidate is candidate 1, with ready baselines.
 	 *
 	 * @return the builder
@@ -519,11 +568,11 @@ public final class StatusReportTest
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
+			baselineIdentity(Builder.confirmedIdentity("model-a")).
 			development("formatting", 90, 10).build();
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
-		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("INDETERMINATE").
-			contains("HOST_TOOLS");
+		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("host tools");
 		requireThat(improvement.points(), "points").isNull();
 		requireThat(improvement.difference(), "difference").isNull();
 	}
@@ -538,11 +587,11 @@ public final class StatusReportTest
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
-			boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
+			baselineIdentity(Builder.confirmedIdentity("model-a")).boundaries(ReportBoundaries.boundaries()).
+			cell("formatting", 120, 0).
 			cell("safety", 60, 1).build();
 		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
-		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("INDETERMINATE").
-			contains("HOST_TOOLS");
+		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("host tools");
 		requireThat(formatting.improvement().state(), "state").isNull();
 		requireThat(formatting.improvement().difference(), "difference").isNull();
 		requireThat(formatting.comparison().state(), "certification").isEqualTo("certified");
@@ -558,7 +607,8 @@ public final class StatusReportTest
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
-			boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
+			baselineIdentity(Builder.confirmedIdentity("model-a")).boundaries(ReportBoundaries.boundaries()).
+			cell("formatting", 120, 0).
 			cell("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(StatusReport.of(campaign, ReportEvidence.NONE).keepOffers(), "offers").isEmpty();
 	}
@@ -576,8 +626,7 @@ public final class StatusReportTest
 			baselineIdentity(earlier).development("formatting", 90, 10).build();
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
-		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("NOT_COMPARABLE").
-			contains("JUDGE").contains("MODEL");
+		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("judge").contains("trial model");
 		requireThat(improvement.points(), "points").isNull();
 		requireThat(improvement.difference(), "difference").isNull();
 	}
@@ -595,8 +644,8 @@ public final class StatusReportTest
 			baselineIdentity(earlier).boundaries(ReportBoundaries.boundaries()).cell("formatting", 120, 0).
 			cell("safety", 60, 1).build();
 		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
-		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("NOT_COMPARABLE").
-			contains("JUDGE").contains("MODEL");
+		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().
+			contains("judge").contains("trial model");
 		requireThat(formatting.improvement().state(), "state").isNull();
 		requireThat(formatting.improvement().difference(), "difference").isNull();
 		requireThat(formatting.comparison().state(), "certification").isEqualTo("certified");

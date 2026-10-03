@@ -59,5 +59,30 @@ public enum MeasurementCondition
 	/**
 	 * External or MCP source identities.
 	 */
-	EXTERNAL_SOURCES
+	EXTERNAL_SOURCES;
+
+	/**
+	 * Returns the condition's name in words for reports.
+	 *
+	 * @return the readable name
+	 */
+	public String displayName()
+	{
+		return switch (this)
+		{
+			case CONTRACT -> "contract";
+			case GENERATOR -> "generator";
+			case JUDGE -> "judge";
+			case MODEL -> "trial model";
+			case REASONING -> "trial reasoning";
+			case PROVIDER -> "model provider";
+			case HARNESS_VERSION -> "harness version";
+			case RUNNER_VERSION -> "runner version";
+			case CAT_VERSION -> "CAT version";
+			case LOADER_CONFIGURATION -> "loader configuration";
+			case PROMPT_SOURCES -> "prompt sources";
+			case HOST_TOOLS -> "host tools";
+			case EXTERNAL_SOURCES -> "external sources";
+		};
+	}
 }

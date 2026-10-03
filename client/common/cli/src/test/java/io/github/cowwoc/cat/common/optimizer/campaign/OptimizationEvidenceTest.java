@@ -46,10 +46,10 @@ public final class OptimizationEvidenceTest
 	}
 
 	/**
-	 * Equal incomplete identities leave input-token comparisons unavailable even when both medians exist.
+	 * Input-token medians remain available when neither snapshot records its measurement conditions.
 	 */
 	@Test
-	public void missingConditionsBlockTokenComparison()
+	public void unobservedConditionsAllowTokenComparison()
 	{
 		// Requirement: R-M4, R-E18
 		OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
@@ -60,19 +60,18 @@ public final class OptimizationEvidenceTest
 			optimization(evidence).build();
 
 		InputComparison comparison = findSafety(OptimizationReport.of(campaign));
-		requireThat(comparison.workingMedian(), "workingMedian").isNull();
-		requireThat(comparison.incumbentMedian(), "incumbentMedian").isNull();
-		requireThat(comparison.unavailable(), "unavailable").contains("INDETERMINATE").
-			contains(MeasurementCondition.MODEL.name()).contains(MeasurementCondition.HARNESS_VERSION.name());
+		requireThat(comparison.workingMedian(), "workingMedian").isEqualTo(10L);
+		requireThat(comparison.incumbentMedian(), "incumbentMedian").isEqualTo(20L);
+		requireThat(comparison.unavailable(), "unavailable").isNull();
 		requireThat(comparison.workingOutcomes(), "workingOutcomes").isEqualTo(1);
 		requireThat(comparison.incumbentOutcomes(), "incumbentOutcomes").isEqualTo(1);
 	}
 
 	/**
-	 * Input-token comparisons name each condition that differs from the incumbent's recorded measurement.
+	 * Input-token medians remain available when the snapshots' measurement conditions differ.
 	 */
 	@Test
-	public void differingConditionsBlockTokenComparison()
+	public void differingConditionsAllowTokenComparison()
 	{
 		// Requirement: R-M4, R-E18
 		MeasurementIdentity current = Builder.confirmedIdentity("model-a");
@@ -85,10 +84,9 @@ public final class OptimizationEvidenceTest
 			baselineIdentity(earlier).optimization(evidence).build();
 
 		InputComparison comparison = findSafety(OptimizationReport.of(campaign));
-		requireThat(comparison.workingMedian(), "workingMedian").isNull();
-		requireThat(comparison.incumbentMedian(), "incumbentMedian").isNull();
-		requireThat(comparison.unavailable(), "unavailable").contains("NOT_COMPARABLE").
-			contains(MeasurementCondition.MODEL.name()).contains(MeasurementCondition.REASONING.name());
+		requireThat(comparison.workingMedian(), "workingMedian").isEqualTo(10L);
+		requireThat(comparison.incumbentMedian(), "incumbentMedian").isEqualTo(20L);
+		requireThat(comparison.unavailable(), "unavailable").isNull();
 		requireThat(comparison.workingOutcomes(), "workingOutcomes").isEqualTo(1);
 		requireThat(comparison.incumbentOutcomes(), "incumbentOutcomes").isEqualTo(1);
 	}

@@ -158,9 +158,11 @@ public final class DecisionTableTest
 	{
 		// Requirement: R-M4, R-F6
 		CertificationAttempt better = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).cell("formatting", 60, 0).build().attempt(1);
+			certificationAttempt(1).baselineIdentity(Builder.confirmedIdentity("model-a")).
+			cell("formatting", 60, 0).build().attempt(1);
 		CertificationAttempt worse = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).cell("formatting", 0, 4).build().attempt(1);
+			certificationAttempt(1).baselineIdentity(Builder.confirmedIdentity("model-a")).
+			cell("formatting", 0, 4).build().attempt(1);
 
 		requireThat(DecisionTable.isProvenBetter(better, "formatting"), "better").isFalse();
 		requireThat(DecisionTable.isProvenWorse(worse, "formatting"), "worse").isFalse();
@@ -191,7 +193,8 @@ public final class DecisionTableTest
 			baselineIdentity(Builder.confirmedIdentity("model-b")).cell("formatting", 0, 4).
 			build().attempt(1);
 		CertificationAttempt missing = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).cell("formatting", 0, 4).build().attempt(1);
+			certificationAttempt(1).baselineIdentity(Builder.confirmedIdentity("model-a")).
+			cell("formatting", 0, 4).build().attempt(1);
 
 		requireThat(DecisionTable.isProvenWorse(differing, "formatting"), "differing").isFalse();
 		requireThat(DecisionTable.isProvenWorse(missing, "formatting"), "missing").isFalse();

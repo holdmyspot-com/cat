@@ -115,6 +115,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		"The benchmark covers the contract's tests. It does not cover usage frequencies or scenarios that the " +
 			"contract omits.",
 		"Provider prompt caching is assumed to behave as it did during the measurements.",
+		"CAT cannot observe the identities of host tools and external sources; those conditions may differ.",
 		"Conditions that CAT cannot observe may differ, and trials cannot be replayed deterministically.");
 	/**
 	 * The limitation that applies when staging replaced symbolic links.

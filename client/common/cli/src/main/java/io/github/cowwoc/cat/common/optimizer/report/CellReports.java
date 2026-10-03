@@ -119,7 +119,7 @@ final class CellReports
 		if (counts.outcomes() == 0)
 			return CellReport.Improvement.unavailable("The working candidate has no development outcomes.");
 		IncumbentBaseline baseline = campaign.baseline();
-		Comparability comparability = Comparability.of(campaign.identity(), baseline.identity());
+		Comparability comparability = Comparability.of(campaign.identity(), baseline.identity(), cell);
 		if (!comparability.isComparable())
 			return CellReport.Improvement.unavailable(comparability.unavailable());
 		CellCounts incumbent = baseline.count(cell);
@@ -213,7 +213,7 @@ final class CellReports
 	private static CellReport.Improvement formalImprovement(Campaign campaign, CertificationAttempt attempt,
 		String cell, CellCounts counts, ConfidenceBound lower, ConfidenceBound upper)
 	{
-		Comparability comparability = Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity());
+		Comparability comparability = Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity(), cell);
 		if (!comparability.isComparable())
 			return CellReport.Improvement.unavailable(comparability.unavailable());
 		ComparisonBoundaries boundaries = comparison(attempt, cell);
@@ -224,7 +224,7 @@ final class CellReports
 		String deficiency = null;
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline != null && baseline.index() == attempt.procedure().baselineIndex() &&
-			Comparability.of(attempt.identity(), baseline.identity()).isComparable())
+			Comparability.of(attempt.identity(), baseline.identity(), cell).isComparable())
 		{
 			CellCounts incumbent = baseline.count(cell);
 			incumbentCounts = incumbentCounts(baseline, incumbent);

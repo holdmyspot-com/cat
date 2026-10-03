@@ -53,14 +53,15 @@ public final class CommitTest
 	}
 
 	/**
-	 * Verifies that a commit cannot freeze informative incumbent bounds when both observations omit a required
-	 * measurement condition.
+	 * Verifies that a commit cannot freeze informative incumbent bounds when only one observation records a measurement
+	 * condition.
 	 */
 	@Test
 	public void missingConditionsDisableBounds()
 	{
 		// Requirement: R-M4, R-F1
-		Campaign campaign = ready().identity(MeasurementIdentity.EMPTY).build();
+		Campaign campaign = ready().identity(MeasurementIdentity.EMPTY).
+			baselineIdentity(Builder.confirmedIdentity("model-a")).build();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(calibration(1), 1));
 		CertificationProcedure procedure = campaign.attempt(1).procedure();
 		Comparison unavailable = new Comparison(BigDecimal.ONE, BigDecimal.ZERO, procedure.improvementLevel());

@@ -6,12 +6,15 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
+import io.github.cowwoc.cat.common.optimizer.report.CellReport;
+import io.github.cowwoc.cat.common.optimizer.report.OptimizationReport;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
@@ -42,6 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -78,6 +82,51 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	public FileCampaignStoreTest()
 	{
+	}
+
+	/**
+	 * Stored identities without session observations report comparisons and size measurements.
+	 *
+	 * @throws IOException if the fixture cannot be stored or loaded
+	 */
+	// Requirement: R-M4, R-P1, R-E18
+	@Test
+	public void sparseIdentityReportsComparisons() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("sparse-status"));
+			Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
+			for (MeasurementCondition condition : List.of(MeasurementCondition.JUDGE, MeasurementCondition.MODEL,
+				MeasurementCondition.REASONING, MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES))
+				values.remove(condition);
+			MeasurementIdentity sparse = new MeasurementIdentity(values);
+			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
+				sparse, Map.of(Builder.snapshot("candidate-1"), Map.of("safety", new TrialInputs(2, List.of(30L, 50L))),
+					Builder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(70L, 90L))))));
+			Campaign campaign = new Builder().confirmed().working(1).identity(sparse).readyBaseline().
+				development("safety", 2, 0).optimization(evidence).build();
+			new FileCampaignStore(base, JSON).replaceSnapshot(campaign);
+			JsonNode fixture = JSON.readTree(Files.readString(campaignDirectory(base).resolve("campaign.json"), UTF_8));
+			requireThat(fixture.path("identity").path("cells").size(), "cells").isEqualTo(0);
+			requireThat(fixture.path("identity").path("conditions").has("JUDGE"), "judge").isFalse();
+			requireThat(fixture.path("baseline").path("identity"), "baselineIdentity").isEqualTo(fixture.path("identity"));
+
+			StatusReport report = StatusReport.of(new FileCampaignStore(base, JSON).load(ID).orElseThrow(),
+				ReportEvidence.NONE);
+			CellReport cell = report.cells().stream().filter(item -> item.cell().equals("safety")).
+				findFirst().orElseThrow();
+			requireThat(cell.improvement().unavailable(), "improvement").isNull();
+			OptimizationReport.InputComparison inputs = report.optimization().inputs().stream().
+				filter(item -> item.cell().equals("safety")).
+				findFirst().orElseThrow();
+			requireThat(inputs.workingMedian(), "workingMedian").isEqualTo(30L);
+			requireThat(inputs.incumbentMedian(), "incumbentMedian").isEqualTo(70L);
+			requireThat(inputs.unavailable(), "unavailable").isNull();
+			requireThat(report.summary().contains("INDETERMINATE"), "enumReason").isFalse();
+			requireThat(report.toJson(JSON).path("trial_input_tokens").get(1).path("unavailable").isNull(),
+				"jsonReason").isTrue();
+		}
 	}
 
 	/**

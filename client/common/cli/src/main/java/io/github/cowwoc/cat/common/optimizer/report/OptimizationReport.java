@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
@@ -121,25 +122,13 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		List<InputComparison> comparisons = new ArrayList<>();
 		if (campaign.isConfirmed())
 		{
-			Comparability comparability = Comparability.of(campaign.identity(), campaign.baseline().identity());
 			for (Cell cell : campaign.contract().cells())
 			{
-				TrialInputs workingInputs = evidence.trialInputs().getOrDefault(campaign.identity(), Map.of()).
-					getOrDefault(working, Map.of()).
-					getOrDefault(cell.id(), TrialInputs.EMPTY);
-				TrialInputs incumbentInputs = evidence.trialInputs().getOrDefault(campaign.baseline().identity(), Map.of()).
-					getOrDefault(incumbent, Map.of()).
-					getOrDefault(cell.id(), TrialInputs.EMPTY);
-
-				Long workingMedian = null;
-				Long incumbentMedian = null;
-				String unavailable = comparability.unavailable();
-				if (comparability.isComparable())
-				{
-					workingMedian = median(workingInputs);
-					incumbentMedian = median(incumbentInputs);
-					unavailable = unavailable(workingInputs, incumbentInputs);
-				}
+				TrialInputs workingInputs = trialInputs(evidence, campaign.identity(), working, cell.id());
+				TrialInputs incumbentInputs = trialInputs(evidence, campaign.baseline().identity(), incumbent, cell.id());
+				Long workingMedian = median(workingInputs);
+				Long incumbentMedian = median(incumbentInputs);
+				String unavailable = unavailable(workingInputs, incumbentInputs);
 
 				comparisons.add(new InputComparison(cell.id(), workingMedian, incumbentMedian,
 					workingInputs.outcomes(), incumbentInputs.outcomes(), workingInputs.tokens().size(),
@@ -149,6 +138,34 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),
 			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.authors(),
 			evidence.removed(), AttemptProgress.of(campaign));
+	}
+
+	/**
+	 * Collects a snapshot's completed trials in a cell under conditions compatible with its recorded identity.
+	 * Conditions absent from an observation do not exclude its measurements.
+	 *
+	 * @param evidence the recorded trials
+	 * @param identity the snapshot's measurement conditions
+	 * @param snapshot the measured snapshot
+	 * @param cell the cell's identifier
+	 * @return the completed outcomes and reported input tokens
+	 */
+	private static TrialInputs trialInputs(OptimizationEvidence evidence, MeasurementIdentity identity,
+		Sha256 snapshot, String cell)
+	{
+		long outcomes = 0;
+		List<Long> tokens = new ArrayList<>();
+		for (Map.Entry<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> observation :
+			evidence.trialInputs().entrySet())
+		{
+			if (!Comparability.of(identity, observation.getKey(), cell).differing().isEmpty())
+				continue;
+			TrialInputs inputs = observation.getValue().getOrDefault(snapshot, Map.of()).
+				getOrDefault(cell, TrialInputs.EMPTY);
+			outcomes += inputs.outcomes();
+			tokens.addAll(inputs.tokens());
+		}
+		return new TrialInputs(outcomes, tokens);
 	}
 
 	/**
@@ -174,7 +191,13 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 	private static String unavailable(TrialInputs working, TrialInputs incumbent)
 	{
 		if (working.outcomes() == 0 || incumbent.outcomes() == 0)
-			return "Both snapshots need completed trial outcomes in this cell before their input tokens can be compared.";
+		{
+			if (working.outcomes() == 0 && incumbent.outcomes() == 0)
+				return "The working candidate and incumbent baseline have no completed trial outcomes in this cell.";
+			if (working.outcomes() == 0)
+				return "The working candidate has no completed trial outcomes in this cell.";
+			return "The incumbent baseline has no completed trial outcomes in this cell.";
+		}
 		if (working.tokens().isEmpty() || incumbent.tokens().isEmpty())
 			return "The harness reported no trial input-token usage for one or both snapshots in this cell.";
 		return null;

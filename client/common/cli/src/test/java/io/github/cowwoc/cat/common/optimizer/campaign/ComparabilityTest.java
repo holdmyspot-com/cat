@@ -88,19 +88,20 @@ public final class ComparabilityTest
 	}
 
 	/**
-	 * Verifies that a required condition absent from both observations makes their comparison unavailable.
+	 * Verifies that unobserved conditions absent from both observations do not prevent comparison.
 	 */
 	@Test
-	public void absentOnBothIsIndeterminate()
+	public void unobservedConditionsOnBothAreComparable()
 	{
 		// Requirement: R-M4
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.EXTERNAL_SOURCES);
 		MeasurementIdentity partial = new MeasurementIdentity(values);
 		Comparability comparability = Comparability.of(partial, partial);
-		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.INDETERMINATE);
-		requireThat(comparability.isComparable(), "isComparable").isFalse();
-		requireThat(comparability.missing(), "missing").containsExactly(List.of(MeasurementCondition.HOST_TOOLS));
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
+		requireThat(comparability.isComparable(), "isComparable").isTrue();
+		requireThat(comparability.missing(), "missing").isEmpty();
 	}
 
 	/**
@@ -116,5 +117,75 @@ public final class ComparabilityTest
 			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "observed")));
 		requireThat(Comparability.of(identity, identity).status(), "status").
 			isEqualTo(Comparability.Status.COMPARABLE);
+	}
+	/**
+	 * Verifies that a missing observed model identifies the side, condition and cell in words.
+	 */
+	@Test
+	public void missingObservedModelNamesCellAndSide()
+	{
+		// Requirement: R-M4, R-E17
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.MODEL);
+		MeasurementIdentity first = new MeasurementIdentity(values,
+			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "model-a")));
+		MeasurementIdentity second = new MeasurementIdentity(values);
+		Comparability comparability = Comparability.of(first, second);
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.INDETERMINATE);
+		requireThat(comparability.unavailable(), "unavailable").isEqualTo(
+			"The incumbent baseline does not record the trial model observed in cell formatting " +
+			"for the working candidate (model-a).");
+	}
+
+	/**
+	 * Verifies that differing judge observations name both values in words.
+	 */
+	@Test
+	public void differingJudgeNamesValues()
+	{
+		// Requirement: R-M4
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a").
+			replaceWith(identity(MeasurementCondition.JUDGE, "judge-a"));
+		MeasurementIdentity second = first.replaceWith(identity(MeasurementCondition.JUDGE, "judge-b"));
+		requireThat(Comparability.of(first, second).unavailable(), "unavailable").isEqualTo(
+			"The judge differs: working candidate judge-a; incumbent baseline judge-b.");
+	}
+
+	/**
+	 * Verifies that observed host tools require an observation from both sides.
+	 */
+	@Test
+	public void observedHostToolsRequireBothSides()
+	{
+		// Requirement: R-M4
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
+		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		Comparability comparability = Comparability.of(first, new MeasurementIdentity(values));
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.INDETERMINATE);
+		requireThat(comparability.missing(), "missing").containsExactly(List.of(MeasurementCondition.HOST_TOOLS));
+		requireThat(comparability.unavailable(), "unavailable").contains("host tools");
+	}
+	/**
+	 * Verifies that comparison of a cell uses that cell's observations independently of other cells.
+	 */
+	@Test
+	public void cellComparisonUsesMatchingCell()
+	{
+		// Requirement: R-M4, R-E17
+		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
+		values.remove(MeasurementCondition.MODEL);
+		MeasurementIdentity first = new MeasurementIdentity(values, Map.of(
+			"formatting", Map.of(MeasurementCondition.MODEL, "model-a"),
+			"reasoning", Map.of(MeasurementCondition.MODEL, "model-b")));
+		MeasurementIdentity second = new MeasurementIdentity(values, Map.of(
+			"formatting", Map.of(MeasurementCondition.MODEL, "model-a"),
+			"reasoning", Map.of(MeasurementCondition.MODEL, "model-c")));
+		requireThat(Comparability.of(first, second, "formatting").status(), "formattingStatus").
+			isEqualTo(Comparability.Status.COMPARABLE);
+		Comparability differing = Comparability.of(first, second, "reasoning");
+		requireThat(differing.status(), "reasoningStatus").isEqualTo(Comparability.Status.NOT_COMPARABLE);
+		requireThat(differing.unavailable(), "unavailable").isEqualTo(
+			"The trial model differs in cell reasoning: working candidate model-b; incumbent baseline model-c.");
 	}
 }

@@ -66,7 +66,7 @@ public final class KeepImprovementTest
 	}
 
 	/**
-	 * Verifies that equal incomplete measurement identities do not qualify or enter the ranking of improvement
+	 * Verifies that one-sided missing measurement conditions do not qualify or enter the ranking of improvement
 	 * offers, even when the formal counts otherwise satisfy every improvement condition.
 	 */
 	@Test
@@ -74,8 +74,10 @@ public final class KeepImprovementTest
 	{
 		// Requirement: R-M4, R-F6
 		Campaign campaign = new Builder().confirmed().identity(MeasurementIdentity.EMPTY).
-			certificationAttempt(1).boundaries(boundaries()).cell("formatting", 60, 0).
+			certificationAttempt(1).baselineIdentity(Builder.confirmedIdentity("model-a")).
+			boundaries(boundaries()).cell("formatting", 60, 0).
 			cell("safety", 100, 0).outcome(Outcome.INCONCLUSIVE).campaign().certificationAttempt(2).
+			baselineIdentity(Builder.confirmedIdentity("model-a")).
 			boundaries(boundaries()).cell("formatting", 200, 0).cell("safety", 200, 0).
 			outcome(Outcome.INCONCLUSIVE).build();
 
