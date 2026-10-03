@@ -54,6 +54,7 @@ public final class CommandsTest
 			ReportEvidence.NONE);
 		private CommandResult result = CommandResult.of(status, Harness.CLAUDE);
 		private Exception failure;
+		private int ceiling;
 
 		/**
 		 * Returns the result, or throws the scripted failure.
@@ -74,8 +75,9 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult start(Path target) throws CommandRefusedException, IOException
+		public CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException
 		{
+			this.ceiling = ceiling;
 			return answer("start " + target);
 		}
 
@@ -178,6 +180,60 @@ public final class CommandsTest
 			"choose c1 MORE_EVIDENCE 0 3",
 			"choose c1 STOP 0 0",
 			"cancel c1"));
+	}
+
+	/**
+	 * Verifies that the campaign ceiling accepts both endpoints of its range.
+	 */
+	@Test
+	public void acceptsCampaignCeiling()
+	{
+		// Requirement: R-E4
+		for (String ceiling : List.of("1", "16"))
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			requireThat(run(core, List.of("start", "prompts/a.md", "--max-concurrency", ceiling), output),
+				"exit").isEqualTo(0);
+			requireThat(core.calls, "calls").isEqualTo(List.of("start prompts/a.md"));
+			requireThat(core.ceiling, "ceiling").isEqualTo(Integer.parseInt(ceiling));
+		}
+	}
+
+	/**
+	 * Verifies that malformed ceilings are refused with the range before calling the core.
+	 */
+	@Test
+	public void rejectsInvalidCampaignCeiling()
+	{
+		// Requirement: R-E4
+		List<List<String>> options = List.of(
+			List.of("--max-concurrency", "0"),
+			List.of("--max-concurrency", "17"),
+			List.of("--max-concurrency", "x"),
+			List.of("--max-concurrency", "1", "--max-concurrency", "16"),
+			List.of("--max-concurrency"));
+		for (List<String> option : options)
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
+			args.addAll(option);
+			requireThat(run(core, args, output), "exit").isEqualTo(2);
+			requireThat(core.calls, "calls").isEmpty();
+			String message = JSON.readTree(output.toString()).get("message").asString();
+			requireThat(message.lines().findFirst().orElseThrow(), "message").contains("1..16");
+		}
+	}
+
+	/**
+	 * Verifies that command usage lists the ceiling option and its range.
+	 */
+	@Test
+	public void usageListsCampaignCeiling()
+	{
+		// Requirement: R-E4
+		requireThat(Commands.USAGE, "usage").contains("start <target> [--max-concurrency <1..16>]");
 	}
 
 	/**

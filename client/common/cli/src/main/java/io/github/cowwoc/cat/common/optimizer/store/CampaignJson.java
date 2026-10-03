@@ -290,7 +290,10 @@ final class CampaignJson
 			delivery = new DeliveryRequest(readCandidate(field(deliveryNode, "candidate")),
 				integer(deliveryNode, "attempt"), constant(deliveryNode, "label", Outcome.class));
 		}
-		return new Campaign(readHeader(field(root, "header")), integer(root, "ceiling"), lineages,
+		int ceiling = Campaign.DEFAULT_CEILING;
+		if (root.has("ceiling"))
+			ceiling = integer(root, "ceiling");
+		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
 			readDevelopment(field(root, "development"), integer(root, VERSION) == FORMAT_VERSION),

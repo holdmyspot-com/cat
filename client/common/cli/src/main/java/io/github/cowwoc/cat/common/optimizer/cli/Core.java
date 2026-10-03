@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 
 import java.io.IOException;
@@ -13,16 +14,35 @@ import java.nio.file.Path;
 public interface Core
 {
 	/**
-	 * Starts the campaign for a target, or resumes the target's resumable campaign.
+	 * Starts a campaign with the default ceiling of 8, or resumes the target's resumable campaign.
 	 *
 	 * @param target the prompt file or prompt system
 	 * @return the result, which presents the proposal that awaits confirmation
+	 * @throws NullPointerException if {@code target} is null
 	 * @throws CommandRefusedException if the other harness started the target's campaign, the target is not in the
 	 *   project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	CommandResult start(Path target) throws CommandRefusedException, IOException, InterruptedException;
+	default CommandResult start(Path target) throws CommandRefusedException, IOException, InterruptedException
+	{
+		return start(target, Campaign.DEFAULT_CEILING);
+	}
+
+	/**
+	 * Starts a campaign with the selected ceiling, or resumes the target's resumable campaign with its stored ceiling.
+	 *
+	 * @param target the prompt file or prompt system
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+	 * @return the result, which presents the proposal that awaits confirmation
+	 * @throws NullPointerException if {@code target} is null
+	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}]
+	 * @throws CommandRefusedException if the other harness started the target's campaign, the target is not in the
+	 *   project, or the base worktree has uncommitted changes
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Advances a campaign for one slice.

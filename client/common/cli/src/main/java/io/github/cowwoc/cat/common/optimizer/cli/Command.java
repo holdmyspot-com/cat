@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 
 import java.nio.file.Path;
@@ -18,18 +19,22 @@ public sealed interface Command
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param target the prompt file or prompt system, as the user wrote it
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 	 */
-	record Start(Path target) implements Command
+	record Start(Path target, int ceiling) implements Command
 	{
 		/**
 		 * Creates the command.
 		 *
 		 * @param target the prompt file or prompt system, as the user wrote it
+		 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 		 * @throws NullPointerException if {@code target} is null
+		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}]
 		 */
 		public Start
 		{
 			requireThat(target, "target").isNotNull();
+			requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 		}
 	}
 

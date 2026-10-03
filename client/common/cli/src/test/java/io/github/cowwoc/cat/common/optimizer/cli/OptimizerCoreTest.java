@@ -5,6 +5,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
+import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
@@ -525,6 +528,64 @@ public final class OptimizerCoreTest
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
 			requireThat(repository.directory(id).resolve("proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that start persists the selected ceiling and supplies it to the concurrency policy.
+	 */
+	@Test
+	public void startPersistsCampaignCeiling() throws IOException, CommandRefusedException
+	{
+		// Requirement: R-E4
+		for (int ceiling : List.of(16, 8))
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Repository repository = repository(cleanup, _ -> derivation(_ ->
+				{
+				}));
+				List<String> args = new ArrayList<>(List.of("start", "CLAUDE.md"));
+				if (ceiling == 16)
+					args.addAll(List.of("--max-concurrency", "16"));
+				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+				{
+					requireThat(new Commands(repository.core(), JSON).execute(args, out), "exit").isEqualTo(0);
+				}
+				String id = JSON.readTree(bytes.toString(StandardCharsets.UTF_8)).get("campaign").asString();
+				Campaign campaign = repository.load(id);
+				requireThat(campaign.ceiling(), "ceiling").isEqualTo(ceiling);
+				requireThat(ConcurrencyPolicy.window(100, 0, new SlowStart(16, 0), campaign.ceiling(), Throttle.NONE),
+					"window").isEqualTo(ceiling);
+				try (TestOptimizerCommandScope<FakeSessionPort> next = TestOptimizerCommandScope.of(Harness.CLAUDE,
+					repository.root()))
+				{
+					requireThat(next.store().load(id).orElseThrow().ceiling(), "reloadedCeiling").isEqualTo(ceiling);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a stored campaign without a ceiling loads the default.
+	 */
+	@Test
+	public void storedCampaignWithoutCeilingLoadsDefault()
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-E4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path snapshot = repository.directory(id).resolve("campaign.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(snapshot));
+			stored.remove("ceiling");
+			Files.writeString(snapshot, JSON.writeValueAsString(stored));
+			requireThat(repository.load(id).ceiling(), "ceiling").isEqualTo(8);
 		}
 	}
 

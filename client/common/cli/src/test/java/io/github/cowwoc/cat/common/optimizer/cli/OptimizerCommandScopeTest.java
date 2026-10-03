@@ -90,6 +90,7 @@ public final class OptimizerCommandScopeTest
 	@Test
 	public void closedScopeRejectsAccess() throws IOException
 	{
+		// Requirement: R-E4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("optimizer-scope")).toRealPath();
@@ -99,7 +100,7 @@ public final class OptimizerCommandScopeTest
 			}
 			requireThat(scope.isClosed(), "isClosed").isTrue();
 			for (Runnable access : List.<Runnable>of(scope::profiles, scope::sliceSettings,
-				scope::ceiling, scope::json, scope::sessions))
+				scope::json, scope::sessions))
 			{
 				IllegalStateException failure = null;
 				try

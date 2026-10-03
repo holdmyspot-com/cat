@@ -72,6 +72,34 @@ import tools.jackson.databind.node.ObjectNode;
 public final class StatusReportTest
 {
 	/**
+	 * The text and JSON concurrency reports show the configured campaign ceiling.
+	 */
+	// Requirement: R-E4
+	@Test
+	public void reportsConfiguredCampaignCeiling()
+	{
+		StatusReport report = StatusReport.of(new Builder().ceiling(16).build(), ReportEvidence.NONE);
+		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
+
+		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(16);
+		requireThat(report.summary(), "summary").contains("Concurrency: window 1 of ceiling 16");
+	}
+
+	/**
+	 * The text and JSON concurrency reports show the default campaign ceiling.
+	 */
+	// Requirement: R-E4
+	@Test
+	public void reportsDefaultCampaignCeiling()
+	{
+		StatusReport report = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
+		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
+
+		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(8);
+		requireThat(report.summary(), "summary").contains("Concurrency: window 1 of ceiling 8");
+	}
+
+	/**
 	 * The JSON and human status identify a withdrawn candidate, the addressed cell and both estimates that
 	 * triggered its replacement with the predecessor.
 	 */

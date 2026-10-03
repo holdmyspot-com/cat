@@ -143,9 +143,11 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult start(Path target) throws CommandRefusedException, IOException, InterruptedException
+	public CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(target, "target").isNotNull();
+		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+
 		Path root = scope.projectRoot();
 		Path absolute = scope.directory().toRealPath().resolve(target).normalize();
 		if (!Files.exists(absolute))
@@ -160,7 +162,7 @@ public final class OptimizerCore implements Core
 		{
 			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
 			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
-			case Registry.Opening.Create _ -> create(root, store, absolute);
+			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling);
 		};
 	}
 
@@ -208,12 +210,13 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param store the store
 	 * @param target the canonical target
+	 * @param ceiling the maximum simultaneous nested sessions of the new campaign
 	 * @return the result
 	 * @throws CommandRefusedException if the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult create(Path root, CampaignStore store, Path target)
+	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
@@ -233,7 +236,7 @@ public final class OptimizerCore implements Core
 		Overlay incumbent = Overlay.of(inventory);
 		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
 		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE);
-		Campaign campaign = Campaign.start(header, scope.ceiling(), incumbent.identity(), environment(inventory));
+		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory));
 		store.replaceSnapshot(campaign);
 		CommandResult result = derive(root, store, campaign, fork, null, null);
 		if (!fork.excludeAdded())

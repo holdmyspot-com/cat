@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
@@ -159,18 +158,6 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	{
 		ensureOpen();
 		return SliceSettings.DEFAULT;
-	}
-
-	/**
-	 * Returns the most nested sessions that a new campaign may run at once.
-	 *
-	 * @return the ceiling
-	 * @throws IllegalStateException if this scope is closed
-	 */
-	final int ceiling()
-	{
-		ensureOpen();
-		return Campaign.DEFAULT_CEILING;
 	}
 
 	/**

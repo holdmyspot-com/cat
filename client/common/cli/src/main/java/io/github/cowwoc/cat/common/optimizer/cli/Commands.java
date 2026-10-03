@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.report.ChoiceItem;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,18 +25,19 @@ import java.util.regex.Pattern;
  */
 public final class Commands
 {
+	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	/**
 	 * The usage text.
 	 */
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
-		  start <target>
+		  start <target> [%s <1..%d>]
 		  run <campaign>
 		  status <campaign>
 		  confirm <campaign>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N | --target <path>]
-		  cancel <campaign>""";
+		  cancel <campaign>""".formatted(MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING);
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -72,11 +74,7 @@ public final class Commands
 		List<String> rest = args.subList(1, args.size());
 		return switch (name)
 		{
-			case "start" ->
-			{
-				expect(name, rest, 1, "<target>");
-				yield new Command.Start(target(rest.getFirst()));
-			}
+			case "start" -> start(rest);
 			case "run" ->
 			{
 				expect(name, rest, 1, "<campaign>");
@@ -108,6 +106,38 @@ public final class Commands
 			case "choose" -> choose(rest);
 			default -> throw new InvalidCommandException("Unknown command: " + name);
 		};
+	}
+
+	/**
+	 * Parses {@code start}, defaulting the ceiling to 8 when the option is absent.
+	 *
+	 * @param rest the arguments after the command's name
+	 * @return the command
+	 * @throws InvalidCommandException if the arguments are not well-formed
+	 */
+	private static Command start(List<String> rest)
+	{
+		String form = "<target> [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING + ">]";
+		if (rest.isEmpty())
+			throw new InvalidCommandException("start: expected " + form);
+		Path target = target(rest.getFirst());
+		if (rest.size() == 1)
+			return new Command.Start(target, Campaign.DEFAULT_CEILING);
+		if (rest.size() != 3 || !rest.get(1).equals(MAX_CONCURRENCY))
+			throw new InvalidCommandException("start: expected " + form + "; the option may appear only once.");
+
+		int ceiling;
+		try
+		{
+			ceiling = Integer.parseInt(rest.get(2));
+			requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+		}
+		catch (IllegalArgumentException _)
+		{
+			throw new InvalidCommandException(MAX_CONCURRENCY + " must be an integer in 1.." +
+				Campaign.MAXIMUM_CEILING + ", got '" + rest.get(2) + "'");
+		}
+		return new Command.Start(target, ceiling);
 	}
 
 	/**
@@ -336,7 +366,7 @@ public final class Commands
 	{
 		return switch (command)
 		{
-			case Command.Start start -> core.start(start.target());
+			case Command.Start start -> core.start(start.target(), start.ceiling());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.campaign());
 			case Command.Confirm confirm -> core.confirm(confirm.campaign());
