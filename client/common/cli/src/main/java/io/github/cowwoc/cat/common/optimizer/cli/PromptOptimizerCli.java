@@ -107,7 +107,7 @@ public final class PromptOptimizerCli
 		requireThat(json, "json").isNotNull();
 		requireThat(out, "out").isNotNull();
 		requireThat(message, "message").isNotNull();
-		out.println(Commands.failure(json, "error", message));
+		out.println(Commands.statusMessage(json, "error", message));
 		return 1;
 	}
 }

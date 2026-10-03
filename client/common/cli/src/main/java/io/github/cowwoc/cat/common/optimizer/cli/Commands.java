@@ -319,6 +319,11 @@ public final class Commands
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(out, "out").isNotNull();
+		if (isHelpRequest(args))
+		{
+			out.println(statusMessage(json, "help", USAGE));
+			return 0;
+		}
 		Command command;
 		try
 		{
@@ -326,7 +331,7 @@ public final class Commands
 		}
 		catch (InvalidCommandException e)
 		{
-			out.println(failure(json, "invalid-input", e.getMessage() + "\n" + USAGE));
+			out.println(statusMessage(json, "invalid-input", e.getMessage() + "\n" + USAGE));
 			return 2;
 		}
 		try
@@ -337,18 +342,18 @@ public final class Commands
 		}
 		catch (CommandRefusedException e)
 		{
-			out.println(failure(json, "refused", e.getMessage()));
+			out.println(statusMessage(json, "refused", e.getMessage()));
 			return 1;
 		}
 		catch (IOException e)
 		{
-			out.println(failure(json, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
+			out.println(statusMessage(json, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
 			return 1;
 		}
 		catch (InterruptedException _)
 		{
 			Thread.currentThread().interrupt();
-			out.println(failure(json, "error", "Interrupted."));
+			out.println(statusMessage(json, "error", "Interrupted."));
 			return 1;
 		}
 	}
@@ -405,14 +410,27 @@ public final class Commands
 	}
 
 	/**
-	 * Renders a failure.
+	 * Returns whether the arguments ask for the usage text.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return {@code true} for {@code help} alone, or for {@code --help} or {@code -h} anywhere
+	 */
+	private static boolean isHelpRequest(List<String> args)
+	{
+		if (args.equals(List.of("help")))
+			return true;
+		return args.contains("--help") || args.contains("-h");
+	}
+
+	/**
+	 * Renders a failure or the usage text.
 	 *
 	 * @param json the JSON mapper
-	 * @param status {@code "refused"}, {@code "invalid-input"} or {@code "error"}
+	 * @param status {@code "refused"}, {@code "invalid-input"}, {@code "error"} or {@code "help"}
 	 * @param message the explanation
 	 * @return the JSON text
 	 */
-	static String failure(JsonMapper json, String status, String message)
+	static String statusMessage(JsonMapper json, String status, String message)
 	{
 		ObjectNode root = json.createObjectNode();
 		root.put("status", status);

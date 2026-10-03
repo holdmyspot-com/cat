@@ -408,6 +408,42 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Returns requests for the usage text.
+	 *
+	 * @return the arguments of each request
+	 */
+	@DataProvider
+	public Object[][] helpRequests()
+	{
+		return new Object[][]
+			{
+				{List.of("--help")},
+				{List.of("-h")},
+				{List.of("help")},
+				{List.of("start", "--help")},
+				{List.of("choose", "c1", "-h")}
+			};
+	}
+
+	/**
+	 * Verifies that a request for help prints the usage with a zero exit code, before the core is called.
+	 *
+	 * @param args the arguments
+	 */
+	@Test(dataProvider = "helpRequests")
+	public void printsUsageOnRequest(List<String> args)
+	{
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		int exit = run(core, args, output);
+		requireThat(exit, "exit").isEqualTo(0);
+		requireThat(core.calls, "calls").isEmpty();
+		JsonNode json = JSON.readTree(output.toString());
+		requireThat(json.get("status").asString(), "status").isEqualTo("help");
+		requireThat(json.get("message").asString(), "message").isEqualTo(Commands.USAGE);
+	}
+
+	/**
 	 * Verifies that a refusal is printed as JSON with a nonzero exit code.
 	 */
 	@Test
