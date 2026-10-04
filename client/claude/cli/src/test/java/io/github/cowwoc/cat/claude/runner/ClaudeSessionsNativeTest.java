@@ -117,7 +117,7 @@ public final class ClaudeSessionsNativeTest
 		Path source = Files.createDirectories(fixture.resolve("source"));
 		Files.writeString(source.resolve("README.md"), "fixture\n", UTF_8);
 		Path runRoot = fixture.resolve("runs");
-		ClaudeSessions sessions = new ClaudeSessions(new RunnerSessions.Settings(artifact, runRoot, "", false,
+		ClaudeSessions sessions = new ClaudeSessions(new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
 			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
 		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}

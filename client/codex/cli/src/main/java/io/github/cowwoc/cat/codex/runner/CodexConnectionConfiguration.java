@@ -20,6 +20,8 @@ final class CodexConnectionConfiguration
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	private static final String STARTUP_UPDATE_CHECK = "check_for_update_on_startup = false";
 	static final String RUNNER_PERMISSION_PROFILE = "cat-runner";
+	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
+	private static final String HELD_OUT_PERMISSION_PROFILE = "cat-held-out";
 	private static final String CAT_PERMISSION_PROFILE = "cat";
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
@@ -157,6 +159,76 @@ final class CodexConnectionConfiguration
 	}
 
 	/**
+	 * Adds the permission profile that a session's thread runs under.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param readOnlyEvidence the completed evidence directories and files that the session may read but not change
+	 * @param deniedReads the existing files and directories that the session must not read
+	 * @return the profile that the thread names, or an empty string if the thread uses the workspace-write sandbox
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the isolated configuration cannot be updated
+	 */
+	static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
+		throws IOException
+	{
+		requireThat(destination, "destination").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		String profile = "";
+		if (!readOnlyEvidence.isEmpty())
+		{
+			addValidatorProfile(destination, readOnlyEvidence);
+			profile = VALIDATOR_PERMISSION_PROFILE;
+		}
+		if (deniedReads.isEmpty())
+			return profile;
+		if (profile.isEmpty())
+			profile = RUNNER_PERMISSION_PROFILE;
+		addHeldOutProfile(destination, profile, deniedReads);
+		return HELD_OUT_PERMISSION_PROFILE;
+	}
+
+	/**
+	 * Adds the profile that denies a session reading files and directories.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param parentProfile the profile whose permissions the session otherwise has
+	 * @param deniedReads the files and directories to deny; a path that no longer exists is skipped
+	 * @throws IOException if the isolated configuration cannot be updated
+	 */
+	private static void addHeldOutProfile(Path destination, String parentProfile, List<Path> deniedReads)
+		throws IOException
+	{
+		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
+			throw new IOException("Denying reads requires the CAT runner permission profile");
+		String section = "[permissions." + HELD_OUT_PERMISSION_PROFILE;
+		StringBuilder profile = new StringBuilder(configuration).append(System.lineSeparator()).append(section).
+			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
+			append(System.lineSeparator()).append(section).append(".filesystem]").append(System.lineSeparator());
+		for (Path deniedRead : deniedReads)
+		{
+			// Codex's Linux sandbox creates an empty placeholder at a missing denied path while the session runs, which
+			// would block CAT from creating that path. Denying the real path also covers every symbolic-link alias.
+			if (Files.notExists(deniedRead))
+				continue;
+			profile.append('"').append(toml(deniedRead.toRealPath())).append("\" = \"deny\"").
+				append(System.lineSeparator());
+		}
+
+		// A thread that names a profile ignores [sandbox_workspace_write], and the built-in ":workspace" profile that
+		// the runner profile extends when the host has no CAT profile denies network access. Copy the parent's explicit
+		// workspace-write network policy so that denying reads does not also change network access.
+		String networkAccess = workspaceWriteNetworkAccess(configuration);
+		if (networkAccess != null && !configuration.contains("[permissions." + CAT_PERMISSION_PROFILE + "]"))
+		{
+			profile.append(section).append(".network]").append(System.lineSeparator()).append("enabled = ").
+				append(networkAccess).append(System.lineSeparator());
+		}
+		Files.writeString(destination, profile.toString());
+	}
+
+	/**
 	 * Adds the profile used when an independent validator reads completed executor evidence.
 	 *
 	 * @param destination the isolated Codex configuration
@@ -170,9 +242,10 @@ final class CodexConnectionConfiguration
 		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
 			throw new IOException("Read-only validator evidence requires the CAT runner permission profile");
 		// A validator's verdict is credible only if the harness can read executor evidence but cannot rewrite it.
-		Files.writeString(destination, configuration + System.lineSeparator() + "[permissions.cat-validator]" +
-			System.lineSeparator() + "extends = \"" + RUNNER_PERMISSION_PROFILE + "\"" + System.lineSeparator() +
-			"[permissions.cat-validator.filesystem]" + System.lineSeparator() + evidencePermissions(evidenceRoots));
+		Files.writeString(destination, configuration + System.lineSeparator() + "[permissions." +
+			VALIDATOR_PERMISSION_PROFILE + "]" + System.lineSeparator() + "extends = \"" + RUNNER_PERMISSION_PROFILE +
+			"\"" + System.lineSeparator() + "[permissions." + VALIDATOR_PERMISSION_PROFILE + ".filesystem]" +
+			System.lineSeparator() + evidencePermissions(evidenceRoots));
 	}
 
 	/**

@@ -43,4 +43,12 @@ public interface SessionPort
 	 * @throws IOException if the credential file exists but cannot be read
 	 */
 	HostLogin hostLogin() throws IOException;
+
+	/**
+	 * Indicates whether every session except the judge runs with its harness sandbox denying reads of the files and
+	 * directories that hold held-out content.
+	 *
+	 * @return {@code true} if the harness denies those reads
+	 */
+	boolean deniesHeldOutReads();
 }

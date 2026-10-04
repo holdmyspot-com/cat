@@ -3,7 +3,9 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents command-line settings for a JSONL bridge that serves one or more turns through one harness process.
@@ -20,10 +22,12 @@ import java.util.Arrays;
  * @param installCat whether CAT is installed in the isolated harness home
  * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
+ * @param deniedReads the files and directories that the harness sandbox denies the session reading
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
-	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency)
+	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency,
+	List<Path> deniedReads)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -119,6 +123,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.output = Path.of(value);
 			else if (option.equals("--receipt"))
 				options.receipt = Path.of(value);
+			else if (option.equals("--deny-read"))
+				options.deniedReads.add(Path.of(value));
 			else
 				throw new IllegalArgumentException("Unsupported option: " + option);
 			index += 2;
@@ -130,7 +136,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		if (!options.installCat && !options.includeUserRules)
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
-			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency);
+			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency,
+			options.deniedReads);
 	}
 
 	/**
@@ -144,7 +151,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " --artifact <path> [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
-			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>]";
+			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] [--deny-read <path>]...";
 	}
 
 	/**
@@ -159,6 +166,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param output the optional durable bridge-transcript destination
 	 * @param keepRun whether successful runs are retained
 	 * @param receipt the optional retained-evidence receipt destination
+	 * @param installCat whether CAT is installed in the isolated harness home
+	 * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
+	 * @param maximumConcurrency the shared CAT harness capacity ceiling
+	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
+	 * @throws NullPointerException if any of the arguments are null, other than {@code output} and {@code receipt}
+	 * @throws IllegalArgumentException if {@code executable} is blank, or {@code runRoot} or an element of
+	 *   {@code deniedReads} is not absolute
 	 */
 	public HarnessRunnerOptions
 	{
@@ -170,6 +184,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(effort, "effort").isNotNull();
 		if (!runRoot.isAbsolute())
 			throw new IllegalArgumentException("runRoot must be absolute");
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		for (Path deniedRead : deniedReads)
+		{
+			if (!deniedRead.isAbsolute())
+				throw new IllegalArgumentException("Each denied read must be absolute: " + deniedRead);
+		}
+		deniedReads = List.copyOf(deniedReads);
 	}
 
 	/**
@@ -184,5 +205,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean keepRun;
 		private boolean installCat;
 		private boolean includeUserRules = true;
+		private final List<Path> deniedReads = new ArrayList<>();
 	}
 }

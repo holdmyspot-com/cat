@@ -70,7 +70,7 @@ public final class RoleBriefTest
 		throws InterruptedException, ExecutionException, TimeoutException
 	{
 		List<String> prompts = new CopyOnWriteArrayList<>();
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,

@@ -151,7 +151,8 @@ public final class ClaudeRunnerCli
 		{
 			HarnessRunStarter starter = () -> new ClaudeRunner().start(
 				options.artifact(), options.project(), manager, options.executable(), environment, options.model(),
-				options.effort(), options.installCat(), options.includeUserRules(), agent, readOnlyEvidence);
+				options.effort(), options.installCat(), options.includeUserRules(), agent, readOnlyEvidence,
+				options.deniedReads());
 				HarnessRun run;
 				if (options.output() == null)
 					run = HarnessRunnerBridge.serve(starter, manager, options.keepRun(), input, output);

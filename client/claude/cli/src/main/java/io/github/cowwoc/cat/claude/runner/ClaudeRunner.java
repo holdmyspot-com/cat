@@ -97,7 +97,8 @@ public final class ClaudeRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, "", installCat, true, null, List.of());
+		return start(artifact, project, manager, executable, environment, model, "", installCat, true, null, List.of(),
+			List.of());
 	}
 
 	/**
@@ -114,13 +115,13 @@ public final class ClaudeRunner
 	 * @param includeUserRules whether CAT copies the parent user's rules into the isolated home
 	 * @param agent the optional CAT agent selected for the session
 	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param deniedReads the files and directories that the session must not read
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, boolean includeUserRules,
-		ClaudeAgentDefinition agent,
-		List<Path> readOnlyEvidence) throws IOException
+		ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -161,7 +162,7 @@ public final class ClaudeRunner
 			// isolatedEnvironment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
 			ClaudeConnectionSettings.copy(scope, hostConfiguration.resolve("settings.json"), isolatedEnvironment);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
-				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome);
+				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome, deniedReads);
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));

@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -64,17 +65,20 @@ final class ClaudeConnectionSettings
 	 * <p>
 	 * The resulting file retains the parent sandbox network and filesystem policies, the permissions that give the
 	 * nested Claude instance access to its project and invocation-local home, and CAT-owned environment values.
-	 * Host settings must not control other isolated-instance behavior.
+	 * Host settings must not control other isolated-instance behavior. It also denies the instance reading each of
+	 * {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
+	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine.
 	 *
 	 * @param scope services shared for the runner process lifetime
 	 * @param source the host Claude settings file
 	 * @param destination the isolated Claude settings file
 	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
 	 * @param claudeHome the CAT-owned home directory for the isolated Claude process
+	 * @param deniedReads the existing files and directories that the isolated instance must not read
 	 * @throws IOException if settings I/O fails
 	 */
 	static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
-		Path claudeTemporaryDirectory, Path claudeHome) throws IOException
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> deniedReads) throws IOException
 	{
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
@@ -105,6 +109,7 @@ final class ClaudeConnectionSettings
 				settings.set("permissions", parentPermissions.deepCopy());
 		}
 		allowWritesToInvocationHome(filesystem, claudeHome);
+		denyReads(settings, filesystem, deniedReads);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
@@ -135,6 +140,57 @@ final class ClaudeConnectionSettings
 				return;
 		}
 		allowedPaths.add(home);
+	}
+
+	/**
+	 * Denies the isolated instance reading files and directories, in addition to any reads that the parent denies.
+	 *
+	 * @param settings the isolated settings
+	 * @param filesystem the isolated sandbox filesystem settings
+	 * @param deniedReads the existing files and directories to deny
+	 */
+	private static void denyReads(ObjectNode settings, ObjectNode filesystem, List<Path> deniedReads)
+	{
+		assert settings != null;
+		assert filesystem != null;
+		assert deniedReads != null;
+		if (deniedReads.isEmpty())
+			return;
+		ArrayNode sandboxDenials = array(filesystem, "denyRead");
+		ObjectNode permissions;
+		if (settings.path("permissions").isObject())
+			permissions = (ObjectNode) settings.get("permissions");
+		else
+			permissions = settings.putObject("permissions");
+		ArrayNode permissionDenials = array(permissions, "deny");
+		for (Path deniedRead : deniedReads)
+		{
+			sandboxDenials.add(deniedRead.toString());
+			// A rule path that starts with "//" is absolute; "**" also matches everything below a directory.
+			String descendants;
+			if (Files.isDirectory(deniedRead))
+				descendants = "/**";
+			else
+				descendants = "";
+			permissionDenials.add("Read(/" + deniedRead + descendants + ")");
+		}
+	}
+
+	/**
+	 * Returns an object's array property, replacing a missing or non-array value with an empty array.
+	 *
+	 * @param parent the object
+	 * @param name the property's name
+	 * @return the array
+	 */
+	private static ArrayNode array(ObjectNode parent, String name)
+	{
+		assert parent != null;
+		assert name != null;
+		JsonNode value = parent.path(name);
+		if (value.isArray())
+			return (ArrayNode) value;
+		return parent.putArray(name);
 	}
 
 	/**

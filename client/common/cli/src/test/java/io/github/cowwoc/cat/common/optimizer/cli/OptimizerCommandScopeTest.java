@@ -3,6 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import org.testng.annotations.Test;
@@ -14,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Tests the behavior that {@link OptimizerCommandScope} shares with every variant.
@@ -47,6 +50,35 @@ public final class OptimizerCommandScopeTest
 			{
 				requireThat(scope.projectRoot(), "projectRoot").isEqualTo(root);
 				requireThat(scope.store() == scope.store(), "sameStore").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the held-out paths are those of the campaigns in the project's store, even when the command runs
+	 * in a subdirectory of the project.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project is not found
+	 */
+	@Test
+	public void listsHeldOutPathsOfProjectCampaigns() throws IOException, CommandRefusedException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("optimizer-scope")).toRealPath();
+			Files.createDirectory(root.resolve(".git"));
+			Path directory = Files.createDirectories(root.resolve("a/b"));
+			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				directory))
+			{
+				Campaign campaign = new Builder().confirmed().build();
+				scope.store().replaceSnapshot(campaign);
+				Path campaignDirectory = root.resolve(".cat/work/optimizer").resolve(campaign.header().id());
+
+				requireThat(Set.copyOf(scope.heldOutPaths()), "heldOutPaths").isEqualTo(Set.of(
+					campaignDirectory.resolve("campaign.json"), campaignDirectory.resolve("trials")));
 			}
 		}
 	}

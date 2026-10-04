@@ -365,6 +365,12 @@ public final class SliceTest
 		{
 			return delegate.hostLogin();
 		}
+
+		@Override
+		public boolean deniesHeldOutReads()
+		{
+			return delegate.deniesHeldOutReads();
+		}
 	}
 
 	/**

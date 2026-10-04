@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
+import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -40,7 +41,7 @@ final class ProposalFile
 	/**
 	 * The file's name.
 	 */
-	static final String NAME = "proposal.json";
+	static final String NAME = FileCampaignStore.PROPOSAL;
 	/**
 	 * The version of the proposal layout, including regression scenario citations and key dimensions in each test
 	 * definition, the triggers of the requirements, the shipped capability ranking and the salt.

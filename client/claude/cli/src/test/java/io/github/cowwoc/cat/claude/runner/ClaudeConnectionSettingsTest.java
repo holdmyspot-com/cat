@@ -8,7 +8,9 @@ import io.github.cowwoc.cat.common.runner.fakes.TestHarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -120,7 +122,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"));
+				claudeTemporaryDirectory.resolve("home"), List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("sandbox").path("network").path("allowedDomains").path(0).asString(),
@@ -169,7 +171,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"));
+				claudeTemporaryDirectory.resolve("home"), List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -200,12 +202,92 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome);
+				claudeTemporaryDirectory, claudeHome, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			JsonNode writablePaths = result.path("sandbox").path("filesystem").path("allowWrite");
 			requireThat(writablePaths.size(), "writablePathCount").isEqualTo(1);
 			requireThat(writablePaths.path(0).asString(), "writablePath").isEqualTo(claudeHome.toString());
 		}
+	}
+
+	/**
+	 * Verifies that isolated settings deny the session reading each listed file and directory, both through the
+	 * sandbox that confines its commands and through the permission rules that govern its file tools, while keeping
+	 * the parent's own read denials.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesListedReads() throws IOException
+	{
+		// Requirement: R-E24
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Path trials = Files.createDirectory(root.resolve("trials"));
+			Files.writeString(source, """
+				{
+				  "sandbox": {"filesystem": {"denyRead": ["/secrets"]}},
+				  "permissions": {"deny": ["Read(//secrets/**)"]}
+				}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(snapshot, trials));
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
+				isEqualTo(List.of("/secrets", snapshot.toString(), trials.toString()));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").isEqualTo(List.of(
+				"Read(//secrets/**)", "Read(/" + snapshot + ")", "Read(/" + trials + "/**)"));
+		}
+	}
+
+	/**
+	 * Verifies that isolated settings deny the listed reads when the host has no settings file.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesListedReadsWithoutHostSettings() throws IOException
+	{
+		// Requirement: R-E24
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(snapshot));
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
+				isEqualTo(List.of(snapshot.toString()));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Read(/" + snapshot + ")"));
+		}
+	}
+
+	/**
+	 * Returns the strings of a JSON array.
+	 *
+	 * @param array the array, or a missing node
+	 * @return the elements' text, empty if {@code array} is not an array
+	 */
+	private static List<String> strings(JsonNode array)
+	{
+		List<String> result = new ArrayList<>();
+		for (JsonNode element : array)
+			result.add(element.asString());
+		return result;
 	}
 }

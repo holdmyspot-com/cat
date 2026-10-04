@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -194,11 +195,128 @@ public final class CodexConnectionConfigurationTest
 			Files.writeString(destination, "[permissions.cat-runner]\nextends = \":workspace\"\n");
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			Path canonicalEvidence = evidence.toRealPath();
-			CodexConnectionConfiguration.addValidatorProfile(destination, java.util.List.of(evidence));
+			CodexConnectionConfiguration.addValidatorProfile(destination, List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
 				contains("extends = \"cat-runner\"").contains("\"" + canonicalEvidence + "\" = \"read\"").
 				doesNotContain("\"" + canonicalEvidence + "\" = \"write\"");
+		}
+	}
+
+	/**
+	 * Verifies that a session with paths to deny runs under a profile that denies reading each of them and extends
+	 * the runner profile.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesListedReads() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
+			Path destination = root.resolve("isolated/config.toml");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Path trials = Files.createDirectory(root.resolve("trials"));
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+
+			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(),
+				List.of(snapshot, trials));
+
+			requireThat(profile, "profile").isEqualTo("cat-held-out");
+			requireThat(Files.readString(destination), "configuration").contains(String.join(System.lineSeparator(),
+				"[permissions.cat-held-out]",
+				"extends = \"cat-runner\"",
+				"[permissions.cat-held-out.filesystem]",
+				"\"" + snapshot.toRealPath() + "\" = \"deny\"",
+				"\"" + trials.toRealPath() + "\" = \"deny\"",
+				""));
+		}
+	}
+
+	/**
+	 * Verifies that a session that reads evidence and has paths to deny runs under a profile that denies them and
+	 * extends the validator profile, which grants the evidence.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesListedReadsToValidators() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
+			Path destination = root.resolve("isolated/config.toml");
+			Path evidence = Files.createDirectories(root.resolve("evidence"));
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+
+			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
+				List.of(snapshot));
+
+			requireThat(profile, "profile").isEqualTo("cat-held-out");
+			requireThat(Files.readString(destination), "configuration").
+				contains("\"" + evidence.toRealPath() + "\" = \"read\"").
+				contains(String.join(System.lineSeparator(),
+					"[permissions.cat-held-out]",
+					"extends = \"cat-validator\"",
+					"[permissions.cat-held-out.filesystem]",
+					"\"" + snapshot.toRealPath() + "\" = \"deny\"",
+					""));
+		}
+	}
+
+	/**
+	 * Verifies that a session without evidence or paths to deny keeps the workspace-write sandbox.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void keepsSandboxWithoutDeniedReads() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
+			Path destination = root.resolve("isolated/config.toml");
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			String before = Files.readString(destination);
+
+			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of());
+
+			requireThat(profile, "profile").isEmpty();
+			requireThat(Files.readString(destination), "configuration").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that the profile that denies reads keeps the parent's workspace-write network access, which a thread
+	 * that names a profile instead of the workspace-write sandbox would otherwise lose.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniedReadsKeepNetworkAccess() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
+			Path source = Files.writeString(root.resolve("host.toml"), """
+				[sandbox_workspace_write]
+				network_access = true
+				""");
+			Path destination = root.resolve("isolated/config.toml");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			CodexConnectionConfiguration.copy(source, destination);
+
+			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(snapshot));
+
+			requireThat(Files.readString(destination), "configuration").
+				contains("[permissions.cat-held-out.network]" + System.lineSeparator() + "enabled = true" +
+					System.lineSeparator());
 		}
 	}
 

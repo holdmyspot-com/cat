@@ -66,7 +66,8 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		this.home = home;
 		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
 			environment.get("CODEX_HOME"));
-		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
+		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutPaths,
+			clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
 	}
@@ -122,15 +123,16 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory              the working directory
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
+	 * @param heldOut                lists the paths that hold held-out content
 	 * @param clock                  the clock
 	 * @return the port
 	 */
 	private static SessionPort sessions(Map<String, String> environment, Path home, Path directory, Path artifact,
-		Path configurationDirectory, Clock clock)
+		Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
 		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS_ID);
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new CodexSessions(settings);

@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}: the snapshot in {@code campaign.json},
  * one record per logical trial in {@code trials/<sha256 of the trial key>.json}, and the delivery journal in
- * {@code delivery.json}.
+ * {@code delivery.json}. The {@code trials} directory exists from the first snapshot write.
  * <p>
  * Every file is replaced atomically: the content is written to a temporary file next to the target, forced to the
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
@@ -32,6 +32,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class FileCampaignStore extends AbstractCampaignStore
 {
+	/**
+	 * The name of the file in a campaign directory that holds the proposal.
+	 */
+	public static final String PROPOSAL = "proposal.json";
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
@@ -94,6 +98,39 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
+	 * Returns the files and directories that hold held-out content in a worktree's campaigns: each campaign's
+	 * snapshot, proposal and trial records. Nested sessions other than the judge must not read them.
+	 *
+	 * @param base the base worktree
+	 * @return the real paths of those that exist, in no particular order; empty if the worktree has no campaigns
+	 * @throws NullPointerException if {@code base} is null
+	 * @throws IOException if the campaigns directory cannot be listed
+	 */
+	public static List<Path> heldOutPaths(Path base) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		Path root = root(base);
+		if (Files.notExists(root))
+			return List.of();
+		List<Path> directories;
+		try (Stream<Path> entries = Files.list(root))
+		{
+			directories = entries.filter(Files::isDirectory).toList();
+		}
+		List<Path> paths = new ArrayList<>();
+		for (Path directory : directories)
+		{
+			for (String name : List.of(SNAPSHOT, PROPOSAL, TRIALS))
+			{
+				Path path = directory.resolve(name);
+				if (Files.exists(path))
+					paths.add(path.toRealPath());
+			}
+		}
+		return paths;
+	}
+
+	/**
 	 * Returns the directory that holds all campaigns of a worktree.
 	 *
 	 * @param base the base worktree
@@ -119,7 +156,8 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	void writeSnapshot(Campaign campaign) throws IOException
 	{
 		Path directory = directory(base, campaign.header().id());
-		AtomicFiles.createDirectories(directory);
+		// Sessions that start before the first trial record is written must already be denied the records' directory.
+		AtomicFiles.createDirectories(directory.resolve(TRIALS));
 		JsonFiles.replace(json, directory.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
 	}
 

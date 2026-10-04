@@ -103,7 +103,7 @@ public final class CodexSessionsTest
 	private static CodexSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script, List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
 			runRoot, capacity, clock);
 		return new CodexSessions(settings, (options, input, output) ->
 		{
@@ -144,7 +144,7 @@ public final class CodexSessionsTest
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), "", true,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
@@ -160,6 +160,58 @@ public final class CodexSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
 			requireThat(arguments.get(0).contains("--install-cat"), "installCat").isEqualTo(role == SessionRole.TRIAL);
+		}
+	}
+
+	/**
+	 * Verifies that every session except the judge passes each listed held-out path to the runner through
+	 * {@code --deny-read}, and that the judge's session passes none.
+	 *
+	 * @param role the session's role
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
+	public void deniesHeldOutReadsToEveryRoleButTheJudge(SessionRole role)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			Path snapshot = root.resolve("campaign.json");
+			Path trials = root.resolve("trials");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
+				() -> List.of(snapshot, trials), "", false, Map.of(), root, HarnessCapacity.unlimited(),
+				Clock.systemUTC());
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
+				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+			List<String> denied = new ArrayList<>();
+			List<String> options = arguments.get(0);
+			for (int i = 0; i < options.size() - 1; ++i)
+			{
+				if (options.get(i).equals("--deny-read"))
+					denied.add(options.get(i + 1));
+			}
+			List<String> expected = List.of(snapshot.toString(), trials.toString());
+			if (role == SessionRole.JUDGE)
+				expected = List.of();
+			requireThat(denied, "denied").isEqualTo(expected);
 		}
 	}
 
@@ -295,7 +347,7 @@ public final class CodexSessionsTest
 	 */
 	private static CodexSessions loginPort(Path root, Map<String, String> environment)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC());
 		return new CodexSessions(settings, (options, input, output) ->
 		{

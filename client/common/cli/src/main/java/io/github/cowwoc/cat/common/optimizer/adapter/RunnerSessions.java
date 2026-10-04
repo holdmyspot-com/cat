@@ -91,6 +91,17 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The runner receives the paths that {@link Settings#heldOut()} lists through its {@code --deny-read} option.
+	 */
+	@Override
+	public final boolean deniesHeldOutReads()
+	{
+		return true;
+	}
+
+	/**
 	 * Returns the harness's identifier.
 	 *
 	 * @return the identifier
@@ -151,6 +162,7 @@ public abstract class RunnerSessions implements SessionPort
 	 *
 	 * @param artifact the complete harness artifact that the runner validates and installs
 	 * @param runRoot the absolute directory that holds the runner's run directories
+	 * @param heldOut lists, when each session starts, the paths that hold held-out content
 	 * @param executable the harness executable, or blank for the harness's default command
 	 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
 	 * @param environment the host environment that the runner scrubs for the session
@@ -158,7 +170,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
 	 */
-	public record Settings(Path artifact, Path runRoot, String executable, boolean installCat,
+	public record Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
 	{
 		/**
@@ -166,6 +178,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the runner's run directories
+		 * @param heldOut lists, when each session starts, the paths that hold held-out content
 		 * @param executable the harness executable, or blank for the harness's default command
 		 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
 		 * @param environment the host environment that the runner scrubs for the session
@@ -180,6 +193,7 @@ public abstract class RunnerSessions implements SessionPort
 			requireThat(artifact, "artifact").isNotNull();
 			requireThat(runRoot, "runRoot").isNotNull();
 			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
+			requireThat(heldOut, "heldOut").isNotNull();
 			requireThat(executable, "executable").isNotNull();
 			requireThat(environment, "environment").isNotNull();
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
@@ -188,5 +202,21 @@ public abstract class RunnerSessions implements SessionPort
 			runRoot = runRoot.normalize();
 			environment = Map.copyOf(environment);
 		}
+	}
+
+	/**
+	 * Lists the files and directories that hold held-out content. Every session except the judge runs with its
+	 * harness sandbox denying reads of them.
+	 */
+	@FunctionalInterface
+	public interface HeldOutPaths
+	{
+		/**
+		 * Lists the paths.
+		 *
+		 * @return the absolute paths that exist when the method is called
+		 * @throws IOException if the paths cannot be listed
+		 */
+		List<Path> list() throws IOException;
 	}
 }

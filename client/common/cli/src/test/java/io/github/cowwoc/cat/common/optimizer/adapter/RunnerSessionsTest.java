@@ -68,7 +68,7 @@ public final class RunnerSessionsTest
 	private static TestSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
 			runRoot, capacity, clock);
 		return new TestSessions(settings, (options, input, output) ->
 		{
@@ -175,7 +175,7 @@ public final class RunnerSessionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -222,7 +222,7 @@ public final class RunnerSessionsTest
 			Path runs = root.resolve("runs");
 			List<String> requests = new CopyOnWriteArrayList<>();
 			CountDownLatch turnReceived = new CountDownLatch(1);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, runs, "", false, Map.of(), root,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, runs, List::of, "", false, Map.of(), root,
 				HarnessCapacity.unlimited(), Clock.systemUTC());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -377,7 +377,7 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), "", false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{

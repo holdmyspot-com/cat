@@ -447,8 +447,9 @@ final class Session implements SessionHandle
 	 * Builds the runner's command-line options.
 	 *
 	 * @return the options
+	 * @throws IOException if the held-out paths cannot be listed
 	 */
-	private List<String> arguments()
+	private List<String> arguments() throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		arguments.addAll(List.of("--artifact", settings.artifact().toString(), "--project",
@@ -463,6 +464,12 @@ final class Session implements SessionHandle
 		if (settings.installCat() && request.role() == SessionRole.TRIAL)
 			arguments.add("--install-cat");
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
+		// The judge decides formal trials, so it alone may read held-out content.
+		if (request.role() != SessionRole.JUDGE)
+		{
+			for (Path path : settings.heldOut().list())
+				arguments.addAll(List.of("--deny-read", path.toString()));
+		}
 		return arguments;
 	}
 

@@ -67,7 +67,8 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		this.home = home;
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
-		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, clock());
+		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutPaths,
+			clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new ClaudeProfileInventory(artifact);
 	}
@@ -123,15 +124,16 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory              the working directory
 	 * @param artifact               the complete Claude artifact that nested sessions install
 	 * @param configurationDirectory the host's Claude configuration directory
+	 * @param heldOut                lists the paths that hold held-out content
 	 * @param clock                  the clock
 	 * @return the port
 	 */
 	private static SessionPort sessions(Map<String, String> environment, Path home, Path directory, Path artifact,
-		Path configurationDirectory, Clock clock)
+		Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
 		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS_ID);
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
 		return new ClaudeSessions(settings);

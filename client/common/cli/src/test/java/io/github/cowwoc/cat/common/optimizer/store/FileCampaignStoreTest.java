@@ -132,6 +132,49 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that the held-out paths of a campaign are its snapshot, its proposal and its trial-record directory,
+	 * that the directory is listed before any record is written, so that a session that starts first is denied the
+	 * records written while it runs, and that the campaign's other entries are not listed.
+	 *
+	 * @throws IOException if the fixture cannot be stored or listed
+	 */
+	@Test
+	public void listsHeldOutPaths() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("held-out-paths"));
+			new FileCampaignStore(base, JSON).replaceSnapshot(new Builder().confirmed().build());
+			Path directory = campaignDirectory(base).toRealPath();
+			Files.writeString(directory.resolve(FileCampaignStore.PROPOSAL), "{}");
+			Files.createDirectories(directory.resolve("staged"));
+
+			List<Path> paths = FileCampaignStore.heldOutPaths(base);
+
+			requireThat(Set.copyOf(paths), "paths").isEqualTo(Set.of(directory.resolve("campaign.json"),
+				directory.resolve(FileCampaignStore.PROPOSAL), directory.resolve("trials")));
+		}
+	}
+
+	/**
+	 * Verifies that a worktree without campaigns has no held-out paths.
+	 *
+	 * @throws IOException if the fixture cannot be listed
+	 */
+	@Test
+	public void listsNoHeldOutPathsWithoutCampaigns() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("held-out-paths"));
+
+			requireThat(FileCampaignStore.heldOutPaths(base), "paths").isEmpty();
+		}
+	}
+
+	/**
 	 * A fresh store read retains the evidence needed to restore a promoted candidate's predecessor.
 	 *
 	 * @throws IOException if the store fails

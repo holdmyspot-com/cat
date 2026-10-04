@@ -78,7 +78,7 @@ public final class CodexSessionsContractTest
 	 */
 	private static CodexSessions port(Path root, Bridge bridge)
 	{
-		return new CodexSessions(new RunnerSessions.Settings(root, root.resolve("runs"), "", false, Map.of(),
+		return new CodexSessions(new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false, Map.of(),
 			root, HarnessCapacity.unlimited(), Clock.systemUTC()), bridge);
 	}
 

@@ -217,6 +217,25 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	}
 
 	/**
+	 * Lists the files and directories in the project's campaigns that hold held-out content.
+	 *
+	 * @return the real paths of those that exist
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException if the working directory is not inside a Git repository or the campaigns cannot be listed
+	 */
+	protected final List<Path> heldOutPaths() throws IOException
+	{
+		try
+		{
+			return FileCampaignStore.heldOutPaths(projectRoot());
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+	}
+
+	/**
 	 * Returns whether this scope is closed.
 	 *
 	 * @return {@code true} if this scope is closed

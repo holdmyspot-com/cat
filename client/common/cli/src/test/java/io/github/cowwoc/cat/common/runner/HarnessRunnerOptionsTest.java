@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -25,7 +26,8 @@ public final class HarnessRunnerOptionsTest
 	{
 		requireThat(HarnessRunnerOptions.usage("harness-runner"), "usage").startsWith("Usage: harness-runner ").
 			contains("--artifact <path>").
-			contains("--max-concurrency <1..16>");
+			contains("--max-concurrency <1..16>").
+			contains("--deny-read <path>");
 	}
 
 	/**
@@ -64,6 +66,46 @@ public final class HarnessRunnerOptionsTest
 
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
+	}
+
+	/**
+	 * Verifies that each {@code --deny-read} option adds one path that the session must not read, in order.
+	 */
+	@Test
+	public void parsesDeniedReads()
+	{
+		// Requirement: R-E24
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
+			"--deny-read", "/campaign/campaign.json", "--deny-read", "/campaign/trials"}, "harness",
+			Path.of("/caller-temp"));
+
+		requireThat(result.deniedReads(), "deniedReads").isEqualTo(List.of(Path.of("/campaign/campaign.json"),
+			Path.of("/campaign/trials")));
+	}
+
+	/**
+	 * Verifies that a relative {@code --deny-read} path is rejected, because the harness could resolve it against
+	 * a directory other than the one that holds the content.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*campaign.json.*")
+	public void rejectsRelativeDeniedRead()
+	{
+		// Requirement: R-E24
+		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--deny-read", "campaign.json"},
+			"harness", Path.of("/caller-temp"));
+	}
+
+	/**
+	 * Verifies that a session denies no reads unless {@code --deny-read} names a path.
+	 */
+	@Test
+	public void defaultsToNoDeniedReads()
+	{
+		// Requirement: R-E24
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
+			"harness", Path.of("/caller-temp"));
+
+		requireThat(result.deniedReads(), "deniedReads").isEmpty();
 	}
 
 	/**

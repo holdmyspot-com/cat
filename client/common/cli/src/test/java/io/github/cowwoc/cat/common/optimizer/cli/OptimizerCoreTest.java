@@ -304,6 +304,40 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a harness whose sessions cannot be denied reads of held-out content is refused before a campaign
+	 * starts: no campaign is created and no session starts.
+	 *
+	 * @throws Exception if the fixture fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesHarnessThatCannotDenyHeldOutReads() throws Exception
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path root = scope.add(Files.createTempDirectory("optimizer-core")).toRealPath();
+			Files.createDirectory(root.resolve(".git"));
+			Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
+			Map<String, String> before = contents(root);
+			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, false);
+			CommandRefusedException refusal = null;
+			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
+				root, Set.of(), _ -> sessions))
+			{
+				new OptimizerCore(command).start(Path.of("CLAUDE.md"));
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e;
+			}
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(refusal.getMessage(), "message").contains("held-out");
+			requireThat(sessions.sessions(), "sessions").isEmpty();
+			requireThat(contents(root), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * A session port that answers each session at once from a script and advances the clock by one minute per
 	 * session, so that a slice's budget runs out without waiting.
 	 */
@@ -336,6 +370,12 @@ public final class OptimizerCoreTest
 		public HostLogin hostLogin()
 		{
 			return HostLogin.UNKNOWN;
+		}
+
+		@Override
+		public boolean deniesHeldOutReads()
+		{
+			return true;
 		}
 
 		@Override

@@ -106,7 +106,8 @@ public final class CodexRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, "", installCat, null, List.of());
+		return start(artifact, project, manager, executable, environment, model, "", installCat, null, List.of(),
+			List.of());
 	}
 
 	/**
@@ -130,7 +131,7 @@ public final class CodexRunner
 		throws IOException
 	{
 		return start(artifact, project, manager, executable, environment, model, effort, installCat, agent,
-			List.of());
+			List.of(), List.of());
 	}
 
 	/**
@@ -147,12 +148,13 @@ public final class CodexRunner
 	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
 	 *   {@code effort}
 	 * @param readOnlyEvidence the optional completed evidence directory
+	 * @param deniedReads the existing files and directories that the session must not read
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent,
-		List<Path> readOnlyEvidence) throws IOException
+		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -178,8 +180,8 @@ public final class CodexRunner
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
 				temporaryDirectory);
-			if (!readOnlyEvidence.isEmpty())
-				CodexConnectionConfiguration.addValidatorProfile(isolatedConfiguration, readOnlyEvidence);
+			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
+				readOnlyEvidence, deniedReads);
 			if (installCat)
 			{
 				// Plugin hooks are untrusted in every fresh runner home and app-server has no approval operation. Reuse
@@ -226,9 +228,6 @@ public final class CodexRunner
 					developerInstructions = agent.developerInstructions();
 					selectedEffort = agent.effort();
 				}
-				String permissionProfile = "";
-				if (!readOnlyEvidence.isEmpty())
-					permissionProfile = "cat-validator";
 				process.initialize(worktree, selectedModel, developerInstructions, selectedEffort, permissionProfile);
 				return new HarnessRunSession(run, process, scope, lock);
 			}

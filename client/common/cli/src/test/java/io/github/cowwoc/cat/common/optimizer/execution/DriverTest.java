@@ -3397,6 +3397,12 @@ public final class DriverTest
 			{
 				return delegate.hostLogin();
 			}
+
+			@Override
+			public boolean deniesHeldOutReads()
+			{
+				return delegate.deniesHeldOutReads();
+			}
 		};
 	}
 

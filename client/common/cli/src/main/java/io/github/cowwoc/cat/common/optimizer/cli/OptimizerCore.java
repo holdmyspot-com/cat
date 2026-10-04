@@ -172,6 +172,11 @@ public final class OptimizerCore implements Core
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+		if (!scope.sessions().deniesHeldOutReads())
+		{
+			throw new CommandRefusedException("The " + scope.harness().commandName() + " harness cannot keep its " +
+				"sessions from reading the campaign's held-out content, so it cannot run the optimizer.");
+		}
 
 		Path root = scope.projectRoot();
 		Path absolute = scope.directory().toRealPath().resolve(target).normalize();
