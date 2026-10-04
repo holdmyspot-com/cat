@@ -130,6 +130,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-31 | `optimize-medium` | Slug parsing in the Codex inventory, and one port method with one pre-derivation check in the core. |
 | WI-32 | `optimize-xhigh` | Replaces the allocation tier, the baseline targets and the confirmation flow; interacts with readiness, the coverage floor and certification. |
 | WI-33 | `optimize-xhigh` | Changes what every trial, author and judge session may see, and the campaign format; an error leaks held-out instances silently. |
+| WI-34 | `optimize-xhigh` | Adds a deriver session after failed attempts and changes the development distribution and readiness counts; an error leaks held-out values into development. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -239,7 +240,8 @@ requirement names.
 | WI-30 | Done 2026-10-04 (Codex high; full build 1879 tests, 0 failures, none at or over 1 s). User approval (`design.md` §2.7, §6.1, D40). Each requirement states its `trigger`, or null when it always applies, and each test lists the requirements whose trigger it leaves absent; the contract refuses a triggered requirement without such a test. An author's dissimilar case is a contract test id, and the manifest check rejects any other. Campaign format 13 and proposal file format 5. |
 | WI-31 | Done 2026-10-04. `CodexModelVersions` matches a slug `gpt-<major>[.<minor>][-<rest>]` and accepts a major of 6 or later; the Codex inventory keeps only such listed models and fails when none qualifies; `ProfileInventory.supportsModel` (Claude: every model) lets the core report each unsupported bound model before it starts the deriver session; the Codex role profile below version 6 fails. Integrated build: 1888 tests, 0 failures, none at or over 1 second. |
 | WI-32 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `66b650441`; full build 1909 tests, 0 failures, none at or over 1 s). Each harness ships `capability-ranking.json` (address and reading date); `CapabilityRanking` ranks by family, then version; revision feedback replaces it through the deriver finding `capability_ranking`, and an unranked inventory family blocks confirm. `CellTier` gives each category's weakest cell (from the latest versions for `weakest-cell`) and its development cells; the screen, active set, `widened` latch and `failed_cells` are gone. `confirm <campaign> <scope>` takes `weakest-cell`, `latest-versions` or `described` (cells from the deriver finding `certification_profiles`, patterns over the inventory, applied in every category; a described scope that leaves a category without a cell is refused). Campaign format 14 and proposal file format 6; every older campaign format is refused, so the compatibility reads of formats 9 to 13 and their tests are retired. The recorded launcher output `long-proposal.json` of the `first-use` skill scenario predates the certification-scope section; its assertions still hold, and it is rerecorded with the next live deriver session. User rulings (`design.md` §6.6, D27, D42, 2026-10-04): development and readiness only in each category's development cells (its weakest cell, plus any cell where certification failed); the user chooses the certification scope at confirmation from three choices (weakest cell only, latest model versions, or a scope the user describes; user ruling, 2026-10-04: no all-models choice); the weakest cell comes from a shipped capability ranking, with no trials. |
-| WI-33 | Not started. User ruling (`design.md` §6.3, D43, 2026-10-04): every test is a template, its instances are split into a development and a held-out part at confirmation, and only held-out instances certify. |
+| WI-33 | Implemented on branch `wi-33` (Claude `optimize-xhigh`: `b2bd4a208`, then `853b376e6`, which withholds the salt and the held-out key values from the author's contract); full build 1921 tests, 0 failures, none at or over 1 s. Not integrated: after a failed attempt an unchanged candidate that still met the readiness gate was committed again at once, so WI-34 integrates with it. User ruling (`design.md` §6.3, D43, 2026-10-04): every test is a template, its instances are split into a development and a held-out part at confirmation, and only held-out instances certify. |
+| WI-34 | Not started. User ruling (`design.md` §6.3, D44, 2026-10-04): after an attempt ends with formal failures, a deriver session adds development-only key values that exercise each failed test's failed requirements. |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
 | Launcher help (WI-15 E8 finding) | Done 2026-10-02. Both E8 agents ran `prompt-optimizer --help` or `start --help` to find the ceiling option; the launcher answered "Unknown command" or took `--help` as the target, and the skill stopped. `help` alone, or `--help` or `-h` anywhere, now prints the usage as `{"status":"help"}` with exit 0 before the core is called (`CommandsTest.printsUsageOnRequest`). |
 | Inline include mention (WI-15 E8 finding) | Done 2026-10-02. Both E8 campaigns failed every author session with "Direct rule include must name a regular file inside its allowed source root": `prompt-file-dependencies.md` mentions `` `<!-- cat:include path -->` `` in prose, and the role-rule loader took the mention as a directive. A directive is now a line that consists of the directive alone (`ProjectRuleLoaderTest.keepsIncludeDirectiveMentionedInText`, red before the fix); every packaged directive already stood on its own line. Verify: build 0, Bats 32/32, 1834 tests, none ≥1 s. |
@@ -332,6 +334,10 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §1.2, §6.1, §6.3 and §13 (D43): each test definition marks the key dimensions that carry its content,
   and instances split into parts by their key values, so a held-out instance never repeats a development instance's
   content in a new combination (user ruling, 2026-10-04). Plan R-C16 and WI-33 reworded.
+- `design.md` §2.8, §3.1, §6.3, §13 (D44) and §14 G4: after an attempt ends with formal failures, a deriver session
+  that sees only development values adds at least 4 development-only key-value combinations per failed test aimed at
+  its failed requirements; they take half of that test's development draws and development counts restart. R-C17 and
+  WI-34 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -453,6 +459,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C14 | Each proposal conflict offers at least two resolutions and a recommended one with its reason; the agent asks the user to resolve every conflict before offering confirmation. | §6.1, §8, D31 | WI-25 | U: `ProposalTest`; E: E1 per harness |
 | R-C15 | Certification scope: CAT refuses to confirm until the user chooses one of weakest cell only or latest model versions (every cell of each family's latest version), or a set of inventory cells mapped from the user's own description and passed to `revise`; there is no default; CAT refuses a described cell outside the inventory; the choice is frozen with the contract, a change is a revision, and formal and baseline trials run in the scope's cells only. | §6.1, §6.6, D42 | WI-32 | U: `OptimizerCoreTest` (confirm without a scope and with each choice), `ProposalTest` (a described scope, a cell outside the inventory), `SchedulerTest` (formal cells per scope), `ContractStoreTest` (round trip) |
 | R-C16 | Test templates: each test definition marks its key dimensions (none marked: all are key); at confirmation CAT freezes a random salt and assigns each key-value combination, and so every instance with it, to the development or held-out part by a salted hash with probability ½; it refuses a proposal with a test definition of fewer than 2 distinct key-value combinations in either part. | §6.1, §6.3, D43 | WI-33 | U: `GeneratorTest` (split stable under the salt, near ½ over many key-value combinations, instances sharing key values in one part, each part drawn only by its streams), `ProposalTest` (refusal at 1 key-value combination in a part; key dimensions and counts shown) |
+| R-C17 | After an attempt ends with formal failures, a deriver session receives each failed test's definition with only its development key values, and each failure's cell and failed requirements, and writes at least 4 new key-value combinations per failed test; CAT rejects a new value equal to any existing value of its dimension, held-out values included; the added combinations belong to the development part only and take half of that test's development draw probability; development counts restart; the held-out part, the contract and the measurement identity are unchanged; the user's report lists the added values. | §6.3, D44 | WI-34 | U: `DriverTest` (deriver input holds no held-out value or salt; duplicate of a held-out value rejected; added instances drawn only by development streams at half the test's probability; counts restart; failure on an added instance reaches triage and authors), `GeneratorTest` |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -1018,6 +1025,30 @@ The riskiest pure code, built first.
   `DriverTest`), `DriverTest` trace 21, the author brief tests, the contract store round trip.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-34 — Development values after a failed attempt (user ruling, 2026-10-04)
+
+- **Trigger:** a certification attempt ends (`below minimum` or `inconclusive`) with at least one formal failure.
+- **Deriver:** one deriver session per ended attempt receives, for each test with a formal failure, its definition
+  with only the development values of its key dimensions (as the author's contract shows them, without the salt) and
+  each failure's cell and failed requirements. It returns at least 4 new key-value combinations per failed test that
+  exercise those requirements, in a strict schema; the deriver prompt change is shown to the user before delivery.
+- **Validation:** CAT rejects a new key value equal to any existing value of its dimension, held-out values included,
+  without telling the deriver which part holds the value, and validates the generator as for any instance; a
+  rejected or failed derivation is an infrastructure failure.
+- **Draws:** the added combinations belong to the development part only. Development draws of the test give them,
+  together, half of its probability, and the confirmed development combinations the other half by their frozen
+  probabilities. Formal and baseline draws are unchanged. A failure on an added instance is an ordinary development
+  failure.
+- **Counts:** the development distribution changed, so every candidate's development counts restart and the
+  readiness gate needs new trials.
+- **State:** the added values are campaign state outside the confirmed contract; the contract identity and the
+  measurement identity are unchanged; the user's report lists them.
+- **Closes:** R-C17.
+- **Tests:** `DriverTest` (ended attempt to deriver to development draws; restart of counts; no held-out value or
+  salt in the deriver input; the WI-33 recommit loop no longer recommits an unchanged candidate without new
+  readiness trials), `GeneratorTest`, the deriver brief tests, the campaign store round trip.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
 
 - **Sessions:** the runner settings decide plugin installation per session role: trials install CAT; the deriver, judge
@@ -1209,7 +1240,8 @@ blocks only the part of a work item that it names.
 | WI-31 | WI-30 |
 | WI-32 | WI-31 |
 | WI-33 | WI-32 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32 and WI-33. |
+| WI-34 | WI-33 (on its branch; the two integrate together) |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33 and WI-34. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
