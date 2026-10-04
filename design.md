@@ -15,8 +15,7 @@ later sections use.
 - **G2 — Let the user define compliance:** Derive a complete compliance contract proposal from the prompt system. The
   proposal covers requirements, categories, tests, trial profiles, the judge rubric and the test distribution. Run no
   trial until the user confirms it and chooses the certification scope: the weakest cell only, every cell of each
-  model family's latest version, every cell of every model, or a scope the user describes, after seeing what each
-  choice costs and claims.
+  model family's latest version, or a scope the user describes, after seeing what each choice costs and claims.
 - **G3 — Certify a joint claim:** Report a candidate `certified` only when both claims hold, with at most a 5%
   probability that any certification, deficiency or improvement claim in the campaign is false:
   - **(a)** in every category, under each trial profile of the certification scope, the candidate's future pass rate
@@ -120,7 +119,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Cell | One category under one trial profile. Every certified cell needs its own claim, because averaging profiles could hide a weak one. |
 | Weakest cell | The cell of a category, within the certification scope, of the least capable model by advertised capability at its lowest effort. No trial runs to find it ([§6.6](#66-trial-profiles)). |
 | Development cell | A cell where development samples and edits candidates: the category's weakest cell, plus every cell where a certification attempt adopted a failure ([§6.6](#66-trial-profiles)). |
-| Certification scope | The cells that certification tests and the claim covers. The user chooses it at confirmation: the weakest cell only, every cell of each model family's latest version, every cell of every model, or a scope the user describes ([§6.6](#66-trial-profiles)). |
+| Certification scope | The cells that certification tests and the claim covers. The user chooses it at confirmation: the weakest cell only, every cell of each model family's latest version, or a scope the user describes ([§6.6](#66-trial-profiles)). |
 | Test template | A test definition whose variation dimensions yield distinct concrete instances ([§6.3](#63-generators)). |
 | Held-out part | The instances of each test template that only formal trials and the incumbent's baseline arm draw. No session that shapes a candidate sees them ([§6.3](#63-generators)). |
 | Core-task requirement | The requirement, present in every contract, that each reply correctly and completely does what the turn asked. |
@@ -1208,17 +1207,17 @@ development trials, author rounds and the readiness gate cover those cells only;
 they failed. The baseline and certification cover the certification scope.
 
 - **Weakest cell.** A category with one cell develops in that cell. Otherwise its weakest cell is, among its cells in
-  the certification scope, the lowest effort of the least capable model, because lower effort failed more often in H27
-  and H28. Capability is the harness's advertised capability, not a measurement: no trial runs to find the weakest
-  cell (user ruling, 2026-10-04). CAT ships each harness's capability ranking of model families, taken from the
-  vendor's published model documentation and recording its address and the date it was read. OpenAI's model pages
-  rank Astra ("Our most capable model for the most demanding work") above Sol ("Near-Astra performance for complex work
-  at a lower cost") above Luna ("Our most efficient model for focused, high-volume tasks"); Anthropic's models overview
-  ranks Fable ("For demanding reasoning and long-horizon agentic work") above Opus above Sonnet above Haiku. Models
-  rank by family first and, within a family, an older version below a newer one. The ranking is part of the proposal,
-  so the user can correct it in revision feedback, and CAT derives each scope's weakest cell from it. CAT refuses to
-  confirm while an inventory model's family is missing from the ranking, and the proposal names it so that the user can
-  rank it.
+  the certification scope (the latest versions, when the scope is the weakest cell only), the lowest effort of the least
+  capable model, because lower effort failed more often in H27 and H28. Capability is the harness's advertised
+  capability, not a measurement: no trial runs to find the weakest cell (user ruling, 2026-10-04). CAT ships each
+  harness's capability ranking of model families, taken from the vendor's published model documentation and recording
+  its address and the date it was read. OpenAI's model pages rank Astra ("Our most capable model for the most demanding
+  work") above Sol ("Near-Astra performance for complex work at a lower cost") above Luna ("Our most efficient model for
+  focused, high-volume tasks"); Anthropic's models overview ranks Fable ("For demanding reasoning and long-horizon
+  agentic work") above Opus above Sonnet above Haiku. Models rank by family first and, within a family, an older version
+  below a newer one. The ranking is part of the proposal, so the user can correct it in revision feedback, and CAT
+  derives each scope's weakest cell from it. CAT refuses to confirm while an inventory model's family is missing from
+  the ranking, and the proposal names it so that the user can rank it.
 - **Cells where certification failed.** A formal failure in a cell that is not a development cell shows that a
   candidate ready in the weakest cell can still fail there. That cell becomes a development cell for the rest of the
   lineage, so later commits need the readiness gate there too.
@@ -1226,12 +1225,13 @@ they failed. The baseline and certification cover the certification scope.
 **Certification scope (user rulings, 2026-10-04).** Before confirming, the user chooses which cells certification
 tests. A model family is a model's name without its version (Codex `luna`, `sol`, `astra`; each Claude alias), and its
 latest version is the highest version the inventory lists. The inventory already leaves out Codex's `ultra` effort. The
-agent presents these four choices, each with the proposal's minimum session count, and these tradeoffs:
+agent presents these three choices, each with the proposal's minimum session count, and these tradeoffs (user ruling,
+2026-10-04: no choice certifies every model, older versions included):
 
 - **Weakest cell only.** Formal trials and the baseline run only in each category's weakest cell, the least capable
-  model's lowest effort among every model. This costs the fewest trials. The claim covers only that profile in each
-  category, and the report and the delivery name it and say that no other profile was certified. A stronger model or a
-  higher effort can fail in ways the weakest profile does not (H28: high effort added the motto for a discontinued
+  model's lowest effort among the latest versions. This costs the fewest trials. The claim covers only that profile in
+  each category, and the report and the delivery name it and say that no other profile was certified. A stronger model
+  or a higher effort can fail in ways the weakest profile does not (H28: high effort added the motto for a discontinued
   product), and the premise that readiness in the weakest cell carries over to the other cells (P15) has been shown for
   one prompt file only.
 - **Latest model versions.** Formal trials and the baseline run in every cell of each model family's latest version.
@@ -1239,15 +1239,13 @@ agent presents these four choices, each with the proposal's minimum session coun
   before delivery. It claims nothing about an older version still in the inventory. Formal and baseline trials grow
   with the number of cells, and a failure in any cell ends the attempt, spending its allowance, and makes that cell a
   development cell.
-- **All models.** Formal trials and the baseline run in every cell. The claim covers every profile that can run the
-  category, older versions included, at the highest cost, with the same failure handling.
 - **Other.** The user describes the scope in their own words. The agent maps it to a set of inventory cells and
   passes them to `revise`; CAT refuses a cell outside the inventory, and the next proposal shows the cells, each
   category's weakest cell in them and the minimum session count, for the user to confirm.
 
 A category whose prompt files bind one profile has one cell; it is that category's development cell and its scope under
-every choice. For Claude, whose aliases always name the latest version, the latest-versions and all-models choices
-cover the same cells.
+every choice. Claude's aliases always name the latest version, so for Claude the latest-versions choice covers every
+inventory cell.
 
 **User control.** The proposal shows each category's cells, the capability ranking and the minimum session count of
 each certification scope. In revision feedback, the user may correct or extend the ranking or restrict the profile
@@ -1262,7 +1260,6 @@ all-pass formal trials and 50 baseline trials in each scope cell:
 |---|---|---|---|
 | Weakest cell only | 1 | 93 | 50 |
 | Latest model versions | 15 | 1,395 | 750 |
-| All models | 20 | 1,860 | 1,000 |
 
 A category whose file binds one profile needs 50 baseline, 100 readiness and 93 formal trials under every choice.
 
@@ -1304,7 +1301,7 @@ wants a prompt file or prompt system improved until its compliance is certified.
 
 1. starts or resumes the campaign for the named target;
 2. presents the proposal, warnings and minimum session count, asks the user to resolve each conflict with its
-   resolutions and the recommended one, asks the user to choose the certification scope from its four choices after
+   resolutions and the recommended one, asks the user to choose the certification scope from its three choices after
    explaining their tradeoffs ([§6.6](#66-trial-profiles)), and relays feedback until the user confirms;
 3. calls `run` while the status is `running`, showing the progress summary after each slice;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
@@ -1534,7 +1531,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
 | D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the deriver must state each requirement's trigger. An author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
 | D41 | In Codex, the optimizer supports only models of version 6 or later: the inventory leaves out earlier models, and CAT refuses a proposal whose prompt files bind one (user ruling, 2026-10-04). | The user limited support to these models. Earlier models also differ in their tools: `gpt-5.5` gets a direct `exec_command` tool, while `gpt-6` models run commands inside an `exec` script, so a prompt that names one form need not hold on the other. | No contract certifies a `gpt-5.x` profile. A user whose Codex prompt files bind an earlier model changes that binding before CAT accepts the proposal. |
-| D42 | Let the user choose, at confirmation, the certification scope: the weakest cell only, every cell of each model family's latest version, every cell of every model, or a scope the user describes, with no default (user rulings, 2026-10-04). | Always certifying every cell multiplies formal and baseline trials by the number of cells. Always certifying the weakest cell only would claim nothing about the profiles the user may actually run. Older model versions may matter to some users and not others. Which matters more depends on how the prompt is used. | The proposal must compute and explain every choice, and confirmation waits for the user's answer. A described scope is mapped to inventory cells and shown for confirmation. A weakest-only claim names one profile per category. |
+| D42 | Let the user choose, at confirmation, the certification scope: the weakest cell only, every cell of each model family's latest version, or a scope the user describes, with no default (user rulings, 2026-10-04). | Always certifying every cell multiplies formal and baseline trials by the number of cells. Always certifying the weakest cell only would claim nothing about the profiles the user may actually run. Certifying older model versions was dropped as a choice; a user who needs one describes it as their own scope. Which matters more depends on how the prompt is used. | The proposal must compute and explain every choice, and confirmation waits for the user's answer. A described scope is mapped to inventory cells and shown for confirmation. A weakest-only claim names one profile per category. |
 | D43 | Require every test to be a template, split its instances into a development part and a held-out part by a salted hash at confirmation, and certify only on held-out instances (user ruling, 2026-10-04). | P15 tuned and certified on the same four fixed tasks, so its certification measured the rule on its own training data. Excluding instances after development has seen them would make the formal distribution depend on which instances development happened to draw, and on outcomes when only failures are excluded. A fixed split depends on neither. | Each test definition needs variation dimensions. The claim covers the held-out half of the distribution, the baseline arm can no longer reuse the incumbent's development trials, and authors never see the evidence of a formal failure. |
 
 ## 14. Acceptance evidence
