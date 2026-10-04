@@ -351,7 +351,7 @@ CAT records the outcome (user ruling, 2026-10-03):
 
 A failure that the triage cannot place, or whose triage fails 3 times, is blocking. The impact steers development only:
 both kinds are failures in every count, estimate and claim, and the decision procedure ([§6.4](#64-judge)) does not
-change.
+change. A blocking failure in a certification attempt does not end the attempt (user ruling, 2026-10-03).
 
 **Edit-or-continue.** An adopted blocking failure **fails fast** (user ruling, 2026-10-03). CAT discards the working
 candidate's development trials that have no adopted outcome, interrupting those that run, and edits at once without
