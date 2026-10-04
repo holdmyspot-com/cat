@@ -165,10 +165,11 @@ judge ([§6.4](#64-judge)), under the confirmed test distribution of a category 
 situations.
 
 The statistical unit is the cell: one category under one trial profile ([§6.6](#66-trial-profiles)). Throughout §2 and
-§3, "category" `k` means one cell, and `K` counts the cells of the certification scope. A category whose prompt files
-bind one profile has one cell. Every other category has one cell per profile in the confirmed profile set. A
-category's formal and baseline trial counts are multiplied by the number of its cells in the certification scope; when
-the user certifies only the weakest cell, `K` is the number of categories.
+§3, "category" `k` means one cell, a **contract category** means a category of the contract with all of its cells, and
+`K` counts the cells of the certification scope. A category whose prompt files bind one profile has one cell. Every
+other category has one cell per profile in the confirmed profile set. A category's formal and baseline trial counts are
+multiplied by the number of its cells in the certification scope; when the user certifies only the weakest cell, `K` is
+the number of categories.
 
 - **Certification claim (a):** For every category `k` in the confirmed contract, the candidate's pass probability
   `pC(k)` exceeds 0.95.
@@ -696,13 +697,14 @@ priority first:
    assignments ahead of the least-sampled one;
 3. development: the lowest exploratory Wilson 95% lower bound for the current candidate. An empty category counts as 0.
    Ties are broken by fewer outcomes, then the contract's risk rank, then category order;
-4. formal: one trial per category first, then the category furthest from certifying: the lowest current lower bound
-   at `α_i`. Ties are broken by fewer outcomes, then category order. Within a category, formal trials go only to its
-   **open cells** (user ruling, 2026-10-04): its development cells first, and then each other scope cell once every
-   development cell and every scope cell below it are certified. A cell is below another when its model ranks no
-   higher by the capability ranking and its effort is no higher, and the two differ. Among open cells, the one with the
-   fewest formal outcomes goes first. A failure is likeliest in the weakest cells and ends the attempt there, so a
-   stronger cell spends no trial on a candidate that a weaker cell has not yet certified;
+4. formal: trials go only to **open cells** (user ruling, 2026-10-04). Of the cells of one contract category, its
+   development cells are open, and each other scope cell opens once every development cell and every scope cell below
+   it in that contract category are certified. A cell is below another when its model ranks no higher by the
+   capability ranking and its effort is no higher, and the two differ. Each contract category offers its open cell
+   with the fewest formal outcomes. Among the offered cells: one trial per cell first, then the cell furthest from
+   certifying, the lowest current lower bound at `α_i`; ties are broken by fewer outcomes, then category order. A
+   failure is likeliest in the weakest cells and ends the attempt there, so a stronger cell spends no trial on a
+   candidate that a weaker cell has not yet certified;
 5. baseline-arm trials for the incumbent. The concurrency window below limits only the active candidate's trials. A
    failure never wastes a baseline-arm trial, so these trials may use any capacity left under the campaign ceiling.
 
