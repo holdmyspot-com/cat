@@ -1016,14 +1016,15 @@ does not decide which requirement prevails; it offers resolutions, such as exemp
 dropping one, and recommends one. The agent asks the user to choose a resolution for each conflict, or to describe
 another, and passes the answers to `revise`.
 
-CAT, not the deriver, does five things:
+CAT, not the deriver, does six things:
 
 - adds the core-task requirement to every test;
 - computes the profile sets;
 - runs each deterministic check against its controls;
 - refuses a proposal that omits a recorded regression scenario of a source in the prompt system
   ([§8](#8-skill-and-command-interface)). The deriver turns each one into a test definition that cites the scenario;
-- refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent.
+- refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent;
+- refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles)).
 
 A check that accepts its known-bad control or rejects its known-good control is discarded. Its requirement is then
 judged semantically, and the proposal says why.
@@ -1114,8 +1115,10 @@ that can actually run its prompt files.
 **Inventory.** The harness's profile inventory is every model it offers the user, each with every reasoning effort that
 model accepts:
 
-- **Codex:** each model that `codex debug models` lists with visibility `list`, with its supported reasoning levels
-  except `ultra`. `ultra` is `max` reasoning plus automatic task delegation, which changes what the agent does rather
+- **Codex:** each model of version 6 or later that `codex debug models` lists with visibility `list`, with its
+  supported reasoning levels except `ultra`. The version is the number after `gpt-` in the model's slug: `gpt-6-luna`
+  and `gpt-6.1-sol` qualify, while `gpt-5.5` and `gpt-5.6-sol` do not, and a slug without that form is left out
+  (D41). `ultra` is `max` reasoning plus automatic task delegation, which changes what the agent does rather
   than how deeply it reasons, so CAT never tests it, and a model's highest effort is the one below it (user ruling,
   2026-10-03).
 - **Claude:** the CLI has no model catalog. CAT ships the inventory as a plugin resource: the documented model aliases
@@ -1131,7 +1134,8 @@ change a running campaign.
 
 `CLAUDE.md`, `AGENTS.md`, rules and Codex skills cannot bind a profile. A file that binds only its model or only its
 effort fixes that dimension and leaves the other open. A binding to a value outside the inventory is used as written,
-and the proposal says so.
+and the proposal says so, except that CAT refuses a proposal in which a Codex prompt file binds a model below version 6,
+naming the file and the model (D41).
 
 **Profile set.** CAT computes each category's profile set from the requirements its tests check, excluding the
 core-task requirement, which comes from CAT and not from a file:
@@ -1440,6 +1444,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D38 | Treat a measurement condition that neither the working candidate nor the incumbent records as unobserved, not missing (status finding, 2026-10-02). | No runner observes host tools or external sources, and campaigns stored before the judge, model and reasoning were recorded lack them on both sides, so every comparison was `INDETERMINATE` although both sides ran under the same driver. | Two unrecorded values are not proven equal; the status names unobserved host tools and external sources as a limitation. |
 | D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
 | D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the deriver must state each requirement's trigger. An author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
+| D41 | In Codex, the optimizer supports only models of version 6 or later: the inventory leaves out earlier models, and CAT refuses a proposal whose prompt files bind one (user ruling, 2026-10-04). | The user limited support to these models. Earlier models also differ in their tools: `gpt-5.5` gets a direct `exec_command` tool, while `gpt-6` models run commands inside an `exec` script, so a prompt that names one form need not hold on the other. | No contract certifies a `gpt-5.x` profile. A user whose Codex prompt files bind an earlier model changes that binding before CAT accepts the proposal. |
 
 ## 14. Acceptance evidence
 
