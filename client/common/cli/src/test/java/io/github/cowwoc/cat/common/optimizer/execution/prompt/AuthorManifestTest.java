@@ -262,7 +262,7 @@ public final class AuthorManifestTest
 	public void separatesFailureOccurrences()
 	{
 		// Requirement: R-D10
-		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of());
+		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", null, List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),

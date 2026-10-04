@@ -38,7 +38,7 @@ public final class AttemptSelectionTest
 	public void winnerWaitsForStreakExtensions()
 	{
 		TrialInstance instance = Builder.targeted("safety", "logs");
-		Failure failure = new Failure(instance, "representative failure", List.of(
+		Failure failure = new Failure(instance, "representative failure", null, List.of(
 			new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
 		Campaign campaign = new Builder().confirmed().working(1).failure(failure).
@@ -268,7 +268,7 @@ public final class AttemptSelectionTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), failure, Verdict.FAIL);
 		campaign = new Builder().confirmed().working(1).development("safety", 0, 1).
-			failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(
+			failure(new Failure(Builder.targeted("safety", "cache"), "failure", null, List.of(
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(Builder.targeted("safety", "logs"),
 				Verdict.FAIL).round(campaign.development().round()).build();

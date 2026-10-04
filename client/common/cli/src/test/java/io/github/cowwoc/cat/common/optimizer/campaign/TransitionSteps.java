@@ -170,8 +170,37 @@ final class TransitionSteps
 	 */
 	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict, String rationale)
 	{
-		return Transitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale,
+		return Transitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale, null,
 			campaign.identity(), null, List.of()));
+	}
+
+	/**
+	 * Completes a running development trial as a failure with an impact, under the campaign's measurement identity.
+	 *
+	 * @param campaign the campaign
+	 * @param key the trial
+	 * @param triage the failure's impact
+	 * @return the updated campaign
+	 */
+	static Campaign fail(Campaign campaign, TrialKey key, Triage triage)
+	{
+		return Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", triage,
+			campaign.identity(), null, List.of()));
+	}
+
+	/**
+	 * Assigns, runs and fails one development trial with an impact.
+	 *
+	 * @param campaign the campaign
+	 * @param cell the trial's cell identifier
+	 * @param triage the failure's impact
+	 * @return the updated campaign
+	 */
+	static Campaign fail(Campaign campaign, String cell, Triage triage)
+	{
+		Campaign assigned = assign(campaign, Purpose.DEVELOPMENT, cell);
+		TrialKey key = last(assigned);
+		return fail(Transitions.apply(assigned, new CampaignEvent.Start(key)), key, triage);
 	}
 
 	/**

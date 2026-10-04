@@ -185,7 +185,7 @@ public final class EditOrContinueTest
 
 		requireThat(campaign.development().isPaused(), "isPaused").isFalse();
 		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
-			"The reply deleted the logs directory without asking.", reruns, List.of())));
+			"The reply deleted the logs directory without asking.", null, reruns, List.of())));
 	}
 
 	/**
@@ -205,9 +205,112 @@ public final class EditOrContinueTest
 
 		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
 		requireThat(campaign.development().failures(), "failures").isEqualTo(List.of(new Failure(failed,
-			"The reply deleted the logs directory without asking.", List.of(
+			"The reply deleted the logs directory without asking.", null, List.of(
 				new DiagnosticRerun(Verdict.PASS, "The rerun asked before deleting."),
 				new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())));
+	}
+
+	/**
+	 * Verifies that an adopted blocking failure discards the working candidate's unadopted development trials, whether
+	 * assigned, running or judged, and starts a development round without diagnostic reruns.
+	 */
+	@Test
+	public void blockingFailureEditsAtOnce()
+	{
+		// Requirement: R-D16
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
+			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
+		TrialKey running = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(running));
+		// The second formatting trial is judged but waits for the running trial that was assigned before it
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
+		Triage blocking = new Triage(Impact.BLOCKING, "The reply deleted the logs and stopped.");
+		campaign = TransitionSteps.fail(campaign, "safety", blocking);
+
+		requireThat(campaign.trials(), "trials").isEmpty();
+		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
+		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
+		requireThat(campaign.development().failures().getFirst().triage(), "triage").isEqualTo(blocking);
+		requireThat(campaign.development().count("safety"), "safety").
+			isEqualTo(Builder.counts(60, 0).add(Verdict.FAIL));
+		requireThat(campaign.development().count("formatting"), "formatting").isEqualTo(Builder.counts(60, 0));
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
+	}
+
+	/**
+	 * Verifies that a self-recovering failure pauses sampling and reruns the failing instance, and keeps its impact.
+	 */
+	@Test
+	public void selfRecoveringFailureReruns()
+	{
+		// Requirement: R-D16
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
+			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
+		TrialKey running = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(running));
+		Triage recovered = new Triage(Impact.SELF_RECOVERING, "The reply re-read a file it had already read.");
+		campaign = TransitionSteps.fail(campaign, "safety", recovered);
+
+		Failure failure = campaign.development().failures().getFirst();
+		requireThat(failure.triage(), "triage").isEqualTo(recovered);
+		requireThat(campaign.development().diagnosis(), "diagnosis").
+			isEqualTo(new Diagnosis(List.of(failure.instance()), 0, null, false));
+		requireThat(campaign.development().round(), "round").isNull();
+		requireThat(campaign.trials().stream().map(LogicalTrial::key).toList(), "trials").
+			isEqualTo(List.of(running));
+	}
+
+	/**
+	 * Verifies that a blocking failure adopted while a self-recovering failure's rerun runs ends the diagnosis,
+	 * discards the rerun, and starts a round over every failing cell.
+	 */
+	@Test
+	public void blockingFailureEndsDiagnosis()
+	{
+		// Requirement: R-D16
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
+			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
+		TrialKey inFlight = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
+		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.SELF_RECOVERING,
+			"The reply recovered."));
+		TrialInstance failed = campaign.development().failures().getFirst().instance();
+		campaign = assignRerun(campaign, failed);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
+		campaign = TransitionSteps.fail(campaign, inFlight, new Triage(Impact.BLOCKING, "The reply stopped."));
+
+		requireThat(campaign.trials(), "trials").isEmpty();
+		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
+		requireThat(campaign.development().round().attempts().keySet(), "round").
+			containsExactly(List.of("formatting", "safety"));
+		requireThat(campaign.development().failures().size(), "failures").isEqualTo(2);
+	}
+
+	/**
+	 * Verifies that a blocking failure adopted while a round is in progress discards the unadopted development trials
+	 * and keeps the round.
+	 */
+	@Test
+	public void blockingFailureKeepsRound()
+	{
+		// Requirement: R-D16
+		Round round = new Round(Map.of("formatting", 0));
+		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
+			development("formatting", 59, 1).round(round).slowStart(new SlowStart(4, 0)).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey blocked = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(blocked));
+		campaign = TransitionSteps.fail(campaign, blocked, new Triage(Impact.BLOCKING, "The reply stopped."));
+
+		requireThat(campaign.trials(), "trials").isEmpty();
+		requireThat(campaign.development().round(), "round").isEqualTo(round);
 	}
 
 	/**

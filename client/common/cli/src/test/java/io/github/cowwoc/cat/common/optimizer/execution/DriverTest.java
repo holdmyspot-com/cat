@@ -22,6 +22,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
@@ -257,10 +258,10 @@ public final class DriverTest
 			store.replaceSnapshot(harness.campaign());
 			DriverContext original = harness.context();
 			DriverContext context = new DriverContext(store, original.sessions(), original.workspace(),
-				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.author(),
-				original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
-				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
-				original.random(), original.settings());
+				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
+				original.author(), original.deliverer(), original.calibrator(), original.terminator(),
+				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
+				original.lockFile(), original.random(), original.settings());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
 			harness.trials(_ -> withUsage(harness.failed(), SessionRole.TRIAL, expected));
 			AtomicInteger judgments = new AtomicInteger();
@@ -415,6 +416,139 @@ public final class DriverTest
 					contains("Add the missing guidance where the failing sessions make the decision,");
 				requireThat(harness.campaign().development().counts().values().stream().
 					mapToLong(CellCounts::passes).sum(), "settledDevelopmentPasses").isEqualTo(21);
+			}
+		}
+	}
+
+	/**
+	 * A blocking development failure discards the working candidate's other development trial, interrupting its
+	 * session without recording a failure, and starts the round's authors at once, without diagnostic reruns and
+	 * without waiting for the discarded trial.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void blockingFailureFailsFast() throws IOException
+	{
+		// Requirement: R-D16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("fail-fast")),
+				new Builder().confirmed().working(1).readyBaseline().ceiling(2).
+					development("safety", 10, 0).development("formatting", 10, 0).
+					slowStart(new SlowStart(2, 0)).build());
+			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<FakeSession> trials = harness.runningTrials();
+				requireThat(trials.size(), "developmentTrials").isEqualTo(2);
+				FakeSession held = trials.get(1);
+				trials.getFirst().end(harness.failed());
+				harness.settle(driver);
+
+				requireThat(held.isInterruptRequested(), "heldInterrupted").isTrue();
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.trials(), "trials").isEmpty();
+				Failure failure = campaign.development().failures().getFirst();
+				requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.BLOCKING);
+				requireThat(failure.reruns(), "reruns").isEmpty();
+				requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
+				requireThat(campaign.development().round().weak(), "weakRound").isTrue();
+				requireThat(harness.author().briefs(), "authors").isNotEmpty();
+				requireThat(harness.author().briefs().getFirst().developmentFailures(), "briefFailures").
+					isEqualTo(List.of(failure));
+				long trialSessions = harness.sessions().sessions().stream().
+					filter(session -> session.request().role() == SessionRole.TRIAL).count();
+				requireThat(trialSessions, "trialSessions").isEqualTo(2L);
+			}
+		}
+	}
+
+	/**
+	 * A triage whose output never matches its schema reruns with the same evidence, and its third invalid output
+	 * records the failure as blocking.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void invalidTriageCountsAsBlocking() throws IOException
+	{
+		// Requirement: R-D16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("invalid-triage")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			AtomicBoolean failedOnce = new AtomicBoolean();
+			harness.trials(request ->
+			{
+				if (DriverHarness.cell(request).equals("safety") && failedOnce.compareAndSet(false, true))
+					return harness.failed();
+				return harness.passed();
+			});
+			harness.triages(_ -> harness.triaged("blocking"));
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> !state.development().failures().isEmpty());
+				List<SessionRequest> triages = triageRequests(harness);
+				requireThat(triages.size(), "triages").isEqualTo(Driver.TRIAGE_ATTEMPTS);
+				for (SessionRequest triage : triages)
+					requireThat(triage, "triage").isEqualTo(triages.getFirst());
+				Failure failure = campaign.development().failures().getFirst();
+				requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.BLOCKING);
+				requireThat(failure.triage().rationale(), "rationale").
+					startsWith("The triage failed " + Driver.TRIAGE_ATTEMPTS + " times");
+				requireThat(failure.rationale(), "failureRationale").
+					isEqualTo("The trial did not meet the requirements.");
+				requireThat(campaign.development().count("safety").failures(), "failures").isEqualTo(1);
+				requireThat(campaign.development().round(), "round").isNotNull();
+			}
+		}
+	}
+
+	/**
+	 * A rate-limit rejection of a triage session holds admissions until the provider's reset and then reruns the
+	 * triage with the same evidence, without counting the rejection as a failure of the triage.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void triageRateLimit() throws IOException
+	{
+		// Requirement: R-D16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("triage-limit")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			harness.trials(_ -> harness.failed());
+			AtomicInteger rejections = new AtomicInteger(Driver.TRIAGE_ATTEMPTS);
+			AtomicReference<Instant> resetsAt = new AtomicReference<>();
+			harness.triages(_ ->
+			{
+				if (rejections.getAndDecrement() > 0)
+					return new SessionResult.RateLimited(resetsAt.get(), List.of());
+				return harness.triaged(Impact.SELF_RECOVERING);
+			});
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				requireThat(harness.endSessions(), "trials").isEqualTo(1);
+				for (int rejection = 1; rejection <= Driver.TRIAGE_ATTEMPTS; ++rejection)
+				{
+					Instant reset = harness.clock().instant().plus(Duration.ofMinutes(2));
+					resetsAt.set(reset);
+					harness.settle(driver);
+					requireThat(triageRequests(harness).size(), "triages").isEqualTo(rejection);
+					requireThat(harness.campaign().throttle().holdUntil(), "holdUntil").isEqualTo(reset);
+					harness.clock().set(reset);
+				}
+				harness.settle(driver);
+				List<SessionRequest> triages = triageRequests(harness);
+				requireThat(triages.size(), "triages").isEqualTo(Driver.TRIAGE_ATTEMPTS + 1);
+				for (SessionRequest triage : triages)
+					requireThat(triage, "triage").isEqualTo(triages.getFirst());
+				Failure failure = harness.campaign().development().failures().getFirst();
+				requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.SELF_RECOVERING);
 			}
 		}
 	}
@@ -705,7 +839,7 @@ public final class DriverTest
 	 */
 	private static DriverHarness workingReferenceHarness(Path directory, Verdict referenceVerdict) throws IOException
 	{
-		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure",
+		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", null,
 			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of());
 		DriverHarness harness = new DriverHarness(directory,
 			new Builder().confirmed().working(1).readyBaseline().ceiling(16).slowStart(new SlowStart(16, 0)).
@@ -830,7 +964,7 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(
+			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", null, List.of(
 				new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("extended-resume")),
@@ -973,7 +1107,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), List.of())).
+					failure(new Failure(Builder.targeted("safety", "cache"), "failure", null, List.of(), List.of())).
 					build());
 			harness.authors(request ->
 			{
@@ -1285,6 +1419,9 @@ public final class DriverTest
 				requireThat(failure.rationale(), "rationale").isEqualTo(rationale);
 				requireThat(failure.reruns(), "reruns").
 					isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, rationale)));
+				// Only the development failure is triaged; its diagnostic rerun is not
+				requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.SELF_RECOVERING);
+				requireThat(triageRequests(harness).size(), "triages").isEqualTo(1);
 				// The author session's project source is the first authoring copy that the workspace prepared
 				SessionRequest author = harness.sessions().sessions().stream().map(FakeSession::request).
 					filter(request -> request.role() == SessionRole.AUTHOR).findFirst().orElseThrow();
@@ -1376,6 +1513,7 @@ public final class DriverTest
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 				requireThat(campaign.runningAttempt().isEmpty(), "running").isTrue();
+				requireThat(triageRequests(harness), "triages").isEmpty();
 			}
 		}
 	}
@@ -2290,6 +2428,9 @@ public final class DriverTest
 			requireThat(failure.rationale(), "rationale").isEqualTo(record);
 			requireThat(failure.responses(), "responses").isEqualTo(List.of(List.of(BROKEN, "red, green, blue")));
 			requireThat(failure.reruns(), "reruns").isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, record)));
+			requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.SELF_RECOVERING);
+			requireThat(triageRequests(harness).getFirst().turns().getFirst(), "triageTurn").contains(record).
+				contains(BROKEN);
 			for (FakeSession session : harness.sessions().sessions())
 			{
 				SessionRequest request = session.request();
@@ -2653,11 +2794,11 @@ public final class DriverTest
 				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
-					isEqualTo(List.of(new Failure(developmentFailure, "", List.of(), List.of())));
+					isEqualTo(List.of(new Failure(developmentFailure, "", null, List.of(), List.of())));
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
-					isEqualTo(List.of(new Failure(endedFailure, "", List.of(), List.of())));
+					isEqualTo(List.of(new Failure(endedFailure, "", null, List.of(), List.of())));
 			}
 		}
 	}
@@ -2737,9 +2878,10 @@ public final class DriverTest
 			DriverContext original = harness.context();
 			DriverContext failing = new DriverContext(original.store(),
 				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
-				original.clock(), original.overlays(), original.judge(), original.author(), original.deliverer(),
-				original.calibrator(), original.terminator(), original.leftoverRuns(), original.authority(),
-				original.promptSources(), original.environment(), original.lockFile(), original.random(), original.settings());
+				original.clock(), original.overlays(), original.judge(), original.triage(), original.author(),
+				original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
+				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
+				original.random(), original.settings());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				driver.step();
@@ -3157,6 +3299,18 @@ public final class DriverTest
 				requireThat(developmentOutcomes(harness.campaign()), "outcomes").isEqualTo(101);
 			}
 		}
+	}
+
+	/**
+	 * Returns the requests of the triage sessions that started.
+	 *
+	 * @param harness the harness
+	 * @return the requests, in start order
+	 */
+	private static List<SessionRequest> triageRequests(DriverHarness harness)
+	{
+		return harness.sessions().sessions().stream().map(FakeSession::request).
+			filter(request -> request.role() == SessionRole.TRIAGE).toList();
 	}
 
 	/**

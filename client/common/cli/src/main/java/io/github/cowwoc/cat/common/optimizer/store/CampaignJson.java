@@ -42,6 +42,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
+import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -61,6 +62,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -112,8 +114,9 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Formats 9 to 11 are readable: format 9 records input counts without full session usage, and
- * formats 9 and 10 hold no retained promotion state. Unsupported format versions are refused.
+ * round-trip exactly. Formats 9 to 12 are readable: format 9 records input counts without full session usage,
+ * formats 9 and 10 hold no retained promotion state, and formats 9 to 11 record no failure impacts. Unsupported format
+ * versions are refused.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -125,11 +128,19 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 11;
+	private static final int FORMAT_VERSION = 12;
 	/**
 	 * The readable format whose records contain input counts without full session usage.
 	 */
 	private static final int INPUT_ONLY_FORMAT_VERSION = 9;
+	/**
+	 * The first format that records retained promotion state and instance outcomes.
+	 */
+	private static final int RETAINED_FORMAT_VERSION = 11;
+	/**
+	 * The first format that records the impact of development failures.
+	 */
+	private static final int TRIAGE_FORMAT_VERSION = 12;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -241,6 +252,7 @@ final class CampaignJson
 	Campaign readCampaign(JsonNode root)
 	{
 		requireVersion(root);
+		int version = integer(root, VERSION);
 		List<Lineage> lineages = new ArrayList<>();
 		for (JsonNode node : elements(root, "lineages"))
 			lineages.add(readLineage(node));
@@ -253,10 +265,10 @@ final class CampaignJson
 		}
 		List<CertificationAttempt> attempts = new ArrayList<>();
 		for (JsonNode node : elements(root, "attempts"))
-			attempts.add(readAttempt(node));
+			attempts.add(readAttempt(node, version));
 		List<LogicalTrial> trials = new ArrayList<>();
 		for (JsonNode node : elements(root, "trials"))
-			trials.add(readTrial(node));
+			trials.add(readTrial(node, version));
 		Map<SequenceGroup, Long> sequences = new HashMap<>();
 		for (JsonNode node : elements(root, "sequences"))
 		{
@@ -296,13 +308,13 @@ final class CampaignJson
 		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
-			readDevelopment(field(root, "development"), integer(root, VERSION) == FORMAT_VERSION),
+			readDevelopment(field(root, "development"), version),
 			failedCells, baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
 			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
-			delivery, readOptimization(field(root, "optimization"), integer(root, VERSION)));
+			delivery, readOptimization(field(root, "optimization"), version));
 	}
 
 	/**
@@ -524,6 +536,7 @@ final class CampaignJson
 			ObjectNode node = root.putObject("outcome");
 			node.put("verdict", outcome.verdict().name());
 			node.put("rationale", outcome.rationale());
+			node.set("triage", writeTriage(outcome.triage()));
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
 			node.set("responses", writeResponses(outcome.responses()));
@@ -543,18 +556,20 @@ final class CampaignJson
 	TrialRecord readRecord(JsonNode root)
 	{
 		requireVersion(root);
+		int version = integer(root, VERSION);
 		TrialKey key = readKey(field(root, "key"));
 		CampaignEvent.Complete outcome = null;
 		JsonNode outcomeNode = nullable(root, "outcome");
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readIdentity(field(outcomeNode, "observed")),
-			nullableLong(outcomeNode, "input_tokens"), readResponses(outcomeNode));
+				text(outcomeNode, "rationale"), readTriage(outcomeNode, version),
+				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
+				readResponses(outcomeNode));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome,
-			readUsage(root, TOKEN_USAGE, integer(root, VERSION)));
+			readUsage(root, TOKEN_USAGE, version));
 	}
 
 	/**
@@ -1021,10 +1036,10 @@ final class CampaignJson
 	 * Converts a document to the development state.
 	 *
 	 * @param node the document
-	 * @param retained whether the document records promotion state and instance outcomes
+	 * @param version the enclosing snapshot's format version
 	 * @return the state
 	 */
-	private static Development readDevelopment(JsonNode node, boolean retained)
+	private static Development readDevelopment(JsonNode node, int version)
 	{
 		Diagnosis diagnosis = null;
 		JsonNode diagnosisNode = nullable(node, "diagnosis");
@@ -1044,11 +1059,11 @@ final class CampaignJson
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
-		List<Failure> failures = readFailures(node, "failures");
+		List<Failure> failures = readFailures(node, "failures", version);
 		List<InstanceOutcomes> outcomes = InstanceOutcomes.fromFailures(failures);
 		Predecessor predecessor = null;
 		List<Revert> reverts = new ArrayList<>();
-		if (retained)
+		if (version >= RETAINED_FORMAT_VERSION)
 		{
 			outcomes = new ArrayList<>();
 			for (JsonNode outcome : elements(node, "instance_outcomes"))
@@ -1065,14 +1080,14 @@ final class CampaignJson
 					regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
 						nullableConstant(regression, "working_verdict", Verdict.class)));
 				}
-				predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development"), true),
+				predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development"), version),
 					readRound(field(predecessorNode, "round")), text(predecessorNode, "cell"), regressions);
 			}
 			for (JsonNode revert : elements(node, "reverts"))
 			{
 				reverts.add(new Revert(readCandidate(field(revert, "withdrawn")), text(revert, "cell"),
 					floating(revert, "upper_bound"), floating(revert, "predecessor_rate"),
-					readDevelopment(field(revert, "development"), true)));
+					readDevelopment(field(revert, "development"), version)));
 			}
 		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
@@ -1143,9 +1158,10 @@ final class CampaignJson
 	 * Converts a document to a certification attempt.
 	 *
 	 * @param node the document
+	 * @param version the enclosing snapshot's format version
 	 * @return the attempt
 	 */
-	private static CertificationAttempt readAttempt(JsonNode node)
+	private static CertificationAttempt readAttempt(JsonNode node, int version)
 	{
 		JsonNode procedureNode = field(node, "procedure");
 		List<String> cellIds = new ArrayList<>();
@@ -1157,7 +1173,7 @@ final class CampaignJson
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
-			readCounts(field(node, "counts")), readFailures(node, "failures"),
+			readCounts(field(node, "counts")), readFailures(node, "failures", version),
 			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class));
 	}
 
@@ -1224,6 +1240,7 @@ final class CampaignJson
 		node.put("state", trial.state().name());
 		putConstant(node, "verdict", trial.verdict());
 		node.put("rationale", trial.rationale());
+		node.set("triage", writeTriage(trial.triage()));
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
 		node.put("observations", trial.observations());
@@ -1235,16 +1252,51 @@ final class CampaignJson
 	 * Converts a document to a logical trial.
 	 *
 	 * @param node the document
+	 * @param version the enclosing snapshot's format version
 	 * @return the trial
 	 */
-	private static LogicalTrial readTrial(JsonNode node)
+	private static LogicalTrial readTrial(JsonNode node, int version)
 	{
 		Verdict verdict = nullableConstant(node, "verdict", Verdict.class);
 		String rationale = nullableText(node, "rationale");
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), verdict, rationale, integer(node, "infrastructure_failures"),
-			readInfrastructureAttempts(node), integer(node, "observations"), readResponses(node));
+			constant(node, "state", TrialState.class), verdict, rationale, readTriage(node, version),
+			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
+			readResponses(node));
+	}
+
+	/**
+	 * Converts a failure's impact to a document.
+	 *
+	 * @param triage the impact, or {@code null} if none was decided
+	 * @return the document, or a JSON null if {@code triage} is null
+	 */
+	private JsonNode writeTriage(Triage triage)
+	{
+		if (triage == null)
+			return json.nullNode();
+		ObjectNode node = json.createObjectNode();
+		node.put("impact", triage.impact().name());
+		node.put("rationale", triage.rationale());
+		return node;
+	}
+
+	/**
+	 * Reads a failure's impact.
+	 *
+	 * @param node the object that holds the {@code triage} field
+	 * @param version the enclosing document's format version
+	 * @return the impact, or {@code null} if none was decided or the format predates impacts
+	 */
+	private static Triage readTriage(JsonNode node, int version)
+	{
+		if (version < TRIAGE_FORMAT_VERSION)
+			return null;
+		JsonNode triage = nullable(node, "triage");
+		if (triage == null)
+			return null;
+		return new Triage(constant(triage, "impact", Impact.class), text(triage, "rationale"));
 	}
 
 	/**
@@ -1641,8 +1693,8 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts failures to a document. Each failure is its instance's document with the judge's rationale and the
-	 * diagnostic reruns added.
+	 * Converts failures to a document. Each failure is its instance's document with the judge's rationale, the
+	 * failure's impact and the diagnostic reruns added.
 	 *
 	 * @param failures the failures
 	 * @return the document
@@ -1654,6 +1706,7 @@ final class CampaignJson
 		{
 			ObjectNode element = writeInstance(failure.instance());
 			element.put("rationale", failure.rationale());
+			element.set("triage", writeTriage(failure.triage()));
 			element.set("responses", writeResponses(failure.responses()));
 			ArrayNode reruns = element.putArray("reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
@@ -1672,9 +1725,10 @@ final class CampaignJson
 	 *
 	 * @param node the object that holds the field
 	 * @param name the field's name
+	 * @param version the enclosing snapshot's format version
 	 * @return the failures
 	 */
-	private static List<Failure> readFailures(JsonNode node, String name)
+	private static List<Failure> readFailures(JsonNode node, String name, int version)
 	{
 		List<Failure> failures = new ArrayList<>();
 		for (JsonNode element : elements(node, name))
@@ -1682,7 +1736,8 @@ final class CampaignJson
 			List<DiagnosticRerun> reruns = new ArrayList<>();
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
-			failures.add(new Failure(readInstance(element), text(element, "rationale"), reruns, readResponses(element)));
+			failures.add(new Failure(readInstance(element), text(element, "rationale"), readTriage(element, version),
+				reruns, readResponses(element)));
 		}
 		return failures;
 	}

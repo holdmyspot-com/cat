@@ -130,12 +130,13 @@ public sealed interface CampaignEvent
 	 * @param verdict the trial's label
 	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 	 *   deterministic checks
+	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 */
-	record Complete(TrialKey key, Verdict verdict, String rationale, MeasurementIdentity observed, Long inputTokens,
-		List<List<String>> responses)
+	record Complete(TrialKey key, Verdict verdict, String rationale, Triage triage, MeasurementIdentity observed,
+		Long inputTokens, List<List<String>> responses)
 		implements CampaignEvent
 	{
 		/**
@@ -145,12 +146,14 @@ public sealed interface CampaignEvent
 		 * @param verdict the trial's label
 		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 		 *   deterministic checks
+		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
-		 * @throws NullPointerException if an argument other than {@code inputTokens}, a turn's messages or an
-		 *   assistant message is null
-		 * @throws IllegalArgumentException if {@code inputTokens} is negative
+		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale}, {@code observed},
+		 *   {@code responses}, a turn's messages or an assistant message are null
+		 * @throws IllegalArgumentException if {@code inputTokens} is negative, or a {@code triage} exists for a trial
+		 *   that is not a failed {@link Purpose#DEVELOPMENT development} trial
 		 */
 		public Complete
 		{
@@ -161,6 +164,11 @@ public sealed interface CampaignEvent
 			requireThat(responses, "responses").isNotNull();
 			if (inputTokens != null)
 				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
+			if (triage != null)
+			{
+				requireThat(verdict, "verdict").isEqualTo(Verdict.FAIL);
+				requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
+			}
 
 			responses = responses.stream().map(List::copyOf).toList();
 		}

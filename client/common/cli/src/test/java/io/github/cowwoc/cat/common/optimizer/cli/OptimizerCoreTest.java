@@ -502,6 +502,9 @@ public final class OptimizerCoreTest
 					case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(
 						"{\"verdict\": \"pass\", \"rationale\": \"The answer follows the rubric.\"}")), effects,
 						"model", null, null, List.of(), "CLAUDE.md", List.of());
+					case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
+						"{\"impact\": \"blocking\", \"rationale\": \"The answer is incomplete.\"}")), effects,
+						"model", null, null, List.of(), "CLAUDE.md", List.of());
 					case AUTHOR -> new SessionResult.Completed(transcript, List.of(List.of("{\"needed_edits\": []}")), effects,
 						"model", null, null, List.of(), "CLAUDE.md", List.of());
 				};

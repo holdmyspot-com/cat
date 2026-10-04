@@ -163,7 +163,9 @@ final class TrialAdoption
 
 	/**
 	 * Adopts a development outcome. Development widens to every cell once every active cell meets the readiness
-	 * gate's count conditions ({@link CellTier}).
+	 * gate's count conditions ({@link CellTier}). A {@link Impact#BLOCKING blocking} failure that does not withdraw
+	 * the working candidate fails fast; any other failure is diagnosed by reruns when no round or author attempt is in
+	 * progress.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -185,8 +187,15 @@ final class TrialAdoption
 		{
 			draft.slowStart = draft.slowStart.afterFailure();
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), List.of(), trial.responses()));
+			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.triage(), List.of(),
+				trial.responses()));
 			addRegression(draft, targeted, Verdict.FAIL);
+			if (isBlocking(trial))
+			{
+				if (!revertIfWorse(draft, cell))
+					failFast(draft);
+				return;
+			}
 			if (draft.round == null && draft.author == null)
 			{
 				if (draft.diagnosis == null)
@@ -202,6 +211,43 @@ final class TrialAdoption
 		}
 		if (!revertIfWorse(draft, cell))
 			resolveDiagnosis(draft);
+	}
+
+	/**
+	 * Indicates whether a trial is a failure whose triage found it blocking.
+	 *
+	 * @param trial the trial
+	 * @return {@code true} if the trial's impact is {@link Impact#BLOCKING}
+	 */
+	private static boolean isBlocking(LogicalTrial trial)
+	{
+		return trial.triage() != null && trial.triage().impact() == Impact.BLOCKING;
+	}
+
+	/**
+	 * Edits at once after a blocking failure. Discards the working candidate's development trials that have no adopted
+	 * outcome, whatever their state, and ends any diagnosis together with its rerun, so the decision depends only on
+	 * adopted outcomes. Starts a round over the failing cells unless a round or author attempt is in progress.
+	 *
+	 * @param draft the state after adopting the failure
+	 */
+	private static void failFast(Draft draft)
+	{
+		draft.trials.removeIf(other ->
+		{
+			TrialKey key = other.key();
+			if (key.series() != draft.series)
+				return false;
+			return switch (key.purpose())
+			{
+				case DEVELOPMENT -> key.snapshot().equals(draft.working.snapshot());
+				case DIAGNOSTIC -> true;
+				case BASELINE, FORMAL, PROMOTION -> false;
+			};
+		});
+		draft.diagnosis = null;
+		if (draft.round == null && draft.author == null)
+			draft.round = failingRound(draft.developmentCounts, draft.contract(), null);
 	}
 
 	/**
@@ -707,7 +753,7 @@ final class TrialAdoption
 		if (trial.verdict() == Verdict.FAIL)
 		{
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			failures.add(new Failure(targeted, trial.rationale(), List.of(), trial.responses()));
+			failures.add(new Failure(targeted, trial.rationale(), null, List.of(), trial.responses()));
 			Verdict working = null;
 			if (attempt.candidate().equals(draft.working))
 				working = Verdict.FAIL;

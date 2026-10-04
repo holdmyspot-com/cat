@@ -133,7 +133,7 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		List<List<String>> responses = List.of(List.of("I'll delete it.", "Should I delete it?"));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL,
-			"Unasked deletion notice", campaign.identity(), null, responses));
+			"Unasked deletion notice", null, campaign.identity(), null, responses));
 
 		List<Failure> failures;
 		if (purpose == Purpose.FORMAL)
@@ -416,7 +416,7 @@ public final class TransitionsTest
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		}
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", null, observed,
 			null, List.of()));
 
 		LogicalTrial trial = campaign.trials().getFirst();
@@ -465,7 +465,7 @@ public final class TransitionsTest
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		MeasurementIdentity observed = changed(campaign, condition);
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", null, observed,
 			null, List.of()));
 
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
@@ -501,7 +501,7 @@ public final class TransitionsTest
 		Campaign campaign = checkpointWhileRunning();
 		TrialKey running = campaign.trials().getFirst().key();
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(running, Verdict.PASS, "",
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(running, Verdict.PASS, "", null,
 			observed, null, List.of()));
 		requireThat(campaign.pending(), "first").isEqualTo(new PendingDecision.CheckpointReached("formatting", 200));
 
@@ -528,9 +528,9 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(first));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", observed,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(first, Verdict.PASS, "", null, observed,
 			null, List.of()));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.PASS, "",
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.PASS, "", null,
 			observed, null, List.of()));
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
@@ -617,7 +617,7 @@ public final class TransitionsTest
 		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, RunFailure.RATE_LIMITED,
 			"The provider returned HTTP 429"));
 		new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(), TrialState.ASSIGNED,
-			null, null, 1, attempts, 0, List.of());
+			null, null, null, 1, attempts, 0, List.of());
 	}
 
 	/**

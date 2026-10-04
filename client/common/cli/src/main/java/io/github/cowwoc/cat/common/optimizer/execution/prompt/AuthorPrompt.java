@@ -173,7 +173,8 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * @param failure the instance and rationale to show the author
 	 * @param id the scoped identifier of the supplied failure
 	 * @return the failing instance with the reason for its failure in {@code rationale}: the judge's rationale, or
-	 *   the record of each failed deterministic check
+	 *   the record of each failed deterministic check; and the failure's {@code impact}, or {@code null} if no
+	 *   triage decided one
 	 */
 	private ObjectNode encodeFailure(Failure failure, String id)
 	{
@@ -181,6 +182,10 @@ public final class AuthorPrompt implements AuthorProtocol
 		node.put("id", id);
 		node.put("cell", failure.instance().cellId());
 		node.put("rationale", failure.rationale());
+		if (failure.triage() == null)
+			node.putNull("impact");
+		else
+			node.put("impact", failure.triage().impact().label());
 		ArrayNode responses = node.putArray("responses");
 		for (List<String> turn : failure.responses())
 		{

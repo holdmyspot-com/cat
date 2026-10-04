@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -26,6 +27,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -35,6 +37,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
+import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Triaging;
 import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.Event;
 import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
@@ -69,6 +72,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +97,10 @@ public final class Driver implements AutoCloseable
 	 */
 	static final int JUDGE_ATTEMPTS = 3;
 	/**
+	 * Count a development failure as blocking after this many failed triage attempts.
+	 */
+	static final int TRIAGE_ATTEMPTS = 3;
+	/**
 	 * Stop the slice with an infrastructure failure after this many author sessions fail.
 	 */
 	static final int AUTHOR_FAILURE_LIMIT = 3;
@@ -105,6 +113,7 @@ public final class Driver implements AutoCloseable
 	private final SessionEvents events = new SessionEvents();
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
 	private final List<Judging> judgingQueue = new ArrayList<>();
+	private final List<Triaging> triageQueue = new ArrayList<>();
 	private final SliceEvidence evidence = new SliceEvidence();
 	/**
 	 * The overlay identity of each snapshot that this slice staged.
@@ -266,8 +275,9 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Advances the campaign without blocking. A step consumes the sessions that ended, stops the slice on a host
-	 * interrupt or at the end of the grace period, starts pending judges, and before the slice's deadline commits,
-	 * starts an author session and admits trials.
+	 * interrupt or at the end of the grace period, starts pending triages and judges, and before the slice's deadline
+	 * commits, starts an author session and admits trials. Work whose logical trial the campaign discarded ends
+	 * without an outcome.
 	 *
 	 * @return what follows
 	 * @throws IllegalStateException if the driver is closed
@@ -281,6 +291,7 @@ public final class Driver implements AutoCloseable
 		Instant now = context.clock().instant();
 		for (Event event : events.drain())
 			handle(event, now);
+		discardRemovedTrials();
 		if (context.interrupts().isInterruptedAfter(sliceStart))
 		{
 			interrupted = true;
@@ -300,7 +311,9 @@ public final class Driver implements AutoCloseable
 		if (!isDrained() && isPending(PendingDecision.MeasurementChanged.class))
 			cancel(now, "The measurement conditions changed");
 
-		boolean started = startJudges(now);
+		boolean started = startTriages(now);
+		started |= startJudges(now);
+		discardRemovedTrials();
 		if (now.isBefore(deadline))
 		{
 			started |= advanceMinimality();
@@ -366,13 +379,13 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether no session runs and no completed trial waits for its judge.
+	 * Indicates whether no session runs and no completed trial waits for its judge or triage.
 	 *
 	 * @return {@code true} if nothing is in flight
 	 */
 	private boolean isDrained()
 	{
-		return inFlight.isEmpty() && judgingQueue.isEmpty();
+		return inFlight.isEmpty() && judgingQueue.isEmpty() && triageQueue.isEmpty();
 	}
 
 	/**
@@ -493,6 +506,7 @@ public final class Driver implements AutoCloseable
 		{
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
+			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure(), now);
 			case InFlight.Author author -> authorEnded(author, result, event.failure(), now);
 		}
 	}
@@ -512,6 +526,7 @@ public final class Driver implements AutoCloseable
 		{
 			case InFlight.Trial _ -> SessionRole.TRIAL;
 			case InFlight.Judge _ -> SessionRole.JUDGE;
+			case InFlight.Triage _ -> SessionRole.TRIAGE;
 			case InFlight.Author _ -> SessionRole.AUTHOR;
 		};
 
@@ -555,8 +570,9 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Runs a completed trial's deterministic checks first. A failed check fails the trial with the
 	 * record of each failed check, and a trial whose checks decide every requirement passes with the record of its
-	 * checks; neither runs a judge. Otherwise the trial waits for a judge of its semantic requirements, which
-	 * receives the check results as evidence. A check that the evidence cannot decide makes the run an
+	 * checks; neither runs a judge. A failed development trial waits for its triage before the failure is recorded.
+	 * Otherwise the trial waits for a judge of its semantic requirements, which receives the check results as
+	 * evidence. A check that the evidence cannot decide, or evidence that cannot be rendered, makes the run an
 	 * infrastructure failure.
 	 *
 	 * @param trial the trial session
@@ -583,15 +599,25 @@ public final class Driver implements AutoCloseable
 		List<CheckResult> failed = results.stream().filter(result -> !result.passed()).toList();
 		if (!failed.isEmpty())
 		{
-			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL,
-				checkRecord("Failed deterministic checks:", failed), null);
+			String record = checkRecord("Failed deterministic checks:", failed);
+			if (trial.key().purpose() != Purpose.DEVELOPMENT)
+			{
+				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, null, null);
+				return;
+			}
+			Optional<String> section = renderEvidence(trial.key(), completed, trial.source(), now);
+			if (section.isPresent())
+			{
+				triageQueue.add(new Triaging(trial.key(), instance, completed, section.get(), results, record, null, 1,
+					trial.concurrency()));
+			}
 			return;
 		}
 		List<String> semanticIds = test.semanticRequirementIds();
 		if (semanticIds.isEmpty())
 		{
 			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.PASS,
-				checkRecord("Passed deterministic checks:", results), null);
+				checkRecord("Passed deterministic checks:", results), null, null);
 			return;
 		}
 		Map<String, Requirement> requirementById = new HashMap<>();
@@ -599,21 +625,51 @@ public final class Driver implements AutoCloseable
 			requirementById.put(requirement.id(), requirement);
 		List<Requirement> semantic = semanticIds.stream().map(requirementById::get).toList();
 		String section = "";
-		if (campaign.contract().judge().prompt().contains("{{evidence}}"))
+		if (judgeRendersEvidence())
 		{
-			try
-			{
-				section = context.sessions().renderEvidence(completed, trial.source());
-			}
-			catch (IOException e)
-			{
-				fail(trial.key(), RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " +
-					describe(e), now, null);
+			Optional<String> rendered = renderEvidence(trial.key(), completed, trial.source(), now);
+			if (rendered.isEmpty())
 				return;
-			}
+			section = rendered.get();
 		}
-		judgingQueue.add(new Judging(trial.key(), instance, completed, section, semantic, results, 1,
+		judgingQueue.add(new Judging(trial.key(), instance, trial.source(), completed, section, semantic, results, 1,
 			trial.concurrency()));
+	}
+
+	/**
+	 * Indicates whether the frozen judge template names the rendered trial evidence.
+	 *
+	 * @return {@code true} if judges receive the evidence section
+	 */
+	private boolean judgeRendersEvidence()
+	{
+		return campaign.contract().judge().prompt().contains("{{evidence}}");
+	}
+
+	/**
+	 * Renders a completed trial's activity and file changes. A failure to render returns the trial to the queue as an
+	 * infrastructure failure.
+	 *
+	 * @param key the logical trial
+	 * @param completed the trial session's result
+	 * @param source the staged source copied at the start of the trial
+	 * @param now the current time
+	 * @return the rendered evidence, or empty if it could not be rendered
+	 * @throws IOException if the store cannot be written
+	 */
+	private Optional<String> renderEvidence(TrialKey key, SessionResult.Completed completed, Path source,
+		Instant now) throws IOException
+	{
+		try
+		{
+			return Optional.of(context.sessions().renderEvidence(completed, source));
+		}
+		catch (IOException e)
+		{
+			fail(key, RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " + describe(e), now,
+				null);
+			return Optional.empty();
+		}
 	}
 
 	/**
@@ -668,8 +724,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Consumes the end of a judge session. A valid verdict completes the trial; anything else reruns the judge with
-	 * the same evidence.
+	 * Consumes the end of a judge session. A valid verdict completes the trial, after the triage of a failed
+	 * development trial; anything else reruns the judge with the same evidence.
 	 *
 	 * @param judging the judged trial
 	 * @param result the session's result, or {@code null} if the session failed with an exception
@@ -691,8 +747,7 @@ public final class Driver implements AutoCloseable
 				Optional<Judgment> judgment = context.judge().judgment(completed);
 				if (judgment.isPresent())
 				{
-					complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(),
-						judgment.get().verdict(), judgment.get().rationale(), completed.model());
+					judged(judging, judgment.get(), completed.model(), now);
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -708,6 +763,35 @@ public final class Driver implements AutoCloseable
 			case SessionResult.Failed failed -> reason = failed.reason();
 		}
 		judgeFailed(judging, reason, now);
+	}
+
+	/**
+	 * Completes a judged trial, or queues the triage of a failed development trial.
+	 *
+	 * @param judging the judged trial
+	 * @param judgment the judge's verdict and rationale
+	 * @param judgeModel the model that the judge session observed, or {@code null} if its events did not name one
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void judged(Judging judging, Judgment judgment, String judgeModel, Instant now) throws IOException
+	{
+		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
+		{
+			complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(), judgment.verdict(),
+				judgment.rationale(), judgeModel, null);
+			return;
+		}
+		String section = judging.evidenceSection();
+		if (!judgeRendersEvidence())
+		{
+			Optional<String> rendered = renderEvidence(judging.key(), judging.evidence(), judging.source(), now);
+			if (rendered.isEmpty())
+				return;
+			section = rendered.get();
+		}
+		triageQueue.add(new Triaging(judging.key(), judging.instance(), judging.evidence(), section, judging.results(),
+			judgment.rationale(), judgeModel, 1, judging.concurrency()));
 	}
 
 	/**
@@ -731,6 +815,116 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
+	 * Indicates whether a triage session was started or failed to start. Starts triages of failed development trials
+	 * while capacity is free and no throttle holds admissions. The grace period does not stop triages, since a trial
+	 * without a recorded outcome reruns.
+	 *
+	 * @param now the current time
+	 * @return {@code true} if a triage session was started or failed to start
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private boolean startTriages(Instant now) throws IOException
+	{
+		boolean started = false;
+		while (!triageQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		{
+			Triaging triaging = triageQueue.removeFirst();
+			if (findRunningTrial(triaging.key()).isEmpty())
+				continue;
+			started = true;
+			SessionRequest request = context.triage().request(campaign.contract().judge().profile(),
+				triaging.instance(), triaging.evidence(), triaging.results(), triaging.evidenceSection(),
+				triaging.rationale());
+			SessionHandle handle;
+			try
+			{
+				handle = context.sessions().start(request);
+			}
+			catch (IOException e)
+			{
+				triageFailed(triaging, "The triage session could not start: " + describe(e));
+				continue;
+			}
+			register(new InFlight.Triage(triaging, handle));
+		}
+		return started;
+	}
+
+	/**
+	 * Consumes the end of a triage session. A valid impact records the trial's failure; anything else reruns the
+	 * triage with the same evidence.
+	 *
+	 * @param triaging the failed trial
+	 * @param result the session's result, or {@code null} if the session failed with an exception
+	 * @param failure the exception, or {@code null}
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void triageEnded(Triaging triaging, SessionResult result, Throwable failure, Instant now)
+		throws IOException
+	{
+		if (findRunningTrial(triaging.key()).isEmpty())
+			return;
+		String reason;
+		switch (result)
+		{
+			case null -> reason = "The triage session failed: " + describe(failure);
+			case SessionResult.Completed completed ->
+			{
+				Optional<Triage> triage = context.triage().triage(completed);
+				if (triage.isPresent())
+				{
+					completeTriaged(triaging, triage.get());
+					return;
+				}
+				reason = "The triage's output does not match its result schema";
+			}
+			case SessionResult.RateLimited limited ->
+			{
+				// A rate limit is not a failure of the triage
+				record(new CampaignEvent.ObserveRateLimit(List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+				triageQueue.add(triaging);
+				return;
+			}
+			case SessionResult.Interrupted _ -> reason = "The triage session was interrupted";
+			case SessionResult.Failed failed -> reason = failed.reason();
+		}
+		triageFailed(triaging, reason);
+	}
+
+	/**
+	 * Reruns a triage with the same evidence, or records the failure as blocking once the triage has failed
+	 * {@value #TRIAGE_ATTEMPTS} times.
+	 *
+	 * @param triaging the failed trial
+	 * @param reason why the triage failed
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void triageFailed(Triaging triaging, String reason) throws IOException
+	{
+		if (triaging.attempt() < TRIAGE_ATTEMPTS)
+		{
+			triageQueue.add(triaging.retry());
+			return;
+		}
+		completeTriaged(triaging, new Triage(Impact.BLOCKING, "The triage failed " + TRIAGE_ATTEMPTS + " times, " +
+			"so the failure counts as blocking. Last failure: " + reason));
+	}
+
+	/**
+	 * Records a triaged trial's failure with its impact.
+	 *
+	 * @param triaging the failed trial
+	 * @param triage the failure's impact and its rationale
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
+	{
+		complete(triaging.key(), triaging.instance(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
+			triaging.rationale(), triaging.judgeModel(), triage);
+	}
+
+	/**
 	 * Records a trial's verdict when its observed measurement conditions match the campaign's, persisting it before
 	 * adoption. Different conditions pause the campaign without recording the verdict. A
 	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
@@ -743,13 +937,14 @@ public final class Driver implements AutoCloseable
 	 * @param rationale the judge's rationale or, when no judge ran, the record of the trial's deterministic checks
 	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
 	 *   not name one
+	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
 	private void complete(TrialKey key, TrialInstance instance, int concurrency, SessionResult.Completed trial,
-		Verdict verdict, String rationale, String judgeModel) throws IOException
+		Verdict verdict, String rationale, String judgeModel, Triage triage) throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
-		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, observed,
+		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, triage, observed,
 			trialInputTokens(trial), trial.responses());
 		if (campaign.identity().differences(observed).isEmpty())
 		{
@@ -1304,6 +1499,7 @@ public final class Driver implements AutoCloseable
 			{
 				case InFlight.Trial trial -> abandoned.add(trial.key());
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
+				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The author copy is cleaned up by interrupt(); authors have no logical trial to queue.
 				case InFlight.Author _ ->
 				{
@@ -1324,8 +1520,11 @@ public final class Driver implements AutoCloseable
 		}
 		for (Judging judging : judgingQueue)
 			abandoned.add(judging.key());
+		for (Triaging triaging : triageQueue)
+			abandoned.add(triaging.key());
 		inFlight.clear();
 		judgingQueue.clear();
+		triageQueue.clear();
 		Campaign before = campaign;
 		for (TrialKey key : abandoned)
 		{
@@ -1337,6 +1536,59 @@ public final class Driver implements AutoCloseable
 			context.store().replaceSnapshot(campaign);
 		if (failure != null)
 			throw failure;
+	}
+
+	/**
+	 * Interrupts the trial, judge and triage sessions whose logical trial the campaign discarded, and drops the
+	 * judges and triages that wait for such a trial. Their trials have no outcome to record, so no failure is
+	 * recorded either. Every session is interrupted even if interrupting one fails.
+	 *
+	 * @throws IOException if a session cannot be interrupted
+	 */
+	private void discardRemovedTrials() throws IOException
+	{
+		judgingQueue.removeIf(judging -> isRemoved(judging.key()));
+		triageQueue.removeIf(triaging -> isRemoved(triaging.key()));
+		IOException failure = null;
+		for (Iterator<InFlight> sessions = inFlight.values().iterator(); sessions.hasNext();)
+		{
+			InFlight session = sessions.next();
+			TrialKey key = switch (session)
+			{
+				case InFlight.Trial trial -> trial.key();
+				case InFlight.Judge judge -> judge.judging().key();
+				case InFlight.Triage triage -> triage.triaging().key();
+				case InFlight.Author _ -> null;
+			};
+			if (key == null || !isRemoved(key))
+				continue;
+			// The session's late result is ignored
+			sessions.remove();
+			try
+			{
+				interrupt(session);
+			}
+			catch (IOException e)
+			{
+				if (failure == null)
+					failure = e;
+				else
+					failure.addSuppressed(e);
+			}
+		}
+		if (failure != null)
+			throw failure;
+	}
+
+	/**
+	 * Indicates whether the campaign no longer holds a logical trial.
+	 *
+	 * @param key the trial's key
+	 * @return {@code true} if the campaign discarded the trial
+	 */
+	private boolean isRemoved(TrialKey key)
+	{
+		return Reconciler.find(campaign, key).isEmpty();
 	}
 
 	/**

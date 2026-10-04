@@ -153,7 +153,7 @@ final class UserChoices
 				if (trial.key().equals(key))
 				{
 					draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-						trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), 0,
+						trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.triage(), 0,
 						trial.infrastructureAttempts(), trial.observations(), trial.responses()));
 				}
 			}

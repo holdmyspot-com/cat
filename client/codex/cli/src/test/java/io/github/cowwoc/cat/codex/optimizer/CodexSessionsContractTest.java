@@ -309,11 +309,16 @@ public final class CodexSessionsContractTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
 			RoleRuleFixtures.write(root);
-			List<List<String>> events = List.of(recorded("trial-turn-1.jsonl"), recorded("judge-turn-1.jsonl"),
-				recorded("author-turn-1.jsonl"), recorded("deriver-turn-1.jsonl"));
+			// A triage session, like a judge session, answers with one JSON object, so it replays the judge's recording
+			Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
+				SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("judge-turn-1.jsonl"),
+				SessionRole.AUTHOR, recorded("author-turn-1.jsonl"), SessionRole.DERIVER,
+				recorded("deriver-turn-1.jsonl"));
+			Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
+				SessionRole.TRIAGE, 2, SessionRole.AUTHOR, 3, SessionRole.DERIVER, 2);
 			AtomicInteger next = new AtomicInteger();
 			CodexSessions sessions = port(root, (arguments, input, output) ->
-				new RecordedAppServer(List.of(events.get(next.getAndIncrement()))).
+				new RecordedAppServer(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
 					serve(arguments, input, output));
 			Set<Path> transcripts = new HashSet<>();
 			Set<Path> effects = new HashSet<>();
@@ -325,9 +330,9 @@ public final class CodexSessionsContractTest
 				SessionResult.Completed completed = (SessionResult.Completed) result;
 				requireThat(completed.responses().size(), "responses.size").isEqualTo(1);
 				requireThat(completed.responses().getFirst().size(), "messages.size").
-					isEqualTo(List.of(1, 2, 3, 2).get(role.ordinal()));
+					isEqualTo(messages.get(role));
 				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
-					RecordedAppServer.rebindResponse(events.get(role.ordinal()), 3));
+					RecordedAppServer.rebindResponse(events.get(role), 3));
 				transcripts.add(completed.transcript());
 				effects.add(completed.effects());
 			}

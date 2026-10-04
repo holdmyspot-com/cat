@@ -53,6 +53,16 @@ sealed interface InFlight
 	}
 
 	/**
+	 * A triage session.
+	 *
+	 * @param triaging the failed development trial whose impact the triage decides
+	 * @param handle the session
+	 */
+	record Triage(Triaging triaging, SessionHandle handle) implements InFlight
+	{
+	}
+
+	/**
 	 * An author session.
 	 *
 	 * @param number the reserved launch-order attempt number
@@ -74,14 +84,16 @@ sealed interface InFlight
 	 *
 	 * @param key the logical trial
 	 * @param instance the trial's instance
+	 * @param source the staged source copied at the start of the trial
 	 * @param evidence the trial session's result, which every judge attempt receives unchanged
-	 * @param evidenceSection the rendered trial activity and file changes, unchanged across judge attempts
+	 * @param evidenceSection the rendered trial activity and file changes, unchanged across judge attempts; empty
+	 *   when the frozen judge template does not name it
 	 * @param requirements the semantic requirements of the trial's test, which the judge decides
 	 * @param results the results of the test's deterministic checks, which the judge receives as evidence
 	 * @param attempt the judge attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
-	record Judging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence,
+	record Judging(TrialKey key, TrialInstance instance, Path source, SessionResult.Completed evidence,
 		String evidenceSection, List<Requirement> requirements, List<CheckResult> results, int attempt, int concurrency)
 	{
 		/**
@@ -91,7 +103,38 @@ sealed interface InFlight
 		 */
 		Judging retry()
 		{
-			return new Judging(key, instance, evidence, evidenceSection, requirements, results, attempt + 1, concurrency);
+			return new Judging(key, instance, source, evidence, evidenceSection, requirements, results, attempt + 1,
+				concurrency);
+		}
+	}
+
+	/**
+	 * A failed development trial that waits for, or is in, its triage session, which decides the failure's impact
+	 * before the outcome is recorded.
+	 *
+	 * @param key the logical trial
+	 * @param instance the trial's instance
+	 * @param evidence the trial session's result, which every triage attempt receives unchanged
+	 * @param evidenceSection the rendered trial activity and file changes, unchanged across triage attempts
+	 * @param results the results of the test's deterministic checks
+	 * @param rationale the judge's rationale or, when no judge ran, the record of the failed deterministic checks
+	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
+	 *   not name one
+	 * @param attempt the triage attempt, from 1
+	 * @param concurrency the number of trial sessions running immediately after the trial's session started
+	 */
+	record Triaging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence, String evidenceSection,
+		List<CheckResult> results, String rationale, String judgeModel, int attempt, int concurrency)
+	{
+		/**
+		 * Returns the next triage attempt with the same evidence.
+		 *
+		 * @return the attempt
+		 */
+		Triaging retry()
+		{
+			return new Triaging(key, instance, evidence, evidenceSection, results, rationale, judgeModel, attempt + 1,
+				concurrency);
 		}
 	}
 }

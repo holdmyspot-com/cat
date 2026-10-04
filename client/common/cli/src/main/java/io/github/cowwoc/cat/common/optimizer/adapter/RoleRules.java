@@ -24,6 +24,7 @@ final class RoleRules
 			Path.of("include/common/prompt-file-references.md")),
 		SessionRole.DERIVER, List.of(CONTRACT_DESIGN),
 		SessionRole.JUDGE, List.of(),
+		SessionRole.TRIAGE, List.of(),
 		SessionRole.TRIAL, List.of());
 	private static final String SECTION = """
 

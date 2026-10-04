@@ -5,6 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * Chooses whether to rerun, edit or continue sampling after a representative development failure is counted.
  * Decisions use each cell's counts; a cell is a requirement category under one runner profile.
+ * <p>
+ * A {@link Impact#BLOCKING blocking} failure never reaches this decision: its adoption discards the working
+ * candidate's unadopted development trials and edits at once. The decision applies to
+ * {@link Impact#SELF_RECOVERING self-recovering} failures and to failures recorded without an impact.
  */
 public final class EditOrContinue
 {

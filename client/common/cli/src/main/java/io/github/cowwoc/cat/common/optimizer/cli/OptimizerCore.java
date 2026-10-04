@@ -27,6 +27,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.SliceResult;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.AuthorPrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -697,12 +698,15 @@ public final class OptimizerCore implements Core
 		Authority authority = authority(root, campaign);
 		Path judgeDirectory = directory.resolve("judge");
 		Files.createDirectories(judgeDirectory);
+		Path triageDirectory = directory.resolve("triage");
+		Files.createDirectories(triageDirectory);
 		Set<Path> promptSources = promptSources(root, campaign);
 		JudgePrompt judge = new JudgePrompt(scope.json(), judgeDirectory);
+		TriagePrompt triage = new TriagePrompt(scope.json(), triageDirectory);
 		AuthorPrompt author = new AuthorPrompt(scope.json(), schema, promptSources,
 			Set.copyOf(scope.loaderConfiguration()));
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
-			new FileCandidateOverlays(directory, inventory, scope.json()), judge, author,
+			new FileCandidateOverlays(directory, inventory, scope.json()), judge, triage, author,
 			new Delivery(store, fork.workspace())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(directory.resolve("runs"), scope.json()), authority,
 			promptSources, environment(inventory), directory.resolve("driver.lock"), scope.random(),

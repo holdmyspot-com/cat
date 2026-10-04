@@ -20,6 +20,8 @@ import java.util.List;
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
  * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
  *   deterministic checks, or {@code null} if the trial is not judged
+ * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
+ *   another purpose or was judged by a build that did not decide impacts
  * @param infrastructureFailures the runs that ended without an outcome and count toward
  *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}; a {@link Choice#RETRY} resets it to 0
  * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
@@ -27,7 +29,7 @@ import java.util.List;
  * @param responses each completed turn's assistant messages in order; empty before the trial is judged
  */
 public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
-	TrialState state, Verdict verdict, String rationale, int infrastructureFailures,
+	TrialState state, Verdict verdict, String rationale, Triage triage, int infrastructureFailures,
 	List<InfrastructureAttempt> infrastructureAttempts, int observations, List<List<String>> responses)
 {
 	/**
@@ -41,6 +43,8 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
 	 * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
 	 *   deterministic checks, or {@code null} if the trial is not judged
+	 * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
+	 *   another purpose or was judged by a build that did not decide impacts
 	 * @param infrastructureFailures the runs that ended without an outcome and count toward
 	 *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}
 	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
@@ -51,7 +55,8 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 *   assistant message is null
 	 * @throws IllegalArgumentException if a count is negative, the instance's cell differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
-	 *   or that state lacks a verdict, only one of {@code rationale} and {@code verdict} has a value, or
+	 *   or that state lacks a verdict, only one of {@code rationale} and {@code verdict} has a value, a
+	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial, or
 	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
 	 */
 	public LogicalTrial
@@ -69,6 +74,11 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
 		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");
+		if (triage != null)
+		{
+			requireThat(verdict, "verdict").isEqualTo(Verdict.FAIL);
+			requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
+		}
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
 		responses = responses.stream().map(List::copyOf).toList();
 		long infrastructure = infrastructureAttempts.stream().
@@ -93,8 +103,8 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	public static LogicalTrial assigned(TrialKey key, TrialInstance instance, MeasurementIdentity identity,
 		Allocation allocation)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, null, 0, List.of(), 0,
-			List.of());
+		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, null, null, 0,
+			List.of(), 0, List.of());
 	}
 
 	/**
@@ -107,7 +117,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 */
 	LogicalTrial withState(TrialState newState)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, newState, null, null, infrastructureFailures,
-			infrastructureAttempts, observations, List.of());
+		return new LogicalTrial(key, instance, identity, allocation, newState, null, null, null,
+			infrastructureFailures, infrastructureAttempts, observations, List.of());
 	}
 }

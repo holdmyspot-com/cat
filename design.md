@@ -122,7 +122,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Author attempt | One author session's edits. It becomes a candidate only after validation and promotion. |
 | Promotion | Making a validated candidate the working candidate. It never consumes allowance. |
 | Development | The phase that samples and edits the working candidate before a commit ([§2.7](#27-development-readiness-and-edit-or-continue)). Development outcomes never count as certification evidence. |
-| Failure impact | Whether a failed development trial is *blocking*, leaving the user without the turn's correct and complete result, or *self-recovering*, corrected by the agent within the turn. A blocking failure makes development edit at once ([§2.7](#27-development-readiness-and-edit-or-continue)). |
+| Failure impact | Whether a failed development trial is *blocking*, leaving the user without the turn's correct and complete result, or *self-recovering*, delivering that result anyway at the cost of extra work. A blocking failure makes development edit at once ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Readiness gate | The development conditions that a candidate must meet in every cell before it can be committed ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Allowance | A certification attempt's shares `α_i` and `β_i` of the campaign's error budget ([§2.2](#22-joint-error-budget)). |
 | Commit | Freezing the working candidate into a certification attempt, which permanently consumes that attempt's allowance ([§2.2](#22-joint-error-budget)). |
@@ -345,9 +345,9 @@ CAT records the outcome (user ruling, 2026-10-03):
 - *blocking*: the reply leaves the user without the turn's correct and complete result unless the user acts. The agent
   ended the turn without doing the work, asked for something it could have found or done itself, answered wrongly or
   incompletely, or left an effect that must be undone.
-- *self-recovering*: the trial broke a requirement along the way, but the agent corrected itself within the same turn.
-  The reply delivers the correct and complete result and leaves nothing to undo, so the failure cost only extra work,
-  such as a wasted or repeated read.
+- *self-recovering*: the trial broke a requirement along the way, but the reply still delivers the turn's correct and
+  complete result and leaves nothing to undo, so the failure cost only extra work, such as reading more than needed, a
+  repeated read or a needless call, or a mistake the agent corrected within the turn.
 
 A failure that the triage cannot place, or whose triage fails 3 times, is blocking. The impact steers development only:
 both kinds are failures in every count, estimate and claim, and the decision procedure ([§6.4](#64-judge)) does not

@@ -5,10 +5,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
+import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -49,8 +51,9 @@ import java.util.function.Predicate;
  * The ports, fakes and session script of one driver test.
  * <p>
  * Trial sessions reply with the response that the {@link #trials(Function) trial script} chooses. Judge sessions
- * return scripted judgment JSON that {@link JudgePrompt} parses, and author sessions write a new {@code CLAUDE.md}
- * into their effects directory.
+ * return scripted judgment JSON that {@link JudgePrompt} parses, triage sessions find every failure
+ * self-recovering unless the {@link #triages(Function) triage script} decides otherwise, and author sessions write a
+ * new {@code CLAUDE.md} into their effects directory.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
@@ -100,6 +103,7 @@ public final class DriverHarness
 	private final RecordingAuthorProtocol author = new RecordingAuthorProtocol();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final JudgePrompt judge;
+	private final TriagePrompt triage;
 	private final Map<Path, Judgment> judgments = new HashMap<>();
 	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
@@ -107,6 +111,7 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> trials = _ -> passed();
 	private Function<SessionRequest, SessionResult> authors = request -> edit(request, PROMPT);
 	private Function<SessionRequest, SessionResult> judges = this::scriptedJudgment;
+	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
 	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private SliceSettings settings = SliceSettings.DEFAULT;
@@ -155,6 +160,7 @@ public final class DriverHarness
 		this.directory = directory;
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
+		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));
 		overlays.put(Builder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
 			overlays.put(Builder.snapshot("candidate-" + number), candidate("candidate-" + number));
@@ -193,7 +199,7 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, author, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
+			judge, triage, author, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
 			JsonMapper.builder().build()), new Authority(Set.of(PROMPT), Set.of(), Set.of()), Set.of(PROMPT),
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
 	}
@@ -237,6 +243,40 @@ public final class DriverHarness
 	public void judges(Function<SessionRequest, SessionResult> script)
 	{
 		this.judges = script;
+	}
+
+	/**
+	 * Replaces the triage script.
+	 *
+	 * @param script returns each triage session's result
+	 */
+	public void triages(Function<SessionRequest, SessionResult> script)
+	{
+		this.triages = script;
+	}
+
+	/**
+	 * Returns a triage session's schema-valid final response.
+	 *
+	 * @param impact the failure's impact
+	 * @return the completed triage session
+	 */
+	public SessionResult.Completed triaged(Impact impact)
+	{
+		return triaged(json.createObjectNode().put("impact", impact.label()).
+			put("rationale", "The reply " + impact.label() + ".").toString());
+	}
+
+	/**
+	 * Returns the result of a triage session.
+	 *
+	 * @param response the triage's response
+	 * @return the result
+	 */
+	public SessionResult.Completed triaged(String response)
+	{
+		return new SessionResult.Completed(directory.resolve("triage-transcript"), List.of(List.of(response)),
+			directory.resolve("triage-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -525,8 +565,8 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Steps a driver and ends only its judge sessions, until no judge session runs, so that every trial session
-	 * that the test ended is judged and adopted.
+	 * Steps a driver and ends only its judge and triage sessions, until none runs, so that every trial session that
+	 * the test ended is judged, triaged and adopted.
 	 *
 	 * @param driver the driver
 	 * @return the last step
@@ -537,19 +577,20 @@ public final class DriverHarness
 		for (int iteration = 0; iteration < STEP_LIMIT; ++iteration)
 		{
 			Step step = driver.step();
-			int judges = 0;
+			int settled = 0;
 			for (FakeSession session : running())
 			{
-				if (session.request().role() == SessionRole.JUDGE)
+				SessionRole role = session.request().role();
+				if (role == SessionRole.JUDGE || role == SessionRole.TRIAGE)
 				{
 					session.end(respond(session.request()));
-					++judges;
+					++settled;
 				}
 			}
-			if (judges == 0)
+			if (settled == 0)
 				return step;
 		}
-		throw new AssertionError("The judges did not settle after " + STEP_LIMIT + " steps");
+		throw new AssertionError("The judges and triages did not settle after " + STEP_LIMIT + " steps");
 	}
 
 	/**
@@ -582,6 +623,7 @@ public final class DriverHarness
 		{
 			case TRIAL -> trials.apply(request);
 			case JUDGE -> judges.apply(request);
+			case TRIAGE -> triages.apply(request);
 			case AUTHOR -> authors.apply(request);
 			case DERIVER -> throw new AssertionError("The driver started a deriver session: " + request);
 		};

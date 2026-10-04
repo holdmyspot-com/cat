@@ -51,6 +51,25 @@ public final class RevertTest
 	}
 
 	/**
+	 * A blocking failure that makes the promoted candidate worse than its predecessor restores the predecessor and its
+	 * round instead of starting a round for the withdrawn candidate.
+	 */
+	@Test
+	public void blockingFailureRestoresPredecessor()
+	{
+		// Requirement: R-D16
+		Campaign predecessor = predecessor(99, 1, Map.of("safety", 1));
+		Campaign promoted = promote(predecessor);
+		Campaign reverted = TransitionSteps.fail(promoted, "safety", new Triage(Impact.BLOCKING,
+			"The reply deleted the logs and stopped."));
+
+		requireThat(reverted.development().working(), "working").isEqualTo(predecessor.development().working());
+		requireThat(reverted.development().counts(), "counts").isEqualTo(predecessor.development().counts());
+		requireThat(reverted.development().round().attempts(), "attempts").isEqualTo(Map.of("safety", 2));
+		requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
+	}
+
+	/**
 	 * A bound at or above the predecessor's rate leaves the promoted candidate working.
 	 */
 	// Requirement: R-D15
@@ -159,7 +178,7 @@ public final class RevertTest
 		TrialInstance logs = Builder.targeted("safety", "logs");
 		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
 		return new Builder().confirmed().working(1).development("safety", passes, failures).
-			development("formatting", 61, 0).failure(new Failure(logs, "The directory was removed",
+			development("formatting", 61, 0).failure(new Failure(logs, "The directory was removed", null,
 				List.of(failed, failed, failed), List.of())).regression(logs, Verdict.FAIL).
 			round(new Round(attempts)).build();
 	}

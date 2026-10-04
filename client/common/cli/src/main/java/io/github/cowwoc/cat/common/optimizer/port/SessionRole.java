@@ -14,6 +14,10 @@ public enum SessionRole
 	 */
 	JUDGE,
 	/**
+	 * Decides whether a failed development trial left the user without the turn's result.
+	 */
+	TRIAGE,
+	/**
 	 * Edits a copy of the working candidate in response to failure evidence.
 	 */
 	AUTHOR,

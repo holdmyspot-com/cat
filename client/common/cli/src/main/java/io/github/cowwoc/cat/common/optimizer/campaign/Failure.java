@@ -14,10 +14,12 @@ import java.util.List;
  *
  * @param instance the targeted copy of the instance that failed
  * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
+ * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
+ *   failure that a build without impacts recorded
  * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
  * @param responses each turn's assistant messages in order, ending with its final response
  */
-public record Failure(TrialInstance instance, String rationale, List<DiagnosticRerun> reruns,
+public record Failure(TrialInstance instance, String rationale, Triage triage, List<DiagnosticRerun> reruns,
 	List<List<String>> responses)
 {
 	/**
@@ -25,9 +27,12 @@ public record Failure(TrialInstance instance, String rationale, List<DiagnosticR
 	 *
 	 * @param instance the targeted copy of the instance that failed
 	 * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
+	 * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
+	 *   failure that a build without impacts recorded
 	 * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
 	 * @param responses each turn's assistant messages in order, ending with its final response
-	 * @throws NullPointerException if any argument, a rerun, a turn's messages or an assistant message is null
+	 * @throws NullPointerException if an argument other than {@code triage}, a rerun, a turn's messages or an
+	 *   assistant message is null
 	 */
 	public Failure
 	{
@@ -52,6 +57,6 @@ public record Failure(TrialInstance instance, String rationale, List<DiagnosticR
 		requireThat(rerun, "rerun").isNotNull();
 		List<DiagnosticRerun> updated = new ArrayList<>(reruns);
 		updated.add(rerun);
-		return new Failure(instance, rationale, updated, responses);
+		return new Failure(instance, rationale, triage, updated, responses);
 	}
 }

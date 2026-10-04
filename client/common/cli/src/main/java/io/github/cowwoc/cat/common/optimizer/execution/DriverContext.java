@@ -28,6 +28,7 @@ import java.util.random.RandomGenerator;
  * @param clock the clock
  * @param overlays the candidates' overlays
  * @param judge builds judge requests and reads their verdicts
+ * @param triage builds triage requests and reads the impacts of failed development trials
  * @param author builds author requests and reads their reports
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
@@ -46,9 +47,9 @@ import java.util.random.RandomGenerator;
  */
 public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
-	AuthorProtocol author, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
-	LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
-	Path lockFile, RandomGenerator random, SliceSettings settings)
+	TriageProtocol triage, AuthorProtocol author, Deliverer deliverer, CapCalibrator calibrator,
+	ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources,
+	MeasurementIdentity environment, Path lockFile, RandomGenerator random, SliceSettings settings)
 {
 	/**
 	 * Creates a context.
@@ -60,6 +61,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param clock the clock
 	 * @param overlays the candidates' overlays
 	 * @param judge builds judge requests and reads their verdicts
+	 * @param triage builds triage requests and reads the impacts of failed development trials
 	 * @param author builds author requests and reads their reports
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
@@ -85,6 +87,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 		requireThat(clock, "clock").isNotNull();
 		requireThat(overlays, "overlays").isNotNull();
 		requireThat(judge, "judge").isNotNull();
+		requireThat(triage, "triage").isNotNull();
 		requireThat(author, "author").isNotNull();
 		requireThat(deliverer, "deliverer").isNotNull();
 		requireThat(calibrator, "calibrator").isNotNull();

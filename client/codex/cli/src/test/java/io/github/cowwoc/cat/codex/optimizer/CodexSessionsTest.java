@@ -121,8 +121,8 @@ public final class CodexSessionsTest
 	@DataProvider
 	public Object[][] sessionRoles()
 	{
-		return new Object[][] {{SessionRole.TRIAL}, {SessionRole.JUDGE}, {SessionRole.AUTHOR},
-			{SessionRole.DERIVER}};
+		return new Object[][] {{SessionRole.TRIAL}, {SessionRole.JUDGE}, {SessionRole.TRIAGE},
+			{SessionRole.AUTHOR}, {SessionRole.DERIVER}};
 	}
 
 	/**
