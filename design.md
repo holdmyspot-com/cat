@@ -395,13 +395,16 @@ deterministic-check results, the diagnoses and the contract. The author works as
    own edit or an earlier candidate's edit introduced.
    Capitals, "important" markers and repeated instructions are not corrections.
 3. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
-   dissimilar case that must not receive the new guidance, and word the change for the shared invariant.
+   dissimilar case that must not receive the new guidance, and word the change for the shared invariant. The
+   dissimilar case is a contract test, so the trials measure it: an edit that broadens a requirement's trigger passes
+   every test where the trigger is present and fails only where it is absent (D40).
 4. **Cite evidence.** The attempt carries a manifest:
-   - every changed hunk lists the failing instances that motivate it, together with its analogous and dissimilar cases;
+   - every changed hunk lists the failing instances that motivate it, together with its analogous case and the contract
+     test that is its dissimilar case;
    - every failure lists its classification.
 
-CAT rejects an attempt whose manifest omits a changed hunk, or cites an instance that is not among the failures it
-received. A rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
+CAT rejects an attempt whose manifest omits a changed hunk, cites an instance that is not among the failures it
+received, or names a dissimilar case that is not a test of the contract. A rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
 ([§4.6](#46-inventory-validation)). An attempt that classifies every failure as *not guidance* makes no edit and
 produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review checkpoint or
 plateau, so the user can revise the contract when a test is at fault.
@@ -996,6 +999,8 @@ never stand in for the items themselves. The proposal lists:
   and each category's profile set and cell count ([§6.6](#66-trial-profiles));
 - every test definition, its applicability, the complete prewritten turn sequence for multi-turn tests, its time limit,
   and any material interaction it cannot cover;
+- for every requirement that applies only under a trigger, that trigger and at least one test where it is absent, whose
+  expected behaviour is that the obligated action does not occur (D40);
 - the expected compliant behaviour and the judge's rubric and decision rule;
 - every variation dimension and its probability, plus ignored paths needed as trial fixtures;
 - the statistical procedure: the joint budget, bets, caps for the first attempts, the readiness gate, the review
@@ -1011,13 +1016,14 @@ does not decide which requirement prevails; it offers resolutions, such as exemp
 dropping one, and recommends one. The agent asks the user to choose a resolution for each conflict, or to describe
 another, and passes the answers to `revise`.
 
-CAT, not the deriver, does four things:
+CAT, not the deriver, does five things:
 
 - adds the core-task requirement to every test;
 - computes the profile sets;
 - runs each deterministic check against its controls;
 - refuses a proposal that omits a recorded regression scenario of a source in the prompt system
-  ([§8](#8-skill-and-command-interface)). The deriver turns each one into a test definition that cites the scenario.
+  ([§8](#8-skill-and-command-interface)). The deriver turns each one into a test definition that cites the scenario;
+- refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent.
 
 A check that accepts its known-bad control or rejects its known-good control is discarded. Its requirement is then
 judged semantically, and the proposal says why.
@@ -1433,6 +1439,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D37 | Run the deriver, judge and author without CAT's plugin and deliver each role's rules in its brief (user ruling, 2026-10-02). | The runner already knows each session's role, so no hook has to detect it; the session-start rules and path triggers served trials, and the author's lazy reads were truncated and repeated (H33). | The user's and the project's rules do not reach these roles. A rule a role needs must be added to its list. |
 | D38 | Treat a measurement condition that neither the working candidate nor the incumbent records as unobserved, not missing (status finding, 2026-10-02). | No runner observes host tools or external sources, and campaigns stored before the judge, model and reasoning were recorded lack them on both sides, so every comparison was `INDETERMINATE` although both sides ran under the same driver. | Two unrecorded values are not proven equal; the status names unobserved host tools and external sources as a limitation. |
 | D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
+| D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the deriver must state each requirement's trigger. An author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
 
 ## 14. Acceptance evidence
 

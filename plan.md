@@ -126,6 +126,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-27 | `optimize-high` | Per-role session setup in both runners, rule delivery from the installed artifact, and the rule loader's path-trigger text. |
 | WI-28 | `optimize-xhigh` | The judge's evidence decides verdicts; one renderer per harness must lose nothing the judge needs, and frozen judge prompts must keep working. |
 | WI-29 | `optimize-xhigh` | Fail-fast discards outcomes and changes when rounds start, and must keep adoption order unbiased. |
+| WI-30 | `optimize-high` | Contract validation and the author-manifest check; no concurrency. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -232,6 +233,7 @@ requirement names.
 | WI-27 | Done 2026-10-02; the full build, the five distribution Bats files (32/32) and 1777 tests passed, with no test at 1 s or more. `Session` passes `--install-cat` only for trial sessions in both harnesses. `RoleRules` declares each role's rules once (author: write-clearly, failure-prevention, contract-design, rule-organization, prompt-file-dependencies, prompt-file-references; deriver: contract-design; judge and trial: none) and fills the brief's `{{rules}}` section from the installed artifact through `ProjectRuleLoader.loadRule`, which renders the lazy-load paths as the artifact's absolute paths; a stored template without the placeholder gets the section appended; a missing rule file fails naming it. The path-scoped rule text names the absolute rule path and the absolute project root, so CAT's installed rule files never match. The user's and the project's rules do not reach the deriver, judge or author (user ruling, `design.md` D37). Validation on a Codex campaign is pending. |
 | WI-28 | Done 2026-10-02; the full build, the five distribution Bats files (32/32) and 1828 tests passed on the integrated tree, with no test at 1 s or more. Each harness maps its parsed events (`AppServerEvidence`, `StreamJsonEvents`) into the shared `SessionEvidence` model, which renders tool calls with input, exit status and complete output, child activity, hook status and response positions, and leaves out root reply text, session-start context, deltas and telemetry. `FileChanges` lists created, modified and deleted files against the staged source (unified diffs; a note naming the effects file for binary or oversized files). The driver keeps the staged source and the rendered evidence across judge retries. `judge.md` takes `{{evidence}}` and names the read-only effects directory; a frozen judge prompt with `{{effects}}` and `{{transcript}}` still renders with both paths. On three E1 trials the evidence is 160,386, 94,470 and 343 bytes against raw transcripts of 1,668,773, 1,560,042 and 72,981 bytes. User ruling (`design.md` D36, H32). Verdict agreement on recorded trials is pending. |
 | WI-29 | In progress (user request, 2026-10-03): `design.md` §2.6, §2.7, §3.1 and D39 define failure impact, the triage session and fail-fast development. |
+| WI-30 | Not started (user approval, 2026-10-03): `design.md` §2.7, §6.1 and D40 require a trigger-absent test for each conditional requirement and a measured dissimilar case for each authored hunk. |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
 | Launcher help (WI-15 E8 finding) | Done 2026-10-02. Both E8 agents ran `prompt-optimizer --help` or `start --help` to find the ceiling option; the launcher answered "Unknown command" or took `--help` as the target, and the skill stopped. `help` alone, or `--help` or `-h` anywhere, now prints the usage as `{"status":"help"}` with exit 0 before the core is called (`CommandsTest.printsUsageOnRequest`). |
 | Inline include mention (WI-15 E8 finding) | Done 2026-10-02. Both E8 campaigns failed every author session with "Direct rule include must name a regular file inside its allowed source root": `prompt-file-dependencies.md` mentions `` `<!-- cat:include path -->` `` in prose, and the role-rule loader took the mention as a directive. A directive is now a line that consists of the directive alone (`ProjectRuleLoaderTest.keepsIncludeDirectiveMentionedInText`, red before the fix); every packaged directive already stood on its own line. Verify: build 0, Bats 32/32, 1834 tests, none ≥1 s. |
@@ -355,6 +357,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D14 | The attempts a category receives in one round follow the §2.7 approaches in order: correct the instruction where it is stated (`AGENTS.md` and `CLAUDE.md` included), rewrite rather than add, add the missing guidance; a sequential round uses the first two. The author corrects an instruction in the file that states it and adds new guidance to `AGENTS.md` or `CLAUDE.md` only when it cannot otherwise reach the sessions that need it. | §2.7, D30, D34 | WI-26 | U: `AuthorTest`, `DriverTest` |
 | R-D15 | A promoted candidate not yet edited is reverted to its predecessor when its development 95% Wilson upper bound in a cell the promoting round addressed falls below the predecessor's observed pass rate there; the check runs before edit-or-continue, the predecessor's counts return, and the round counts as producing no promotable attempt. | §2.7, D35 | WI-26 | U: `PromotionTest` or a revert policy test, `DriverTest` |
 | R-D16 | Each failed representative development trial has an impact that a triage session decides before the outcome is recorded: blocking (the reply leaves the user without the turn's correct, complete result) or self-recovering (the agent corrected itself within the turn); an unclassifiable failure or a third invalid triage output is blocking. A blocking failure discards every unadopted development trial of the working candidate, interrupting those that run, ends any diagnosis in progress, and starts a round without diagnostic reruns; a self-recovering failure takes the R-D2 path. The impact reaches the author brief and changes no count or claim. | §2.6, §2.7, §3.1, D39 | WI-29 | U: `EditOrContinueTest`, `TriagePromptTest`, `DriverTest` (fail-fast trace), `FileCampaignStoreTest` |
+| R-D17 | The proposal states each requirement's trigger or that it always applies; CAT refuses a proposal in which a requirement with a trigger has no test where that trigger is absent. Each manifest hunk names its dissimilar case as a contract test; CAT rejects an attempt that names one the contract lacks. | §2.7, §6.1, D40 | WI-30 | U: `ProposalTest`, `AuthorManifestTest` |
 
 ### 3.3 Formal certification
 
@@ -898,6 +901,18 @@ The riskiest pure code, built first.
   trip and older-format reads.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-30 — Measured trigger-absent cases (user approval, 2026-10-03)
+
+- **Contract:** the proposal schema gives each requirement a trigger, or marks that it always applies, and each test
+  lists the triggers it leaves absent. Validation refuses a proposal in which a requirement with a trigger has no such
+  test. The deriver brief asks for both.
+- **Manifest:** each hunk's dissimilar case is a test identifier of the contract; manifest validation rejects an attempt
+  that names one the contract lacks. The author brief lists the contract's tests by identifier.
+- **Closes:** R-D17.
+- **Tests:** `ProposalTest` for a conditional requirement with and without a trigger-absent test, and one that always
+  applies; `AuthorManifestTest` for a known and an unknown dissimilar test.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
 
 - **Sessions:** the runner settings decide plugin installation per session role: trials install CAT; the deriver, judge
@@ -1085,6 +1100,7 @@ blocks only the part of a work item that it names.
 | WI-27 | WI-26 |
 | WI-28 | WI-22, WI-26 |
 | WI-29 | WI-28 |
+| WI-30 | WI-29 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-19 and WI-20. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
