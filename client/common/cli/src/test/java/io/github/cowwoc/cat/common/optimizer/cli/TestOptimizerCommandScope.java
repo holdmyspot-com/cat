@@ -27,14 +27,18 @@ import java.util.random.RandomGenerator;
  * creates.
  * <p>
  * The launcher reports version {@code 1.0} and counts how often it runs. The clock starts at
- * {@code 2026-10-01T00:00:00Z}, and campaign identifiers and draw seeds come from a seeded generator.
+ * {@code 2026-10-01T00:00:00Z}, and campaign identifiers, split salts and draw seeds come from a seeded generator.
  *
  * @param <S> the type of the session port
  */
 final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCommandScope
 {
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
-	private static final long SEED = 7;
+	/**
+	 * A seed whose first salts give every test of the fixture derivation at least 2 key-value combinations in each
+	 * part.
+	 */
+	private static final long SEED = 53;
 	private final Harness harness;
 	private final Path directory;
 	private final JsonMapper json = JsonMapper.builder().build();

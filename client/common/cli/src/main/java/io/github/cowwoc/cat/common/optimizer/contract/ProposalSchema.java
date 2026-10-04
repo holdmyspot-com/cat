@@ -58,6 +58,10 @@ public final class ProposalSchema
 	 * The proposal field holding the paths of recorded scenarios covered by a test.
 	 */
 	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
+	/**
+	 * The property that holds the contract's salt, which CAT draws rather than the deriver.
+	 */
+	private static final String SALT = "salt";
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
@@ -91,8 +95,8 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Returns the proposal schema without the parts that CAT computes: the trial profiles and each test's discarded
-	 * checks.
+	 * Returns the proposal schema without the parts that CAT computes: the salt, the trial profiles and each test's
+	 * discarded checks.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schemaText the proposal schema
@@ -102,6 +106,7 @@ public final class ProposalSchema
 	{
 		ObjectNode root = (ObjectNode) json.readTree(schemaText);
 		removeProperty(json, root, TRIAL_PROFILES);
+		removeProperty(json, root, SALT);
 		ObjectNode test = (ObjectNode) root.get("properties").get("categories").get("items").get("properties").
 			get("tests").get("items");
 		removeProperty(json, test, DISCARDED_CHECKS);
@@ -138,8 +143,8 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Returns the JSON schema of deriver output: the proposal schema without the trial profiles and the discarded
-	 * checks that CAT computes.
+	 * Returns the JSON schema of deriver output: the proposal schema without the salt, the trial profiles and the
+	 * discarded checks that CAT computes.
 	 *
 	 * @return a copy of the schema, which the caller may change
 	 */
@@ -160,25 +165,27 @@ public final class ProposalSchema
 	public Contract parse(String proposal) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
-		return parse(proposal, validator, null);
+		return parse(proposal, validator, null, null);
 	}
 
 	/**
-	 * Validates deriver output that holds no trial profiles and no discarded checks, computes the profiles, runs the
-	 * checks against their controls and converts the output to a contract.
+	 * Validates deriver output that holds no salt, no trial profiles and no discarded checks, computes the profiles,
+	 * runs the checks against their controls and converts the output to a contract.
 	 *
-	 * @param proposal the deriver's JSON output, without {@value #TRIAL_PROFILES} and {@value #DISCARDED_CHECKS}
+	 * @param proposal the deriver's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES} and
+	 *   {@value #DISCARDED_CHECKS}
 	 * @param profiles computes the trial profiles from the proposal's requirements and categories
+	 * @param salt the salt that CAT drew for the proposal
 	 * @return the contract that the proposal describes
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds trial
-	 *   profiles, breaks a rule that the schema cannot express, or {@code profiles} rejects it
+	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds a salt or
+	 *   trial profiles, breaks a rule that the schema cannot express, or {@code profiles} rejects it
 	 */
-	public Contract parse(String proposal, ProfileRule profiles) throws InvalidProposalException
+	public Contract parse(String proposal, ProfileRule profiles, long salt) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		return parse(proposal, derivation, profiles);
+		return parse(proposal, derivation, profiles, salt);
 	}
 
 	/**
@@ -187,10 +194,11 @@ public final class ProposalSchema
 	 * @param proposal the JSON text
 	 * @param schema the schema that the proposal must satisfy
 	 * @param profiles computes the trial profiles, or {@code null} to read them from the proposal
+	 * @param salt the contract's salt, or {@code null} to read it from the proposal
 	 * @return the contract
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
-	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles)
+	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt)
 		throws InvalidProposalException
 	{
 		JsonNode root;
@@ -210,7 +218,7 @@ public final class ProposalSchema
 			throw new InvalidProposalException(violations);
 
 		List<String> problems = new ArrayList<>();
-		Contract contract = new Builder(problems).contract(root, profiles);
+		Contract contract = new Builder(problems).contract(root, profiles, salt);
 		if (contract == null)
 			throw new InvalidProposalException(problems);
 		return contract;
@@ -260,6 +268,7 @@ public final class ProposalSchema
 		contract.fixtures().ignoredPaths().forEach(ignoredPaths::add);
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
+		root.put(SALT, contract.salt());
 		return json.writeValueAsString(root);
 	}
 
@@ -354,6 +363,8 @@ public final class ProposalSchema
 				valueNode.put("probability", value.probability());
 			}
 		}
+		ArrayNode keyDimensions = node.putArray("key_dimensions");
+		test.keyDimensions().forEach(keyDimensions::add);
 		ArrayNode checks = node.putArray("checks");
 		for (DeterministicCheck check : test.checks())
 			write(check, checks.addObject());
@@ -505,9 +516,10 @@ public final class ProposalSchema
 		 *
 		 * @param root the proposal
 		 * @param rule computes the trial profiles, or {@code null} to read them from the proposal
+		 * @param salt the contract's salt, or {@code null} to read it from the proposal
 		 * @return the contract, or null if a problem was added
 		 */
-		Contract contract(JsonNode root, ProfileRule rule)
+		Contract contract(JsonNode root, ProfileRule rule, Long salt)
 		{
 			int problemsBefore = problems.size();
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
@@ -529,8 +541,13 @@ public final class ProposalSchema
 				profiles = attempt("$." + TRIAL_PROFILES, () -> rule.profiles(requirements, categories));
 			if (profiles == null)
 				return null;
+			long contractSalt;
+			if (salt == null)
+				contractSalt = root.get(SALT).asLong();
+			else
+				contractSalt = salt;
 			return attempt("$", () -> new Contract(requirements, categories, profiles, judge, fixtures,
-				strings(root.get("limitations"))));
+				strings(root.get("limitations")), contractSalt));
 		}
 
 		/**
@@ -617,8 +634,8 @@ public final class ProposalSchema
 			return attempt(location, () -> new TestDefinition(text(node, "id"), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
-				strings(node.get("uncovered_interactions")), variations, checks, discardedChecks,
-				strings(node.get(REGRESSION_SCENARIOS))).
+				strings(node.get("uncovered_interactions")), variations, strings(node.get("key_dimensions")), checks,
+				discardedChecks, strings(node.get(REGRESSION_SCENARIOS))).
 				withValidatedControls());
 		}
 

@@ -125,7 +125,7 @@ public final class StatusReportTest
 				1, snapshot, "safety", trigger, allocation)));
 			TrialKey key = campaign.trials().getLast().key();
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", null,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
 				campaign.identity(), null, List.of()));
 		}
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
@@ -135,8 +135,8 @@ public final class StatusReportTest
 			campaign.development().series(), snapshot, "safety", null, allocation)));
 		TrialKey key = campaign.trials().getLast().key();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "poor outcome", null,
-			campaign.identity(), null, List.of()));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "poor outcome", List.of(),
+			null, campaign.identity(), null, List.of()));
 
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		JsonNode reverted = report.toJson(JsonMapper.builder().build()).path("reverts").path(0);

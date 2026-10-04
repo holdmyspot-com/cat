@@ -135,20 +135,36 @@ public final class BaselineTest
 	}
 
 	/**
-	 * Verifies that the incumbent's development trials are its baseline.
+	 * Verifies that the incumbent's development trials, which run development instances, never count toward its
+	 * baseline of held-out instances.
 	 */
 	@Test
-	public void incumbentDevelopmentTrialsAreBaseline()
+	public void incumbentTrialsStayOutOfBaseline()
 	{
 		// Requirement: R-D7
 		Campaign campaign = new Builder().confirmed().build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
-		requireThat(campaign.baseline().count("formatting"), "baseline").isEqualTo(counts(1, 0));
-		requireThat(campaign.development().count("formatting"), "development").isEqualTo(counts(1, 0));
+		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.FAIL);
+		requireThat(campaign.baseline().count("formatting"), "baseline").isEqualTo(CellCounts.EMPTY);
+		requireThat(campaign.development().count("formatting"), "development").isEqualTo(counts(1, 1));
 
-		Campaign promoted = new Builder().confirmed().working(1).build();
-		promoted = TransitionSteps.adopt(promoted, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
-		requireThat(promoted.baseline().count("formatting"), "promotedBaseline").isEqualTo(CellCounts.EMPTY);
+		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "formatting", Verdict.PASS);
+		requireThat(campaign.baseline().count("formatting"), "baselineArm").isEqualTo(counts(1, 0));
+	}
+
+	/**
+	 * Verifies that a failed baseline trial, which runs a held-out instance, never enters the regression set.
+	 */
+	@Test
+	public void baselineFailureStaysOutOfRegressionSet()
+	{
+		// Requirement: R-D7, R-D3, R-D9
+		Campaign campaign = new Builder().confirmed().working(1).build();
+		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "safety", Verdict.FAIL);
+
+		requireThat(campaign.baseline().count("safety"), "baseline").isEqualTo(counts(0, 1));
+		requireThat(campaign.lineage().regressionSet(), "regressionSet").isEmpty();
+		requireThat(campaign.development().failures(), "developmentFailures").isEmpty();
 	}
 
 	/**

@@ -168,7 +168,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		TrialInstance logs = Builder.targeted("safety", "logs");
 		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The defect reproduced");
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 99, 1).
-			failure(new Failure(logs, "Removed the directory", null, List.of(failed, failed, failed), List.of())).
+			failure(new Failure(logs, "Removed the directory", List.of(), null, List.of(failed, failed, failed), List.of())).
 			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 1))).build();
 		Sha256 snapshot = Builder.snapshot("stored-promoted-revert-candidate");
 		campaign = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
@@ -181,7 +181,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 					Instant.parse("2026-10-01T12:00:00Z")))));
 			TrialKey key = campaign.trials().getLast().key();
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "Fixed", null,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "Fixed", List.of(), null,
 				campaign.identity(), null, List.of()));
 		}
 		return Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
@@ -202,7 +202,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		TrialKey key = campaign.trials().getLast().key();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		return Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "Poor representative result",
-			null, campaign.identity(), null, List.of()));
+			List.of(), null, campaign.identity(), null, List.of()));
 	}
 
 	@Override
@@ -374,8 +374,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeAssignment(ID, trial);
 			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
 			store.replaceSnapshot(running);
-			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", null, running.identity(),
-				0L, List.of()));
+			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", List.of(), null,
+				running.identity(), 0L, List.of()));
 			reconcile(new FileCampaignStore(base, JSON));
 			Campaign recovered = store.load(ID).orElseThrow();
 			TrialInputs inputs = recovered.optimization().trialInputs().get(recovered.identity()).
@@ -598,10 +598,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(14);
+					"recordVersion").isEqualTo(15);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(14);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(15);
 		}
 	}
 
@@ -759,7 +759,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			List<List<String>> responses = List.of(List.of("I'll inspect the directory.", "Should I delete it?"),
 				List.of("I'll keep it.", "The directory is unchanged."));
 			CampaignEvent.Complete outcome = new CampaignEvent.Complete(trial.key(), Verdict.FAIL, "Unasked narration",
-				null, running.identity(), null, responses);
+				List.of(), null, running.identity(), null, responses);
 			store.writeOutcome(ID, outcome);
 			store.replaceSnapshot(running);
 
@@ -772,7 +772,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign loadedJudged = restarted.load(ID).orElseThrow();
 			requireThat(loadedJudged.trials().getLast().responses(), "loadedJudgedResponses").isEqualTo(responses);
 			Campaign adopted = Transitions.apply(loadedJudged, new CampaignEvent.Complete(earlier.key(),
-				Verdict.PASS, "Earlier trial passed", null,
+				Verdict.PASS, "Earlier trial passed", List.of(), null,
 				loadedJudged.identity(), null, List.of()));
 			store.replaceSnapshot(adopted);
 			Campaign loadedAdopted = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
@@ -801,7 +801,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
 			Triage triage = new Triage(Impact.SELF_RECOVERING, "The reply re-read the file and then asked.");
 			CampaignEvent.Complete outcome = new CampaignEvent.Complete(trial.key(), Verdict.FAIL, "Unasked deletion",
-				triage, running.identity(), null, List.of());
+				List.of(), triage, running.identity(), null, List.of());
 			store.writeOutcome(ID, outcome);
 			store.replaceSnapshot(running);
 
@@ -913,7 +913,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).
 				trial(trial(2, TrialState.JUDGED)).
 				failure(new Failure(instance("safety", "deletion", 3, true),
-					"The reply deleted the directory unasked.", null,
+					"The reply deleted the directory unasked.", List.of(), null,
 					List.of(new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
 				build());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
@@ -1008,7 +1008,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 15);
+			root.put("format_version", 16);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);
@@ -1119,6 +1119,32 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * A campaign of format version 14, whose contract holds no split salt or key dimensions and whose failures hold
+	 * no failed requirements, is refused with a message that names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 14 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionFourteenCampaign() throws IOException
+	{
+		// Requirement: R-C16
+		// Requirement: R-D9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-14-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 14);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
 	 * Returns a confirmed campaign whose working candidate has no development outcomes.
 	 *
 	 * @return the campaign
@@ -1207,8 +1233,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	private static void finish(CampaignStore store, Campaign running, TrialKey key, Verdict verdict)
 		throws IOException
 	{
-		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", null, running.identity(), null,
-			List.of());
+		CampaignEvent.Complete outcome = new CampaignEvent.Complete(key, verdict, "", List.of(), null, running.identity(),
+			null, List.of());
 		store.writeOutcome(ID, outcome);
 		store.replaceSnapshot(Transitions.apply(running, outcome));
 	}

@@ -148,7 +148,7 @@ public final class TierFixtures
 			List.of(new ProfileBinding(safetySource, safety)), List.of(), described, fixture.requirements(),
 			fixture.categories(), Set.of(Requirement.CORE_TASK.id()));
 		return new Contract(fixture.requirements(), fixture.categories(), profiles, fixture.judge(),
-			fixture.fixtures(), fixture.limitations());
+			fixture.fixtures(), fixture.limitations(), fixture.salt());
 	}
 
 	/**

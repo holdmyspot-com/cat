@@ -16,7 +16,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.DiscardedCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.EvidenceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
@@ -162,7 +164,12 @@ final class Markdown
 		heading("Categories and tests");
 		text.append("This is a balanced benchmark: every test in a category has equal weight, and the variation " +
 			"probabilities are chosen for coverage. They are testing assumptions, not usage frequencies; actual " +
-			"future usage frequencies are unknown.\n");
+			"future usage frequencies are unknown.\n\n" +
+			"A test's key dimensions carry its content. Each combination of their values belongs to the development " +
+			"part or the held-out part, each with probability 1/2, under a random value that confirmation freezes. " +
+			"Development trials and every session that edits the prompts use development instances only; formal " +
+			"trials and the incumbent's baseline draw held-out instances only. Confirmation needs at least 2 " +
+			"key-value combinations in each part of every test.\n");
 		for (Category category : contract.categories())
 		{
 			text.append("\n### Category `").append(category.id()).append("`\n\n").
@@ -239,6 +246,7 @@ final class Markdown
 				}
 			}
 		}
+		keyDimensions(test);
 		if (test.uncoveredInteractions().isEmpty())
 			text.append("- Interactions this test cannot cover: none\n");
 		else
@@ -246,6 +254,37 @@ final class Markdown
 			text.append("- Interactions this test cannot cover:\n");
 			for (String interaction : test.uncoveredInteractions())
 				text.append("  - ").append(interaction).append('\n');
+		}
+	}
+
+	/**
+	 * Lists a test's key dimensions and the number of its key-value combinations in each part.
+	 *
+	 * @param test the test definition
+	 */
+	private void keyDimensions(TestDefinition test)
+	{
+		String names = test.keyRules().stream().map(rule -> "`" + rule.dimension() + "`").
+			collect(Collectors.joining(", "));
+		text.append("- Key dimensions: ");
+		if (test.keyDimensions().isEmpty())
+		{
+			if (names.isEmpty())
+				text.append("none, so the test has one key-value combination");
+			else
+				text.append("every dimension (").append(names).append(')');
+		}
+		else
+			text.append(names);
+		Split split = contract.split();
+		int development = split.combinations(test, Part.DEVELOPMENT).size();
+		int heldOut = split.combinations(test, Part.HELD_OUT).size();
+		text.append("\n- Key-value combinations: ").append(development).append(" in the development part, ").
+			append(heldOut).append(" in the held-out part\n");
+		if (development < Proposal.MINIMUM_COMBINATIONS || heldOut < Proposal.MINIMUM_COMBINATIONS)
+		{
+			text.append("  Confirmation is refused until each part holds at least ").
+				append(Proposal.MINIMUM_COMBINATIONS).append(". Ask for more key values in revision feedback.\n");
 		}
 	}
 

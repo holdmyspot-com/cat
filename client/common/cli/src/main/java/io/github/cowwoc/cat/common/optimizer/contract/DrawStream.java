@@ -45,6 +45,20 @@ public final class DrawStream implements RandomGenerator
 		{
 			this.salt = salt;
 		}
+
+		/**
+		 * Returns the part of the contract whose instances a stream of this kind draws.
+		 *
+		 * @return {@link Part#DEVELOPMENT} for development draws, {@link Part#HELD_OUT} for formal and baseline draws
+		 */
+		public Part part()
+		{
+			return switch (this)
+			{
+				case DEVELOPMENT -> Part.DEVELOPMENT;
+				case FORMAL, BASELINE -> Part.HELD_OUT;
+			};
+		}
 	}
 
 	/**

@@ -127,8 +127,9 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 14;
+	private static final int FORMAT_VERSION = 15;
 	private static final String TOKEN_USAGE = "token_usage";
+	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -457,6 +458,20 @@ final class CampaignJson
 	}
 
 	/**
+	 * Writes an array of strings.
+	 *
+	 * @param node the containing object
+	 * @param name the array property
+	 * @param values the strings
+	 */
+	private static void putStrings(ObjectNode node, String name, List<String> values)
+	{
+		ArrayNode array = node.putArray(name);
+		for (String value : values)
+			array.add(value);
+	}
+
+	/**
 	 * Reads an array of required strings.
 	 *
 	 * @param node the containing object
@@ -510,6 +525,7 @@ final class CampaignJson
 			ObjectNode node = root.putObject("outcome");
 			node.put("verdict", outcome.verdict().name());
 			node.put("rationale", outcome.rationale());
+			putStrings(node, FAILED_REQUIREMENTS, outcome.failedRequirements());
 			node.set("triage", writeTriage(outcome.triage()));
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
@@ -536,7 +552,7 @@ final class CampaignJson
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readTriage(outcomeNode),
+				text(outcomeNode, "rationale"), readStrings(outcomeNode, FAILED_REQUIREMENTS), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
 				readResponses(outcomeNode));
 		}
@@ -1201,6 +1217,7 @@ final class CampaignJson
 		node.put("state", trial.state().name());
 		putConstant(node, "verdict", trial.verdict());
 		node.put("rationale", trial.rationale());
+		putStrings(node, FAILED_REQUIREMENTS, trial.failedRequirements());
 		node.set("triage", writeTriage(trial.triage()));
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
@@ -1221,7 +1238,8 @@ final class CampaignJson
 		String rationale = nullableText(node, "rationale");
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), verdict, rationale, readTriage(node),
+			constant(node, "state", TrialState.class), verdict, rationale, readStrings(node, FAILED_REQUIREMENTS),
+			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
 			readResponses(node));
 	}
@@ -1663,6 +1681,7 @@ final class CampaignJson
 		{
 			ObjectNode element = writeInstance(failure.instance());
 			element.put("rationale", failure.rationale());
+			putStrings(element, FAILED_REQUIREMENTS, failure.failedRequirements());
 			element.set("triage", writeTriage(failure.triage()));
 			element.set("responses", writeResponses(failure.responses()));
 			ArrayNode reruns = element.putArray("reruns");
@@ -1692,8 +1711,8 @@ final class CampaignJson
 			List<DiagnosticRerun> reruns = new ArrayList<>();
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
-			failures.add(new Failure(readInstance(element), text(element, "rationale"), readTriage(element),
-				reruns, readResponses(element)));
+			failures.add(new Failure(readInstance(element), text(element, "rationale"),
+				readStrings(element, FAILED_REQUIREMENTS), readTriage(element), reruns, readResponses(element)));
 		}
 		return failures;
 	}

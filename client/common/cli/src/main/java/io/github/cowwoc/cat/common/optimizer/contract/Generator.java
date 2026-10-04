@@ -3,8 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -12,9 +14,10 @@ import java.util.Map;
  * result and draw identity. Rejects instances that their test definition does not permit.
  * <p>
  * A category groups tests; a cell pairs that group with a model and reasoning-effort profile. A draw picks one test
- * of the chosen cell's category with equal probability, then picks each variation value at its probability fixed
- * by the contract. The draw depends only on the stream's kind, seed and position, never on candidate identity or
- * outcomes.
+ * of the chosen cell's category with equal probability. It then picks one combination of the test's key values from
+ * the part that the stream's kind draws, at the combination's frozen probability divided by the part's total, and
+ * picks each other variation value at its probability fixed by the contract. The draw depends only on the stream's
+ * kind, seed and position, never on candidate identity or outcomes.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Concurrent draws from one stream are serialized and use
  * consecutive positions.
@@ -25,7 +28,7 @@ public final class Generator
 	 * The identity that every instance records, which changes whenever a draw would select differently for the same
 	 * stream position.
 	 */
-	public static final String IDENTITY = "contract-generator/1";
+	public static final String IDENTITY = "contract-generator/2";
 	private final Contract contract;
 
 	/**
@@ -49,7 +52,8 @@ public final class Generator
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if the contract has no such cell
 	 * @throws IllegalStateException if {@code stream} is closed
-	 * @throws GeneratorValidationException if the drawn instance is not permitted by its test definition
+	 * @throws GeneratorValidationException if the drawn test has no key-value combination in the stream's part, or
+	 *   the drawn instance is not permitted by its test definition
 	 */
 	public TrialInstance draw(String cellId, DrawStream stream)
 	{
@@ -66,11 +70,26 @@ public final class Generator
 			DrawStream.State start = stream.state();
 			List<TestDefinition> tests = category.tests();
 			TestDefinition test = tests.get((int) (stream.nextDouble() * tests.size()));
+			Part part = start.kind().part();
+			List<Split.KeyCombination> combinations = contract.split().combinations(test, part);
+			if (combinations.isEmpty())
+			{
+				throw new GeneratorValidationException("The test '" + test.id() + "' has no key-value combination in " +
+					"the " + part + " part");
+			}
+			Map<String, VariationValue> keyValueByDimension = new HashMap<>();
+			List<VariationRule> keyRules = test.keyRules();
+			List<VariationValue> keyValues = select(combinations, stream.nextDouble()).values();
+			for (int i = 0; i < keyRules.size(); ++i)
+				keyValueByDimension.put(keyRules.get(i).dimension(), keyValues.get(i));
+
 			List<VariationChoice> choices = new ArrayList<>();
 			Map<String, String> textByDimension = new LinkedHashMap<>();
 			for (VariationRule rule : test.variations())
 			{
-				VariationValue value = select(rule, stream.nextDouble());
+				VariationValue value = keyValueByDimension.get(rule.dimension());
+				if (value == null)
+					value = select(rule, stream.nextDouble());
 				choices.add(new VariationChoice(rule.dimension(), value.label(), value.probability()));
 				textByDimension.put(rule.dimension(), value.text());
 			}
@@ -103,17 +122,47 @@ public final class Generator
 	}
 
 	/**
+	 * Selects the key-value combination whose cumulative range, scaled to the combinations' total probability,
+	 * contains a uniform draw.
+	 *
+	 * @param combinations the combinations of one part, which must not be empty
+	 * @param uniform      a uniform value in [0, 1)
+	 * @return the selected combination, which is the last one if rounding leaves the draw above the cumulative sum
+	 */
+	private static Split.KeyCombination select(List<Split.KeyCombination> combinations, double uniform)
+	{
+		double total = 0;
+		for (Split.KeyCombination combination : combinations)
+			total += combination.probability();
+		double target = uniform * total;
+		double cumulative = 0;
+		for (Split.KeyCombination combination : combinations)
+		{
+			cumulative += combination.probability();
+			if (target < cumulative)
+				return combination;
+		}
+		return combinations.getLast();
+	}
+
+	/**
 	 * Marks an instance for a selected rerun, without drawing. Such targeted work is excluded from the randomly
-	 * sampled evidence used to measure compliance.
+	 * sampled evidence used to measure compliance, and uses development instances only.
 	 *
 	 * @param instance an instance that was drawn earlier
 	 * @return the same instance, marked targeted
 	 * @throws NullPointerException if {@code instance} is null
-	 * @throws GeneratorValidationException if the instance is not permitted by its test definition
+	 * @throws GeneratorValidationException if the instance is held-out or not permitted by its test definition
 	 */
 	public TrialInstance markTargeted(TrialInstance instance)
 	{
 		validate(instance);
+		Part part = instance.streamKind().part();
+		if (part != Part.DEVELOPMENT)
+		{
+			throw new GeneratorValidationException("A targeted run uses development instances only, but the instance " +
+				"is " + part + ": a " + instance.streamKind().name().toLowerCase(Locale.ROOT) + " stream drew it");
+		}
 		return new TrialInstance(instance.cellId(), instance.categoryId(), instance.testId(), instance.choices(),
 			instance.turns(), instance.expectedBehaviour(), instance.generator(), instance.streamKind(),
 			instance.streamPosition(), true);
@@ -124,7 +173,8 @@ public final class Generator
 	 *
 	 * @param instance the instance to check
 	 * @throws NullPointerException if {@code instance} is null
-	 * @throws GeneratorValidationException if the instance is outside its definition
+	 * @throws GeneratorValidationException if the instance is outside its definition, or its key values belong to a
+	 *   part that its stream does not draw
 	 */
 	public void validate(TrialInstance instance)
 	{
@@ -154,6 +204,7 @@ public final class Generator
 				" variation dimensions, but the instance has " + choices.size() + " choices");
 		}
 		Map<String, String> textByDimension = new LinkedHashMap<>();
+		Map<String, String> labelByDimension = new HashMap<>();
 		for (int i = 0; i < rules.size(); ++i)
 		{
 			VariationRule rule = rules.get(i);
@@ -173,6 +224,15 @@ public final class Generator
 					", but the instance records " + choice.probability());
 			}
 			textByDimension.put(rule.dimension(), value.text());
+			labelByDimension.put(rule.dimension(), value.label());
+		}
+		Part part = contract.split().partOf(test, labelByDimension);
+		Part streamPart = instance.streamKind().part();
+		if (part != streamPart)
+		{
+			throw new GeneratorValidationException("The key values of the instance belong to the " + part +
+				" part, but a " + instance.streamKind().name().toLowerCase(Locale.ROOT) +
+				" stream draws from the " + streamPart + " part");
 		}
 		if (!instance.turns().equals(test.expandTurns(textByDimension)))
 		{

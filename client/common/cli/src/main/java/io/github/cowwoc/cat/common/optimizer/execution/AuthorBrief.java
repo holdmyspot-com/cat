@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -25,8 +26,9 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * The contract and outcomes that an author session may see: development failures and counts for the working
- * candidate, and certification outcomes from attempts that have ended. It excludes trial instances and outcomes
- * from certification attempts in progress.
+ * candidate, and certification outcomes from attempts that have ended. Certification instances are held out, so an
+ * ended attempt's failures appear only as their cell, test and failed requirements. It excludes outcomes from
+ * certification attempts in progress.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -80,7 +82,9 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	}
 
 	/**
-	 * Returns every supplied failure's citation identifier, preserving its occurrence in this brief.
+	 * Returns every supplied failure's citation identifier, preserving its occurrence in this brief. Only development
+	 * failures are supplied failures; an ended attempt's failure summaries are context that the author neither
+	 * classifies nor cites.
 	 *
 	 * @return the unique identifiers
 	 */
@@ -89,11 +93,6 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		Set<String> identifiers = new HashSet<>();
 		for (int index = 0; index < developmentFailures.size(); ++index)
 			identifiers.add(developmentId(index));
-		for (EndedAttempt attempt : endedAttempts)
-		{
-			for (int index = 0; index < attempt.failures().size(); ++index)
-				identifiers.add(endedId(attempt.index(), index));
-		}
 		return Set.copyOf(identifiers);
 	}
 
@@ -106,39 +105,9 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 */
 	public String developmentId(int occurrence)
 	{
-		return failureId("development", occurrence, developmentFailures.get(occurrence));
-	}
-
-	/**
-	 * Identifies one supplied failure of an ended attempt.
-	 *
-	 * @param attemptIndex the ended attempt's index
-	 * @param occurrence the failure's list index, from zero
-	 * @return its scoped citation identifier
-	 * @throws IllegalArgumentException if the ended attempt is absent
-	 * @throws IndexOutOfBoundsException if the occurrence is absent
-	 */
-	public String endedId(int attemptIndex, int occurrence)
-	{
-		for (EndedAttempt attempt : endedAttempts)
-		{
-			if (attempt.index() == attemptIndex)
-				return failureId("ended:" + attemptIndex, occurrence, attempt.failures().get(occurrence));
-		}
-		throw new IllegalArgumentException("No supplied ended attempt " + attemptIndex);
-	}
-
-	/**
-	 * Frames the brief location and instance identity so repeated instances remain distinct supplied failures.
-	 *
-	 * @param origin the development or ended-attempt location
-	 * @param occurrence the list index
-	 * @param failure the supplied failure
-	 * @return the scoped digest
-	 */
-	private static String failureId(String origin, int occurrence, Failure failure)
-	{
-		return Sha256.of((origin + "\n" + occurrence + "\n" + AuthorManifest.instanceId(failure.instance())).
+		Failure failure = developmentFailures.get(occurrence);
+		// The occurrence keeps repeated instances distinct supplied failures
+		return Sha256.of(("development\n" + occurrence + "\n" + AuthorManifest.instanceId(failure.instance())).
 			getBytes(StandardCharsets.UTF_8)).hex();
 	}
 
@@ -160,7 +129,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 			if (!attempt.isRunning())
 			{
 				ended.add(new EndedAttempt(attempt.index(), attempt.outcome(), attempt.counts(),
-					attempt.failures()));
+					attempt.failures().stream().map(Failure::summary).toList()));
 			}
 		}
 		Map<Path, Path> links = new HashMap<>();
@@ -182,10 +151,10 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param index the attempt's certification index
 	 * @param outcome the attempt's outcome
 	 * @param counts the attempt's adopted certification outcomes per cell
-	 * @param failures the attempt's certification failures, in adoption order
+	 * @param failures the summaries of the attempt's certification failures, in adoption order
 	 */
 	public record EndedAttempt(int index, Outcome outcome, Map<String, CellCounts> counts,
-		List<Failure> failures)
+		List<FailureSummary> failures)
 	{
 		/**
 		 * Creates the outcomes of an ended attempt.
@@ -193,7 +162,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		 * @param index the attempt's certification index
 		 * @param outcome the attempt's outcome
 		 * @param counts the attempt's adopted certification outcomes per cell
-		 * @param failures the attempt's certification failures, in adoption order
+		 * @param failures the summaries of the attempt's certification failures, in adoption order
 		 * @throws NullPointerException if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code index} is not positive
 		 */

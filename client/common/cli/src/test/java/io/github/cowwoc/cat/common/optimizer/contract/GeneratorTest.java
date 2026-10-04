@@ -3,7 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -13,6 +18,18 @@ import org.testng.annotations.Test;
 public final class GeneratorTest
 {
 	private static final long SEED = 7_001L;
+	/**
+	 * The salt of the template contracts.
+	 */
+	private static final long TEMPLATE_SALT = 42L;
+	/**
+	 * The category, and so the cell, of the template contracts.
+	 */
+	private static final String TEMPLATE_CELL = "trivia";
+	/**
+	 * The test of the template contracts.
+	 */
+	private static final String TEMPLATE_TEST = "capital";
 
 	/**
 	 * Creates the test fixture.
@@ -69,21 +86,24 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that a draw advances the stream by the one value that picks the test plus one value for each
-	 * dimension of the picked test, so a persisted position identifies the next draw.
+	 * Verifies that a draw advances the stream by the one value that picks the test, the one value that picks the key
+	 * values and one value for each other dimension of the picked test, so a persisted position identifies the next
+	 * draw.
 	 */
 	@Test
 	public void drawAdvancesStreamByItsOwnValues()
 	{
 		// Requirement: R-C4
-		Generator generator = new Generator(ContractFixtures.contract());
+		Contract contract = templateContract(List.of(0.25, 0.25, 0.25, 0.25), List.of("country"));
+		Generator generator = new Generator(contract);
 		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
 		long expectedPosition = 0;
 		for (int i = 0; i < 30; ++i)
 		{
-			TrialInstance instance = generator.draw("formatting", stream);
+			TrialInstance instance = generator.draw(TEMPLATE_CELL, stream);
 			requireThat(instance.streamPosition(), "streamPosition").isEqualTo(expectedPosition);
-			expectedPosition += 1 + instance.choices().size();
+			// The test, the key values and the workspace
+			expectedPosition += 3;
 			requireThat(stream.state().position(), "position").isEqualTo(expectedPosition);
 		}
 	}
@@ -117,9 +137,9 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that a repeated draw of the same concrete instance is legitimate: a test without variation yields
-	 * identical instances, and a stream resumed at an earlier position yields the instance again. Neither is
-	 * rejected.
+	 * Verifies that a repeated draw of the same concrete instance within a part is legitimate: a part with few
+	 * key-value combinations yields identical instances, and a stream resumed at an earlier position yields the
+	 * instance again. Neither is rejected.
 	 */
 	@Test
 	public void repeatedInstancesAreAllowed()
@@ -127,16 +147,11 @@ public final class GeneratorTest
 		// Requirement: R-C4
 		Generator generator = new Generator(ContractFixtures.contract());
 		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		List<TrialInstance> plainDraws = new ArrayList<>();
-		for (int i = 0; i < 200; ++i)
-		{
-			TrialInstance instance = generator.draw("formatting", stream);
-			if (instance.testId().equals("plain-list"))
-				plainDraws.add(instance);
-		}
-		requireThat(plainDraws.size(), "plainDraws.size()").isGreaterThan(10);
-		List<List<String>> turnSequences = plainDraws.stream().map(TrialInstance::turns).distinct().toList();
-		requireThat(turnSequences, "turnSequences").isEqualTo(List.of(List.of("List three colors.")));
+		List<List<String>> turnSequences = new ArrayList<>();
+		for (int i = 0; i < 50; ++i)
+			turnSequences.add(generator.draw("safety", stream).turns());
+		requireThat(turnSequences.stream().distinct().count(), "distinctTurnSequences").
+			isLessThan((long) turnSequences.size());
 
 		DrawStream first = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
 		DrawStream second = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
@@ -314,15 +329,20 @@ public final class GeneratorTest
 		VariationRule price = new VariationRule("price", List.of(new VariationValue("dollars", "$5 and \\1", 1.0)));
 		TestDefinition test = new TestDefinition("quote", List.of("r1", Requirement.CORE_TASK.id()), List.of(), "Always.",
 			List.of("It costs {{price}}; repeat: {{price}}."), java.time.Duration.ofMinutes(1), "Complies.", List.of(),
-			List.of(price), List.of(), List.of(), List.of());
+			List.of(price), List.of(), List.of(), List.of(), List.of());
 		Contract original = ContractFixtures.contract();
 		List<Category> categories = List.of(new Category("quotes", "Why.", new RiskRank(1), List.of(test)));
 		Contract contract = new Contract(original.requirements(), categories,
 			ContractFixtures.profiles(original.requirements(), categories), original.judge(), original.fixtures(),
-			original.limitations());
+			original.limitations(), original.salt());
 
-		TrialInstance instance = new Generator(contract).draw("quotes",
-			DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED));
+		// The test's one key-value combination belongs to one part; draw from a stream of that part
+		DrawStream.Kind kind;
+		if (contract.split().combinations(test, Part.DEVELOPMENT).isEmpty())
+			kind = DrawStream.Kind.BASELINE;
+		else
+			kind = DrawStream.Kind.DEVELOPMENT;
+		TrialInstance instance = new Generator(contract).draw("quotes", DrawStream.create(kind, SEED));
 
 		requireThat(instance.turns(), "turns").isEqualTo(List.of("It costs $5 and \\1; repeat: $5 and \\1."));
 	}
@@ -341,5 +361,297 @@ public final class GeneratorTest
 			generator.validate(generator.draw("formatting", stream));
 			generator.validate(generator.draw("safety", stream));
 		}
+	}
+	/**
+	 * Verifies that the split depends only on the salt, the test and the key values: the same salt assigns every
+	 * key-value combination to the same part, both parts list exactly the combinations assigned to them, and another
+	 * salt assigns some combination to the other part.
+	 */
+	@Test
+	public void splitIsStableUnderTheSalt()
+	{
+		// Requirement: R-C16
+		TestDefinition test = template(uniform(40), List.of("country"));
+		Split split = new Split(TEMPLATE_SALT);
+		Split again = new Split(TEMPLATE_SALT);
+		Split other = new Split(TEMPLATE_SALT + 1);
+		int differences = 0;
+		for (VariationValue country : test.variations().getFirst().values())
+		{
+			Map<String, String> labels = Map.of("country", country.label(), "workspace", "alpha");
+			Part part = split.partOf(test, labels);
+			requireThat(again.partOf(test, labels), "again").isEqualTo(part);
+			if (other.partOf(test, labels) != part)
+				++differences;
+		}
+		requireThat(differences, "differences").isPositive();
+
+		for (Part part : Part.values())
+		{
+			for (Split.KeyCombination combination : split.combinations(test, part))
+			{
+				Map<String, String> labels = Map.of("country", combination.values().getFirst().label(), "workspace",
+					"beta");
+				requireThat(split.partOf(test, labels), "partOf").isEqualTo(part);
+			}
+		}
+		requireThat(split.combinations(test, Part.DEVELOPMENT).size() +
+			split.combinations(test, Part.HELD_OUT).size(), "combinations").isEqualTo(40);
+	}
+
+	/**
+	 * Verifies that each part receives about half of many key-value combinations.
+	 */
+	@Test
+	public void splitHalvesManyCombinations()
+	{
+		// Requirement: R-C16
+		TestDefinition test = template(uniform(2000), List.of("country"));
+		Split split = new Split(TEMPLATE_SALT);
+
+		int development = split.combinations(test, Part.DEVELOPMENT).size();
+		int heldOut = split.combinations(test, Part.HELD_OUT).size();
+
+		requireThat(development + heldOut, "total").isEqualTo(2000);
+		// A fair split's development count lies within 5 standard deviations (5 * sqrt(2000 / 4) ≈ 112) of 1000
+		// except with probability below 1e-6
+		requireThat(development, "development").isBetween(888, true, 1112, true);
+	}
+
+	/**
+	 * Verifies that instances that share key values share a part whatever their other values, and that a test that
+	 * marks no key dimension splits on all of its dimensions.
+	 */
+	@Test
+	public void instancesSharingKeyValuesShareAPart()
+	{
+		// Requirement: R-C16
+		TestDefinition keyed = template(uniform(20), List.of("country"));
+		TestDefinition unkeyed = template(uniform(20), List.of());
+		Split split = new Split(TEMPLATE_SALT);
+		boolean workspaceDecides = false;
+		for (VariationValue country : keyed.variations().getFirst().values())
+		{
+			Set<Part> keyedParts = EnumSet.noneOf(Part.class);
+			Set<Part> unkeyedParts = EnumSet.noneOf(Part.class);
+			for (VariationValue workspace : keyed.variations().get(1).values())
+			{
+				Map<String, String> labels = Map.of("country", country.label(), "workspace", workspace.label());
+				keyedParts.add(split.partOf(keyed, labels));
+				unkeyedParts.add(split.partOf(unkeyed, labels));
+			}
+			requireThat(keyedParts.size(), "keyedParts(" + country.label() + ")").isEqualTo(1);
+			if (unkeyedParts.size() > 1)
+				workspaceDecides = true;
+		}
+		requireThat(workspaceDecides, "workspaceDecides").isTrue();
+	}
+
+	/**
+	 * Verifies that development streams draw only development instances, formal and baseline streams draw only
+	 * held-out instances, and each stream reaches every key-value combination of its part.
+	 */
+	@Test
+	public void eachPartIsDrawnOnlyByItsStreams()
+	{
+		// Requirement: R-C16
+		// Requirement: R-C4
+		Contract contract = templateContract(uniform(12), List.of("country"));
+		TestDefinition test = contract.findTest(TEMPLATE_TEST).orElseThrow();
+		Split split = contract.split();
+		Generator generator = new Generator(contract);
+		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, SEED);
+		formal.open();
+		Map<DrawStream.Kind, Part> expectedParts = Map.of(DrawStream.Kind.DEVELOPMENT, Part.DEVELOPMENT,
+			DrawStream.Kind.FORMAL, Part.HELD_OUT, DrawStream.Kind.BASELINE, Part.HELD_OUT);
+		for (DrawStream stream : List.of(DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED),
+			DrawStream.create(DrawStream.Kind.BASELINE, SEED), formal))
+		{
+			DrawStream.Kind kind = stream.state().kind();
+			Part part = expectedParts.get(kind);
+			requireThat(kind.part(), "part(" + kind + ")").isEqualTo(part);
+			Set<String> drawn = new HashSet<>();
+			for (int i = 0; i < 400; ++i)
+			{
+				Map<String, String> labels = labels(generator.draw(TEMPLATE_CELL, stream));
+				requireThat(split.partOf(test, labels), "partOf").isEqualTo(part);
+				drawn.add(labels.get("country"));
+			}
+			Set<String> expected = new HashSet<>();
+			for (Split.KeyCombination combination : split.combinations(test, part))
+				expected.add(combination.values().getFirst().label());
+			requireThat(expected.size(), "expected.size()").isGreaterThanOrEqualTo(2);
+			requireThat(drawn, "drawn(" + kind + ")").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that a draw picks key values by their frozen probabilities restricted to the stream's part, and the
+	 * other values by their frozen probabilities.
+	 */
+	@Test
+	public void drawsKeyValuesWithinThePart()
+	{
+		// Requirement: R-C16
+		// Requirement: R-C4
+		List<Double> weights = new ArrayList<>();
+		for (int weight = 1; weight <= 8; ++weight)
+			weights.add(weight / 36.0);
+		Contract contract = templateContract(weights, List.of("country"));
+		TestDefinition test = contract.findTest(TEMPLATE_TEST).orElseThrow();
+		List<Split.KeyCombination> combinations = contract.split().combinations(test, Part.DEVELOPMENT);
+		double total = 0;
+		for (Split.KeyCombination combination : combinations)
+			total += combination.probability();
+		Generator generator = new Generator(contract);
+		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		int draws = 10_000;
+		Map<String, Integer> countries = new HashMap<>();
+		Map<String, Integer> workspaces = new HashMap<>();
+		for (int i = 0; i < draws; ++i)
+		{
+			Map<String, String> labels = labels(generator.draw(TEMPLATE_CELL, stream));
+			countries.merge(labels.get("country"), 1, Integer::sum);
+			workspaces.merge(labels.get("workspace"), 1, Integer::sum);
+		}
+
+		requireThat(countries.size(), "countries.size()").isEqualTo(combinations.size());
+		for (Split.KeyCombination combination : combinations)
+		{
+			String label = combination.values().getFirst().label();
+			requireWithinFiveDeviations(countries.getOrDefault(label, 0), draws, combination.probability() / total,
+				label);
+		}
+		for (VariationValue workspace : test.variations().get(1).values())
+		{
+			requireWithinFiveDeviations(workspaces.getOrDefault(workspace.label(), 0), draws, workspace.probability(),
+				workspace.label());
+		}
+	}
+
+	/**
+	 * Requires a binomial count to lie within 5 standard deviations of its mean.
+	 *
+	 * @param observed the count
+	 * @param draws the number of draws
+	 * @param probability the probability of the counted outcome in each draw
+	 * @param name the counted outcome
+	 */
+	private static void requireWithinFiveDeviations(int observed, int draws, double probability, String name)
+	{
+		double mean = draws * probability;
+		double deviation = Math.sqrt(draws * probability * (1 - probability));
+		requireThat((double) observed, name).isBetween(mean - 5 * deviation, true, mean + 5 * deviation, true);
+	}
+
+	/**
+	 * Verifies that a held-out instance cannot be marked for a targeted run, while a development instance can.
+	 */
+	@Test
+	public void targetedRunsUseDevelopmentInstancesOnly()
+	{
+		// Requirement: R-C16
+		// Requirement: R-C4
+		Generator generator = new Generator(templateContract(uniform(12), List.of("country")));
+		TrialInstance heldOut = generator.draw(TEMPLATE_CELL, DrawStream.create(DrawStream.Kind.BASELINE, SEED));
+		try
+		{
+			generator.markTargeted(heldOut);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (GeneratorValidationException e)
+		{
+			requireThat(e.getMessage(), "message").contains("held-out");
+		}
+
+		TrialInstance development = generator.draw(TEMPLATE_CELL, DrawStream.create(DrawStream.Kind.DEVELOPMENT,
+			SEED));
+		requireThat(generator.markTargeted(development).targeted(), "targeted").isTrue();
+	}
+
+	/**
+	 * Verifies that validation rejects an instance whose key values lie outside its stream's part.
+	 */
+	@Test(expectedExceptions = GeneratorValidationException.class,
+		expectedExceptionsMessageRegExp = ".*development part.*held-out part.*")
+	public void rejectsInstanceOutsidePart()
+	{
+		// Requirement: R-C16
+		// Requirement: R-C4
+		Generator generator = new Generator(templateContract(uniform(12), List.of("country")));
+		TrialInstance development = generator.draw(TEMPLATE_CELL, DrawStream.create(DrawStream.Kind.DEVELOPMENT,
+			SEED));
+
+		generator.validate(new TrialInstance(development.cellId(), development.categoryId(), development.testId(),
+			development.choices(), development.turns(), development.expectedBehaviour(), development.generator(),
+			DrawStream.Kind.BASELINE, development.streamPosition(), false));
+	}
+
+	/**
+	 * Returns equal probabilities.
+	 *
+	 * @param count the number of values
+	 * @return {@code count} probabilities of {@code 1 / count}
+	 */
+	private static List<Double> uniform(int count)
+	{
+		List<Double> probabilities = new ArrayList<>();
+		for (int i = 0; i < count; ++i)
+			probabilities.add(1.0 / count);
+		return probabilities;
+	}
+
+	/**
+	 * Returns a template test that asks about a country, the content that its key dimension carries, in one of
+	 * three workspaces.
+	 *
+	 * @param countryProbabilities the probability of each country, labelled {@code c0}, {@code c1} and so on
+	 * @param keyDimensions the test's key dimensions
+	 * @return the test
+	 */
+	private static TestDefinition template(List<Double> countryProbabilities, List<String> keyDimensions)
+	{
+		List<VariationValue> countries = new ArrayList<>();
+		for (int i = 0; i < countryProbabilities.size(); ++i)
+			countries.add(new VariationValue("c" + i, "country " + i, countryProbabilities.get(i)));
+		VariationRule workspace = new VariationRule("workspace", List.of(new VariationValue("alpha", "alpha", 0.5),
+			new VariationValue("beta", "beta", 0.3), new VariationValue("gamma", "gamma", 0.2)));
+		return new TestDefinition(TEMPLATE_TEST, List.of("r1", Requirement.CORE_TASK.id()), List.of(), "Always.",
+			List.of("In the {{workspace}} workspace, what is the capital of {{country}}?"),
+			java.time.Duration.ofMinutes(1), "Names the capital.", List.of(),
+			List.of(new VariationRule("country", countries), workspace), keyDimensions, List.of(), List.of(),
+			List.of());
+	}
+
+	/**
+	 * Returns a contract whose one category, {@value #TEMPLATE_CELL}, holds the template test, under
+	 * {@link #TEMPLATE_SALT}.
+	 *
+	 * @param countryProbabilities the probability of each country
+	 * @param keyDimensions the test's key dimensions
+	 * @return the contract
+	 */
+	private static Contract templateContract(List<Double> countryProbabilities, List<String> keyDimensions)
+	{
+		Contract original = ContractFixtures.contract();
+		List<Category> categories = List.of(new Category(TEMPLATE_CELL, "Why.", new RiskRank(1),
+			List.of(template(countryProbabilities, keyDimensions))));
+		return new Contract(original.requirements(), categories,
+			ContractFixtures.profiles(original.requirements(), categories), original.judge(), original.fixtures(),
+			original.limitations(), TEMPLATE_SALT);
+	}
+
+	/**
+	 * Returns the label of each value that an instance chose.
+	 *
+	 * @param instance the instance
+	 * @return the labels by dimension
+	 */
+	private static Map<String, String> labels(TrialInstance instance)
+	{
+		Map<String, String> labels = new HashMap<>();
+		for (VariationChoice choice : instance.choices())
+			labels.put(choice.dimension(), choice.label());
+		return labels;
 	}
 }

@@ -213,6 +213,7 @@ public final class CommitTest
 		for (int i = 0; i < 50 && campaign.attempt(1).isRunning(); ++i)
 			campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
+		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The reply stopped."));
 		requireThat(campaign.development().round(), "round").isNotNull();
 
 		Sha256 edit = Builder.snapshot("edit");

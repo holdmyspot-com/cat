@@ -548,10 +548,16 @@ public final class OptimizerCore implements Core
 			store.replaceSnapshot(campaign);
 		}
 
+		// Revision keeps the salt, so the instances that the user reviewed keep their parts
+		long salt;
+		if (previous == null)
+			salt = scope.random().nextLong();
+		else
+			salt = previous.contract().salt();
 		DerivedProposal derived;
 		try
 		{
-			derived = protocol.proposal(completed, profiles);
+			derived = protocol.proposal(completed, profiles, salt);
 		}
 		catch (InvalidProposalException e)
 		{
@@ -612,7 +618,8 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(deriver(root).proposal(stored.get().result(), stored.get().profiles()));
+			return Optional.of(deriver(root).proposal(stored.get().result(), stored.get().profiles(),
+				stored.get().salt()));
 		}
 		catch (InvalidProposalException e)
 		{

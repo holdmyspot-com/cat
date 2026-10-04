@@ -178,7 +178,7 @@ public final class RevertTest
 		TrialInstance logs = Builder.targeted("safety", "logs");
 		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
 		return new Builder().confirmed().working(1).development("safety", passes, failures).
-			development("formatting", 61, 0).failure(new Failure(logs, "The directory was removed", null,
+			development("formatting", 61, 0).failure(new Failure(logs, "The directory was removed", List.of(), null,
 				List.of(failed, failed, failed), List.of())).regression(logs, Verdict.FAIL).
 			round(new Round(attempts)).build();
 	}

@@ -22,6 +22,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -39,6 +40,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -99,6 +103,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -840,7 +845,7 @@ public final class DriverTest
 	 */
 	private static DriverHarness workingReferenceHarness(Path directory, Verdict referenceVerdict) throws IOException
 	{
-		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", null,
+		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(), null,
 			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of());
 		DriverHarness harness = new DriverHarness(directory,
 			new Builder().confirmed().working(1).readyBaseline().ceiling(16).slowStart(new SlowStart(16, 0)).
@@ -965,9 +970,9 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", null, List.of(
-				new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
+			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(), null,
+				List.of(new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+					new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("extended-resume")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(1).development("safety", 60, 1).
 					round(new Round(Map.of("safety", 0))).failure(failure).build());
@@ -1108,7 +1113,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(new Failure(Builder.targeted("safety", "cache"), "failure", null, List.of(), List.of())).
+					failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(), List.of())).
 					build());
 			harness.authors(request ->
 			{
@@ -1514,7 +1519,7 @@ public final class DriverTest
 				harness.settle(driver);
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
-				requireThat(campaign.runningAttempt().isEmpty(), "running").isTrue();
+				requireThat(campaign.attempt(1).count("safety").outcomes(), "laterOutcomes").isEqualTo(299);
 				requireThat(triageRequests(harness), "triages").isEmpty();
 			}
 		}
@@ -2010,7 +2015,7 @@ public final class DriverTest
 
 	/**
 	 * An attempt qualifies for keep improvement, the user optimizes further, a later candidate's attempt
-	 * also qualifies with a lower bound on its weakest category, and a third attempt fails. At the stop, the campaign
+	 * also qualifies with a lower bound on its weakest category, and later attempts fail. At the stop, the campaign
 	 * offers the first candidate, and keeping it delivers that candidate rather than the working one.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -2031,7 +2036,7 @@ public final class DriverTest
 			{
 				try
 				{
-					if (harness.campaign().runningAttempt().map(CertificationAttempt::index).orElse(0) == 3)
+					if (harness.campaign().runningAttempt().map(CertificationAttempt::index).orElse(0) >= 3)
 						return harness.failed();
 					return harness.passed();
 				}
@@ -2048,7 +2053,7 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				driver.apply(CampaignEvent.Choose.of(Choice.OPTIMIZE_FURTHER));
-				harness.runUntil(driver, state -> state.attempts().size() == 3 && !state.attempt(3).isRunning());
+				harness.runUntil(driver, state -> state.attempts().size() >= 3 && !state.attempt(3).isRunning());
 				requireThat(harness.campaign().attempt(3).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 			}
 			try (Driver driver = harness.open())
@@ -2295,6 +2300,146 @@ public final class DriverTest
 	}
 
 	/**
+	 * Development, diagnostic and promotion trials run development instances, and baseline and formal trials run
+	 * held-out ones. After a failed attempt, the author brief names each formal failure's cell, test and failed
+	 * requirements, and the author's prompt holds no held-out instance, reply or judge rationale.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void heldOutInstancesStayOutOfDevelopment() throws IOException
+	{
+		// Requirement: R-C16
+		// Requirement: R-D9
+		// Requirement: R-C4
+		// Requirement: R-D7
+		Contract contract = TierFixtures.tieredContract();
+		TrialProfile medium = new TrialProfile("big", "medium");
+		String heldOutReply = "The held-out reply.";
+		String heldOutRationale = "The held-out rationale.";
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).
+					development(TierFixtures.SMALL_HIGH, 90, 0).development(TierFixtures.SAFETY, 90, 0).build());
+			Map<Purpose, List<TrialInstance>> instancesByPurpose = new EnumMap<>(Purpose.class);
+			AtomicBoolean developmentFailed = new AtomicBoolean();
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				Purpose purpose = trial.key().purpose();
+				instancesByPurpose.computeIfAbsent(purpose, _ -> new ArrayList<>()).add(trial.instance());
+				if (request.profile().equals(medium))
+				{
+					if (purpose == Purpose.FORMAL)
+						return harness.completed(heldOutReply, DriverHarness.MODEL);
+					if (purpose == Purpose.DEVELOPMENT && developmentFailed.compareAndSet(false, true) ||
+						purpose == Purpose.DIAGNOSTIC)
+					{
+						return harness.failed();
+					}
+				}
+				return harness.passed();
+			});
+			harness.judges(request ->
+			{
+				if (request.turns().getFirst().contains(heldOutReply))
+					return harness.judged(new Judgment(Verdict.FAIL, heldOutRationale));
+				return harness.scriptedJudgment(request);
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().working().number() == 2);
+			}
+			requireThat(instancesByPurpose.keySet(), "purposes").isEqualTo(Set.of(Purpose.values()));
+			for (Map.Entry<Purpose, List<TrialInstance>> entry : instancesByPurpose.entrySet())
+			{
+				Part expected = switch (entry.getKey())
+				{
+					case DEVELOPMENT, DIAGNOSTIC, PROMOTION -> Part.DEVELOPMENT;
+					case BASELINE, FORMAL -> Part.HELD_OUT;
+				};
+				for (TrialInstance instance : entry.getValue())
+					requireThat(partOf(contract, instance), entry.getKey().name()).isEqualTo(expected);
+			}
+
+			AuthorBrief brief = harness.author().briefs().getFirst();
+			requireThat(brief.cell(), "cell").isEqualTo(TierFixtures.BIG_MEDIUM);
+			List<SessionRequest> authorRequests = harness.sessions().sessions().stream().map(FakeSession::request).
+				filter(request -> request.role() == SessionRole.AUTHOR).toList();
+			String turn = authorRequests.getFirst().turns().getFirst();
+			requireThat(turn, "turn").doesNotContain(heldOutReply).doesNotContain(heldOutRationale);
+			for (TrialInstance formal : instancesByPurpose.get(Purpose.FORMAL))
+			{
+				for (String formalTurn : formal.turns())
+					requireThat(turn, "turn").doesNotContain(formalTurn);
+			}
+			String endedSection = turn.substring(turn.indexOf("certification attempts that have ended"),
+				turn.indexOf("\n\n### Your approach"));
+			JsonNode ended = JsonMapper.builder().build().readTree(endedSection.substring(endedSection.indexOf('[')));
+			requireThat(ended.size(), "ended.size()").isEqualTo(1);
+			JsonNode failures = ended.get(0).get("failures");
+			requireThat(failures.size(), "failures.size()").isPositive();
+			for (JsonNode failure : failures)
+			{
+				requireThat(new HashSet<>(failure.propertyNames()), "fields").
+					isEqualTo(Set.of("cell", "test", "failed_requirements"));
+				requireThat(failure.get("cell").asString(), "cell").isEqualTo(TierFixtures.BIG_MEDIUM);
+				List<String> failedRequirements = new ArrayList<>();
+				for (JsonNode requirement : failure.get("failed_requirements"))
+					failedRequirements.add(requirement.asString());
+				requireThat(failedRequirements, "failedRequirements").isEqualTo(contract.findTest(
+					failure.get("test").asString()).orElseThrow().semanticRequirementIds());
+			}
+		}
+	}
+
+	/**
+	 * Returns the running logical trial that a trial session runs.
+	 *
+	 * @param harness the test's harness
+	 * @param request the trial session's request
+	 * @return the trial whose instance has the request's turns, in a cell of the request's profile
+	 * @throws UncheckedIOException if the campaign cannot be read
+	 */
+	private static LogicalTrial runningTrial(DriverHarness harness, SessionRequest request)
+	{
+		Campaign campaign;
+		try
+		{
+			campaign = harness.campaign();
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		Set<String> cells = new HashSet<>();
+		for (Cell cell : campaign.contract().profiles().cells())
+		{
+			if (cell.profile().equals(request.profile()))
+				cells.add(cell.id());
+		}
+		return campaign.trials().stream().filter(trial -> trial.state() == TrialState.RUNNING &&
+			cells.contains(trial.key().cell()) && trial.instance().turns().equals(request.turns())).findFirst().
+			orElseThrow();
+	}
+
+	/**
+	 * Returns the part of an instance's key values under a contract's split.
+	 *
+	 * @param contract the contract
+	 * @param instance the instance
+	 * @return the part
+	 */
+	private static Part partOf(Contract contract, TrialInstance instance)
+	{
+		Map<String, String> labelByDimension = new HashMap<>();
+		for (VariationChoice choice : instance.choices())
+			labelByDimension.put(choice.dimension(), choice.label());
+		return contract.split().partOf(contract.findTest(instance.testId()).orElseThrow(), labelByDimension);
+	}
+
+	/**
 	 * The reply that fails the {@code core-task} check of {@link #checkedContract()}.
 	 */
 	private static final String BROKEN = "BROKEN";
@@ -2337,14 +2482,14 @@ public final class DriverTest
 				List<DeterministicCheck> checks = checksByTest.getOrDefault(test.id(), List.of());
 				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.absentTriggers(), test.applicability(),
 					test.turns(),
-					test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), checks,
-					List.of(), test.regressionScenarios()));
+					test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), List.of(),
+					checks, List.of(), test.regressionScenarios()));
 			}
 			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
 		}
 		return new Contract(fixture.requirements(), categories,
 			ContractFixtures.profiles(fixture.requirements(), categories), fixture.judge(), fixture.fixtures(),
-			fixture.limitations());
+			fixture.limitations(), fixture.salt());
 	}
 
 	/**
@@ -2451,6 +2596,51 @@ public final class DriverTest
 					}
 				}
 			}
+		}
+	}
+
+	/**
+	 * A failure records the requirements it failed: those of its failed deterministic checks, or every requirement
+	 * that its judge assessed when the judge failed it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failureRecordsFailedRequirements() throws IOException
+	{
+		// Requirement: R-D9
+		// Requirement: R-C9
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().
+					development("formatting", 50, 0).development("safety", 50, 0).build());
+			harness.trials(request ->
+			{
+				if (isPlainList(request))
+					return harness.completed(BROKEN, DriverHarness.MODEL);
+				return compliant(harness, request);
+			});
+			harness.judges(request ->
+			{
+				if (judgeTest(request).equals("styled-summary"))
+					return harness.judged(new Judgment(Verdict.FAIL, "The summary is unstyled."));
+				return harness.judged(new Judgment(Verdict.PASS, "The trial met the requirements."));
+			});
+			Map<String, List<String>> failedRequirements = new HashMap<>();
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state ->
+				{
+					for (Failure failure : state.development().failures())
+						failedRequirements.put(failure.instance().testId(), failure.failedRequirements());
+					return failedRequirements.size() == 2;
+				});
+			}
+			requireThat(failedRequirements, "failedRequirements").isEqualTo(Map.of(
+				"plain-list", List.of(Requirement.CORE_TASK.id()),
+				"styled-summary", contract.findTest("styled-summary").orElseThrow().semanticRequirementIds()));
 		}
 	}
 
@@ -2587,7 +2777,7 @@ public final class DriverTest
 		JudgeProfile paths = new JudgeProfile(judge.profile(), "{{responses}} {{effects}} {{transcript}}",
 			judge.rubric(), judge.decisionRule(), judge.resultSchema());
 		Contract contract = new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(), paths,
-			fixture.fixtures(), fixture.limitations());
+			fixture.fixtures(), fixture.limitations(), fixture.salt());
 		Campaign original = new Builder().confirmed(contract, 1).working(1).readyBaseline().build();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2772,7 +2962,7 @@ public final class DriverTest
 
 	/**
 	 * Verifies that an author's brief during a certification attempt holds the development failures and the
-	 * failures of ended attempts, never an instance of the running attempt.
+	 * summaries of ended attempts' failures, never an instance of a certification attempt.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -2797,11 +2987,11 @@ public final class DriverTest
 				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
-					isEqualTo(List.of(new Failure(developmentFailure, "", null, List.of(), List.of())));
+					isEqualTo(List.of(new Failure(developmentFailure, "", List.of(), null, List.of(), List.of())));
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
-					isEqualTo(List.of(new Failure(endedFailure, "", null, List.of(), List.of())));
+					isEqualTo(List.of(new FailureSummary("safety", endedFailure.testId(), List.of())));
 			}
 		}
 	}
@@ -3086,7 +3276,7 @@ public final class DriverTest
 		// Only safety exercises the authority warning; separate certification and cell tests cover formatting
 		List<Category> categories = List.of(fixture.findCategory("safety").orElseThrow());
 		Contract contract = new Contract(requirements, categories, ContractFixtures.profiles(requirements, categories),
-			fixture.judge(), fixture.fixtures(), fixture.limitations());
+			fixture.judge(), fixture.fixtures(), fixture.limitations(), fixture.salt());
 		return new Builder().confirmed(contract, 1).working(1).readyBaseline().development("safety", 50, 1).
 			failure(Builder.instance("safety", "logs")).round(new Round(Map.of("safety", 0))).build();
 	}

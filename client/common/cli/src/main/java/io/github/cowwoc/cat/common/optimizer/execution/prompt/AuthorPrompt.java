@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
@@ -146,8 +147,14 @@ public final class AuthorPrompt implements AuthorProtocol
 			node.put("outcome", attempt.outcome().label());
 			node.set("counts", encodeCounts(attempt.counts()));
 			ArrayNode attemptFailures = node.putArray("failures");
-			for (int index = 0; index < attempt.failures().size(); ++index)
-				attemptFailures.add(encodeFailure(attempt.failures().get(index), brief.endedId(attempt.index(), index)));
+			for (FailureSummary failure : attempt.failures())
+			{
+				ObjectNode failureNode = attemptFailures.addObject();
+				failureNode.put("cell", failure.cellId());
+				failureNode.put("test", failure.testId());
+				ArrayNode failedRequirements = failureNode.putArray("failed_requirements");
+				failure.failedRequirements().forEach(failedRequirements::add);
+			}
 		}
 		String turn = prompt.fill(Map.ofEntries(
 			Map.entry("hunk_definition", Hunk.DEFINITION),

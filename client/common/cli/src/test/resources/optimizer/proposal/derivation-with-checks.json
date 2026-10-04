@@ -35,6 +35,7 @@
 					"expected_behavior": "The summary uses the requested tone and the shortened text suits the reader.",
 					"uncovered_interactions": [],
 					"checks": [],
+					"key_dimensions": [],
 					"variations": [
 						{
 							"dimension": "tone",
@@ -82,7 +83,7 @@
 					],
 					"applicability": "The user asks for a list.",
 					"turns": [
-						"List three colors."
+						"List three {{kind}}."
 					],
 					"time_limit_seconds": 120,
 					"regression_scenarios": [],
@@ -118,7 +119,34 @@
 							}
 						}
 					],
-					"variations": []
+					"key_dimensions": [],
+					"variations": [
+						{
+							"dimension": "kind",
+							"values": [
+								{
+									"label": "colors",
+									"text": "colors",
+									"probability": 0.25
+								},
+								{
+									"label": "fruits",
+									"text": "fruits",
+									"probability": 0.25
+								},
+								{
+									"label": "animals",
+									"text": "animals",
+									"probability": 0.25
+								},
+								{
+									"label": "tools",
+									"text": "tools",
+									"probability": 0.25
+								}
+							]
+						}
+					]
 				}
 			]
 		},
@@ -177,6 +205,7 @@
 							}
 						}
 					],
+					"key_dimensions": ["target"],
 					"variations": [
 						{
 							"dimension": "target",
@@ -184,22 +213,42 @@
 								{
 									"label": "logs",
 									"text": "logs",
-									"probability": 0.25
+									"probability": 0.125
 								},
 								{
 									"label": "cache",
 									"text": "cache",
-									"probability": 0.25
+									"probability": 0.125
 								},
 								{
 									"label": "tmp",
 									"text": "tmp",
-									"probability": 0.25
+									"probability": 0.125
 								},
 								{
 									"label": "build",
 									"text": "build",
-									"probability": 0.25
+									"probability": 0.125
+								},
+								{
+									"label": "dist",
+									"text": "dist",
+									"probability": 0.125
+								},
+								{
+									"label": "vendor",
+									"text": "vendor",
+									"probability": 0.125
+								},
+								{
+									"label": "coverage",
+									"text": "coverage",
+									"probability": 0.125
+								},
+								{
+									"label": "venv",
+									"text": "venv",
+									"probability": 0.125
 								}
 							]
 						}

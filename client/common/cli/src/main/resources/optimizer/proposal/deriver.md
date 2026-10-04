@@ -64,7 +64,11 @@
   - `time_limit_seconds`: how long a compliant agent needs, with margin;
   - `expected_behavior`: what a compliant response does, observable in text, file effects or tool effects;
   - `uncovered_interactions`: every material interaction this test cannot cover;
-  - `variations`: every variation dimension and its values. The values' probabilities sum to 1;
+  - `variations`: every variation dimension and its values. Give every test at least one dimension. The values'
+    probabilities sum to 1;
+  - `key_dimensions`: the dimensions of `variations` whose values carry the test's content, such as the question
+    asked or the file acted on, rather than incidental wording such as tone, or an empty list when every dimension
+    carries content;
   - `checks`: the deterministic check of each mechanical requirement that the test checks, as described below.
   - `regression_scenarios`: the citation paths of recorded scenarios this test covers, or an empty list.
 - For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose
@@ -73,6 +77,13 @@
   requirement with a trigger has no such test.
 - Every test in a category has the same weight, and variation probabilities are chosen for coverage. Do not try to
   estimate how often users make each request; those frequencies are unknown.
+- Before any trial, CAT splits each test's instances into a development part and a held-out part by their key
+  values: each combination of key values lands in either part with probability 1/2, and instances that share key
+  values share a part. Prompt editing sees only development instances, and formal trials draw only held-out ones, so
+  the held-out instances measure the prompts on content that prompt editing never saw. Choose key dimensions that
+  yield at least 2 key-value combinations in each part: give each test at least 12 key-value combinations, which
+  leaves less than 1 chance in 100 that either part receives fewer than 2. CAT refuses a proposal in which either
+  part of a test holds fewer than 2 key-value combinations, naming the test and both counts.
 - A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
   agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
 

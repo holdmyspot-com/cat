@@ -346,7 +346,7 @@ public final class Builder
 	 */
 	public Builder failure(TrialInstance instance)
 	{
-		return failure(new Failure(instance, "", null, List.of(), List.of()));
+		return failure(new Failure(instance, "", List.of(), null, List.of(), List.of()));
 	}
 
 	/**
@@ -747,7 +747,7 @@ public final class Builder
 		 */
 		public AttemptBuilder failure(TrialInstance instance)
 		{
-			return failure(new Failure(instance, "", null, List.of(), List.of()));
+			return failure(new Failure(instance, "", List.of(), null, List.of(), List.of()));
 		}
 
 		/**

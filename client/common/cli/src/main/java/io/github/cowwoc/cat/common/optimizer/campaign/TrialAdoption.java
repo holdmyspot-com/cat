@@ -171,8 +171,6 @@ final class TrialAdoption
 		String cell = trial.key().cell();
 		Verdict verdict = trial.verdict();
 		draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
-		if (draft.working.isIncumbent())
-			addBaseline(draft, cell, verdict);
 		if (verdict == Verdict.PASS)
 		{
 			draft.slowStart = draft.slowStart.afterPass();
@@ -181,8 +179,8 @@ final class TrialAdoption
 		{
 			draft.slowStart = draft.slowStart.afterFailure();
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.triage(), List.of(),
-				trial.responses()));
+			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.failedRequirements(),
+				trial.triage(), List.of(), trial.responses()));
 			addRegression(draft, targeted, Verdict.FAIL);
 			if (isBlocking(trial))
 			{
@@ -349,32 +347,17 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts an incumbent baseline outcome.
+	 * Adopts an incumbent baseline outcome. Its held-out instance never enters development evidence or the
+	 * regression set.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
 	 */
 	private static void adoptBaseline(Draft draft, LogicalTrial trial)
 	{
-		addBaseline(draft, trial.key().cell(), trial.verdict());
-		if (trial.verdict() == Verdict.FAIL)
-		{
-			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			addRegression(draft, targeted, null);
-		}
-	}
-
-	/**
-	 * Adds an outcome to the incumbent baseline.
-	 *
-	 * @param draft the state
-	 * @param cell the cell identifier used to update baseline counts
-	 * @param verdict the outcome
-	 */
-	private static void addBaseline(Draft draft, String cell, Verdict verdict)
-	{
+		String cell = trial.key().cell();
 		CellCounts counts = draft.baselineCounts.getOrDefault(cell, CellCounts.EMPTY);
-		draft.baselineCounts.put(cell, counts.add(verdict));
+		draft.baselineCounts.put(cell, counts.add(trial.verdict()));
 	}
 
 	/**
@@ -447,32 +430,16 @@ final class TrialAdoption
 	 */
 	static Round failingRound(Map<String, CellCounts> counts, List<Cell> developmentCells, String required)
 	{
-		return failingRound(counts, counts, developmentCells, required);
-	}
-
-	/**
-	 * Creates a round addressing the failing development cells of either phase while testing weakness from
-	 * development alone.
-	 *
-	 * @param failures the counts that identify failing cells
-	 * @param development the working candidate's development outcomes
-	 * @param developmentCells the development cells, in contract order
-	 * @param required a required development cell, or null
-	 * @return the frozen round
-	 */
-	private static Round failingRound(Map<String, CellCounts> failures, Map<String, CellCounts> development,
-		List<Cell> developmentCells, String required)
-	{
 		Map<String, Integer> attempts = new LinkedHashMap<>();
 		Map<String, String> categories = new LinkedHashMap<>();
 		for (Cell cell : developmentCells)
 		{
 			String id = cell.id();
 			categories.put(id, cell.categoryId());
-			if (failures.getOrDefault(id, CellCounts.EMPTY).failures() > 0 || id.equals(required))
+			if (counts.getOrDefault(id, CellCounts.EMPTY).failures() > 0 || id.equals(required))
 				attempts.put(id, 0);
 		}
-		boolean weak = AttemptSelection.isWeak(development, developmentCells, List.copyOf(attempts.keySet()));
+		boolean weak = AttemptSelection.isWeak(counts, developmentCells, List.copyOf(attempts.keySet()));
 		if (weak)
 		{
 			Set<String> addressed = new HashSet<>();
@@ -735,7 +702,8 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a formal outcome and applies the attempt's decision.
+	 * Adopts a formal outcome and applies the attempt's decision. A failure stays with the attempt, for the user's
+	 * report; its held-out instance never enters development evidence or the regression set.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -749,12 +717,8 @@ final class TrialAdoption
 		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)
 		{
-			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			failures.add(new Failure(targeted, trial.rationale(), null, List.of(), trial.responses()));
-			Verdict working = null;
-			if (attempt.candidate().equals(draft.working))
-				working = Verdict.FAIL;
-			addRegression(draft, targeted, working);
+			failures.add(new Failure(trial.instance(), trial.rationale(), trial.failedRequirements(), null, List.of(),
+				trial.responses()));
 			draft.slowStart = draft.slowStart.afterFailure();
 		}
 		else
@@ -801,31 +765,12 @@ final class TrialAdoption
 			}
 			case AWAIT_TRADE_OFF -> draft.raise(new PendingDecision.RegressionTradeOff(ended.index()));
 			case OFFER_KEEP_IMPROVEMENT -> draft.raise(new PendingDecision.ImprovementProven(ended.index()));
-			case RETURN_TO_DEVELOPMENT -> returnToDevelopment(draft, ended);
+			case RETURN_TO_DEVELOPMENT ->
+			{
+				// Development continues: the attempt's failed cells are development cells, and authors see each
+				// formal failure's cell, test and failed requirements, never its held-out instance
+			}
 		}
-	}
-
-	/**
-	 * Adds an uncertified attempt's formal failures to development evidence, excluding duplicate instance content.
-	 * If that attempt has failures, replaces the current diagnosis and optimization round with a new round for its
-	 * failed cells. An attempt without failures leaves the diagnosis and round unchanged.
-	 *
-	 * @param draft the state
-	 * @param attempt the ended attempt
-	 */
-	static void returnToDevelopment(Draft draft, CertificationAttempt attempt)
-	{
-		for (Failure failure : attempt.failures())
-		{
-			List<TrialInstance> developmentInstances = draft.developmentFailures.stream().map(Failure::instance).
-				toList();
-			if (!Promotion.containsContent(developmentInstances, failure.instance()))
-				draft.developmentFailures.add(failure);
-		}
-		if (attempt.failures().isEmpty())
-			return;
-		draft.diagnosis = null;
-		draft.round = failingRound(attempt.counts(), draft.developmentCounts, draft.developmentCells(), null);
 	}
 
 	/**

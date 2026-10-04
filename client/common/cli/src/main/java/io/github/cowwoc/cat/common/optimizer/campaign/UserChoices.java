@@ -60,12 +60,7 @@ final class UserChoices
 				draft.resolve();
 			}
 			case KEEP_IMPROVEMENT -> keepImprovement(draft, campaign, choose.attempt());
-			case OPTIMIZE_FURTHER ->
-			{
-				PendingDecision.ImprovementProven proven = (PendingDecision.ImprovementProven) pending;
-				draft.resolve();
-				TrialAdoption.returnToDevelopment(draft, draft.attempt(proven.attempt()));
-			}
+			case OPTIMIZE_FURTHER -> draft.resolve();
 			case ACCEPT_TRADE_OFF ->
 			{
 				CertificationAttempt attempt = draft.attempt(((PendingDecision.RegressionTradeOff) pending).attempt());
@@ -153,7 +148,8 @@ final class UserChoices
 				if (trial.key().equals(key))
 				{
 					draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-						trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.triage(), 0,
+						trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedRequirements(),
+						trial.triage(), 0,
 						trial.infrastructureAttempts(), trial.observations(), trial.responses()));
 				}
 			}

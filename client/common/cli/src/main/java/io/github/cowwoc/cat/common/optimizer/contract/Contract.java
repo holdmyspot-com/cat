@@ -19,9 +19,11 @@ import java.util.Set;
  * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
  * @param fixtures the ignored files that trials need
  * @param limitations the material interactions and conditions that the contract does not cover
+ * @param salt the random value, frozen at confirmation, under which each test's key-value combinations are split
+ *   into the development part and the held-out part
  */
 public record Contract(List<Requirement> requirements, List<Category> categories, TrialProfiles profiles,
-	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations)
+	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, long salt)
 {
 	/**
 	 * Creates a contract.
@@ -32,6 +34,8 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
 	 * @param fixtures the ignored files that trials need
 	 * @param limitations the material interactions and conditions that the contract does not cover
+	 * @param salt the random value, frozen at confirmation, under which each test's key-value combinations are split
+	 *   into the development part and the held-out part
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
 	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
@@ -159,6 +163,16 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
+	 * Returns the split of each test definition's instances into the development part and the held-out part.
+	 *
+	 * @return the split under this contract's salt
+	 */
+	public Split split()
+	{
+		return new Split(salt);
+	}
+
+	/**
 	 * Returns this contract with a certification scope.
 	 *
 	 * @param scope the certification scope
@@ -168,7 +182,7 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 */
 	public Contract withScope(CertificationScope scope)
 	{
-		return new Contract(requirements, categories, profiles.withScope(scope), judge, fixtures, limitations);
+		return new Contract(requirements, categories, profiles.withScope(scope), judge, fixtures, limitations, salt);
 	}
 
 	/**

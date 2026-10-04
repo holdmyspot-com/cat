@@ -81,7 +81,8 @@ public final class DecisionTable
 		 */
 		AWAIT_TRADE_OFF,
 		/**
-		 * Return to development automatically, with the formal failures as diagnostic input.
+		 * Return to development automatically. Each formal failure makes its cell a development cell, and authors receive
+		 * its cell, test and failed requirements, never its held-out instance, reply or rationale.
 		 */
 		RETURN_TO_DEVELOPMENT,
 		/**

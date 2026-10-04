@@ -1,5 +1,5 @@
 {
-  "format_version" : 14,
+  "format_version" : 15,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -68,6 +68,7 @@
               "probability" : 0.3
             } ]
           } ],
+          "key_dimensions" : [ ],
           "checks" : [ ],
           "discarded_checks" : [ ]
         }, {
@@ -75,12 +76,32 @@
           "requirement_ids" : [ "r1", "core-task" ],
           "absent_triggers" : [ ],
           "applicability" : "The user asks for a list.",
-          "turns" : [ "List three colors." ],
+          "turns" : [ "List three {{kind}}." ],
           "time_limit_seconds" : 120,
           "expected_behavior" : "The answer is a three-item list.",
           "uncovered_interactions" : [ "A follow-up that depends on the first answer." ],
           "regression_scenarios" : [ ],
-          "variations" : [ ],
+          "variations" : [ {
+            "dimension" : "kind",
+            "values" : [ {
+              "label" : "colors",
+              "text" : "colors",
+              "probability" : 0.25
+            }, {
+              "label" : "fruits",
+              "text" : "fruits",
+              "probability" : 0.25
+            }, {
+              "label" : "animals",
+              "text" : "animals",
+              "probability" : 0.25
+            }, {
+              "label" : "tools",
+              "text" : "tools",
+              "probability" : 0.25
+            } ]
+          } ],
+          "key_dimensions" : [ ],
           "checks" : [ ],
           "discarded_checks" : [ ]
         } ]
@@ -118,6 +139,7 @@
               "probability" : 0.25
             } ]
           } ],
+          "key_dimensions" : [ "target" ],
           "checks" : [ ],
           "discarded_checks" : [ ]
         } ]
@@ -175,7 +197,8 @@
       "fixtures" : {
         "ignored_paths" : [ ".env.example" ]
       },
-      "limitations" : [ "Only the English prompts are covered." ]
+      "limitations" : [ "Only the English prompts are covered." ],
+      "salt" : 19
     },
     "contract_hash" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
     "development_stream" : {
@@ -196,7 +219,7 @@
   "identity" : {
     "conditions" : {
       "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
-      "GENERATOR" : "contract-generator/1",
+      "GENERATOR" : "contract-generator/2",
       "JUDGE" : "judge-1",
       "MODEL" : "model-a",
       "REASONING" : "reasoning-1",
@@ -246,7 +269,7 @@
     "identity" : {
       "conditions" : {
         "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
-        "GENERATOR" : "contract-generator/1",
+        "GENERATOR" : "contract-generator/2",
         "JUDGE" : "judge-1",
         "MODEL" : "model-a",
         "REASONING" : "reasoning-1",

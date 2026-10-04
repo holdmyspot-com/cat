@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DiscardedCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -65,6 +66,10 @@ public final class ProposalTest
 	private static final TrialProfile ROLE = new TrialProfile("role-model", "xhigh");
 	private static final ProfileEvidence PROFILES = new ProfileEvidence(ContractFixtures.ONE_PROFILE,
 		ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of());
+	/**
+	 * The salt of the derived proposals.
+	 */
+	private static final long SALT = ContractFixtures.SALT;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
@@ -155,7 +160,7 @@ public final class ProposalTest
 		Contract fixture = ContractFixtures.contract();
 		return new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(),
 			judge.profile("The response follows the requirement.", "Pass only if every rubric item holds."),
-			fixture.fixtures(), fixture.limitations());
+			fixture.fixtures(), fixture.limitations(), fixture.salt());
 	}
 
 	/**
@@ -168,7 +173,7 @@ public final class ProposalTest
 	 */
 	private Proposal proposal(LinkReport links, HostLogin login) throws InvalidProposalException
 	{
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		return Proposal.of(derived, new Builder().build(), links, login,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 	}
@@ -265,7 +270,7 @@ public final class ProposalTest
 		// Requirement: R-C5
 		// Requirement: R-C7
 		DerivedProposal derived = deriver.proposal(session("```json\n" + fixture("derivation.json") + "```\n"),
-			PROFILES);
+			PROFILES, SALT);
 
 		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
 		requireThat(derived.contract().judge().profile(), "judge.profile").isEqualTo(ROLE);
@@ -303,14 +308,14 @@ public final class ProposalTest
 				"/runs/deriver/project/rules/safety.md consistent.");
 		});
 
-		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
 		Conflict expected = new Conflict(List.of("r1", "r2"),
 			"[AGENTS.md:6](/staged/incumbent/AGENTS.md:6) contradicts /staged/incumbent/rules/safety.md.",
 			List.of("Edit /staged/incumbent/AGENTS.md.", "Edit [safety.md](/staged/incumbent/rules/safety.md)."), 1,
 			"Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent.");
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/deriver/project");
-		requireThat(deriver.proposal(session(derived.derivation()), PROFILES).conflicts(), "storedConflicts").
+		requireThat(deriver.proposal(session(derived.derivation()), PROFILES, SALT).conflicts(), "storedConflicts").
 			isEqualTo(List.of(expected));
 	}
 
@@ -327,12 +332,12 @@ public final class ProposalTest
 			put("evidence", "[CLAUDE.md:2](/runs/deriver/project/CLAUDE.md:2) loads " +
 				"/runs/deriver/project/rules/images.md."));
 
-		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
 		ScopeCondition expected = new ScopeCondition(Outcome.UNSUPPORTED_OUTPUT, List.of("r1"),
 			"[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md.");
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/deriver/project");
-		requireThat(deriver.proposal(session(derived.derivation()), PROFILES).scopeConditions(), "storedScope").
+		requireThat(deriver.proposal(session(derived.derivation()), PROFILES, SALT).scopeConditions(), "storedScope").
 			isEqualTo(List.of(expected));
 	}
 
@@ -358,7 +363,7 @@ public final class ProposalTest
 			conflict.put("reason", "Keeps the most intent.");
 		});
 
-		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.scopeConditions().getFirst().evidence(), "scopeEvidence").
 			isEqualTo("CLAUDE.md asks for a diagram image with every summary.");
@@ -420,11 +425,11 @@ public final class ProposalTest
 		else
 			((ArrayNode) parent).set(Integer.parseInt(field), json.getNodeFactory().stringNode(stagedText));
 
-		DerivedProposal derived = deriver.proposal(session(json.writeValueAsString(output)), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(json.writeValueAsString(output)), PROFILES, SALT);
 
 		requireThat(json.readTree(derived.derivation()).at(pointer).asString(), "savedText").
 			isEqualTo("/staged/incumbent/notes.md");
-		DerivedProposal reread = deriver.proposal(session(derived.derivation()), PROFILES);
+		DerivedProposal reread = deriver.proposal(session(derived.derivation()), PROFILES, SALT);
 		requireThat(reread.contract(), "storedContract").isEqualTo(derived.contract());
 	}
 
@@ -437,7 +442,7 @@ public final class ProposalTest
 	public void derivesTheProposalFromBareOutput() throws InvalidProposalException
 	{
 		// Requirement: R-E13
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 
 		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
 	}
@@ -453,7 +458,7 @@ public final class ProposalTest
 		// Requirement: R-E13
 		try
 		{
-			deriver.proposal(session(fixture("derivation-aggregate.json")), PROFILES);
+			deriver.proposal(session(fixture("derivation-aggregate.json")), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -472,7 +477,7 @@ public final class ProposalTest
 		// Requirement: R-C5
 		try
 		{
-			deriver.proposal(session(fixture("derivation-with-judge-fields.json")), PROFILES);
+			deriver.proposal(session(fixture("derivation-with-judge-fields.json")), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -492,7 +497,7 @@ public final class ProposalTest
 		// Requirement: R-E13
 		try
 		{
-			deriver.proposal(session("Here is the proposal:\n" + fixture("derivation.json")), PROFILES);
+			deriver.proposal(session("Here is the proposal:\n" + fixture("derivation.json")), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -520,7 +525,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			deriver.proposal(session(output), PROFILES);
+			deriver.proposal(session(output), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -542,7 +547,7 @@ public final class ProposalTest
 	public void feedbackRegeneratesTheCompleteProposal() throws InvalidProposalException
 	{
 		// Requirement: R-C2
-		DerivedProposal first = deriver.proposal(session(fixture("derivation.json")), PROFILES);
+		DerivedProposal first = deriver.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		String feedback = "Split the safety category by the kind of directory.";
 
 		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES, first, feedback);
@@ -557,7 +562,7 @@ public final class ProposalTest
 
 		String revised = changedDerivation(root -> ((ObjectNode) root.get("requirements").get(1)).
 			put("description", "Never delete a directory or a file without asking."));
-		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES), new Builder().build(),
+		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES, SALT), new Builder().build(),
 			noLinks(), HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
 			contains("styled-summary").contains("delete-directory").contains("## Statistical procedure");
@@ -651,7 +656,7 @@ public final class ProposalTest
 	public void rendersAnUnavailableCap() throws InvalidProposalException
 	{
 		// Requirement: R-C1
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			level ->
 			{
@@ -736,7 +741,7 @@ public final class ProposalTest
 		// Requirement: R-C15
 		// Requirement: R-E22
 		// Requirement: R-C1
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles());
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles(), SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		int weakest = minimumTrials(proposal, CertificationScope.WEAKEST_CELL);
@@ -779,7 +784,7 @@ public final class ProposalTest
 		// Requirement: R-C15
 		ProfileEvidence partial = new ProfileEvidence(ContractFixtures.TWO_PROFILES,
 			new CapabilityRanking(List.of("big"), "test ranking without small"), Map.of());
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), partial);
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), partial, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
@@ -821,7 +826,7 @@ public final class ProposalTest
 			output.putArray("capability_ranking").add("small").add("big");
 			output.putArray("certification_profiles").addObject().put("model", "small").put("effort", "");
 		});
-		DerivedProposal derived = deriver.proposal(session(revised), evidence);
+		DerivedProposal derived = deriver.proposal(session(revised), evidence, SALT);
 		requireThat(derived.contract().profiles().ranking(), "ranking").isEqualTo(new CapabilityRanking(
 			List.of("small", "big"), "the user's revision feedback"));
 		requireThat(derived.contract().profiles().described(), "described").
@@ -862,7 +867,7 @@ public final class ProposalTest
 	{
 		try
 		{
-			deriver.proposal(session(output), evidence);
+			deriver.proposal(session(output), evidence, SALT);
 		}
 		catch (InvalidProposalException e)
 		{
@@ -991,7 +996,7 @@ public final class ProposalTest
 	public void rendersTrialProfilesAndCells() throws InvalidProposalException
 	{
 		// Requirement: R-C10
-		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles());
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles(), SALT);
 		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
 			ContractFixtures.SMALL_CELL, "safety"));
 		requireThat(derived.contract().findCell("safety").orElseThrow().profile(), "safety.profile").
@@ -1022,7 +1027,7 @@ public final class ProposalTest
 		ProfileCatalog inventory = new ProfileCatalog("test inventory of three profiles", List.of(
 			new TrialProfile("big", "high"), new TrialProfile("big", "low"), new TrialProfile("small", "high")));
 		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")),
-			evidence(inventory, Map.of()));
+			evidence(inventory, Map.of()), SALT);
 		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(6);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
@@ -1048,7 +1053,7 @@ public final class ProposalTest
 		String restricted = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "small").put("effort", ""));
 		DerivedProposal derived = deriver.proposal(session(restricted), evidence(
-			ContractFixtures.TWO_PROFILES, Map.of()));
+			ContractFixtures.TWO_PROFILES, Map.of()), SALT);
 		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of("formatting", "safety"));
 		requireThat(derived.contract().findCell("formatting").orElseThrow().profile(), "profile").
 			isEqualTo(ContractFixtures.SMALL);
@@ -1057,14 +1062,14 @@ public final class ProposalTest
 
 		String byEffort = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "").put("effort", "high"));
-		requireThat(deriver.proposal(session(byEffort), twoProfiles()).contract().profiles().restriction(),
+		requireThat(deriver.proposal(session(byEffort), twoProfiles(), SALT).contract().profiles().restriction(),
 			"effortRestriction").isEqualTo(List.of(new TrialProfile("", "high")));
 
 		String unmatched = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "huge").put("effort", ""));
 		try
 		{
-			deriver.proposal(session(unmatched), twoProfiles());
+			deriver.proposal(session(unmatched), twoProfiles(), SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1084,7 +1089,7 @@ public final class ProposalTest
 		String output = changedDerivation(derivation -> derivation.putObject("trial_profiles"));
 		try
 		{
-			deriver.proposal(session(output), PROFILES);
+			deriver.proposal(session(output), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1151,7 +1156,7 @@ public final class ProposalTest
 	 */
 	private String rendered(String derivation) throws InvalidProposalException
 	{
-		DerivedProposal derived = deriver.proposal(session(derivation), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(derivation), PROFILES, SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 	}
@@ -1178,7 +1183,7 @@ public final class ProposalTest
 	public void refusesUncitedRegressionScenarios() throws InvalidProposalException
 	{
 		// Requirement: R-I3
-		regressionDeriver().proposal(session(fixture("derivation.json")), PROFILES);
+		regressionDeriver().proposal(session(fixture("derivation.json")), PROFILES, SALT);
 	}
 
 	/**
@@ -1192,7 +1197,7 @@ public final class ProposalTest
 		// Requirement: R-I3
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("categories").get(0).
 			get("tests").get(0)).putArray("regression_scenarios").add("reported.md").add("analogous.md"));
-		DerivedProposal proposal = regressionDeriver().proposal(session(output), PROFILES);
+		DerivedProposal proposal = regressionDeriver().proposal(session(output), PROFILES, SALT);
 		requireThat(proposal.contract().findTest("styled-summary").orElseThrow().regressionScenarios(), "citations").
 			isEqualTo(List.of("reported.md", "analogous.md"));
 		requireThat(Proposal.of(proposal, new Builder().build(), noLinks(), HostLogin.API_KEY,
@@ -1231,7 +1236,7 @@ public final class ProposalTest
 			((ArrayNode) proposal.get("derived_sources")).addObject().put("path", "other.md").
 				put("rule", "The harness loads this instruction file.");
 		});
-		regressionDeriver().proposal(session(output), PROFILES);
+		regressionDeriver().proposal(session(output), PROFILES, SALT);
 	}
 
 	/**
@@ -1245,7 +1250,8 @@ public final class ProposalTest
 	public void catAddsTheCoreTaskToEveryTest() throws InvalidProposalException
 	{
 		// Requirement: R-C8
-		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES).contract();
+		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
+			contract();
 
 		Requirement coreTask = Requirement.CORE_TASK;
 		requireThat(coreTask.source(), "coreTask.source()").isEqualTo("CAT");
@@ -1267,7 +1273,7 @@ public final class ProposalTest
 			put("id", coreTask.id()).put("description", "Do the task.").put("source", "CLAUDE.md"));
 		try
 		{
-			deriver.proposal(session(supplied), PROFILES);
+			deriver.proposal(session(supplied), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1288,7 +1294,8 @@ public final class ProposalTest
 	public void derivationDiscardsFailingCheck() throws InvalidProposalException
 	{
 		// Requirement: R-C9
-		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES).contract();
+		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
+			contract();
 
 		TestDefinition list = contract.findTest("plain-list").orElseThrow();
 		requireThat(list.checks().size(), "list.checks().size()").isEqualTo(1);
@@ -1310,7 +1317,7 @@ public final class ProposalTest
 			get(0)).putArray("discarded_checks"));
 		try
 		{
-			deriver.proposal(session(reported), PROFILES);
+			deriver.proposal(session(reported), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1386,7 +1393,7 @@ public final class ProposalTest
 
 			## Certifiable scope
 			""");
-		DerivedProposal derived = deriver.proposal(session(output), PROFILES);
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
 		Conflict conflict = derived.conflicts().getFirst();
 		requireThat(conflict.resolutions(), "resolutions").isEqualTo(
 			List.of("Exempt explanations from brevity.", "Drop brevity."));
@@ -1446,7 +1453,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			deriver.proposal(session(output), PROFILES);
+			deriver.proposal(session(output), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1512,7 +1519,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			deriver.proposal(session(output), PROFILES);
+			deriver.proposal(session(output), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1540,8 +1547,8 @@ public final class ProposalTest
 			conflict.putArray("requirement_ids").add("r1").add("r2");
 			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
 		});
-		Proposal.of(deriver.proposal(session(output), PROFILES), new Builder().build(), noLinks(), HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).confirmation(7,
+		Proposal.of(deriver.proposal(session(output), PROFILES, SALT), new Builder().build(), noLinks(),
+			HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).confirmation(7,
 				CertificationScope.LATEST_VERSIONS);
 	}
 
@@ -1580,7 +1587,7 @@ public final class ProposalTest
 	public void rejectsMissingConflicts() throws InvalidProposalException
 	{
 		// Requirement: R-C13
-		deriver.proposal(session(changedDerivation(root -> root.remove("conflicts"))), PROFILES);
+		deriver.proposal(session(changedDerivation(root -> root.remove("conflicts"))), PROFILES, SALT);
 	}
 
 	/**
@@ -1603,7 +1610,7 @@ public final class ProposalTest
 			conflict.putObject("requirement_ids").put("unexpected", "r1");
 			conflict.put("evidence", "CLAUDE.md: conflicting instructions.");
 		});
-		deriver.proposal(session(output), PROFILES);
+		deriver.proposal(session(output), PROFILES, SALT);
 	}
 
 	/**
@@ -1641,7 +1648,7 @@ public final class ProposalTest
 	public void acceptsTriggerWithAbsentTest() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		Contract contract = deriver.proposal(session(triggeredDerivation("plain-list")), PROFILES).contract();
+		Contract contract = deriver.proposal(session(triggeredDerivation("plain-list")), PROFILES, SALT).contract();
 
 		requireThat(contract.requirements().get(1).trigger(), "r2.trigger()").
 			isEqualTo("The user asks to delete a directory.");
@@ -1661,7 +1668,7 @@ public final class ProposalTest
 		// Requirement: R-D17
 		try
 		{
-			deriver.proposal(session(triggeredDerivation(null)), PROFILES);
+			deriver.proposal(session(triggeredDerivation(null)), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1681,7 +1688,7 @@ public final class ProposalTest
 	public void alwaysApplyingNeedsNoAbsentTest() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		Contract contract = deriver.proposal(session(fixture("derivation.json")), PROFILES).contract();
+		Contract contract = deriver.proposal(session(fixture("derivation.json")), PROFILES, SALT).contract();
 
 		for (Requirement requirement : contract.requirements())
 			requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
@@ -1723,7 +1730,7 @@ public final class ProposalTest
 			putArray("absent_triggers").add(requirementId));
 		try
 		{
-			deriver.proposal(session(output), PROFILES);
+			deriver.proposal(session(output), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1770,5 +1777,120 @@ public final class ProposalTest
 		List<String> test = outputSchema.get("properties").get("categories").get("items").get("properties").
 			get("tests").get("items").get("required").valueStream().map(JsonNode::asString).toList();
 		requireThat(test, "test.required").contains("absent_triggers");
+	}
+
+	/**
+	 * Verifies that the proposal lists each test's key dimensions and the number of key-value combinations in each
+	 * part, and that confirmation freezes the salt under which they were counted.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void rendersKeyDimensionsAndPartCounts() throws InvalidProposalException
+	{
+		// Requirement: R-C16
+		// Requirement: R-C1
+		Proposal proposal = proposal(noLinks(), HostLogin.API_KEY);
+		String text = proposal.render();
+
+		requireThat(text, "text").
+			contains("- Key dimensions: every dimension (`tone`, `audience`)\n" +
+				"- Key-value combinations: 3 in the development part, 3 in the held-out part\n").
+			contains("- Key dimensions: every dimension (`kind`)\n" +
+				"- Key-value combinations: 2 in the development part, 2 in the held-out part\n").
+			contains("- Key dimensions: `target`\n" +
+				"- Key-value combinations: 4 in the development part, 4 in the held-out part\n");
+		CampaignEvent.Confirm confirm = (CampaignEvent.Confirm) proposal.confirmation(7,
+			CertificationScope.LATEST_VERSIONS).getFirst();
+		requireThat(confirm.contract().salt(), "salt").isEqualTo(SALT);
+	}
+
+	/**
+	 * Verifies that confirmation is refused while a test has fewer than 2 key-value combinations in either part, and
+	 * that the refusal names the test and both counts.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	@Test
+	public void refusesTestWithTooFewCombinationsInAPart() throws InvalidProposalException
+	{
+		// Requirement: R-C16
+		// Requirement: R-C1
+		String output = changedDerivation(root ->
+		{
+			ArrayNode values = (ArrayNode) root.get("categories").get(0).get("tests").get(1).get("variations").get(0).
+				get("values");
+			values.remove(3);
+			values.remove(2);
+			((ObjectNode) values.get(0)).put("probability", 0.5);
+			((ObjectNode) values.get(1)).put("probability", 0.5);
+		});
+		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		TestDefinition plain = derived.contract().findTest("plain-list").orElseThrow();
+		int development = derived.contract().split().combinations(plain, Part.DEVELOPMENT).size();
+		int heldOut = derived.contract().split().combinations(plain, Part.HELD_OUT).size();
+		requireThat(development + heldOut, "combinations").isEqualTo(2);
+
+		for (CertificationScope scope : List.of(CertificationScope.LATEST_VERSIONS, CertificationScope.WEAKEST_CELL))
+		{
+			requireThat(proposal.isConfirmable(scope), scope.id()).isFalse();
+			requireThat(proposal.confirmationRefusal(scope), scope.id() + ".refusal").
+				contains("The test `plain-list` of the category `formatting` has " + development +
+					" key-value combinations in the development part and " + heldOut + " in the held-out part").
+				doesNotContain("styled-summary").doesNotContain("delete-directory");
+		}
+		requireThat(proposal.render(), "render").contains("- Key-value combinations: " + development +
+			" in the development part, " + heldOut + " in the held-out part\n" +
+			"  Confirmation is refused until each part holds at least 2. Ask for more key values in revision " +
+			"feedback.\n");
+		Proposal fixture = proposal(noLinks(), HostLogin.API_KEY);
+		requireThat(fixture.isConfirmable(CertificationScope.LATEST_VERSIONS), "fixtureConfirmable").isTrue();
+		requireThat(fixture.render(), "fixtureRender").doesNotContain("Ask for more key values");
+	}
+
+	/**
+	 * Verifies that the deriver cannot supply the salt, which CAT draws, and that the derived contract carries the
+	 * salt that CAT supplied.
+	 *
+	 * @throws InvalidProposalException if the unchanged output is rejected
+	 */
+	@Test
+	public void saltComesFromCat() throws InvalidProposalException
+	{
+		// Requirement: R-C16
+		requireThat(deriver.proposal(session(fixture("derivation.json")), PROFILES, 99L).contract().salt(), "salt").
+			isEqualTo(99L);
+		String output = changedDerivation(derivation -> derivation.put("salt", 5));
+		try
+		{
+			deriver.proposal(session(output), PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").contains("salt");
+		}
+	}
+
+	/**
+	 * Verifies that the deriver is asked for variation dimensions on every test and for key dimensions that give
+	 * each part at least 2 key-value combinations, and that its output schema requires the key dimensions but holds
+	 * no salt.
+	 */
+	@Test
+	public void requestAsksForKeyDimensions()
+	{
+		// Requirement: R-C16
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+
+		requireThat(prompt, "prompt").contains("`key_dimensions`").contains("held-out part").
+			contains("at least 2 key-value combinations");
+		JsonNode outputSchema = readOutputSchema(prompt);
+		List<String> test = outputSchema.get("properties").get("categories").get("items").get("properties").
+			get("tests").get("items").get("required").valueStream().map(JsonNode::asString).toList();
+		requireThat(test, "test.required").contains("key_dimensions").contains("variations");
+		requireThat(outputSchema.get("properties").has("salt"), "hasSalt").isFalse();
 	}
 }

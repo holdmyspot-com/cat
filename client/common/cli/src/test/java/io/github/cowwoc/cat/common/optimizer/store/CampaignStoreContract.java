@@ -120,7 +120,8 @@ public abstract class CampaignStoreContract
 
 	/**
 	 * A campaign with every persisted state distinction populated, including each trial's allocation decision and
-	 * infrastructure attempts, the judge's rationale for each judged trial and each failure, the diagnostic reruns of
+	 * infrastructure attempts, the judge's rationale and the failed requirements for each judged trial and each
+	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of
 	 * each development failure, the campaign's evidence revision, a pending authority warning and the authorized
 	 * external targets, survives a reload unchanged.
 	 *
@@ -129,7 +130,7 @@ public abstract class CampaignStoreContract
 	@Test
 	public void populatedCampaignSurvivesReload() throws IOException
 	{
-		// Requirement: R-L5, R-E1, R-D2, R-W4
+		// Requirement: R-L5, R-E1, R-D2, R-W4, R-D9, R-C16
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = populated("campaign-full");
@@ -410,7 +411,7 @@ public abstract class CampaignStoreContract
 				new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.25Z"), RunFailure.RATE_LIMITED,
 					"rate limit reached"));
 			LogicalTrial retried = new LogicalTrial(assigned.key(), assigned.instance(), assigned.identity(),
-				assigned.allocation(), TrialState.ASSIGNED, null, null, null, 1, attempts, 0, List.of());
+				assigned.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, 1, attempts, 0, List.of());
 			store.writeAssignment("campaign-1", retried);
 			CampaignEvent.Complete outcome = complete(assigned.key(), Verdict.PASS);
 			store.writeOutcome("campaign-1", outcome);
@@ -773,7 +774,7 @@ public abstract class CampaignStoreContract
 		}
 		return new LogicalTrial(key, instance("safety", "test-" + sequence, sequence, false),
 			Builder.confirmedIdentity("model-a"), allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, sequence),
-			state, verdict, rationale, null, 0, List.of(), 0, List.of());
+			state, verdict, rationale, List.of(), null, 0, List.of(), 0, List.of());
 	}
 
 	/**
@@ -809,8 +810,13 @@ public abstract class CampaignStoreContract
 	 */
 	static CampaignEvent.Complete complete(TrialKey key, Verdict verdict)
 	{
-		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".", null,
-			Builder.confirmedIdentity("model-a"), null, List.of());
+		List<String> failedRequirements;
+		if (verdict == Verdict.FAIL)
+			failedRequirements = List.of("r2");
+		else
+			failedRequirements = List.of();
+		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
+			failedRequirements, null, Builder.confirmedIdentity("model-a"), null, List.of());
 	}
 
 	/**
@@ -860,7 +866,7 @@ public abstract class CampaignStoreContract
 			development("formatting", 120, 7).
 			development("safety", 40, 2).
 			failure(new Failure(instance("safety", "deletion", 3, true), "The reply deleted the directory unasked.",
-				new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
+				List.of("r2"), new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
 				List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
 					new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
 			failure(instance("safety", "deletion", 15, true)).
@@ -884,7 +890,7 @@ public abstract class CampaignStoreContract
 			trial(LogicalTrial.assigned(developmentKey, instance("safety", "deletion", 10, false), identity,
 				allocation(AllocationRule.COVERAGE_FLOOR, 41))).
 			trial(new LogicalTrial(baselineKey, instance("formatting", "tone", 11, false), identity,
-				allocation(AllocationRule.BASELINE_ARM, 39), TrialState.RUNNING, null, null, null, 2, List.of(
+				allocation(AllocationRule.BASELINE_ARM, 39), TrialState.RUNNING, null, null, List.of(), null, 2, List.of(
 					new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), RunFailure.INFRASTRUCTURE,
 						"provider returned \"overloaded\"\nretry later"),
 					new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.5Z"), RunFailure.RATE_LIMITED,
@@ -895,15 +901,15 @@ public abstract class CampaignStoreContract
 						"runner crashed")), 1, List.of())).
 			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity,
 				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, "The reply deleted the file.",
-				null, 1,
+				List.of("r1", "r2"), null, 1,
 				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
 						"invalid judge result")), 0, List.of())).
 			trial(new LogicalTrial(diagnostic, instance("safety", "deletion", 4, true), identity,
-				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, null, null, 0, List.of(), 0,
+				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,
 				List.of())).
 			trial(new LogicalTrial(new TrialKey(Purpose.DEVELOPMENT, 4, Builder.snapshot("candidate-3"),
 				"formatting", 3), instance("formatting", "tone", 14, false), identity,
-				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, null, null, 0,
+				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0,
 				List.of(), 0, List.of())).
 			evidenceRevision(41).
 			slowStart(new SlowStart(4, 3)).
@@ -937,8 +943,8 @@ public abstract class CampaignStoreContract
 			candidate(new Candidate(2, Builder.snapshot("candidate-2"))).
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
-			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.", null, List.of(),
-				List.of())).
+			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.", List.of("r1"), null,
+				List.of(), List.of())).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			campaign().
 			certificationAttempt(2).

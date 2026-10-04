@@ -135,7 +135,7 @@ public final class PromotionTest
 			reruns.add(new DiagnosticRerun(verdict, "diagnostic outcome"));
 		}
 		return new Builder().confirmed().working(1).development("safety", 60, 1).
-			development("formatting", 61, 0).failure(new Failure(instance, "representative failure", null, reruns,
+			development("formatting", 61, 0).failure(new Failure(instance, "representative failure", List.of(), null, reruns,
 				List.of())).regression(instance, Verdict.FAIL).round(new Round(Map.of("safety", 0))).build();
 	}
 
@@ -327,9 +327,9 @@ public final class PromotionTest
 		TrialInstance repeated = new TrialInstance(formal.cellId(), formal.categoryId(), formal.testId(),
 			formal.choices(), formal.turns(), formal.expectedBehaviour(), formal.generator(), formal.streamKind(),
 			formal.streamPosition() + 1, true);
-		Campaign campaign = new Builder().confirmed().working(1).failure(new Failure(logs, "failure", null, List.of(
-			new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
+		Campaign campaign = new Builder().confirmed().working(1).failure(new Failure(logs, "failure", List.of(), null,
+			List.of(new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
 			round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
 		Sha256 working = campaign.development().working().snapshot();
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -375,9 +375,9 @@ public final class PromotionTest
 	{
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance formal = targeted("formatting", "formal");
-		Campaign campaign = new Builder().confirmed().working(1).failure(new Failure(logs, "failure", null, List.of(
-			new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
+		Campaign campaign = new Builder().confirmed().working(1).failure(new Failure(logs, "failure", List.of(), null,
+			List.of(new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
 			round(new Round(Map.of("safety", 0))).build();
 		Sha256 working = campaign.development().working().snapshot();
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -521,7 +521,7 @@ public final class PromotionTest
 	{
 		TrialInstance logs = targeted("safety", "logs");
 		return new Builder().confirmed().working(1).development("safety", 60, 1).
-			development("formatting", 61, 0).failure(new Failure(logs, "failure", null, List.of(
+			development("formatting", 61, 0).failure(new Failure(logs, "failure", List.of(), null, List.of(
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(logs, Verdict.FAIL).
 			round(new Round(Map.of("safety", 0))).build();
@@ -567,7 +567,7 @@ public final class PromotionTest
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance formal = targeted("formatting", "formal");
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
-			development("formatting", 61, 0).failure(new Failure(logs, "failure", null, List.of(
+			development("formatting", 61, 0).failure(new Failure(logs, "failure", List.of(), null, List.of(
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(logs, Verdict.FAIL).
 			regression(formal, Verdict.PASS).round(new Round(Map.of("safety", 0))).build();

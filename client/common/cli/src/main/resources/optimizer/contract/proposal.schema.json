@@ -4,7 +4,7 @@
 	"description": "Every requirement, category, trial profile, cell, test definition, variation, judge profile field and fixture that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations"],
+	"required": ["requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations", "salt"],
 	"$defs": {
 		"check": {
 			"description": "A deterministic check: code that CAT implements decides one requirement of this test from the trial's recorded evidence alone. The kind is one of a closed set and takes only its own parameters. A string parameter may contain {{dimension}} placeholders, which the trial's variation value fills; a regular expression matches the inserted value literally. Kinds and parameters: exact_text (text; optional turn): the reply, without leading and trailing whitespace, is exactly the text. forbidden_text (text; optional turn): the reply does not contain the text. pattern (pattern; optional turn): the reply contains a match of the Java regular expression. count (pattern, and minimum, maximum or both; optional turn): the number of matches lies within the inclusive bounds. file_exists (path, exists): the project-relative path exists, or does not exist, after the trial. file_content (path, text): the file holds exactly the text, ignoring trailing whitespace. exit_status (command, status): the last command that the trial ran and whose command line matches the Java regular expression exited with the status; CAT never runs a command. tool_used (tool, used): the trial called, or never called, the tool. A reply kind with turn examines the reply to that turn, counted from 1; without turn it examines every reply, and count counts across them.",
@@ -118,7 +118,7 @@
 						"items": {
 							"type": "object",
 							"additionalProperties": false,
-							"required": ["id", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "checks", "discarded_checks", "regression_scenarios"],
+							"required": ["id", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "key_dimensions", "checks", "discarded_checks", "regression_scenarios"],
 							"properties": {
 								"id": {"type": "string", "pattern": "\\S"},
 								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
@@ -135,7 +135,7 @@
 								"uncovered_interactions": {"description": "Material interactions that this test cannot cover. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 								"regression_scenarios": {"description": "Recorded regression scenario paths covered by this test, exactly as CAT presents them. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 								"variations": {
-									"description": "Every variation dimension. Empty if the test has none.",
+									"description": "Every variation dimension. Every test needs at least one: CAT refuses a test whose key-value combinations number fewer than 2 in either part.",
 									"type": "array",
 									"items": {
 										"type": "object",
@@ -160,6 +160,11 @@
 											}
 										}
 									}
+								},
+								"key_dimensions": {
+									"description": "The dimensions of variations whose values carry the test's content, such as the question asked or the file acted on, rather than incidental wording. Empty if every dimension does. Before any trial, CAT assigns each combination of key values to the development part or the held-out part with probability 1/2 each, and instances that share key values share a part. Prompt editing sees only development instances; formal trials draw only held-out ones. CAT refuses a test whose key-value combinations number fewer than 2 in either part.",
+									"type": "array",
+									"items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"}
 								},
 								"checks": {
 									"description": "The deterministic checks of this test, at most one per requirement that the test checks. A requirement with a check is deterministic in this test; every other requirement is semantic and the judge decides it. Empty if none.",
@@ -264,6 +269,10 @@
 			"description": "Known limitations of the contract. Empty if none.",
 			"type": "array",
 			"items": {"type": "string", "pattern": "\\S"}
+		},
+		"salt": {
+			"description": "The random value that CAT draws for the proposal and confirmation freezes. It decides which key-value combinations of each test belong to the development part and which to the held-out part.",
+			"type": "integer"
 		}
 	}
 }

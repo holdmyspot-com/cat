@@ -241,7 +241,7 @@ public final class SchedulerTest
 		}
 		return new Contract(fixture.requirements(), categories,
 			ContractFixtures.profiles(fixture.requirements(), categories), fixture.judge(), fixture.fixtures(),
-			fixture.limitations());
+			fixture.limitations(), fixture.salt());
 	}
 
 	/**

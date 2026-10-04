@@ -318,19 +318,23 @@ public final class AuthorManifestTest
 	}
 
 	/**
-	 * Verifies that repeated instances from different ended attempts retain separate classifications.
+	 * Verifies that repeated development failures of one instance retain separate classifications, and that the
+	 * failure summaries of ended attempts are not classified.
 	 */
 	// Requirement: R-D3
 	@Test
 	public void separatesFailureOccurrences()
 	{
 		// Requirement: R-D10
-		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", null, List.of(), List.of());
+		// Requirement: R-D9
+		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(),
+			List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(failure), Map.of(),
-			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure)),
-				new AuthorBrief.EndedAttempt(2, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure))), Set.of(), Map.of(), "");
-		requireThat(brief.failureIds().size(), "classifiedFailures").isEqualTo(3);
-		requireThat(brief.endedId(1, 0), "firstAttempt").isNotEqualTo(brief.endedId(2, 0));
+			ContractFixtures.contract(), List.of(failure, failure), Map.of(),
+			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()))),
+			Set.of(), Map.of(), "");
+		requireThat(brief.failureIds(), "classifiedFailures").
+			isEqualTo(Set.of(brief.developmentId(0), brief.developmentId(1)));
+		requireThat(brief.developmentId(0), "firstOccurrence").isNotEqualTo(brief.developmentId(1));
 	}
 }

@@ -7,9 +7,13 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.Split;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -47,6 +51,11 @@ public final class Proposal
 	 * The number of certification attempts whose caps the proposal shows.
 	 */
 	private static final int ATTEMPTS_SHOWN = 3;
+	/**
+	 * The fewest key-value combinations that each part of a test needs, so that development and held-out trials
+	 * each vary the test's content.
+	 */
+	static final int MINIMUM_COMBINATIONS = 2;
 	private final DerivedProposal derived;
 	private final Contract contract;
 	private final ProposalSchema schema;
@@ -112,7 +121,7 @@ public final class Proposal
 		if (!links.entries().isEmpty())
 			limitations.add(LinkReport.STAGING_CONSEQUENCE);
 		Contract contract = new Contract(proposed.requirements(), proposed.categories(), proposed.profiles(),
-			proposed.judge(), proposed.fixtures(), limitations);
+			proposed.judge(), proposed.fixtures(), limitations, proposed.salt());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())
 		{
@@ -173,9 +182,9 @@ public final class Proposal
 
 	/**
 	 * Indicates whether the user may confirm the proposal with a certification scope. A link cycle or a link to a
-	 * missing target blocks confirmation until the user resolves it. Conflicting requirements, an inventory model
-	 * whose family the capability ranking does not list, and a described scope without described cells also block
-	 * confirmation.
+	 * missing target blocks confirmation until the user resolves it. Conflicting requirements, a test with fewer than
+	 * {@value #MINIMUM_COMBINATIONS} key-value combinations in either part, an inventory model whose family the
+	 * capability ranking does not list, and a described scope without described cells also block confirmation.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return {@code true} if nothing blocks confirmation
@@ -188,7 +197,8 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, unranked models and a described scope without described cells, in that order.
+	 * requirements, tests with too few key-value combinations in a part, unranked models and a described scope
+	 * without described cells, in that order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -201,6 +211,7 @@ public final class Proposal
 		String links = linksAndConflictsRefusal();
 		if (!links.isEmpty())
 			reasons.add(links);
+		reasons.addAll(splitRefusals());
 		TrialProfiles profiles = contract.profiles();
 		List<String> unranked = profiles.unranked();
 		if (!unranked.isEmpty())
@@ -225,6 +236,34 @@ public final class Proposal
 				refusal.add(reason);
 		}
 		return refusal.toString();
+	}
+
+	/**
+	 * Returns one reason for each test whose key-value combinations number fewer than
+	 * {@value #MINIMUM_COMBINATIONS} in either part.
+	 *
+	 * @return the reasons, in contract order
+	 */
+	private List<String> splitRefusals()
+	{
+		List<String> reasons = new ArrayList<>();
+		Split split = contract.split();
+		for (Category category : contract.categories())
+		{
+			for (TestDefinition test : category.tests())
+			{
+				int development = split.combinations(test, Part.DEVELOPMENT).size();
+				int heldOut = split.combinations(test, Part.HELD_OUT).size();
+				if (development < MINIMUM_COMBINATIONS || heldOut < MINIMUM_COMBINATIONS)
+				{
+					reasons.add("The test `" + test.id() + "` of the category `" + category.id() + "` has " +
+						development + " key-value combinations in the development part and " + heldOut +
+						" in the held-out part, but each part needs at least " + MINIMUM_COMBINATIONS +
+						". Run revise with feedback that gives it more key values.");
+				}
+			}
+		}
+		return reasons;
 	}
 
 	/**

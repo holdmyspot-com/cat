@@ -174,7 +174,7 @@ public final class ProposalSchemaTest
 		Contract contract = schema().parse(ContractFixtures.resource("valid-proposal.json"));
 		Contract fixture = ContractFixtures.contract();
 		Contract expected = new Contract(fixture.requirements(), fixture.categories(), fixture.profiles(),
-			frozenJudge(), fixture.fixtures(), fixture.limitations());
+			frozenJudge(), fixture.fixtures(), fixture.limitations(), fixture.salt());
 
 		requireThat(contract, "contract").isEqualTo(expected);
 		requireThat(contract.requirements().get(1).source(), "source").isEqualTo("rules/safety.md");
@@ -260,7 +260,7 @@ public final class ProposalSchemaTest
 		for (JsonNode name : schema.get("required"))
 			required.add(name.asString());
 		requireThat(required, "required").isEqualTo(
-			java.util.Set.of("requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations"));
+			java.util.Set.of("requirements", "categories", "trial_profiles", "judge", "fixtures", "limitations", "salt"));
 	}
 
 	/**
@@ -290,6 +290,7 @@ public final class ProposalSchemaTest
 				{"test expected behavior", new String[]{"categories", "0", "tests", "0", "expected_behavior"}},
 				{"test uncovered interactions", new String[]{"categories", "0", "tests", "0", "uncovered_interactions"}},
 				{"test variations", new String[]{"categories", "0", "tests", "0", "variations"}},
+				{"test key dimensions", new String[]{"categories", "0", "tests", "0", "key_dimensions"}},
 				{"test checks", new String[]{"categories", "0", "tests", "0", "checks"}},
 				{"test discarded checks", new String[]{"categories", "0", "tests", "0", "discarded_checks"}},
 				{"test regression scenarios", new String[]{"categories", "0", "tests", "0", "regression_scenarios"}},
@@ -304,7 +305,8 @@ public final class ProposalSchemaTest
 				{"judge", new String[]{"judge"}},
 				{"fixtures", new String[]{"fixtures"}},
 				{"ignored paths", new String[]{"fixtures", "ignored_paths"}},
-				{"limitations", new String[]{"limitations"}}
+				{"limitations", new String[]{"limitations"}},
+				{"salt", new String[]{"salt"}}
 			};
 	}
 
@@ -489,6 +491,30 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that a stored contract keeps its salt and each test's key dimensions, and that a key dimension that
+	 * no variation defines is rejected.
+	 *
+	 * @throws InvalidProposalException if the fixture proposal is rejected
+	 */
+	@Test
+	public void keyDimensionsAndSaltRoundTrip() throws InvalidProposalException
+	{
+		// Requirement: R-C16
+		Contract contract = schema().parse(ContractFixtures.resource("valid-proposal.json"));
+		requireThat(contract.salt(), "salt").isEqualTo(ContractFixtures.SALT);
+		requireThat(contract.categories().get(1).tests().getFirst().keyDimensions(), "keyDimensions").
+			isEqualTo(List.of("target"));
+		JsonNode written = json.readTree(schema().toJson(contract));
+		requireThat(written.get("salt").asLong(), "written.salt").isEqualTo(ContractFixtures.SALT);
+		requireThat(written.get("categories").get(1).get("tests").get(0).get("key_dimensions").get(0).asString(),
+			"written.keyDimension").isEqualTo("target");
+
+		String[] keys = {"categories", "1", "tests", "0", "key_dimensions"};
+		InvalidProposalException e = rejection(changed(keys, json.createArrayNode().add("place")));
+		requireThat(String.join(" | ", e.problems()), "problems").contains("place");
+	}
+
+	/**
 	 * Verifies that a turn placeholder that no variation defines is rejected, because the generator could not
 	 * replace it.
 	 */
@@ -614,12 +640,12 @@ public final class ProposalSchemaTest
 		TestDefinition list = tests.get(1);
 		tests.set(1, new TestDefinition(list.id(), list.requirementIds(), list.absentTriggers(), list.applicability(),
 			list.turns(),
-			list.timeLimit(), list.expectedBehaviour(), list.uncoveredInteractions(), list.variations(), checks,
+			list.timeLimit(), list.expectedBehaviour(), list.uncoveredInteractions(), list.variations(), List.of(), checks,
 			discarded, list.regressionScenarios()));
 		List<Category> categories = new ArrayList<>(fixture.categories());
 		categories.set(0, new Category(formatting.id(), formatting.rationale(), formatting.riskRank(), tests));
 		return new Contract(fixture.requirements(), categories, fixture.profiles(), fixture.judge(),
-			fixture.fixtures(), fixture.limitations());
+			fixture.fixtures(), fixture.limitations(), fixture.salt());
 	}
 
 	/**

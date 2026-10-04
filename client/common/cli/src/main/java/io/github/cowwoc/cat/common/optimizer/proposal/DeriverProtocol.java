@@ -200,6 +200,8 @@ public final class DeriverProtocol
 	 * @param result the deriver session's result
 	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
 	 *   deriver ran
+	 * @param salt the salt that CAT drew for the proposal, which splits each test's key-value combinations into the
+	 *   development part and the held-out part
 	 * @return the proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
@@ -209,7 +211,7 @@ public final class DeriverProtocol
 	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of a prompt source, or breaks
 	 *   a rule of the contract model
 	 */
-	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles)
+	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles, long salt)
 		throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
@@ -256,7 +258,7 @@ public final class DeriverProtocol
 		{
 			contract = schema.parse(json.writeValueAsString(output), (requirements, categories) ->
 				TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
-					restriction, described, requirements, categories, Set.of(Requirement.CORE_TASK.id())));
+					restriction, described, requirements, categories, Set.of(Requirement.CORE_TASK.id())), salt);
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 			problems.addAll(scenarios.missingCitations(contract, derivedSources));

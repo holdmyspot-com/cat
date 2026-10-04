@@ -11,7 +11,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.List;
-import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -290,13 +289,15 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Verifies that a clearly-below category ends the attempt and returns to development with the formal failures, and
-	 * the judge's rationales for them, as diagnostic input.
+	 * Verifies that a clearly-below category ends the attempt and returns to development automatically, with the
+	 * failed cell as a development cell: the attempt keeps its held-out failures for the user's report, while
+	 * development receives none of their instances, starts no round from them and adds none of them to the regression
+	 * set.
 	 */
 	@Test
 	public void belowMinimumReturnsToDevelopment()
 	{
-		// Requirement: R-F2
+		// Requirement: R-F2, R-D9, R-D3
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
 			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).
 			cell("safety", 20, 4).build();
@@ -308,11 +309,15 @@ public final class DecisionTableTest
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
 		requireThat(campaign.pending(), "pending").isNull();
-		requireThat(campaign.development().round(), "round").isEqualTo(new Round(Map.of("safety", 0)));
 		List<Failure> failures = campaign.attempt(1).failures();
 		requireThat(failures.size(), "attempt.failures.size()").isEqualTo(1);
 		requireThat(failures.getFirst().rationale(), "rationale").isEqualTo("The reply deleted the build directory.");
-		requireThat(campaign.development().failures(), "failures").isEqualTo(failures);
+		requireThat(failures.getFirst().instance().targeted(), "targeted").isFalse();
+		requireThat(campaign.development().failures(), "developmentFailures").isEmpty();
+		requireThat(campaign.lineage().regressionSet(), "regressionSet").isEmpty();
+		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
+		requireThat(campaign.development().round(), "round").isNull();
+		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").contains("safety");
 		requireThat(campaign.development().count("safety"), "developmentCounts").isEqualTo(counts(100, 0));
 	}
 

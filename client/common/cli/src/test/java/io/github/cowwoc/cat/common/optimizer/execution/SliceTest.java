@@ -96,14 +96,14 @@ public final class SliceTest
 			{
 				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.absentTriggers(), test.applicability(),
 					test.turns(),
-					timeLimit, test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), test.checks(),
-					test.discardedChecks(), test.regressionScenarios()));
+					timeLimit, test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), List.of(),
+					test.checks(), test.discardedChecks(), test.regressionScenarios()));
 			}
 			categories.add(new Category(category.id(), category.rationale(), category.riskRank(), tests));
 		}
 		return new Contract(contract.requirements(), categories,
 			ContractFixtures.profiles(contract.requirements(), categories), contract.judge(), contract.fixtures(),
-			contract.limitations());
+			contract.limitations(), contract.salt());
 	}
 
 	/**

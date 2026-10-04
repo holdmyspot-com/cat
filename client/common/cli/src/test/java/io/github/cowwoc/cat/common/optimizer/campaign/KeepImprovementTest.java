@@ -226,13 +226,13 @@ public final class KeepImprovementTest
 	}
 
 	/**
-	 * Verifies that a qualifying attempt stays on offer after the user chooses to optimize further, and is offered
-	 * again at a later review checkpoint.
+	 * Verifies that a qualifying attempt stays on offer after the user chooses to optimize further, which returns to
+	 * development without the attempt's held-out failures, and is offered again at a later review checkpoint.
 	 */
 	@Test
 	public void qualifyingAttemptStaysAvailable()
 	{
-		// Requirement: R-F6
+		// Requirement: R-F6, R-D9
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
 			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 94, 5).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
@@ -243,7 +243,8 @@ public final class KeepImprovementTest
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.OPTIMIZE_FURTHER));
 		requireThat(campaign.pending(), "afterOptimize").isNull();
-		requireThat(campaign.development().round(), "round").isNotNull();
+		requireThat(campaign.development().round(), "round").isNull();
+		requireThat(campaign.development().failures(), "developmentFailures").isEmpty();
 		requireThat(KeepImprovement.offers(campaign), "offers").size().isEqualTo(1);
 
 		Campaign checkpoint = new Builder().confirmed().working(1).certificationAttempt(1).

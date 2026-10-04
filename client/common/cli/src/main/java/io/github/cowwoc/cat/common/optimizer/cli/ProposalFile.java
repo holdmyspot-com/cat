@@ -29,8 +29,9 @@ import java.util.Optional;
  * continue after the launcher exited.
  * <p>
  * The file holds the deriver's output, which {@code DeriverProtocol} validates again when it is read, the sources
- * that the deriver's session was observed loading, and the profile inventory, capability ranking and bindings that CAT
- * read when the deriver ran. Confirmation therefore freezes the trial profiles that the user saw.
+ * that the deriver's session was observed loading, the profile inventory, capability ranking and bindings that CAT
+ * read when the deriver ran, and the salt that CAT drew for the proposal. Confirmation therefore freezes the trial
+ * profiles and the split into development and held-out instances that the user saw.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -41,10 +42,10 @@ final class ProposalFile
 	 */
 	static final String NAME = "proposal.json";
 	/**
-	 * The version of the proposal layout, including regression scenario citations in each test definition, the
-	 * triggers of the requirements and the shipped capability ranking.
+	 * The version of the proposal layout, including regression scenario citations and key dimensions in each test
+	 * definition, the triggers of the requirements, the shipped capability ranking and the salt.
 	 */
-	private static final int FORMAT_VERSION = 6;
+	private static final int FORMAT_VERSION = 7;
 	private final Path file;
 	private final JsonMapper json;
 
@@ -53,15 +54,17 @@ final class ProposalFile
 	 *
 	 * @param result the deriver's output as a session result, which the caller validates again
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the deriver ran
+	 * @param salt the salt that CAT drew for the proposal
 	 */
-	record Stored(SessionResult.Completed result, ProfileEvidence profiles)
+	record Stored(SessionResult.Completed result, ProfileEvidence profiles, long salt)
 	{
 		/**
 		 * Creates a stored proposal.
 		 *
 		 * @param result the deriver's output as a session result
 		 * @param profiles the profile inventory and bindings
-		 * @throws NullPointerException if any of the arguments are null
+		 * @param salt the salt that CAT drew for the proposal
+		 * @throws NullPointerException if {@code result} or {@code profiles} are null
 		 */
 		Stored
 		{
@@ -101,6 +104,7 @@ final class ProposalFile
 		root.put("format_version", FORMAT_VERSION);
 		root.put("observed_sources", derived.observedSources());
 		root.put("derivation", derived.derivation());
+		root.put("salt", derived.contract().salt());
 		root.put("inventory_source", profiles.inventory().source());
 		ArrayNode inventory = root.putArray("inventory");
 		for (TrialProfile profile : profiles.inventory().profiles())
@@ -157,7 +161,8 @@ final class ProposalFile
 		if (!root.path("derivation").isString() || !root.path("observed_sources").isString() ||
 			!root.path("inventory_source").isString() || !root.path("inventory").isArray() ||
 			!root.path("ranking_source").isString() || !root.path("ranking").isArray() ||
-			!root.path("bindings").isArray())
+			!root.path("bindings").isArray() || !root.path("salt").isIntegralNumber() ||
+			!root.path("salt").canConvertToLong())
 		{
 			throw new IOException(file + " is not a valid version " + version + " proposal file.");
 		}
@@ -186,7 +191,7 @@ final class ProposalFile
 		SessionResult.Completed result = new SessionResult.Completed(file,
 			List.of(List.of(derivation)),
 			project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
-		return Optional.of(new Stored(result, profiles));
+		return Optional.of(new Stored(result, profiles, root.get("salt").asLong()));
 	}
 
 	/**

@@ -77,8 +77,10 @@ The development counts of the working candidate per cell, as JSON:
 
 {{development_counts}}
 
-The formal outcomes of the certification attempts that have ended, as JSON. Each formal failure carries its
-`rationale` and `responses`, as above:
+The formal outcomes of the certification attempts that have ended, as JSON. Certification instances are held out
+from you, so each formal failure gives only its `cell`, its `test` and, in `failed_requirements`, the ids of the
+requirements it failed. They show which requirements still fail in certification; they are not supplied failures, so
+do not classify or cite them:
 
 {{ended_attempts}}
 

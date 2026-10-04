@@ -26,6 +26,8 @@ import java.util.Set;
  * @param expectedBehaviour what a compliant response does
  * @param uncoveredInteractions the material interactions that this test cannot cover
  * @param variations the dimensions along which instances vary
+ * @param keyDimensions the variation dimensions that carry the test's content, which decide an instance's part;
+ *   empty if every dimension does
  * @param checks the deterministic checks that passed both of their controls. A requirement that one of them decides
  *   is deterministic in this test; every other requirement is semantic.
  * @param discardedChecks the proposed checks that failed a control, with the reason
@@ -34,8 +36,8 @@ import java.util.Set;
 public record TestDefinition(String id, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions,
-	List<VariationRule> variations, List<DeterministicCheck> checks, List<DiscardedCheck> discardedChecks,
-	List<String> regressionScenarios)
+	List<VariationRule> variations, List<String> keyDimensions, List<DeterministicCheck> checks,
+	List<DiscardedCheck> discardedChecks, List<String> regressionScenarios)
 {
 	/**
 	 * Creates a test definition.
@@ -51,16 +53,18 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 	 * @param expectedBehaviour what a compliant response does
 	 * @param uncoveredInteractions the material interactions that this test cannot cover
 	 * @param variations the dimensions along which instances vary
+	 * @param keyDimensions the variation dimensions that carry the test's content, which decide an instance's part;
+	 *   empty if every dimension does
 	 * @param checks the deterministic checks that passed both of their controls
 	 * @param discardedChecks the proposed checks that failed a control, with the reason
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if a text is blank, a list that must not be empty is empty, {@code timeLimit}
-	 *   is not positive or includes fractional seconds, two variation rules share a dimension, a turn or a check
-	 *   parameter names a placeholder that no variation rule defines, a check decides a requirement that the test
-	 *   does not check, two checks decide the
-	 *   same requirement, a check examines a turn that the test does not have, or a control does not choose a
-	 *   permitted value for every dimension that its check names
+	 *   is not positive or includes fractional seconds, two variation rules share a dimension, a key dimension is
+	 *   listed twice or names no variation rule, a turn or a check parameter names a placeholder that no variation
+	 *   rule defines, a check decides a requirement that the test does not check, two checks decide the same
+	 *   requirement, a check examines a turn that the test does not have, or a control does not choose a permitted
+	 *   value for every dimension that its check names
 	 */
 	public TestDefinition
 	{
@@ -74,6 +78,7 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 		requireThat(expectedBehaviour, "expectedBehaviour").isNotBlank();
 		requireThat(uncoveredInteractions, "uncoveredInteractions").isNotNull();
 		requireThat(variations, "variations").isNotNull();
+		requireThat(keyDimensions, "keyDimensions").isNotNull();
 		requireThat(checks, "checks").isNotNull();
 		requireThat(discardedChecks, "discardedChecks").isNotNull();
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
@@ -82,6 +87,7 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 		turns = List.copyOf(turns);
 		uncoveredInteractions = List.copyOf(uncoveredInteractions);
 		variations = List.copyOf(variations);
+		keyDimensions = List.copyOf(keyDimensions);
 		checks = List.copyOf(checks);
 		discardedChecks = List.copyOf(discardedChecks);
 		regressionScenarios = List.copyOf(regressionScenarios);
@@ -104,6 +110,17 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 					"' twice");
 		}
 		Set<String> dimensions = ruleByDimension.keySet();
+		Set<String> keys = new HashSet<>();
+		for (String key : keyDimensions)
+		{
+			if (!dimensions.contains(key))
+			{
+				throw new IllegalArgumentException("Test '" + id + "' has the key dimension '" + key +
+					"', but no variation defines that dimension. Defined dimensions: " + dimensions);
+			}
+			if (!keys.add(key))
+				throw new IllegalArgumentException("Test '" + id + "' lists the key dimension '" + key + "' twice");
+		}
 		for (String turn : turns)
 		{
 			for (String name : Placeholders.names(turn))
@@ -191,6 +208,18 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 	}
 
 	/**
+	 * Returns the variation rules of the key dimensions.
+	 *
+	 * @return the rules of {@link #keyDimensions()}, or every rule if it is empty, in the test's dimension order
+	 */
+	public List<VariationRule> keyRules()
+	{
+		if (keyDimensions.isEmpty())
+			return variations;
+		return variations.stream().filter(rule -> keyDimensions.contains(rule.dimension())).toList();
+	}
+
+	/**
 	 * Replaces every placeholder in the turns.
 	 *
 	 * @param textByDimension the replacement text of each dimension
@@ -241,7 +270,7 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 		if (discarded.size() == discardedChecks.size())
 			return this;
 		return new TestDefinition(id, requirementIds, absentTriggers, applicability, turns, timeLimit,
-			expectedBehaviour, uncoveredInteractions, variations, kept, discarded, regressionScenarios);
+			expectedBehaviour, uncoveredInteractions, variations, keyDimensions, kept, discarded, regressionScenarios);
 	}
 
 	/**
