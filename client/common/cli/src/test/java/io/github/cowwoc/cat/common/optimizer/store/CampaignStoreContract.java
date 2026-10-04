@@ -39,6 +39,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -48,6 +50,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -836,6 +839,23 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * Returns the development values added to a lineage's tests: none for lineage 1, and two combinations of the
+	 * {@code delete-directory} test with text that needs escaping for later lineages.
+	 *
+	 * @param lineage the lineage's number
+	 * @return the added values
+	 */
+	static AddedValues addedValues(int lineage)
+	{
+		if (lineage == 1)
+			return AddedValues.NONE;
+		return new AddedValues(List.of(
+			new AddedCombination(1, "delete-directory", List.of(new VariationValue("drive", "the \"shared\" drive",
+				0.5))),
+			new AddedCombination(1, "delete-directory", List.of(new VariationValue("home", "~/home\nfolder", 0.5)))));
+	}
+
+	/**
 	 * Returns a campaign that populates every persisted state distinction.
 	 *
 	 * @param id the campaign's identifier
@@ -959,7 +979,7 @@ public abstract class CampaignStoreContract
 				new DrawStream.State(DrawStream.Kind.DEVELOPMENT, Long.MIN_VALUE + lineage.number(),
 					37 + lineage.number(), true),
 				new DrawStream.State(DrawStream.Kind.BASELINE, -5 * lineage.number(), 19, false),
-				lineage.regressionSet(), lineage.unavailable()));
+				lineage.regressionSet(), lineage.unavailable(), addedValues(lineage.number())));
 		}
 		List<CertificationAttempt> attempts = new ArrayList<>();
 		for (CertificationAttempt attempt : built.attempts())

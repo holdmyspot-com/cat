@@ -7,6 +7,8 @@ import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_ME
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SAFETY;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SMALL_HIGH;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -14,8 +16,10 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.time.Instant;
@@ -23,6 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -448,6 +453,45 @@ public final class SchedulerTest
 	}
 
 	/**
+	 * Returns development values added after certification attempt 1 to the test of a failed instance.
+	 *
+	 * @param failure the failed instance
+	 * @return one combination that gives each key dimension of the test a new value
+	 */
+	private static AddedValues addedAfterFirstAttempt(TrialInstance failure)
+	{
+		TestDefinition test = TierFixtures.tieredContract().findTest(failure.testId()).orElseThrow();
+		List<VariationValue> values = test.keyRules().stream().
+			map(rule -> new VariationValue("added-" + rule.dimension(), "added " + rule.dimension(), 1.0)).toList();
+		return AddedValues.NONE.plus(List.of(new AddedCombination(1, test.id(), values)));
+	}
+
+	/**
+	 * Verifies that development draws nothing while a certification attempt that ended with formal failures waits for
+	 * development values, and resumes once the values are added.
+	 */
+	@Test
+	public void developmentWaitsForAddedValues()
+	{
+		// Requirement: R-C17
+		TrialInstance failure = tieredFailure(BIG_MEDIUM);
+		Builder builder = tiered().slowStart(new SlowStart(1, 0)).development(SMALL_HIGH, 60, 0).
+			development(SAFETY, 60, 0).certificationAttempt(1).failure(failure).outcome(Outcome.INCONCLUSIVE).campaign();
+		Campaign awaiting = builder.build();
+		requireThat(awaiting.awaitingValues().map(CertificationAttempt::index), "awaitingValues").
+			isEqualTo(Optional.of(1));
+		requireThat(Scheduler.plan(awaiting, NOW, 8).stream().
+			anyMatch(admission -> admission instanceof Admission.Assign assign &&
+			assign.purpose() == Purpose.DEVELOPMENT), "developmentPlanned").isFalse();
+
+		Campaign added = builder.added(addedAfterFirstAttempt(failure)).build();
+		requireThat(added.awaitingValues(), "awaitingValues").isEmpty();
+		requireThat(Scheduler.plan(added, NOW, 8).stream().
+			anyMatch(admission -> admission instanceof Admission.Assign assign &&
+			assign.purpose() == Purpose.DEVELOPMENT), "developmentPlanned").isTrue();
+	}
+
+	/**
 	 * Verifies that development assigns representative trials only to development cells: each category's weakest
 	 * cell, plus a cell where a certification attempt of the lineage adopted a failure. The other cells are empty and
 	 * would have the lowest bound.
@@ -470,8 +514,9 @@ public final class SchedulerTest
 		Builder certified = tiered().slowStart(new SlowStart(1, 0));
 		for (String cell : developmentCells)
 			certified.development(cell, 100, 0);
-		Campaign campaign = certified.development(BIG_MEDIUM, 60, 0).certificationAttempt(1).
-			failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+		TrialInstance failure = tieredFailure(BIG_MEDIUM);
+		Campaign campaign = certified.development(BIG_MEDIUM, 60, 0).certificationAttempt(1).failure(failure).
+			outcome(Outcome.INCONCLUSIVE).campaign().added(addedAfterFirstAttempt(failure)).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "certificationFailure").
 			isEqualTo(List.of(development(BIG_MEDIUM)));
 	}
@@ -588,7 +633,8 @@ public final class SchedulerTest
 		TrialInstance failing = new Generator(contract).markTargeted(tieredFailure(BIG_MEDIUM));
 		Campaign campaign = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).
-			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).campaign().
+			added(addedAfterFirstAttempt(tieredFailure(BIG_MEDIUM))).build();
 		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM, Builder.snapshot("attempt"), List.of());
 		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet(),
 			campaign.development().instanceOutcomes()) == Promotion.Decision.PENDING)

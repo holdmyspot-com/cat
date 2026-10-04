@@ -7,14 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
-import io.github.cowwoc.cat.common.optimizer.contract.Split;
-import io.github.cowwoc.cat.common.optimizer.contract.Split.KeyCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorProtocol;
@@ -34,7 +27,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -172,7 +164,8 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("links", links(brief.links())),
 			Map.entry("cell", brief.cell()),
 			Map.entry("approach", brief.approach().text()),
-			Map.entry("contract", developmentContract(brief.contract())),
+			Map.entry("contract", json.writeValueAsString(DevelopmentContract.toJson(json, schema,
+				brief.contract()))),
 			Map.entry("campaign_edits", brief.campaignEdits()),
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
@@ -180,70 +173,6 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("report_schema", reportSchema)));
 		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT,
 			brief.contract().judge().profile());
-	}
-
-	/**
-	 * Writes the confirmed contract without its held-out part: omits the salt, keeps of each key dimension only the
-	 * values that a development key-value combination contains, and lists each test's development key-value
-	 * combinations in {@code development_key_combinations}.
-	 *
-	 * @param contract the confirmed contract
-	 * @return the contract's JSON text
-	 */
-	private String developmentContract(Contract contract)
-	{
-		ObjectNode root = (ObjectNode) json.readTree(schema.toJson(contract));
-		root.remove("salt");
-		Split split = contract.split();
-		JsonNode categoryNodes = root.get("categories");
-		for (int i = 0; i < contract.categories().size(); ++i)
-		{
-			Category category = contract.categories().get(i);
-			JsonNode testNodes = categoryNodes.get(i).get("tests");
-			for (int j = 0; j < category.tests().size(); ++j)
-				omitHeldOutValues(category.tests().get(j), (ObjectNode) testNodes.get(j), split);
-		}
-		return json.writeValueAsString(root);
-	}
-
-	/**
-	 * Removes from a test's JSON the key values that only held-out key-value combinations contain, and lists its
-	 * development key-value combinations.
-	 *
-	 * @param test the test definition
-	 * @param node the test's JSON in the proposal schema
-	 * @param split the contract's split
-	 */
-	private static void omitHeldOutValues(TestDefinition test, ObjectNode node, Split split)
-	{
-		List<VariationRule> keyRules = test.keyRules();
-		Map<String, Set<String>> developmentLabels = new HashMap<>();
-		for (VariationRule rule : keyRules)
-			developmentLabels.put(rule.dimension(), new HashSet<>());
-		ArrayNode combinations = node.putArray("development_key_combinations");
-		for (KeyCombination combination : split.combinations(test, Part.DEVELOPMENT))
-		{
-			ObjectNode combinationNode = combinations.addObject();
-			for (int i = 0; i < keyRules.size(); ++i)
-			{
-				String dimension = keyRules.get(i).dimension();
-				String label = combination.values().get(i).label();
-				combinationNode.put(dimension, label);
-				developmentLabels.get(dimension).add(label);
-			}
-		}
-		for (JsonNode variation : node.get("variations"))
-		{
-			Set<String> kept = developmentLabels.get(variation.get("dimension").asString());
-			if (kept == null)
-				continue;
-			ArrayNode values = (ArrayNode) variation.get("values");
-			for (int i = values.size() - 1; i >= 0; --i)
-			{
-				if (!kept.contains(values.get(i).get("label").asString()))
-					values.remove(i);
-			}
-		}
 	}
 
 	/**

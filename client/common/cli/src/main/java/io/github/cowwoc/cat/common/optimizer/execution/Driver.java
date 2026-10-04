@@ -12,9 +12,12 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -29,7 +32,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
+import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
@@ -276,8 +282,8 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Advances the campaign without blocking. A step consumes the sessions that ended, stops the slice on a host
 	 * interrupt or at the end of the grace period, starts pending triages and judges, and before the slice's deadline
-	 * commits, starts an author session and admits trials. Work whose logical trial the campaign discarded ends
-	 * without an outcome.
+	 * starts the session that adds development values after a failed certification attempt, commits, starts an author
+	 * session and admits trials. Work whose logical trial the campaign discarded ends without an outcome.
 	 *
 	 * @return what follows
 	 * @throws IllegalStateException if the driver is closed
@@ -317,6 +323,7 @@ public final class Driver implements AutoCloseable
 		if (now.isBefore(deadline))
 		{
 			started |= advanceMinimality();
+			started |= startValues(now);
 			started |= commitIfDue();
 			started |= startAuthor(now);
 			started |= admit(now);
@@ -508,6 +515,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
 			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure(), now);
 			case InFlight.Author author -> authorEnded(author, result, event.failure(), now);
+			case InFlight.Values values -> valuesEnded(values, result, event.failure(), now);
 		}
 	}
 
@@ -528,6 +536,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Judge _ -> SessionRole.JUDGE;
 			case InFlight.Triage _ -> SessionRole.TRIAGE;
 			case InFlight.Author _ -> SessionRole.AUTHOR;
+			case InFlight.Values _ -> SessionRole.DERIVER;
 		};
 
 		record(new CampaignEvent.ObserveTokenUsage(role, completed.usage()));
@@ -588,7 +597,8 @@ public final class Driver implements AutoCloseable
 		List<CheckResult> results;
 		try
 		{
-			results = test.decide(instance.choices(), new TrialEvidence(completed));
+			results = test.decide(new Generator(campaign.contract(), campaign.lineage().added()).texts(instance),
+				new TrialEvidence(completed));
 		}
 		catch (IOException | UndecidableCheckException e)
 		{
@@ -1034,6 +1044,97 @@ public final class Driver implements AutoCloseable
 		}
 		record(event);
 		return true;
+	}
+
+	/**
+	 * Starts the session that adds development values once the last certification attempt ended with formal failures
+	 * and none were added for it. Development draws nothing and the readiness gate stays unmet until they are added.
+	 *
+	 * @param now the current time
+	 * @return whether the session was started or failed to start
+	 */
+	private boolean startValues(Instant now)
+	{
+		if (!isAdmissible() || hasValuesSession() || freeCapacity() <= 0 || !campaign.throttle().allowsAdmission(now))
+			return false;
+		Optional<CertificationAttempt> attempt = campaign.awaitingValues();
+		if (attempt.isEmpty())
+			return false;
+		List<FailureSummary> failures = attempt.get().failures().stream().map(Failure::summary).toList();
+		SessionRequest request = context.values().request(campaign.contract(), campaign.lineage().added(), failures);
+		SessionHandle handle;
+		try
+		{
+			handle = context.sessions().start(request);
+		}
+		catch (IOException e)
+		{
+			infrastructureFailure = "The session that adds development values could not start: " + describe(e);
+			return true;
+		}
+		register(new InFlight.Values(attempt.get().index(), failures, handle));
+		return true;
+	}
+
+	/**
+	 * Indicates whether a session that adds development values is running.
+	 *
+	 * @return {@code true} if the session is running
+	 */
+	private boolean hasValuesSession()
+	{
+		for (InFlight session : inFlight.values())
+		{
+			if (session instanceof InFlight.Values)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Consumes the end of a session that adds development values. Valid combinations join the development part and
+	 * restart the development counts; a rejected response or a failed session is an infrastructure failure. The
+	 * result is ignored if its attempt does not await values when the session ends.
+	 *
+	 * @param values the session
+	 * @param result the session's result, or {@code null} if the session failed with an exception
+	 * @param failure the exception, or {@code null}
+	 * @param now the current time
+	 * @throws IOException if the store cannot be written
+	 */
+	private void valuesEnded(InFlight.Values values, SessionResult result, Throwable failure, Instant now)
+		throws IOException
+	{
+		Optional<CertificationAttempt> awaiting = campaign.awaitingValues();
+		if (awaiting.isEmpty() || awaiting.get().index() != values.attempt())
+			return;
+		switch (result)
+		{
+			case null -> infrastructureFailure = "The session that adds development values failed: " +
+				describe(failure);
+			case SessionResult.Completed completed ->
+			{
+				List<AddedCombination> combinations;
+				try
+				{
+					combinations = context.values().combinations(completed, campaign.contract(),
+						campaign.lineage().added(), values.attempt(), values.failures());
+				}
+				catch (InvalidProposalException e)
+				{
+					infrastructureFailure = "The development values were rejected: " + String.join(" ", e.problems());
+					return;
+				}
+				record(new CampaignEvent.AddValues(values.attempt(), combinations));
+			}
+			// The session starts again once the rate limit allows it
+			case SessionResult.RateLimited limited -> record(new CampaignEvent.ObserveRateLimit(
+				List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+			case SessionResult.Interrupted _ -> infrastructureFailure =
+				"The session that adds development values was interrupted";
+			case SessionResult.Failed failed -> infrastructureFailure =
+				"The session that adds development values failed: " + failed.reason();
+		}
 	}
 
 	/**
@@ -1526,7 +1627,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The author copy is cleaned up by interrupt(); authors have no logical trial to queue.
-				case InFlight.Author _ ->
+				case InFlight.Author _, InFlight.Values _ ->
 				{
 				}
 			}
@@ -1583,7 +1684,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Trial trial -> trial.key();
 				case InFlight.Judge judge -> judge.judging().key();
 				case InFlight.Triage triage -> triage.triaging().key();
-				case InFlight.Author _ -> null;
+				case InFlight.Author _, InFlight.Values _ -> null;
 			};
 			if (key == null || !isRemoved(key))
 				continue;

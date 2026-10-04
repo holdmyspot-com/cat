@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -88,6 +89,7 @@ public final class Transitions
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
 					draft.optimization.tokenUsage());
 			}
+			case CampaignEvent.AddValues add -> addValues(draft, campaign, add);
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
 			{
@@ -182,7 +184,7 @@ public final class Transitions
 		}
 		draft.startLineage(new Lineage(draft.lineageNumber() + 1, confirm.contract(), confirm.contractHash(),
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, confirm.seed()).state(),
-			DrawStream.create(DrawStream.Kind.BASELINE, confirm.seed()).state(), List.of(), Set.of()));
+			DrawStream.create(DrawStream.Kind.BASELINE, confirm.seed()).state(), List.of(), Set.of(), AddedValues.NONE));
 		Map<MeasurementCondition, String> contractValues = new EnumMap<>(MeasurementCondition.class);
 		contractValues.put(MeasurementCondition.CONTRACT, confirm.contractHash().hex());
 		contractValues.put(MeasurementCondition.GENERATOR, Generator.IDENTITY);
@@ -193,6 +195,31 @@ public final class Transitions
 		draft.pendingDecisions.clear();
 		draft.outcome = null;
 		draft.revisionRequested = false;
+	}
+
+	/**
+	 * Adds development values to the tests that failed the attempt awaiting them, and restarts the working
+	 * candidate's development counts, because the development distribution changed.
+	 *
+	 * @param draft the state
+	 * @param campaign the state before the event
+	 * @param add the event
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract, or no attempt awaits
+	 *   values
+	 * @throws IllegalArgumentException if another attempt awaits values
+	 */
+	private static void addValues(Draft draft, Campaign campaign, CampaignEvent.AddValues add)
+	{
+		requireConfirmed(draft);
+		CertificationAttempt awaiting = campaign.awaitingValues().orElseThrow(() ->
+			new IllegalStateException("No certification attempt awaits development values"));
+		if (awaiting.index() != add.attempt())
+		{
+			throw new IllegalArgumentException("Attempt " + awaiting.index() + " awaits development values, not " +
+				"attempt " + add.attempt());
+		}
+		draft.added = draft.added.plus(add.combinations());
+		draft.restartDevelopmentCounts();
 	}
 
 	/**

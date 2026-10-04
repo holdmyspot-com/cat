@@ -37,12 +37,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -147,6 +150,34 @@ public final class StatusReportTest
 		requireThat(reverted.path("predecessorRate").asDouble(), "predecessorRate").isEqualTo(0.9);
 		requireThat(report.summary(), "summary").contains("Reverted candidate 2").contains("safety").
 			contains("upper bound").contains("predecessor rate");
+	}
+
+	/**
+	 * The JSON and human status list each key-value combination added to the development part after a failed
+	 * certification attempt, with its attempt, test, dimension, label and text.
+	 */
+	@Test
+	public void reportsAddedValues()
+	{
+		// Requirement: R-C17
+		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
+			List.of(new VariationValue("drive", "the shared\ndrive", 1.0)))));
+		Campaign campaign = new Builder().confirmed().added(added).build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		JsonNode combination = report.toJson(JsonMapper.builder().build()).path("addedValues").path(0);
+		requireThat(combination.path("attempt").asInt(), "attempt").isEqualTo(1);
+		requireThat(combination.path("test").asString(), "test").isEqualTo("delete-directory");
+		JsonNode value = combination.path("values").path(0);
+		requireThat(value.path("dimension").asString(), "dimension").isEqualTo("target");
+		requireThat(value.path("label").asString(), "label").isEqualTo("drive");
+		requireThat(value.path("text").asString(), "text").isEqualTo("the shared\ndrive");
+		requireThat(report.summary(), "summary").
+			contains("Development values added after certification attempts with formal failures").
+			contains("  attempt 1, test delete-directory: target = drive (\"the shared\\ndrive\")");
+		requireThat(StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE).summary(), "none").
+			doesNotContain("Development values added");
 	}
 
 	/**

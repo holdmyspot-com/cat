@@ -302,7 +302,7 @@ public final class SliceTest
 			SessionPort sessions = new QueueingSessions(harness.sessions(), started);
 			DriverContext observed = new DriverContext(context.store(), sessions, context.workspace(),
 				context.interrupts(), context.clock(), context.overlays(), context.judge(), context.triage(),
-				context.author(), context.deliverer(), context.calibrator(), context.terminator(),
+				context.author(), context.values(), context.deliverer(), context.calibrator(), context.terminator(),
 				context.leftoverRuns(), context.authority(), context.promptSources(), context.environment(),
 				context.lockFile(), context.random(), context.settings());
 			try (ExecutorService executor = Executors.newSingleThreadExecutor())

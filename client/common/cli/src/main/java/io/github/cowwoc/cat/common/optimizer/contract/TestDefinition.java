@@ -328,7 +328,24 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 		Map<String, String> labelByDimension = new HashMap<>();
 		for (VariationChoice choice : choices)
 			labelByDimension.put(choice.dimension(), choice.label());
-		Map<String, String> textByDimension = textByDimension(labelByDimension);
+		return decide(textByDimension(labelByDimension), evidence);
+	}
+
+	/**
+	 * Runs every check on a trial's evidence.
+	 *
+	 * @param textByDimension the text of each variation value that the trial drew, by dimension
+	 * @param evidence the trial's evidence
+	 * @return one result per check, in check order
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the evidence cannot be read
+	 * @throws UndecidableCheckException if the evidence does not record what a check's kind observes
+	 */
+	public List<CheckResult> decide(Map<String, String> textByDimension, CheckEvidence evidence)
+		throws IOException, UndecidableCheckException
+	{
+		requireThat(textByDimension, "textByDimension").isNotNull();
+		requireThat(evidence, "evidence").isNotNull();
 		List<CheckResult> results = new ArrayList<>();
 		for (DeterministicCheck check : checks)
 			results.add(check.decide(evidence, textByDimension));

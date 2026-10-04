@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
@@ -381,6 +382,33 @@ public sealed interface CampaignEvent
 		public Commit
 		{
 			requireThat(calibration, "calibration").isNotNull();
+		}
+	}
+
+	/**
+	 * A deriver session added development values to the tests that failed a certification attempt.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param attempt the index of the attempt whose formal failures the values address
+	 * @param combinations the new key-value combinations, each recording {@code attempt}
+	 */
+	record AddValues(int attempt, List<AddedCombination> combinations) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param attempt the index of the attempt whose formal failures the values address
+		 * @param combinations the new key-value combinations, each recording {@code attempt}
+		 * @throws NullPointerException if {@code combinations} is null or contains null
+		 * @throws IllegalArgumentException if {@code combinations} is empty or a combination records another attempt
+		 */
+		public AddValues
+		{
+			requireThat(combinations, "combinations").isNotEmpty();
+			combinations = List.copyOf(combinations);
+			for (AddedCombination combination : combinations)
+				requireThat(combination.attempt(), "combination.attempt()").isEqualTo(attempt, "attempt");
 		}
 	}
 

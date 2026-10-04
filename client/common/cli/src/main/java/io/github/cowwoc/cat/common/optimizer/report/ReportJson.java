@@ -68,6 +68,7 @@ final class ReportJson
 		tokens(root.putObject("tokens"), report.tokens());
 		OptimizationJson.write(root, report.optimization());
 		reverts(root.putArray("reverts"), report.reverts());
+		addedValues(root.putArray("addedValues"), report.addedValues());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
@@ -112,6 +113,25 @@ final class ReportJson
 			node.put("cell", revert.cell());
 			node.put("upperBound", revert.upperBound());
 			node.put("predecessorRate", revert.predecessorRate());
+		}
+	}
+
+	/**
+	 * Adds the key-value combinations added to the development part of the tests.
+	 *
+	 * @param array the report's array of added combinations
+	 * @param combinations the combinations, in the order they were added
+	 */
+	private static void addedValues(ArrayNode array, List<AddedCombinationReport> combinations)
+	{
+		for (AddedCombinationReport combination : combinations)
+		{
+			ObjectNode node = array.addObject();
+			node.put("attempt", combination.attempt());
+			node.put("test", combination.testId());
+			ArrayNode values = node.putArray("values");
+			for (AddedCombinationReport.KeyValue value : combination.values())
+				values.addObject().put("dimension", value.dimension()).put("label", value.label()).put("text", value.text());
 		}
 	}
 

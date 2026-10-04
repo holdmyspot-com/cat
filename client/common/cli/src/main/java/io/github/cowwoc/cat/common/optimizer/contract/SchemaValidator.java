@@ -11,14 +11,15 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Checks a JSON value against the subset of JSON Schema that {@code proposal.schema.json} uses, including references
- * to the root schema's {@code $defs}.
+ * Checks a JSON value against the subset of JSON Schema that CAT's packaged schemas for session output use, such
+ * as {@code proposal.schema.json}, including references to the root schema's {@code $defs}.
  * <p>
- * The proposal schema is the single definition of the proposal's shape, so the validator reads it rather than repeating
- * it. A keyword outside the subset is an error, because ignoring it would make the schema promise a check that never
- * runs.
+ * Each schema is the single definition of its output's shape, so the validator reads it rather than repeating it. A
+ * keyword outside the subset is an error, because ignoring it would make the schema promise a check that never runs.
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
-final class SchemaValidator
+public final class SchemaValidator
 {
 	/**
 	 * Keywords that describe a schema without constraining a value.
@@ -32,7 +33,7 @@ final class SchemaValidator
 	 * @param rootSchema the schema that every value is checked against
 	 * @throws NullPointerException if {@code rootSchema} is null
 	 */
-	SchemaValidator(JsonNode rootSchema)
+	public SchemaValidator(JsonNode rootSchema)
 	{
 		requireThat(rootSchema, "rootSchema").isNotNull();
 		this.rootSchema = rootSchema;
@@ -46,7 +47,7 @@ final class SchemaValidator
 	 *   {@code $.categories[0].risk_rank}. Empty if the value is valid.
 	 * @throws IllegalArgumentException if the schema uses a keyword outside the supported subset
 	 */
-	List<String> violations(JsonNode value)
+	public List<String> violations(JsonNode value)
 	{
 		List<String> violations = new ArrayList<>();
 		check(rootSchema, value, "$", violations);

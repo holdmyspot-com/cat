@@ -88,6 +88,8 @@ import tools.jackson.databind.node.ObjectNode;
  * @param conditions the measurement conditions that the claim holds under
  * @param optimization descriptive snapshot comparisons and retained author diagnoses
  * @param reverts withdrawn working candidates and the estimates that triggered their replacement
+ * @param addedValues the key-value combinations added to the development part of the tests after certification
+ *   attempts ended with formal failures, in the order they were added
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -98,7 +100,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	TokenStatistics tokens,
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
-	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts)
+	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts,
+	List<AddedCombinationReport> addedValues)
 {
 	/**
 	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
@@ -197,6 +200,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param conditions the measurement conditions that the claim holds under
 	 * @param optimization descriptive snapshot comparisons and retained author diagnoses
 	 * @param reverts withdrawn working candidates and the estimates that triggered their replacement
+	 * @param addedValues the key-value combinations added to the development part of the tests after certification
+	 *   attempts ended with formal failures, in the order they were added
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
 	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
@@ -234,6 +239,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		limitations = List.copyOf(limitations);
 		conditions = Map.copyOf(conditions);
 		reverts = List.copyOf(reverts);
+		addedValues = List.copyOf(addedValues);
 	}
 
 	/**
@@ -330,7 +336,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
-			OptimizationReport.of(campaign), campaign.development().reverts());
+			OptimizationReport.of(campaign), campaign.development().reverts(), AddedCombinationReport.of(campaign));
 	}
 
 	/**

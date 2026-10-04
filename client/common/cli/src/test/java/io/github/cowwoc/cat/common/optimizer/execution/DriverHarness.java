@@ -9,8 +9,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -28,7 +30,10 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.store.InMemoryCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.InMemoryOverlays;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -52,8 +57,10 @@ import java.util.function.Predicate;
  * <p>
  * Trial sessions reply with the response that the {@link #trials(Function) trial script} chooses. Judge sessions
  * return scripted judgment JSON that {@link JudgePrompt} parses, triage sessions find every failure
- * self-recovering unless the {@link #triages(Function) triage script} decides otherwise, and author sessions write a
- * new {@code CLAUDE.md} into their effects directory.
+ * self-recovering unless the {@link #triages(Function) triage script} decides otherwise, author sessions write a
+ * new {@code CLAUDE.md} into their effects directory, and the sessions that add development values return
+ * {@link #newValues(SessionRequest) new values} unless the {@link #derivers(Function) deriver script} decides
+ * otherwise.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
@@ -104,6 +111,7 @@ public final class DriverHarness
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final JudgePrompt judge;
 	private final TriagePrompt triage;
+	private final ValuesPrompt values;
 	private final Map<Path, Judgment> judgments = new HashMap<>();
 	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
@@ -112,6 +120,7 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> authors = request -> edit(request, PROMPT);
 	private Function<SessionRequest, SessionResult> judges = this::scriptedJudgment;
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
+	private Function<SessionRequest, SessionResult> derivers = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
 	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private SliceSettings settings = SliceSettings.DEFAULT;
@@ -119,6 +128,7 @@ public final class DriverHarness
 	private int ended;
 	private int edits;
 	private int trialResults;
+	private int addedValues;
 
 	/**
 	 * Creates the ports of a test and persists a campaign.
@@ -161,6 +171,8 @@ public final class DriverHarness
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));
+		this.values = new ValuesPrompt(json, new ProposalSchema(json), Files.createDirectories(
+			directory.resolve("values")));
 		overlays.put(Builder.INCUMBENT, Overlay.of(fork));
 		for (int number = 1; number <= 5; ++number)
 			overlays.put(Builder.snapshot("candidate-" + number), candidate("candidate-" + number));
@@ -199,7 +211,7 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, triage, author, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
+			judge, triage, author, values, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
 			JsonMapper.builder().build()), new Authority(Set.of(PROMPT), Set.of(), Set.of()), Set.of(PROMPT),
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
 	}
@@ -253,6 +265,71 @@ public final class DriverHarness
 	public void triages(Function<SessionRequest, SessionResult> script)
 	{
 		this.triages = script;
+	}
+
+	/**
+	 * Replaces the script of the sessions that add development values.
+	 *
+	 * @param script returns each session's result
+	 */
+	public void derivers(Function<SessionRequest, SessionResult> script)
+	{
+		this.derivers = script;
+	}
+
+	/**
+	 * Returns the result of a session that adds development values: 4 new combinations for each failed test that
+	 * the request lists, each giving every key dimension a value that no other session of the harness gave.
+	 *
+	 * @param request the session's request
+	 * @return the completed session
+	 */
+	public SessionResult.Completed newValues(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		int start = turn.indexOf("\n[", turn.indexOf("Each failed test, as JSON"));
+		int end = turn.indexOf("\n\n### How to write", start);
+		JsonNode failedTests = json.readTree(turn.substring(start, end));
+		ObjectNode response = json.createObjectNode();
+		ArrayNode tests = response.putArray("tests");
+		for (JsonNode failedTest : failedTests)
+		{
+			JsonNode test = failedTest.get("test");
+			List<String> dimensions = new ArrayList<>();
+			for (JsonNode dimension : test.get("key_dimensions"))
+				dimensions.add(dimension.asString());
+			if (dimensions.isEmpty())
+			{
+				for (JsonNode variation : test.get("variations"))
+					dimensions.add(variation.get("dimension").asString());
+			}
+			ObjectNode entry = tests.addObject();
+			entry.put("id", test.get("id").asString());
+			ArrayNode combinations = entry.putArray("combinations");
+			for (int i = 0; i < 4; ++i)
+			{
+				ArrayNode combination = combinations.addArray();
+				for (String dimension : dimensions)
+				{
+					++addedValues;
+					combination.addObject().put("dimension", dimension).put("label", "added-" + addedValues).
+						put("text", "added value " + addedValues);
+				}
+			}
+		}
+		return derived(response.toString());
+	}
+
+	/**
+	 * Returns the result of a session that adds development values.
+	 *
+	 * @param response the session's final response
+	 * @return the completed session
+	 */
+	public SessionResult.Completed derived(String response)
+	{
+		return new SessionResult.Completed(directory.resolve("values-transcript"), List.of(List.of(response)),
+			directory.resolve("values-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -625,7 +702,7 @@ public final class DriverHarness
 			case JUDGE -> judges.apply(request);
 			case TRIAGE -> triages.apply(request);
 			case AUTHOR -> authors.apply(request);
-			case DERIVER -> throw new AssertionError("The driver started a deriver session: " + request);
+			case DERIVER -> derivers.apply(request);
 		};
 	}
 

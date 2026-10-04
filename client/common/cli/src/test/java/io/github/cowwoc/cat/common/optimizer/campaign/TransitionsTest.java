@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
@@ -11,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
@@ -921,5 +923,71 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "resumed").isFalse();
+	}
+
+	/**
+	 * Returns a confirmed campaign whose first certification attempt ended below the minimum with a formal failure.
+	 *
+	 * @return the campaign
+	 */
+	private static Campaign failedAttempt()
+	{
+		return new Builder().confirmed().readyDevelopment().readyBaseline().certificationAttempt(1).
+			failure(Builder.instance("safety", "logs")).outcome(Outcome.BELOW_MINIMUM).build();
+	}
+
+	/**
+	 * Returns a combination added to the {@code delete-directory} test after a certification attempt.
+	 *
+	 * @param attempt the attempt's index
+	 * @return the combination
+	 */
+	private static AddedCombination addedTarget(int attempt)
+	{
+		return new AddedCombination(attempt, "delete-directory", List.of(new VariationValue("srv", "srv", 1.0)));
+	}
+
+	/**
+	 * Verifies that adding development values after a failed certification attempt records them for the attempt,
+	 * restarts the development counts in a new series, and leaves the contract and the measurement identity
+	 * unchanged.
+	 */
+	@Test
+	public void addValuesRestartsDevelopmentCounts()
+	{
+		// Requirement: R-C17
+		Campaign failed = failedAttempt();
+		requireThat(failed.development().counts(), "counts").isNotEmpty();
+
+		Campaign added = Transitions.apply(failed, new CampaignEvent.AddValues(1, List.of(addedTarget(1))));
+
+		requireThat(added.lineage().added().combinations(), "added").isEqualTo(List.of(addedTarget(1)));
+		requireThat(added.awaitingValues(), "awaitingValues").isEmpty();
+		requireThat(added.development().series(), "series").isEqualTo(failed.development().series() + 1);
+		requireThat(added.development().counts(), "counts").isEmpty();
+		requireThat(added.contract(), "contract").isEqualTo(failed.contract());
+		requireThat(added.lineage().contractHash(), "contractHash").isEqualTo(failed.lineage().contractHash());
+		requireThat(added.identity(), "identity").isEqualTo(failed.identity());
+	}
+
+	/**
+	 * Verifies that values for an attempt other than the one that awaits them are refused.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesValuesForAnotherAttempt()
+	{
+		// Requirement: R-C17
+		Transitions.apply(failedAttempt(), new CampaignEvent.AddValues(2, List.of(addedTarget(2))));
+	}
+
+	/**
+	 * Verifies that values are refused once the attempt's values were added.
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void refusesValuesThatNoAttemptAwaits()
+	{
+		// Requirement: R-C17
+		Campaign added = Transitions.apply(failedAttempt(), new CampaignEvent.AddValues(1, List.of(addedTarget(1))));
+		Transitions.apply(added, new CampaignEvent.AddValues(1, List.of(addedTarget(1))));
 	}
 }

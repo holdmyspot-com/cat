@@ -570,6 +570,125 @@ public final class GeneratorTest
 	}
 
 	/**
+	 * Verifies that development draws give the added key-value combinations, together, half of the test's
+	 * probability, each added combination an equal share, and the confirmed development combinations the other half
+	 * by their frozen probabilities, while formal and baseline draws never pick an added value.
+	 */
+	@Test
+	public void addedValuesTakeHalfOfDevelopment()
+	{
+		// Requirement: R-C17
+		List<Double> weights = new ArrayList<>();
+		for (int weight = 1; weight <= 8; ++weight)
+			weights.add(weight / 36.0);
+		Contract contract = templateContract(weights, List.of("country"));
+		TestDefinition test = contract.findTest(TEMPLATE_TEST).orElseThrow();
+		AddedValues added = addedCountries(4);
+		Generator generator = new Generator(contract, added);
+		List<Split.KeyCombination> confirmed = contract.split().combinations(test, Part.DEVELOPMENT);
+		double total = 0;
+		for (Split.KeyCombination combination : confirmed)
+			total += combination.probability();
+
+		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		int draws = 10_000;
+		Map<String, Integer> countries = new HashMap<>();
+		for (int i = 0; i < draws; ++i)
+		{
+			TrialInstance instance = generator.draw(TEMPLATE_CELL, stream);
+			String country = labels(instance).get("country");
+			countries.merge(country, 1, Integer::sum);
+			if (country.startsWith("n"))
+			{
+				requireThat(instance.turns().getFirst(), "turn").
+					contains("the capital of new country " + country.substring(1) + "?");
+			}
+		}
+
+		for (AddedCombination combination : added.of(TEMPLATE_TEST))
+		{
+			String label = combination.values().getFirst().label();
+			requireWithinFiveDeviations(countries.getOrDefault(label, 0), draws, 0.5 / 4, label);
+		}
+		for (Split.KeyCombination combination : confirmed)
+		{
+			String label = combination.values().getFirst().label();
+			requireWithinFiveDeviations(countries.getOrDefault(label, 0), draws,
+				0.5 * combination.probability() / total, label);
+		}
+		for (DrawStream.Kind kind : List.of(DrawStream.Kind.BASELINE, DrawStream.Kind.FORMAL))
+		{
+			DrawStream heldOut = DrawStream.create(kind, SEED);
+			heldOut.open();
+			for (int i = 0; i < 400; ++i)
+			{
+				String country = labels(generator.draw(TEMPLATE_CELL, heldOut)).get("country");
+				requireThat(country, "country(" + kind + ")").doesNotStartWith("n");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an instance with an added key value is valid only when a development stream drew it, and that
+	 * its checks receive the added value's text.
+	 */
+	@Test
+	public void addedValuesStayInDevelopment()
+	{
+		// Requirement: R-C17
+		Contract contract = templateContract(uniform(12), List.of("country"));
+		Generator generator = new Generator(contract, addedCountries(4));
+		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		TrialInstance added = generator.draw(TEMPLATE_CELL, stream);
+		for (int draws = 1; draws < 100 && !labels(added).get("country").startsWith("n"); ++draws)
+			added = generator.draw(TEMPLATE_CELL, stream);
+		requireThat(labels(added).get("country"), "country").startsWith("n");
+
+		requireThat(generator.markTargeted(added).targeted(), "targeted").isTrue();
+		requireThat(generator.texts(added).get("country"), "text").
+			isEqualTo("new country " + labels(added).get("country").substring(1));
+		TrialInstance formal = new TrialInstance(added.cellId(), added.categoryId(), added.testId(), added.choices(),
+			added.turns(), added.expectedBehaviour(), added.generator(), DrawStream.Kind.FORMAL,
+			added.streamPosition(), false);
+		try
+		{
+			generator.validate(formal);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (GeneratorValidationException e)
+		{
+			requireThat(e.getMessage(), "message").contains("added").contains("development part");
+		}
+		try
+		{
+			new Generator(contract).validate(added);
+			requireThat(false, "rejectedWithoutAddedValues").isTrue();
+		}
+		catch (GeneratorValidationException e)
+		{
+			requireThat(e.getMessage(), "message").contains("does not permit the value");
+		}
+	}
+
+	/**
+	 * Returns added key-value combinations of the template test, one new country each, labelled {@code n0},
+	 * {@code n1} and so on.
+	 *
+	 * @param count the number of combinations
+	 * @return the added values
+	 */
+	private static AddedValues addedCountries(int count)
+	{
+		List<AddedCombination> combinations = new ArrayList<>();
+		for (int i = 0; i < count; ++i)
+		{
+			combinations.add(new AddedCombination(1, TEMPLATE_TEST,
+				List.of(new VariationValue("n" + i, "new country " + i, 1.0 / count))));
+		}
+		return AddedValues.NONE.plus(combinations);
+	}
+
+	/**
 	 * Verifies that validation rejects an instance whose key values lie outside its stream's part.
 	 */
 	@Test(expectedExceptions = GeneratorValidationException.class,

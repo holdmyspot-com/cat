@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -76,6 +77,17 @@ sealed interface InFlight
 	 */
 	record Author(int number, String cell, Candidate working, Overlay overlay, Path copy, FileInventory before,
 		AuthorBrief brief, SessionHandle handle) implements InFlight
+	{
+	}
+
+	/**
+	 * A session that adds development values after a certification attempt ended with formal failures.
+	 *
+	 * @param attempt the certification attempt's index
+	 * @param failures the attempt's failures, as development may learn of them
+	 * @param handle the session
+	 */
+	record Values(int attempt, List<FailureSummary> failures, SessionHandle handle) implements InFlight
 	{
 	}
 

@@ -30,6 +30,8 @@ import java.util.random.RandomGenerator;
  * @param judge builds judge requests and reads their verdicts
  * @param triage builds triage requests and reads the impacts of failed development trials
  * @param author builds author requests and reads their reports
+ * @param values builds the requests of the sessions that add development values after a certification
+ *   attempt ended with formal failures, and reads their combinations
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
@@ -47,9 +49,10 @@ import java.util.random.RandomGenerator;
  */
 public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
-	TriageProtocol triage, AuthorProtocol author, Deliverer deliverer, CapCalibrator calibrator,
-	ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources,
-	MeasurementIdentity environment, Path lockFile, RandomGenerator random, SliceSettings settings)
+	TriageProtocol triage, AuthorProtocol author, ValuesProtocol values, Deliverer deliverer,
+	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
+	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
+	SliceSettings settings)
 {
 	/**
 	 * Creates a context.
@@ -63,6 +66,8 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param judge builds judge requests and reads their verdicts
 	 * @param triage builds triage requests and reads the impacts of failed development trials
 	 * @param author builds author requests and reads their reports
+	 * @param values builds the requests of the sessions that add development values after a certification
+	 *   attempt ended with formal failures, and reads their combinations
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
@@ -89,6 +94,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 		requireThat(judge, "judge").isNotNull();
 		requireThat(triage, "triage").isNotNull();
 		requireThat(author, "author").isNotNull();
+		requireThat(values, "values").isNotNull();
 		requireThat(deliverer, "deliverer").isNotNull();
 		requireThat(calibrator, "calibrator").isNotNull();
 		requireThat(terminator, "terminator").isNotNull();

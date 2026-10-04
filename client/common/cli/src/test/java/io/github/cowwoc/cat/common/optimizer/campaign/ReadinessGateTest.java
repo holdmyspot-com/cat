@@ -2,12 +2,15 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 
 import java.util.List;
 import java.util.Map;
@@ -132,6 +135,22 @@ public final class ReadinessGateTest
 		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			regression(Builder.targeted("safety", "logs"), Verdict.PASS).build()), "fixedRegression").
 			isTrue();
+	}
+
+	/**
+	 * Verifies that the gate does not hold while a certification attempt that ended with formal failures waits for
+	 * development values, and holds again once they are added.
+	 */
+	@Test
+	public void gateWaitsForAddedValues()
+	{
+		// Requirement: R-C17
+		Builder failed = ready().certificationAttempt(1).failure(Builder.instance("safety", "logs")).
+			outcome(Outcome.BELOW_MINIMUM).campaign();
+		requireThat(ReadinessGate.isMet(failed.build()), "awaiting").isFalse();
+		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
+			List.of(new VariationValue("srv", "srv", 1.0)))));
+		requireThat(ReadinessGate.isMet(failed.added(added).build()), "added").isTrue();
 	}
 
 	/**

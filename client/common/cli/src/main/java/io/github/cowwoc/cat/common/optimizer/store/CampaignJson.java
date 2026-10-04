@@ -64,12 +64,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -714,6 +717,21 @@ final class CampaignJson
 			if (lineage.unavailable().contains(outcome))
 				unavailable.add(outcome.name());
 		}
+		ArrayNode added = node.putArray("added_values");
+		for (AddedCombination combination : lineage.added().combinations())
+		{
+			ObjectNode element = added.addObject();
+			element.put("attempt", combination.attempt());
+			element.put("test_id", combination.testId());
+			ArrayNode values = element.putArray("values");
+			for (VariationValue value : combination.values())
+			{
+				values.addObject().
+					put("label", value.label()).
+					put("text", value.text()).
+					put("probability", value.probability());
+			}
+		}
 		return node;
 	}
 
@@ -744,9 +762,19 @@ final class CampaignJson
 		Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
 		for (JsonNode element : elements(node, "unavailable"))
 			unavailable.add(constantValue(element, "unavailable", Outcome.class));
+		List<AddedCombination> added = new ArrayList<>();
+		for (JsonNode element : elements(node, "added_values"))
+		{
+			List<VariationValue> values = new ArrayList<>();
+			for (JsonNode value : elements(element, "values"))
+			{
+				values.add(new VariationValue(text(value, "label"), text(value, "text"), floating(value, "probability")));
+			}
+			added.add(new AddedCombination(integer(element, "attempt"), text(element, "test_id"), values));
+		}
 		return new Lineage(integer(node, "number"), contract, sha256(node, "contract_hash"),
 			readStream(field(node, "development_stream")), readStream(field(node, "baseline_stream")), regressionSet,
-			unavailable);
+			unavailable, new AddedValues(added));
 	}
 
 	/**

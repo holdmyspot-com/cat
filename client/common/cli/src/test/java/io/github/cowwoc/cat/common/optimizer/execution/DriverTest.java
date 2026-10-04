@@ -39,6 +39,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
@@ -51,6 +53,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
 import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
@@ -58,6 +61,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
+import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
@@ -265,7 +269,7 @@ public final class DriverTest
 			DriverContext original = harness.context();
 			DriverContext context = new DriverContext(store, original.sessions(), original.workspace(),
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
-				original.author(), original.deliverer(), original.calibrator(), original.terminator(),
+				original.author(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
 				original.lockFile(), original.random(), original.settings());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
@@ -2395,6 +2399,211 @@ public final class DriverTest
 	}
 
 	/**
+	 * When a certification attempt ends with formal failures, one deriver session adds development values to each
+	 * failed test without seeing the salt or a held-out value. Development counts restart and draw the added values,
+	 * and the unchanged candidate is committed again only after every development cell is ready on new trials.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failedAttemptAddsDevelopmentValues() throws IOException
+	{
+		// Requirement: R-C17
+		// Requirement: R-C16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build());
+			Map<String, Integer> newTrials = new HashMap<>();
+			List<TrialInstance> newInstances = new ArrayList<>();
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				if (trial.key().purpose() == Purpose.FORMAL)
+					return harness.failed();
+				if (trial.key().purpose() == Purpose.DEVELOPMENT && isFirstAttemptEnded(harness))
+				{
+					newTrials.merge(trial.key().cell(), 1, Integer::sum);
+					newInstances.add(trial.instance());
+				}
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> !state.attempts().isEmpty() &&
+					!state.attempt(1).isRunning());
+				requireThat(ended.attempt(1).failures(), "failures").isNotEmpty();
+				Campaign recommitted = harness.runUntil(driver, state -> state.attempts().size() == 2);
+
+				List<SessionRequest> deriverRequests = harness.sessions().sessions().stream().
+					map(FakeSession::request).filter(request -> request.role() == SessionRole.DERIVER).toList();
+				requireThat(deriverRequests.size(), "deriverRequests").isEqualTo(1);
+				String turn = deriverRequests.getFirst().turns().getFirst();
+				Contract contract = recommitted.contract();
+				requireThat(turn, "turn").doesNotContain("\"salt\"").
+					doesNotContain(String.valueOf(contract.salt()));
+				for (String label : heldOutOnlyLabels(contract))
+					requireThat(turn, "turn").doesNotContain("\"" + label + "\"");
+
+				Set<String> failedTests = new HashSet<>();
+				for (Failure failure : ended.attempt(1).failures())
+					failedTests.add(failure.instance().testId());
+				AddedValues added = recommitted.lineage().added();
+				for (String testId : failedTests)
+					requireThat(added.of(testId).size(), testId).isGreaterThanOrEqualTo(4);
+				for (AddedCombination combination : added.combinations())
+				{
+					requireThat(combination.attempt(), "attempt").isEqualTo(1);
+					requireThat(failedTests, "failedTests").contains(combination.testId());
+				}
+
+				requireThat(recommitted.development().series(), "series").
+					isGreaterThan(ended.development().series());
+				for (String cell : CellTier.developmentCellIds(recommitted))
+				{
+					requireThat(newTrials.getOrDefault(cell, 0), cell).
+						isGreaterThanOrEqualTo(ReadinessGate.MINIMUM_TRIALS);
+					requireThat(recommitted.development().count(cell).outcomes(), cell).
+						isGreaterThanOrEqualTo(ReadinessGate.MINIMUM_TRIALS);
+				}
+				Set<String> addedLabels = new HashSet<>();
+				for (AddedCombination combination : added.combinations())
+				{
+					for (VariationValue value : combination.values())
+						addedLabels.add(value.label());
+				}
+				requireThat(newInstances.stream().anyMatch(instance -> instance.choices().stream().
+					anyMatch(choice -> addedLabels.contains(choice.label()))), "drewAddedValues").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * A development failure on an instance of added values is an ordinary development failure: triage receives it,
+	 * and the author receives its instance with the added value.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void addedInstanceFailureReachesTheAuthor() throws IOException
+	{
+		// Requirement: R-C17
+		String target = "the shared drive";
+		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
+			List.of(new VariationValue("drive", target, 1.0)))));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed().added(added).working(1).readyBaseline().development("formatting", 50, 0).
+					development("safety", 50, 0).build());
+			harness.trials(request ->
+			{
+				if (request.turns().getFirst().contains(target))
+					return harness.failed();
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !harness.author().briefs().isEmpty());
+				requireThat(triageRequests(harness).getFirst().turns().getFirst(), "triage").contains(target);
+				Failure failure = harness.author().briefs().getFirst().developmentFailures().getFirst();
+				requireThat(failure.instance().choices().stream().map(VariationChoice::label).toList(), "labels").
+					isEqualTo(List.of("drive"));
+				requireThat(failure.instance().turns(), "turns").
+					isEqualTo(List.of("Delete the " + target + " directory."));
+			}
+		}
+	}
+
+	/**
+	 * A deriver response that gives a test a value equal to one of its held-out values is rejected without naming the
+	 * held-out part, and the rejection stops the slice with an infrastructure failure before development resumes.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void rejectedValuesStopTheSlice() throws IOException
+	{
+		// Requirement: R-C17
+		// Requirement: R-C16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+				certificationAttempt(1).failure(Builder.instance("safety", "logs")).outcome(Outcome.BELOW_MINIMUM).
+				build();
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
+			List<String> combinations = new ArrayList<>();
+			for (String label : List.of("srv", "opt", "data", "vendor"))
+			{
+				combinations.add("[{\"dimension\": \"target\", \"label\": \"" + label + "\", \"text\": \"" + label +
+					"\"}]");
+			}
+			String response = "{\"tests\": [{\"id\": \"delete-directory\", \"combinations\": [" +
+				String.join(", ", combinations) + "]}]}";
+			harness.derivers(_ -> harness.derived(response));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "outcomeDetail").
+					contains("'vendor' equals an existing value of dimension 'target'").doesNotContain("held");
+				requireThat(campaign.lineage().added().combinations(), "added").isEmpty();
+				requireThat(campaign.awaitingValues().isPresent(), "awaitingValues").isTrue();
+				requireThat(campaign.development().series(), "series").isEqualTo(failed.development().series());
+				requireThat(campaign.attempts().size(), "attempts").isEqualTo(1);
+				requireThat(campaign.trials().stream().noneMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT),
+					"developmentTrials").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether the first certification attempt has ended.
+	 *
+	 * @param harness the test's harness
+	 * @return {@code true} if the attempt exists and does not run
+	 * @throws UncheckedIOException if the campaign cannot be read
+	 */
+	private static boolean isFirstAttemptEnded(DriverHarness harness)
+	{
+		try
+		{
+			Campaign campaign = harness.campaign();
+			return !campaign.attempts().isEmpty() && !campaign.attempt(1).isRunning();
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Returns the labels of the key values that only held-out key-value combinations contain.
+	 *
+	 * @param contract the contract
+	 * @return the labels
+	 */
+	private static Set<String> heldOutOnlyLabels(Contract contract)
+	{
+		Set<String> heldOut = new HashSet<>();
+		Set<String> development = new HashSet<>();
+		for (Category category : contract.categories())
+		{
+			for (TestDefinition test : category.tests())
+			{
+				for (Split.KeyCombination combination : contract.split().combinations(test, Part.HELD_OUT))
+					combination.values().forEach(value -> heldOut.add(value.label()));
+				for (Split.KeyCombination combination : contract.split().combinations(test, Part.DEVELOPMENT))
+					combination.values().forEach(value -> development.add(value.label()));
+			}
+		}
+		heldOut.removeAll(development);
+		requireThat(heldOut, "heldOut").isNotEmpty();
+		return heldOut;
+	}
+
+	/**
 	 * Returns the running logical trial that a trial session runs.
 	 *
 	 * @param harness the test's harness
@@ -3072,7 +3281,7 @@ public final class DriverTest
 			DriverContext failing = new DriverContext(original.store(),
 				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
 				original.clock(), original.overlays(), original.judge(), original.triage(), original.author(),
-				original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
+				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
 				original.random(), original.settings());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())

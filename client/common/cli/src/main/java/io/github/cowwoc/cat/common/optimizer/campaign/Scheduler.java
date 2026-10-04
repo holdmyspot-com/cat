@@ -39,8 +39,9 @@ public final class Scheduler
 
 	/**
 	 * Plans admissions without changing the campaign: reruns of assigned trials, then diagnostic and promotion runs,
-	 * then the active candidate's development or formal trials within its concurrency window. Outside certification,
-	 * the incumbent's baseline trials use any remaining capacity.
+	 * then the active candidate's development or formal trials within its concurrency window. Development waits while
+	 * an ended attempt awaits development values. Outside certification, the incumbent's baseline trials use any
+	 * remaining capacity.
 	 * <p>
 	 * Each new assignment carries its {@link Allocation}: the allocation rule that chose it, the campaign's
 	 * {@link Campaign#evidenceRevision() evidence revision}, and {@code now} as its assignment time.
@@ -74,7 +75,7 @@ public final class Scheduler
 			planFormal(campaign, running.get(), plan, freeCapacity, allocations);
 		else
 		{
-			if (!campaign.development().isPaused())
+			if (!campaign.development().isPaused() && campaign.awaitingValues().isEmpty())
 				planDevelopment(campaign, plan, freeCapacity, allocations);
 			planBaseline(campaign, plan, freeCapacity, allocations);
 		}

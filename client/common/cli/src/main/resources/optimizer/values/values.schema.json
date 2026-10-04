@@ -1,0 +1,41 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Development values",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["tests"],
+	"properties": {
+		"tests": {
+			"description": "One entry for each failed test.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "combinations"],
+				"properties": {
+					"id": {"description": "The failed test's id.", "type": "string", "pattern": "\\S"},
+					"combinations": {
+						"description": "At least 4 new key-value combinations of the test, each different from the others.",
+						"type": "array",
+						"minItems": 4,
+						"items": {
+							"description": "One value for every key dimension of the test, and for no other dimension.",
+							"type": "array",
+							"minItems": 1,
+							"items": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["dimension", "label", "text"],
+								"properties": {
+									"dimension": {"description": "A key dimension of the test.", "type": "string", "pattern": "\\S"},
+									"label": {"description": "The value's short name, different from the label of every other value of its dimension.", "type": "string", "pattern": "\\S"},
+									"text": {"description": "The text that the turns insert for the dimension, different from the text of every other value of its dimension.", "type": "string", "pattern": "\\S"}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

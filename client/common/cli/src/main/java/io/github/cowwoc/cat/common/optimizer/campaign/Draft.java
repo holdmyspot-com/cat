@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -51,6 +52,10 @@ final class Draft
 	 * The current lineage's baseline draw stream.
 	 */
 	DrawStream.State baselineStream;
+	/**
+	 * The development values added to the current lineage's tests.
+	 */
+	AddedValues added = AddedValues.NONE;
 	/**
 	 * The current measurement identity.
 	 */
@@ -233,6 +238,7 @@ final class Draft
 		unavailable.addAll(lineage.unavailable());
 		developmentStream = lineage.development();
 		baselineStream = lineage.baseline();
+		added = lineage.added();
 	}
 
 	/**
@@ -244,7 +250,7 @@ final class Draft
 	{
 		Lineage stored = lineages.getLast();
 		return new Lineage(stored.number(), stored.contract(), stored.contractHash(), developmentStream,
-			baselineStream, regressionSet, unavailable);
+			baselineStream, regressionSet, unavailable, added);
 	}
 
 	/**
@@ -294,14 +300,14 @@ final class Draft
 	}
 
 	/**
-	 * Returns a generator for the current contract.
+	 * Returns a generator for the current contract and the development values added to its tests.
 	 *
 	 * @return the generator
 	 * @throws IllegalStateException if no contract is confirmed
 	 */
 	Generator generator()
 	{
-		return new Generator(contract());
+		return new Generator(contract(), added);
 	}
 
 	/**
@@ -391,6 +397,19 @@ final class Draft
 		round = null;
 		author = null;
 		reviewPoints = new LinkedHashMap<>();
+	}
+
+	/**
+	 * Restarts the working candidate's development counts after the development distribution changed: starts a new
+	 * development series with no counted outcomes, and discards the retained predecessor, whose counts measured the
+	 * earlier distribution. Failures, instance outcomes and the revert history remain.
+	 */
+	void restartDevelopmentCounts()
+	{
+		++series;
+		developmentCounts = new LinkedHashMap<>();
+		reviewPoints = new LinkedHashMap<>();
+		predecessor = null;
 	}
 
 	/**

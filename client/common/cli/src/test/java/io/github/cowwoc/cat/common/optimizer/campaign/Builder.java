@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
@@ -66,6 +67,7 @@ public final class Builder
 	private final List<LogicalTrial> trials = new ArrayList<>();
 	private final List<RegressionInstance> regressionSet = new ArrayList<>();
 	private final Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
+	private AddedValues added = AddedValues.NONE;
 	private SlowStart slowStart = SlowStart.INITIAL;
 	private Throttle throttle = Throttle.NONE;
 	private final Set<Path> authorizedTargets = new LinkedHashSet<>();
@@ -505,6 +507,18 @@ public final class Builder
 	}
 
 	/**
+	 * Sets the development values added to the lineage's tests.
+	 *
+	 * @param value the added values
+	 * @return this builder
+	 */
+	public Builder added(AddedValues value)
+	{
+		added = value;
+		return this;
+	}
+
+	/**
 	 * Adds an unadopted logical trial.
 	 *
 	 * @param trial the trial
@@ -668,8 +682,8 @@ public final class Builder
 		if (contract != null)
 		{
 			for (int number = 1; number < lineage; ++number)
-				lineages.add(lineage(number, List.of(), Set.of()));
-			lineages.add(lineage(lineage, regressionSet, unavailable));
+				lineages.add(lineage(number, List.of(), Set.of(), AddedValues.NONE));
+			lineages.add(lineage(lineage, regressionSet, unavailable, added));
 			MeasurementIdentity measuredIdentity = baselineIdentity;
 			if (measuredIdentity == null)
 				measuredIdentity = identity;
@@ -691,13 +705,15 @@ public final class Builder
 	 * @param number the lineage's number
 	 * @param regressions the regression set
 	 * @param conditions the conditions that make certification unavailable
+	 * @param addedValues the development values added to the lineage's tests
 	 * @return the lineage
 	 */
-	private Lineage lineage(int number, List<RegressionInstance> regressions, Set<Outcome> conditions)
+	private Lineage lineage(int number, List<RegressionInstance> regressions, Set<Outcome> conditions,
+		AddedValues addedValues)
 	{
 		return new Lineage(number, contract, contractHash(), new DrawStream.State(DrawStream.Kind.DEVELOPMENT,
 			number, 0, true), new DrawStream.State(DrawStream.Kind.BASELINE, number, 0, true), regressions,
-			conditions);
+			conditions, addedValues);
 	}
 
 	/**

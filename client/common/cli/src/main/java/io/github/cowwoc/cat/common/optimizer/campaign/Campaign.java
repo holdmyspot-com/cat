@@ -217,6 +217,32 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	}
 
 	/**
+	 * Returns the certification attempt whose formal failures await development values: the current lineage's latest
+	 * attempt, if it ended {@link Outcome#BELOW_MINIMUM below minimum} or {@link Outcome#INCONCLUSIVE inconclusive}
+	 * with at least one formal failure and no combination was added to the lineage's tests after it. Until the values
+	 * are added, development draws nothing and the readiness gate is not met.
+	 *
+	 * @return the attempt, or empty if none awaits values
+	 */
+	public Optional<CertificationAttempt> awaitingValues()
+	{
+		if (lineages.isEmpty() || attempts.isEmpty())
+			return Optional.empty();
+		CertificationAttempt last = attempts.getLast();
+		Lineage current = lineage();
+		if (last.lineage() != current.number() || last.failures().isEmpty() ||
+			last.outcome() != Outcome.BELOW_MINIMUM && last.outcome() != Outcome.INCONCLUSIVE)
+		{
+			return Optional.empty();
+		}
+		boolean added = current.added().combinations().stream().
+			anyMatch(combination -> combination.attempt() == last.index());
+		if (added)
+			return Optional.empty();
+		return Optional.of(last);
+	}
+
+	/**
 	 * Returns the certification attempt that is running.
 	 *
 	 * @return the attempt, or empty if none is running

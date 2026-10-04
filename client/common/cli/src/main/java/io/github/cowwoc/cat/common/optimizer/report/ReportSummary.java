@@ -27,6 +27,31 @@ final class ReportSummary
 	}
 
 	/**
+	 * Lists the key-value combinations added to the development part of the tests.
+	 *
+	 * @param lines receives the text's lines
+	 * @param combinations the combinations, in the order they were added
+	 */
+	private static void addedValues(List<String> lines, List<AddedCombinationReport> combinations)
+	{
+		if (combinations.isEmpty())
+			return;
+		lines.add("Development values added after certification attempts with formal failures (development " +
+			"draws only; the contract, its claims and formal draws are unchanged):");
+		for (AddedCombinationReport combination : combinations)
+		{
+			List<String> values = new ArrayList<>();
+			for (AddedCombinationReport.KeyValue value : combination.values())
+			{
+				values.add(value.dimension() + " = " + value.label() + " (\"" + value.text().replace("\n", "\\n") +
+					"\")");
+			}
+			lines.add("  attempt " + combination.attempt() + ", test " + combination.testId() + ": " +
+				String.join(", ", values));
+		}
+	}
+
+	/**
 	 * Renders a report.
 	 *
 	 * @param report the report
@@ -57,6 +82,7 @@ final class ReportSummary
 				"upper bound " + decimal(revert.upperBound()) + " < predecessor rate " +
 				decimal(revert.predecessorRate()));
 		}
+		addedValues(lines, report.addedValues());
 		if (!report.choices().isEmpty())
 		{
 			List<String> labels = new ArrayList<>();

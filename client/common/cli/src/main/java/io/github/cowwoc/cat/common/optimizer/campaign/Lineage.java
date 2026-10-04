@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -23,9 +24,11 @@ import java.util.Set;
  * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
  *   in failure order
  * @param unavailable the known conditions that make certification unavailable under this lineage
+ * @param added the key-value combinations added to the development part of the contract's tests after certification
+ *   attempts of this lineage ended with formal failures
  */
 public record Lineage(int number, Contract contract, Sha256 contractHash, DrawStream.State development,
-	DrawStream.State baseline, List<RegressionInstance> regressionSet, Set<Outcome> unavailable)
+	DrawStream.State baseline, List<RegressionInstance> regressionSet, Set<Outcome> unavailable, AddedValues added)
 {
 	/**
 	 * Creates a lineage.
@@ -38,6 +41,8 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 	 * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
 	 *   in failure order
 	 * @param unavailable the known conditions that make certification unavailable under this lineage
+	 * @param added the key-value combinations added to the development part of the contract's tests after
+	 *   certification attempts of this lineage ended with formal failures
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code number} is not positive, {@code contract} has no certification
 	 *   scope, a stream has the wrong kind, or {@code unavailable} holds an outcome that does not report
@@ -56,6 +61,7 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 		requireThat(baseline.kind(), "baseline.kind()").isEqualTo(DrawStream.Kind.BASELINE);
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(unavailable, "unavailable").isNotNull();
+		requireThat(added, "added").isNotNull();
 		for (Outcome outcome : unavailable)
 			requireThat(outcome.isUnavailable(), outcome + ".isUnavailable()").isTrue();
 		regressionSet = List.copyOf(regressionSet);
