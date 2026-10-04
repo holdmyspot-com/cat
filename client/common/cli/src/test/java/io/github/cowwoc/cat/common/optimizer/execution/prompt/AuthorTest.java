@@ -25,6 +25,8 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -172,13 +174,16 @@ public final class AuthorTest
 			contains("- /shared/rules.md\n").
 			contains("- rules/shared.md -> /shared/rules.md\n").
 			contains("lists each one):\n\nsafety\n").
-			contains(schema.toJson(contract)).
 			contains("\"cache\"").
 			contains(Outcome.INCONCLUSIVE.label()).
 			contains("\"needed_edits\"").
 			doesNotContain("{{contract}}").doesNotContain("{{ended_attempts}}").doesNotContain("{{report_schema}}");
 		JsonNode counts = json.readTree(section(turn, "per cell, as JSON:", "\n\nThe formal outcomes"));
 		requireThat(counts.get("safety").get("failures").asInt(), "failures").isEqualTo(2);
+		JsonNode shown = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
+		JsonNode confirmed = json.readTree(schema.toJson(contract));
+		for (String property : List.of("requirements", "trial_profiles", "judge", "fixtures", "limitations"))
+			requireThat(shown.get(property), property).isEqualTo(confirmed.get(property));
 	}
 
 	/**
@@ -229,6 +234,72 @@ public final class AuthorTest
 		ObjectNode expected = json.createObjectNode().put("cell", heldOut.cellId()).put("test", heldOut.testId());
 		expected.putArray("failed_requirements").add("r2");
 		requireThat(ended.get(0).get("failures"), "ended.failures").isEqualTo(json.createArrayNode().add(expected));
+	}
+
+	/**
+	 * Verifies that the contract shown to the author omits the salt and every key value that only held-out
+	 * combinations contain, keeps the development key values and every value of a non-key dimension, and lists the
+	 * development key-value combinations.
+	 */
+	@Test
+	public void contractOmitsHeldOutKeyValues()
+	{
+		// Requirement: R-D9
+		// Requirement: R-C16
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(failure()), Map.of(), List.of(), Set.of(), Map.of(), "");
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		JsonNode contract = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
+		requireThat(contract.has("salt"), "contract.has(salt)").isFalse();
+		Map<String, JsonNode> tests = new HashMap<>();
+		for (JsonNode category : contract.get("categories"))
+			for (JsonNode test : category.get("tests"))
+				tests.put(test.get("id").asString(), test);
+
+		JsonNode styled = tests.get("styled-summary");
+		requireThat(labels(styled, "tone"), "tone").isEqualTo(List.of("formal", "casual"));
+		requireThat(labels(styled, "audience"), "audience").isEqualTo(List.of("expert", "novice"));
+		requireThat(styled.get("development_key_combinations"), "styled.development_key_combinations").
+			isEqualTo(json.createArrayNode().
+				add(json.createObjectNode().put("tone", "formal").put("audience", "expert")).
+				add(json.createObjectNode().put("tone", "casual").put("audience", "expert")).
+				add(json.createObjectNode().put("tone", "casual").put("audience", "novice")));
+		requireThat(labels(tests.get("plain-list"), "kind"), "kind").isEqualTo(List.of("fruits", "tools"));
+		JsonNode deletion = tests.get("delete-directory");
+		requireThat(labels(deletion, "target"), "target").isEqualTo(List.of("logs", "cache", "tmp", "build"));
+		requireThat(deletion.get("development_key_combinations"), "deletion.development_key_combinations").
+			isEqualTo(json.createArrayNode().
+				add(json.createObjectNode().put("target", "logs")).
+				add(json.createObjectNode().put("target", "cache")).
+				add(json.createObjectNode().put("target", "tmp")).
+				add(json.createObjectNode().put("target", "build")));
+		for (String heldOut : List.of("terse", "colors", "animals", "dist", "vendor", "coverage", "venv"))
+			requireThat(turn, "turn").doesNotContain("\"" + heldOut + "\"");
+	}
+
+	/**
+	 * Returns the labels of one variation dimension of a test in the author's contract.
+	 *
+	 * @param test the test's JSON
+	 * @param dimension the dimension
+	 * @return the labels, in the contract's order
+	 */
+	private static List<String> labels(JsonNode test, String dimension)
+	{
+		for (JsonNode variation : test.get("variations"))
+		{
+			if (variation.get("dimension").asString().equals(dimension))
+			{
+				List<String> labels = new ArrayList<>();
+				for (JsonNode value : variation.get("values"))
+					labels.add(value.get("label").asString());
+				return labels;
+			}
+		}
+		throw new AssertionError("The test has no dimension '" + dimension + "': " + test);
 	}
 
 	/**

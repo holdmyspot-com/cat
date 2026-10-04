@@ -52,7 +52,10 @@ lists each one):
 
 {{cell}}
 
-The confirmed contract, as JSON:
+The confirmed contract, as JSON. Formal trials draw held-out instances that are withheld from you, so in each test
+the dimensions that `key_dimensions` names (every dimension when it is empty) list only the values of development
+instances, and `development_key_combinations` lists every combination of those values that development instances
+draw:
 
 {{contract}}
 
