@@ -132,6 +132,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-33 | `optimize-xhigh` | Changes what every trial, author and judge session may see, and the campaign format; an error leaks held-out instances silently. |
 | WI-34 | `optimize-xhigh` | Adds a deriver session after failed attempts and changes the development distribution and readiness counts; an error leaks held-out values into development. |
 | WI-35 | `optimize-high` | One scheduler rule over the existing capability ranking; an error spends formal trials in stronger cells or stalls an attempt. |
+| WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -243,7 +244,7 @@ requirement names.
 | WI-32 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `66b650441`; full build 1909 tests, 0 failures, none at or over 1 s). Each harness ships `capability-ranking.json` (address and reading date); `CapabilityRanking` ranks by family, then version; revision feedback replaces it through the deriver finding `capability_ranking`, and an unranked inventory family blocks confirm. `CellTier` gives each category's weakest cell (from the latest versions for `weakest-cell`) and its development cells; the screen, active set, `widened` latch and `failed_cells` are gone. `confirm <campaign> <scope>` takes `weakest-cell`, `latest-versions` or `described` (cells from the deriver finding `certification_profiles`, patterns over the inventory, applied in every category; a described scope that leaves a category without a cell is refused). Campaign format 14 and proposal file format 6; every older campaign format is refused, so the compatibility reads of formats 9 to 13 and their tests are retired. The recorded launcher output `long-proposal.json` of the `first-use` skill scenario predates the certification-scope section; its assertions still hold, and it is rerecorded with the next live deriver session. User rulings (`design.md` §6.6, D27, D42, 2026-10-04): development and readiness only in each category's development cells (its weakest cell, plus any cell where certification failed); the user chooses the certification scope at confirmation from three choices (weakest cell only, latest model versions, or a scope the user describes; user ruling, 2026-10-04: no all-models choice); the weakest cell comes from a shipped capability ranking, with no trials. |
 | WI-33 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `4a7e9498b` and `eda6ae1c7`, the second withholding the salt and the held-out key values from the author's contract; full build with WI-34: 1948 tests, 0 failures; one case at or over 1 s, `HarnessProcessTerminationTest.terminatesVisibleChildren` at 1.92 s, untouched by this work and run while 16 probe sessions loaded the machine). Test definitions carry `key_dimensions`; the proposal carries a salt drawn at first derivation, kept through revision and frozen at confirmation; `Split.partOf` assigns each key-value combination to a part by SHA-256 of salt, test id and key labels; confirmation refuses a test with fewer than 2 combinations in either part; `Generator.draw` takes the part from the stream kind; formal failures reach development as `FailureSummary` (cell, test, failed requirements); campaign format 15, proposal format 7. User ruling (`design.md` §6.3, D43, 2026-10-04). |
 | WI-34 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `d2fd5025c`). An attempt that ends below minimum or inconclusive with formal failures blocks development scheduling and the readiness gate until a deriver session (`values.md`, `values.schema.json`) returns at least 4 combinations per failed test from a development-only view; CAT rejects a value whose label or text equals any value of its dimension, ignoring case; added combinations share half of the test's development draws equally; adding values starts a new development series and clears counts; the report lists the values. The recommit loop is covered by `DriverTest.failedAttemptAddsDevelopmentValues`. User ruling (`design.md` §6.3, D44, 2026-10-04). |
-| Held-out values on disk (WI-33/WI-34 finding) | Not started. The campaign directory's `campaign.json` holds the salt, the held-out values and the formal trials; whether the author and values-deriver sessions' sandboxes can read it is not yet checked in either harness. If they can, a session that shapes a candidate could see held-out content, which `design.md` §6.3 forbids. |
+| WI-36 | Not started. Found while integrating WI-33 and WI-34: the author's copy and the values deriver's directory sit inside the campaign directory, and both harnesses' sandboxes restrict writes, not reads, so those sessions could read the snapshot's salt and held-out values. Codex 0.160 has `permissions.filesystem.deny_read` and Claude Code 2.1.287 `sandbox.filesystem.denyRead`; neither is used yet (`design.md` §6.3, D46, 2026-10-04). |
 | WI-35 | Not started. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04): within an attempt, a category's formal trials go to its development cells first, and to another scope cell only after every development cell and every cell below it are certified. |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
 | Launcher help (WI-15 E8 finding) | Done 2026-10-02. Both E8 agents ran `prompt-optimizer --help` or `start --help` to find the ceiling option; the launcher answered "Unknown command" or took `--help` as the target, and the skill stopped. `help` alone, or `--help` or `-h` anywhere, now prints the usage as `{"status":"help"}` with exit 0 before the core is called (`CommandsTest.printsUsageOnRequest`). |
@@ -345,6 +346,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
   first, then each scope cell once every cell below it is certified. R-E23 and WI-35 added with §1.1, §2 and §6; the
   P15 protocol certifies its cells in the same order (user ruling, 2026-10-04, after two P15 certifications each spent about
   500 runs in stronger cells before failing in the weakest).
+- `design.md` §6.3 "Held-out content on disk", §13 (D46) and §14 G4: every nested session except the judge runs with
+  its harness sandbox denying reads of the snapshot, the proposal, the trial records and the report. R-E24 and WI-36
+  added with §1.1, §2 and §6, replacing the §2 row "Held-out values on disk".
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -430,6 +434,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E21 | The judge receives a rendered evidence section per turn (tool calls with input, exit status when reported and complete output; child activity; hook status) and the trial's file changes against the staged source, without streaming fragments, telemetry or injected session-start text, from each harness's events; a frozen judge prompt with the earlier placeholders still renders. | §6.4, D36 | WI-28 | U: evidence renderer tests on recorded events per harness, `JudgePromptTest` |
 | R-E22 | Weakest cell: within the certification scope (for weakest cell only, within the latest versions), the lowest effort of the least capable model by CAT's shipped capability ranking (families ranked from the vendor's published model documentation, with its address and reading date; within a family, older versions below newer), with no trial; a category with one cell uses it; the user may correct or extend the ranking in revision feedback; CAT refuses to confirm while an inventory model's family is unranked. | §6.6, D27 | WI-32 | U: `CapabilityRankingTest` (resource order for both harnesses, version order within a family, an unranked family), `CellTierTest` (weakest cell per scope, one cell, a corrected ranking) |
 | R-E23 | Formal cell order: within a category, formal trials go only to open cells, its development cells and each other scope cell whose development cells and lower cells (model ranked no higher and effort no higher, by the capability ranking) are all certified; among open cells, fewest formal outcomes first. | §3.3, D45 | WI-35 | U: `SchedulerTest` (no formal trial in a stronger cell while a development cell is undecided; incomparable cells open together; a cell opens once every cell below it is certified; a weakest-only scope is unaffected) |
+| R-E24 | Held-out content unreadable: every nested session except the judge runs with its harness sandbox denying reads of the campaign snapshot, the proposal, the trial records and the report, in both harnesses; trials still read their staged sources and fixtures. | §6.3, D46 | WI-36 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (the deny-read list reaches each role's harness settings, and the judge's does not carry it); V: one author session per harness asked to print the snapshot cannot read it, and a development trial still passes |
 
 ### 3.5 Workspace
 
@@ -1069,6 +1074,18 @@ The riskiest pure code, built first.
   no formal trial elsewhere.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-36 — Held-out content unreadable (2026-10-04)
+
+- **Rule:** every nested session except the judge runs with its harness sandbox denying reads of the campaign
+  snapshot, the proposal, the trial records and the report: Claude through `sandbox.filesystem.denyRead` in the
+  session's settings, Codex through `permissions.filesystem.deny_read`. A harness whose session cannot carry the list
+  is refused before the campaign starts.
+- **Closes:** R-E24.
+- **Tests:** `ClaudeSessionsTest` and `CodexSessionsTest` cases listed under R-E24.
+- **Validation:** one author session per harness, asked to print the snapshot by its absolute path, gets no content;
+  one development trial per harness still passes.
+- **Exit:** unit tests pass; the full build passes; the validation holds in both harnesses.
+
 ### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
 
 - **Sessions:** the runner settings decide plugin installation per session role: trials install CAT; the deriver, judge
@@ -1262,7 +1279,8 @@ blocks only the part of a work item that it names.
 | WI-33 | WI-32 |
 | WI-34 | WI-33 |
 | WI-35 | WI-34 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34 and WI-35. |
+| WI-36 | WI-34 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35 and WI-36. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
