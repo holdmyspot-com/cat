@@ -121,6 +121,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Development cell | A cell where development samples and edits candidates: the category's weakest cell, plus every cell where a certification attempt adopted a failure ([§6.6](#66-trial-profiles)). |
 | Certification scope | The cells that certification tests and the claim covers. The user chooses it at confirmation: the weakest cell only, every cell of each model family's latest version, or a scope the user describes ([§6.6](#66-trial-profiles)). |
 | Test template | A test definition whose variation dimensions yield distinct concrete instances ([§6.3](#63-generators)). |
+| Key dimension | A variation dimension that carries a test's content; instances split into parts by their key values ([§6.3](#63-generators)). |
 | Held-out part | The instances of each test template that only formal trials and the incumbent's baseline arm draw. No session that shapes a candidate sees them ([§6.3](#63-generators)). |
 | Core-task requirement | The requirement, present in every contract, that each reply correctly and completely does what the turn asked. |
 | Reply | Every assistant message the trial agent sends during one turn, in order: its interim messages, such as a progress note before a tool call, and its final response (D29). |
@@ -1022,8 +1023,9 @@ never stand in for the items themselves. The proposal lists:
   source ([§6.6](#66-trial-profiles));
 - the certification scope choices: for each, the cells it covers, each category's weakest cell, what a claim covers
   and the minimum session count ([§6.6](#66-trial-profiles));
-- every test definition as a template: its applicability, its variation dimensions, the number of distinct instances
-  it yields in the development part and in the held-out part ([§6.3](#63-generators)), the complete prewritten turn
+- every test definition as a template: its applicability, its variation dimensions and which of them are key
+  dimensions, the number of distinct key-value combinations it yields in the development part and in the held-out part
+  ([§6.3](#63-generators)), the complete prewritten turn
   sequence for multi-turn tests, its time limit, and any material interaction it cannot cover;
 - for every requirement that applies only under a trigger, that trigger and at least one test where it is absent, whose
   expected behaviour is that the obligated action does not occur (D40);
@@ -1056,8 +1058,9 @@ CAT, not the deriver, does seven things:
   ([§8](#8-skill-and-command-interface)). The deriver turns each one into a test definition that cites the scenario;
 - refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent;
 - refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles));
-- splits each test definition's instances into a development part and a held-out part, and refuses a proposal with a
-  test definition that yields fewer than 2 distinct instances in either part ([§6.3](#63-generators)).
+- splits each test definition's instances into a development part and a held-out part by their key values, and
+  refuses a proposal with a test definition that yields fewer than 2 distinct key-value combinations in either part
+  ([§6.3](#63-generators)).
 
 A check that accepts its known-bad control or rejects its known-good control is discarded. Its requirement is then
 judged semantically, and the proposal says why.
@@ -1080,11 +1083,18 @@ file's content or name, a value the turn asks about or the wording of a turn, yi
 share the definition's expected behaviour. A test that always presents the same instance cannot be certified fairly:
 development tunes the candidate on that instance, so certifying on it measures the candidate on its own training data.
 
+**Key dimensions (user ruling, 2026-10-04).** Each test definition marks the variation dimensions that carry its
+content, such as the question a turn asks, as its **key dimensions**; a definition that marks none treats every
+dimension as a key dimension. A test's key values are its values of those dimensions. Splitting on key values keeps
+the content of every held-out instance out of development: a split on all values together would let a held-out
+instance repeat a development instance's question in a different workspace, so tuning could fit it.
+
 **Development and held-out parts.** At confirmation, CAT draws a random salt and freezes it with the contract. It
-assigns each concrete instance of a test definition to the **development part** or the **held-out part** by a hash of
-the instance under that salt, each with probability ½, before any trial and whatever the outcomes. CAT counts each
-test definition's distinct instances in each part, and it refuses the proposal when a definition yields fewer than 2
-distinct instances in either part, so that each part varies. The deriver then adds variation.
+assigns each combination of a test definition's key values to the **development part** or the **held-out part** by a
+hash of that combination under the salt, each with probability ½, before any trial and whatever the outcomes; every
+instance belongs to the part of its key values. CAT counts each test definition's distinct key-value combinations in
+each part, and it refuses the proposal when a definition yields fewer than 2 in either part, so that each part varies.
+The deriver then adds key values.
 
 - Development trials, targeted runs, triage, diagnosis and author sessions draw or receive development instances only.
 - Formal trials and the incumbent's baseline arm draw held-out instances only.
@@ -1532,7 +1542,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the deriver must state each requirement's trigger. An author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
 | D41 | In Codex, the optimizer supports only models of version 6 or later: the inventory leaves out earlier models, and CAT refuses a proposal whose prompt files bind one (user ruling, 2026-10-04). | The user limited support to these models. Earlier models also differ in their tools: `gpt-5.5` gets a direct `exec_command` tool, while `gpt-6` models run commands inside an `exec` script, so a prompt that names one form need not hold on the other. | No contract certifies a `gpt-5.x` profile. A user whose Codex prompt files bind an earlier model changes that binding before CAT accepts the proposal. |
 | D42 | Let the user choose, at confirmation, the certification scope: the weakest cell only, every cell of each model family's latest version, or a scope the user describes, with no default (user rulings, 2026-10-04). | Always certifying every cell multiplies formal and baseline trials by the number of cells. Always certifying the weakest cell only would claim nothing about the profiles the user may actually run. Certifying older model versions was dropped as a choice; a user who needs one describes it as their own scope. Which matters more depends on how the prompt is used. | The proposal must compute and explain every choice, and confirmation waits for the user's answer. A described scope is mapped to inventory cells and shown for confirmation. A weakest-only claim names one profile per category. |
-| D43 | Require every test to be a template, split its instances into a development part and a held-out part by a salted hash at confirmation, and certify only on held-out instances (user ruling, 2026-10-04). | P15 tuned and certified on the same four fixed tasks, so its certification measured the rule on its own training data. Excluding instances after development has seen them would make the formal distribution depend on which instances development happened to draw, and on outcomes when only failures are excluded. A fixed split depends on neither. | Each test definition needs variation dimensions. The claim covers the held-out half of the distribution, the baseline arm can no longer reuse the incumbent's development trials, and authors never see the evidence of a formal failure. |
+| D43 | Require every test to be a template, split its instances into a development part and a held-out part by a salted hash of their key values at confirmation, and certify only on held-out instances (user rulings, 2026-10-04). | P15 tuned and certified on the same four fixed tasks, so its certification measured the rule on its own training data. Its first template split hashed all values together and put the same general-knowledge question in both parts, so the split keys on the dimensions that carry content. Excluding instances after development has seen them would make the formal distribution depend on which instances development happened to draw, and on outcomes when only failures are excluded. A fixed split depends on neither. | Each test definition needs variation dimensions. The claim covers the held-out half of the distribution, the baseline arm can no longer reuse the incumbent's development trials, and authors never see the evidence of a formal failure. |
 
 ## 14. Acceptance evidence
 

@@ -329,6 +329,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
   or measure the baseline.
   Plan R-E3, R-E19, R-D1, R-D3, R-D7, R-D9, R-C1, R-C4, R-C11 and R-P4 reworded; R-C15, R-C16 and R-E22 added with
   WI-32, WI-33, §1.1, §2, §6 and traces 19 and 21; WI-19's tiering is replaced (user rulings, 2026-10-04).
+- `design.md` §1.2, §6.1, §6.3 and §13 (D43): each test definition marks the key dimensions that carry its content,
+  and instances split into parts by their key values, so a held-out instance never repeats a development instance's
+  content in a new combination (user ruling, 2026-10-04). Plan R-C16 and WI-33 reworded.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -449,7 +452,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C13 | A proposal lists every conflict between requirements with its evidence, and `confirm` is refused while one is listed. | §6.1, D31 | WI-24 | U: `ProposalTest`, `OptimizerCoreTest` |
 | R-C14 | Each proposal conflict offers at least two resolutions and a recommended one with its reason; the agent asks the user to resolve every conflict before offering confirmation. | §6.1, §8, D31 | WI-25 | U: `ProposalTest`; E: E1 per harness |
 | R-C15 | Certification scope: CAT refuses to confirm until the user chooses one of weakest cell only or latest model versions (every cell of each family's latest version), or a set of inventory cells mapped from the user's own description and passed to `revise`; there is no default; CAT refuses a described cell outside the inventory; the choice is frozen with the contract, a change is a revision, and formal and baseline trials run in the scope's cells only. | §6.1, §6.6, D42 | WI-32 | U: `OptimizerCoreTest` (confirm without a scope and with each choice), `ProposalTest` (a described scope, a cell outside the inventory), `SchedulerTest` (formal cells per scope), `ContractStoreTest` (round trip) |
-| R-C16 | Test templates: at confirmation CAT freezes a random salt and assigns each instance to the development or held-out part by a salted hash with probability ½; it refuses a proposal with a test definition of fewer than 2 distinct instances in either part. | §6.1, §6.3, D43 | WI-33 | U: `GeneratorTest` (split stable under the salt, near ½ over many instances, each part drawn only by its streams), `ProposalTest` (refusal at 1 instance in a part) |
+| R-C16 | Test templates: each test definition marks its key dimensions (none marked: all are key); at confirmation CAT freezes a random salt and assigns each key-value combination, and so every instance with it, to the development or held-out part by a salted hash with probability ½; it refuses a proposal with a test definition of fewer than 2 distinct key-value combinations in either part. | §6.1, §6.3, D43 | WI-33 | U: `GeneratorTest` (split stable under the salt, near ½ over many key-value combinations, instances sharing key values in one part, each part drawn only by its streams), `ProposalTest` (refusal at 1 key-value combination in a part; key dimensions and counts shown) |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -992,10 +995,12 @@ The riskiest pure code, built first.
 
 ### WI-33 — Test templates and held-out parts (user ruling, 2026-10-04)
 
-- **Split:** at confirmation CAT draws a random salt, frozen with the contract. In `optimizer.contract`, an instance's
-  part is a hash of its test definition and variation values under the salt, each part with probability ½. Variation
-  values are finite lists, so CAT counts each definition's distinct instances per part and refuses the proposal when
-  either count is below 2, naming the definition and both counts; the proposal lists the counts.
+- **Split:** each test definition marks its key dimensions, a subset of its variation dimensions; a definition that
+  marks none treats all of them as key (user ruling, 2026-10-04). At confirmation CAT draws a random salt, frozen with
+  the contract. In `optimizer.contract`, an instance's part is a hash of its test definition and its key values under
+  the salt, each part with probability ½, so instances that share key values share a part. Variation values are finite
+  lists, so CAT counts each definition's distinct key-value combinations per part and refuses the proposal when either
+  count is below 2, naming the definition and both counts; the proposal lists the key dimensions and the counts.
 - **Draws:** `Generator.draw` takes the part from the stream kind: development draws development instances, formal
   and baseline draws held-out instances, each uniform over the definition's instances in its part by the frozen
   probabilities restricted to that part. Targeted runs and promotion runs use development instances only.
@@ -1003,9 +1008,11 @@ The riskiest pure code, built first.
   `adoptBaseline` and formal adoption no longer add failures to the regression set. A formal failure reaches
   development as its cell, test definition and failed requirements: triage, diagnosis and author briefs never receive
   a held-out instance, reply or judge rationale. The user's report may show held-out instances.
-- **Deriver:** the deriver prompt asks for variation dimensions on every test, so that each yields at least 2
-  distinct instances per part; any wording change to an optimizer prompt is shown to the user before delivery.
-- **Format:** the contract stores the salt; the campaign format version increases with WI-32's.
+- **Deriver:** the deriver prompt asks for variation dimensions on every test and for the key dimensions that carry
+  its content, so that each yields at least 2 distinct key-value combinations per part; any wording change to an
+  optimizer prompt is shown to the user before delivery.
+- **Format:** the contract stores the salt and each definition's key dimensions; the campaign format becomes 15 and
+  every older format is refused, as WI-32 refuses formats before 14.
 - **Closes:** R-C16, R-D9, the part side of R-C4, R-C1, R-D3 and R-D7.
 - **Tests:** `GeneratorTest`, `DrawStreamTest`, `ProposalTest`, `TrialAdoptionTest` (or the adoption cases in
   `DriverTest`), `DriverTest` trace 21, the author brief tests, the contract store round trip.
