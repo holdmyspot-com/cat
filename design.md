@@ -528,8 +528,8 @@ Formal decisions, per certification attempt:
 
 | Formal evidence | Comparison with incumbent | Action |
 |---|---|---|
-| A category is clearly below | Any | End the attempt `not certified: below minimum`, retain all evidence, and return to development automatically with each formal failure's cell, test and failed requirements as diagnostic input, after adding development values for the failed tests ([§6.3](#63-generators)). |
-| A category reached its cap undecided | Any | End the attempt `not certified: inconclusive` and return to development automatically, after adding development values for any test with a formal failure ([§6.3](#63-generators)). |
+| A category is clearly below | Any | End the attempt `not certified: below minimum`, retain all evidence, and return to development automatically with each formal failure's cell, test and failed requirements as diagnostic input, after reproducing each failure group in development ([§6.3](#63-generators)). |
+| A category reached its cap undecided | Any | End the attempt `not certified: inconclusive` and return to development automatically, after reproducing each failure group in development ([§6.3](#63-generators)). |
 | Every category certified | No category proven worse | `certified`. Every deficient category is improved by construction. Deliver automatically ([§4.7](#47-delivery)). |
 | Every category certified | Some category proven worse | `certified`, but retain the incumbent by default. Delivery requires the user to explicitly accept the regression trade-off. |
 
@@ -612,7 +612,7 @@ CAT runs five kinds of work in nested sessions, each started through the current
 
 | Role | Input | Output |
 |---|---|---|
-| Contract deriver | Read-only prompt system, user feedback; after a failed attempt, each failed test's definition with its development key values only, and its formal failures' cells and failed requirements | Complete contract proposal in a strict schema; after a failed attempt, new development key-value combinations for each failed test ([§6.3](#63-generators)) |
+| Contract deriver | Read-only prompt system, user feedback; after a failed attempt, each failed test's definition with its development key values only, its formal failures' cells, failed requirements and behaviors, and the reproduction counts of the values it tried | Complete contract proposal in a strict schema; after a failed attempt, new development key-value combinations for each failed test ([§6.3](#63-generators)) |
 | Trial agent | Staged candidate project, the assigned turn sequence and its cell's trial profile | Transcript, the reply to each turn, project effects |
 | Judge | Frozen rubric, the instance, that trial's evidence section and the semantic requirements it decides | `pass` or `fail` with rationale, in a strict schema |
 | Triage | A failed development trial's instance, reply, evidence section, deterministic results and failure record | `blocking` or `self-recovering` with rationale, in a strict schema ([§2.7](#27-development-readiness-and-edit-or-continue)) |
@@ -1030,7 +1030,8 @@ never stand in for the items themselves. The proposal lists:
 
 - every requirement and its source, including files reached through links and readable files outside the project.
   The list always includes the core-task requirement, with CAT as its source, and every test checks it. Each
-  requirement is marked deterministic, with its check and controls, or semantic ([§6.4](#64-judge));
+  requirement is marked deterministic, with its check and controls, or semantic ([§6.4](#64-judge)), and lists the
+  behaviors through which it can fail, each deterministic check naming the behavior it detects ([§6.3](#63-generators));
 - every category and why it needs a separate claim, with the risk rank used for allocation;
 - the trial profiles: the harness's profile inventory and its source, each prompt file that binds a model or effort,
   each category's profile set and cell count, and the models ranked by advertised capability, with the ranking's
@@ -1130,16 +1131,44 @@ denial, for example when the host's settings turn the sandbox off.
 **Development values after a failed attempt (user ruling, 2026-10-04).** The development part may hold no instance that
 triggers a formal failure, so development could find nothing to edit. When a certification attempt ends with formal
 failures, a deriver session receives, for each test with a formal failure, its definition with only the development
-values of its key dimensions, and each failure's cell and failed requirements. It writes new key-value combinations
-for that test, at least 4, that exercise the failed requirements. CAT rejects any new key value that equals an existing
-value of its dimension, held-out values included, and validates the generator as for any instance. The new combinations
-belong to the development part only, the salted split covers only the confirmed values, and the held-out part never
-changes. Development draws of that test then give the added combinations, together, half of the test's probability,
-the other half going to its confirmed development combinations by their frozen probabilities. A failure on an added
-instance is an ordinary development failure, which triage and authors receive in full. The development distribution
-has changed, so development counts restart for every candidate, and the readiness gate needs new trials that include
-the added instances. The added values are campaign state, not part of the confirmed contract: they change neither the
-claim nor the measurement identity. The user's report lists them.
+values of its key dimensions, and each failure's cell, failed requirements and behavior. It writes new key-value
+combinations for that test, at least 4, that exercise the failed requirements through that behavior. CAT rejects any new
+key value that equals an existing value of its dimension, held-out values included, and validates the generator as for
+any instance. The new combinations belong to the development part only, the salted split covers only the confirmed
+values, and the held-out part never changes. They join development only once they reproduce the failure (below).
+Development draws of that test then give the added combinations, together, half of the test's probability, the other
+half going to its confirmed development combinations by their frozen probabilities. A failure on an added instance is an
+ordinary development failure, which triage and authors receive in full. The development distribution has changed, so
+development counts restart for every candidate, and the readiness gate needs new trials that include the added
+instances. The added values are campaign state, not part of the confirmed contract: they change neither the claim nor
+the measurement identity. The user's report lists them.
+
+**Failure behavior (user ruling, 2026-10-04).** A failed requirement can fail in several ways, and development aims at
+the wrong one when it knows only the requirement. Every deterministic check names the behavior it detects, such as no
+tool call, a required file not read in full, a search where a read was required, a read where a search was required, or
+an unneeded call, and the contract lists these behaviors per requirement. The judge names one of the requirement's
+listed behaviors, or `other`, for each failure it judges. A behavior names no instance content, so a formal failure's
+summary carries it to development along with the cell, the test and the failed requirements.
+
+**Reproduction before tuning (user ruling, 2026-10-04).** A formal failure can be too rare in development to edit
+against, and an edit made without the failure in view tends to trade one rare failure for another. So after a failed
+attempt, before any author session works on it, CAT reproduces each **failure group**: the formal failures that share a
+cell, a test, a failed requirement and a behavior.
+
+1. The deriver writes the group's new development combinations, as above.
+2. CAT runs reproduction trials of those instances in the group's cell, up to 100 per round, and stops the round once
+   the requirement has failed twice with the group's behavior. Reproduction trials are development trials of the
+   working candidate.
+3. Two such failures reproduce the group: its combinations join development, and development tunes against them.
+   Otherwise the deriver receives the combinations that it tried and their reproduction counts, without replies, and
+   writes different ones, which replace them.
+4. A round that does not reproduce the group may be repeated under a **stress setting** that makes the behavior
+   likelier: the same model at a lower effort, or a tighter harness limit such as Codex's tool-output limit. A
+   reproduction there makes that stressed profile a development cell, so development tunes in it and the readiness
+   gate covers it.
+5. After 4 rounds without reproduction, CAT adds no values for the group, records it as not reproduced with its formal
+   and reproduction counts, and pauses. The user chooses more rounds, a new attempt with the unchanged candidate once
+   it passes the readiness gate, or stopping.
 
 A candidate is therefore certified on instances that played no part in selecting or editing it, and every claim
 covers the held-out part of the confirmed distribution ([§2.1](#21-claims)).
@@ -1585,6 +1614,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D44 | After an attempt ends with formal failures, have a deriver session add development-only key values that exercise each failed test's failed requirements (user ruling, 2026-10-04). | Showing development the failing held-out instance would tune the candidate on the content that certifies it. Moving shown instances out of the held-out part would bias later certifications toward content the candidate passes. Rerunning existing development instances of the failed test finds nothing when no development value triggers the failure, and then an unchanged candidate that still meets the readiness gate is committed again. A description of the failure written from the held-out instance could leak its content. | A deriver session and new development trials after each failed attempt. The development distribution no longer matches the held-out distribution, so development counts restart and readiness measures the harder distribution. |
 | D45 | Within an attempt, certify a category's development cells first and open each other scope cell only after every development cell and every cell below it are certified (user ruling, 2026-10-04). | Running every scope cell at once spent about 500 formal runs of P15 in stronger cells, twice, on a candidate that then failed in the weakest cell, which ends the attempt anyway. Certifying cells one at a time in a total order would waste nothing but serialize up to 15 cells; models and efforts are only partially ordered, so cells that cannot be compared run together. | A certification takes longer in wall time: with 15 cells it runs in 7 waves. A failure in a stronger cell is found later. |
 | D46 | Keep held-out content in a held-out directory and a held-out run root, and have each harness sandbox deny every session whose output reaches development reads of both. | Withholding held-out content from a session's brief does not stop the session from reading it: the author's copy and the deriver's directory sit inside the campaign directory, and both harnesses' sandboxes allow reads anywhere. Denying files by name fails in Codex once a file is replaced, and leaves running formal trials' run directories readable. | Each harness's session settings carry a deny-read list; the campaign storage layout changes; a host without a working sandbox cannot run the optimizer. |
+| D47 | Reproduce each formal failure group in development, by behavior, before tuning against it; replace values that do not reproduce, up to 4 rounds, using stress settings when needed (user ruling, 2026-10-04). | P15 tuned four times after a formal failure that development had not reproduced; each edit traded the failure for another rare one, and the development values added for it found a different behavior of the same requirement. Sending every formal failure straight to development tunes without a target. | Up to 400 reproduction trials per failure group, a behavior list per requirement in the contract, and a pause when a group does not reproduce. |
 
 ## 14. Acceptance evidence
 
@@ -1597,7 +1627,7 @@ a named end-to-end boundary.
 | G1 | **End-to-end in both harnesses:** a dirty base is refused before any fork. A deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff. **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** plateau and others leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown instance is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering instances but not all is promoted; a triggering instance gets extra runs until its streak is unlikely for the working candidate, up to 4; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
 | G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing runs before confirmation; feedback produces a complete new proposal. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (external structural edits, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every test checks the core-task requirement; a deterministic check that fails a control is discarded and its requirement judged semantically. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a test definition with fewer than 2 distinct instances in either part is refused. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per category and says that no other profile was certified. |
-| G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out instances:** the split is fixed at confirmation; development trials, targeted runs and author sessions receive only development instances; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test and failed requirements, and the development values added after it never equal a held-out value; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
+| G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out instances:** the split is fixed at confirmation; development trials, targeted runs and author sessions receive only development instances; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test and failed requirements, and the development values added after it never equal a held-out value and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the deriver replacing values that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |
 | G6 | **End-to-end in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
 | G7 | **End-to-end in both harnesses:** trials, judges, authors and the deriver run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged semantically. A requirement with a deterministic check is decided without the judge, and a test with only deterministic requirements starts no judge session. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. |
