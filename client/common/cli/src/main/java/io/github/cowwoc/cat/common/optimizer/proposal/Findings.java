@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -18,8 +19,8 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Validates {@link DeriverProtocol}'s additional findings alongside the proposed contract: {@code derived_sources},
- * {@code profile_restriction}, {@code scope_conditions} and {@code conflicts}, as
- * {@code deriver-findings.schema.json} describes them.
+ * {@code profile_restriction}, {@code capability_ranking}, {@code certification_profiles}, {@code scope_conditions}
+ * and {@code conflicts}, as {@code deriver-findings.schema.json} describes them.
  * <p>
  * Each violation is reported at its location in the deriver's output, in the form that the proposal schema uses.
  */
@@ -33,6 +34,18 @@ final class Findings
 	 * The property that lists the user's profile restriction.
 	 */
 	static final String PROFILE_RESTRICTION = "profile_restriction";
+	/**
+	 * The property that lists the capability ranking that the user's feedback supplies.
+	 */
+	static final String CAPABILITY_RANKING = "capability_ranking";
+	/**
+	 * The property that lists the profiles of the certification scope that the user described.
+	 */
+	static final String CERTIFICATION_PROFILES = "certification_profiles";
+	/**
+	 * The source of a capability ranking that the user's feedback supplies.
+	 */
+	static final String FEEDBACK_RANKING_SOURCE = "the user's revision feedback";
 	/**
 	 * The property that lists the scope conditions.
 	 */
@@ -96,8 +109,56 @@ final class Findings
 	 */
 	List<TrialProfile> profileRestriction(JsonNode node)
 	{
+		return patterns(node, PROFILE_RESTRICTION);
+	}
+
+	/**
+	 * Reads the profiles of the certification scope that the user described.
+	 *
+	 * @param node the {@code certification_profiles} value, or null if the output omits it
+	 * @return the patterns that are valid
+	 */
+	List<TrialProfile> certificationProfiles(JsonNode node)
+	{
+		return patterns(node, CERTIFICATION_PROFILES);
+	}
+
+	/**
+	 * Reads the capability ranking that the user's feedback supplies.
+	 *
+	 * @param node the {@code capability_ranking} value, or null if the output omits it
+	 * @return the ranking, or empty if the feedback supplies none or the value is invalid
+	 */
+	Optional<CapabilityRanking> capabilityRanking(JsonNode node)
+	{
+		String location = "$." + CAPABILITY_RANKING;
+		if (!isArray(node, location) || node.isEmpty())
+			return Optional.empty();
+		Optional<List<String>> families = strings(node, location, 1, true, "family");
+		if (families.isEmpty())
+			return Optional.empty();
+		try
+		{
+			return Optional.of(new CapabilityRanking(families.get(), FEEDBACK_RANKING_SOURCE));
+		}
+		catch (IllegalArgumentException e)
+		{
+			problems.add(location + ": " + e.getMessage());
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Reads profile patterns.
+	 *
+	 * @param node the value, or null if the output omits it
+	 * @param name the property name
+	 * @return the patterns that are valid
+	 */
+	private List<TrialProfile> patterns(JsonNode node, String name)
+	{
 		List<TrialProfile> patterns = new ArrayList<>();
-		String location = "$." + PROFILE_RESTRICTION;
+		String location = "$." + name;
 		if (!isArray(node, location))
 			return patterns;
 		for (int i = 0; i < node.size(); ++i)

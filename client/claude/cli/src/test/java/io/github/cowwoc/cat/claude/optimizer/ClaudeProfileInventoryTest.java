@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -131,8 +132,31 @@ public final class ClaudeProfileInventoryTest
 	}
 
 	/**
+	 * Verifies that the shipped capability ranking puts {@code fable} above {@code opus} above {@code sonnet} above
+	 * {@code haiku}, names the documentation's address and reading date, and ranks every model of the shipped
+	 * inventory.
+	 *
+	 * @throws IOException if the inventory or the ranking cannot be read
+	 */
+	@Test
+	public void ranksTheDocumentedFamilies() throws IOException
+	{
+		// Requirement: R-E22
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			ClaudeProfileInventory port = new ClaudeProfileInventory(artifact);
+			CapabilityRanking ranking = port.ranking();
+			requireThat(ranking.families(), "families").isEqualTo(List.of("fable", "opus", "sonnet", "haiku"));
+			requireThat(ranking.source(), "source").
+				isEqualTo("https://platform.claude.com/docs/en/models/overview, read 2026-10-04");
+			requireThat(ranking.unranked(port.inventory()), "unranked").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that the shipped inventory lists each model's efforts from the lowest to the highest, so that a model's
-	 * first and last listed effort are its lowest and highest effort in development cell tiering. A model without an
+	 * first listed effort is its lowest, which the weakest cell uses. A model without an
 	 * effort dimension has one profile.
 	 *
 	 * @throws IOException if the inventory cannot be read

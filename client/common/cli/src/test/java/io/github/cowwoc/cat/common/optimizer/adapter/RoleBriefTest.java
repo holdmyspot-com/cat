@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.DeriverProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
+import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.fakes.ScriptedHarness;
@@ -135,7 +136,8 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			DeriverProtocol deriver = new DeriverProtocol(json, schema,
 				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()));
-			SessionRequest request = deriver.request(root, ContractFixtures.contract().profiles().inventory());
+			SessionRequest request = deriver.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
+				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()));
 
 			List<String> delivered = deliver(root, artifact, request);
 

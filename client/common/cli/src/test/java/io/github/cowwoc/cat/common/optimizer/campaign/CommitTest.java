@@ -2,9 +2,11 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
@@ -259,5 +261,25 @@ public final class CommitTest
 
 		Campaign smallShort = ready.development(ContractFixtures.SMALL_CELL, 99, 0).build();
 		requireThat(ReadinessGate.isCommitDue(smallShort), "smallShort").isFalse();
+	}
+
+	/**
+	 * Verifies that a commit under the weakest-cell scope freezes a procedure over the scope's cells, with {@code K}
+	 * the number of those cells, and needs no baseline or readiness outside them.
+	 */
+	@Test
+	public void commitCoversScopeCells()
+	{
+		// Requirement: R-C15
+		// Requirement: R-C11
+		Contract contract = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		Campaign before = new Builder().confirmed(contract, 1).working(1).
+			development(TierFixtures.SMALL_HIGH, 100, 0).development(TierFixtures.SAFETY, 100, 0).
+			baseline(TierFixtures.SMALL_HIGH, 50, 0).baseline(TierFixtures.SAFETY, 50, 0).build();
+		Campaign campaign = Transitions.apply(before, new CampaignEvent.Commit(calibration(1), 41));
+		CertificationProcedure procedure = campaign.attempt(1).procedure();
+		requireThat(procedure.cells(), "cells").isEqualTo(List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(ErrorBudget.improvementLevel(1, 2));
+		requireThat(procedure.boundaries().comparisons().size(), "comparisons").isEqualTo(2);
 	}
 }

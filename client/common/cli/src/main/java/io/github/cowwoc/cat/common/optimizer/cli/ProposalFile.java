@@ -2,13 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
-import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -30,8 +29,8 @@ import java.util.Optional;
  * continue after the launcher exited.
  * <p>
  * The file holds the deriver's output, which {@code DeriverProtocol} validates again when it is read, the sources
- * that the deriver's session was observed loading, and the profile inventory and bindings that CAT read when the
- * deriver ran. Confirmation therefore freezes the trial profiles that the user saw.
+ * that the deriver's session was observed loading, and the profile inventory, capability ranking and bindings that CAT
+ * read when the deriver ran. Confirmation therefore freezes the trial profiles that the user saw.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -42,14 +41,10 @@ final class ProposalFile
 	 */
 	static final String NAME = "proposal.json";
 	/**
-	 * The version of the proposal layout, including regression scenario citations in each test definition and the
-	 * triggers of the requirements.
+	 * The version of the proposal layout, including regression scenario citations in each test definition, the
+	 * triggers of the requirements and the shipped capability ranking.
 	 */
-	private static final int FORMAT_VERSION = 5;
-	/**
-	 * The readable version whose derivation states no triggers, so its requirements always apply.
-	 */
-	private static final int UNTRIGGERED_FORMAT_VERSION = 4;
+	private static final int FORMAT_VERSION = 6;
 	private final Path file;
 	private final JsonMapper json;
 
@@ -57,7 +52,7 @@ final class ProposalFile
 	 * A stored proposal.
 	 *
 	 * @param result the deriver's output as a session result, which the caller validates again
-	 * @param profiles the profile inventory and bindings that CAT read when the deriver ran
+	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the deriver ran
 	 */
 	record Stored(SessionResult.Completed result, ProfileEvidence profiles)
 	{
@@ -94,7 +89,7 @@ final class ProposalFile
 	 * Replaces the stored proposal.
 	 *
 	 * @param derived the proposal
-	 * @param profiles the profile inventory and bindings that CAT read when the deriver ran
+	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the deriver ran
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the file cannot be written
 	 */
@@ -110,6 +105,9 @@ final class ProposalFile
 		ArrayNode inventory = root.putArray("inventory");
 		for (TrialProfile profile : profiles.inventory().profiles())
 			inventory.add(profileNode(profile));
+		root.put("ranking_source", profiles.ranking().source());
+		ArrayNode families = root.putArray("ranking");
+		profiles.ranking().families().forEach(families::add);
 		ArrayNode bindings = root.putArray("bindings");
 		for (Map.Entry<String, TrialProfile> entry : profiles.bindings().entrySet().stream().
 			sorted(Map.Entry.comparingByKey()).toList())
@@ -151,32 +149,33 @@ final class ProposalFile
 			return Optional.empty();
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 		int version = root.path("format_version").asInt();
-		if (version < UNTRIGGERED_FORMAT_VERSION || version > FORMAT_VERSION)
+		if (version != FORMAT_VERSION)
 		{
 			throw new IOException(file + " is a version " + version + " proposal file, but this version of CAT reads " +
-				"versions " + UNTRIGGERED_FORMAT_VERSION + " to " + FORMAT_VERSION + ". Run `start` again to derive a " +
-				"new proposal.");
+				"version " + FORMAT_VERSION + ". Run `start` again to derive a new proposal.");
 		}
 		if (!root.path("derivation").isString() || !root.path("observed_sources").isString() ||
 			!root.path("inventory_source").isString() || !root.path("inventory").isArray() ||
+			!root.path("ranking_source").isString() || !root.path("ranking").isArray() ||
 			!root.path("bindings").isArray())
 		{
 			throw new IOException(file + " is not a valid version " + version + " proposal file.");
 		}
 		String derivation = root.get("derivation").asString();
-		if (version == UNTRIGGERED_FORMAT_VERSION)
-			derivation = addMissingTriggers(derivation);
 		ProfileEvidence profiles;
 		try
 		{
 			List<TrialProfile> inventory = new ArrayList<>();
 			for (JsonNode node : root.get("inventory"))
 				inventory.add(profile(node));
+			List<String> families = new ArrayList<>();
+			for (JsonNode node : root.get("ranking"))
+				families.add(node.asString());
 			Map<String, TrialProfile> bindings = new LinkedHashMap<>();
 			for (JsonNode node : root.get("bindings"))
 				bindings.put(node.path("file").asString(), profile(node));
 			profiles = new ProfileEvidence(new ProfileCatalog(root.get("inventory_source").asString(), inventory),
-				bindings);
+				new CapabilityRanking(families, root.get("ranking_source").asString()), bindings);
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -188,28 +187,6 @@ final class ProposalFile
 			List.of(List.of(derivation)),
 			project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
 		return Optional.of(new Stored(result, profiles));
-	}
-
-	/**
-	 * Completes a derivation stored before requirements had triggers, so that its requirements always apply and its
-	 * tests leave no trigger absent.
-	 *
-	 * @param derivation the stored derivation
-	 * @return the completed derivation, or {@code derivation} unchanged if it is not JSON, which validation reports
-	 */
-	private String addMissingTriggers(String derivation)
-	{
-		JsonNode node;
-		try
-		{
-			node = json.readTree(derivation);
-		}
-		catch (JacksonException _)
-		{
-			return derivation;
-		}
-		ProposalSchema.addMissingTriggers(node);
-		return json.writerWithDefaultPrettyPrinter().writeValueAsString(node);
 	}
 
 	/**

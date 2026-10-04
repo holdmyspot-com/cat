@@ -2,33 +2,35 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
- * Selects the cells that receive the working candidate's sampled development trials. A cell tests one category
- * under one model and reasoning profile.
+ * Selects the cells of the certification scope and the development cells. A cell tests one category under one model
+ * and reasoning profile.
  * <p>
- * A cell is active when it is its category's only cell, when it is the lowest or the highest effort that its model
- * has in its category, or when a candidate of the campaign has failed a trial in it. The contract lists each
- * category's cells in inventory order, and the inventory lists each model's efforts from the lowest to the highest,
- * so a model's first and last cell in a category are its lowest and its highest effort.
+ * Formal trials and the incumbent baseline run in the cells of the contract's {@link CertificationScope}. Development
+ * runs in each category's development cells: its weakest cell, plus every cell where a certification attempt of the
+ * lineage adopted a failure. The weakest cell is the lowest effort of the least capable model by the contract's
+ * {@link CapabilityRanking}; the contract lists each category's cells in inventory order, and the inventory lists each
+ * model's efforts from the lowest to the highest, so a model's first cell in a category is its lowest effort.
  */
 public final class CellTier
 {
-	/**
-	 * The representative trials of the first working candidate that every cell receives when development starts.
-	 */
-	public static final int SCREEN_TRIALS = 3;
-
 	/**
 	 * Prevents instantiation.
 	 */
@@ -37,108 +39,230 @@ public final class CellTier
 	}
 
 	/**
-	 * Returns the active cells of a contract.
+	 * Returns the cells that a certification scope covers.
 	 *
-	 * @param contract the contract
-	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial;
-	 *   identifiers that the contract does not list are ignored
-	 * @return the active cells, in contract order
+	 * @param profiles the trial profiles
+	 * @param scope a certification scope
+	 * @return the cells, in contract order
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code scope} is {@link CertificationScope#WEAKEST_CELL} and a category's
+	 *   weakest cell depends on a model whose family is unranked
 	 */
-	public static List<Cell> activeCells(Contract contract, Set<String> failedCells)
+	public static List<Cell> scopeCells(TrialProfiles profiles, CertificationScope scope)
+	{
+		requireThat(profiles, "profiles").isNotNull();
+		requireThat(scope, "scope").isNotNull();
+		List<Cell> scopeCells = new ArrayList<>();
+		for (List<Cell> categoryCells : byCategory(profiles.cells()))
+		{
+			if (scope == CertificationScope.WEAKEST_CELL)
+			{
+				String categoryId = categoryCells.getFirst().categoryId();
+				scopeCells.add(weakestCell(profiles, scope, categoryId).orElseThrow(() ->
+					new IllegalArgumentException("The weakest cell of the category '" + categoryId + "' depends on " +
+						"a model whose family the capability ranking does not list")));
+			}
+			else
+				scopeCells.addAll(candidates(profiles, scope, categoryCells));
+		}
+		return scopeCells;
+	}
+
+	/**
+	 * Returns the cells of a contract's certification scope.
+	 *
+	 * @param contract a confirmed contract
+	 * @return the cells, in contract order
+	 * @throws NullPointerException if {@code contract} is null
+	 * @throws IllegalArgumentException if the contract has no certification scope
+	 */
+	public static List<Cell> scopeCells(Contract contract)
 	{
 		requireThat(contract, "contract").isNotNull();
-		requireThat(failedCells, "failedCells").isNotNull();
-		Map<ModelKey, Cell> lowest = new HashMap<>();
-		Map<ModelKey, Cell> highest = new HashMap<>();
-		for (Cell cell : contract.cells())
-		{
-			ModelKey model = ModelKey.of(cell);
-			lowest.putIfAbsent(model, cell);
-			highest.put(model, cell);
-		}
-		List<Cell> active = new ArrayList<>();
-		for (Cell cell : contract.cells())
-		{
-			ModelKey model = ModelKey.of(cell);
-			if (lowest.get(model).equals(cell) || highest.get(model).equals(cell) || failedCells.contains(cell.id()))
-				active.add(cell);
-		}
-		return active;
+		return scopeCells(contract.profiles(), scope(contract));
 	}
 
 	/**
-	 * Returns the identifiers of the active cells of a contract, grouped by category.
+	 * Returns the identifiers of the cells of a contract's certification scope.
 	 *
-	 * @param contract the contract
-	 * @param failedCells the identifiers of cells in which a candidate of the campaign has failed a trial;
-	 *   identifiers absent from the contract are ignored
-	 * @return the identifiers of each category's active cells, by category in contract order
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	public static Map<String, List<String>> activeCellsByCategory(Contract contract, Set<String> failedCells)
-	{
-		Map<String, List<String>> byCategory = new LinkedHashMap<>();
-		for (Cell cell : activeCells(contract, failedCells))
-			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell.id());
-		return byCategory;
-	}
-
-	/**
-	 * Returns the identifiers of each model's lowest-effort cell in each category.
-	 *
-	 * @param contract the contract
-	 * @return the cell identifiers
+	 * @param contract a confirmed contract
+	 * @return the identifiers, in contract order
 	 * @throws NullPointerException if {@code contract} is null
+	 * @throws IllegalArgumentException if the contract has no certification scope
 	 */
-	static Set<String> lowestEffortCells(Contract contract)
+	public static List<String> scopeCellIds(Contract contract)
 	{
-		Set<ModelKey> models = new HashSet<>();
-		Set<String> lowest = new HashSet<>();
-		for (Cell cell : contract.cells())
-		{
-			if (models.add(ModelKey.of(cell)))
-				lowest.add(cell.id());
-		}
-		return lowest;
+		return scopeCells(contract).stream().map(Cell::id).toList();
 	}
 
 	/**
-	 * Indicates whether every active cell of a contract meets the readiness gate's count conditions.
+	 * Returns a contract's certification scope.
 	 *
-	 * @param contract the contract
-	 * @param failedCells the identifiers of the cells in which a candidate of the campaign has failed a trial
-	 * @param counts the working candidate's development counts per cell; a missing cell has no outcomes
-	 * @return {@code true} if every active cell is ready
-	 * @throws NullPointerException if any argument is null
+	 * @param contract a contract
+	 * @return the scope
+	 * @throws IllegalArgumentException if the contract has no certification scope
 	 */
-	static boolean isActiveSetReady(Contract contract, Set<String> failedCells, Map<String, CellCounts> counts)
+	private static CertificationScope scope(Contract contract)
 	{
-		for (Cell cell : activeCells(contract, failedCells))
-		{
-			if (!ReadinessGate.isReady(counts.getOrDefault(cell.id(), CellCounts.EMPTY)))
-				return false;
-		}
-		return true;
+		CertificationScope scope = contract.profiles().scope();
+		if (scope == null)
+			throw new IllegalArgumentException("The contract has no certification scope");
+		return scope;
 	}
 
 	/**
-	 * The cells of one model in one category.
+	 * Returns a category's weakest cell under a certification scope: among the category's cells that the scope
+	 * allows, the lowest effort of the least capable model. For {@link CertificationScope#WEAKEST_CELL} and
+	 * {@link CertificationScope#LATEST_VERSIONS} those are the cells of each model family's latest version, and for
+	 * {@link CertificationScope#DESCRIBED} the described cells. A category with one cell uses it.
 	 *
-	 * @param category the category's identifier
-	 * @param model the model
+	 * @param profiles the trial profiles
+	 * @param scope a certification scope
+	 * @param categoryId the category
+	 * @return the cell, or empty if it depends on a model whose family is unranked
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the category has no cell
 	 */
-	private record ModelKey(String category, String model)
+	public static Optional<Cell> weakestCell(TrialProfiles profiles, CertificationScope scope, String categoryId)
 	{
-		/**
-		 * Returns the key of a cell.
-		 *
-		 * @param cell the cell
-		 * @return the key
-		 */
-		static ModelKey of(Cell cell)
+		requireThat(profiles, "profiles").isNotNull();
+		requireThat(scope, "scope").isNotNull();
+		List<Cell> categoryCells = profiles.cellsOf(categoryId);
+		if (categoryCells.isEmpty())
+			throw new IllegalArgumentException("The category '" + categoryId + "' has no cell");
+		List<Cell> candidates = candidates(profiles, scope, categoryCells);
+		if (candidates.size() == 1)
+			return Optional.of(candidates.getFirst());
+		CapabilityRanking ranking = profiles.ranking();
+		Cell weakest = null;
+		for (Cell cell : candidates)
 		{
-			return new ModelKey(cell.categoryId(), cell.profile().model());
+			String model = cell.profile().model();
+			if (!ranking.isRanked(model))
+				return Optional.empty();
+			// The inventory lists each model's efforts lowest first, so a model's first cell is its lowest effort
+			if (weakest == null || ranking.compare(model, weakest.profile().model()) < 0)
+				weakest = cell;
 		}
+		return Optional.ofNullable(weakest);
+	}
+
+	/**
+	 * Returns a category's weakest cell under a contract's certification scope.
+	 *
+	 * @param contract a confirmed contract
+	 * @param categoryId the category
+	 * @return the cell
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the contract has no certification scope or the category has no cell
+	 */
+	public static Cell weakestCell(Contract contract, String categoryId)
+	{
+		requireThat(contract, "contract").isNotNull();
+		CertificationScope scope = scope(contract);
+		// A confirmed contract ranks every inventory model, so the weakest cell is known
+		return weakestCell(contract.profiles(), scope, categoryId).orElseThrow();
+	}
+
+	/**
+	 * Returns the cells of a category that a certification scope allows.
+	 *
+	 * @param profiles the trial profiles
+	 * @param scope a certification scope
+	 * @param categoryCells the category's cells, in contract order
+	 * @return the category's only cell; the described cells for {@link CertificationScope#DESCRIBED}; otherwise the
+	 *   cells of each model family's latest version among the category's cells
+	 */
+	private static List<Cell> candidates(TrialProfiles profiles, CertificationScope scope, List<Cell> categoryCells)
+	{
+		if (categoryCells.size() == 1)
+			return categoryCells;
+		if (scope == CertificationScope.DESCRIBED)
+			return categoryCells.stream().filter(profiles::isDescribed).toList();
+		Map<String, String> latest = new HashMap<>();
+		for (Cell cell : categoryCells)
+		{
+			String model = cell.profile().model();
+			latest.merge(CapabilityRanking.family(model), model, (current, candidate) ->
+			{
+				if (CapabilityRanking.compareVersions(candidate, current) > 0)
+					return candidate;
+				return current;
+			});
+		}
+		return categoryCells.stream().filter(cell ->
+		{
+			String model = cell.profile().model();
+			return CapabilityRanking.compareVersions(model, latest.get(CapabilityRanking.family(model))) == 0;
+		}).toList();
+	}
+
+	/**
+	 * Groups cells by category.
+	 *
+	 * @param cells cells grouped by category
+	 * @return each category's cells, in contract order
+	 */
+	private static Collection<List<Cell>> byCategory(List<Cell> cells)
+	{
+		Map<String, List<Cell>> byCategory = new LinkedHashMap<>();
+		for (Cell cell : cells)
+			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell);
+		return byCategory.values();
+	}
+
+	/**
+	 * Returns the development cells of a lineage: each category's weakest cell, plus every cell in which a
+	 * certification attempt of the lineage adopted a failure.
+	 *
+	 * @param contract the lineage's confirmed contract
+	 * @param lineage the lineage's number
+	 * @param attempts the campaign's certification attempts
+	 * @return the cells, in contract order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the contract has no certification scope
+	 */
+	public static List<Cell> developmentCells(Contract contract, int lineage, List<CertificationAttempt> attempts)
+	{
+		requireThat(contract, "contract").isNotNull();
+		requireThat(attempts, "attempts").isNotNull();
+		Set<String> cells = new HashSet<>();
+		for (Category category : contract.categories())
+			cells.add(weakestCell(contract, category.id()).id());
+		for (CertificationAttempt attempt : attempts)
+		{
+			if (attempt.lineage() != lineage)
+				continue;
+			for (Failure failure : attempt.failures())
+				cells.add(failure.instance().cellId());
+		}
+		return contract.cells().stream().filter(cell -> cells.contains(cell.id())).toList();
+	}
+
+	/**
+	 * Returns the development cells of a campaign's current lineage.
+	 *
+	 * @param campaign a campaign with a confirmed contract
+	 * @return the cells, in contract order
+	 * @throws NullPointerException if {@code campaign} is null
+	 * @throws IllegalStateException if no contract has been confirmed
+	 */
+	public static List<Cell> developmentCells(Campaign campaign)
+	{
+		requireThat(campaign, "campaign").isNotNull();
+		return developmentCells(campaign.contract(), campaign.lineage().number(), campaign.attempts());
+	}
+
+	/**
+	 * Returns the identifiers of the development cells of a campaign's current lineage.
+	 *
+	 * @param campaign a campaign with a confirmed contract
+	 * @return the identifiers, in contract order
+	 * @throws NullPointerException if {@code campaign} is null
+	 * @throws IllegalStateException if no contract has been confirmed
+	 */
+	public static List<String> developmentCellIds(Campaign campaign)
+	{
+		return developmentCells(campaign).stream().map(Cell::id).toList();
 	}
 }

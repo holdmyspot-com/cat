@@ -350,7 +350,8 @@ public final class ContractTest
 		List<Cell> cells = new ArrayList<>();
 		for (String id : ids)
 			cells.add(new Cell(id, id, ContractFixtures.PROFILE));
-		return new TrialProfiles(new ProfileCatalog("test", List.of(ContractFixtures.PROFILE)), List.of(), List.of(),
+		ProfileCatalog inventory = new ProfileCatalog("test", List.of(ContractFixtures.PROFILE));
+		return new TrialProfiles(inventory, ContractFixtures.ranking(inventory), List.of(), List.of(), List.of(), null,
 			cells);
 	}
 

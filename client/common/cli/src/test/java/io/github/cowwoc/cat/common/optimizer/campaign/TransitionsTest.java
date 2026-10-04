@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import java.nio.file.Path;
@@ -210,7 +211,7 @@ public final class TransitionsTest
 		Campaign campaign = Campaign.start(new Builder().build().header(), 8, Builder.INCUMBENT,
 			Builder.OBSERVED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "unconfirmed").isEmpty();
-		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(scopedContract(),
 			Builder.contractHash(), 17));
 
 		requireThat(campaign.lineage().number(), "lineage").isEqualTo(1);
@@ -219,6 +220,26 @@ public final class TransitionsTest
 		requireThat(campaign.identity(), "identity").isEqualTo(Builder.confirmedIdentity("model-a"));
 		requireThat(campaign.development().series(), "series").isEqualTo(1);
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "confirmed").isFalse();
+	}
+
+	/**
+	 * Returns the fixture contract under the latest-versions certification scope.
+	 *
+	 * @return the contract
+	 */
+	private static Contract scopedContract()
+	{
+		return ContractFixtures.contract().withScope(CertificationScope.LATEST_VERSIONS);
+	}
+
+	/**
+	 * Verifies that a confirmation without a certification scope is refused.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*scope.*")
+	public void confirmationRequiresCertificationScope()
+	{
+		// Requirement: R-C15
+		new CampaignEvent.Confirm(ContractFixtures.contract(), Builder.contractHash(), 17);
 	}
 
 	/**
@@ -257,7 +278,7 @@ public final class TransitionsTest
 		requireThat(campaign.attempt(1).index(), "first").isEqualTo(1);
 
 		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
-		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(scopedContract(),
 			REVISED, 18));
 		requireThat(campaign.nextCertificationIndex(), "afterRevision").isEqualTo(2);
 
@@ -757,7 +778,7 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
 		requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
-		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(scopedContract(),
 			REVISED, 23));
 
 		requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
@@ -779,7 +800,7 @@ public final class TransitionsTest
 	{
 		// Requirement: R-L2
 		Transitions.apply(new Builder().confirmed().build(),
-			new CampaignEvent.Confirm(ContractFixtures.contract(), REVISED, 23));
+			new CampaignEvent.Confirm(scopedContract(), REVISED, 23));
 	}
 
 	/**
@@ -802,7 +823,7 @@ public final class TransitionsTest
 		boolean refused = false;
 		try
 		{
-			Transitions.apply(unsafe, new CampaignEvent.Confirm(ContractFixtures.contract(), REVISED, 3));
+			Transitions.apply(unsafe, new CampaignEvent.Confirm(scopedContract(), REVISED, 3));
 		}
 		catch (IllegalStateException _)
 		{
@@ -812,7 +833,7 @@ public final class TransitionsTest
 
 		campaign = TransitionSteps.complete(campaign, inFlight, Verdict.PASS);
 		requireThat(campaign.attempt(1).count("safety"), "counts").isEqualTo(counts(30, 0));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(ContractFixtures.contract(),
+		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(scopedContract(),
 			REVISED, 3));
 		requireThat(campaign.attempt(1).outcome(), "stillStopped").isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 		requireThat(campaign.runningAttempt().isEmpty(), "runningAttempt.isEmpty()").isTrue();

@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
@@ -115,14 +116,6 @@ final class Draft
 	 */
 	Map<String, Integer> reviewPoints;
 	/**
-	 * {@code true} once every active cell met the readiness gate's count conditions in this series.
-	 */
-	boolean widened;
-	/**
-	 * The cells in which a candidate of the campaign has failed a trial.
-	 */
-	final Set<String> failedCells;
-	/**
 	 * The current incumbent baseline index, or 0 before the first confirmation.
 	 */
 	int baselineIndex;
@@ -208,8 +201,6 @@ final class Draft
 		author = development.author();
 		optimization = campaign.optimization();
 		reviewPoints = new LinkedHashMap<>(development.reviewPoints());
-		widened = development.widened();
-		failedCells = new HashSet<>(campaign.failedCells());
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline != null)
 		{
@@ -276,6 +267,17 @@ final class Draft
 		if (lineages.isEmpty())
 			return 0;
 		return lineages.getLast().number();
+	}
+
+	/**
+	 * Returns the development cells of the current lineage.
+	 *
+	 * @return the cells, in contract order
+	 * @throws IllegalStateException if no contract is confirmed
+	 */
+	List<Cell> developmentCells()
+	{
+		return CellTier.developmentCells(contract(), lineageNumber(), attempts);
 	}
 
 	/**
@@ -389,7 +391,6 @@ final class Draft
 		round = null;
 		author = null;
 		reviewPoints = new LinkedHashMap<>();
-		widened = false;
 	}
 
 	/**
@@ -543,9 +544,9 @@ final class Draft
 			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, author, reviewPoints, widened, instanceOutcomes, predecessor, reverts);
+			diagnosis, round, author, reviewPoints, instanceOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
-			development, failedCells, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
 			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
 	}
 }

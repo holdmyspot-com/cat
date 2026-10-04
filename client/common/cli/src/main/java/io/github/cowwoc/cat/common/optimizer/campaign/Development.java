@@ -18,15 +18,13 @@ import java.util.Map;
  * @param round the development round in progress, or {@code null} if none is
  * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
  * @param reviewPoints the outcome count that triggers another review for each cell the user extended
- * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series, which
- *   makes every cell eligible for representative trials ({@link CellTier})
  * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
  * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
  * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
  */
 public record Development(Candidate working, int series, Map<String, CellCounts> counts,
 	List<Failure> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
-	Map<String, Integer> reviewPoints, boolean widened, List<InstanceOutcomes> instanceOutcomes,
+	Map<String, Integer> reviewPoints, List<InstanceOutcomes> instanceOutcomes,
 	Predecessor predecessor, List<Revert> reverts)
 {
 	/**
@@ -45,7 +43,6 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param round the development round in progress, or {@code null} if none is
 	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
 	 * @param reviewPoints the outcome count that triggers another review for each cell the user extended
-	 * @param widened {@code true} once every active cell met the readiness gate's count conditions in this series
 	 * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
 	 * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
 	 * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
@@ -82,14 +79,13 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param round the round in progress, or {@code null}
 	 * @param author the author under validation, or {@code null}
 	 * @param reviewPoints the outcome counts that trigger cell reviews
-	 * @param widened whether every cell is eligible for representative trials
 	 * @throws NullPointerException if a required argument or collection element is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
-		Diagnosis diagnosis, Round round, AuthorAttempt author, Map<String, Integer> reviewPoints, boolean widened)
+		Diagnosis diagnosis, Round round, AuthorAttempt author, Map<String, Integer> reviewPoints)
 	{
-		this(working, series, counts, failures, diagnosis, round, author, reviewPoints, widened,
+		this(working, series, counts, failures, diagnosis, round, author, reviewPoints,
 			InstanceOutcomes.fromFailures(failures), null, List.of());
 	}
 
@@ -98,13 +94,13 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 *
 	 * @param working the working candidate
 	 * @param series the series number
-	 * @return the development state, with no outcomes, that has not widened
+	 * @return the development state, with no outcomes
 	 * @throws NullPointerException if {@code working} is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public static Development start(Candidate working, int series)
 	{
-		return new Development(working, series, Map.of(), List.of(), null, null, null, Map.of(), false);
+		return new Development(working, series, Map.of(), List.of(), null, null, null, Map.of());
 	}
 
 	/**

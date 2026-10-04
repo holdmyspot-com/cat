@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
@@ -28,6 +29,15 @@ public interface ProfileInventory
 	 * @throws IOException if the inventory cannot be read
 	 */
 	ProfileCatalog inventory() throws IOException;
+
+	/**
+	 * Returns the capability ranking of the harness's model families that CAT ships, taken from the vendor's
+	 * published model documentation.
+	 *
+	 * @return the ranking, whose source names the documentation's address and the date it was read
+	 * @throws IOException if the ranking cannot be read
+	 */
+	CapabilityRanking ranking() throws IOException;
 
 	/**
 	 * Indicates whether the harness reads a profile binding from a file at a path.

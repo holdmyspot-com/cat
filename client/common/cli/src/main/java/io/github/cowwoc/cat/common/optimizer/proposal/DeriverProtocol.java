@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -128,49 +129,52 @@ public final class DeriverProtocol
 	 *
 	 * @param promptSystem the directory that holds the prompt system, which the session works in so that the harness
 	 *   loads it as it would in production
-	 * @param inventory the harness's profile inventory, which a profile restriction selects from
+	 * @param profiles the harness's profile inventory, which a profile restriction selects from, and its capability
+	 *   ranking
 	 * @return a request whose role is {@link SessionRole#DERIVER}
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public SessionRequest request(Path promptSystem, ProfileCatalog inventory)
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
-		requireThat(inventory, "inventory").isNotNull();
-		return request(promptSystem, inventory, NONE, NONE);
+		requireThat(profiles, "profiles").isNotNull();
+		return request(promptSystem, profiles, NONE, NONE);
 	}
 
 	/**
 	 * Returns the request for regenerating the complete proposal from the user's feedback.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
-	 * @param inventory the harness's profile inventory, which a profile restriction selects from
+	 * @param profiles the harness's profile inventory, which a profile restriction selects from, and its capability
+	 *   ranking
 	 * @param previous the proposal that the user gave feedback on
 	 * @param feedback the user's feedback
 	 * @return a request whose role is {@link SessionRole#DERIVER}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code feedback} is blank
 	 */
-	public SessionRequest request(Path promptSystem, ProfileCatalog inventory, DerivedProposal previous,
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, DerivedProposal previous,
 		String feedback)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
-		requireThat(inventory, "inventory").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
 		requireThat(previous, "previous").isNotNull();
 		requireThat(feedback, "feedback").isNotBlank();
-		return request(promptSystem, inventory, previous.derivation(), feedback);
+		return request(promptSystem, profiles, previous.derivation(), feedback);
 	}
 
 	/**
 	 * Returns a deriver session request.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
-	 * @param inventory the harness's profile inventory
+	 * @param evidence the harness's profile inventory and its capability ranking
 	 * @param previous the previous proposal, or {@code none}
 	 * @param feedback the user's feedback, or {@code none}
 	 * @return the request
 	 */
-	private SessionRequest request(Path promptSystem, ProfileCatalog inventory, String previous, String feedback)
+	private SessionRequest request(Path promptSystem, ProfileEvidence evidence, String previous, String feedback)
 	{
+		ProfileCatalog inventory = evidence.inventory();
 		StringJoiner profiles = new StringJoiner("\n");
 		profiles.add("Source: " + inventory.source());
 		for (TrialProfile profile : inventory.profiles())
@@ -181,24 +185,29 @@ public final class DeriverProtocol
 				profiles.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 		}
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
-			profiles.toString(), "output_schema", outputSchema, "regression_scenarios", scenarios.prompt()));
+			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
+			"regression_scenarios", scenarios.prompt()));
 		return new SessionRequest(SessionRole.DERIVER, promptSystem, List.of(turn, outputTurn), List.of(), TIME_LIMIT,
 			judge.role());
 	}
 
 	/**
-	 * Validates a deriver session's output and computes its trial profiles. References to the session's project
-	 * directory in the output's text name the user's project in both the proposal and its saved derivation.
+	 * Validates a deriver session's output and computes its trial profiles. A capability ranking in the output, which
+	 * the user's feedback supplies, replaces the shipped one; the profiles of a described certification scope in the
+	 * output become the contract's described profiles. References to the session's project directory in the output's
+	 * text name the user's project in both the proposal and its saved derivation.
 	 *
 	 * @param result the deriver session's result
-	 * @param profiles the profile inventory and bindings that CAT read when the deriver ran
+	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
+	 *   deriver ran
 	 * @return the proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
 	 *   Markdown code fence, or the object violates the deriver's output schema, supplies a judge field or the trial
 	 *   profiles that CAT owns, lists a requirement with the core-task requirement's identifier, restricts the
-	 *   profiles to a set that the inventory cannot satisfy, omits a citation for a recorded scenario of a prompt source,
-	 *   or breaks a rule of the contract model
+	 *   profiles to a set that the inventory cannot satisfy, describes a certification profile that matches no
+	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of a prompt source, or breaks
+	 *   a rule of the contract model
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles)
 		throws InvalidProposalException
@@ -222,6 +231,10 @@ public final class DeriverProtocol
 		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
 		List<TrialProfile> restriction = findings.profileRestriction(
 			output.remove(Findings.PROFILE_RESTRICTION));
+		List<TrialProfile> described = findings.certificationProfiles(
+			output.remove(Findings.CERTIFICATION_PROFILES));
+		CapabilityRanking ranking = findings.capabilityRanking(output.remove(Findings.CAPABILITY_RANKING)).
+			orElse(profiles.ranking());
 		if (output.remove(ProposalSchema.TRIAL_PROFILES) != null)
 		{
 			problems.add("$." + ProposalSchema.TRIAL_PROFILES + ": CAT computes the trial profiles, so the deriver " +
@@ -242,8 +255,8 @@ public final class DeriverProtocol
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(output), (requirements, categories) ->
-				TrialProfiles.compute(profiles.inventory(), profiles.bindingsOf(requirements), restriction,
-					requirements, categories, Set.of(Requirement.CORE_TASK.id())));
+				TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
+					restriction, described, requirements, categories, Set.of(Requirement.CORE_TASK.id())));
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 			problems.addAll(scenarios.missingCitations(contract, derivedSources));

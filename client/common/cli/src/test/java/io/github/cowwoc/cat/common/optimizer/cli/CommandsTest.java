@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -94,9 +95,10 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult confirm(String campaign) throws CommandRefusedException, IOException
+		public CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException,
+			IOException
 		{
-			return answer("confirm " + campaign);
+			return answer("confirm " + campaign + " " + scope.id());
 		}
 
 		@Override
@@ -162,7 +164,9 @@ public final class CommandsTest
 			List.of("start", "prompts/a.md"),
 			List.of("run", "c1"),
 			List.of("status", "c1"),
-			List.of("confirm", "c1"),
+			List.of("confirm", "c1", "weakest-cell"),
+			List.of("confirm", "c1", "latest-versions"),
+			List.of("confirm", "c1", "described"),
 			List.of("revise", "c1", "tighten the contract"),
 			List.of("choose", "c1", "keep-improvement", "--attempt", "2"),
 			List.of("choose", "c1", "more-evidence", "--review-point", "3"),
@@ -174,12 +178,34 @@ public final class CommandsTest
 			"start prompts/a.md",
 			"run c1",
 			"status c1",
-			"confirm c1",
+			"confirm c1 weakest-cell",
+			"confirm c1 latest-versions",
+			"confirm c1 described",
 			"revise c1 tighten the contract",
 			"choose c1 KEEP_IMPROVEMENT 2 0",
 			"choose c1 MORE_EVIDENCE 0 3",
 			"choose c1 STOP 0 0",
 			"cancel c1"));
+	}
+
+	/**
+	 * Verifies that {@code confirm} without a certification scope, or with an unknown one, is refused with every
+	 * choice named.
+	 */
+	@Test
+	public void confirmNamesEveryScopeChoice()
+	{
+		// Requirement: R-C15
+		for (List<String> args : List.of(List.of("confirm", "c1"), List.of("confirm", "c1", "all-models")))
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			requireThat(run(core, args, output), "exit").isEqualTo(2);
+			requireThat(core.calls, "calls").isEmpty();
+			String message = JSON.readTree(output.toString()).get("message").asString();
+			requireThat(message, "message").contains("weakest-cell").contains("latest-versions").
+				contains("described");
+		}
 	}
 
 	/**
@@ -363,6 +389,9 @@ public final class CommandsTest
 				{List.of("run", "../escape")},
 				{List.of("status", "a/b")},
 				{List.of("confirm", "")},
+				{List.of("confirm", "c1")},
+				{List.of("confirm", "c1", "all-models")},
+				{List.of("confirm", "c1", "latest-versions", "extra")},
 				{List.of("cancel", "-rf")},
 				{List.of("revise", "c1")},
 				{List.of("revise", "c1", "  ")},

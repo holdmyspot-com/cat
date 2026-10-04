@@ -3,10 +3,14 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.cat.common.optimizer.campaign.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.Test;
 
@@ -70,16 +74,17 @@ public final class BaselineTest
 	{
 		// Requirement: R-D7
 		MeasurementIdentity identity = Builder.confirmedIdentity("model-a");
+		Contract contract = ContractFixtures.contract().withScope(CertificationScope.LATEST_VERSIONS);
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
-			counts(50, 0))), ContractFixtures.contract()), "both").isTrue();
+			counts(50, 0))), contract), "both").isTrue();
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
-			counts(49, 0))), ContractFixtures.contract()), "short").isFalse();
+			counts(49, 0))), contract), "short").isFalse();
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0))),
-			ContractFixtures.contract()), "missing").isFalse();
+			contract), "missing").isFalse();
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
-			counts(95, 5))), ContractFixtures.contract()), "extendedMet").isTrue();
+			counts(95, 5))), contract), "extendedMet").isTrue();
 		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, Map.of("formatting", counts(50, 0), "safety",
-			counts(94, 5))), ContractFixtures.contract()), "extendedShort").isFalse();
+			counts(94, 5))), contract), "extendedShort").isFalse();
 	}
 
 	/**
@@ -164,5 +169,31 @@ public final class BaselineTest
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
 		requireThat(campaign.baseline().index(), "newIndex").isEqualTo(2);
 		requireThat(campaign.baseline().count("safety"), "newCounts").isEqualTo(CellCounts.EMPTY);
+	}
+
+	/**
+	 * Verifies that the baseline covers the certification scope's cells, with {@code K} the number of those cells: under
+	 * the weakest-cell scope, cells outside the scope need no trials, and 11 failures of 50 prove the deficiency among
+	 * 2 scope cells but not among the 6 cells of the latest versions.
+	 */
+	@Test
+	public void baselineCoversScopeCells()
+	{
+		// Requirement: R-D7
+		// Requirement: R-C11
+		MeasurementIdentity identity = Builder.confirmedIdentity("model-a");
+		Contract weakest = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		IncumbentBaseline deficient = new IncumbentBaseline(1, identity, Map.of(TierFixtures.SMALL_HIGH,
+			counts(39, 11), TierFixtures.SAFETY, counts(50, 0)));
+		requireThat(Baseline.isMet(deficient, weakest), "weakest").isTrue();
+
+		Contract latest = TierFixtures.tieredContract().withScope(CertificationScope.LATEST_VERSIONS);
+		Map<String, CellCounts> every = new HashMap<>();
+		for (String cell : latest.cellIds())
+			every.put(cell, counts(50, 0));
+		every.put(TierFixtures.SMALL_HIGH, counts(39, 11));
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, every), latest), "latest").isFalse();
+		every.put(TierFixtures.SMALL_HIGH, counts(89, 11));
+		requireThat(Baseline.isMet(new IncumbentBaseline(1, identity, every), latest), "latestExtended").isTrue();
 	}
 }

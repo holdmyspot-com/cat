@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -175,8 +176,31 @@ public final class CodexProfileInventoryTest
 	}
 
 	/**
+	 * Verifies that the shipped capability ranking puts {@code astra} above {@code sol} above {@code luna}, names the
+	 * documentation's address and reading date, and ranks every model of the recorded inventory.
+	 *
+	 * @throws IOException if the inventory or the ranking cannot be read
+	 */
+	@Test
+	public void ranksTheDocumentedFamilies() throws IOException
+	{
+		// Requirement: R-E22
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			CodexProfileInventory port = new CodexProfileInventory(artifact, "codex",
+				launcher(recorded(), new CopyOnWriteArrayList<>()));
+			CapabilityRanking ranking = port.ranking();
+			requireThat(ranking.families(), "families").isEqualTo(List.of("astra", "sol", "luna"));
+			requireThat(ranking.source(), "source").
+				isEqualTo("https://developers.openai.com/api/docs/models, read 2026-10-04");
+			requireThat(ranking.unranked(port.inventory()), "unranked").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that the recorded inventory lists each model's efforts from the lowest to the highest, so that a
-	 * model's first and last listed effort are its lowest and highest effort in development cell tiering.
+	 * model's first listed effort is its lowest, which the weakest cell uses.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */

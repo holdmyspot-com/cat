@@ -12,9 +12,9 @@ import java.util.List;
 /**
  * Determines how many representative trials of the incumbent each cell needs before certification can start.
  * <p>
- * A cell is a requirement category under one runner profile. Each needs {@value #TARGET} trials. After that many
- * outcomes, a cell whose observed pass rate is below 95% and is not proven deficient needs
- * {@value #EXTENDED_TARGET}. The target is evaluated on the current counts.
+ * A cell is a requirement category under one runner profile. Each cell of the certification scope needs
+ * {@value #TARGET} trials. After that many outcomes, a cell whose observed pass rate is below 95% and is not proven
+ * deficient needs {@value #EXTENDED_TARGET}. The target is evaluated on the current counts.
  */
 public final class Baseline
 {
@@ -41,11 +41,12 @@ public final class Baseline
 
 	/**
 	 * Indicates whether the incumbent's pass rate in a cell is proven below 95%: the below-minimum e-value exceeds
-	 * {@code K/γ_b}, where {@code K} is the number of cells and {@code γ_b} is baseline {@code b}'s error allowance.
+	 * {@code K/γ_b}, where {@code K} is the number of cells in the certification scope and {@code γ_b} is baseline
+	 * {@code b}'s error allowance.
 	 *
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
-	 * @param cells the contract's number of cells {@code K}
+	 * @param cells the number of cells in the certification scope, {@code K}
 	 * @return {@code true} if the incumbent is proven deficient
 	 * @throws NullPointerException if {@code counts} is null
 	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
@@ -64,7 +65,7 @@ public final class Baseline
 	 *
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
-	 * @param cells the contract's number of cells {@code K}
+	 * @param cells the number of cells in the certification scope, {@code K}
 	 * @return {@value #TARGET} or {@value #EXTENDED_TARGET}
 	 * @throws NullPointerException if {@code counts} is null
 	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
@@ -83,18 +84,19 @@ public final class Baseline
 	}
 
 	/**
-	 * Indicates whether every cell of a contract meets its target.
+	 * Indicates whether every cell of a contract's certification scope meets its target.
 	 *
 	 * @param baseline the baseline
-	 * @param contract the contract
+	 * @param contract the confirmed contract
 	 * @return {@code true} if the baseline is met
 	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the contract has no certification scope
 	 */
 	public static boolean isMet(IncumbentBaseline baseline, Contract contract)
 	{
 		requireThat(baseline, "baseline").isNotNull();
 		requireThat(contract, "contract").isNotNull();
-		List<String> cells = contract.cellIds();
+		List<String> cells = CellTier.scopeCellIds(contract);
 		for (String cell : cells)
 		{
 			CellCounts counts = baseline.count(cell);

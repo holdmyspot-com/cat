@@ -179,6 +179,26 @@ unless the feedback changes it. Each pattern must match a profile of the invento
 
 {{profile_inventory}}
 
+### Capability ranking
+
+CAT ranks model families by advertised capability to find each category's weakest cell. A model's family is its name
+without its version, such as `sol` for `gpt-6.1-sol`; a name without a version is its own family. CAT's ranking:
+
+{{capability_ranking}}
+
+`capability_ranking` lists every model family, most capable first, when the user's feedback corrects the ranking or
+ranks a family that it leaves out; the list replaces CAT's ranking, so include every family that stays ranked. Leave the
+list empty unless the feedback changes the ranking, and keep the previous proposal's list unless the feedback changes
+it.
+
+### Certification scope
+
+`certification_profiles` lists the trial profiles that the user's own description of the certification scope names,
+as patterns over the profile inventory above. Give a pattern's `model`, its `effort` or both; an empty string matches
+every value. Leave the list empty unless the user described the cells that certification covers, and keep the previous
+proposal's list unless the feedback changes it. Each pattern must match a profile of the inventory, written exactly as
+listed.
+
 ### Revision
 
 Previous proposal:

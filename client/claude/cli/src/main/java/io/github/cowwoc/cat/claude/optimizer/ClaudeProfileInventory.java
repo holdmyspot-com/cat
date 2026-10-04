@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.claude.runner.ClaudeAgentDefinition;
 import io.github.cowwoc.cat.common.optimizer.adapter.BindingFiles;
+import io.github.cowwoc.cat.common.optimizer.adapter.RankingResource;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -39,6 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeProfileInventory implements ProfileInventory
 {
+	private static final String RANKING = "capability-ranking.json";
 	private static final String RESOURCE = "claude-profiles.json";
 	private static final int FORMAT_VERSION = 1;
 	private static final String INHERIT = "inherit";
@@ -166,6 +169,22 @@ public final class ClaudeProfileInventory implements ProfileInventory
 		if (!value.isString() || value.asString().isBlank())
 			throw new IOException("The field " + name + " in " + RESOURCE + " is not non-blank text.");
 		return value.asString();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The ranking is the resource {@code capability-ranking.json} next to this class.
+	 *
+	 * @throws IOException if the resource is missing or malformed
+	 */
+	@Override
+	public CapabilityRanking ranking() throws IOException
+	{
+		try (InputStream in = ClaudeProfileInventory.class.getResourceAsStream(RANKING))
+		{
+			return RankingResource.parse(in, RANKING);
+		}
 	}
 
 	@Override

@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -42,6 +43,11 @@ public final class ContractFixtures
 	 */
 	public static final ProfileCatalog TWO_PROFILES = new ProfileCatalog("test inventory of two profiles",
 		List.of(BIG, SMALL));
+	/**
+	 * The single-profile inventory.
+	 */
+	public static final ProfileCatalog ONE_PROFILE = new ProfileCatalog("test inventory of one profile",
+		List.of(PROFILE));
 
 	/**
 	 * Returns the contract that {@code valid-proposal.json} describes: a {@code formatting} category with a test
@@ -107,8 +113,9 @@ public final class ContractFixtures
 		TrialProfiles profiles;
 		if (twoProfiles)
 		{
-			profiles = TrialProfiles.compute(TWO_PROFILES, List.of(new ProfileBinding(safetySource, BIG)), List.of(),
-				requirements, categories, Set.of(Requirement.CORE_TASK.id()));
+			profiles = TrialProfiles.compute(TWO_PROFILES, ranking(TWO_PROFILES),
+				List.of(new ProfileBinding(safetySource, BIG)), List.of(), List.of(), requirements, categories,
+				Set.of(Requirement.CORE_TASK.id()));
 		}
 		else
 			profiles = profiles(requirements, categories);
@@ -126,8 +133,23 @@ public final class ContractFixtures
 	 */
 	public static TrialProfiles profiles(List<Requirement> requirements, List<Category> categories)
 	{
-		return TrialProfiles.compute(new ProfileCatalog("test inventory of one profile", List.of(PROFILE)),
-			List.of(), List.of(), requirements, categories, Set.of(Requirement.CORE_TASK.id()));
+		return TrialProfiles.compute(ONE_PROFILE, ranking(ONE_PROFILE), List.of(), List.of(), List.of(), requirements,
+			categories, Set.of(Requirement.CORE_TASK.id()));
+	}
+
+	/**
+	 * Returns a ranking of every model family of an inventory, in the order that the inventory first lists them, so
+	 * that the first family is the most capable.
+	 *
+	 * @param inventory the inventory
+	 * @return the ranking
+	 */
+	public static CapabilityRanking ranking(ProfileCatalog inventory)
+	{
+		Set<String> families = new LinkedHashSet<>();
+		for (TrialProfile profile : inventory.profiles())
+			families.add(CapabilityRanking.family(profile.model()));
+		return new CapabilityRanking(List.copyOf(families), "test ranking in inventory order");
 	}
 
 	/**

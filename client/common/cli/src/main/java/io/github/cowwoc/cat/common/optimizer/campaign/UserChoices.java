@@ -55,7 +55,7 @@ final class UserChoices
 			case TARGETED_OPTIMIZATION ->
 			{
 				PendingDecision.CheckpointReached checkpoint = (PendingDecision.CheckpointReached) pending;
-				draft.round = TrialAdoption.failingRound(draft.developmentCounts, draft.contract(),
+				draft.round = TrialAdoption.failingRound(draft.developmentCounts, draft.developmentCells(),
 					checkpoint.cell());
 				draft.resolve();
 			}

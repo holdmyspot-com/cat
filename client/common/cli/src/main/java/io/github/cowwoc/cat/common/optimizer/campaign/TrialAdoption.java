@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.util.ArrayList;
@@ -136,8 +136,7 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a judged trial. A failure of a candidate makes its cell active for the rest of the campaign
-	 * ({@link CellTier}); a promotion run's failure does not, because an author attempt is not a candidate.
+	 * Adopts a judged trial.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -149,8 +148,6 @@ final class TrialAdoption
 			draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, trial.instance(), trial.verdict());
 			recordWorkingVerdict(draft, trial.instance(), trial.verdict());
 		}
-		if (trial.verdict() == Verdict.FAIL && trial.key().purpose() != Purpose.PROMOTION)
-			draft.failedCells.add(trial.key().cell());
 		switch (trial.key().purpose())
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
@@ -162,8 +159,7 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts a development outcome. Development widens to every cell once every active cell meets the readiness
-	 * gate's count conditions ({@link CellTier}). A {@link Impact#BLOCKING blocking} failure that does not withdraw
+	 * Adopts a development outcome. A {@link Impact#BLOCKING blocking} failure that does not withdraw
 	 * the working candidate fails fast; any other failure is diagnosed by reruns when no round or author attempt is in
 	 * progress.
 	 *
@@ -175,8 +171,6 @@ final class TrialAdoption
 		String cell = trial.key().cell();
 		Verdict verdict = trial.verdict();
 		draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
-		if (!draft.widened)
-			draft.widened = CellTier.isActiveSetReady(draft.contract(), draft.failedCells, draft.developmentCounts);
 		if (draft.working.isIncumbent())
 			addBaseline(draft, cell, verdict);
 		if (verdict == Verdict.PASS)
@@ -247,7 +241,7 @@ final class TrialAdoption
 		});
 		draft.diagnosis = null;
 		if (draft.round == null && draft.author == null)
-			draft.round = failingRound(draft.developmentCounts, draft.contract(), null);
+			draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), null);
 	}
 
 	/**
@@ -283,7 +277,6 @@ final class TrialAdoption
 		draft.developmentFailures = new ArrayList<>(restored.failures());
 		draft.instanceOutcomes = restored.instanceOutcomes();
 		draft.reviewPoints = new LinkedHashMap<>(restored.reviewPoints());
-		draft.widened = restored.widened();
 		restoreRegressionVerdicts(draft, predecessor.regressionSet());
 		draft.round = predecessor.round();
 		draft.slowStart = SlowStart.INITIAL;
@@ -328,7 +321,7 @@ final class TrialAdoption
 	private static Development snapshotDevelopment(Draft draft)
 	{
 		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
-			null, null, null, draft.reviewPoints, draft.widened, draft.instanceOutcomes, null, List.of());
+			null, null, null, draft.reviewPoints, draft.instanceOutcomes, null, List.of());
 	}
 
 	/**
@@ -428,7 +421,7 @@ final class TrialAdoption
 		if (draft.diagnosis == null)
 			return;
 		Development development = new Development(draft.working, draft.series, draft.developmentCounts,
-			draft.developmentFailures, draft.diagnosis, null, null, draft.reviewPoints, draft.widened);
+			draft.developmentFailures, draft.diagnosis, null, null, draft.reviewPoints);
 		switch (EditOrContinue.decide(development))
 		{
 			case RERUN ->
@@ -438,48 +431,52 @@ final class TrialAdoption
 			case EDIT ->
 			{
 				draft.diagnosis = null;
-				draft.round = failingRound(draft.developmentCounts, draft.contract(), null);
+				draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), null);
 			}
 			case CONTINUE -> draft.diagnosis = null;
 		}
 	}
 
 	/**
-	 * Creates a round from currently failing cells and freezes its weak-candidate policy.
+	 * Creates a round from the currently failing development cells and freezes its weak-candidate policy.
 	 *
 	 * @param counts the current development counts
-	 * @param contract the confirmed contract
-	 * @param required a cell to address even without failures, or null
+	 * @param developmentCells the development cells, in contract order
+	 * @param required a development cell to address even without failures, or null
 	 * @return the round
 	 */
-	static Round failingRound(Map<String, CellCounts> counts, Contract contract, String required)
+	static Round failingRound(Map<String, CellCounts> counts, List<Cell> developmentCells, String required)
 	{
-		return failingRound(counts, counts, contract, required);
+		return failingRound(counts, counts, developmentCells, required);
 	}
 
 	/**
-	 * Creates a round addressing failures from either phase while testing weakness from development alone.
+	 * Creates a round addressing the failing development cells of either phase while testing weakness from
+	 * development alone.
 	 *
 	 * @param failures the counts that identify failing cells
 	 * @param development the working candidate's development outcomes
-	 * @param contract the confirmed contract
-	 * @param required a required cell, or null
+	 * @param developmentCells the development cells, in contract order
+	 * @param required a required development cell, or null
 	 * @return the frozen round
 	 */
 	private static Round failingRound(Map<String, CellCounts> failures, Map<String, CellCounts> development,
-		Contract contract, String required)
+		List<Cell> developmentCells, String required)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>();
-		for (String cell : contract.cellIds())
+		Map<String, String> categories = new LinkedHashMap<>();
+		for (Cell cell : developmentCells)
 		{
-			if (failures.getOrDefault(cell, CellCounts.EMPTY).failures() > 0 || cell.equals(required))
-				attempts.put(cell, 0);
+			String id = cell.id();
+			categories.put(id, cell.categoryId());
+			if (failures.getOrDefault(id, CellCounts.EMPTY).failures() > 0 || id.equals(required))
+				attempts.put(id, 0);
 		}
-		boolean weak = AttemptSelection.isWeak(development, contract, List.copyOf(attempts.keySet()));
+		boolean weak = AttemptSelection.isWeak(development, developmentCells, List.copyOf(attempts.keySet()));
 		if (weak)
 		{
 			Set<String> addressed = new HashSet<>();
-			attempts.keySet().removeIf(cell -> !addressed.add(contract.findCell(cell).orElseThrow().categoryId()));
+			attempts.keySet().removeIf(cell -> !addressed.add(categories.get(cell)));
 		}
 		return new Round(attempts, weak, Map.of(), List.of());
 	}
@@ -828,7 +825,7 @@ final class TrialAdoption
 		if (attempt.failures().isEmpty())
 			return;
 		draft.diagnosis = null;
-		draft.round = failingRound(attempt.counts(), draft.developmentCounts, draft.contract(), null);
+		draft.round = failingRound(attempt.counts(), draft.developmentCounts, draft.developmentCells(), null);
 	}
 
 	/**
@@ -846,7 +843,7 @@ final class TrialAdoption
 			return;
 		}
 		Development development = new Development(draft.working, draft.series, draft.developmentCounts,
-			draft.developmentFailures, null, null, null, draft.reviewPoints, draft.widened);
+			draft.developmentFailures, null, null, null, draft.reviewPoints);
 		Optional<String> due = ReviewCheckpoint.due(development, draft.contract());
 		if (due.isPresent())
 		{

@@ -10,6 +10,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
@@ -61,8 +63,8 @@ public final class ProposalTest
 	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent");
 	private static final String OBSERVED = "hook: .claude/hooks/session-start.sh\nskill: release-notes";
 	private static final TrialProfile ROLE = new TrialProfile("role-model", "xhigh");
-	private static final ProfileEvidence PROFILES = new ProfileEvidence(
-		ContractFixtures.contract().profiles().inventory(), Map.of());
+	private static final ProfileEvidence PROFILES = new ProfileEvidence(ContractFixtures.ONE_PROFILE,
+		ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of());
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
@@ -105,7 +107,8 @@ public final class ProposalTest
 	private static SessionResult.Completed session(String response)
 	{
 		return new SessionResult.Completed(Path.of("/runs/deriver/artifacts/transcript.jsonl"),
-			List.of(List.of("I will inspect the prompt system.", response)), Path.of("/runs/deriver/project"), "model", null,
+			List.of(List.of("I will inspect the prompt system.", response)), Path.of("/runs/deriver/project"), "model",
+				null,
 			null, List.of(), OBSERVED, List.of());
 	}
 
@@ -217,7 +220,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-E13
-		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES.inventory());
+		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.DERIVER);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -542,7 +545,7 @@ public final class ProposalTest
 		DerivedProposal first = deriver.proposal(session(fixture("derivation.json")), PROFILES);
 		String feedback = "Split the safety category by the kind of directory.";
 
-		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES.inventory(), first, feedback);
+		SessionRequest request = deriver.request(PROMPT_SYSTEM, PROFILES, first, feedback);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.DERIVER);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -660,8 +663,9 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a subscription login, and a login whose kind CAT cannot tell, produce the
-	 * warning with the minimum session count and the API key recommendation, and that an API key produces no warning.
+	 * Verifies that a subscription login, and a login whose kind CAT cannot tell, produce the warning with the
+	 * smallest minimum session count of the certification scope choices and the API key recommendation, and that an
+	 * API key produces no warning.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -670,7 +674,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E7
 		Proposal subscription = proposal(noLinks(), HostLogin.SUBSCRIPTION);
-		int trials = minimumTrials(subscription);
+		int trials = minimumTrials(subscription, CertificationScope.WEAKEST_CELL);
 		String sessions = String.valueOf(2 * trials);
 
 		requireThat(subscription.render(), "subscription").contains("Warning: the harness signs in with a " +
@@ -683,22 +687,24 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Returns the minimum remaining trials of a fresh campaign once the proposal is confirmed.
+	 * Returns the minimum remaining trials of a fresh campaign once the proposal is confirmed with a certification
+	 * scope.
 	 *
 	 * @param proposal the proposal
+	 * @param scope the certification scope
 	 * @return the trials
 	 */
-	private int minimumTrials(Proposal proposal)
+	private int minimumTrials(Proposal proposal, CertificationScope scope)
 	{
-		Contract contract = proposal.contract();
+		Contract contract = proposal.contract().withScope(scope);
 		Campaign confirmed = Transitions.apply(new Builder().build(),
 			new CampaignEvent.Confirm(contract, ContractIdentity.of(schema, contract), 0));
 		return RemainingWork.of(confirmed).total();
 	}
 
 	/**
-	 * Verifies that the minimum session count counts one trial session and one judge session for each of the
-	 * minimum remaining trials, with each cell's share.
+	 * Verifies that each certification scope choice states its minimum session count: one trial session and one
+	 * judge session for each of the minimum remaining trials, with each cell's share.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -708,13 +714,161 @@ public final class ProposalTest
 		// Requirement: R-E7
 		// Requirement: R-C1
 		Proposal proposal = proposal(noLinks(), HostLogin.API_KEY);
-		int trials = minimumTrials(proposal);
+		int trials = minimumTrials(proposal, CertificationScope.LATEST_VERSIONS);
 
 		requireThat(trials, "trials").isPositive();
-		requireThat(proposal.render(), "render").contains("## Minimum session count").
+		requireThat(proposal.render(), "render").contains("## Certification scope").
 			contains("At least " + 2 * trials + " nested sessions remain if every trial passes: " + trials +
 				" trials, each with one trial session and one judge session.").
 			contains("- `formatting`, `safety` (2 cells): readiness ");
+	}
+
+	/**
+	 * Verifies that the proposal shows the capability ranking with its source and, for each named certification
+	 * scope choice, its cells, each category's weakest cell and its minimum session count, and that confirming with a
+	 * choice freezes that scope.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void showsEachCertificationScopeChoice() throws InvalidProposalException
+	{
+		// Requirement: R-C15
+		// Requirement: R-E22
+		// Requirement: R-C1
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), twoProfiles());
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		int weakest = minimumTrials(proposal, CertificationScope.WEAKEST_CELL);
+		int latest = minimumTrials(proposal, CertificationScope.LATEST_VERSIONS);
+		requireThat(weakest, "weakest").isLessThan(latest);
+
+		String text = proposal.render();
+		requireThat(text, "text").
+			contains("Capability ranking, most capable first (test ranking in inventory order): big, small").
+			contains("### `weakest-cell`: each category's weakest cell only").
+			contains("### `latest-versions`: every cell of each model family's latest version").
+			doesNotContain("### `described`").
+			contains("To certify other cells, describe them in revision feedback").
+			contains("Cells: `" + ContractFixtures.SMALL_CELL + "`, `safety` (2 cells)").
+			contains("Weakest cells: `formatting`: `" + ContractFixtures.SMALL_CELL + "`; `safety`: `safety`").
+			contains("At least " + 2 * weakest + " nested sessions remain if every trial passes: " + weakest +
+				" trials").
+			contains("Cells: every cell of category `formatting`, `safety` (3 cells)").
+			contains("At least " + 2 * latest + " nested sessions remain if every trial passes: " + latest +
+				" trials");
+		requireThat(text.indexOf("### `weakest-cell`"), "order").isLessThan(text.indexOf("### `latest-versions`"));
+
+		CampaignEvent confirm = proposal.confirmation(7, CertificationScope.WEAKEST_CELL).getFirst();
+		Contract scoped = proposal.contract().withScope(CertificationScope.WEAKEST_CELL);
+		requireThat(confirm, "confirm").isEqualTo(new CampaignEvent.Confirm(scoped,
+			ContractIdentity.of(schema, scoped), 7));
+	}
+
+	/**
+	 * Verifies that an inventory model whose family the capability ranking does not list is named in the proposal,
+	 * leaves every certification scope choice unavailable, and blocks confirmation, and that a described scope
+	 * without described cells blocks confirmation.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void unrankedModelBlocksConfirmation() throws InvalidProposalException
+	{
+		// Requirement: R-E22
+		// Requirement: R-C15
+		ProfileEvidence partial = new ProfileEvidence(ContractFixtures.TWO_PROFILES,
+			new CapabilityRanking(List.of("big"), "test ranking without small"), Map.of());
+		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")), partial);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+
+		requireThat(proposal.render(), "render").contains("Unranked models: small").
+			contains("No choice is available yet").doesNotContain("### `weakest-cell`");
+		for (CertificationScope scope : List.of(CertificationScope.WEAKEST_CELL, CertificationScope.LATEST_VERSIONS))
+		{
+			requireThat(proposal.isConfirmable(scope), scope.id()).isFalse();
+			requireThat(proposal.confirmationRefusal(scope), scope.id() + ".refusal").contains("small").
+				contains("revise");
+		}
+
+		Proposal ranked = proposal(noLinks(), HostLogin.API_KEY);
+		requireThat(ranked.isConfirmable(CertificationScope.DESCRIBED), "describedWithoutCells").isFalse();
+		requireThat(ranked.confirmationRefusal(CertificationScope.DESCRIBED), "describedRefusal").
+			contains("revision feedback");
+	}
+
+	/**
+	 * Verifies that revision feedback supplies a corrected capability ranking, which then decides each scope's weakest
+	 * cell, and the profiles of a described certification scope, which the proposal shows as a third choice that can
+	 * be confirmed; that a described profile outside the inventory and an invalid ranking are refused; and that the
+	 * deriver's request shows the shipped ranking.
+	 *
+	 * @throws InvalidProposalException if the revised output is rejected
+	 */
+	@Test
+	public void feedbackSuppliesRankingAndDescribedScope() throws InvalidProposalException
+	{
+		// Requirement: R-C15
+		// Requirement: R-E22
+		// Requirement: R-C1
+		ProfileEvidence evidence = evidence(ContractFixtures.TWO_PROFILES, Map.of());
+		requireThat(deriver.request(PROMPT_SYSTEM, evidence).turns().getFirst(), "request").
+			contains("Capability ranking, most capable first (test ranking in inventory order): big, small");
+
+		String revised = changedDerivation(output ->
+		{
+			output.putArray("capability_ranking").add("small").add("big");
+			output.putArray("certification_profiles").addObject().put("model", "small").put("effort", "");
+		});
+		DerivedProposal derived = deriver.proposal(session(revised), evidence);
+		requireThat(derived.contract().profiles().ranking(), "ranking").isEqualTo(new CapabilityRanking(
+			List.of("small", "big"), "the user's revision feedback"));
+		requireThat(derived.contract().profiles().described(), "described").
+			isEqualTo(List.of(new TrialProfile("small", "")));
+
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		String text = proposal.render();
+		String bigFormatting = "formatting@" + ContractFixtures.BIG.model() + "/" + ContractFixtures.BIG.effort();
+		String bigSafety = "safety@" + ContractFixtures.BIG.model() + "/" + ContractFixtures.BIG.effort();
+		String smallSafety = "safety@" + ContractFixtures.SMALL.model() + "/" + ContractFixtures.SMALL.effort();
+		requireThat(text, "text").
+			contains("Capability ranking, most capable first (the user's revision feedback): small, big").
+			contains("Weakest cells: `formatting`: `" + bigFormatting + "`; `safety`: `" + bigSafety + "`").
+			contains("### `described`: the cells that you described in revision feedback").
+			contains("Cells: `" + ContractFixtures.SMALL_CELL + "`, `" + smallSafety + "` (2 cells)").
+			contains("Weakest cells: `formatting`: `" + ContractFixtures.SMALL_CELL + "`; `safety`: `" +
+				smallSafety + "`");
+		requireThat(proposal.isConfirmable(CertificationScope.DESCRIBED), "describedConfirmable").isTrue();
+
+		String outside = changedDerivation(output -> output.putArray("certification_profiles").addObject().
+			put("model", "huge").put("effort", ""));
+		requireThat(problems(outside, evidence), "outside").contains("huge/default").
+			contains(ContractFixtures.TWO_PROFILES.source());
+		String duplicate = changedDerivation(output -> output.putArray("capability_ranking").add("big").add("big"));
+		requireThat(problems(duplicate, evidence), "duplicate").
+			contains("$.capability_ranking[1]: duplicate family big");
+	}
+
+	/**
+	 * Returns the problems that rejected a deriver output.
+	 *
+	 * @param output the deriver's output
+	 * @param evidence the profile evidence
+	 * @return the problems, one per line
+	 */
+	private String problems(String output, ProfileEvidence evidence)
+	{
+		try
+		{
+			deriver.proposal(session(output), evidence);
+		}
+		catch (InvalidProposalException e)
+		{
+			return String.join("\n", e.problems());
+		}
+		throw new AssertionError("The output was accepted: " + output);
 	}
 
 	/**
@@ -754,7 +908,7 @@ public final class ProposalTest
 			contains("- `shared.md` -> `/shared/rules.md`: outside the project; external target read only").
 			contains(LinkReport.STAGING_CONSEQUENCE);
 		requireThat(proposal.contract().limitations(), "limitations").contains(LinkReport.STAGING_CONSEQUENCE);
-		requireThat(proposal.isConfirmable(), "isConfirmable").isTrue();
+		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "isConfirmable").isTrue();
 		requireThat(proposal(noLinks(), HostLogin.API_KEY).contract().limitations(), "noLinks").
 			doesNotContain(LinkReport.STAGING_CONSEQUENCE);
 	}
@@ -771,10 +925,10 @@ public final class ProposalTest
 		// Requirement: R-C1
 		Proposal proposal = proposal(links(true), HostLogin.API_KEY);
 
-		requireThat(proposal.isConfirmable(), "isConfirmable").isFalse();
+		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "isConfirmable").isFalse();
 		requireThat(proposal.render(), "render").contains("- `loop-a.md`: the links form a cycle; this blocks " +
 			"confirmation");
-		proposal.confirmation(7);
+		proposal.confirmation(7, CertificationScope.LATEST_VERSIONS);
 	}
 
 	/**
@@ -792,9 +946,9 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("- " + Outcome.UNSUPPORTED_OUTPUT.label() +
 			" (requirements r1): CLAUDE.md asks for a diagram image with every summary.");
 
-		List<CampaignEvent> events = proposal.confirmation(7);
+		List<CampaignEvent> events = proposal.confirmation(7, CertificationScope.LATEST_VERSIONS);
 
-		Contract contract = proposal.contract();
+		Contract contract = proposal.contract().withScope(CertificationScope.LATEST_VERSIONS);
 		requireThat(events, "events").isEqualTo(List.of(
 			new CampaignEvent.Confirm(contract, ContractIdentity.of(schema, contract), 7),
 			new CampaignEvent.ReportUnavailable(Outcome.UNSUPPORTED_OUTPUT)));
@@ -806,13 +960,25 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Returns the evidence of an inventory whose families rank in inventory order.
+	 *
+	 * @param inventory the inventory
+	 * @param bindings the profile that each file binds
+	 * @return the evidence
+	 */
+	private static ProfileEvidence evidence(ProfileCatalog inventory, Map<String, TrialProfile> bindings)
+	{
+		return new ProfileEvidence(inventory, ContractFixtures.ranking(inventory), bindings);
+	}
+
+	/**
 	 * Returns the evidence of a two-profile inventory in which {@code rules/safety.md} binds the big profile.
 	 *
 	 * @return the evidence
 	 */
 	private static ProfileEvidence twoProfiles()
 	{
-		return new ProfileEvidence(ContractFixtures.TWO_PROFILES, Map.of("rules/safety.md", ContractFixtures.BIG));
+		return evidence(ContractFixtures.TWO_PROFILES, Map.of("rules/safety.md", ContractFixtures.BIG));
 	}
 
 	/**
@@ -839,7 +1005,7 @@ public final class ProposalTest
 			contains("category formatting (2 cells, named `<category>@<profile>`): big/high, small/high").
 			contains("category safety (1 cell, named by the category): big/high").
 			contains("Minimum trials by cell:").
-			contains("- every cell of category `formatting`, `safety` (3 cells): readiness ");
+			contains("Cells: every cell of category `formatting`, `safety` (3 cells)");
 	}
 
 	/**
@@ -856,7 +1022,7 @@ public final class ProposalTest
 		ProfileCatalog inventory = new ProfileCatalog("test inventory of three profiles", List.of(
 			new TrialProfile("big", "high"), new TrialProfile("big", "low"), new TrialProfile("small", "high")));
 		DerivedProposal derived = deriver.proposal(session(fixture("derivation.json")),
-			new ProfileEvidence(inventory, Map.of()));
+			evidence(inventory, Map.of()));
 		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(6);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
@@ -864,8 +1030,9 @@ public final class ProposalTest
 		requireThat(text, "text").
 			contains("  - categories formatting, safety (3 cells each, named `<category>@<profile>`): big/high, " +
 				"big/low, small/high").
-			contains("- every cell of categories `formatting`, `safety` (6 cells): readiness ").
-			doesNotContain("formatting@big/high");
+			contains("Cells: every cell of categories `formatting`, `safety` (6 cells)").
+			contains("- `formatting@big/high`, `formatting@big/low`, `safety@big/high`, `safety@big/low` (4 cells): " +
+				"baseline 50, next attempt 93");
 	}
 
 	/**
@@ -880,7 +1047,7 @@ public final class ProposalTest
 		// Requirement: R-C10
 		String restricted = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "small").put("effort", ""));
-		DerivedProposal derived = deriver.proposal(session(restricted), new ProfileEvidence(
+		DerivedProposal derived = deriver.proposal(session(restricted), evidence(
 			ContractFixtures.TWO_PROFILES, Map.of()));
 		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of("formatting", "safety"));
 		requireThat(derived.contract().findCell("formatting").orElseThrow().profile(), "profile").
@@ -935,12 +1102,13 @@ public final class ProposalTest
 	public void requestListsTheProfileInventory()
 	{
 		// Requirement: R-C10
-		String prompt = deriver.request(PROMPT_SYSTEM, ContractFixtures.TWO_PROFILES).turns().getFirst();
+		String prompt = deriver.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of())).turns().
+			getFirst();
 		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
 			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
 
 		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
-		requireThat(deriver.request(PROMPT_SYSTEM, plain).turns().getFirst(), "plainPrompt").
+		requireThat(deriver.request(PROMPT_SYSTEM, evidence(plain, Map.of())).turns().getFirst(), "plainPrompt").
 			contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
 	}
 
@@ -955,7 +1123,7 @@ public final class ProposalTest
 		// Requirement: R-E20
 		// Requirement: R-C9
 		// Requirement: R-C8
-		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("### Deterministic and semantic requirements").
 			contains("`known_good`").contains("`known_bad`").contains("Never write code").
@@ -995,7 +1163,7 @@ public final class ProposalTest
 	public void requestAsksForRegressionScenarios()
 	{
 		// Requirement: R-I3
-		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
 		requireThat(prompt, "prompt").contains("### Recorded regression scenarios").
 			contains("regression_scenarios").contains("test definition");
 	}
@@ -1226,7 +1394,7 @@ public final class ProposalTest
 		requireThat(conflict.reason(), "reason").isEqualTo("Keeps brevity elsewhere.");
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
-		requireThat(proposal.isConfirmable(), "confirmable").isFalse();
+		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "confirmable").isFalse();
 	}
 
 	/**
@@ -1373,7 +1541,8 @@ public final class ProposalTest
 			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
 		});
 		Proposal.of(deriver.proposal(session(output), PROFILES), new Builder().build(), noLinks(), HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).confirmation(7);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).confirmation(7,
+				CertificationScope.LATEST_VERSIONS);
 	}
 
 	/**
@@ -1385,7 +1554,7 @@ public final class ProposalTest
 		// Requirement: R-E20
 		// Requirement: R-C13
 		// Requirement: R-C14
-		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
 		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
@@ -1591,7 +1760,7 @@ public final class ProposalTest
 	public void requestAsksForTriggersAndAbsentTests()
 	{
 		// Requirement: R-D17
-		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`trigger`").contains("`absent_triggers`");
 		JsonNode outputSchema = readOutputSchema(prompt);

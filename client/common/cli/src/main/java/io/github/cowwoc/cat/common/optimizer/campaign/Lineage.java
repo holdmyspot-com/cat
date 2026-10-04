@@ -16,7 +16,7 @@ import java.util.Set;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param number the lineage's number within the campaign, from 1
- * @param contract the confirmed contract
+ * @param contract the confirmed contract, with the certification scope that the user chose
  * @param contractHash the contract's identity
  * @param development the development draw stream
  * @param baseline the baseline-arm draw stream
@@ -31,7 +31,7 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 	 * Creates a lineage.
 	 *
 	 * @param number the lineage's number within the campaign, from 1
-	 * @param contract the confirmed contract
+	 * @param contract the confirmed contract, with the certification scope that the user chose
 	 * @param contractHash the contract's identity
 	 * @param development the development draw stream
 	 * @param baseline the baseline-arm draw stream
@@ -39,13 +39,16 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 	 *   in failure order
 	 * @param unavailable the known conditions that make certification unavailable under this lineage
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code number} is not positive, a stream has the wrong kind, or
-	 *   {@code unavailable} holds an outcome that does not report unavailability
+	 * @throws IllegalArgumentException if {@code number} is not positive, {@code contract} has no certification
+	 *   scope, a stream has the wrong kind, or {@code unavailable} holds an outcome that does not report
+	 *   unavailability
 	 */
 	public Lineage
 	{
 		requireThat(number, "number").isPositive();
 		requireThat(contract, "contract").isNotNull();
+		if (contract.profiles().scope() == null)
+			throw new IllegalArgumentException("A lineage's contract needs a certification scope");
 		requireThat(contractHash, "contractHash").isNotNull();
 		requireThat(development, "development").isNotNull();
 		requireThat(development.kind(), "development.kind()").isEqualTo(DrawStream.Kind.DEVELOPMENT);

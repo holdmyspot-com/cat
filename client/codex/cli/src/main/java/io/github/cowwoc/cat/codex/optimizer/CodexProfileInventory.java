@@ -4,12 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.codex.runner.CodexAgentDefinition;
 import io.github.cowwoc.cat.common.optimizer.adapter.BindingFiles;
+import io.github.cowwoc.cat.common.optimizer.adapter.RankingResource;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexProfileInventory implements ProfileInventory
 {
+	private static final String RANKING = "capability-ranking.json";
 	private static final String COMMAND = "`codex debug models`";
 	private static final String LISTED = "list";
 	private static final String DELEGATING_EFFORT = "ultra";
@@ -128,6 +132,22 @@ public final class CodexProfileInventory implements ProfileInventory
 				" and no listed model is of version 6 or later.");
 		}
 		return new ProfileCatalog(COMMAND + " of " + HarnessVersion.read(executable, launcher), profiles);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The ranking is the resource {@code capability-ranking.json} next to this class.
+	 *
+	 * @throws IOException if the resource is missing or malformed
+	 */
+	@Override
+	public CapabilityRanking ranking() throws IOException
+	{
+		try (InputStream in = CodexProfileInventory.class.getResourceAsStream(RANKING))
+		{
+			return RankingResource.parse(in, RANKING);
+		}
 	}
 
 	@Override

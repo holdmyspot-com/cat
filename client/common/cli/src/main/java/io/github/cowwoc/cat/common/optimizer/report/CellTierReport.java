@@ -4,43 +4,44 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
- * The development cell tier of a confirmed campaign: each category's active cells and
- * whether development has widened to every cell.
+ * The cells of a confirmed campaign: its certification scope and, per category, the weakest cell and the development
+ * cells.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param activeCells the identifiers of each category's active cells, by category in contract order
- * @param widened {@code true} if every cell is eligible for the working candidate's representative development
- *   trials
+ * @param scope the certification scope that the user chose
+ * @param scopeCells the number of cells in the certification scope
+ * @param categories each category's cells, in contract order
  */
-public record CellTierReport(Map<String, List<String>> activeCells, boolean widened)
+public record CellTierReport(CertificationScope scope, int scopeCells, List<CategoryCells> categories)
 {
 	/**
 	 * Creates a report.
 	 *
-	 * @param activeCells the identifiers of each category's active cells, by category in contract order
-	 * @param widened {@code true} if every cell is eligible for the working candidate's representative development
-	 *   trials
-	 * @throws NullPointerException if {@code activeCells} is null
+	 * @param scope the certification scope that the user chose
+	 * @param scopeCells the number of cells in the certification scope
+	 * @param categories each category's cells, in contract order
+	 * @throws NullPointerException if {@code scope} or {@code categories} are null
+	 * @throws IllegalArgumentException if {@code scopeCells} is not positive
 	 */
 	public CellTierReport
 	{
-		requireThat(activeCells, "activeCells").isNotNull();
-		Map<String, List<String>> copy = new LinkedHashMap<>();
-		for (Map.Entry<String, List<String>> entry : activeCells.entrySet())
-			copy.put(entry.getKey(), List.copyOf(entry.getValue()));
-		activeCells = Collections.unmodifiableMap(copy);
+		requireThat(scope, "scope").isNotNull();
+		requireThat(scopeCells, "scopeCells").isPositive();
+		categories = List.copyOf(categories);
 	}
 
 	/**
-	 * Returns the cell tier of a campaign.
+	 * Returns the cells of a campaign.
 	 *
 	 * @param campaign the campaign
 	 * @return the report, or {@code null} before a contract is confirmed
@@ -51,7 +52,46 @@ public record CellTierReport(Map<String, List<String>> activeCells, boolean wide
 		requireThat(campaign, "campaign").isNotNull();
 		if (!campaign.isConfirmed())
 			return null;
-		return new CellTierReport(CellTier.activeCellsByCategory(campaign.contract(), campaign.failedCells()),
-			campaign.development().widened());
+		Contract contract = campaign.contract();
+		List<Cell> development = CellTier.developmentCells(campaign);
+		List<CategoryCells> categories = new ArrayList<>();
+		for (Category category : contract.categories())
+		{
+			List<String> cells = development.stream().filter(cell -> cell.categoryId().equals(category.id())).
+				map(Cell::id).toList();
+			categories.add(new CategoryCells(category.id(), CellTier.weakestCell(contract, category.id()).id(),
+				cells));
+		}
+		return new CellTierReport(contract.profiles().scope(), CellTier.scopeCells(contract).size(), categories);
+	}
+
+	/**
+	 * One category's weakest cell and development cells.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param category the category's identifier
+	 * @param weakestCell the identifier of the category's weakest cell
+	 * @param developmentCells the identifiers of the category's development cells, in contract order
+	 */
+	public record CategoryCells(String category, String weakestCell, List<String> developmentCells)
+	{
+		/**
+		 * Creates a category's cells.
+		 *
+		 * @param category the category's identifier
+		 * @param weakestCell the identifier of the category's weakest cell
+		 * @param developmentCells the identifiers of the category's development cells, in contract order
+		 * @throws NullPointerException if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code category} or {@code weakestCell} are blank, or
+		 *   {@code developmentCells} is empty
+		 */
+		public CategoryCells
+		{
+			requireThat(category, "category").isNotBlank();
+			requireThat(weakestCell, "weakestCell").isNotBlank();
+			requireThat(developmentCells, "developmentCells").isNotEmpty();
+			developmentCells = List.copyOf(developmentCells);
+		}
 	}
 }

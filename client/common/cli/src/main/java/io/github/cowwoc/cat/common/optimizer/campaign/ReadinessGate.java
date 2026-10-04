@@ -2,14 +2,13 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-
 import java.util.List;
 
 /**
  * Checks whether development is ready to freeze the working candidate and start certification.
  * <p>
- * Each cell, a requirement category under one runner profile, must meet the development thresholds below. Passing
- * these checks controls when certification starts; it does not certify the candidate.
+ * Each {@link CellTier development cell}, a requirement category under one runner profile, must meet the development
+ * thresholds below. Passing these checks controls when certification starts; it does not certify the candidate.
  */
 public final class ReadinessGate
 {
@@ -65,9 +64,9 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Indicates whether the working candidate meets the gate: every cell is ready, no diagnosis, round or author
-	 * attempt is unresolved, no regression instance is known to fail for the working candidate, and the incumbent
-	 * baseline is met.
+	 * Indicates whether the working candidate meets the gate: every development cell is ready, no diagnosis, round or
+	 * author attempt is unresolved, no regression instance is known to fail for the working candidate, and the
+	 * incumbent baseline is met.
 	 *
 	 * @param campaign the campaign
 	 * @return {@code true} if the gate is met
@@ -81,7 +80,7 @@ public final class ReadinessGate
 		Development development = campaign.development();
 		if (development.isPaused())
 			return false;
-		for (String cell : campaign.contract().cellIds())
+		for (String cell : CellTier.developmentCellIds(campaign))
 		{
 			if (!isReady(development.count(cell)))
 				return false;

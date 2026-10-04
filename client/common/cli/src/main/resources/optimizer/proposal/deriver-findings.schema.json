@@ -27,6 +27,25 @@
 				}
 			}
 		},
+		"capability_ranking": {
+			"description": "Every model family, most capable first, when the user's feedback corrects or extends the capability ranking; the list replaces CAT's ranking. Empty unless the user changed the ranking.",
+			"type": "array",
+			"uniqueItems": true,
+			"items": {"type": "string", "pattern": "^\\S+$"}
+		},
+		"certification_profiles": {
+			"description": "The trial profiles that the user's own description of the certification scope names, as patterns over the harness's profile inventory. An empty model or effort matches every value. Empty unless the user described a certification scope.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["model", "effort"],
+				"properties": {
+					"model": {"type": "string"},
+					"effort": {"type": "string"}
+				}
+			}
+		},
 		"conflicts": {
 			"description": "Every set of requirements that no reply can satisfy together. Empty if none.",
 			"type": "array",
@@ -71,5 +90,6 @@
 			}
 		}
 	},
-	"required": ["derived_sources", "profile_restriction", "scope_conditions", "conflicts"]
+	"required": ["derived_sources", "profile_restriction", "capability_ranking", "certification_profiles",
+		"scope_conditions", "conflicts"]
 }

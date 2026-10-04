@@ -114,10 +114,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Formats 9 to 13 are readable: format 9 records input counts without full session usage,
- * formats 9 and 10 hold no retained promotion state, formats 9 to 11 record no failure impacts, and the contracts of
- * formats 9 to 12 record no triggers, so their requirements always apply and their tests leave no trigger absent.
- * Unsupported format versions are refused.
+ * round-trip exactly. Only the current format is readable: a document of another format version is refused with a
+ * message that asks the user to start a new campaign.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -129,23 +127,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 13;
-	/**
-	 * The readable format whose records contain input counts without full session usage.
-	 */
-	private static final int INPUT_ONLY_FORMAT_VERSION = 9;
-	/**
-	 * The first format that records retained promotion state and instance outcomes.
-	 */
-	private static final int RETAINED_FORMAT_VERSION = 11;
-	/**
-	 * The first format that records the impact of development failures.
-	 */
-	private static final int TRIAGE_FORMAT_VERSION = 12;
-	/**
-	 * The first format whose contracts record each requirement's trigger and each test's absent triggers.
-	 */
-	private static final int TRIGGER_FORMAT_VERSION = 13;
+	private static final int FORMAT_VERSION = 14;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -186,9 +168,6 @@ final class CampaignJson
 		root.put("author_attempts", campaign.authorAttempts());
 		root.set("development", writeDevelopment(campaign.development()));
 		root.set("optimization", writeOptimization(campaign.optimization()));
-		ArrayNode failedCells = root.putArray("failed_cells");
-		for (String cell : new TreeSet<>(campaign.failedCells()))
-			failedCells.add(cell);
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline == null)
 			root.putNull("baseline");
@@ -257,10 +236,9 @@ final class CampaignJson
 	Campaign readCampaign(JsonNode root)
 	{
 		requireVersion(root);
-		int version = integer(root, VERSION);
 		List<Lineage> lineages = new ArrayList<>();
 		for (JsonNode node : elements(root, "lineages"))
-			lineages.add(readLineage(node, version));
+			lineages.add(readLineage(node));
 		IncumbentBaseline baseline = null;
 		JsonNode baselineNode = nullable(root, "baseline");
 		if (baselineNode != null)
@@ -270,10 +248,10 @@ final class CampaignJson
 		}
 		List<CertificationAttempt> attempts = new ArrayList<>();
 		for (JsonNode node : elements(root, "attempts"))
-			attempts.add(readAttempt(node, version));
+			attempts.add(readAttempt(node));
 		List<LogicalTrial> trials = new ArrayList<>();
 		for (JsonNode node : elements(root, "trials"))
-			trials.add(readTrial(node, version));
+			trials.add(readTrial(node));
 		Map<SequenceGroup, Long> sequences = new HashMap<>();
 		for (JsonNode node : elements(root, "sequences"))
 		{
@@ -281,13 +259,6 @@ final class CampaignJson
 				sha256(node, "snapshot"));
 			if (sequences.put(group, longInteger(node, "last_sequence")) != null)
 				throw new IllegalArgumentException("sequences: duplicate group " + group);
-		}
-		Set<String> failedCells = new HashSet<>();
-		for (JsonNode node : elements(root, "failed_cells"))
-		{
-			String cell = stringValue(node, "failed_cells");
-			if (!failedCells.add(cell))
-				throw new IllegalArgumentException("failed_cells: duplicate cell " + cell);
 		}
 		JsonNode slowStart = field(root, "slow_start");
 		JsonNode throttle = field(root, "throttle");
@@ -313,13 +284,12 @@ final class CampaignJson
 		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "author_attempts"),
-			readDevelopment(field(root, "development"), version),
-			failedCells, baseline, attempts, trials, sequences,
+			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
 			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
-			delivery, readOptimization(field(root, "optimization"), version));
+			delivery, readOptimization(field(root, "optimization")));
 	}
 
 	/**
@@ -406,10 +376,9 @@ final class CampaignJson
 	 * Reads retained author diagnoses and removed hunks.
 	 *
 	 * @param node the document
-	 * @param version the enclosing snapshot's format version
 	 * @return the durable evidence
 	 */
-	private static OptimizationEvidence readOptimization(JsonNode node, int version)
+	private static OptimizationEvidence readOptimization(JsonNode node)
 	{
 		List<AuthorDiagnosis> authors = new ArrayList<>();
 		for (JsonNode author : elements(node, "authors"))
@@ -455,7 +424,7 @@ final class CampaignJson
 				bool(attempt, "winner")));
 		}
 		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs, results,
-			readRoleUsage(node, version));
+			readRoleUsage(node));
 	}
 
 	/**
@@ -561,20 +530,19 @@ final class CampaignJson
 	TrialRecord readRecord(JsonNode root)
 	{
 		requireVersion(root);
-		int version = integer(root, VERSION);
 		TrialKey key = readKey(field(root, "key"));
 		CampaignEvent.Complete outcome = null;
 		JsonNode outcomeNode = nullable(root, "outcome");
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readTriage(outcomeNode, version),
+				text(outcomeNode, "rationale"), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
 				readResponses(outcomeNode));
 		}
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome,
-			readUsage(root, TOKEN_USAGE, version));
+			readUsage(root, TOKEN_USAGE));
 	}
 
 	/**
@@ -601,19 +569,16 @@ final class CampaignJson
 	 * Reads the counts reported by finished sessions of each role.
 	 *
 	 * @param node the optimization evidence
-	 * @param version the enclosing snapshot's format version
 	 * @return reported counts by role
 	 */
-	private static Map<SessionRole, List<TokenUsage>> readRoleUsage(JsonNode node, int version)
+	private static Map<SessionRole, List<TokenUsage>> readRoleUsage(JsonNode node)
 	{
-		if (version == INPUT_ONLY_FORMAT_VERSION)
-			return Map.of();
 		Map<SessionRole, List<TokenUsage>> usage = new EnumMap<>(SessionRole.class);
 		JsonNode roles = object(node, TOKEN_USAGE);
 		for (Entry<String, JsonNode> entry : roles.properties())
 		{
 			SessionRole role = SessionRole.valueOf(entry.getKey());
-			usage.put(role, readUsage(roles, entry.getKey(), version));
+			usage.put(role, readUsage(roles, entry.getKey()));
 		}
 		return usage;
 	}
@@ -623,13 +588,10 @@ final class CampaignJson
 	 *
 	 * @param node the containing document
 	 * @param key the array's key
-	 * @param version the enclosing document's format version
 	 * @return the reported counts, in completion order
 	 */
-	private static List<TokenUsage> readUsage(JsonNode node, String key, int version)
+	private static List<TokenUsage> readUsage(JsonNode node, String key)
 	{
-		if (version == INPUT_ONLY_FORMAT_VERSION)
-			return List.of();
 		List<TokenUsage> sessions = new ArrayList<>();
 		for (JsonNode usage : elements(node, key))
 		{
@@ -743,14 +705,11 @@ final class CampaignJson
 	 * Converts a document to a contract lineage.
 	 *
 	 * @param node the document
-	 * @param version the enclosing document's format version
 	 * @return the lineage
 	 */
-	private Lineage readLineage(JsonNode node, int version)
+	private Lineage readLineage(JsonNode node)
 	{
-		JsonNode contractNode = field(node, "contract").deepCopy();
-		if (version < TRIGGER_FORMAT_VERSION)
-			ProposalSchema.addMissingTriggers(contractNode);
+		JsonNode contractNode = field(node, "contract");
 		Contract contract;
 		try
 		{
@@ -811,7 +770,6 @@ final class CampaignJson
 		ObjectNode reviewPoints = node.putObject("review_points");
 		for (Entry<String, Integer> entry : new TreeMap<>(development.reviewPoints()).entrySet())
 			reviewPoints.put(entry.getKey(), entry.getValue());
-		node.put("widened", development.widened());
 		ArrayNode outcomes = node.putArray("instance_outcomes");
 		for (InstanceOutcomes outcome : development.instanceOutcomes())
 		{
@@ -1045,10 +1003,9 @@ final class CampaignJson
 	 * Converts a document to the development state.
 	 *
 	 * @param node the document
-	 * @param version the enclosing snapshot's format version
 	 * @return the state
 	 */
-	private static Development readDevelopment(JsonNode node, int version)
+	private static Development readDevelopment(JsonNode node)
 	{
 		Diagnosis diagnosis = null;
 		JsonNode diagnosisNode = nullable(node, "diagnosis");
@@ -1068,40 +1025,36 @@ final class CampaignJson
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
-		List<Failure> failures = readFailures(node, "failures", version);
-		List<InstanceOutcomes> outcomes = InstanceOutcomes.fromFailures(failures);
-		Predecessor predecessor = null;
-		List<Revert> reverts = new ArrayList<>();
-		if (version >= RETAINED_FORMAT_VERSION)
+		List<Failure> failures = readFailures(node, "failures");
+		List<InstanceOutcomes> outcomes = new ArrayList<>();
+		for (JsonNode outcome : elements(node, "instance_outcomes"))
 		{
-			outcomes = new ArrayList<>();
-			for (JsonNode outcome : elements(node, "instance_outcomes"))
+			outcomes.add(new InstanceOutcomes(readInstance(field(outcome, "instance")), integer(outcome, "passes"),
+				integer(outcome, "outcomes")));
+		}
+		Predecessor predecessor = null;
+		JsonNode predecessorNode = nullable(node, "predecessor");
+		if (predecessorNode != null)
+		{
+			List<RegressionInstance> regressions = new ArrayList<>();
+			for (JsonNode regression : elements(predecessorNode, "regression_set"))
 			{
-				outcomes.add(new InstanceOutcomes(readInstance(field(outcome, "instance")), integer(outcome, "passes"),
-					integer(outcome, "outcomes")));
+				regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
+					nullableConstant(regression, "working_verdict", Verdict.class)));
 			}
-			JsonNode predecessorNode = nullable(node, "predecessor");
-			if (predecessorNode != null)
-			{
-				List<RegressionInstance> regressions = new ArrayList<>();
-				for (JsonNode regression : elements(predecessorNode, "regression_set"))
-				{
-					regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
-						nullableConstant(regression, "working_verdict", Verdict.class)));
-				}
-				predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development"), version),
-					readRound(field(predecessorNode, "round")), text(predecessorNode, "cell"), regressions);
-			}
-			for (JsonNode revert : elements(node, "reverts"))
-			{
-				reverts.add(new Revert(readCandidate(field(revert, "withdrawn")), text(revert, "cell"),
-					floating(revert, "upper_bound"), floating(revert, "predecessor_rate"),
-					readDevelopment(field(revert, "development"), version)));
-			}
+			predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development")),
+				readRound(field(predecessorNode, "round")), text(predecessorNode, "cell"), regressions);
+		}
+		List<Revert> reverts = new ArrayList<>();
+		for (JsonNode revert : elements(node, "reverts"))
+		{
+			reverts.add(new Revert(readCandidate(field(revert, "withdrawn")), text(revert, "cell"),
+				floating(revert, "upper_bound"), floating(revert, "predecessor_rate"),
+				readDevelopment(field(revert, "development"))));
 		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
 			readCounts(field(node, "counts")), failures, diagnosis, round, author,
-			reviewPoints, bool(node, "widened"), outcomes, predecessor, reverts);
+			reviewPoints, outcomes, predecessor, reverts);
 	}
 
 	/**
@@ -1167,10 +1120,9 @@ final class CampaignJson
 	 * Converts a document to a certification attempt.
 	 *
 	 * @param node the document
-	 * @param version the enclosing snapshot's format version
 	 * @return the attempt
 	 */
-	private static CertificationAttempt readAttempt(JsonNode node, int version)
+	private static CertificationAttempt readAttempt(JsonNode node)
 	{
 		JsonNode procedureNode = field(node, "procedure");
 		List<String> cellIds = new ArrayList<>();
@@ -1182,7 +1134,7 @@ final class CampaignJson
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
-			readCounts(field(node, "counts")), readFailures(node, "failures", version),
+			readCounts(field(node, "counts")), readFailures(node, "failures"),
 			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class));
 	}
 
@@ -1261,16 +1213,15 @@ final class CampaignJson
 	 * Converts a document to a logical trial.
 	 *
 	 * @param node the document
-	 * @param version the enclosing snapshot's format version
 	 * @return the trial
 	 */
-	private static LogicalTrial readTrial(JsonNode node, int version)
+	private static LogicalTrial readTrial(JsonNode node)
 	{
 		Verdict verdict = nullableConstant(node, "verdict", Verdict.class);
 		String rationale = nullableText(node, "rationale");
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), verdict, rationale, readTriage(node, version),
+			constant(node, "state", TrialState.class), verdict, rationale, readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
 			readResponses(node));
 	}
@@ -1295,13 +1246,10 @@ final class CampaignJson
 	 * Reads a failure's impact.
 	 *
 	 * @param node the object that holds the {@code triage} field
-	 * @param version the enclosing document's format version
-	 * @return the impact, or {@code null} if none was decided or the format predates impacts
+	 * @return the impact, or {@code null} if none was decided
 	 */
-	private static Triage readTriage(JsonNode node, int version)
+	private static Triage readTriage(JsonNode node)
 	{
-		if (version < TRIAGE_FORMAT_VERSION)
-			return null;
 		JsonNode triage = nullable(node, "triage");
 		if (triage == null)
 			return null;
@@ -1734,10 +1682,9 @@ final class CampaignJson
 	 *
 	 * @param node the object that holds the field
 	 * @param name the field's name
-	 * @param version the enclosing snapshot's format version
 	 * @return the failures
 	 */
-	private static List<Failure> readFailures(JsonNode node, String name, int version)
+	private static List<Failure> readFailures(JsonNode node, String name)
 	{
 		List<Failure> failures = new ArrayList<>();
 		for (JsonNode element : elements(node, name))
@@ -1745,7 +1692,7 @@ final class CampaignJson
 			List<DiagnosticRerun> reruns = new ArrayList<>();
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
-			failures.add(new Failure(readInstance(element), text(element, "rationale"), readTriage(element, version),
+			failures.add(new Failure(readInstance(element), text(element, "rationale"), readTriage(element),
 				reruns, readResponses(element)));
 		}
 		return failures;
@@ -1963,11 +1910,10 @@ final class CampaignJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
-		if (version < INPUT_ONLY_FORMAT_VERSION || version > FORMAT_VERSION)
+		if (version != FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
-				" campaign file, but this version of CAT reads versions " + INPUT_ONLY_FORMAT_VERSION + " to " +
-				FORMAT_VERSION + ". Start a new " +
+				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
 				"campaign.");
 		}
 	}

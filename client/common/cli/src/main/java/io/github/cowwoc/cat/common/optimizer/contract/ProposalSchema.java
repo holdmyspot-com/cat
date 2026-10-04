@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -124,39 +125,6 @@ public final class ProposalSchema
 				required.add(requiredName);
 		}
 		schema.set("required", required);
-	}
-
-	/**
-	 * Completes a proposal or stored contract written before requirements had triggers: each requirement without a
-	 * {@code trigger} always applies, and each test without {@code absent_triggers} leaves no trigger absent. Values that
-	 * the document already holds, and parts that do not have the expected shape, are left for validation to judge.
-	 *
-	 * @param proposal the document, which is modified in place
-	 * @throws NullPointerException if {@code proposal} is null
-	 */
-	public static void addMissingTriggers(JsonNode proposal)
-	{
-		requireThat(proposal, "proposal").isNotNull();
-		if (proposal.get("requirements") instanceof ArrayNode requirements)
-		{
-			for (JsonNode requirement : requirements)
-			{
-				if (requirement instanceof ObjectNode object && !object.has("trigger"))
-					object.putNull("trigger");
-			}
-		}
-		if (!(proposal.get("categories") instanceof ArrayNode categories))
-			return;
-		for (JsonNode category : categories)
-		{
-			if (!(category.get("tests") instanceof ArrayNode tests))
-				continue;
-			for (JsonNode test : tests)
-			{
-				if (test instanceof ObjectNode object && !object.has("absent_triggers"))
-					object.putArray("absent_triggers");
-			}
-		}
 	}
 
 	/**
@@ -307,6 +275,10 @@ public final class ProposalSchema
 		ArrayNode inventory = node.putArray("inventory");
 		for (TrialProfile profile : profiles.inventory().profiles())
 			write(profile, inventory.addObject());
+		ObjectNode ranking = node.putObject("ranking");
+		ranking.put("source", profiles.ranking().source());
+		ArrayNode families = ranking.putArray("families");
+		profiles.ranking().families().forEach(families::add);
 		ArrayNode bindings = node.putArray("bindings");
 		for (ProfileBinding binding : profiles.bindings())
 		{
@@ -317,6 +289,13 @@ public final class ProposalSchema
 		ArrayNode restriction = node.putArray("restriction");
 		for (TrialProfile pattern : profiles.restriction())
 			write(pattern, restriction.addObject());
+		ArrayNode described = node.putArray("described");
+		for (TrialProfile pattern : profiles.described())
+			write(pattern, described.addObject());
+		if (profiles.scope() == null)
+			node.putNull("scope");
+		else
+			node.put("scope", profiles.scope().name().toLowerCase(Locale.ROOT));
 		ArrayNode cells = node.putArray("cells");
 		for (Cell cell : profiles.cells())
 		{
@@ -572,11 +551,20 @@ public final class ProposalSchema
 			List<TrialProfile> restriction = new ArrayList<>();
 			for (JsonNode patternNode : node.get("restriction"))
 				restriction.add(profile(patternNode));
+			List<TrialProfile> described = new ArrayList<>();
+			for (JsonNode patternNode : node.get("described"))
+				described.add(profile(patternNode));
+			JsonNode rankingNode = node.get("ranking");
+			CapabilityRanking ranking = new CapabilityRanking(strings(rankingNode.get("families")),
+				text(rankingNode, "source"));
+			CertificationScope scope = null;
+			if (!node.get("scope").isNull())
+				scope = CertificationScope.valueOf(node.get("scope").asString().toUpperCase(Locale.ROOT));
 			List<Cell> cells = new ArrayList<>();
 			for (JsonNode cellNode : node.get("cells"))
 				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "category"), profile(cellNode)));
-			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), bindings,
-				restriction, cells);
+			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), ranking,
+				bindings, restriction, described, scope, cells);
 		}
 
 		/**

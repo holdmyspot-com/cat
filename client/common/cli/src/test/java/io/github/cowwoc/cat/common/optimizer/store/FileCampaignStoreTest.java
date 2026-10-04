@@ -23,10 +23,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import java.nio.file.attribute.PosixFilePermissions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
@@ -159,34 +155,6 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				isEqualTo(Outcome.PLATEAU);
 			new FileCampaignStore(base, JSON).replaceSnapshot(reverted);
 			requireThat(new FileCampaignStore(base, JSON).load(ID).orElseThrow(), "reloadedRevert").isEqualTo(reverted);
-		}
-	}
-
-	/**
-	 * A campaign stored without a predecessor remains readable and cannot revert a candidate.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	// Requirement: R-D15
-	@Test
-	public void olderCampaignLoadsAndNeverReverts() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("campaign-no-predecessor"));
-			new FileCampaignStore(base, JSON).replaceSnapshot(promotedForRevert());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 10);
-			ObjectNode development = (ObjectNode) root.get("development");
-			development.remove("predecessor");
-			development.remove("reverts");
-			development.remove("instance_outcomes");
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			Campaign campaign = failDevelopment(new FileCampaignStore(base, JSON).load(ID).orElseThrow());
-			requireThat(campaign.development().working().number(), "working").isEqualTo(2);
-			requireThat(campaign.development().count("safety"), "counts").isEqualTo(Builder.counts(0, 1));
 		}
 	}
 
@@ -630,55 +598,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(13);
+					"recordVersion").isEqualTo(14);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(13);
-		}
-	}
-
-	/**
-	 * Input-only records load without full session usage and retain the trial input median.
-	 *
-	 * @throws IOException if the fixture cannot be used
-	 */
-	// Requirement: R-E12
-	@Test
-	public void inputOnlyRecordsRetainCellMedian() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("input-only-record"));
-			FileCampaignStore store = new FileCampaignStore(base, JSON);
-			Campaign campaign = start();
-			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
-				Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
-				"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
-					Instant.parse("2026-10-01T12:00:00Z")))));
-			LogicalTrial trial = assigned.trials().getLast();
-			store.writeAssignment(ID, trial);
-			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
-			store.replaceSnapshot(running);
-			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", null, running.identity(),
-				123L, List.of()));
-			Path directory = campaignDirectory(base);
-			Path record = list(directory.resolve("trials")).getFirst();
-			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(record));
-			stored.put("format_version", 9);
-			stored.remove("token_usage");
-			Files.writeString(record, JSON.writeValueAsString(stored));
-			Path snapshot = directory.resolve("campaign.json");
-			ObjectNode state = (ObjectNode) JSON.readTree(Files.readString(snapshot));
-			state.put("format_version", 9);
-			((ObjectNode) state.get("optimization")).remove("token_usage");
-			Files.writeString(snapshot, JSON.writeValueAsString(state));
-			FileCampaignStore reopened = new FileCampaignStore(base, JSON);
-			reconcile(reopened);
-			StatusReport report = StatusReport.of(reopened.load(ID).orElseThrow(), ReportEvidence.NONE);
-			requireThat(report.tokens().roles(), "roleUsage").isEmpty();
-			requireThat(report.tokens().unavailable(), "reason").isEqualTo("The harness reported no token usage.");
-			requireThat(report.optimization().inputs().stream().filter(cell -> cell.cell().equals("safety")).
-				findFirst().orElseThrow().workingMedian(), "workingMedian").isEqualTo(123L);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(14);
 		}
 	}
 
@@ -894,98 +817,6 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Format 12 snapshots, whose contracts state no triggers, load with every requirement always applying and every
-	 * test leaving no trigger absent.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test
-	public void formatTwelveRequirementsAlwaysApply() throws IOException
-	{
-		// Requirement: R-D17
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("campaign-without-triggers"));
-			Campaign confirmed = new Builder().header(header(ID)).confirmed().build();
-			new FileCampaignStore(base, JSON).replaceSnapshot(confirmed);
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 12);
-			for (JsonNode lineage : root.get("lineages"))
-			{
-				JsonNode contract = lineage.get("contract");
-				for (JsonNode requirement : contract.get("requirements"))
-					((ObjectNode) requirement).remove("trigger");
-				for (JsonNode category : contract.get("categories"))
-				{
-					for (JsonNode test : category.get("tests"))
-						((ObjectNode) test).remove("absent_triggers");
-				}
-			}
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			Campaign loaded = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
-
-			Contract contract = loaded.lineages().getLast().contract();
-			for (Requirement requirement : contract.requirements())
-				requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
-			for (Category category : contract.categories())
-			{
-				for (TestDefinition test : category.tests())
-					requireThat(test.absentTriggers(), test.id() + ".absentTriggers()").isEmpty();
-			}
-			requireThat(loaded, "loaded").isEqualTo(confirmed);
-		}
-	}
-
-	/**
-	 * Format 11 snapshots and trial records, which hold no impacts, load with every impact absent.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test
-	public void formatElevenLoadsWithoutImpacts() throws IOException
-	{
-		// Requirement: R-D16
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("campaign-without-impact"));
-			FileCampaignStore store = new FileCampaignStore(base, JSON);
-			Campaign assigned = assignDevelopment(new Builder().header(header(ID)).confirmed().working(1).
-				development("safety", 10, 1).failure(new Failure(Builder.targeted("safety", "logs"), "Removed the logs",
-					new Triage(Impact.BLOCKING, "The reply stopped."), List.of(), List.of())).
-				round(new Round(Map.of("safety", 0))).build());
-			LogicalTrial trial = assigned.trials().getLast();
-			store.writeAssignment(ID, trial);
-			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
-			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.FAIL, "Unasked deletion",
-				new Triage(Impact.BLOCKING, "The reply stopped."), running.identity(), null, List.of()));
-			store.replaceSnapshot(running);
-			Path directory = campaignDirectory(base);
-			Path snapshot = directory.resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 11);
-			for (JsonNode failure : root.get("development").get("failures"))
-				((ObjectNode) failure).remove("triage");
-			for (JsonNode element : root.get("trials"))
-				((ObjectNode) element).remove("triage");
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-			for (Path record : list(directory.resolve("trials")))
-			{
-				ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
-				document.put("format_version", 11);
-				((ObjectNode) document.get("outcome")).remove("triage");
-				Files.writeString(record, JSON.writeValueAsString(document), UTF_8);
-			}
-
-			FileCampaignStore restarted = new FileCampaignStore(base, JSON);
-			Campaign loaded = restarted.load(ID).orElseThrow();
-			requireThat(loaded.development().failures().getFirst().triage(), "failureTriage").isNull();
-			requireThat(restarted.listUnadoptedOutcomes(loaded).getFirst().triage(), "outcomeTriage").isNull();
-		}
-	}
-
-	/**
 	 * Assigns a development trial of the working candidate in {@code safety}.
 	 *
 	 * @param campaign the campaign
@@ -1177,7 +1008,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 14);
+			root.put("format_version", 15);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);
@@ -1254,6 +1085,33 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 3);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
+	 * A campaign of format version 13, whose contract holds no capability ranking or certification scope and whose
+	 * development state records the replaced cell tier, is refused with a message that names its version and asks for
+	 * a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 13 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionThirteenCampaign() throws IOException
+	{
+		// Requirement: R-E22
+		// Requirement: R-C15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-13-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 13);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

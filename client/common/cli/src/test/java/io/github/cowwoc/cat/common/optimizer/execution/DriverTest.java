@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
+import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
@@ -38,9 +39,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
-import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
@@ -1305,7 +1306,8 @@ public final class DriverTest
 	 */
 	private static CampaignEvent.Confirm confirm()
 	{
-		return new CampaignEvent.Confirm(ContractFixtures.contract(), Builder.contractHash(), 11);
+		return new CampaignEvent.Confirm(ContractFixtures.contract().withScope(CertificationScope.LATEST_VERSIONS),
+			Builder.contractHash(), 11);
 	}
 
 	/**
@@ -2234,60 +2236,60 @@ public final class DriverTest
 	}
 
 	/**
-	 * After the screen, development samples only the active cells; once they meet the readiness count
-	 * conditions it widens to every cell, a failure in a newly sampled cell activates it, and the next candidate
-	 * restarts in the enlarged active set.
+	 * Under the latest-versions scope, development samples only each category's weakest cell, and the candidate is
+	 * committed once that cell is ready. A formal failure in another scope cell makes that cell a development cell,
+	 * so the next commit waits until it is ready too.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void cellTiering() throws IOException
+	public void developmentCellsGrowOnFormalFailure() throws IOException
 	{
 		// Requirement: R-E19
 		// Requirement: R-E3
 		Contract contract = TierFixtures.tieredContract();
-		// The screen ran the incumbent; candidate 1 has outcomes in the active cells only
-		Builder builder = new Builder().confirmed(contract, 1).working(1).readyBaseline();
-		for (Cell cell : CellTier.activeCells(contract, Set.of()))
-			builder.development(cell.id(), 95, 0);
+		Campaign start = new Builder().confirmed(contract, 1).working(1).readyBaseline().
+			development(TierFixtures.SMALL_HIGH, 90, 0).development(TierFixtures.SAFETY, 90, 0).build();
+		requireThat(CellTier.scopeCellIds(start.contract()).size(), "scopeCells").isEqualTo(6);
+		TrialProfile medium = new TrialProfile("big", "medium");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				builder.build());
-			Sha256 first = Builder.snapshot("candidate-1");
-			TrialProfile medium = new TrialProfile("big", "medium");
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
 			harness.trials(request ->
 			{
-				if (request.profile().equals(medium) && harness.snapshot(request).equals(first))
-					return harness.failed();
-				return harness.passed();
+				try
+				{
+					boolean firstAttempt = harness.campaign().runningAttempt().
+						map(attempt -> attempt.index() == 1).orElse(false);
+					if (firstAttempt && request.profile().equals(medium))
+						return harness.failed();
+					return harness.passed();
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
 			});
 			try (Driver driver = harness.open())
 			{
-				Campaign widened = harness.runUntil(driver, state -> state.development().widened());
-				requireThat(widened.development().count(TierFixtures.BIG_MEDIUM).outcomes(), "mediumBeforeWidening").
-					isEqualTo(0);
-				requireThat(widened.development().count(TierFixtures.BIG_HIGH).outcomes(), "highBeforeWidening").
-					isEqualTo(0);
+				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
+				requireThat(committed.development().counts().keySet(), "firstDevelopmentCells").
+					isEqualTo(Set.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+				requireThat(ReadinessGate.isReady(committed.development().count(TierFixtures.SMALL_HIGH)),
+					"weakestReady").isTrue();
 
-				Campaign activated = harness.runUntil(driver,
-					state -> state.failedCells().contains(TierFixtures.BIG_MEDIUM));
-				requireThat(activated.development().working().number(), "failingCandidate").isEqualTo(1);
+				Campaign failed = harness.runUntil(driver, state -> !state.attempt(1).isRunning());
+				requireThat(failed.attempt(1).count(TierFixtures.BIG_MEDIUM).failures(), "formalFailures").
+					isPositive();
+				requireThat(CellTier.developmentCellIds(failed), "developmentCells").
+					isEqualTo(List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 
-				Campaign restarted = harness.runUntil(driver, state -> state.development().working().number() == 2 &&
-					state.development().count(TierFixtures.BIG_MEDIUM).outcomes() > 0 &&
-					state.development().count(TierFixtures.BIG_XHIGH).outcomes() > 0);
-				requireThat(restarted.development().widened(), "restartedWidened").isFalse();
-				requireThat(CellTier.activeCells(contract, restarted.failedCells()).stream().map(Cell::id).toList(),
-					"activeCells").isEqualTo(List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM,
-					TierFixtures.BIG_XHIGH, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
-				Sha256 second = restarted.development().working().snapshot();
-				TrialProfile high = new TrialProfile("big", "high");
-				long inactive = harness.sessions().sessions().stream().map(FakeSession::request).
-					filter(request -> request.role() == SessionRole.TRIAL && harness.snapshot(request).equals(second) &&
-						DriverHarness.cell(request).equals("formatting") && request.profile().equals(high)).
-					count();
-				requireThat(inactive, "secondCandidateInactiveCellTrials").isEqualTo(0L);
+				Campaign recommitted = harness.runUntil(driver, state -> state.attempts().size() == 2);
+				Development development = recommitted.development();
+				requireThat(ReadinessGate.isReady(development.count(TierFixtures.BIG_MEDIUM)), "failedCellReady").
+					isTrue();
+				for (String cell : List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH))
+					requireThat(development.count(cell).outcomes(), cell).isEqualTo(0);
 			}
 		}
 	}

@@ -102,13 +102,17 @@ public final class ProfileTypesTest
 	{
 		// Requirement: R-C10
 		ProfileBinding binding = new ProfileBinding("agents/b.md", BIG_LOW);
-		requireThat(rejection(() -> new TrialProfiles(INVENTORY, List.of(binding, binding), List.of(),
+		requireThat(rejection(() -> new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(binding, binding), List.of(), List.of(), null,
 			List.of(cell("formatting")))), "boundTwice").contains("agents/b.md");
-		requireThat(rejection(() -> new TrialProfiles(INVENTORY, List.of(), List.of(),
+		requireThat(rejection(() -> new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(), List.of(), null,
 			List.of(cell("formatting"), cell("formatting")))), "cellTwice").contains("'formatting'");
-		requireThat(rejection(() -> new TrialProfiles(INVENTORY, List.of(), List.of(new TrialProfile("huge", "")),
+		requireThat(rejection(() -> new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(new TrialProfile("huge", "")), List.of(), null,
 			List.of(cell("formatting")))), "outside").contains("huge/default");
-		requireThat(rejection(() -> new TrialProfiles(INVENTORY, List.of(), List.of(TrialProfile.HARNESS_DEFAULT),
+		requireThat(rejection(() -> new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(TrialProfile.HARNESS_DEFAULT), List.of(), null,
 			List.of(cell("formatting")))), "unbound").contains("must name a model, an effort or both");
 	}
 
@@ -119,7 +123,8 @@ public final class ProfileTypesTest
 	public void descriptionNamesTheRestriction()
 	{
 		// Requirement: R-C10
-		TrialProfiles profiles = new TrialProfiles(INVENTORY, List.of(), List.of(new TrialProfile("", "low")),
+		TrialProfiles profiles = new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(new TrialProfile("", "low")), List.of(), null,
 			List.of(cell("formatting")));
 		requireThat(profiles.describe(), "describe").contains("Profile restriction: default/low");
 	}
@@ -137,7 +142,8 @@ public final class ProfileTypesTest
 				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of())));
 		List<Requirement> requirements = List.of(new Requirement("skill", "Follows the skill.",
 			"skills/a/SKILL.md", null));
-		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, List.of(), List.of(), requirements,
+		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(), List.of(), requirements,
 			List.of(category), Set.of())), "unknown").contains("'missing'");
 	}
 }

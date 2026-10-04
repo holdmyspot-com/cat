@@ -33,7 +33,8 @@ public final class ProfileSetTest
 	private static Category category(String id, String... requirementIds)
 	{
 		return new Category(id, "Needs its own claim.", new RiskRank(1), List.of(new TestDefinition(id + "-test",
-			List.of(requirementIds), List.of(), "Always.", List.of("Do it."), Duration.ofMinutes(1), "Complies.", List.of(),
+			List.of(requirementIds), List.of(), "Always.", List.of("Do it."), Duration.ofMinutes(1), "Complies.",
+				List.of(),
 			List.of(), List.of(), List.of(), List.of())));
 	}
 
@@ -71,8 +72,8 @@ public final class ProfileSetTest
 	public void boundFileGivesOneCell()
 	{
 		// Requirement: R-C10
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY,
-			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("small", "high"))), List.of(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("small", "high"))), List.of(), List.of(),
 			requirements(), List.of(category("bound", "skill")), Set.of());
 		requireThat(profiles.cells(), "cells").isEqualTo(List.of(new Cell("bound", "bound",
 			new TrialProfile("small", "high"))));
@@ -85,14 +86,14 @@ public final class ProfileSetTest
 	public void partialBindingFixesOneDimension()
 	{
 		// Requirement: R-C10
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY,
-			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", ""))), List.of(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", ""))), List.of(), List.of(),
 			requirements(), List.of(category("partial", "skill")), Set.of());
 		requireThat(labels(profiles, "partial"), "labels").isEqualTo(List.of("big/low", "big/high"));
 		requireThat(profiles.cells().getFirst().id(), "id").isEqualTo("partial@big/low");
 
-		TrialProfiles byEffort = TrialProfiles.compute(INVENTORY,
-			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("", "high"))), List.of(),
+		TrialProfiles byEffort = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("", "high"))), List.of(), List.of(),
 			requirements(), List.of(category("partial", "skill")), Set.of());
 		requireThat(labels(byEffort, "partial"), "labels").isEqualTo(List.of("big/high", "small/high"));
 	}
@@ -105,7 +106,8 @@ public final class ProfileSetTest
 	public void unboundFileGivesInventory()
 	{
 		// Requirement: R-C10
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, List.of(), List.of(), requirements(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(), List.of(), requirements(),
 			List.of(category("open", "rule")), Set.of());
 		requireThat(labels(profiles, "open"), "labels").isEqualTo(List.of("big/low", "big/high", "small/low",
 			"small/high", "plain/default"));
@@ -121,14 +123,16 @@ public final class ProfileSetTest
 		// Requirement: R-C10
 		List<ProfileBinding> oneBinds = List.of(new ProfileBinding("skills/a/SKILL.md",
 			new TrialProfile("small", "high")));
-		TrialProfiles mixed = TrialProfiles.compute(INVENTORY, oneBinds, List.of(), requirements(),
+		TrialProfiles mixed = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), oneBinds,
+			List.of(), List.of(), requirements(),
 			List.of(category("mixed", "skill", "rule")), Set.of());
 		requireThat(mixed.cellsOf("mixed").size(), "cells").isEqualTo(INVENTORY.profiles().size());
 
 		List<ProfileBinding> disagree = List.of(
 			new ProfileBinding("skills/a/SKILL.md", new TrialProfile("small", "high")),
 			new ProfileBinding("agents/b.md", new TrialProfile("big", "high")));
-		TrialProfiles efforts = TrialProfiles.compute(INVENTORY, disagree, List.of(), requirements(),
+		TrialProfiles efforts = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), disagree,
+			List.of(), List.of(), requirements(),
 			List.of(category("efforts", "skill", "agent")), Set.of());
 		requireThat(labels(efforts, "efforts"), "labels").isEqualTo(List.of("big/high", "small/high"));
 	}
@@ -140,8 +144,8 @@ public final class ProfileSetTest
 	public void excludedRequirementIsIgnored()
 	{
 		// Requirement: R-C10
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY,
-			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", "low"))), List.of(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", "low"))), List.of(), List.of(),
 			requirements(), List.of(category("core", "skill", "core")), Set.of("core"));
 		requireThat(labels(profiles, "core"), "labels").isEqualTo(List.of("big/low"));
 	}
@@ -154,8 +158,8 @@ public final class ProfileSetTest
 	{
 		// Requirement: R-C10
 		TrialProfile custom = new TrialProfile("custom", "");
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY,
-			List.of(new ProfileBinding("agents/b.md", custom)), List.of(), requirements(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("agents/b.md", custom)), List.of(), List.of(), requirements(),
 			List.of(category("custom", "agent")), Set.of());
 		requireThat(labels(profiles, "custom"), "labels").isEqualTo(List.of("custom/default"));
 		requireThat(INVENTORY.isOutside(custom), "isOutside").isTrue();
@@ -169,7 +173,8 @@ public final class ProfileSetTest
 	{
 		// Requirement: R-C10
 		List<TrialProfile> restriction = List.of(new TrialProfile("small", ""), new TrialProfile("big", "high"));
-		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, List.of(), restriction, requirements(),
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			restriction, List.of(), requirements(),
 			List.of(category("open", "rule")), Set.of());
 		requireThat(labels(profiles, "open"), "labels").isEqualTo(List.of("big/high", "small/low", "small/high"));
 		requireThat(profiles.restriction(), "restriction").isEqualTo(restriction);
@@ -186,7 +191,8 @@ public final class ProfileSetTest
 		String unknown = null;
 		try
 		{
-			TrialProfiles.compute(INVENTORY, List.of(), List.of(new TrialProfile("huge", "")), requirements(),
+			TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+				List.of(new TrialProfile("huge", "")), List.of(), requirements(),
 				List.of(category("open", "rule")), Set.of());
 		}
 		catch (IllegalArgumentException e)
@@ -198,14 +204,84 @@ public final class ProfileSetTest
 		String empty = null;
 		try
 		{
-			TrialProfiles.compute(INVENTORY,
+			TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
 				List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", "low"))),
-				List.of(new TrialProfile("small", "")), requirements(), List.of(category("bound", "skill")), Set.of());
+				List.of(new TrialProfile("small", "")), List.of(), requirements(), List.of(category("bound", "skill")),
+					Set.of());
 		}
 		catch (IllegalArgumentException e)
 		{
 			empty = e.getMessage();
 		}
 		requireThat(empty, "empty").contains("'bound'").contains("big/low");
+	}
+
+	/**
+	 * Returns the message of the {@code IllegalArgumentException} that an action throws.
+	 *
+	 * @param action the action
+	 * @return the exception's message
+	 * @throws AssertionError if the action does not throw an {@code IllegalArgumentException}
+	 */
+	private static String rejection(Runnable action)
+	{
+		try
+		{
+			action.run();
+		}
+		catch (IllegalArgumentException e)
+		{
+			return e.getMessage();
+		}
+		throw new AssertionError("The action was accepted");
+	}
+
+	/**
+	 * Verifies that a described certification scope is refused when a described profile is outside the inventory or
+	 * when it leaves a category of several cells without a cell, and is recorded otherwise.
+	 */
+	@Test
+	public void describedScopeMustSelectInventoryCells()
+	{
+		// Requirement: R-C15
+		CapabilityRanking ranking = ContractFixtures.ranking(INVENTORY);
+		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, ranking, List.of(), List.of(),
+			List.of(new TrialProfile("huge", "low")), requirements(), List.of(category("open", "rule")), Set.of())),
+			"outside").contains("huge/low").contains("matches no profile");
+
+		List<ProfileBinding> big = List.of(new ProfileBinding("skills/a/SKILL.md", new TrialProfile("big", "")));
+		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, ranking, big, List.of(),
+			List.of(new TrialProfile("small", "")), requirements(), List.of(category("partial", "skill")), Set.of())),
+			"noCell").contains("'partial'").contains("small/default");
+
+		List<TrialProfile> described = List.of(new TrialProfile("big", "high"));
+		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ranking, big, List.of(), described, requirements(),
+			List.of(category("partial", "skill")), Set.of());
+		requireThat(profiles.described(), "described").isEqualTo(described);
+		requireThat(profiles.withScope(CertificationScope.DESCRIBED).scope(), "scope").
+			isEqualTo(CertificationScope.DESCRIBED);
+	}
+
+	/**
+	 * Verifies that choosing a scope is refused while an inventory model's family is unranked, naming the model, and
+	 * that choosing the described scope is refused when the user described no cell.
+	 */
+	@Test
+	public void scopeNeedsRankingAndDescription()
+	{
+		// Requirement: R-E22
+		// Requirement: R-C15
+		CapabilityRanking partial = new CapabilityRanking(List.of("big", "small"), "the user's revision feedback");
+		TrialProfiles unranked = TrialProfiles.compute(INVENTORY, partial, List.of(), List.of(), List.of(),
+			requirements(), List.of(category("open", "rule")), Set.of());
+		requireThat(rejection(() -> unranked.withScope(CertificationScope.LATEST_VERSIONS)), "unranked").
+			contains("plain");
+
+		TrialProfiles ranked = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
+			List.of(), List.of(), requirements(), List.of(category("open", "rule")), Set.of());
+		requireThat(rejection(() -> ranked.withScope(CertificationScope.DESCRIBED)), "undescribed").
+			contains("described");
+		requireThat(ranked.withScope(CertificationScope.WEAKEST_CELL).scope(), "weakest").
+			isEqualTo(CertificationScope.WEAKEST_CELL);
 	}
 }

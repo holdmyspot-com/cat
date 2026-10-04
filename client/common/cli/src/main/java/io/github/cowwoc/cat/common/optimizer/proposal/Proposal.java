@@ -7,10 +7,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
-import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
@@ -18,8 +19,10 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
 
@@ -46,32 +49,36 @@ public final class Proposal
 	private static final int ATTEMPTS_SHOWN = 3;
 	private final DerivedProposal derived;
 	private final Contract contract;
-	private final Sha256 contractHash;
+	private final ProposalSchema schema;
 	private final LinkReport links;
 	private final HostLogin login;
-	private final Campaign confirmed;
+	private final int ceiling;
+	private final Map<CertificationScope, Campaign> previews;
 	private final List<String> caps;
 
 	/**
 	 * Creates a proposal.
 	 *
 	 * @param derived the deriver's proposal
-	 * @param contract the contract that confirmation freezes
-	 * @param contractHash the contract's identity
+	 * @param contract the contract that confirmation freezes once the user chooses its certification scope
+	 * @param schema the proposal schema, which identifies the contract
 	 * @param links the symbolic links
 	 * @param login how the host's harness account is billed
-	 * @param confirmed the campaign as it would be after confirmation
+	 * @param ceiling the campaign's concurrency ceiling
+	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
+	 *   may choose, in choice order; empty while an inventory model is unranked
 	 * @param caps the level and cap of each of the first attempts, as text
 	 */
-	private Proposal(DerivedProposal derived, Contract contract, Sha256 contractHash, LinkReport links,
-		HostLogin login, Campaign confirmed, List<String> caps)
+	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
+		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps)
 	{
 		this.derived = derived;
 		this.contract = contract;
-		this.contractHash = contractHash;
+		this.schema = schema;
 		this.links = links;
 		this.login = login;
-		this.confirmed = confirmed;
+		this.ceiling = ceiling;
+		this.previews = previews;
 		this.caps = List.copyOf(caps);
 	}
 
@@ -106,12 +113,20 @@ public final class Proposal
 			limitations.add(LinkReport.STAGING_CONSEQUENCE);
 		Contract contract = new Contract(proposed.requirements(), proposed.categories(), proposed.profiles(),
 			proposed.judge(), proposed.fixtures(), limitations);
-		Sha256 contractHash = ContractIdentity.of(schema, contract);
-		// The seed changes only the draw streams, which neither the remaining work nor the caps depend on
-		Campaign confirmed = Transitions.apply(campaign, new CampaignEvent.Confirm(contract, contractHash, 0));
+		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
+		if (contract.profiles().unranked().isEmpty())
+		{
+			for (CertificationScope scope : CertificationScope.values())
+			{
+				if (scope == CertificationScope.DESCRIBED && contract.profiles().described().isEmpty())
+					continue;
+				// The seed changes only the draw streams, which the remaining work does not depend on
+				previews.put(scope, Transitions.apply(campaign, confirm(contract, scope, schema, 0)));
+			}
+		}
 
 		List<String> caps = new ArrayList<>();
-		int first = confirmed.nextCertificationIndex();
+		int first = campaign.nextCertificationIndex();
 		for (int index = first; index < first + ATTEMPTS_SHOWN; ++index)
 		{
 			SignificanceLevel level = ErrorBudget.certificationLevel(index);
@@ -126,13 +141,30 @@ public final class Proposal
 			}
 			caps.add("Attempt " + index + ": α = " + Markdown.level(level) + ", cap " + cap);
 		}
-		return new Proposal(derived, contract, contractHash, links, login, confirmed, caps);
+		return new Proposal(derived, contract, schema, links, login, campaign.ceiling(), previews, caps);
 	}
 
 	/**
-	 * Returns the contract that confirmation freezes: the deriver's contract with the limitations that CAT records.
+	 * Returns the event that confirms a contract with a certification scope.
 	 *
-	 * @return the contract
+	 * @param contract the contract, without a certification scope
+	 * @param scope the certification scope
+	 * @param schema the proposal schema, which identifies the contract
+	 * @param seed the seed of the contract's draw streams
+	 * @return the event
+	 */
+	private static CampaignEvent.Confirm confirm(Contract contract, CertificationScope scope, ProposalSchema schema,
+		long seed)
+	{
+		Contract scoped = contract.withScope(scope);
+		return new CampaignEvent.Confirm(scoped, ContractIdentity.of(schema, scoped), seed);
+	}
+
+	/**
+	 * Returns the contract that confirmation freezes once the user chooses its certification scope: the deriver's
+	 * contract with the limitations that CAT records.
+	 *
+	 * @return the contract, without a certification scope
 	 */
 	public Contract contract()
 	{
@@ -140,22 +172,68 @@ public final class Proposal
 	}
 
 	/**
-	 * Indicates whether the user may confirm the proposal. A link cycle or a link to a missing target blocks
-	 * confirmation until the user resolves it. Conflicting requirements also block confirmation.
+	 * Indicates whether the user may confirm the proposal with a certification scope. A link cycle or a link to a
+	 * missing target blocks confirmation until the user resolves it. Conflicting requirements, an inventory model
+	 * whose family the capability ranking does not list, and a described scope without described cells also block
+	 * confirmation.
 	 *
-	 * @return {@code true} if no link or conflict blocks confirmation
+	 * @param scope the certification scope that the user chose
+	 * @return {@code true} if nothing blocks confirmation
+	 * @throws NullPointerException if {@code scope} is null
 	 */
-	public boolean isConfirmable()
+	public boolean isConfirmable(CertificationScope scope)
 	{
-		return links.blocking().isEmpty() && derived.conflicts().isEmpty();
+		return confirmationRefusal(scope).isEmpty();
 	}
 
 	/**
-	 * Returns the reason confirmation is refused, listing blocking links before conflicting requirements.
+	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
+	 * requirements, unranked models and a described scope without described cells, in that order.
 	 *
+	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
+	 * @throws NullPointerException if {@code scope} is null
 	 */
-	public String confirmationRefusal()
+	public String confirmationRefusal(CertificationScope scope)
+	{
+		requireThat(scope, "scope").isNotNull();
+		List<String> reasons = new ArrayList<>();
+		String links = linksAndConflictsRefusal();
+		if (!links.isEmpty())
+			reasons.add(links);
+		TrialProfiles profiles = contract.profiles();
+		List<String> unranked = profiles.unranked();
+		if (!unranked.isEmpty())
+		{
+			reasons.add("The capability ranking (" + profiles.ranking().source() + ") does not rank the family of " +
+				"the inventory models " + String.join(", ", unranked) + ". Run revise with feedback that ranks " +
+				"them.");
+		}
+		if (scope == CertificationScope.DESCRIBED && profiles.described().isEmpty())
+		{
+			reasons.add("The described certification scope needs the cells that you described in revision " +
+				"feedback, and none are described. Run revise with feedback that describes them, or choose " +
+				CertificationScope.WEAKEST_CELL.id() + " or " + CertificationScope.LATEST_VERSIONS.id() + ".");
+		}
+		StringJoiner refusal = new StringJoiner(" ");
+		for (int i = 0; i < reasons.size(); ++i)
+		{
+			String reason = reasons.get(i);
+			if (i + 1 < reasons.size() && !reason.endsWith("."))
+				refusal.add(reason + ".");
+			else
+				refusal.add(reason);
+		}
+		return refusal.toString();
+	}
+
+	/**
+	 * Returns the reason that links or conflicting requirements block confirmation, listing blocking links before
+	 * conflicting requirements.
+	 *
+	 * @return the message, or an empty string if neither blocks confirmation
+	 */
+	private String linksAndConflictsRefusal()
 	{
 		String linksMessage = "";
 		List<String> blocking = links.blocking().stream().map(entry -> entry.link().toString()).toList();
@@ -186,23 +264,25 @@ public final class Proposal
 	 */
 	public String render()
 	{
-		return new Markdown(derived, contract, links, login, confirmed, caps).render();
+		return new Markdown(derived, contract, links, login, ceiling, previews, caps).render();
 	}
 
 	/**
-	 * Returns the events that confirm the proposal: the confirmation, then one report for each condition that makes
-	 * certification unavailable.
+	 * Returns the events that confirm the proposal with a certification scope: the confirmation, then one report for
+	 * each condition that makes certification unavailable.
 	 *
 	 * @param seed the seed of the contract's draw streams
+	 * @param scope the certification scope that the user chose
 	 * @return the events, in the order to apply them
-	 * @throws IllegalStateException if a link or conflict blocks confirmation
+	 * @throws NullPointerException if {@code scope} is null
+	 * @throws IllegalStateException if anything blocks confirmation with {@code scope}
 	 */
-	public List<CampaignEvent> confirmation(long seed)
+	public List<CampaignEvent> confirmation(long seed, CertificationScope scope)
 	{
-		if (!isConfirmable())
-			throw new IllegalStateException(confirmationRefusal());
+		if (!isConfirmable(scope))
+			throw new IllegalStateException(confirmationRefusal(scope));
 		List<CampaignEvent> events = new ArrayList<>();
-		events.add(new CampaignEvent.Confirm(contract, contractHash, seed));
+		events.add(confirm(contract, scope, schema, seed));
 		Set<Outcome> outcomes = new LinkedHashSet<>();
 		for (ScopeCondition condition : derived.scopeConditions())
 			outcomes.add(condition.outcome());

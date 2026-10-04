@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -117,8 +118,8 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Reads what the trial profiles depend on: the harness's profile inventory and the profile that each binding file
-	 * of a staged source binds.
+	 * Reads what the trial profiles depend on: the harness's profile inventory, its capability ranking and the profile
+	 * that each binding file of a staged source binds.
 	 *
 	 * @param staged the staged source of the prompt system
 	 * @return the evidence
@@ -140,7 +141,7 @@ public final class OptimizerCore implements Core
 			if (binding.isBound())
 				bindings.put(file.toString(), binding);
 		}
-		return new ProfileEvidence(inventory, bindings);
+		return new ProfileEvidence(inventory, profiles.ranking(), bindings);
 	}
 
 	/**
@@ -287,8 +288,14 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult confirm(String campaign) throws CommandRefusedException, IOException
+	public CommandResult confirm(String campaign, CertificationScope certificationScope)
+		throws CommandRefusedException, IOException
 	{
+		if (certificationScope == null)
+		{
+			throw new CommandRefusedException("Confirmation needs the certification scope that you choose: " +
+				CertificationScope.choices() + ".");
+		}
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
@@ -296,10 +303,10 @@ public final class OptimizerCore implements Core
 		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
 		Proposal proposal = proposal(root, loaded, fork, derived);
-		if (!proposal.isConfirmable())
-			throw new CommandRefusedException(proposal.confirmationRefusal());
+		if (!proposal.isConfirmable(certificationScope))
+			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 		loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
-		return apply(root, loaded, proposal.confirmation(scope.random().nextLong()));
+		return apply(root, loaded, proposal.confirmation(scope.random().nextLong(), certificationScope));
 	}
 
 	/**
@@ -524,9 +531,9 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, unsupported);
 		SessionRequest request;
 		if (previous == null)
-			request = protocol.request(staged, profiles.inventory());
+			request = protocol.request(staged, profiles);
 		else
-			request = protocol.request(staged, profiles.inventory(), previous, feedback);
+			request = protocol.request(staged, profiles, previous, feedback);
 		SessionResult result = await(scope.sessions().start(request));
 		if (!(result instanceof SessionResult.Completed completed))
 		{

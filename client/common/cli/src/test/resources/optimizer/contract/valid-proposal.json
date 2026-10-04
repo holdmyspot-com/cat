@@ -114,8 +114,14 @@
 				"effort": "high"
 			}
 		],
+		"ranking": {
+			"source": "test ranking in inventory order",
+			"families": ["test-model"]
+		},
 		"bindings": [],
 		"restriction": [],
+		"described": [],
+		"scope": null,
 		"cells": [
 			{
 				"id": "formatting",

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 
 import java.nio.file.Path;
 
@@ -81,23 +82,26 @@ public sealed interface Command
 	}
 
 	/**
-	 * Confirms the campaign's current proposal.
+	 * Confirms the campaign's current proposal with the certification scope that the user chose.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
+	 * @param scope the certification scope
 	 */
-	record Confirm(String campaign) implements Command
+	record Confirm(String campaign, CertificationScope scope) implements Command
 	{
 		/**
 		 * Creates the command.
 		 *
 		 * @param campaign the campaign's identifier
-		 * @throws NullPointerException if {@code campaign} is null
+		 * @param scope the certification scope
+		 * @throws NullPointerException if any of the arguments are null
 		 */
 		public Confirm
 		{
 			requireThat(campaign, "campaign").isNotNull();
+			requireThat(scope, "scope").isNotNull();
 		}
 	}
 

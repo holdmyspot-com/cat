@@ -13,7 +13,6 @@ import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Renders a {@link StatusReport} as text for the user.
@@ -99,8 +98,7 @@ final class ReportSummary
 		}
 		if (report.trialProfiles() != null)
 			lines.addAll(report.trialProfiles().describe());
-		if (report.cellTier() != null)
-			cellTier(lines, report.cellTier());
+		cellTier(lines, report.cellTier());
 		remaining(lines, report.remaining());
 		tokens(lines, report.tokens());
 		optimization(lines, report.optimization());
@@ -167,24 +165,25 @@ final class ReportSummary
 	}
 
 	/**
-	 * Adds the development cell tier.
+	 * Adds the certification scope and each category's weakest cell and development cells.
 	 *
 	 * @param lines the lines
-	 * @param tier the cell tier
+	 * @param tier the cells, or {@code null} before a contract is confirmed
 	 */
 	private static void cellTier(List<String> lines, CellTierReport tier)
 	{
-		for (Map.Entry<String, List<String>> entry : tier.activeCells().entrySet())
+		if (tier == null)
 		{
-			lines.add("Active development cells of category " + entry.getKey() + ": " +
-				String.join(", ", entry.getValue()));
+			lines.add("Weakest cells: not yet fixed; confirmation fixes them from the capability ranking");
+			return;
 		}
-		String answer;
-		if (tier.widened())
-			answer = "yes";
-		else
-			answer = "no";
-		lines.add("Development widened to every cell: " + answer);
+		lines.add("Certification scope: " + EnumNames.lowerCase(tier.scope()).replace('_', ' ') + " (" +
+			tier.scopeCells() + " cells)");
+		for (CellTierReport.CategoryCells cells : tier.categories())
+		{
+			lines.add("Category " + cells.category() + ": weakest cell " + cells.weakestCell() +
+				"; development cells " + String.join(", ", cells.developmentCells()));
+		}
 	}
 
 	/**

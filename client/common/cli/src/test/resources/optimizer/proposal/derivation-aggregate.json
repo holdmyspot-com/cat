@@ -16,6 +16,8 @@
 	},
 	"limitations": [],
 	"profile_restriction": [],
+	"capability_ranking": [],
+	"certification_profiles": [],
 	"derived_sources": [],
 	"conflicts": [],
 	"scope_conditions": []

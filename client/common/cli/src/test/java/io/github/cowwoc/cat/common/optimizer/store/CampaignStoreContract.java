@@ -39,12 +39,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
@@ -186,30 +188,36 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * The development cell tier survives a restart: the cells in which a candidate failed stay active, and whether
-	 * development has widened is kept.
+	 * The confirmed contract's certification scope, capability ranking and described cells survive a restart, so the
+	 * scope's cells and the development cells are unchanged.
 	 *
 	 * @throws IOException if the store fails
 	 */
 	@Test
-	public void cellTierSurvivesReload() throws IOException
+	public void certificationScopeSurvivesReload() throws IOException
 	{
-		// Requirement: R-E19
+		// Requirement: R-C15
+		// Requirement: R-E22
 		try (StoreFixture fixture = open())
 		{
-			Contract contract = TierFixtures.tieredContract();
-			Campaign campaign = new Builder().header(header("campaign-tier")).confirmed(contract, 1).
-				working(1).widened().failedCell(TierFixtures.BIG_MEDIUM).development(TierFixtures.BIG_LOW, 100, 0).
-				development(TierFixtures.BIG_MEDIUM, 4, 1).build();
+			CapabilityRanking corrected = new CapabilityRanking(List.of("luna", "sol", "astra"),
+				"the user's revision feedback");
+			Contract contract = TierFixtures.contract(TierFixtures.CODEX_PROFILES, corrected,
+				List.of(new TrialProfile("gpt-6-sol", ""), new TrialProfile("gpt-6-astra", "low")),
+				new TrialProfile("gpt-6.1-sol", "high")).withScope(CertificationScope.DESCRIBED);
+			String weakest = "formatting@gpt-6-astra/low";
+			Campaign campaign = new Builder().header(header("campaign-scope")).confirmed(contract, 1).
+				working(1).development(weakest, 4, 1).build();
 			fixture.store().replaceSnapshot(campaign);
 
-			Campaign loaded = fixture.reopen().load("campaign-tier").orElseThrow();
+			Campaign loaded = fixture.reopen().load("campaign-scope").orElseThrow();
 			requireThat(loaded, "loaded").isEqualTo(campaign);
-			requireThat(loaded.development().widened(), "widened").isTrue();
-			requireThat(loaded.failedCells(), "failedCells").isEqualTo(Set.of(TierFixtures.BIG_MEDIUM));
-			requireThat(CellTier.activeCells(contract, loaded.failedCells()).stream().map(Cell::id).toList(),
-				"activeCells").isEqualTo(List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM, TierFixtures.BIG_XHIGH,
-				TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+			requireThat(loaded.contract().profiles().scope(), "scope").isEqualTo(CertificationScope.DESCRIBED);
+			requireThat(loaded.contract().profiles().ranking(), "ranking").isEqualTo(corrected);
+			requireThat(CellTier.scopeCellIds(loaded.contract()), "scopeCells").
+				isEqualTo(CellTier.scopeCellIds(contract));
+			requireThat(CellTier.developmentCellIds(loaded), "developmentCells").
+				isEqualTo(List.of(weakest, TierFixtures.SAFETY));
 		}
 	}
 
@@ -956,7 +964,7 @@ public abstract class CampaignStoreContract
 					true), attempt.outcome()));
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
-			built.candidates(), built.authorAttempts(), built.development(), built.failedCells(), built.baseline(),
+			built.candidates(), built.authorAttempts(), built.development(), built.baseline(),
 			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
 			built.authorizedTargets(), built.pendingDecisions(), built.revisionRequested(), built.outcome(),
 			built.delivery(), built.optimization());

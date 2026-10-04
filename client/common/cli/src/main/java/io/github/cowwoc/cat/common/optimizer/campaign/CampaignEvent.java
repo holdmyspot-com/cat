@@ -49,7 +49,7 @@ public sealed interface CampaignEvent
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param contract the confirmed contract
+	 * @param contract the confirmed contract, with the certification scope that the user chose
 	 * @param contractHash the contract's identity
 	 * @param seed the seed of the lineage's development and baseline draw streams
 	 */
@@ -58,15 +58,18 @@ public sealed interface CampaignEvent
 		/**
 		 * Creates the event.
 		 *
-		 * @param contract the confirmed contract
+		 * @param contract the confirmed contract, with the certification scope that the user chose
 		 * @param contractHash the contract's identity
 		 * @param seed the seed of the lineage's development and baseline draw streams
 		 * @throws NullPointerException if {@code contract} or {@code contractHash} are null
+		 * @throws IllegalArgumentException if {@code contract} has no certification scope
 		 */
 		public Confirm
 		{
 			requireThat(contract, "contract").isNotNull();
 			requireThat(contractHash, "contractHash").isNotNull();
+			if (contract.profiles().scope() == null)
+				throw new IllegalArgumentException("A confirmed contract needs a certification scope");
 		}
 	}
 

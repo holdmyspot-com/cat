@@ -159,6 +159,19 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
+	 * Returns this contract with a certification scope.
+	 *
+	 * @param scope the certification scope
+	 * @return the contract
+	 * @throws NullPointerException if {@code scope} is null
+	 * @throws IllegalArgumentException if the trial profiles reject the scope
+	 */
+	public Contract withScope(CertificationScope scope)
+	{
+		return new Contract(requirements, categories, profiles.withScope(scope), judge, fixtures, limitations);
+	}
+
+	/**
 	 * Returns the category/profile pairs whose trial counts and decisions are kept separately.
 	 *
 	 * @return every cell, grouped by category in category order

@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Plans which trials may start next from the persisted campaign state. An admission either reruns an assigned
@@ -30,10 +29,6 @@ public final class Scheduler
 	 * many representative assignments.
 	 */
 	public static final int COVERAGE_LEAD = 50;
-	/**
-	 * The development series that the first contract confirmation starts, whose working candidate the screen covers.
-	 */
-	private static final int FIRST_SERIES = 1;
 
 	/**
 	 * Prevents instantiation.
@@ -241,17 +236,13 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the working candidate's representative development trials in the cells selected by {@link CellTier}.
+	 * Plans the working candidate's representative development trials in the {@link CellTier development cells}.
 	 * <p>
-	 * The initial screen gives every cell {@value CellTier#SCREEN_TRIALS} assignments of the first working candidate
-	 * in the first development series. Until it finishes, only cells still below that count are selected. Once
-	 * development has {@link Development#widened() widened}, every cell is selected; otherwise only active cells are.
-	 * Cells that are ready or at their review point are ineligible. Exclude an eligible cell when it leads the
-	 * least-sampled eligible cell by at least {@value #COVERAGE_LEAD} assignments. Among the remaining cells, each
-	 * model's lowest-effort cell in each category comes first, then the lowest 95% Wilson lower bound, ties to fewer
-	 * outcomes, then higher category risk, then contract order. Record {@link AllocationRule#LOWEST_EXPLORATORY_BOUND}
-	 * when the chosen cell also wins the bound, outcome-count and risk ordering across all eligible cells before the
-	 * lead exclusion; otherwise record {@link AllocationRule#COVERAGE_FLOOR}.
+	 * Development cells that are ready or at their review point are ineligible. Exclude an eligible cell when it leads
+	 * the least-sampled eligible cell by at least {@value #COVERAGE_LEAD} assignments. Among the remaining cells, the
+	 * lowest 95% Wilson lower bound comes first, ties to fewer outcomes, then higher category risk, then contract order.
+	 * Record {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} when the chosen cell also wins that ordering across all
+	 * eligible cells before the lead exclusion; otherwise record {@link AllocationRule#COVERAGE_FLOOR}.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -265,11 +256,11 @@ public final class Scheduler
 		Contract contract = campaign.contract();
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.DEVELOPMENT, development.series());
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
-		Set<String> lowestEffort = CellTier.lowestEffortCells(contract);
+		List<Cell> developmentCells = CellTier.developmentCells(campaign);
 		while (slots > 0 && plan.size() < freeCapacity)
 		{
 			List<Cell> eligible = new ArrayList<>();
-			for (Cell cell : selectDevelopmentCells(campaign, inFlight))
+			for (Cell cell : developmentCells)
 			{
 				CellCounts counts = development.count(cell.id());
 				if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
@@ -288,7 +279,7 @@ public final class Scheduler
 					weakest = cell;
 				if (assigned(development, inFlight, cell.id()) >= leastAssigned + COVERAGE_LEAD)
 					continue;
-				if (best == null || hasDevelopmentPriority(contract, development, lowestEffort, cell, best))
+				if (best == null || isWeaker(contract, development, cell, best))
 					best = cell;
 			}
 			AllocationRule rule;
@@ -301,56 +292,6 @@ public final class Scheduler
 			inFlight.merge(best.id(), 1, Integer::sum);
 			--slots;
 		}
-	}
-
-	/**
-	 * Returns the cells that may receive the working candidate's next representative development trial: the cells
-	 * that the screen has yet to cover, every cell once development has widened, otherwise the active cells. The
-	 * screen runs once per campaign, in its first series.
-	 *
-	 * @param campaign the campaign
-	 * @param inFlight the unadopted development trials per cell
-	 * @return the cells, in contract order
-	 */
-	private static List<Cell> selectDevelopmentCells(Campaign campaign, Map<String, Integer> inFlight)
-	{
-		Development development = campaign.development();
-		Contract contract = campaign.contract();
-		// The first series of the campaign develops the incumbent, the first working candidate
-		if (development.series() == FIRST_SERIES && development.working().isIncumbent())
-		{
-			List<Cell> screen = new ArrayList<>();
-			for (Cell cell : contract.cells())
-			{
-				if (assigned(development, inFlight, cell.id()) < CellTier.SCREEN_TRIALS)
-					screen.add(cell);
-			}
-			if (!screen.isEmpty())
-				return screen;
-		}
-		if (development.widened())
-			return contract.cells();
-		return CellTier.activeCells(contract, campaign.failedCells());
-	}
-
-	/**
-	 * Indicates whether a cell has priority over another for development: a model's lowest-effort cell in its
-	 * category first, then the lower Wilson bound, fewer outcomes and higher category risk.
-	 *
-	 * @param contract the campaign's contract
-	 * @param development the development state
-	 * @param lowestEffort the identifiers of each model's lowest-effort cell
-	 * @param cell a cell that comes after {@code other} in cell order
-	 * @param other the best cell so far
-	 * @return {@code true} if {@code cell} comes first
-	 */
-	private static boolean hasDevelopmentPriority(Contract contract, Development development, Set<String> lowestEffort,
-		Cell cell, Cell other)
-	{
-		boolean lowest = lowestEffort.contains(cell.id());
-		if (lowest != lowestEffort.contains(other.id()))
-			return lowest;
-		return isWeaker(contract, development, cell, other);
 	}
 
 	/**
@@ -390,8 +331,8 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the incumbent's baseline trials on the remaining capacity, one cell at a time in turn, until each cell's
-	 * unadopted and adopted trials reach its target.
+	 * Plans the incumbent's baseline trials in the certification scope's cells on the remaining capacity, one cell at a
+	 * time in turn, until each cell's unadopted and adopted trials reach its target.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -404,7 +345,7 @@ public final class Scheduler
 		if (campaign.development().working().isIncumbent())
 			return;
 		IncumbentBaseline baseline = campaign.baseline();
-		List<String> cells = campaign.contract().cellIds();
+		List<String> cells = CellTier.scopeCellIds(campaign.contract());
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.BASELINE, baseline.index());
 		Map<String, Integer> needed = new HashMap<>();
 		for (String cell : cells)

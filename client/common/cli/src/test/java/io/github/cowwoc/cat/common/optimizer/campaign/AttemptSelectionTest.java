@@ -5,7 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -88,7 +91,7 @@ public final class AttemptSelectionTest
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
 			development("formatting", 100, 0).round(TrialAdoption.failingRound(
 				Map.of("safety", Builder.counts(60, 1), "formatting", Builder.counts(100, 0)),
-				ContractFixtures.contract(), null)).build();
+				ContractFixtures.contract().cells(), null)).build();
 		for (int attempt = 0; attempt < 2; ++attempt)
 			campaign = TransitionSteps.submit(campaign, "safety",
 				campaign.development().working().snapshot(), List.of());
@@ -96,20 +99,47 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that an unsampled profile in an addressed category makes the round weak.
+	 * Verifies that an unsampled development cell in an addressed category makes the round weak.
 	 */
 	@Test
 	public void cellWithoutOutcomeMakesRoundWeak()
 	{
 		// Requirement: R-D12
-		Map<String, CellCounts> counts = Map.of(ContractFixtures.BIG_CELL, Builder.counts(100, 1));
-		Campaign campaign = new Builder().confirmed(ContractFixtures.twoCellContract(), 1).working(1).
-			development(ContractFixtures.BIG_CELL, 100, 1).round(TrialAdoption.failingRound(counts,
-				ContractFixtures.twoCellContract(), null)).build();
+		// Requirement: R-E19
+		Contract contract = ContractFixtures.twoCellContract();
+		Map<String, CellCounts> counts = Map.of(ContractFixtures.SMALL_CELL, Builder.counts(100, 1));
+		// A certification failure makes the big cell a development cell
+		TrialInstance certificationFailure = new Generator(contract).draw(ContractFixtures.BIG_CELL,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		Round round = TrialAdoption.failingRound(counts, contract.cells(), null);
+		requireThat(round.weak(), "weak").isTrue();
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).
+			development(ContractFixtures.SMALL_CELL, 100, 1).round(round).certificationAttempt(1).
+			failure(certificationFailure).outcome(Outcome.INCONCLUSIVE).build();
 		for (int attempt = 0; attempt < 2; ++attempt)
 			campaign = TransitionSteps.submit(campaign,
-				ContractFixtures.BIG_CELL, campaign.development().working().snapshot(), List.of());
+				ContractFixtures.SMALL_CELL, campaign.development().working().snapshot(), List.of());
 		requireThat(campaign.outcome(), "roundOutcome").isNull();
+	}
+
+	/**
+	 * Verifies that the weak test covers only the addressed category's development cells: an empty cell of the category
+	 * that is not a development cell does not make the round weak.
+	 */
+	@Test
+	public void emptyNonDevelopmentCellIsNotWeak()
+	{
+		// Requirement: R-E19
+		// Requirement: R-D12
+		Campaign campaign = new Builder().confirmed(ContractFixtures.twoCellContract(), 1).working(1).
+			development(ContractFixtures.SMALL_CELL, 100, 0).development("safety", 100, 0).build();
+		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, ContractFixtures.SMALL_CELL, Verdict.FAIL);
+		TrialInstance failure = campaign.development().diagnosis().pending().getFirst();
+		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
+			campaign.development().working().snapshot(), failure, Verdict.FAIL);
+		Round round = campaign.development().round();
+		requireThat(round.attempts().keySet(), "addressed").containsExactly(List.of(ContractFixtures.SMALL_CELL));
+		requireThat(round.weak(), "weak").isFalse();
 	}
 
 	/**
@@ -236,20 +266,20 @@ public final class AttemptSelectionTest
 	{
 		// Requirement: R-D12
 		Round round = TrialAdoption.failingRound(Map.of("safety", Builder.counts(60, 1)),
-			ContractFixtures.contract(), null);
+			ContractFixtures.contract().cells(), null);
 		requireThat(round.weak(), "weak").isFalse();
 		requireThat(round.maxAttempts(), "attempts").isEqualTo(2);
 	}
 
 	/**
-	 * Verifies that failures under two profiles receive three attempts for their shared category.
+	 * Verifies that failures in two development cells of one category receive three attempts for the category.
 	 */
 	@Test
 	public void failingProfilesShareThreeAttempts()
 	{
 		// Requirement: R-D12
 		Round round = TrialAdoption.failingRound(Map.of(ContractFixtures.BIG_CELL, Builder.counts(0, 1),
-			ContractFixtures.SMALL_CELL, Builder.counts(100, 1)), ContractFixtures.twoCellContract(), null);
+			ContractFixtures.SMALL_CELL, Builder.counts(100, 1)), ContractFixtures.twoCellContract().cells(), null);
 		requireThat(round.attempts().keySet(), "addressedCategories").containsExactly(List.of(ContractFixtures.BIG_CELL));
 		requireThat(round.maxAttempts(), "attemptsPerCategory").isEqualTo(3);
 	}

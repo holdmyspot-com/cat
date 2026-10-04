@@ -6,9 +6,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork.Entry;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork.Kind;
 import io.github.cowwoc.cat.common.optimizer.statistics.FirstAttemptBoundaries;
+
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -96,7 +101,7 @@ public final class RemainingWorkTest
 		// more passes batch 5 completes with 0 failures, so the latest two (0, 0) are within the limit and 248/250
 		// passes: 50 trials are needed. Smaller additions leave the latest two batches at (2, 0) or (0, partial).
 		Campaign campaign = new Builder().confirmed().working(1).
-			development("formatting", 198, java.util.List.of(0, 0, 2, 0)).development("safety", 100, 0).
+			development("formatting", 198, List.of(0, 0, 2, 0)).development("safety", 100, 0).
 			readyBaseline().build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(trials(work, "formatting", Kind.READINESS), "formattingReadiness").isEqualTo(50);
@@ -125,6 +130,46 @@ public final class RemainingWorkTest
 		requireThat(trials(work, "formatting", Kind.BASELINE), "formattingBaseline").isEqualTo(20);
 		requireThat(trials(work, "safety", Kind.BASELINE), "safetyBaseline").isEqualTo(3);
 		requireThat(work.total(), "total").isEqualTo(456);
+	}
+
+	/**
+	 * Verifies that readiness counts only the development cells while the incumbent baseline and the next attempt
+	 * count every cell of the certification scope.
+	 */
+	@Test
+	public void developmentWorkCoversScopeCells()
+	{
+		// Requirement: R-E19
+		// Requirement: R-C15
+		// latest versions: readiness 100 in each development cell (small/high, safety)  = 200
+		//   baseline 50 in each of the 6 scope cells                                    = 300
+		//   next attempt 93 in each of the 6 scope cells                                = 558
+		//   total = 1058
+		Contract latest = TierFixtures.tieredContract();
+		RemainingWork work = RemainingWork.of(new Builder().confirmed(latest, 1).working(1).build());
+		requireThat(trials(work, TierFixtures.SMALL_HIGH, Kind.READINESS), "weakestReadiness").isEqualTo(100);
+		requireThat(entries(work, TierFixtures.BIG_LOW), "bigLowKinds").
+			isEqualTo(List.of(Kind.BASELINE, Kind.NEXT_ATTEMPT));
+		requireThat(trials(work, TierFixtures.BIG_LOW, Kind.BASELINE), "bigLowBaseline").isEqualTo(50);
+		requireThat(work.total(), "latestTotal").isEqualTo(1058);
+
+		// weakest cell: readiness 200, baseline 2 × 50 = 100, next attempt 2 × 93 = 186; total = 486
+		Contract weakest = latest.withScope(CertificationScope.WEAKEST_CELL);
+		RemainingWork weakestWork = RemainingWork.of(new Builder().confirmed(weakest, 1).working(1).build());
+		requireThat(entries(weakestWork, TierFixtures.BIG_LOW), "outsideScope").isEmpty();
+		requireThat(weakestWork.total(), "weakestTotal").isEqualTo(486);
+	}
+
+	/**
+	 * Returns the kinds of a cell's entries.
+	 *
+	 * @param work the count
+	 * @param cell the cell's identifier
+	 * @return the kinds, in entry order
+	 */
+	private static List<Kind> entries(RemainingWork work, String cell)
+	{
+		return work.entries().stream().filter(entry -> entry.cell().equals(cell)).map(Entry::kind).toList();
 	}
 
 	/**

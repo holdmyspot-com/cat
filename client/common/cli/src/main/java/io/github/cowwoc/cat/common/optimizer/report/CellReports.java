@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
@@ -69,16 +70,20 @@ final class CellReports
 	 * @param campaign the campaign, which has a confirmed contract
 	 * @param attempt the certification attempt to report, or {@code null} to report the working candidate's
 	 *   development results
-	 * @return the reports, in contract order
+	 * @return the reports in contract order: every cell of the contract for development results, or the cells that
+	 *   the attempt certifies
 	 */
 	static List<CellReport> of(Campaign campaign, CertificationAttempt attempt)
 	{
 		List<CellReport> reports = new ArrayList<>();
-		for (String cell : campaign.contract().cellIds())
+		if (attempt == null)
 		{
-			if (attempt == null)
+			for (String cell : campaign.contract().cellIds())
 				reports.add(development(campaign, cell));
-			else
+		}
+		else
+		{
+			for (String cell : attempt.procedure().cells())
 				reports.add(formal(campaign, attempt, cell));
 		}
 		return reports;
@@ -129,7 +134,7 @@ final class CellReports
 		Interval other = ExploratoryBounds.wilson(incumbent.passes(), incumbent.outcomes());
 		Interval difference = new Interval(candidate.lower() - other.upper(), candidate.upper() - other.lower());
 		return new CellReport.Improvement(null, points(counts, incumbent), incumbentCounts(baseline, incumbent),
-			deficiency(baseline, incumbent, campaign.contract().cells().size()), difference,
+			deficiency(baseline, incumbent, CellTier.scopeCells(campaign.contract()).size()), difference,
 			"exploratory difference of the two 95% Wilson intervals", null, null, null);
 	}
 
@@ -324,7 +329,7 @@ final class CellReports
 	 *
 	 * @param baseline the baseline
 	 * @param counts the cell's counts
-	 * @param cells the number of cells
+	 * @param cells the number of cells in the certification scope
 	 * @return {@code proven deficient} or {@code deficiency unproven}
 	 */
 	private static String deficiency(IncumbentBaseline baseline, CellCounts counts, int cells)

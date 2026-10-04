@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.report.ChoiceItem;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -34,7 +35,7 @@ public final class Commands
 		  start <target> [%s <1..%d>]
 		  run <campaign>
 		  status <campaign>
-		  confirm <campaign>
+		  confirm <campaign> <weakest-cell | latest-versions | described>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N | --target <path>]
 		  cancel <campaign>""".formatted(MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING);
@@ -85,11 +86,7 @@ public final class Commands
 				expect(name, rest, 1, "<campaign>");
 				yield new Command.Status(campaign(rest.getFirst()));
 			}
-			case "confirm" ->
-			{
-				expect(name, rest, 1, "<campaign>");
-				yield new Command.Confirm(campaign(rest.getFirst()));
-			}
+			case "confirm" -> confirm(rest);
 			case "cancel" ->
 			{
 				expect(name, rest, 1, "<campaign>");
@@ -138,6 +135,29 @@ public final class Commands
 				Campaign.MAXIMUM_CEILING + ", got '" + rest.get(2) + "'");
 		}
 		return new Command.Start(target, ceiling);
+	}
+
+	/**
+	 * Parses {@code confirm}, which requires the certification scope that the user chose.
+	 *
+	 * @param rest the arguments after the command's name
+	 * @return the command
+	 * @throws InvalidCommandException if the arguments are not well-formed or do not name a certification scope
+	 */
+	private static Command confirm(List<String> rest)
+	{
+		if (rest.size() == 1)
+		{
+			campaign(rest.getFirst());
+			throw new InvalidCommandException("confirm: choose the certification scope: " +
+				CertificationScope.choices() + ".");
+		}
+		expect("confirm", rest, 2, "<campaign> <scope>");
+		String campaign = campaign(rest.getFirst());
+		CertificationScope scope = CertificationScope.fromId(rest.get(1)).orElseThrow(() ->
+			new InvalidCommandException("confirm: unknown certification scope '" + rest.get(1) + "'; choose " +
+				CertificationScope.choices() + "."));
+		return new Command.Confirm(campaign, scope);
 	}
 
 	/**
@@ -374,7 +394,7 @@ public final class Commands
 			case Command.Start start -> core.start(start.target(), start.ceiling());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.campaign());
-			case Command.Confirm confirm -> core.confirm(confirm.campaign());
+			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());
 			case Command.Revise revise -> core.revise(revise.campaign(), revise.feedback());
 			case Command.Choose choose ->
 				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint(), choose.target());

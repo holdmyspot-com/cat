@@ -57,10 +57,15 @@ public final class TierFixtures
 	 */
 	public static final Map<String, List<String>> CODEX_EFFORTS = codexEfforts();
 	/**
-	 * The Codex inventory of 39 profiles that CAT reads from the recorded model list, in listing order.
+	 * The Codex inventory of 20 profiles that CAT reads from the recorded model list, in listing order.
 	 */
 	public static final ProfileCatalog CODEX_PROFILES = new ProfileCatalog("`codex debug models` of " +
 		"codex-cli 0.159.1+23", profiles(CODEX_EFFORTS));
+	/**
+	 * The capability ranking that CAT ships for Codex.
+	 */
+	public static final CapabilityRanking CODEX_RANKING = new CapabilityRanking(List.of("astra", "sol", "luna"),
+		"https://developers.openai.com/api/docs/models, read 2026-10-04");
 
 	/**
 	 * Returns the efforts of each model of the recorded Codex inventory.
@@ -75,10 +80,6 @@ public final class TierFixtures
 		efforts.put("gpt-6.1-sol", max);
 		efforts.put("gpt-6-sol", max);
 		efforts.put("gpt-6-luna", max);
-		efforts.put("gpt-5.6-sol", max);
-		efforts.put("gpt-5.6-terra", max);
-		efforts.put("gpt-5.6-luna", max);
-		efforts.put("gpt-5.5", List.of("low", "medium", "high", "xhigh"));
 		return Collections.unmodifiableMap(efforts);
 	}
 
@@ -123,11 +124,29 @@ public final class TierFixtures
 	 */
 	public static Contract contract(ProfileCatalog inventory, TrialProfile safety)
 	{
+		return contract(inventory, ContractFixtures.ranking(inventory), List.of(), safety);
+	}
+
+	/**
+	 * Returns the contract of {@link ContractFixtures#contract()} under an inventory, where the {@code formatting}
+	 * category binds nothing, so it has one cell per inventory profile, and the {@code safety} requirement's file
+	 * binds a complete profile, so that category has one cell.
+	 *
+	 * @param inventory the profile inventory
+	 * @param ranking the capability ranking
+	 * @param described the profiles that the user described as the certification scope, or empty
+	 * @param safety the profile that the {@code safety} requirement's file binds
+	 * @return the contract, without a certification scope
+	 */
+	public static Contract contract(ProfileCatalog inventory, CapabilityRanking ranking,
+		List<TrialProfile> described, TrialProfile safety)
+	{
 		Contract fixture = ContractFixtures.contract();
 		String safetySource = fixture.requirements().stream().filter(requirement -> requirement.id().equals("r2")).
 			findFirst().orElseThrow().source();
-		TrialProfiles profiles = TrialProfiles.compute(inventory, List.of(new ProfileBinding(safetySource, safety)),
-			List.of(), fixture.requirements(), fixture.categories(), Set.of(Requirement.CORE_TASK.id()));
+		TrialProfiles profiles = TrialProfiles.compute(inventory, ranking,
+			List.of(new ProfileBinding(safetySource, safety)), List.of(), described, fixture.requirements(),
+			fixture.categories(), Set.of(Requirement.CORE_TASK.id()));
 		return new Contract(fixture.requirements(), fixture.categories(), profiles, fixture.judge(),
 			fixture.fixtures(), fixture.limitations());
 	}

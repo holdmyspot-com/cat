@@ -162,6 +162,8 @@
 		"Only the English prompts are covered."
 	],
 	"profile_restriction": [],
+	"capability_ranking": [],
+	"certification_profiles": [],
 	"derived_sources": [
 		{
 			"path": "CLAUDE.md",

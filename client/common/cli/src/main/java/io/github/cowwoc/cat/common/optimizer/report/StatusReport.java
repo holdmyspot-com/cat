@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -21,6 +22,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
@@ -73,7 +75,7 @@ import tools.jackson.databind.node.ObjectNode;
  *   weight
  * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
  * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
- * @param cellTier each category's active development cells and whether development has widened, or {@code null}
+ * @param cellTier the certification scope and each category's weakest cell and development cells, or {@code null}
  *   before a contract is confirmed
  * @param remaining the minimum remaining trials
  * @param tokens the token statistics
@@ -182,7 +184,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param allocation the adopted outcomes of each cell in the reported phase
 	 * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
 	 * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
-	 * @param cellTier each category's active development cells and whether development has widened, or
+	 * @param cellTier the certification scope and each category's weakest cell and development cells, or
 	 *   {@code null} before a contract is confirmed
 	 * @param remaining the minimum remaining trials
 	 * @param tokens the token statistics
@@ -481,7 +483,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * Returns the benchmark weights of a contract: each cell weighs its category's tests.
+	 * Returns the benchmark weights of a contract: each cell of the certification scope weighs its category's tests.
 	 *
 	 * @param contract the contract
 	 * @return the benchmark
@@ -489,7 +491,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	private static Benchmark benchmark(Contract contract)
 	{
 		List<Benchmark.CellWeights> weights = new ArrayList<>();
-		for (Cell cell : contract.cells())
+		for (Cell cell : CellTier.scopeCells(contract))
 		{
 			Category category = contract.categoryOf(cell);
 			weights.add(new Benchmark.CellWeights(cell.id(), category.tests().size(),
@@ -519,7 +521,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * Returns the statement that the measurements support.
+	 * Returns the statement that the measurements support. The benchmark counts the cells of the certification scope;
+	 * a claim that covers only each category's weakest cell names each category's profile and says that no other
+	 * profile was certified.
 	 *
 	 * @param campaign the campaign, which has a confirmed contract
 	 * @param candidate the candidate that the report describes
@@ -527,14 +531,23 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 */
 	private static String claim(Campaign campaign, Candidate candidate)
 	{
-		JudgeProfile judge = campaign.contract().judge();
+		Contract contract = campaign.contract();
+		JudgeProfile judge = contract.judge();
 		List<String> values = new ArrayList<>();
 		for (Map.Entry<String, String> entry : new TreeMap<>(conditions(campaign.identity())).entrySet())
 			values.add(entry.getKey() + "=" + entry.getValue());
-		return "The pass rates describe candidate " + candidate.number() + " under the frozen judge (role profile " +
-			judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the balanced benchmark of " +
-			campaign.contract().cells().size() + " cells, whose weights are testing assumptions, " +
-			"not usage frequencies, under the measured conditions " + String.join(", ", values) + ".";
+		List<Cell> scopeCells = CellTier.scopeCells(contract);
+		String claim = "The pass rates describe candidate " + candidate.number() + " under the frozen judge (role " +
+			"profile " + judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the balanced " +
+			"benchmark of " + scopeCells.size() + " cells, whose weights are testing assumptions, not usage " +
+			"frequencies, under the measured conditions " + String.join(", ", values) + ".";
+		if (contract.profiles().scope() != CertificationScope.WEAKEST_CELL)
+			return claim;
+		List<String> profiles = new ArrayList<>();
+		for (Cell cell : scopeCells)
+			profiles.add(cell.categoryId() + " under " + cell.profile().label());
+		return claim + " Certification covered only each category's weakest cell: " + String.join(", ", profiles) +
+			". No other profile was certified.";
 	}
 
 	/**

@@ -186,13 +186,23 @@
 			}
 		},
 		"trial_profiles": {
-			"description": "The trial profiles that CAT computed: the harness's profile inventory and its source, each prompt file that binds a model or effort, the user's restriction and every cell. An empty model or effort is the harness's default.",
+			"description": "The trial profiles that CAT computed: the harness's profile inventory and its source, the capability ranking of its model families, each prompt file that binds a model or effort, the user's restriction, the profiles that the user described as the certification scope, the certification scope and every cell. An empty model or effort is the harness's default.",
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["inventory_source", "inventory", "bindings", "restriction", "cells"],
+			"required": ["inventory_source", "inventory", "ranking", "bindings", "restriction", "described", "scope", "cells"],
 			"properties": {
 				"inventory_source": {"type": "string", "pattern": "\\S"},
 				"inventory": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["model", "effort"], "properties": {"model": {"type": "string", "pattern": "^[^\\s/]*$"}, "effort": {"type": "string", "pattern": "^[^\\s/]*$"}}}},
+				"ranking": {
+					"description": "The model families ranked by advertised capability, most capable first, and the ranking's source.",
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["source", "families"],
+					"properties": {
+						"source": {"type": "string", "pattern": "\\S"},
+						"families": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^\\S+$"}}
+					}
+				},
 				"bindings": {
 					"type": "array",
 					"items": {
@@ -207,6 +217,8 @@
 					}
 				},
 				"restriction": {"description": "The patterns that the user restricted the profile set to. Empty if none.", "type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["model", "effort"], "properties": {"model": {"type": "string", "pattern": "^[^\\s/]*$"}, "effort": {"type": "string", "pattern": "^[^\\s/]*$"}}}},
+				"described": {"description": "The patterns of the profiles that the user described as the certification scope. Empty if none.", "type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["model", "effort"], "properties": {"model": {"type": "string", "pattern": "^[^\\s/]*$"}, "effort": {"type": "string", "pattern": "^[^\\s/]*$"}}}},
+				"scope": {"description": "The certification scope that the user chose at confirmation, or null before confirmation.", "type": ["string", "null"], "pattern": "^(weakest_cell|latest_versions|described)$"},
 				"cells": {
 					"description": "Every cell: one category under one trial profile.",
 					"type": "array",

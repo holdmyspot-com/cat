@@ -1,0 +1,6 @@
+{
+  "format_version": 1,
+  "address": "https://developers.openai.com/api/docs/models",
+  "read": "2026-10-04",
+  "families": ["astra", "sol", "luna"]
+}

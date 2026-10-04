@@ -15,7 +15,8 @@ import org.testng.annotations.Test;
  */
 public final class ProfileEvidenceTest
 {
-	private static final ProfileEvidence EVIDENCE = new ProfileEvidence(ContractFixtures.TWO_PROFILES, Map.of(
+	private static final ProfileEvidence EVIDENCE = new ProfileEvidence(ContractFixtures.TWO_PROFILES,
+		ContractFixtures.ranking(ContractFixtures.TWO_PROFILES), Map.of(
 		"skills/a/SKILL.md", ContractFixtures.BIG,
 		"skills/b/SKILL.md", ContractFixtures.SMALL));
 

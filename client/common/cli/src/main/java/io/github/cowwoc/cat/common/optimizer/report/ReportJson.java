@@ -304,10 +304,10 @@ final class ReportJson
 	}
 
 	/**
-	 * Adds the development cell tier.
+	 * Adds the certification scope and each category's weakest cell and development cells.
 	 *
 	 * @param root the root
-	 * @param tier the cell tier, or {@code null} before a contract is confirmed
+	 * @param tier the cells, or {@code null} before a contract is confirmed
 	 */
 	private static void cellTier(ObjectNode root, CellTierReport tier)
 	{
@@ -317,15 +317,17 @@ final class ReportJson
 			return;
 		}
 		ObjectNode node = root.putObject("cellTier");
-		node.put("widened", tier.widened());
-		ArrayNode active = node.putArray("activeCells");
-		for (Map.Entry<String, List<String>> entry : tier.activeCells().entrySet())
+		node.put("scope", EnumNames.lowerCase(tier.scope()));
+		node.put("scopeCells", tier.scopeCells());
+		ArrayNode categories = node.putArray("categories");
+		for (CellTierReport.CategoryCells cells : tier.categories())
 		{
-			ObjectNode category = active.addObject();
-			category.put("category", entry.getKey());
-			ArrayNode cells = category.putArray("cells");
-			for (String cell : entry.getValue())
-				cells.add(cell);
+			ObjectNode category = categories.addObject();
+			category.put("category", cells.category());
+			category.put("weakestCell", cells.weakestCell());
+			ArrayNode development = category.putArray("developmentCells");
+			for (String cell : cells.developmentCells())
+				development.add(cell);
 		}
 	}
 

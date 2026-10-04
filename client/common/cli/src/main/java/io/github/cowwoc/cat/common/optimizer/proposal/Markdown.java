@@ -2,12 +2,14 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
 import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
@@ -50,8 +52,8 @@ final class Markdown
 	private final Contract contract;
 	private final LinkReport links;
 	private final HostLogin login;
-	private final Campaign confirmed;
-	private final RemainingWork remaining;
+	private final int ceiling;
+	private final Map<CertificationScope, Campaign> previews;
 	private final List<String> caps;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
@@ -62,18 +64,20 @@ final class Markdown
 	 * @param contract the contract that confirmation freezes
 	 * @param links the symbolic links
 	 * @param login how the host's harness account is billed
-	 * @param confirmed the campaign as it would be after confirmation
+	 * @param ceiling the campaign's concurrency ceiling
+	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
+	 *   may choose, in choice order; empty while an inventory model is unranked
 	 * @param caps the level and cap of each of the first attempts, as text
 	 */
-	Markdown(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, Campaign confirmed,
-		List<String> caps)
+	Markdown(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, int ceiling,
+		Map<CertificationScope, Campaign> previews, List<String> caps)
 	{
 		this.derived = derived;
 		this.contract = contract;
 		this.links = links;
 		this.login = login;
-		this.confirmed = confirmed;
-		this.remaining = RemainingWork.of(confirmed);
+		this.ceiling = ceiling;
+		this.previews = previews;
 		this.caps = caps;
 	}
 
@@ -109,7 +113,7 @@ final class Markdown
 		procedure();
 		symbolicLinks();
 		authentication();
-		sessionCount();
+		certificationScope();
 		conflicts();
 		scope();
 		limitations();
@@ -439,7 +443,13 @@ final class Markdown
 	private void authentication()
 	{
 		heading("Authentication and volume");
-		int sessions = 2 * remaining.total();
+		Integer sessions = null;
+		for (Campaign preview : previews.values())
+		{
+			int needed = 2 * RemainingWork.of(preview).total();
+			if (sessions == null || needed < sessions)
+				sessions = needed;
+		}
 		switch (login)
 		{
 			case SUBSCRIPTION -> volumeWarning("the harness signs in with a subscription login rather than an API key.",
@@ -448,7 +458,7 @@ final class Markdown
 				"or an API key.", sessions);
 			case API_KEY -> text.append("The harness signs in with an API key.\n");
 		}
-		text.append("\nAt most ").append(confirmed.ceiling()).append(" nested sessions run at once, including " +
+		text.append("\nAt most ").append(ceiling).append(" nested sessions run at once, including " +
 			"judges and authors, within the harness capacity that every CAT process shares. Concurrency starts at 1 " +
 			"and grows gradually.\n");
 	}
@@ -457,28 +467,69 @@ final class Markdown
 	 * Warns that the campaign's volume may be flagged on a consumer subscription.
 	 *
 	 * @param reason why the warning applies, as a sentence
-	 * @param sessions the minimum number of nested sessions that the campaign needs
+	 * @param sessions the fewest nested sessions that any certification scope choice needs, or {@code null} while
+	 *   no choice is available
 	 */
-	private void volumeWarning(String reason, int sessions)
+	private void volumeWarning(String reason, Integer sessions)
 	{
-		text.append("Warning: ").append(reason).append(" This campaign needs at least ").append(sessions).
-			append(" nested sessions, and a provider may flag automated volume on a consumer subscription. Use an " +
-				"API key for this campaign.\n");
+		text.append("Warning: ").append(reason);
+		if (sessions == null)
+			text.append(" This campaign needs many nested sessions");
+		else
+			text.append(" This campaign needs at least ").append(sessions).append(" nested sessions");
+		text.append(", and a provider may flag automated volume on a consumer subscription. Use an API key for " +
+			"this campaign.\n");
 	}
 
 	/**
-	 * States the minimum session count.
+	 * Shows the capability ranking's outcome and each certification scope choice: its cells, each category's weakest
+	 * cell and its minimum session count.
 	 */
-	private void sessionCount()
+	private void certificationScope()
 	{
-		heading("Minimum session count");
+		heading("Certification scope");
+		text.append("Confirm with `confirm <campaign> <choice>`, choosing the cells that certification covers. " +
+			"Development always runs in each category's weakest cell, the lowest effort of the least capable model " +
+			"that the choice covers, and in every cell where a certification attempt fails. The choice sets the " +
+			"cells that the incumbent baseline and every certification attempt run in, and the cells that the " +
+			"claim covers. A category with one cell is certified in that cell under every choice. To certify " +
+			"other cells, describe them in revision feedback; the next proposal shows them as the `described` " +
+			"choice.\n");
+		if (previews.isEmpty())
+		{
+			text.append("\nNo choice is available yet: the capability ranking (").
+				append(contract.profiles().ranking().source()).append(") does not rank the family of the " +
+					"inventory models ").append(String.join(", ", contract.profiles().unranked())).
+				append(". Rank them in revision feedback; confirmation is refused until then.\n");
+			return;
+		}
+		for (Map.Entry<CertificationScope, Campaign> entry : previews.entrySet())
+			scopeChoice(entry.getKey(), entry.getValue());
+	}
+
+	/**
+	 * Shows one certification scope choice.
+	 *
+	 * @param scope the choice
+	 * @param preview the campaign as it would be after confirmation with the choice
+	 */
+	private void scopeChoice(CertificationScope scope, Campaign preview)
+	{
+		Contract scoped = preview.contract();
+		text.append("\n### `").append(scope.id()).append("`: ").append(scope.summary()).append("\n\n").
+			append("Cells: ").append(describeCells(CellTier.scopeCells(scoped))).append('\n');
+		List<String> weakest = new ArrayList<>();
+		for (Category category : scoped.categories())
+			weakest.add("`" + category.id() + "`: `" + CellTier.weakestCell(scoped, category.id()).id() + "`");
+		text.append("Weakest cells: ").append(String.join("; ", weakest)).append("\n\n");
+		RemainingWork remaining = RemainingWork.of(preview);
 		int trials = remaining.total();
 		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
 			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
 				"reruns, author sessions and promotion runs.\n\n").
 			append("Minimum trials by cell:\n\n");
 		Map<String, List<Cell>> byTrials = new LinkedHashMap<>();
-		for (Cell cell : contract.cells())
+		for (Cell cell : CellTier.scopeCells(scoped))
 		{
 			List<String> parts = new ArrayList<>();
 			for (RemainingWork.Entry entry : remaining.entries())

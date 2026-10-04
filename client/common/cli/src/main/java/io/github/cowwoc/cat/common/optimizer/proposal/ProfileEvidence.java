@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -16,16 +17,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The available model and effort combinations (trial profiles), and the model or effort that each prompt file
- * selects (its binding), recorded when the deriver ran.
+ * The available model and effort combinations (trial profiles), the capability ranking of their model families, and
+ * the model or effort that each prompt file selects (its binding), recorded when the deriver ran.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param inventory the harness's profile inventory and its source
+ * @param ranking the capability ranking that CAT ships for the harness
  * @param bindings the profile that each file binds, keyed by the file's path as the fork names it: relative to the
  *   project, or absolute outside it. A file that binds nothing is absent.
  */
-public record ProfileEvidence(ProfileCatalog inventory, Map<String, TrialProfile> bindings)
+public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking ranking, Map<String, TrialProfile> bindings)
 {
 	/**
 	 * The separator between a link's path and its resolved target in a requirement's source.
@@ -36,6 +38,7 @@ public record ProfileEvidence(ProfileCatalog inventory, Map<String, TrialProfile
 	 * Creates the evidence.
 	 *
 	 * @param inventory the harness's profile inventory and its source
+	 * @param ranking the capability ranking that CAT ships for the harness
 	 * @param bindings the profile that each file binds, keyed by the file's path as the fork names it
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a binding binds nothing
@@ -43,6 +46,7 @@ public record ProfileEvidence(ProfileCatalog inventory, Map<String, TrialProfile
 	public ProfileEvidence
 	{
 		requireThat(inventory, "inventory").isNotNull();
+		requireThat(ranking, "ranking").isNotNull();
 		requireThat(bindings, "bindings").isNotNull();
 		for (Map.Entry<String, TrialProfile> entry : bindings.entrySet())
 			requireThat(entry.getValue().isBound(), "bindings[" + entry.getKey() + "].isBound()").isTrue();

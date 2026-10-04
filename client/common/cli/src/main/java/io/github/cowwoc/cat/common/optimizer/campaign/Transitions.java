@@ -560,7 +560,8 @@ public final class Transitions
 			if (round.weak())
 			{
 				String categoryId = draft.contract().findCell(cell).orElseThrow().categoryId();
-				cells = draft.contract().profiles().cellsOf(categoryId).stream().map(Cell::id).toList();
+				cells = draft.developmentCells().stream().filter(other -> other.categoryId().equals(categoryId)).
+					map(Cell::id).toList();
 			}
 			runs = planPromotionRuns(draft, cells, failures);
 		}
@@ -648,8 +649,8 @@ public final class Transitions
 	}
 
 	/**
-	 * Commits the working candidate: freezes the procedure, the comparisons and the formal stream, and assigns the
-	 * next certification index.
+	 * Commits the working candidate: freezes the procedure over the certification scope's cells, the comparisons and
+	 * the formal stream, and assigns the next certification index.
 	 *
 	 * @param draft the state
 	 * @param campaign the state before the event
@@ -668,7 +669,7 @@ public final class Transitions
 			throw new IllegalStateException("The cap was calibrated at " + calibration.level() + ", but attempt " +
 				index + " uses " + level);
 		}
-		List<String> cells = draft.contract().cellIds();
+		List<String> cells = CellTier.scopeCellIds(draft.contract());
 		int cellCount = cells.size();
 		SignificanceLevel improvementLevel = ErrorBudget.improvementLevel(index, cellCount);
 		SignificanceLevel incumbentLevel = ErrorBudget.incumbentLevel(draft.baselineIndex, cellCount);

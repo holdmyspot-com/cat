@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -66,15 +67,17 @@ public interface Core
 	CommandResult status(String campaign) throws CommandRefusedException, IOException;
 
 	/**
-	 * Confirms the campaign's current proposal.
+	 * Confirms the campaign's current proposal with the certification scope that the user chose.
 	 *
 	 * @param campaign the campaign's identifier
+	 * @param scope the certification scope, which confirmation requires
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, it has no
-	 *   proposal to confirm, or the proposal cannot be confirmed
+	 * @throws CommandRefusedException if {@code scope} is null, which the refusal answers by naming every choice, or
+	 *   the campaign does not exist, the other harness started it, it has no proposal to confirm, or the proposal
+	 *   cannot be confirmed with {@code scope}
 	 * @throws IOException if the store or the workspace fails
 	 */
-	CommandResult confirm(String campaign) throws CommandRefusedException, IOException;
+	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
 
 	/**
 	 * Regenerates the proposal from the user's feedback.

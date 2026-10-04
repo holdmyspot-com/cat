@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
@@ -32,6 +34,7 @@ public final class FakeProfileInventory implements ProfileInventory
 	 */
 	public static final TrialProfile ROLE = new TrialProfile("role-model", "high");
 	private final ProfileCatalog inventory;
+	private final CapabilityRanking ranking;
 	private final TrialProfile role;
 	private final Set<String> rejectedModels = new CopyOnWriteArraySet<>();
 
@@ -52,9 +55,24 @@ public final class FakeProfileInventory implements ProfileInventory
 	 */
 	public FakeProfileInventory(ProfileCatalog inventory, TrialProfile role)
 	{
+		this(inventory, ContractFixtures.ranking(inventory), role);
+	}
+
+	/**
+	 * Creates a fake.
+	 *
+	 * @param inventory the inventory
+	 * @param ranking the capability ranking
+	 * @param role the role profile
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public FakeProfileInventory(ProfileCatalog inventory, CapabilityRanking ranking, TrialProfile role)
+	{
 		requireThat(inventory, "inventory").isNotNull();
+		requireThat(ranking, "ranking").isNotNull();
 		requireThat(role, "role").isNotNull();
 		this.inventory = inventory;
+		this.ranking = ranking;
 		this.role = role;
 	}
 
@@ -90,6 +108,12 @@ public final class FakeProfileInventory implements ProfileInventory
 	public ProfileCatalog inventory()
 	{
 		return inventory;
+	}
+
+	@Override
+	public CapabilityRanking ranking()
+	{
+		return ranking;
 	}
 
 	@Override

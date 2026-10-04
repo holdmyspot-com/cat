@@ -3,15 +3,16 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Chooses concurrent development attempts using the existing exploratory estimate and promotion rule.
@@ -31,27 +32,32 @@ public final class AttemptSelection
 	}
 
 	/**
-	 * Tests every profile of the addressed categories, including profiles with no development outcomes.
+	 * Tests every development cell of the addressed categories, including cells with no development outcomes.
 	 *
 	 * @param counts the current working candidate's development counts
-	 * @param contract the confirmed contract
-	 * @param addressed the representative cells of the addressed categories
+	 * @param developmentCells the development cells, in contract order
+	 * @param addressed the development cells that the round addresses
 	 * @return whether any relevant development Wilson lower bound is below {@link #WEAK_ESTIMATE}
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static boolean isWeak(Map<String, CellCounts> counts, Contract contract, List<String> addressed)
+	public static boolean isWeak(Map<String, CellCounts> counts, List<Cell> developmentCells, List<String> addressed)
 	{
 		requireThat(counts, "counts").isNotNull();
-		requireThat(contract, "contract").isNotNull();
+		requireThat(developmentCells, "developmentCells").isNotNull();
 		requireThat(addressed, "addressed").isNotNull();
-		for (String representative : addressed)
+		Set<String> categories = new HashSet<>();
+		for (Cell cell : developmentCells)
 		{
-			Cell selected = contract.findCell(representative).orElseThrow();
-			for (Cell cell : contract.profiles().cellsOf(selected.categoryId()))
-			{
-				CellCounts outcomes = counts.getOrDefault(cell.id(), CellCounts.EMPTY);
-				if (ExploratoryBounds.wilson(outcomes.passes(), outcomes.outcomes()).lower() < WEAK_ESTIMATE)
-					return true;
-			}
+			if (addressed.contains(cell.id()))
+				categories.add(cell.categoryId());
+		}
+		for (Cell cell : developmentCells)
+		{
+			if (!categories.contains(cell.categoryId()))
+				continue;
+			CellCounts outcomes = counts.getOrDefault(cell.id(), CellCounts.EMPTY);
+			if (ExploratoryBounds.wilson(outcomes.passes(), outcomes.outcomes()).lower() < WEAK_ESTIMATE)
+				return true;
 		}
 		return false;
 	}

@@ -37,8 +37,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
@@ -752,7 +755,7 @@ public final class StatusReportTest
 			cell("formatting", 120, 0).cell("safety", 120, 0).build();
 		Campaign campaign = new Campaign(frozen.header(), frozen.ceiling(), frozen.lineages(), frozen.identity(),
 			frozen.incumbent(), frozen.candidates(), frozen.authorAttempts(), frozen.development(),
-			frozen.failedCells(), new IncumbentBaseline(2, frozen.baseline().identity(), frozen.baseline().counts()),
+			new IncumbentBaseline(2, frozen.baseline().identity(), frozen.baseline().counts()),
 			frozen.attempts(),
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
@@ -1226,39 +1229,64 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that the text and JSON status show each category's active development cells, including a cell that
-	 * became active by failing, and whether development has widened.
+	 * Verifies that the text and JSON status show the certification scope and each category's weakest cell and
+	 * development cells, including a cell where certification failed, and that before a contract is confirmed the
+	 * weakest cells are not yet fixed.
 	 */
 	@Test
-	public void cellTierIsShown()
+	public void developmentCellsAreShown()
 	{
 		// Requirement: R-E19
-		Builder builder = new Builder().confirmed(TierFixtures.tieredContract(), 1).working(1).
-			readyBaseline().failedCell(TierFixtures.BIG_MEDIUM);
-		List<String> formatting = List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_MEDIUM, TierFixtures.BIG_XHIGH,
-			TierFixtures.SMALL_HIGH);
-		StatusReport report = StatusReport.of(builder.build(), ReportEvidence.NONE);
+		// Requirement: R-E22
+		Contract contract = TierFixtures.tieredContract();
+		TrialInstance failure = new Generator(contract).draw(TierFixtures.BIG_MEDIUM,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).readyBaseline().certificationAttempt(1).
+			failure(failure).outcome(Outcome.INCONCLUSIVE).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.summary(), "summary").
-			contains("Active development cells of category formatting: " + String.join(", ", formatting)).
-			contains("Active development cells of category safety: " + TierFixtures.SAFETY).
-			contains("Development widened to every cell: no");
+			contains("Certification scope: latest versions (6 cells)").
+			contains("Category formatting: weakest cell " + TierFixtures.SMALL_HIGH + "; development cells " +
+				TierFixtures.BIG_MEDIUM + ", " + TierFixtures.SMALL_HIGH).
+			contains("Category safety: weakest cell " + TierFixtures.SAFETY + "; development cells " +
+				TierFixtures.SAFETY);
 		JsonNode tier = report.toJson(JsonMapper.builder().build()).path("cellTier");
-		requireThat(tier.path("widened").asBoolean(), "widened").isFalse();
-		JsonNode active = tier.path("activeCells");
-		requireThat(values(active, "category"), "categories").isEqualTo(List.of("formatting", "safety"));
+		requireThat(tier.path("scope").asString(), "scope").isEqualTo("latest_versions");
+		JsonNode categories = tier.path("categories");
+		requireThat(values(categories, "category"), "categories").isEqualTo(List.of("formatting", "safety"));
+		requireThat(values(categories, "weakestCell"), "weakestCells").
+			isEqualTo(List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		List<String> cells = new ArrayList<>();
-		for (JsonNode cell : active.get(0).path("cells"))
+		for (JsonNode cell : categories.get(0).path("developmentCells"))
 			cells.add(cell.asString());
-		requireThat(cells, "formattingCells").isEqualTo(formatting);
-
-		StatusReport widened = StatusReport.of(builder.widened().build(), ReportEvidence.NONE);
-		requireThat(widened.summary(), "widenedSummary").contains("Development widened to every cell: yes");
-		requireThat(widened.toJson(JsonMapper.builder().build()).path("cellTier").path("widened").asBoolean(),
-			"widenedJson").isTrue();
+		requireThat(cells, "formattingCells").isEqualTo(List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH));
 
 		StatusReport unconfirmed = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
 		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cellTier").isNull(), "unconfirmed").
 			isTrue();
+		requireThat(unconfirmed.summary(), "unconfirmedSummary").contains("Weakest cells: not yet fixed");
+	}
+
+	/**
+	 * Verifies that a weakest-only claim counts the scope's cells, names each category's profile and says that no
+	 * other profile was certified, and that a latest-versions claim counts its cells without that statement.
+	 */
+	@Test
+	public void weakestOnlyClaimNamesProfiles()
+	{
+		// Requirement: R-P4
+		// Requirement: R-C15
+		Contract weakest = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		StatusReport report = StatusReport.of(new Builder().confirmed(weakest, 1).working(1).build(),
+			ReportEvidence.NONE);
+		requireThat(report.claim(), "claim").contains("benchmark of 2 cells").
+			contains("Certification covered only each category's weakest cell: formatting under small/high, " +
+				"safety under big/high. No other profile was certified.");
+
+		StatusReport latest = StatusReport.of(new Builder().confirmed(TierFixtures.tieredContract(), 1).working(1).
+			build(), ReportEvidence.NONE);
+		requireThat(latest.claim(), "latestClaim").contains("benchmark of 6 cells").
+			doesNotContain("No other profile");
 	}
 
 	/**

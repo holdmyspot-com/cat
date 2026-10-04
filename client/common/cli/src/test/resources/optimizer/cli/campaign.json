@@ -1,5 +1,5 @@
 {
-  "format_version" : 13,
+  "format_version" : 14,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -128,8 +128,14 @@
           "model" : "test-model",
           "effort" : "high"
         } ],
+        "ranking" : {
+          "source" : "test ranking in inventory order",
+          "families" : [ "test-model" ]
+        },
         "bindings" : [ ],
         "restriction" : [ ],
+        "described" : [ ],
+        "scope" : "latest_versions",
         "cells" : [ {
           "id" : "formatting",
           "category" : "formatting",
@@ -223,7 +229,6 @@
     "round" : null,
     "author" : null,
     "review_points" : { },
-    "widened" : false,
     "instance_outcomes" : [ ],
     "predecessor" : null,
     "reverts" : [ ]
@@ -236,7 +241,6 @@
     "trial_inputs" : [ ],
     "attempts" : [ ]
   },
-  "failed_cells" : [ ],
   "baseline" : {
     "index" : 1,
     "identity" : {

@@ -3,14 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_HIGH;
-import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_LOW;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_MEDIUM;
-import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_XHIGH;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SAFETY;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SMALL_HIGH;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
-import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -18,7 +16,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.time.Instant;
@@ -411,17 +408,6 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Returns the identifiers of cells.
-	 *
-	 * @param cells the cells
-	 * @return the identifiers in order
-	 */
-	private static List<String> ids(List<Cell> cells)
-	{
-		return cells.stream().map(Cell::id).toList();
-	}
-
-	/**
 	 * Assigns the first new admission of a plan, then runs and completes it.
 	 *
 	 * @param campaign the campaign
@@ -438,270 +424,187 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies the active cells: the cell of a category that binds one profile, each model's lowest and highest effort
-	 * in inventory order, and every cell in which a candidate has failed.
+	 * Returns a builder of a confirmed campaign of {@link TierFixtures#tieredContract()} under a certification scope,
+	 * whose working candidate 1 has replaced the incumbent.
+	 *
+	 * @param scope the certification scope
+	 * @return the builder
 	 */
-	@Test
-	public void activeCellsBoundLowestHighestFailed()
+	private static Builder tiered(CertificationScope scope)
 	{
-		// Requirement: R-E19
-		Contract contract = TierFixtures.tieredContract();
-		requireThat(ids(CellTier.activeCells(contract, Set.of())), "initial").
-			isEqualTo(List.of(BIG_LOW, BIG_XHIGH, SMALL_HIGH, SAFETY));
-		// A failed cell that the contract no longer lists is ignored
-		requireThat(ids(CellTier.activeCells(contract, Set.of(BIG_MEDIUM, "retired@big/low"))), "failed").
-			isEqualTo(List.of(BIG_LOW, BIG_MEDIUM, BIG_XHIGH, SMALL_HIGH, SAFETY));
+		return new Builder().confirmed(TierFixtures.tieredContract().withScope(scope), 1).working(1);
 	}
 
 	/**
-	 * Verifies that under the Codex inventory of 39 profiles, a category that binds nothing starts with 16 active cells:
-	 * the lowest and the highest effort of each of the 8 models.
+	 * Returns a development failure of the tiered contract's {@code formatting} category.
+	 *
+	 * @param cell the identifier of the failing cell
+	 * @return the failure's instance
 	 */
-	@Test
-	public void codexUnboundCategoryHasSixteenActive()
+	private static TrialInstance tieredFailure(String cell)
 	{
-		// Requirement: R-E19
-		Contract contract = TierFixtures.contract(TierFixtures.CODEX_PROFILES, new TrialProfile("gpt-6.1-sol", "high"));
-		List<Cell> formatting = contract.cells().stream().filter(cell -> cell.categoryId().equals("formatting")).
-			toList();
-		requireThat(formatting.size(), "cells").isEqualTo(39);
-		List<String> expected = new ArrayList<>();
-		for (Map.Entry<String, List<String>> model : TierFixtures.CODEX_EFFORTS.entrySet())
-		{
-			expected.add("formatting@" + model.getKey() + "/" + model.getValue().getFirst());
-			expected.add("formatting@" + model.getKey() + "/" + model.getValue().getLast());
-		}
-		List<String> active = CellTier.activeCells(contract, Set.of()).stream().
-			filter(cell -> cell.categoryId().equals("formatting")).map(Cell::id).toList();
-		requireThat(active, "active").isEqualTo(expected);
-		requireThat(active.size(), "activeCount").isEqualTo(16);
+		return new Generator(TierFixtures.tieredContract()).draw(cell,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 	}
 
 	/**
-	 * Verifies that development assigns representative trials only to active cells, including a cell that became
-	 * active by failing.
+	 * Verifies that development assigns representative trials only to development cells: each category's weakest
+	 * cell, plus a cell where a certification attempt of the lineage adopted a failure. The other cells are empty and
+	 * would have the lowest bound.
 	 */
 	@Test
-	public void developmentSamplesOnlyActiveCells()
+	public void developmentSamplesOnlyDevelopmentCells()
 	{
 		// Requirement: R-E19
 		// Requirement: R-E3
-		List<String> active = List.of(BIG_LOW, BIG_XHIGH, SMALL_HIGH, SAFETY);
-		for (String cell : active)
+		List<String> developmentCells = List.of(SMALL_HIGH, SAFETY);
+		for (String cell : developmentCells)
 		{
 			Builder builder = tiered().slowStart(new SlowStart(1, 0));
-			for (String other : active)
+			for (String other : developmentCells)
 				builder.development(other, 100, 0);
-			// The inactive cells are empty and would have the lowest bound
 			Campaign campaign = builder.development(cell, 60, 0).build();
 			requireThat(Scheduler.plan(campaign, NOW, 8), cell).isEqualTo(List.of(development(cell)));
 		}
 
-		Builder failed = tiered().slowStart(new SlowStart(1, 0)).failedCell(BIG_MEDIUM);
-		for (String cell : active)
-			failed.development(cell, 100, 0);
-		Campaign campaign = failed.development(BIG_MEDIUM, 60, 0).build();
-		requireThat(Scheduler.plan(campaign, NOW, 8), "failedCell").isEqualTo(List.of(development(BIG_MEDIUM)));
+		Builder certified = tiered().slowStart(new SlowStart(1, 0));
+		for (String cell : developmentCells)
+			certified.development(cell, 100, 0);
+		Campaign campaign = certified.development(BIG_MEDIUM, 60, 0).certificationAttempt(1).
+			failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+		requireThat(Scheduler.plan(campaign, NOW, 8), "certificationFailure").
+			isEqualTo(List.of(development(BIG_MEDIUM)));
 	}
 
 	/**
-	 * Verifies the screen: when development starts, every cell receives 3 representative trials of the first working
-	 * candidate, counting unadopted trials; afterwards development samples only active cells; the screen runs once per
-	 * campaign; and a cell in which the screen finds a failure becomes active.
+	 * Verifies that the coverage floor applies among the development cells only: a development cell 50 assignments
+	 * ahead of the least-sampled development cell is excluded, and one 49 ahead is not, although the other cells have
+	 * no assignments.
 	 */
 	@Test
-	public void screenGivesEveryCellThreeTrials()
+	public void coverageFloorAmongDevelopmentCells()
+	{
+		// Requirement: R-E19
+		// Requirement: R-E3
+		// safety has the lower Wilson bound, but is 50 assignments ahead of the weakest formatting cell
+		Campaign ahead = tiered().development(SMALL_HIGH, 45, 0).development(SAFETY, 90, 5).
+			slowStart(new SlowStart(1, 0)).build();
+		requireThat(Scheduler.plan(ahead, NOW, 8), "atLead").
+			isEqualTo(List.of(development(SMALL_HIGH, AllocationRule.COVERAGE_FLOOR)));
+
+		Campaign within = tiered().development(SMALL_HIGH, 46, 0).development(SAFETY, 90, 5).
+			slowStart(new SlowStart(1, 0)).build();
+		requireThat(Scheduler.plan(within, NOW, 8), "withinLead").isEqualTo(List.of(development(SAFETY)));
+	}
+
+	/**
+	 * Verifies that the first working candidate samples only development cells, with no screen of the other cells,
+	 * and that development assigns nothing once every development cell is ready, however empty the other cells are.
+	 */
+	@Test
+	public void noScreenAndNoWidening()
 	{
 		// Requirement: R-E19
 		Contract contract = TierFixtures.tieredContract();
 		Campaign campaign = new Builder().confirmed(contract, 1).build();
-		for (int trial = 0; trial < 6 * CellTier.SCREEN_TRIALS; ++trial)
+		for (int trial = 0; trial < 18; ++trial)
 			campaign = runNext(campaign, Verdict.PASS);
-		for (String cell : contract.cellIds())
-			requireThat(campaign.development().count(cell).outcomes(), cell).isEqualTo(CellTier.SCREEN_TRIALS);
-		for (int trial = 0; trial < 20; ++trial)
-			campaign = runNext(campaign, Verdict.PASS);
-		requireThat(campaign.development().count(BIG_MEDIUM).outcomes(), "bigMedium").
-			isEqualTo(CellTier.SCREEN_TRIALS);
-		requireThat(campaign.development().count(BIG_HIGH).outcomes(), "bigHigh").isEqualTo(CellTier.SCREEN_TRIALS);
+		requireThat(campaign.development().counts().keySet(), "sampled").isEqualTo(Set.of(SMALL_HIGH, SAFETY));
 
-		// The screen goes on while a cell has fewer than 3 trials, ahead of a weaker active cell
-		Builder screening = new Builder().confirmed(contract, 1).slowStart(new SlowStart(1, 0));
-		for (String cell : contract.cellIds())
-			screening.development(cell, 3, 0);
-		Campaign incomplete = screening.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(cellIds(Scheduler.plan(incomplete, NOW, 8)), "incomplete").isEqualTo(List.of(BIG_MEDIUM));
-
-		// An unadopted trial counts toward the screen
-		Builder inFlight = new Builder().confirmed(contract, 1).slowStart(new SlowStart(2, 0));
-		for (String cell : contract.cellIds())
-			inFlight.development(cell, 3, 0);
-		Campaign started = TransitionSteps.assign(inFlight.development(BIG_MEDIUM, 2, 0).build(),
-			Purpose.DEVELOPMENT, BIG_MEDIUM);
-		started = Transitions.apply(started, new CampaignEvent.Start(TransitionSteps.last(started)));
-		requireThat(cellIds(Scheduler.plan(started, NOW, 8)), "inFlight").isEqualTo(List.of(SAFETY));
-
-		// Only the first working candidate is screened
-		Builder later = tiered().slowStart(new SlowStart(1, 0));
-		for (String cell : contract.cellIds())
-			later.development(cell, 3, 0);
-		Campaign second = later.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(cellIds(Scheduler.plan(second, NOW, 8)), "laterCandidate").isEqualTo(List.of(SAFETY));
-
-		// The screen runs once per campaign: the incumbent's next series, after a contract revision, is not screened
-		Builder revised = new Builder().confirmed(contract, 1).series(2).slowStart(new SlowStart(1, 0));
-		for (String cell : contract.cellIds())
-			revised.development(cell, 3, 0);
-		Campaign nextSeries = revised.development(BIG_MEDIUM, 2, 0).development(SAFETY, 2, 1).build();
-		requireThat(cellIds(Scheduler.plan(nextSeries, NOW, 8)), "nextSeries").isEqualTo(List.of(SAFETY));
-
-		// A failure in the screen makes its cell active
-		Campaign screened = TransitionSteps.assign(new Builder().confirmed(contract, 1).build(),
-			Purpose.DEVELOPMENT, BIG_HIGH);
-		screened = TransitionSteps.run(screened, TransitionSteps.last(screened), Verdict.FAIL);
-		requireThat(screened.failedCells(), "failedCells").isEqualTo(Set.of(BIG_HIGH));
-		requireThat(ids(CellTier.activeCells(contract, screened.failedCells())), "active").
-			isEqualTo(List.of(BIG_LOW, BIG_HIGH, BIG_XHIGH, SMALL_HIGH, SAFETY));
+		Campaign ready = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
+			slowStart(new SlowStart(1, 0)).build();
+		requireThat(Scheduler.plan(ready, NOW, 8), "ready").isEmpty();
 	}
 
 	/**
-	 * Verifies that within the coverage floor, each model's lowest-effort active cell receives representative
-	 * assignments first, even ahead of a weaker active cell, until it leads that cell by the floor.
+	 * Verifies that a formal failure in a cell that is not a development cell makes it one for the rest of the
+	 * lineage.
 	 */
 	@Test
-	public void lowestEffortFirstWithinFloor()
+	public void formalFailureAddsDevelopmentCell()
 	{
 		// Requirement: R-E19
-		// Requirement: R-E3
-		Campaign within = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
-			development(BIG_LOW, 40, 0).slowStart(new SlowStart(1, 0)).build();
-		requireThat(Scheduler.plan(within, NOW, 8), "withinFloor").
-			isEqualTo(List.of(development(BIG_LOW, AllocationRule.COVERAGE_FLOOR)));
-
-		Campaign atFloor = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
-			development(BIG_LOW, 50, 0).slowStart(new SlowStart(1, 0)).build();
-		requireThat(Scheduler.plan(atFloor, NOW, 8), "atFloor").isEqualTo(List.of(development(BIG_XHIGH)));
-	}
-
-	/**
-	 * Verifies widening: once every active cell meets the readiness gate's count conditions, every cell becomes
-	 * eligible and the empty cells count as 0; an active cell that misses the count conditions keeps development in
-	 * the active cells.
-	 */
-	@Test
-	public void wideningAtCountConditions()
-	{
-		// Requirement: R-E19
-		Builder builder = tiered().development(BIG_LOW, 100, 0).development(SMALL_HIGH, 100, 0).
-			development(SAFETY, 100, 0).slowStart(new SlowStart(1, 0));
-		Campaign campaign = builder.development(BIG_XHIGH, 99, 0).build();
-		requireThat(Scheduler.plan(campaign, NOW, 8), "before").isEqualTo(List.of(development(BIG_XHIGH)));
-		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, BIG_XHIGH);
-		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
-		requireThat(campaign.development().widened(), "widened").isTrue();
-		requireThat(cellIds(Scheduler.plan(campaign, NOW, 1)), "after").isEqualTo(List.of(BIG_MEDIUM));
-
-		// 98 passes of 100, 2 failures in the second batch: the count conditions are not met
-		Campaign missed = builder.development(BIG_XHIGH, 97, List.of(0, 2)).build();
-		missed = TransitionSteps.assign(missed, Purpose.DEVELOPMENT, BIG_XHIGH);
-		missed = TransitionSteps.run(missed, TransitionSteps.last(missed), Verdict.PASS);
-		requireThat(missed.development().widened(), "notWidened").isFalse();
-		requireThat(cellIds(Scheduler.plan(missed, NOW, 1)), "notReady").isEqualTo(List.of(BIG_XHIGH));
-	}
-
-	/**
-	 * Verifies that a failure in a cell that development sampled after widening makes the cell active, and that the
-	 * failure is handled like any other development failure.
-	 */
-	@Test
-	public void failureInNewlySampledCellActivatesIt()
-	{
-		// Requirement: R-E19
-		Campaign campaign = tiered().widened().development(BIG_LOW, 100, 0).development(BIG_XHIGH, 100, 0).
-			development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).slowStart(new SlowStart(1, 0)).build();
-		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(development(BIG_MEDIUM)));
-		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, BIG_MEDIUM);
+		Builder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
+		for (String cell : TierFixtures.tieredContract().cellIds())
+			attempt.cell(cell, 50, 0);
+		Campaign campaign = attempt.cell(BIG_HIGH, 50, 1).build();
+		requireThat(CellTier.developmentCellIds(campaign), "before").isEqualTo(List.of(SMALL_HIGH, SAFETY));
+		requireThat(Scheduler.plan(campaign, NOW, 8), "formal").isEqualTo(List.of(formal(BIG_HIGH)));
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, BIG_HIGH);
 		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.FAIL);
-		requireThat(campaign.failedCells(), "failedCells").isEqualTo(Set.of(BIG_MEDIUM));
-		requireThat(ids(CellTier.activeCells(campaign.contract(), campaign.failedCells())), "active").
-			isEqualTo(List.of(BIG_LOW, BIG_MEDIUM, BIG_XHIGH, SMALL_HIGH, SAFETY));
-		requireThat(campaign.development().diagnosis(), "diagnosis").isNotNull();
+		requireThat(CellTier.developmentCellIds(campaign), "after").isEqualTo(List.of(BIG_HIGH, SMALL_HIGH, SAFETY));
 	}
 
 	/**
-	 * Verifies that after an edit, the new working candidate starts again with counts at zero, not widened, and
-	 * receives representative trials only in the active cells, including the cell that failed.
+	 * Verifies that formal and baseline trials run in the certification scope's cells only: the weakest cell of each
+	 * category under the weakest-cell scope, and every cell of the latest versions under the latest-versions scope.
+	 */
+	@Test
+	public void formalAndBaselineCellsPerScope()
+	{
+		// Requirement: R-C15
+		// Requirement: R-D7
+		// Requirement: R-E3
+		Campaign weakestFormal = tiered(CertificationScope.WEAKEST_CELL).readyBaseline().
+			slowStart(new SlowStart(1, 0)).certificationAttempt(1).cell(SMALL_HIGH, 50, 0).cell(SAFETY, 50, 1).
+			build();
+		requireThat(weakestFormal.runningAttempt().orElseThrow().procedure().cells(), "weakestProcedure").
+			isEqualTo(List.of(SMALL_HIGH, SAFETY));
+		requireThat(Scheduler.plan(weakestFormal, NOW, 8), "weakestFormal").isEqualTo(List.of(formal(SAFETY)));
+
+		requireThat(baselineCells(tiered(CertificationScope.WEAKEST_CELL).build()), "weakestBaseline").
+			isEqualTo(Set.of(SMALL_HIGH, SAFETY));
+		requireThat(baselineCells(tiered(CertificationScope.LATEST_VERSIONS).build()), "latestBaseline").
+			isEqualTo(Set.copyOf(TierFixtures.tieredContract().cellIds()));
+	}
+
+	/**
+	 * Returns the cells of a plan's baseline admissions.
+	 *
+	 * @param campaign the campaign
+	 * @return the cells
+	 */
+	private static Set<String> baselineCells(Campaign campaign)
+	{
+		Set<String> cells = new LinkedHashSet<>();
+		for (Admission admission : Scheduler.plan(campaign, NOW, 64))
+		{
+			if (admission instanceof Admission.Assign assign && assign.purpose() == Purpose.BASELINE)
+				cells.add(assign.cell());
+		}
+		return cells;
+	}
+
+	/**
+	 * Verifies that after an edit, the new working candidate starts again with counts at zero and receives
+	 * representative trials only in the development cells, including a cell where certification failed.
 	 */
 	// Requirement: R-D3
 	@Test
-	public void restartInActiveSetAfterEdit()
+	public void restartInDevelopmentCellsAfterEdit()
 	{
 		// Requirement: R-E19
 		Contract contract = TierFixtures.tieredContract();
-		TrialInstance failing = new Generator(contract).markTargeted(new Generator(contract).draw(BIG_MEDIUM,
-			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1)));
-		Campaign campaign = tiered().widened().failedCell(BIG_MEDIUM).development(BIG_LOW, 100, 0).
-			development(BIG_XHIGH, 100, 0).development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
-			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).build();
-		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM,
-			Builder.snapshot("attempt"), List.of());
+		TrialInstance failing = new Generator(contract).markTargeted(tieredFailure(BIG_MEDIUM));
+		Campaign campaign = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
+			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).
+			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM, Builder.snapshot("attempt"), List.of());
 		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet(),
-			campaign.development().instanceOutcomes()) ==
-			Promotion.Decision.PENDING)
+			campaign.development().instanceOutcomes()) == Promotion.Decision.PENDING)
 		{
 			campaign = runNext(campaign, Verdict.PASS);
 		}
-		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(
-			Builder.snapshot("attempt")));
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(Builder.snapshot("attempt")));
 		requireThat(campaign.development().working().number(), "working").isEqualTo(2);
-		requireThat(campaign.development().widened(), "widened").isFalse();
 		requireThat(campaign.development().counts(), "counts").isEmpty();
 
 		Set<String> sampled = new LinkedHashSet<>();
-		while (!sampled.contains(BIG_MEDIUM) || !sampled.contains(BIG_XHIGH))
+		for (int trial = 0; trial < 30; ++trial)
 		{
 			campaign = runNext(campaign, Verdict.PASS);
 			sampled.addAll(campaign.development().counts().keySet());
 		}
-		requireThat(sampled, "sampled").isEqualTo(Set.of(BIG_LOW, BIG_MEDIUM, BIG_XHIGH, SMALL_HIGH, SAFETY));
-	}
-
-	/**
-	 * Verifies that tiering leaves formal allocation, the baseline arm and readiness covering every cell, and that a
-	 * formal failure makes its cell active.
-	 */
-	@Test
-	public void formalAndBaselineCoverEveryCell()
-	{
-		// Requirement: R-E19
-		// Requirement: R-E3
-		Contract contract = TierFixtures.tieredContract();
-		Builder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
-		for (String cell : contract.cellIds())
-			attempt.cell(cell, 50, 0);
-		Campaign formal = attempt.cell(BIG_HIGH, 50, 1).build();
-		Admission.Assign expected = new Admission.Assign(Purpose.FORMAL, 1, WORKING, BIG_HIGH, null,
-			allocation(AllocationRule.FORMAL));
-		requireThat(Scheduler.plan(formal, NOW, 8), "formal").isEqualTo(List.of(expected));
-		formal = TransitionSteps.assign(formal, Purpose.FORMAL, BIG_HIGH);
-		formal = TransitionSteps.run(formal, TransitionSteps.last(formal), Verdict.FAIL);
-		requireThat(formal.failedCells(), "formalFailure").isEqualTo(Set.of(BIG_HIGH));
-
-		Campaign baseline = new Builder().confirmed(contract, 1).working(1).development(BIG_LOW, 60, 0).
-			build();
-		Set<String> baselineCells = new LinkedHashSet<>();
-		for (Admission admission : Scheduler.plan(baseline, NOW, 16))
-		{
-			if (admission instanceof Admission.Assign assign && assign.purpose() == Purpose.BASELINE)
-				baselineCells.add(assign.cell());
-		}
-		requireThat(baselineCells, "baseline").isEqualTo(Set.copyOf(contract.cellIds()));
-
-		Builder ready = tiered().widened();
-		for (String cell : contract.cellIds())
-			ready.development(cell, 100, 0);
-		requireThat(ReadinessGate.isCommitDue(ready.build()), "ready").isTrue();
-		requireThat(ReadinessGate.isCommitDue(ready.development(BIG_HIGH, 60, 0).build()), "inactiveNotReady").
-			isFalse();
+		requireThat(sampled, "sampled").isEqualTo(Set.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
 	}
 }

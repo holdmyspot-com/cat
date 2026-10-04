@@ -4,6 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
+import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 
 import java.util.List;
 import java.util.Map;
@@ -175,5 +179,25 @@ public final class ReadinessGateTest
 			readyBaseline().development(ContractFixtures.SMALL_CELL, 99, 0).build()), "smallCellShort").isFalse();
 		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().baseline(ContractFixtures.BIG_CELL, 49, 0).build()), "bigBaselineShort").isFalse();
+	}
+
+	/**
+	 * Verifies that the gate requires readiness in the development cells only: an empty cell outside them does not
+	 * block it, and a cell where a certification attempt of the lineage adopted a failure must be ready too.
+	 */
+	@Test
+	public void gateCoversDevelopmentCells()
+	{
+		// Requirement: R-D1
+		// Requirement: R-E19
+		Contract contract = TierFixtures.tieredContract();
+		Builder weakest = new Builder().confirmed(contract, 1).working(1).readyBaseline().
+			development(TierFixtures.SMALL_HIGH, 100, 0).development(TierFixtures.SAFETY, 100, 0);
+		requireThat(ReadinessGate.isMet(weakest.build()), "weakestReady").isTrue();
+
+		TrialInstance failure = new Generator(contract).draw(TierFixtures.BIG_HIGH,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		Campaign failed = weakest.certificationAttempt(1).failure(failure).outcome(Outcome.INCONCLUSIVE).build();
+		requireThat(ReadinessGate.isMet(failed), "certificationFailure").isFalse();
 	}
 }

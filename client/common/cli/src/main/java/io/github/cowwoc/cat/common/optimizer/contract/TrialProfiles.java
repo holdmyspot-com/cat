@@ -15,39 +15,52 @@ import java.util.function.Function;
 
 /**
  * The model and reasoning-effort combinations used to measure a contract's compliance. It records the combinations
- * available from the harness, the choices selected by prompt files, the user's restriction and the resulting pairs
- * of category and trial profile, called cells.
+ * available from the harness, their capability ranking, the choices selected by prompt files, the user's restriction,
+ * the resulting pairs of category and trial profile, called cells, and the certification scope.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param inventory the harness's profile inventory and its source
+ * @param ranking the model families ranked by advertised capability
  * @param bindings every prompt file that binds a model or an effort
  * @param restriction the patterns that the user restricted the profile set to, or empty if the user did not restrict
  *   it. An empty dimension of a pattern matches every value.
+ * @param described the patterns of the profiles that the user described as the certification scope, or empty if the
+ *   user described none. An empty dimension of a pattern matches every value.
+ * @param scope the certification scope, or null until the user chooses it at confirmation
  * @param cells every cell, grouped by category in category order
  */
-public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindings, List<TrialProfile> restriction,
-	List<Cell> cells)
+public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
+	List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
 {
 	/**
 	 * Creates the trial profiles.
 	 *
 	 * @param inventory the harness's profile inventory and its source
+	 * @param ranking the model families ranked by advertised capability
 	 * @param bindings every prompt file that binds a model or an effort
 	 * @param restriction the patterns that the user restricted the profile set to, or empty
+	 * @param described the patterns of the profiles that the user described as the certification scope, or empty
+	 * @param scope the certification scope, or null until the user chooses it
 	 * @param cells every cell, grouped by category in category order
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any of the arguments other than {@code scope} are null
 	 * @throws IllegalArgumentException if {@code cells} is empty, two cells share an identifier, two bindings name the
-	 *   same file, or a restriction pattern binds nothing or matches no inventory profile
+	 *   same file, a restriction or described pattern binds nothing or matches no inventory profile, the described
+	 *   patterns leave a category of several cells without a cell, {@code scope} is
+	 *   {@link CertificationScope#DESCRIBED} and no pattern is described, or a scope is chosen while an inventory
+	 *   model's family is missing from {@code ranking}
 	 */
 	public TrialProfiles
 	{
 		requireThat(inventory, "inventory").isNotNull();
+		requireThat(ranking, "ranking").isNotNull();
 		requireThat(bindings, "bindings").isNotNull();
 		requireThat(restriction, "restriction").isNotNull();
+		requireThat(described, "described").isNotNull();
 		requireThat(cells, "cells").isNotEmpty();
 		bindings = List.copyOf(bindings);
 		restriction = List.copyOf(restriction);
+		described = List.copyOf(described);
 		cells = List.copyOf(cells);
 		Set<String> files = new HashSet<>();
 		for (ProfileBinding binding : bindings)
@@ -63,6 +76,83 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 			if (!ids.add(cell.id()))
 				throw new IllegalArgumentException("The cell '" + cell.id() + "' is listed twice");
 		}
+		requireDescribable(inventory, described, cells);
+		if (scope == CertificationScope.DESCRIBED && described.isEmpty())
+		{
+			throw new IllegalArgumentException("The described certification scope needs the cells that the user " +
+				"described in revision feedback, and none are described");
+		}
+		List<String> unranked = ranking.unranked(inventory);
+		if (scope != null && !unranked.isEmpty())
+		{
+			throw new IllegalArgumentException("The capability ranking (" + ranking.source() + ") does not rank the " +
+				"family of the inventory models " + String.join(", ", unranked) + ". Rank them in revision feedback " +
+				"before confirming.");
+		}
+	}
+
+	/**
+	 * Requires the described patterns to select inventory profiles and to leave every category of several cells
+	 * with a cell.
+	 *
+	 * @param inventory the inventory
+	 * @param described the described patterns, or empty
+	 * @param cells every cell, grouped by category
+	 * @throws IllegalArgumentException if a pattern binds nothing or matches no inventory profile, or the patterns
+	 *   leave a category of several cells without a cell
+	 */
+	private static void requireDescribable(ProfileCatalog inventory, List<TrialProfile> described, List<Cell> cells)
+	{
+		if (described.isEmpty())
+			return;
+		for (TrialProfile pattern : described)
+		{
+			if (!pattern.isBound())
+				throw new IllegalArgumentException("A described certification cell must name a model, an effort or both");
+			if (inventory.isOutside(pattern))
+			{
+				throw new IllegalArgumentException("The described certification cell " + pattern.label() + " matches " +
+					"no profile in the inventory (" + inventory.source() + ")");
+			}
+		}
+		Map<String, List<TrialProfile>> byCategory = new LinkedHashMap<>();
+		for (Cell cell : cells)
+			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell.profile());
+		for (Map.Entry<String, List<TrialProfile>> entry : byCategory.entrySet())
+		{
+			List<TrialProfile> profiles = entry.getValue();
+			if (profiles.size() > 1 && profiles.stream().noneMatch(profile -> isDescribed(profile, described)))
+			{
+				throw new IllegalArgumentException("The described certification cells " + labels(described) +
+					" leave the category '" + entry.getKey() + "' with no cell to certify. Its cells are " +
+					labels(profiles));
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether a profile matches a described pattern.
+	 *
+	 * @param profile a profile
+	 * @param described the described patterns
+	 * @return {@code true} if a pattern matches the profile
+	 */
+	private static boolean isDescribed(TrialProfile profile, List<TrialProfile> described)
+	{
+		return described.stream().anyMatch(profile::matches);
+	}
+
+	/**
+	 * Indicates whether the user described a cell's profile as part of the certification scope.
+	 *
+	 * @param cell a cell
+	 * @return {@code true} if a described pattern matches the cell's profile
+	 * @throws NullPointerException if {@code cell} is null
+	 */
+	public boolean isDescribed(Cell cell)
+	{
+		requireThat(cell, "cell").isNotNull();
+		return isDescribed(cell.profile(), described);
 	}
 
 	/**
@@ -84,8 +174,9 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 	}
 
 	/**
-	 * Describes the trial profiles for the user: the inventory and its source, the bindings, marking each value
-	 * outside the inventory, the restriction and each category's cells.
+	 * Describes the trial profiles for the user: the inventory and its source, the capability ranking and its source
+	 * with any unranked models, the bindings, marking each value outside the inventory, the restriction, the
+	 * described certification cells and each category's cells.
 	 *
 	 * @return the lines of the description
 	 */
@@ -93,6 +184,13 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 	{
 		List<String> lines = new ArrayList<>();
 		lines.add("Trial profile inventory (" + inventory.source() + "): " + labels(inventory.profiles()));
+		lines.add(ranking.describe());
+		List<String> unranked = unranked();
+		if (!unranked.isEmpty())
+		{
+			lines.add("Unranked models: " + String.join(", ", unranked) + " (confirmation is refused until revision " +
+				"feedback ranks their families)");
+		}
 		if (bindings.isEmpty())
 			lines.add("Profile bindings: none");
 		else
@@ -108,6 +206,8 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 		}
 		if (!restriction.isEmpty())
 			lines.add("Profile restriction: " + labels(restriction));
+		if (!described.isEmpty())
+			lines.add("Described certification cells: " + labels(described));
 		lines.add("Cells:");
 		Map<String, List<TrialProfile>> byCategory = new LinkedHashMap<>();
 		for (Cell cell : cells)
@@ -179,23 +279,27 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 	 * restriction then narrows each set.
 	 *
 	 * @param inventory the harness's profile inventory
+	 * @param ranking the model families ranked by advertised capability
 	 * @param bindings every prompt file that binds a model or an effort
 	 * @param restriction the patterns that the user restricted the profile set to, or empty
+	 * @param described the patterns of the profiles that the user described as the certification scope, or empty
 	 * @param requirements every requirement of the contract
 	 * @param categories every category of the contract
 	 * @param excludedRequirements the requirements that come from CAT rather than from a file, such as the core-task
 	 *   requirement
-	 * @return the trial profiles
+	 * @return the trial profiles, without a certification scope
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a restriction pattern binds nothing or matches no inventory profile, the
 	 *   restriction leaves a category without a profile, or a test names a requirement that {@code requirements} does
 	 *   not list
 	 */
-	public static TrialProfiles compute(ProfileCatalog inventory, List<ProfileBinding> bindings,
-		List<TrialProfile> restriction, List<Requirement> requirements, List<Category> categories,
-		Set<String> excludedRequirements)
+	public static TrialProfiles compute(ProfileCatalog inventory, CapabilityRanking ranking,
+		List<ProfileBinding> bindings, List<TrialProfile> restriction, List<TrialProfile> described,
+		List<Requirement> requirements, List<Category> categories, Set<String> excludedRequirements)
 	{
 		requireThat(inventory, "inventory").isNotNull();
+		requireThat(ranking, "ranking").isNotNull();
+		requireThat(described, "described").isNotNull();
 		requireThat(bindings, "bindings").isNotNull();
 		requireThat(restriction, "restriction").isNotNull();
 		requireThat(requirements, "requirements").isNotNull();
@@ -245,7 +349,7 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 					cells.add(new Cell(category.id() + "@" + profile.label(), category.id(), profile));
 			}
 		}
-		return new TrialProfiles(inventory, bindings, restriction, cells);
+		return new TrialProfiles(inventory, ranking, bindings, restriction, described, null, cells);
 	}
 
 	/**
@@ -311,6 +415,34 @@ public record TrialProfiles(ProfileCatalog inventory, List<ProfileBinding> bindi
 		if (restriction.isEmpty())
 			return set;
 		return set.stream().filter(profile -> restriction.stream().anyMatch(profile::matches)).toList();
+	}
+
+	/**
+	 * Returns the inventory models whose family the capability ranking does not list.
+	 *
+	 * @return the models, each once, in inventory order
+	 */
+	public List<String> unranked()
+	{
+		return ranking.unranked(inventory);
+	}
+
+	/**
+	 * Returns these trial profiles with a certification scope.
+	 *
+	 * @param scope the certification scope
+	 * @return the trial profiles; the described patterns are kept only for {@link CertificationScope#DESCRIBED}
+	 * @throws NullPointerException if {@code scope} is null
+	 * @throws IllegalArgumentException if {@code scope} is {@link CertificationScope#DESCRIBED} and the user described
+	 *   no profile, or an inventory model's family is missing from the capability ranking
+	 */
+	public TrialProfiles withScope(CertificationScope scope)
+	{
+		requireThat(scope, "scope").isNotNull();
+		List<TrialProfile> kept = described;
+		if (scope != CertificationScope.DESCRIBED)
+			kept = List.of();
+		return new TrialProfiles(inventory, ranking, bindings, restriction, kept, scope, cells);
 	}
 
 	/**

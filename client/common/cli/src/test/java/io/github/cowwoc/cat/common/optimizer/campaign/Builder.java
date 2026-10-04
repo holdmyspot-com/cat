@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -58,8 +59,6 @@ public final class Builder
 	private Round round;
 	private AuthorAttempt author;
 	private final Map<String, Integer> reviewPoints = new LinkedHashMap<>();
-	private boolean widened;
-	private final Set<String> failedCells = new LinkedHashSet<>();
 	private int baselineIndex = 1;
 	private MeasurementIdentity baselineIdentity;
 	private final Map<String, CellCounts> baseline = new LinkedHashMap<>();
@@ -210,12 +209,15 @@ public final class Builder
 	/**
 	 * Confirms a contract.
 	 *
-	 * @param confirmedContract the contract
+	 * @param confirmedContract the contract; a contract without a certification scope is confirmed under
+	 *   {@link CertificationScope#LATEST_VERSIONS}
 	 * @param number the lineage number
 	 * @return this builder
 	 */
 	public Builder confirmed(Contract confirmedContract, int number)
 	{
+		if (confirmedContract.profiles().scope() == null)
+			confirmedContract = confirmedContract.withScope(CertificationScope.LATEST_VERSIONS);
 		this.contract = confirmedContract;
 		this.lineage = number;
 		identity = withContract(identity);
@@ -424,29 +426,6 @@ public final class Builder
 	public Builder reviewPoint(String cell, int point)
 	{
 		reviewPoints.put(cell, point);
-		return this;
-	}
-
-	/**
-	 * Marks the development series as widened, so that every cell is eligible for representative trials.
-	 *
-	 * @return this builder
-	 */
-	public Builder widened()
-	{
-		widened = true;
-		return this;
-	}
-
-	/**
-	 * Records that a candidate of the campaign has failed a trial in a cell, which makes the cell active.
-	 *
-	 * @param cell the cell's identifier
-	 * @return this builder
-	 */
-	public Builder failedCell(String cell)
-	{
-		failedCells.add(cell);
 		return this;
 	}
 
@@ -697,13 +676,13 @@ public final class Builder
 			incumbentBaseline = new IncumbentBaseline(baselineIndex, measuredIdentity, baseline);
 		}
 		Development state = new Development(working, series, development, failures, diagnosis, round, author,
-			reviewPoints, widened);
+			reviewPoints);
 		List<CertificationAttempt> built = new ArrayList<>();
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
-			authorAttempts, state, failedCells, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
-			throttle, authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
+			authorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart, throttle,
+			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
 	}
 
 	/**
@@ -883,7 +862,7 @@ public final class Builder
 		 */
 		private CertificationAttempt toAttempt()
 		{
-			List<String> cells = contract.cellIds();
+			List<String> cells = CellTier.scopeCellIds(contract);
 			DecisionBoundaries frozen = boundaries;
 			if (frozen == null)
 				frozen = Boundaries.standard(cells.size());

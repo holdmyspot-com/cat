@@ -5,19 +5,20 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The minimum remaining trials: the number still required if every remaining trial
@@ -145,28 +146,32 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * Computes the minimum remaining trials of the development phase.
+	 * Computes the minimum remaining trials of the development phase: readiness in each development cell, and the
+	 * incumbent baseline and the next attempt in each cell of the certification scope.
 	 *
 	 * @param campaign the campaign
 	 * @return the count
 	 */
 	private static RemainingWork development(Campaign campaign)
 	{
-		Contract contract = campaign.contract();
-		List<String> cells = contract.cellIds();
+		List<String> cells = CellTier.scopeCellIds(campaign.contract());
+		Set<String> development = Set.copyOf(CellTier.developmentCellIds(campaign));
 		int nextAttempt = DecisionBoundaries.allPassMinimum(
 			ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		for (String id : cells)
 		{
-			CellCounts counts = campaign.development().count(id);
-			int readiness = readinessRemaining(counts);
+			if (development.contains(id))
+			{
+				int readiness = readinessRemaining(campaign.development().count(id));
+				entries.add(new Entry(id, Kind.READINESS, readiness, null));
+				total += readiness;
+			}
 			int baseline = baselineRemaining(campaign.baseline(), id, cells.size());
-			entries.add(new Entry(id, Kind.READINESS, readiness, null));
 			entries.add(new Entry(id, Kind.BASELINE, baseline, null));
 			entries.add(new Entry(id, Kind.NEXT_ATTEMPT, nextAttempt, null));
-			total += readiness + baseline + nextAttempt;
+			total += baseline + nextAttempt;
 		}
 		return new RemainingWork(Phase.DEVELOPMENT, entries, total, null);
 	}
@@ -194,7 +199,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 *
 	 * @param baseline the incumbent baseline
 	 * @param cell the cell's identifier
-	 * @param cells the number of cells
+	 * @param cells the number of cells in the certification scope
 	 * @return the trials
 	 */
 	private static int baselineRemaining(IncumbentBaseline baseline, String cell, int cells)
