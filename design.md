@@ -122,6 +122,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Author attempt | One author session's edits. It becomes a candidate only after validation and promotion. |
 | Promotion | Making a validated candidate the working candidate. It never consumes allowance. |
 | Development | The phase that samples and edits the working candidate before a commit ([§2.7](#27-development-readiness-and-edit-or-continue)). Development outcomes never count as certification evidence. |
+| Failure impact | Whether a failed development trial is *blocking*, leaving the user without the turn's correct and complete result, or *self-recovering*, corrected by the agent within the turn. A blocking failure makes development edit at once ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Readiness gate | The development conditions that a candidate must meet in every cell before it can be committed ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Allowance | A certification attempt's shares `α_i` and `β_i` of the campaign's error budget ([§2.2](#22-joint-error-budget)). |
 | Commit | Freezing the working candidate into a certification attempt, which permanently consumes that attempt's allowance ([§2.2](#22-joint-error-budget)). |
@@ -315,7 +316,7 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Provider prompt caching | Shared prefixes are cached across sessions. | Caching changes latency and cost, not sampling given the prompt. This is an assumption, recorded as a limitation. |
 | Throttling and load under parallelism | Load could change model behaviour, or turn errors into failures. | Provider errors and rate-limit rejections are infrastructure failures that rerun the same logical trial. Every trial records its concurrency level and throttle state. |
 | Parallel conditions differing from real use | Real use is usually one session at a time. | The test stays valid under the weaker null "every trial's conditional rate is at most 95%", even when conditions vary. The only risk is that parallel conditions are better than serial ones. The report runs a descriptive comparison of pass rates by concurrency level, and the claim names the measured conditions. |
-| Discarding unfavourable outcomes | A retry could hide a failure. | A valid compliance outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same instance. A trial that exceeds its declared time limit is judged on its behaviour, not retried. A logical trial with 3 infrastructure failures, not counting rate-limit rejections, pauses the campaign; it is never skipped. |
+| Discarding unfavourable outcomes | A retry could hide a failure. | A valid compliance outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same instance. A trial that exceeds its declared time limit is judged on its behaviour, not retried. A logical trial with 3 infrastructure failures, not counting rate-limit rejections, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 
 If CAT detects dependence it cannot rule out, the result is `certification unavailable: invalid statistical
@@ -338,7 +339,26 @@ The first three are the gate's **count conditions**. The incumbent's baseline ta
 allowance on a commit they will probably fail. Within the first attempt's cap of 262 trials, a candidate certifies with
 probability 0.90 if its true rate is 99%, 0.49 if it is 98%, and only 0.17 if it is 97%.
 
-**Edit-or-continue.** After an adopted representative failure, CAT:
+**Failure impact.** Each failed representative development trial has an impact, which a triage session decides before
+CAT records the outcome (user ruling, 2026-10-03):
+
+- *blocking*: the reply leaves the user without the turn's correct and complete result unless the user acts. The agent
+  ended the turn without doing the work, asked for something it could have found or done itself, answered wrongly or
+  incompletely, or left an effect that must be undone.
+- *self-recovering*: the trial broke a requirement along the way, but the agent corrected itself within the same turn.
+  The reply delivers the correct and complete result and leaves nothing to undo, so the failure cost only extra work,
+  such as a wasted or repeated read.
+
+A failure that the triage cannot place, or whose triage fails 3 times, is blocking. The impact steers development only:
+both kinds are failures in every count, estimate and claim, and the decision procedure ([§6.4](#64-judge)) does not
+change.
+
+**Edit-or-continue.** An adopted blocking failure **fails fast** (user ruling, 2026-10-03). CAT discards the working
+candidate's development trials that have no adopted outcome, interrupting those that run, and edits at once without
+diagnostic reruns, so the round's authors do not wait for those trials. A self-recovering failure's reruns still in
+progress end too. The discard depends only on adopted outcomes, never on a discarded trial's own outcome, so adoption
+order stays unbiased ([§2.6](#26-validity-conditions-and-assumption-review)). After an adopted self-recovering failure,
+CAT:
 
 1. pauses new representative admissions for that candidate; in-flight trials finish;
 2. reruns the failing instance up to 3 times as a targeted diagnostic, outside the representative counts;
@@ -346,7 +366,7 @@ probability 0.90 if its true rate is 99%, 0.49 if it is 98%, and only 0.17 if it
    200-trial review checkpoint, which means more than 2 failures in any category;
 4. otherwise **continues** sampling, with concurrency restarting at 1 ([§3.3](#33-allocation-and-concurrency)).
 
-The failure's diagnosis is retained either way.
+The failure's diagnosis and impact are retained either way.
 
 **Candidate generation and promotion.** An author session edits a copy of the working candidate inside the confirmed
 authority ([§4.3](#43-candidates-and-edit-authority)). It receives the failing instances, the judge rationales and
@@ -559,7 +579,7 @@ snapshot of the chosen attempt.
 
 ### 3.1 Nested sessions
 
-CAT runs four kinds of work in nested sessions, each started through the current harness's existing runner
+CAT runs five kinds of work in nested sessions, each started through the current harness's existing runner
 (`ClaudeRunner` or `CodexRunner`) in a fresh isolated run directory:
 
 | Role | Input | Output |
@@ -567,28 +587,31 @@ CAT runs four kinds of work in nested sessions, each started through the current
 | Contract deriver | Read-only prompt system, user feedback | Complete contract proposal in a strict schema |
 | Trial agent | Staged candidate project, the assigned turn sequence and its cell's trial profile | Transcript, the reply to each turn, project effects |
 | Judge | Frozen rubric, the instance, that trial's evidence section and the semantic requirements it decides | `pass` or `fail` with rationale, in a strict schema |
+| Triage | A failed development trial's instance, reply, evidence section, deterministic results and failure record | `blocking` or `self-recovering` with rationale, in a strict schema ([§2.7](#27-development-readiness-and-edit-or-continue)) |
 | Author | Copy of the working candidate and the failure evidence | Edited prompt files in its copy, and the evidence manifest ([§2.7](#27-development-readiness-and-edit-or-continue)) |
 
-Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The deriver, judge and author
-sessions run under the harness's **role profile**: the model and effort that the agent definition of `optimize-xhigh`,
+Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The deriver, judge, triage and
+author sessions run under the harness's **role profile**: the model and effort that the agent definition of `optimize-xhigh`,
 the most capable of CAT's implementation agents, binds in that harness. The contract records the role profile as part of
 the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
 
-Trial sessions run with CAT installed, as the user runs them. The deriver, judge and author sessions run without CAT's
-plugin, so no CAT session rules, hooks or path triggers reach them, and neither do the user's or the project's rules.
+Trial sessions run with CAT installed, as the user runs them. The deriver, judge, triage and author sessions run
+without CAT's plugin, so no CAT session rules, hooks or path triggers reach them, and neither do the user's or the project's rules.
 Each one's brief carries the complete text of the rules its role applies instead, read from the installed CAT artifact:
 the author receives the clear-writing, failure-prevention, contract-design, rule-organization, prompt-file-dependencies
-and prompt-file-references rules; the deriver receives the contract-design rule; the judge receives none, because its
-rubric, decision rule and schema define its decision. A delivered rule's lazy-load directives name the installed
+and prompt-file-references rules; the deriver receives the contract-design rule; the judge and the triage receive none,
+because their prompts and schemas define their decisions. A delivered rule's lazy-load directives name the installed
 artifact's files. Delivering the rules in the brief removes the role's lazy reads, which Codex truncates and the model
 then repeats (H33).
 
 A trial needs a judge session only for its semantic requirements. When every requirement it checks is deterministic,
 or a deterministic check has already failed, CAT records the outcome without starting a judge ([§6.4](#64-judge)).
 
-A judge or deriver output that does not match its schema is an infrastructure failure. The output is the final response
-when that response is exactly one JSON object, either bare or alone inside one Markdown code fence; any other response
-is invalid (Claude fences its JSON, H23). Candidate and trial content cannot change the judge's rubric, schema or
+A judge or deriver output that does not match its schema is an infrastructure failure. A triage output that does not
+match its schema reruns the triage, and a third failure makes the failure blocking
+([§2.7](#27-development-readiness-and-edit-or-continue)). The output is the final response when that response is
+exactly one JSON object, either bare or alone inside one Markdown code fence; any other response is invalid (Claude
+fences its JSON, H23). Candidate and trial content cannot change the judge's rubric, schema or
 authority. Every nested session is counted against the campaign ceiling and the shared harness capacity
 ([§3.6](#36-shared-harness-capacity)).
 
@@ -1409,6 +1432,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D36 | Give the judge a rendered evidence section in place of the trial's log and transcript path (user ruling, 2026-10-02). | The log was mostly injected rules, streaming duplicates and telemetry, and its reads cost about a third of judge input tokens while Codex truncated them (H32). | CAT owns one renderer per harness's events. A frozen judge prompt from an earlier contract keeps its placeholders and still receives what they name. |
 | D37 | Run the deriver, judge and author without CAT's plugin and deliver each role's rules in its brief (user ruling, 2026-10-02). | The runner already knows each session's role, so no hook has to detect it; the session-start rules and path triggers served trials, and the author's lazy reads were truncated and repeated (H33). | The user's and the project's rules do not reach these roles. A rule a role needs must be added to its list. |
 | D38 | Treat a measurement condition that neither the working candidate nor the incumbent records as unobserved, not missing (status finding, 2026-10-02). | No runner observes host tools or external sources, and campaigns stored before the judge, model and reasoning were recorded lack them on both sides, so every comparison was `INDETERMINATE` although both sides ran under the same driver. | Two unrecorded values are not proven equal; the status names unobserved host tools and external sources as a limitation. |
+| D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
 
 ## 14. Acceptance evidence
 
