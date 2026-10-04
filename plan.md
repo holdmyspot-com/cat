@@ -131,6 +131,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-32 | `optimize-xhigh` | Replaces the allocation tier, the baseline targets and the confirmation flow; interacts with readiness, the coverage floor and certification. |
 | WI-33 | `optimize-xhigh` | Changes what every trial, author and judge session may see, and the campaign format; an error leaks held-out instances silently. |
 | WI-34 | `optimize-xhigh` | Adds a deriver session after failed attempts and changes the development distribution and readiness counts; an error leaks held-out values into development. |
+| WI-38 | `optimize-xhigh` | A contract and proposal format change, a new attempt-ending phase with its own trials and pause, and stress profiles; an error tunes without a target again, spends unbounded trials, or leaks held-out content into the deriver's view. |
 | WI-35 | `optimize-high` | One scheduler rule over the existing capability ranking; an error spends formal trials in stronger cells or stalls an attempt. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
@@ -247,6 +248,7 @@ requirement names.
 | WI-34 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `d2fd5025c`). An attempt that ends below minimum or inconclusive with formal failures blocks development scheduling and the readiness gate until a deriver session (`values.md`, `values.schema.json`) returns at least 4 combinations per failed test from a development-only view; CAT rejects a value whose label or text equals any value of its dimension, ignoring case; added combinations share half of the test's development draws equally; adding values starts a new development series and clears counts; the report lists the values. The recommit loop is covered by `DriverTest.failedAttemptAddsDevelopmentValues`. User ruling (`design.md` §6.3, D44, 2026-10-04). |
 | WI-36 | Done 2026-10-04 (Claude `optimize-high`; integrated as `118a2be8f`; full build 1978 tests, 0 failures, none at or over 1 s). Every role but the judge gets `--deny-read` for `campaign.json`, `proposal.json` and `trials/`, listed once by `FileCampaignStore.heldOutPaths`. Claude: `sandbox.filesystem.denyRead` plus a `permissions.deny` `Read(//<path>)` rule per path, because the sandbox does not cover file tools. Codex: `permissions.filesystem.deny_read` is honoured only in a requirements file, so the isolated `config.toml` gets a `cat-held-out` permission profile extending the runner's with `"<path>" = "deny"` entries, and the thread starts with `permissions:"cat-held-out"`; local `codex sandbox` probes confirmed the denial, staged sources still readable, and network kept. `start` refuses a harness whose sessions cannot deny reads. Gaps the probes found, left to WI-37: Codex on Linux reads a denied file again once it is replaced by rename, as the store writes the snapshot; formal trials' and judges' run directories are not denied; a host with the Claude sandbox off loses the denial for commands. No live session ran. |
 | WI-37 | Not started. Closes WI-36's gaps (`design.md` §4.1, §6.3 "Held-out content on disk", D46, 2026-10-04). |
+| WI-38 | Not started. User ruling (`design.md` §6.3 "Failure behavior" and "Reproduction before tuning", D47, 2026-10-04), after P15 tuned four times against a formal failure that development had not reproduced. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
 | Launcher help (WI-15 E8 finding) | Done 2026-10-02. Both E8 agents ran `prompt-optimizer --help` or `start --help` to find the ceiling option; the launcher answered "Unknown command" or took `--help` as the target, and the skill stopped. `help` alone, or `--help` or `-h` anywhere, now prints the usage as `{"status":"help"}` with exit 0 before the core is called (`CommandsTest.printsUsageOnRequest`). |
@@ -354,6 +356,10 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §4.1, §6.3 and D46 revised after WI-36's probes: held-out content lives in a held-out directory and a
   held-out run root, denied as whole directories to every session whose output reaches development; formal and
   baseline trials and judges are exempt; a host with the sandbox off is refused. WI-37 added with §1.1, §2 and §6.
+- `design.md` §6.1, §6.3 ("Failure behavior", "Reproduction before tuning"), §2.8, §3.1, D47 and G4: formal failures
+  reach development with their behavior and are reproduced in development, by rounds of replaceable values with
+  stress settings, before any author works on them; CAT pauses after 4 rounds without reproduction. R-C18, R-C19 and
+  WI-38 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -478,6 +484,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C15 | Certification scope: CAT refuses to confirm until the user chooses one of weakest cell only or latest model versions (every cell of each family's latest version), or a set of inventory cells mapped from the user's own description and passed to `revise`; there is no default; CAT refuses a described cell outside the inventory; the choice is frozen with the contract, a change is a revision, and formal and baseline trials run in the scope's cells only. | §6.1, §6.6, D42 | WI-32 | U: `OptimizerCoreTest` (confirm without a scope and with each choice), `ProposalTest` (a described scope, a cell outside the inventory), `SchedulerTest` (formal cells per scope), `ContractStoreTest` (round trip) |
 | R-C16 | Test templates: each test definition marks its key dimensions (none marked: all are key); at confirmation CAT freezes a random salt and assigns each key-value combination, and so every instance with it, to the development or held-out part by a salted hash with probability ½; it refuses a proposal with a test definition of fewer than 2 distinct key-value combinations in either part. | §6.1, §6.3, D43 | WI-33 | U: `GeneratorTest` (split stable under the salt, near ½ over many key-value combinations, instances sharing key values in one part, each part drawn only by its streams), `ProposalTest` (refusal at 1 key-value combination in a part; key dimensions and counts shown) |
 | R-C17 | After an attempt ends with formal failures, a deriver session receives each failed test's definition with only its development key values, and each failure's cell and failed requirements, and writes at least 4 new key-value combinations per failed test; CAT rejects a new value equal to any existing value of its dimension, held-out values included; the added combinations belong to the development part only and take half of that test's development draw probability; development counts restart; the held-out part, the contract and the measurement identity are unchanged; the user's report lists the added values. | §6.3, D44 | WI-34 | U: `DriverTest` (deriver input holds no held-out value or salt; duplicate of a held-out value rejected; added instances drawn only by development streams at half the test's probability; counts restart; failure on an added instance reaches triage and authors), `GeneratorTest` |
+| R-C18 | Failure behavior: each requirement lists the behaviors through which it can fail; each deterministic check names the behavior it detects; the judge names one listed behavior or `other` per failure; a formal failure summary carries its behavior. | §6.1, §6.3, D47 | WI-38 | U: proposal and contract tests (behaviors listed and frozen), `JudgeProtocolTest` (behavior parsed, unlisted refused), `FailureSummary` tests |
+| R-C19 | Reproduction before tuning: after a failed attempt, each failure group (cell, test, failed requirement, behavior) gets deriver values that join development only after 2 failures with its behavior in at most 100 reproduction trials per round; values that do not reproduce are replaced; a round may repeat under a stress setting, whose reproduction adds that stressed profile as a development cell; after 4 rounds CAT pauses with the group recorded as not reproduced. | §6.3, §2.8, D47 | WI-38 | U: `DriverTest` (reproduce, replace, stress, pause), `SchedulerTest` (reproduction trials before authoring), values-prompt tests (tried values and counts, no replies) |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -1043,6 +1051,25 @@ The riskiest pure code, built first.
   `DriverTest`), `DriverTest` trace 21, the author brief tests, the contract store round trip.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-38 — Reproduction before tuning (user ruling, 2026-10-04)
+
+- **Behavior:** the proposal lists, per requirement, the behaviors through which it can fail; each deterministic check
+  names its behavior; the judge's verdict names one listed behavior or `other` for each failed requirement;
+  `FailureSummary` carries it. Contract, proposal and campaign formats increase; older ones are refused.
+- **Groups:** after a failed attempt, formal failures are grouped by cell, test, failed requirement and behavior.
+- **Rounds:** per group, the values deriver writes at least 4 combinations aimed at the behavior; CAT runs up to 100
+  reproduction trials of them in the group's cell, ending the round at 2 failures with that behavior. A reproduced
+  group's values join development as WI-34's do. Otherwise the deriver gets the tried values and their counts, no
+  replies, and its new values replace them. A failed round may repeat under a stress setting the harness offers (a
+  lower effort of the same model; in Codex, a lower tool-output limit); a reproduction there adds that stressed
+  profile as a development cell.
+- **Pause:** after 4 rounds without reproduction, the group is recorded as not reproduced with its counts and CAT
+  pauses; the user chooses more rounds, a new attempt with the unchanged candidate after the readiness gate, or
+  stopping. Authors work on no group before it reproduces.
+- **Closes:** R-C18, R-C19.
+- **Tests:** the cases listed under R-C18 and R-C19.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-34 — Development values after a failed attempt (user ruling, 2026-10-04)
 
 - **Trigger:** a certification attempt ends (`below minimum` or `inconclusive`) with at least one formal failure.
@@ -1300,7 +1327,8 @@ blocks only the part of a work item that it names.
 | WI-35 | WI-34 |
 | WI-36 | WI-34 |
 | WI-37 | WI-36 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36 and WI-37. |
+| WI-38 | WI-34, WI-37 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37 and WI-38. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
