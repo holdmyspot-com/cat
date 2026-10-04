@@ -133,6 +133,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-34 | `optimize-xhigh` | Adds a deriver session after failed attempts and changes the development distribution and readiness counts; an error leaks held-out values into development. |
 | WI-38 | `optimize-xhigh` | A contract and proposal format change, a new attempt-ending phase with its own trials and pause, and stress profiles; an error tunes without a target again, spends unbounded trials, or leaks held-out content into the deriver's view. |
 | WI-35 | `optimize-high` | One scheduler rule over the existing capability ranking; an error spends formal trials in stronger cells or stalls an attempt. |
+| WI-39 | `optimize-medium` | One finder's directories and selection rule; an error leaves a killed driver's harness processes running or kills a live campaign's sessions. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -247,7 +248,8 @@ requirement names.
 | WI-33 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `4a7e9498b` and `eda6ae1c7`, the second withholding the salt and the held-out key values from the author's contract; full build with WI-34: 1948 tests, 0 failures; one case at or over 1 s, `HarnessProcessTerminationTest.terminatesVisibleChildren` at 1.92 s, untouched by this work and run while 16 probe sessions loaded the machine). Test definitions carry `key_dimensions`; the proposal carries a salt drawn at first derivation, kept through revision and frozen at confirmation; `Split.partOf` assigns each key-value combination to a part by SHA-256 of salt, test id and key labels; confirmation refuses a test with fewer than 2 combinations in either part; `Generator.draw` takes the part from the stream kind; formal failures reach development as `FailureSummary` (cell, test, failed requirements); campaign format 15, proposal format 7. User ruling (`design.md` §6.3, D43, 2026-10-04). |
 | WI-34 | Done 2026-10-04 (Claude `optimize-xhigh`; integrated as `d2fd5025c`). An attempt that ends below minimum or inconclusive with formal failures blocks development scheduling and the readiness gate until a deriver session (`values.md`, `values.schema.json`) returns at least 4 combinations per failed test from a development-only view; CAT rejects a value whose label or text equals any value of its dimension, ignoring case; added combinations share half of the test's development draws equally; adding values starts a new development series and clears counts; the report lists the values. The recommit loop is covered by `DriverTest.failedAttemptAddsDevelopmentValues`. User ruling (`design.md` §6.3, D44, 2026-10-04). |
 | WI-36 | Done 2026-10-04 (Claude `optimize-high`; integrated as `118a2be8f`; full build 1978 tests, 0 failures, none at or over 1 s). Every role but the judge gets `--deny-read` for `campaign.json`, `proposal.json` and `trials/`, listed once by `FileCampaignStore.heldOutPaths`. Claude: `sandbox.filesystem.denyRead` plus a `permissions.deny` `Read(//<path>)` rule per path, because the sandbox does not cover file tools. Codex: `permissions.filesystem.deny_read` is honoured only in a requirements file, so the isolated `config.toml` gets a `cat-held-out` permission profile extending the runner's with `"<path>" = "deny"` entries, and the thread starts with `permissions:"cat-held-out"`; local `codex sandbox` probes confirmed the denial, staged sources still readable, and network kept. `start` refuses a harness whose sessions cannot deny reads. Gaps the probes found, left to WI-37: Codex on Linux reads a denied file again once it is replaced by rename, as the store writes the snapshot; formal trials' and judges' run directories are not denied; a host with the Claude sandbox off loses the denial for commands. No live session ran. |
-| WI-37 | Not started. Closes WI-36's gaps (`design.md` §4.1, §6.3 "Held-out content on disk", D46, 2026-10-04). |
+| WI-37 | Integrated 2026-10-04 (Claude `optimize-high`; `0b973036c`); live validation pending. Full build 2003 tests, 0 failures; 10 tests at or over 1 s (up to 2.6 s), all in the Codex and Claude session and launcher tests, measured while 14 P15 probe sessions loaded the machine (load average 17 on 16 cores); the same tests were under 1 s in WI-36's build, so they are rechecked on an idle machine before WI-15. The campaign format is 16: the snapshot, the proposal and the trial records are in `<campaign>/held-out/`, and a snapshot outside it is refused. Formal and baseline trials and judges run under `<runRoot>-held-out`; every other session gets `--deny-read` for each campaign's held-out directory and that root, created before any session starts. Claude `start` refuses when managed or project settings set `sandbox.enabled` to false, `sandbox.allowUnsandboxedCommands` to true or a non-empty `sandbox.excludedCommands`, or are not a JSON object; the host's user settings are not checked, because the runner's isolated settings replace them. Codex has no refusal: its probes found no host setting that overrides the named profile's deny (`sandbox_mode` and `default_permissions` overrides, an untrusted project's `.codex/config.toml`, the `danger-*` parents), and in a `codex sandbox` probe a snapshot replaced by rename, a record added mid-session and a run directory created mid-session all stayed unreadable while the run root, the journal and the staged sources stayed readable. |
+| WI-39 | Not started. Found while integrating WI-37: reconciliation looks for leftover runs in `<campaign>/runs`, where no run is written. |
 | WI-38 | Not started. User ruling (`design.md` §6.3 "Failure behavior" and "Reproduction before tuning", D47, 2026-10-04), after P15 tuned four times against a formal failure that development had not reproduced. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
@@ -363,6 +365,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - §4 P15 and the complete-file-reads bar: P15 certifies by the optimizer's rule (`design.md` §2.3, §2.4), not 59/59
   per task with a stop at the first blocking failure, and numbers its attempts under that rule from 1; p15-60's stopped
   attempt continues as attempt 1 (user rulings, 2026-10-04).
+- WI-37 integrated; its planned `codex sandbox` test became manual evidence, because §8 forbids a test that starts a
+  harness process; Claude validation adds `allowRead` and `bypassPermissions` checks. WI-39 added: reconciliation
+  searched `<campaign>/runs` for leftover runs instead of the run roots.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -435,7 +440,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E8 | Shared harness capacity is an injected per-harness instance, acquired by both runner CLIs and per optimizer session, with `tryAcquire` and an injected pause. | §3.6 | WI-5 | U: `HarnessCapacityTest`; E: E8 |
 | R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver. | §3.7 | WI-9 | U: `SliceTest` |
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
-| R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree. | §3.8 | WI-9 | U: `ReconciliationTest` |
+| R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of runs that an earlier driver left running, under the run root and the held-out run root, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverRunsTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases; token statistics; no totals or time estimates. | §3.9 | WI-12 | U: `RemainingWorkTest` |
 | R-E19 | Development cells: representative development trials and author rounds only in a category's development cells (its weakest cell, plus every cell where a certification attempt of the lineage adopted a failure); the coverage floor among them. | §3.3, §6.6, D27 | WI-32 | U: `SchedulerTest` (only development cells sampled, the floor among them, a formal failure adding a cell), `DriverTest` trace 19 |
 | R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
@@ -1121,6 +1126,20 @@ The riskiest pure code, built first.
   one development trial per harness still passes.
 - **Exit:** unit tests pass; the full build passes; the validation holds in both harnesses.
 
+### WI-39 — Leftover runs in the real run roots (2026-10-04)
+
+- **Defect:** `OptimizerCore` and `DriverHarness` give `LeftoverRuns` `<campaign>/runs`, but runs are written under the
+  harness run root `.cat/work/optimizer-runs/<harness>` and, since WI-37, `<harness>-held-out`. Reconciliation
+  therefore never finds a killed driver's runs, and Codex harness processes that outlive the driver keep running (H20).
+- **Fix:** reconciliation searches both run roots. The run roots hold every campaign's runs, so a run counts as left
+  over only when it is still marked `running` and its recorded owner process (`ownerPid`, `ownerStartedAt`) is no
+  longer alive; a run whose owner lives belongs to a running driver, of this or another campaign, and is left alone.
+- **Closes:** R-E11 with WI-9.
+- **Tests:** `LeftoverRunsTest`: a running run with a dead owner is found in each root; one with a live owner, a
+  finished run and a manifest without start times are not. `ReconciliationTest` or `DriverTest`: reconciliation passes
+  the session port's run roots, not a campaign directory.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-37 — Held-out directory and run root (2026-10-04)
 
 - **Layout:** the snapshot, the proposal and the trial records move into the campaign's `held-out/` directory; the
@@ -1130,9 +1149,12 @@ The riskiest pure code, built first.
   directories as whole directories; formal and baseline trials and judges deny nothing.
 - **Refusal:** `start` refuses when the host's settings turn off the sandbox that the denial needs.
 - **Closes:** R-E24 with WI-36.
-- **Tests:** store layout and format refusal; session arguments per role and harness; the refusal; a Codex
-  `codex sandbox` probe test, when the CLI is present, that a snapshot replaced by rename stays unreadable.
-- **Validation:** WI-36's, run after this item.
+- **Tests:** store layout and format refusal; session arguments per role and harness; the refusal. The `codex sandbox`
+  probe that a snapshot replaced by rename stays unreadable is manual evidence, not a test, because no test may start
+  a harness process (§8).
+- **Validation:** WI-36's, run after this item, plus, for Claude, that project settings with
+  `sandbox.filesystem.allowRead` naming the held-out directory or `permissions.defaultMode: bypassPermissions` leave
+  it unreadable; if either exposes it, `start` refuses that setting too.
 - **Exit:** unit tests pass; the full build passes; the validation holds in both harnesses.
 
 ### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
@@ -1331,7 +1353,8 @@ blocks only the part of a work item that it names.
 | WI-36 | WI-34 |
 | WI-37 | WI-36 |
 | WI-38 | WI-34, WI-37 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37 and WI-38. |
+| WI-39 | WI-37 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38 and WI-39. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
