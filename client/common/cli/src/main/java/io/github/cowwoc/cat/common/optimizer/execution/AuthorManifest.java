@@ -4,7 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -59,7 +61,8 @@ public record AuthorManifest(Map<String, FailureKind> classifications, List<Evid
 	}
 
 	/**
-	 * Checks manifest citations against supplied failures, confirmed requirements and confirmed file content.
+	 * Checks manifest citations against supplied failures, confirmed requirements and tests, and confirmed file
+	 * content.
 	 *
 	 * @param received the supplied failure identifiers
 	 * @param changed the actual changed hunks
@@ -109,7 +112,35 @@ public record AuthorManifest(Map<String, FailureKind> classifications, List<Evid
 			if (classification.getValue() == FailureKind.CONFLICT && !cited.contains(classification.getKey()))
 				violations.add("Failure " + classification.getKey() + " is classified conflict but no conflict cites it");
 		}
+		violations.addAll(dissimilarViolations(contract));
 		return List.copyOf(violations);
+	}
+
+	/**
+	 * Checks that each hunk's dissimilar case names a test of the confirmed contract.
+	 *
+	 * @param contract the confirmed contract
+	 * @return a rejection reason for each hunk whose dissimilar case names no test of the contract
+	 */
+	private List<String> dissimilarViolations(Contract contract)
+	{
+		List<String> violations = new ArrayList<>();
+		for (Evidence evidence : hunks)
+		{
+			if (contract.findTest(evidence.dissimilar()).isPresent())
+				continue;
+			List<String> testIds = new ArrayList<>();
+			for (Category category : contract.categories())
+			{
+				for (TestDefinition test : category.tests())
+					testIds.add(test.id());
+			}
+			violations.add("Hunk at " + evidence.path() + " (working lines " + evidence.beforeStart() + ".." +
+				evidence.beforeEnd() + ", author lines " + evidence.afterStart() + ".." + evidence.afterEnd() +
+				") names the dissimilar case '" + evidence.dissimilar() + "', which is not a test of the confirmed " +
+				"contract. Name the id of one of its tests: " + testIds);
+		}
+		return violations;
 	}
 
 	/**
@@ -162,7 +193,7 @@ public record AuthorManifest(Map<String, FailureKind> classifications, List<Evid
 	 * @param afterEnd the end of the author range, exclusive
 	 * @param instances the supplied failing-instance identifiers
 	 * @param analogous a case requiring the same guidance
-	 * @param dissimilar a case that must not receive the guidance
+	 * @param dissimilar the identifier of the contract test whose case must not receive the guidance
 	 */
 	public record Evidence(Path path, int beforeStart, int beforeEnd, int afterStart, int afterEnd,
 		List<String> instances, String analogous, String dissimilar)
@@ -177,7 +208,7 @@ public record AuthorManifest(Map<String, FailureKind> classifications, List<Evid
 		 * @param afterEnd the author range end
 		 * @param instances the supplied failing-instance identifiers
 		 * @param analogous a case requiring the same guidance
-		 * @param dissimilar a case excluded from the guidance
+		 * @param dissimilar the identifier of the contract test whose case is excluded from the guidance
 		 * @throws NullPointerException if an argument or a collection element is null
 		 * @throws IllegalArgumentException if a path is invalid, a range is invalid, the citations are empty,
 		 *   or any text is blank

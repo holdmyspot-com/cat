@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import java.nio.charset.StandardCharsets;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
@@ -195,6 +196,68 @@ public final class AuthorManifestTest
 		requireThat(turn, "instructions").contains("routing").contains("not guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
 	}
+	/**
+	 * Returns dissimilar cases and whether the confirmed contract has a test with that identifier.
+	 *
+	 * @return the dissimilar case and whether the manifest is accepted
+	 */
+	@DataProvider
+	public static Object[][] dissimilarCases()
+	{
+		return new Object[][]
+			{
+				{"plain-list", true},
+				{"A question that needs no file", false}
+			};
+	}
+
+	/**
+	 * Verifies that a hunk's dissimilar case must be the identifier of a test of the confirmed contract, and that the
+	 * rejection names the hunk and the value.
+	 *
+	 * @param dissimilar the hunk's dissimilar case
+	 * @param accepted whether the manifest is accepted
+	 */
+	@Test(dataProvider = "dissimilarCases")
+	public void dissimilarCaseIsAContractTest(String dissimilar, boolean accepted)
+	{
+		// Requirement: R-D17
+		Path path = Path.of("rules/safety.md");
+		Hunk hunk = new Hunk(path, 1, 2, 3, 2, 4);
+		AuthorManifest manifest = new AuthorManifest(Map.of("f", FailureKind.GUIDANCE), List.of(
+			new AuthorManifest.Evidence(path, 2, 3, 2, 4, List.of("f"), "Another deletion request", dissimilar)));
+
+		List<String> violations = manifest.violations(Set.of("f"), List.of(hunk), ContractFixtures.contract(),
+			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of());
+
+		if (accepted)
+			requireThat(violations, "violations").isEmpty();
+		else
+		{
+			requireThat(violations.size(), "violations.size()").isEqualTo(1);
+			requireThat(violations.getFirst(), "violation").contains("rules/safety.md").contains("2..4").
+				contains("'" + dissimilar + "'");
+		}
+	}
+
+	/**
+	 * Verifies that the author is asked to name, as each change's dissimilar case, a test of the confirmed contract.
+	 */
+	@Test
+	public void asksForAContractTestAsTheDissimilarCase()
+	{
+		// Requirement: R-D17
+		JsonMapper json = JsonMapper.builder().build();
+		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
+			Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(), Set.of(), Map.of(), "");
+		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
+
+		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
+			contains("\"plain-list\"");
+	}
+
 	/**
 	 * Returns Java path parsing boundaries that the author schema must also describe.
 	 *

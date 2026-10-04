@@ -326,6 +326,52 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that each requirement states its trigger, or {@code null} when it always applies, that each test lists
+	 * the triggers it leaves absent, and that a blank or non-text trigger is rejected.
+	 */
+	@Test
+	public void requiresTriggerAndAbsentTriggers()
+	{
+		// Requirement: R-D17
+		String[] trigger = {"requirements", "0", "trigger"};
+		String[] absent = {"categories", "0", "tests", "0", "absent_triggers"};
+
+		requireThat(rejection(changed(trigger, null)).problems(), "missingTrigger").
+			contains("$.requirements[0].trigger: required property is missing");
+		requireThat(rejection(changed(absent, null)).problems(), "missingAbsentTriggers").
+			contains("$.categories[0].tests[0].absent_triggers: required property is missing");
+		InvalidProposalException blankTrigger = rejection(text(trigger, " "));
+		requireThat(blankTrigger.problems(), "blankTrigger").
+			contains("$.requirements[0].trigger: must not be blank");
+		requireThat(String.join(" | ", rejection(integer(trigger, 1)).problems()), "numericTrigger").
+			contains("$.requirements[0].trigger");
+		requireThat(String.join(" | ", rejection(changed(absent, json.createArrayNode().add(" "))).problems()),
+			"blankAbsentTrigger").contains("$.categories[0].tests[0].absent_triggers[0]");
+	}
+
+	/**
+	 * Verifies that a stored contract keeps each requirement's trigger and each test's absent triggers.
+	 *
+	 * @throws InvalidProposalException if the contract is rejected
+	 */
+	@Test
+	public void triggersRoundTripThroughContract() throws InvalidProposalException
+	{
+		// Requirement: R-D17
+		ObjectNode root = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
+		((ObjectNode) root.get("requirements").get(1)).put("trigger", "The user asks to delete a directory.");
+		((ObjectNode) root.get("categories").get(0).get("tests").get(1)).putArray("absent_triggers").add("r2");
+
+		Contract contract = schema().parse(json.writeValueAsString(root));
+
+		requireThat(contract.requirements().get(1).trigger(), "trigger").
+			isEqualTo("The user asks to delete a directory.");
+		requireThat(contract.findTest("plain-list").orElseThrow().absentTriggers(), "absentTriggers").
+			isEqualTo(List.of("r2"));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+	}
+
+	/**
 	 * Verifies that an aggregate count cannot stand in for the items: a count in place of a list and a count beside
 	 * a list are both rejected.
 	 */
@@ -566,7 +612,8 @@ public final class ProposalSchemaTest
 		Category formatting = fixture.categories().getFirst();
 		List<TestDefinition> tests = new ArrayList<>(formatting.tests());
 		TestDefinition list = tests.get(1);
-		tests.set(1, new TestDefinition(list.id(), list.requirementIds(), list.applicability(), list.turns(),
+		tests.set(1, new TestDefinition(list.id(), list.requirementIds(), list.absentTriggers(), list.applicability(),
+			list.turns(),
 			list.timeLimit(), list.expectedBehaviour(), list.uncoveredInteractions(), list.variations(), checks,
 			discarded, list.regressionScenarios()));
 		List<Category> categories = new ArrayList<>(fixture.categories());

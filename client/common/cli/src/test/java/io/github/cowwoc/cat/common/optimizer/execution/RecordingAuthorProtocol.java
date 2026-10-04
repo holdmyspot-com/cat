@@ -83,6 +83,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 					classifications.put(identifier, FailureKind.CONFLICT);
 			}
 			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
+			String dissimilar = briefs.getLast().contract().categories().getFirst().tests().getFirst().id();
 			try
 			{
 				Path file = Path.of(Files.readString(result.effects().resolve("changed-path")));
@@ -93,7 +94,7 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 				{
 					evidence.add(new AuthorManifest.Evidence(file, hunk.beforeStart(), hunk.beforeEnd(),
 						hunk.afterStart(), hunk.afterEnd(), List.copyOf(classifications.keySet()),
-						"Another use requiring the same instruction", "A use outside the instruction's scope"));
+						"Another use requiring the same instruction", dissimilar));
 				}
 			}
 			catch (IOException e)

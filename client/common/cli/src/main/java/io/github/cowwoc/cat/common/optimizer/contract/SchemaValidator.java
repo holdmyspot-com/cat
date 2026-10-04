@@ -69,7 +69,7 @@ final class SchemaValidator
 			JsonNode argument = keyword.getValue();
 			switch (name)
 			{
-				case "type" -> checkType(argument.asString(), value, location, violations);
+				case "type" -> checkType(argument, value, location, violations);
 				case "pattern" -> checkPattern(argument.asString(), value, location, violations);
 				case "minimum" -> checkBound(value, location, violations, "at least " + argument.asString(),
 					number -> number >= argument.asDouble());
@@ -134,14 +134,40 @@ final class SchemaValidator
 	/**
 	 * Checks the {@code type} keyword.
 	 *
-	 * @param type the expected JSON type
+	 * @param type the expected JSON type, or an array of the JSON types that are allowed
 	 * @param value the value
 	 * @param location the location of the value
-	 * @param violations receives a violation if the type differs
+	 * @param violations receives a violation if the value has none of the types
 	 */
-	private static void checkType(String type, JsonNode value, String location, List<String> violations)
+	private static void checkType(JsonNode type, JsonNode value, String location, List<String> violations)
 	{
-		boolean matches = switch (type)
+		List<String> types = new ArrayList<>();
+		if (type.isArray())
+		{
+			for (JsonNode element : type)
+				types.add(element.asString());
+		}
+		else
+			types.add(type.asString());
+		boolean matches = false;
+		for (String name : types)
+			matches |= hasType(name, value, location);
+		if (!matches)
+			violations.add(location + ": expected " + String.join(" or ", types) + " but found " + describe(value));
+	}
+
+	/**
+	 * Tells whether a value has a JSON type.
+	 *
+	 * @param type the JSON type
+	 * @param value the value
+	 * @param location the location of the value
+	 * @return {@code true} if the value has the type
+	 * @throws IllegalArgumentException if the type is outside the supported subset
+	 */
+	private static boolean hasType(String type, JsonNode value, String location)
+	{
+		return switch (type)
 		{
 			case "object" -> value.isObject();
 			case "array" -> value.isArray();
@@ -149,10 +175,9 @@ final class SchemaValidator
 			case "integer" -> value.isIntegralNumber();
 			case "number" -> value.isNumber();
 			case "boolean" -> value.isBoolean();
+			case "null" -> value.isNull();
 			default -> throw new IllegalArgumentException("Unsupported schema type '" + type + "' at " + location);
 		};
-		if (!matches)
-			violations.add(location + ": expected " + type + " but found " + describe(value));
 	}
 
 	/**

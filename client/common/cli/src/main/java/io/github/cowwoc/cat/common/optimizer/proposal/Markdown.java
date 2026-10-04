@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Writes a {@link Proposal} as Markdown, listing its requirements, tests, measurement procedure and
@@ -116,7 +117,7 @@ final class Markdown
 	}
 
 	/**
-	 * Lists every requirement and its source.
+	 * Lists every requirement, its source and the condition under which it applies.
 	 */
 	private void requirements()
 	{
@@ -125,6 +126,10 @@ final class Markdown
 		{
 			text.append("- `").append(requirement.id()).append("`: ").append(requirement.description()).append('\n').
 				append("  Source: ").append(requirement.source()).append('\n');
+			if (requirement.trigger() == null)
+				text.append("  Applies: always\n");
+			else
+				text.append("  Applies when: ").append(requirement.trigger()).append('\n');
 		}
 	}
 
@@ -194,6 +199,12 @@ final class Markdown
 	{
 		text.append("\n#### Test `").append(test.id()).append("`\n\n");
 		requirements(test);
+		if (!test.absentTriggers().isEmpty())
+		{
+			text.append("- Leaves these triggers absent, so the obligated action must not occur: ").
+				append(test.absentTriggers().stream().map(id -> "`" + id + "`").collect(Collectors.joining(", "))).
+				append('\n');
+		}
 		text.append("- Applies when: ").append(test.applicability()).append('\n').
 			append("- Weight within the category: 1/").append(tests).append('\n').
 			append("- Time limit: ").append(test.timeLimit().toSeconds()).append(" seconds\n").

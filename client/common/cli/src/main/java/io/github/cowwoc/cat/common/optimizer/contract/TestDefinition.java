@@ -17,6 +17,8 @@ import java.util.Set;
  *
  * @param id the identifier that is unique within the contract
  * @param requirementIds the identifiers of the requirements that this test checks
+ * @param absentTriggers the identifiers of the requirements whose trigger this test leaves absent, so that a
+ *   compliant response does not take the action that they oblige
  * @param applicability the conditions under which the checked requirements apply to a trial
  * @param turns the complete prewritten user turns, which may contain {@code {{dimension}}} placeholders
  * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
@@ -29,8 +31,9 @@ import java.util.Set;
  * @param discardedChecks the proposed checks that failed a control, with the reason
  * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
  */
-public record TestDefinition(String id, List<String> requirementIds, String applicability, List<String> turns,
-	Duration timeLimit, String expectedBehaviour, List<String> uncoveredInteractions,
+public record TestDefinition(String id, List<String> requirementIds, List<String> absentTriggers,
+	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
+	List<String> uncoveredInteractions,
 	List<VariationRule> variations, List<DeterministicCheck> checks, List<DiscardedCheck> discardedChecks,
 	List<String> regressionScenarios)
 {
@@ -39,6 +42,8 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	 *
 	 * @param id the identifier that is unique within the contract
 	 * @param requirementIds the identifiers of the requirements that this test checks
+	 * @param absentTriggers the identifiers of the requirements whose trigger this test leaves absent, so that a
+	 *   compliant response does not take the action that they oblige
 	 * @param applicability the conditions under which the checked requirements apply to a trial
 	 * @param turns the complete prewritten user turns, which may contain {@code {{dimension}}} placeholders
 	 * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
@@ -61,6 +66,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 	{
 		requireThat(id, "id").isNotBlank();
 		requireThat(requirementIds, "requirementIds").isNotEmpty();
+		requireThat(absentTriggers, "absentTriggers").isNotNull();
 		requireThat(applicability, "applicability").isNotBlank();
 		requireThat(turns, "turns").isNotEmpty();
 		requireThat(timeLimit, "timeLimit").isGreaterThan(Duration.ZERO);
@@ -72,6 +78,7 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		requireThat(discardedChecks, "discardedChecks").isNotNull();
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
+		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
 		uncoveredInteractions = List.copyOf(uncoveredInteractions);
 		variations = List.copyOf(variations);
@@ -80,6 +87,8 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		regressionScenarios = List.copyOf(regressionScenarios);
 		for (String requirementId : requirementIds)
 			requireThat(requirementId, "requirementId").isNotBlank();
+		for (String absentTrigger : absentTriggers)
+			requireThat(absentTrigger, "absentTrigger").isNotBlank();
 		for (String turn : turns)
 			requireThat(turn, "turn").isNotBlank();
 		for (String interaction : uncoveredInteractions)
@@ -231,8 +240,8 @@ public record TestDefinition(String id, List<String> requirementIds, String appl
 		}
 		if (discarded.size() == discardedChecks.size())
 			return this;
-		return new TestDefinition(id, requirementIds, applicability, turns, timeLimit, expectedBehaviour,
-			uncoveredInteractions, variations, kept, discarded, regressionScenarios);
+		return new TestDefinition(id, requirementIds, absentTriggers, applicability, turns, timeLimit,
+			expectedBehaviour, uncoveredInteractions, variations, kept, discarded, regressionScenarios);
 	}
 
 	/**

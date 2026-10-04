@@ -94,7 +94,8 @@ public final class SliceTest
 			List<TestDefinition> tests = new ArrayList<>();
 			for (TestDefinition test : category.tests())
 			{
-				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.applicability(), test.turns(),
+				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.absentTriggers(), test.applicability(),
+					test.turns(),
 					timeLimit, test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), test.checks(),
 					test.discardedChecks(), test.regressionScenarios()));
 			}

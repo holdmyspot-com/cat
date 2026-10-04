@@ -127,6 +127,39 @@ public final class ProposalSchema
 	}
 
 	/**
+	 * Completes a proposal or stored contract written before requirements had triggers: each requirement without a
+	 * {@code trigger} always applies, and each test without {@code absent_triggers} leaves no trigger absent. Values that
+	 * the document already holds, and parts that do not have the expected shape, are left for validation to judge.
+	 *
+	 * @param proposal the document, which is modified in place
+	 * @throws NullPointerException if {@code proposal} is null
+	 */
+	public static void addMissingTriggers(JsonNode proposal)
+	{
+		requireThat(proposal, "proposal").isNotNull();
+		if (proposal.get("requirements") instanceof ArrayNode requirements)
+		{
+			for (JsonNode requirement : requirements)
+			{
+				if (requirement instanceof ObjectNode object && !object.has("trigger"))
+					object.putNull("trigger");
+			}
+		}
+		if (!(proposal.get("categories") instanceof ArrayNode categories))
+			return;
+		for (JsonNode category : categories)
+		{
+			if (!(category.get("tests") instanceof ArrayNode tests))
+				continue;
+			for (JsonNode test : tests)
+			{
+				if (test instanceof ObjectNode object && !object.has("absent_triggers"))
+					object.putArray("absent_triggers");
+			}
+		}
+	}
+
+	/**
 	 * Returns the JSON schema of a stored contract.
 	 *
 	 * @return the schema
@@ -234,6 +267,7 @@ public final class ProposalSchema
 			node.put("id", requirement.id());
 			node.put("description", requirement.description());
 			node.put("source", requirement.source());
+			node.put("trigger", requirement.trigger());
 		}
 		ArrayNode categories = root.putArray("categories");
 		for (Category category : contract.categories())
@@ -316,6 +350,8 @@ public final class ProposalSchema
 		node.put("id", test.id());
 		ArrayNode requirementIds = node.putArray("requirement_ids");
 		test.requirementIds().forEach(requirementIds::add);
+		ArrayNode absentTriggers = node.putArray("absent_triggers");
+		test.absentTriggers().forEach(absentTriggers::add);
 		node.put("applicability", test.applicability());
 		ArrayNode turns = node.putArray("turns");
 		test.turns().forEach(turns::add);
@@ -497,7 +533,7 @@ public final class ProposalSchema
 			int problemsBefore = problems.size();
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
 				attempt(location, () -> new Requirement(text(node, "id"), text(node, "description"),
-					text(node, "source"))));
+					text(node, "source"), optionalText(node, "trigger"))));
 			List<Category> categories = list(root.get("categories"), "$.categories", this::category);
 			JsonNode judgeNode = root.get("judge");
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
@@ -591,7 +627,7 @@ public final class ProposalSchema
 				return null;
 			List<DiscardedCheck> discardedChecks = discarded;
 			return attempt(location, () -> new TestDefinition(text(node, "id"), strings(node.get("requirement_ids")),
-				text(node, "applicability"), strings(node.get("turns")),
+				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variations, checks, discardedChecks,
 				strings(node.get(REGRESSION_SCENARIOS))).
@@ -867,6 +903,21 @@ public final class ProposalSchema
 		private static String text(JsonNode node, String name)
 		{
 			return node.get(name).asString();
+		}
+
+		/**
+		 * Reads a string property that may be null.
+		 *
+		 * @param node the object
+		 * @param name the name of the property
+		 * @return the value, or {@code null} if it is null
+		 */
+		private static String optionalText(JsonNode node, String name)
+		{
+			JsonNode value = node.get(name);
+			if (value.isNull())
+				return null;
+			return value.asString();
 		}
 
 		/**

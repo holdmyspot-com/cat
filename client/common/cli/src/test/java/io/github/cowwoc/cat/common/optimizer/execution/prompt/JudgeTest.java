@@ -38,7 +38,7 @@ public final class JudgeTest
 	private static final Path TRANSCRIPT = Path.of("/runs/trial-1/artifacts/transcript.jsonl");
 	private static final String SECTION = "Turn 1\nTool: shell\nInput:\ntrue\nExit status: 0\nOutput:\ncomplete\n";
 	private static final Requirement ASK_FIRST = new Requirement("r2", "Never delete a directory without asking.",
-		"rules/safety.md");
+		"rules/safety.md", null);
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final JudgePrompt prompt = new JudgePrompt(json, JUDGE_DIRECTORY);
 

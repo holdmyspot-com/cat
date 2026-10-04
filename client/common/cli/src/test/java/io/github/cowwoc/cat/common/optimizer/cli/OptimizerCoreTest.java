@@ -17,6 +17,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -37,6 +41,7 @@ import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.ByteArrayOutputStream;
@@ -698,6 +703,52 @@ public final class OptimizerCoreTest
 			stored.put("format_version", 3);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
 			repository.core().confirm(id);
+		}
+	}
+
+	/**
+	 * Verifies that {@code confirm} reads a version 4 proposal file, whose derivation states no triggers, with every
+	 * requirement always applying and every test leaving no trigger absent.
+	 *
+	 * @throws IOException if the proposal file cannot be read or written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void confirmReadsProposalFileWithoutTriggers()
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-D17
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("proposal.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.put("format_version", 4);
+			ObjectNode derivation = (ObjectNode) JSON.readTree(stored.get("derivation").asString());
+			for (JsonNode requirement : derivation.get("requirements"))
+				((ObjectNode) requirement).remove("trigger");
+			for (JsonNode category : derivation.get("categories"))
+			{
+				for (JsonNode test : category.get("tests"))
+					((ObjectNode) test).remove("absent_triggers");
+			}
+			stored.put("derivation", JSON.writeValueAsString(derivation));
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+
+			repository.core().confirm(id);
+
+			Contract contract = repository.load(id).contract();
+			for (Requirement requirement : contract.requirements())
+				requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
+			for (Category category : contract.categories())
+			{
+				for (TestDefinition test : category.tests())
+					requireThat(test.absentTriggers(), test.id() + ".absentTriggers()").isEmpty();
+			}
 		}
 	}
 

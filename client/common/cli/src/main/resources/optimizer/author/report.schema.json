@@ -76,6 +76,7 @@
 						"pattern": "\\S"
 					},
 					"dissimilar": {
+						"description": "The id of a test in the confirmed contract whose turns must not receive the new guidance.",
 						"type": "string",
 						"pattern": "\\S"
 					},

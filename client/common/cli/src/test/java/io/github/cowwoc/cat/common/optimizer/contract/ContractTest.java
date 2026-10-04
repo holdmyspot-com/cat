@@ -31,7 +31,7 @@ public final class ContractTest
 	 */
 	private static TestDefinition test(String id, List<String> turns, List<VariationRule> variations)
 	{
-		return new TestDefinition(id, List.of("r1"), "Always.", turns, Duration.ofMinutes(1), "Complies.",
+		return new TestDefinition(id, List.of("r1"), List.of(), "Always.", turns, Duration.ofMinutes(1), "Complies.",
 			List.of(), variations, List.of(), List.of(), List.of());
 	}
 
@@ -121,10 +121,10 @@ public final class ContractTest
 		Category formatting = valid.categories().get(0);
 		Category safety = valid.categories().get(1);
 		Requirement r1 = valid.requirements().get(0);
-		TestDefinition orphan = new TestDefinition("orphan", List.of("r99"), "Always.", List.of("Hello."),
+		TestDefinition orphan = new TestDefinition("orphan", List.of("r99"), List.of(), "Always.", List.of("Hello."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of());
 		Category orphaned = new Category("orphaned", "Why.", new RiskRank(3), List.of(orphan));
-		TestDefinition duplicate = new TestDefinition("plain-list", List.of("r1"), "Always.", List.of("Hello."),
+		TestDefinition duplicate = new TestDefinition("plain-list", List.of("r1"), List.of(), "Always.", List.of("Hello."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of());
 		Category duplicating = new Category("duplicating", "Why.", new RiskRank(3), List.of(duplicate));
 		List<Runnable> inconsistent = List.of(
@@ -166,14 +166,14 @@ public final class ContractTest
 		requireThat(valid.requirements(), "requirements").contains(Requirement.CORE_TASK);
 		requireThat(Requirement.CORE_TASK.source(), "source").isEqualTo("CAT");
 		Category formatting = valid.categories().get(0);
-		TestDefinition unchecked = new TestDefinition("unchecked", List.of("r1"), "Always.", List.of("Hello."),
+		TestDefinition unchecked = new TestDefinition("unchecked", List.of("r1"), List.of(), "Always.", List.of("Hello."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of());
 		Category withUnchecked = new Category("formatting", formatting.rationale(), formatting.riskRank(),
 			List.of(formatting.tests().get(0), unchecked));
 		List<Requirement> withoutCoreTask = valid.requirements().stream().
 			filter(requirement -> !requirement.equals(Requirement.CORE_TASK)).toList();
 		List<Requirement> rewritten = new ArrayList<>(withoutCoreTask);
-		rewritten.add(new Requirement(Requirement.CORE_TASK.id(), "Answers the question.", "CLAUDE.md"));
+		rewritten.add(new Requirement(Requirement.CORE_TASK.id(), "Answers the question.", "CLAUDE.md", null));
 		List<Runnable> invalid = List.of(
 			() -> new Contract(withoutCoreTask, valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
 				valid.limitations()),
@@ -246,16 +246,46 @@ public final class ContractTest
 			() -> test("t", List.of(" "), List.of()),
 			() -> test("t", List.of("Say {{mood}}."), List.of(tone)),
 			() -> test("t", List.of("Say {{tone}}."), List.of(tone, tone)),
-			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ZERO, "Complies.",
-				List.of(), List.of(), List.of(), List.of(), List.of()),
-			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ofMillis(1500),
+			() -> new TestDefinition("t", List.of("r1"), List.of(), "Always.", List.of("Hi."), Duration.ZERO,
 				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of()),
-			() -> new TestDefinition("t", List.of(), "Always.", List.of("Hi."), Duration.ofMinutes(1), "Complies.",
-				List.of(), List.of(), List.of(), List.of(), List.of()),
-			() -> new TestDefinition("t", List.of("r1"), "", List.of("Hi."), Duration.ofMinutes(1), "Complies.",
-				List.of(), List.of(), List.of(), List.of(), List.of()),
-			() -> new TestDefinition("t", List.of("r1"), "Always.", List.of("Hi."), Duration.ofMinutes(1), "",
-				List.of(), List.of(), List.of(), List.of(), List.of()));
+			() -> new TestDefinition("t", List.of("r1"), List.of(), "Always.", List.of("Hi."), Duration.ofMillis(1500),
+				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of()),
+			() -> new TestDefinition("t", List.of(), List.of(), "Always.", List.of("Hi."), Duration.ofMinutes(1),
+				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of()),
+			() -> new TestDefinition("t", List.of("r1"), List.of(), "", List.of("Hi."), Duration.ofMinutes(1),
+				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of()),
+			() -> new TestDefinition("t", List.of("r1"), List.of(), "Always.", List.of("Hi."), Duration.ofMinutes(1),
+				"", List.of(), List.of(), List.of(), List.of(), List.of()));
+		for (Runnable build : invalid)
+		{
+			boolean rejected = false;
+			try
+			{
+				build.run();
+			}
+			catch (IllegalArgumentException _)
+			{
+				rejected = true;
+			}
+			requireThat(rejected, "rejected").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a requirement either always applies or names a non-blank trigger, and that a test rejects a
+	 * blank entry among the triggers it leaves absent.
+	 */
+	@Test
+	public void triggerIsAbsentOrText()
+	{
+		// Requirement: R-D17
+		requireThat(new Requirement("r", "Asks first.", "CLAUDE.md", null).trigger(), "always").isNull();
+		requireThat(new Requirement("r", "Asks first.", "CLAUDE.md", "A deletion.").trigger(), "triggered").
+			isEqualTo("A deletion.");
+		List<Runnable> invalid = List.of(
+			() -> new Requirement("r", "Asks first.", "CLAUDE.md", " "),
+			() -> new TestDefinition("t", List.of("r1"), List.of(" "), "Always.", List.of("Hi."),
+				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of()));
 		for (Runnable build : invalid)
 		{
 			boolean rejected = false;

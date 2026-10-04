@@ -321,6 +321,7 @@ public final class DeriverProtocol
 			node.put("id", coreTask.id());
 			node.put("description", coreTask.description());
 			node.put("source", coreTask.source());
+			node.put("trigger", coreTask.trigger());
 		}
 		if (!(output.get("categories") instanceof ArrayNode categories))
 			return;

@@ -23,6 +23,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import java.nio.file.attribute.PosixFilePermissions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
@@ -626,10 +630,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(12);
+					"recordVersion").isEqualTo(13);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(12);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(13);
 		}
 	}
 
@@ -890,6 +894,51 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Format 12 snapshots, whose contracts state no triggers, load with every requirement always applying and every
+	 * test leaving no trigger absent.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void formatTwelveRequirementsAlwaysApply() throws IOException
+	{
+		// Requirement: R-D17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-without-triggers"));
+			Campaign confirmed = new Builder().header(header(ID)).confirmed().build();
+			new FileCampaignStore(base, JSON).replaceSnapshot(confirmed);
+			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 12);
+			for (JsonNode lineage : root.get("lineages"))
+			{
+				JsonNode contract = lineage.get("contract");
+				for (JsonNode requirement : contract.get("requirements"))
+					((ObjectNode) requirement).remove("trigger");
+				for (JsonNode category : contract.get("categories"))
+				{
+					for (JsonNode test : category.get("tests"))
+						((ObjectNode) test).remove("absent_triggers");
+				}
+			}
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
+
+			Contract contract = loaded.lineages().getLast().contract();
+			for (Requirement requirement : contract.requirements())
+				requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
+			for (Category category : contract.categories())
+			{
+				for (TestDefinition test : category.tests())
+					requireThat(test.absentTriggers(), test.id() + ".absentTriggers()").isEmpty();
+			}
+			requireThat(loaded, "loaded").isEqualTo(confirmed);
+		}
+	}
+
+	/**
 	 * Format 11 snapshots and trial records, which hold no impacts, load with every impact absent.
 	 *
 	 * @throws IOException if the store fails
@@ -1128,7 +1177,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = campaignDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 13);
+			root.put("format_version", 14);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

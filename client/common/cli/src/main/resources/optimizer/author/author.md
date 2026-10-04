@@ -109,11 +109,13 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
    contradiction or ambiguity before adding emphasis.
    Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
    repeated instructions are not corrections.
-3. For each change, name an analogous case that needs the same path and a dissimilar case that must not receive the
-   new guidance. Word the correction for the invariant shared by the failing and analogous cases.
+3. For each change, name an analogous case that needs the same path and, as the dissimilar case,
+   the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Word the correction for
+   the invariant shared by the failing and analogous cases.
 4. Emit the manifest: every supplied failure's classification, every changed hunk's motivating failure ids,
    analogous case and dissimilar case, and each conflict with the failure ids it explains, its requirement ids,
-   quotations, resolutions and recommended one. CAT rejects an uncited hunk or a citation to a failure you did not receive.
+   quotations, resolutions and recommended one. CAT rejects an uncited hunk, a citation to a failure you did not receive
+   or a dissimilar case that names no test of the confirmed contract.
    When no edit is needed, report the classifications with an empty `hunks` array; the attempt produces no candidate.
 
 - Diagnose why the failing instances failed by comparing each one's turns with its expected behaviour, with the

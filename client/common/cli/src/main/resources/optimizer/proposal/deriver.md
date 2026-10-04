@@ -47,12 +47,16 @@
 ### Requirements, categories and tests
 
 - `requirements`: every behavioural requirement that the prompt files state, one item each, with a unique `id`.
+  Give each its `trigger`: the situation that obliges the action, such as "The user asks to delete a directory", or
+  `null` when the requirement applies to every reply.
 - `categories`: create a separate category whenever averaging it with other uses could let common or easy cases hide a
   weak area. A category groups uses that need their own claim; a change to an incidental value is another instance
   of the same test, not another category. Give each category a `rationale` that says which weak area a separate claim
   protects, and a `risk_rank`, where 1 is the riskiest.
 - `tests`: every test definition of the category. For each one, give:
   - `requirement_ids`: the requirements it checks;
+  - `absent_triggers`: the requirements whose `trigger` this test leaves absent, so that a compliant response does not
+    take the action they oblige, or an empty list. Name only requirements that have a trigger;
   - `applicability`: the conditions under which those requirements apply to a trial;
   - `turns`: the complete prewritten user turns, in order. Where a variation value is inserted, write `{{` and `}}`
     around the `dimension` name of one of this test's `variations`, as in `{{tone}}`. Every placeholder names a
@@ -63,6 +67,10 @@
   - `variations`: every variation dimension and its values. The values' probabilities sum to 1;
   - `checks`: the deterministic check of each mechanical requirement that the test checks, as described below.
   - `regression_scenarios`: the citation paths of recorded scenarios this test covers, or an empty list.
+- For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose
+  `expected_behavior` says that the obligated action does not occur, and whose `absent_triggers` lists the requirement.
+  Such a test catches a prompt that makes the agent take the action everywhere. CAT refuses a proposal in which a
+  requirement with a trigger has no such test.
 - Every test in a category has the same weight, and variation probabilities are chosen for coverage. Do not try to
   estimate how often users make each request; those frequencies are unknown.
 - A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the

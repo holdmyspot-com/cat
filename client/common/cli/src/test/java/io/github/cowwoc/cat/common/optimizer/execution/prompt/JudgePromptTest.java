@@ -30,7 +30,7 @@ public final class JudgePromptTest
 	private static final Path TRANSCRIPT = EFFECTS.getParent().resolve("artifacts/transcript.jsonl");
 	private static final String SECTION = "Turn 1\nTool: shell\nInput:\ntrue\nExit status: 0\nOutput:\ncomplete\n";
 	private static final Requirement REQUIREMENT = new Requirement("ask-first", "Ask before deleting.",
-		"rules/safety.md");
+		"rules/safety.md", null);
 	private static final String OUTPUT = "{\"verdict\":\"pass\",\"rationale\":\" It asked. \"}";
 	private final JudgePrompt prompt = new JudgePrompt(JsonMapper.builder().build(),
 		Path.of("contract-evidence/judge"));

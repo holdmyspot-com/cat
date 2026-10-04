@@ -1436,4 +1436,170 @@ public final class ProposalTest
 		});
 		deriver.proposal(session(output), PROFILES);
 	}
+
+	/**
+	 * Returns the valid deriver output in which {@code r2} applies only when the user asks to delete a directory.
+	 *
+	 * @param absentTest the identifier of the test that lists {@code r2} as a trigger it leaves absent, or
+	 *   {@code null} if no test lists it
+	 * @return the output as JSON text
+	 */
+	private String triggeredDerivation(String absentTest)
+	{
+		return changedDerivation(output ->
+		{
+			((ObjectNode) output.get("requirements").get(1)).put("trigger", "The user asks to delete a directory.");
+			if (absentTest == null)
+				return;
+			for (JsonNode category : output.get("categories"))
+			{
+				for (JsonNode test : category.get("tests"))
+				{
+					if (test.get("id").asString().equals(absentTest))
+						((ObjectNode) test).putArray("absent_triggers").add("r2");
+				}
+			}
+		});
+	}
+
+	/**
+	 * Verifies that a requirement that applies only under a trigger is accepted when a test leaves that trigger
+	 * absent, and that the contract keeps both the trigger and the test's absent triggers.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	@Test
+	public void acceptsTriggerWithAbsentTest() throws InvalidProposalException
+	{
+		// Requirement: R-D17
+		Contract contract = deriver.proposal(session(triggeredDerivation("plain-list")), PROFILES).contract();
+
+		requireThat(contract.requirements().get(1).trigger(), "r2.trigger()").
+			isEqualTo("The user asks to delete a directory.");
+		requireThat(contract.findTest("plain-list").orElseThrow().absentTriggers(), "plainList.absentTriggers()").
+			isEqualTo(List.of("r2"));
+		requireThat(contract.findTest("delete-directory").orElseThrow().absentTriggers(),
+			"deleteDirectory.absentTriggers()").isEmpty();
+	}
+
+	/**
+	 * Verifies that a requirement that applies only under a trigger is refused when no test leaves that trigger
+	 * absent, and that the problem names the requirement.
+	 */
+	@Test
+	public void refusesTriggerWithoutAbsentTest()
+	{
+		// Requirement: R-D17
+		try
+		{
+			deriver.proposal(session(triggeredDerivation(null)), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").contains("'r2'").
+				contains("The user asks to delete a directory.");
+		}
+	}
+
+	/**
+	 * Verifies that a requirement that always applies needs no test that leaves a trigger absent, and that CAT's
+	 * core-task requirement always applies.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	@Test
+	public void alwaysApplyingNeedsNoAbsentTest() throws InvalidProposalException
+	{
+		// Requirement: R-D17
+		Contract contract = deriver.proposal(session(fixture("derivation.json")), PROFILES).contract();
+
+		for (Requirement requirement : contract.requirements())
+			requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
+		requireThat(contract.requirements().getLast(), "coreTask").isEqualTo(Requirement.CORE_TASK);
+		for (Category category : contract.categories())
+		{
+			for (TestDefinition test : category.tests())
+				requireThat(test.absentTriggers(), test.id() + ".absentTriggers()").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns trigger-absent entries that name no requirement with a trigger.
+	 *
+	 * @return the requirement identifier that a test lists as an absent trigger
+	 */
+	@DataProvider(name = "untriggeredAbsentTriggers")
+	public static Object[][] untriggeredAbsentTriggers()
+	{
+		return new Object[][]
+			{
+				{"r9"},
+				{"r1"},
+				{"core-task"}
+			};
+	}
+
+	/**
+	 * Verifies that a test cannot list, as a trigger it leaves absent, a requirement that the proposal does not list
+	 * or one that always applies, and that the problem names the test and the requirement.
+	 *
+	 * @param requirementId the requirement identifier that the test lists
+	 */
+	@Test(dataProvider = "untriggeredAbsentTriggers")
+	public void refusesAbsentTriggerWithoutTrigger(String requirementId)
+	{
+		// Requirement: R-D17
+		String output = changedDerivation(root -> ((ObjectNode) root.get("categories").get(0).get("tests").get(1)).
+			putArray("absent_triggers").add(requirementId));
+		try
+		{
+			deriver.proposal(session(output), PROFILES);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").contains("'plain-list'").
+				contains("'" + requirementId + "'");
+		}
+	}
+
+	/**
+	 * Verifies that the proposal shows each requirement's trigger, or that it always applies, and the triggers that
+	 * each test leaves absent.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	@Test
+	public void rendersTriggersAndTriggerAbsentTests() throws InvalidProposalException
+	{
+		// Requirement: R-D17
+		String text = rendered(triggeredDerivation("plain-list"));
+
+		requireThat(text, "text").
+			contains("- `r1`: Answers use the requested tone.\n  Source: CLAUDE.md\n  Applies: always\n").
+			contains("- `r2`: Never delete a directory without asking.\n  Source: rules/safety.md\n" +
+				"  Applies when: The user asks to delete a directory.\n").
+			contains("- Leaves these triggers absent, so the obligated action must not occur: `r2`\n");
+	}
+
+	/**
+	 * Verifies that the deriver is asked for each requirement's trigger and for tests that leave each trigger
+	 * absent, and that its output schema requires both.
+	 */
+	@Test
+	public void requestAsksForTriggersAndAbsentTests()
+	{
+		// Requirement: R-D17
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES.inventory()).turns().getFirst();
+
+		requireThat(prompt, "prompt").contains("`trigger`").contains("`absent_triggers`");
+		JsonNode outputSchema = readOutputSchema(prompt);
+		List<String> requirement = outputSchema.get("properties").get("requirements").get("items").get("required").
+			valueStream().map(JsonNode::asString).toList();
+		requireThat(requirement, "requirement.required").contains("trigger");
+		List<String> test = outputSchema.get("properties").get("categories").get("items").get("properties").
+			get("tests").get("items").get("required").valueStream().map(JsonNode::asString).toList();
+		requireThat(test, "test.required").contains("absent_triggers");
+	}
 }

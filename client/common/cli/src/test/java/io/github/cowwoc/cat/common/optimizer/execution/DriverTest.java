@@ -1188,7 +1188,7 @@ public final class DriverTest
 				String response = """
 					{"needed_edits":[],"classifications":[{"instance":"%s","classification":"guidance"}],
 					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
-					 "instances":["unknown"],"analogous":"related case","dissimilar":"unrelated case"}],"conflicts":[]}
+					 "instances":["unknown"],"analogous":"related case","dissimilar":"plain-list"}],"conflicts":[]}
 					""".formatted(harness.author().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.model(),
@@ -2333,7 +2333,8 @@ public final class DriverTest
 			for (TestDefinition test : category.tests())
 			{
 				List<DeterministicCheck> checks = checksByTest.getOrDefault(test.id(), List.of());
-				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.applicability(), test.turns(),
+				tests.add(new TestDefinition(test.id(), test.requirementIds(), test.absentTriggers(), test.applicability(),
+					test.turns(),
 					test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(), test.variations(), checks,
 					List.of(), test.regressionScenarios()));
 			}

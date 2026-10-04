@@ -90,11 +90,12 @@
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["id", "description", "source"],
+				"required": ["id", "description", "source", "trigger"],
 				"properties": {
 					"id": {"type": "string", "pattern": "\\S"},
 					"description": {"type": "string", "pattern": "\\S"},
-					"source": {"type": "string", "pattern": "\\S"}
+					"source": {"type": "string", "pattern": "\\S"},
+					"trigger": {"description": "The situation that obliges the action, such as \"The user asks to delete a directory\", or null if the requirement applies to every reply. A requirement with a trigger needs at least one test that lists it in absent_triggers.", "type": ["string", "null"], "pattern": "\\S"}
 				}
 			}
 		},
@@ -117,10 +118,11 @@
 						"items": {
 							"type": "object",
 							"additionalProperties": false,
-							"required": ["id", "requirement_ids", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "checks", "discarded_checks", "regression_scenarios"],
+							"required": ["id", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "checks", "discarded_checks", "regression_scenarios"],
 							"properties": {
 								"id": {"type": "string", "pattern": "\\S"},
 								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
+								"absent_triggers": {"description": "The requirements whose trigger this test leaves absent, so that the obligated action must not occur. Each names a requirement that has a trigger. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 								"applicability": {"description": "The conditions under which the checked requirements apply to a trial.", "type": "string", "pattern": "\\S"},
 								"turns": {
 									"description": "The complete prewritten user turns. {{dimension}} marks where a variation value is inserted.",

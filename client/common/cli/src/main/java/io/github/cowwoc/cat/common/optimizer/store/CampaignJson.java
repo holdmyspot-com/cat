@@ -114,9 +114,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Formats 9 to 12 are readable: format 9 records input counts without full session usage,
- * formats 9 and 10 hold no retained promotion state, and formats 9 to 11 record no failure impacts. Unsupported format
- * versions are refused.
+ * round-trip exactly. Formats 9 to 13 are readable: format 9 records input counts without full session usage,
+ * formats 9 and 10 hold no retained promotion state, formats 9 to 11 record no failure impacts, and the contracts of
+ * formats 9 to 12 record no triggers, so their requirements always apply and their tests leave no trigger absent.
+ * Unsupported format versions are refused.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -128,7 +129,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 12;
+	private static final int FORMAT_VERSION = 13;
 	/**
 	 * The readable format whose records contain input counts without full session usage.
 	 */
@@ -141,6 +142,10 @@ final class CampaignJson
 	 * The first format that records the impact of development failures.
 	 */
 	private static final int TRIAGE_FORMAT_VERSION = 12;
+	/**
+	 * The first format whose contracts record each requirement's trigger and each test's absent triggers.
+	 */
+	private static final int TRIGGER_FORMAT_VERSION = 13;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -255,7 +260,7 @@ final class CampaignJson
 		int version = integer(root, VERSION);
 		List<Lineage> lineages = new ArrayList<>();
 		for (JsonNode node : elements(root, "lineages"))
-			lineages.add(readLineage(node));
+			lineages.add(readLineage(node, version));
 		IncumbentBaseline baseline = null;
 		JsonNode baselineNode = nullable(root, "baseline");
 		if (baselineNode != null)
@@ -738,14 +743,18 @@ final class CampaignJson
 	 * Converts a document to a contract lineage.
 	 *
 	 * @param node the document
+	 * @param version the enclosing document's format version
 	 * @return the lineage
 	 */
-	private Lineage readLineage(JsonNode node)
+	private Lineage readLineage(JsonNode node, int version)
 	{
+		JsonNode contractNode = field(node, "contract").deepCopy();
+		if (version < TRIGGER_FORMAT_VERSION)
+			ProposalSchema.addMissingTriggers(contractNode);
 		Contract contract;
 		try
 		{
-			contract = schema.parse(json.writeValueAsString(field(node, "contract")));
+			contract = schema.parse(json.writeValueAsString(contractNode));
 		}
 		catch (InvalidProposalException e)
 		{

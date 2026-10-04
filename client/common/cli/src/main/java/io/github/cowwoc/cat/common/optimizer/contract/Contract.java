@@ -2,8 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -34,7 +36,9 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
 	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
 	 *   requirement that the contract does not list, the contract does not list {@link Requirement#CORE_TASK} or a
-	 *   test does not check it, a category has no cell, or a cell names a category that the contract does not list
+	 *   test does not check it, a test leaves absent the trigger of a requirement that the contract does not list or
+	 *   that always applies, a requirement with a trigger is left absent by no test, a category has no cell, or a cell
+	 *   names a category that the contract does not list
 	 */
 	public Contract
 	{
@@ -50,12 +54,13 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 		for (String limitation : limitations)
 			requireThat(limitation, "limitation").isNotBlank();
 
-		Set<String> requirementIds = new HashSet<>();
+		Map<String, Requirement> requirementById = new HashMap<>();
 		for (Requirement requirement : requirements)
 		{
-			if (!requirementIds.add(requirement.id()))
+			if (requirementById.putIfAbsent(requirement.id(), requirement) != null)
 				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' is listed twice");
 		}
+		Set<String> requirementIds = requirementById.keySet();
 		String coreTask = Requirement.CORE_TASK.id();
 		if (!requirements.contains(Requirement.CORE_TASK))
 		{
@@ -64,6 +69,7 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 		}
 		Set<String> categoryIds = new HashSet<>();
 		Set<String> testIds = new HashSet<>();
+		Set<String> absentTriggers = new HashSet<>();
 		for (Category category : categories)
 		{
 			if (!categoryIds.add(category.id()))
@@ -89,9 +95,35 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 					throw new IllegalArgumentException("The test '" + test.id() + "' does not check the requirement '" +
 						coreTask + "', which every test checks");
 				}
+				for (String absentTrigger : test.absentTriggers())
+				{
+					Requirement requirement = requirementById.get(absentTrigger);
+					if (requirement == null)
+					{
+						throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
+							"requirement '" + absentTrigger + "', which the contract does not list. Listed requirements: " +
+							requirementIds);
+					}
+					if (requirement.trigger() == null)
+					{
+						throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
+							"requirement '" + absentTrigger + "', which has no trigger because it always applies");
+					}
+					absentTriggers.add(absentTrigger);
+				}
 			}
 			if (profiles.cellsOf(category.id()).isEmpty())
 				throw new IllegalArgumentException("The category '" + category.id() + "' has no cell");
+		}
+		for (Requirement requirement : requirements)
+		{
+			if (requirement.trigger() != null && !absentTriggers.contains(requirement.id()))
+			{
+				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' applies only when its " +
+					"trigger occurs (" + requirement.trigger() + "), but no test leaves that trigger absent. List it in " +
+					"the absent_triggers of a test in which the trigger does not occur and the obligated action must not " +
+					"happen");
+			}
 		}
 		for (Cell cell : profiles.cells())
 		{

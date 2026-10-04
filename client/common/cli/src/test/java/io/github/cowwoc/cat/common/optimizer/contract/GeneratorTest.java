@@ -312,7 +312,7 @@ public final class GeneratorTest
 	{
 		// Requirement: R-C4
 		VariationRule price = new VariationRule("price", List.of(new VariationValue("dollars", "$5 and \\1", 1.0)));
-		TestDefinition test = new TestDefinition("quote", List.of("r1", Requirement.CORE_TASK.id()), "Always.",
+		TestDefinition test = new TestDefinition("quote", List.of("r1", Requirement.CORE_TASK.id()), List.of(), "Always.",
 			List.of("It costs {{price}}; repeat: {{price}}."), java.time.Duration.ofMinutes(1), "Complies.", List.of(),
 			List.of(price), List.of(), List.of(), List.of());
 		Contract original = ContractFixtures.contract();

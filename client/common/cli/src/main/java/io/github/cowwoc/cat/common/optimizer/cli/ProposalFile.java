@@ -3,10 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -40,9 +42,14 @@ final class ProposalFile
 	 */
 	static final String NAME = "proposal.json";
 	/**
-	 * The version of the proposal layout, including regression scenario citations in each test definition.
+	 * The version of the proposal layout, including regression scenario citations in each test definition and the
+	 * triggers of the requirements.
 	 */
-	private static final int FORMAT_VERSION = 4;
+	private static final int FORMAT_VERSION = 5;
+	/**
+	 * The readable version whose derivation states no triggers, so its requirements always apply.
+	 */
+	private static final int UNTRIGGERED_FORMAT_VERSION = 4;
 	private final Path file;
 	private final JsonMapper json;
 
@@ -135,7 +142,7 @@ final class ProposalFile
 	 * @param project the user's project root, which the stored derivation's paths name
 	 * @return the proposal, or empty if no proposal is stored
 	 * @throws NullPointerException if {@code project} is null
-	 * @throws IOException if the file cannot be read or is not a proposal file of this version
+	 * @throws IOException if the file cannot be read or is not a proposal file of a readable version
 	 */
 	Optional<Stored> read(Path project) throws IOException
 	{
@@ -144,17 +151,21 @@ final class ProposalFile
 			return Optional.empty();
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 		int version = root.path("format_version").asInt();
-		if (version != FORMAT_VERSION)
+		if (version < UNTRIGGERED_FORMAT_VERSION || version > FORMAT_VERSION)
 		{
 			throw new IOException(file + " is a version " + version + " proposal file, but this version of CAT reads " +
-				"only version " + FORMAT_VERSION + ". Run `start` again to derive a new proposal.");
+				"versions " + UNTRIGGERED_FORMAT_VERSION + " to " + FORMAT_VERSION + ". Run `start` again to derive a " +
+				"new proposal.");
 		}
 		if (!root.path("derivation").isString() || !root.path("observed_sources").isString() ||
 			!root.path("inventory_source").isString() || !root.path("inventory").isArray() ||
 			!root.path("bindings").isArray())
 		{
-			throw new IOException(file + " is not a valid version " + FORMAT_VERSION + " proposal file.");
+			throw new IOException(file + " is not a valid version " + version + " proposal file.");
 		}
+		String derivation = root.get("derivation").asString();
+		if (version == UNTRIGGERED_FORMAT_VERSION)
+			derivation = addMissingTriggers(derivation);
 		ProfileEvidence profiles;
 		try
 		{
@@ -174,9 +185,31 @@ final class ProposalFile
 		// Stored text already names the user's project, so the deriver protocol must use that same root when it
 		// validates the text again. The proposal file stands in for the session's transcript.
 		SessionResult.Completed result = new SessionResult.Completed(file,
-			List.of(List.of(root.get("derivation").asString())),
+			List.of(List.of(derivation)),
 			project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
 		return Optional.of(new Stored(result, profiles));
+	}
+
+	/**
+	 * Completes a derivation stored before requirements had triggers, so that its requirements always apply and its
+	 * tests leave no trigger absent.
+	 *
+	 * @param derivation the stored derivation
+	 * @return the completed derivation, or {@code derivation} unchanged if it is not JSON, which validation reports
+	 */
+	private String addMissingTriggers(String derivation)
+	{
+		JsonNode node;
+		try
+		{
+			node = json.readTree(derivation);
+		}
+		catch (JacksonException _)
+		{
+			return derivation;
+		}
+		ProposalSchema.addMissingTriggers(node);
+		return json.writerWithDefaultPrettyPrinter().writeValueAsString(node);
 	}
 
 	/**
