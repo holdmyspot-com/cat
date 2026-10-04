@@ -306,6 +306,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §3.1, §6.4, §11 H32 and D36: the judge receives a rendered evidence section instead of the trial's log;
   R-E21 and WI-28 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
 
+- `design.md` §6.6: the Codex inventory leaves out the `ultra` effort (`max` reasoning plus automatic task
+  delegation), so each model's highest effort is the one below it; the cell counts dropped from 44 to 39.
+  `CodexProfileInventory` skips `ultra`, proved by `CodexProfileInventoryTest` (user ruling, 2026-10-03).
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
 
@@ -747,7 +750,7 @@ The riskiest pure code, built first.
   optional) and each category's profile set; cells are (category, profile). `ProposalSchema` and the contract hash
   include them.
 - **Inventory:** a `ProfileInventory` port. Codex reads `codex debug models` and keeps the models with visibility
-  `list` and their efforts; Claude reads a plugin resource listing documented aliases and efforts (P12). Each is
+  `list` and their efforts except `ultra`; Claude reads a plugin resource listing documented aliases and efforts (P12). Each is
   tested over recorded output.
 - **Bindings:** read only from Claude skill and subagent frontmatter (`model`, `effort`) and Codex agent TOML
   (`model`, `model_reasoning_effort`). `inherit` binds nothing; a partial binding fixes one dimension. The

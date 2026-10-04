@@ -30,7 +30,6 @@ import org.testng.annotations.Test;
 public final class CodexProfileInventoryTest
 {
 	private static final String VERSION = "codex-cli 0.159.1+23";
-	private static final List<String> ULTRA = List.of("low", "medium", "high", "xhigh", "max", "ultra");
 	private static final List<String> MAX = List.of("low", "medium", "high", "xhigh", "max");
 
 	/**
@@ -145,7 +144,8 @@ public final class CodexProfileInventoryTest
 
 	/**
 	 * Verifies that the recorded inventory holds the 8 models that Codex lists, each with every reasoning effort that
-	 * it supports, leaves out the hidden models, and names the command and the Codex version as its source.
+	 * it supports except {@code ultra}, leaves out the hidden models, and names the command and the Codex version as its
+	 * source.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */
@@ -161,12 +161,12 @@ public final class CodexProfileInventoryTest
 				inventory();
 
 			Map<String, List<String>> expected = new LinkedHashMap<>();
-			expected.put("gpt-6-astra", ULTRA);
-			expected.put("gpt-6.1-sol", ULTRA);
-			expected.put("gpt-6-sol", ULTRA);
+			expected.put("gpt-6-astra", MAX);
+			expected.put("gpt-6.1-sol", MAX);
+			expected.put("gpt-6-sol", MAX);
 			expected.put("gpt-6-luna", MAX);
-			expected.put("gpt-5.6-sol", ULTRA);
-			expected.put("gpt-5.6-terra", ULTRA);
+			expected.put("gpt-5.6-sol", MAX);
+			expected.put("gpt-5.6-terra", MAX);
 			expected.put("gpt-5.6-luna", MAX);
 			expected.put("gpt-5.5", List.of("low", "medium", "high", "xhigh"));
 			Map<String, List<String>> actual = new LinkedHashMap<>();
@@ -196,7 +196,7 @@ public final class CodexProfileInventoryTest
 			Map<String, Integer> previous = new HashMap<>();
 			for (TrialProfile profile : inventory.profiles())
 			{
-				int rank = ULTRA.indexOf(profile.effort());
+				int rank = MAX.indexOf(profile.effort());
 				requireThat(rank, profile.toString()).isNotNegative();
 				Integer lower = previous.put(profile.model(), rank);
 				if (lower != null)

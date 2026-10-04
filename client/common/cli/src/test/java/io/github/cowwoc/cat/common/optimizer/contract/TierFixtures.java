@@ -57,7 +57,7 @@ public final class TierFixtures
 	 */
 	public static final Map<String, List<String>> CODEX_EFFORTS = codexEfforts();
 	/**
-	 * The recorded Codex inventory of 44 profiles, in listing order.
+	 * The Codex inventory of 39 profiles that CAT reads from the recorded model list, in listing order.
 	 */
 	public static final ProfileCatalog CODEX_PROFILES = new ProfileCatalog("`codex debug models` of " +
 		"codex-cli 0.159.1+23", profiles(CODEX_EFFORTS));
@@ -69,15 +69,14 @@ public final class TierFixtures
 	 */
 	private static Map<String, List<String>> codexEfforts()
 	{
-		List<String> ultra = List.of("low", "medium", "high", "xhigh", "max", "ultra");
 		List<String> max = List.of("low", "medium", "high", "xhigh", "max");
 		Map<String, List<String>> efforts = new LinkedHashMap<>();
-		efforts.put("gpt-6-astra", ultra);
-		efforts.put("gpt-6.1-sol", ultra);
-		efforts.put("gpt-6-sol", ultra);
+		efforts.put("gpt-6-astra", max);
+		efforts.put("gpt-6.1-sol", max);
+		efforts.put("gpt-6-sol", max);
 		efforts.put("gpt-6-luna", max);
-		efforts.put("gpt-5.6-sol", ultra);
-		efforts.put("gpt-5.6-terra", ultra);
+		efforts.put("gpt-5.6-sol", max);
+		efforts.put("gpt-5.6-terra", max);
 		efforts.put("gpt-5.6-luna", max);
 		efforts.put("gpt-5.5", List.of("low", "medium", "high", "xhigh"));
 		return Collections.unmodifiableMap(efforts);

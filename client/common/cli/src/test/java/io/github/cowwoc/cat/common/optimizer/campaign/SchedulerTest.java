@@ -454,8 +454,8 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that under the recorded Codex inventory of 44 profiles, a category that binds nothing starts with 16
-	 * active cells: the lowest and the highest effort of each of the 8 models.
+	 * Verifies that under the Codex inventory of 39 profiles, a category that binds nothing starts with 16 active cells:
+	 * the lowest and the highest effort of each of the 8 models.
 	 */
 	@Test
 	public void codexUnboundCategoryHasSixteenActive()
@@ -464,7 +464,7 @@ public final class SchedulerTest
 		Contract contract = TierFixtures.contract(TierFixtures.CODEX_PROFILES, new TrialProfile("gpt-6.1-sol", "high"));
 		List<Cell> formatting = contract.cells().stream().filter(cell -> cell.categoryId().equals("formatting")).
 			toList();
-		requireThat(formatting.size(), "cells").isEqualTo(44);
+		requireThat(formatting.size(), "cells").isEqualTo(39);
 		List<String> expected = new ArrayList<>();
 		for (Map.Entry<String, List<String>> model : TierFixtures.CODEX_EFFORTS.entrySet())
 		{

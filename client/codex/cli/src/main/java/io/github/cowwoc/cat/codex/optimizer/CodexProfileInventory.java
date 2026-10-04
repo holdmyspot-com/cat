@@ -25,7 +25,9 @@ import tools.jackson.databind.json.JsonMapper;
  * The Codex profile inventory and bindings.
  * <p>
  * The inventory is every model that {@code codex debug models} lists with visibility {@code list}, each with its
- * supported reasoning levels; hidden models are not offered. A binding is the top-level {@code model} and
+ * supported reasoning levels except {@code ultra}; hidden models are not offered. {@code ultra} is {@code max}
+ * reasoning plus automatic task delegation, which changes what the agent does rather than how deeply it reasons, so a
+ * model's highest effort is the one below it. A binding is the top-level {@code model} and
  * {@code model_reasoning_effort} of a custom agent's {@code .toml} file below an {@code agents} directory. The role
  * profile is the binding of the artifact's {@code optimize-xhigh} agent definition.
  * <p>
@@ -35,6 +37,7 @@ public final class CodexProfileInventory implements ProfileInventory
 {
 	private static final String COMMAND = "`codex debug models`";
 	private static final String LISTED = "list";
+	private static final String DELEGATING_EFFORT = "ultra";
 	private static final Pattern TOP_LEVEL_FIELD = Pattern.compile(
 		"^(model|model_reasoning_effort)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')\\s*(?:#.*)?$");
 	private final Path artifact;
@@ -109,7 +112,11 @@ public final class CodexProfileInventory implements ProfileInventory
 			if (levels.isEmpty())
 				profiles.add(new TrialProfile(slug, ""));
 			for (JsonNode level : levels)
-				profiles.add(new TrialProfile(slug, level.path("effort").asString("")));
+			{
+				String effort = level.path("effort").asString("");
+				if (!effort.equals(DELEGATING_EFFORT))
+					profiles.add(new TrialProfile(slug, effort));
+			}
 		}
 		if (profiles.isEmpty())
 			throw new IOException(COMMAND + " listed no model with visibility " + LISTED + ".");

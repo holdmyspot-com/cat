@@ -1085,7 +1085,10 @@ that can actually run its prompt files.
 **Inventory.** The harness's profile inventory is every model it offers the user, each with every reasoning effort that
 model accepts:
 
-- **Codex:** each model that `codex debug models` lists with visibility `list`, with its supported reasoning levels.
+- **Codex:** each model that `codex debug models` lists with visibility `list`, with its supported reasoning levels
+  except `ultra`. `ultra` is `max` reasoning plus automatic task delegation, which changes what the agent does rather
+  than how deeply it reasons, so CAT never tests it, and a model's highest effort is the one below it (user ruling,
+  2026-10-03).
 - **Claude:** the CLI has no model catalog. CAT ships the inventory as a plugin resource: the documented model aliases
   and the efforts each one accepts, with the documentation it came from (premise P12).
 
@@ -1129,7 +1132,7 @@ changes only the cost of development, never the claim:
   failed more often in H27 and H28, so it finds failures in fewer trials. The highest effort stays active, because
   higher effort can fail in ways the lowest does not (H28: adding the motto for a discontinued product).
 
-With the Codex inventory of 2026-10-01, the active set starts at 16 of 44 cells per unbound category (the lowest and
+With the Codex inventory of 2026-10-01 without `ultra`, the active set starts at 16 of 39 cells per unbound category (the lowest and
 highest effort of each of 8 models), plus every cell where the screen found a failure.
 
 **User control.** The proposal shows each category's cells and the minimum session count they imply. In revision
@@ -1137,8 +1140,9 @@ feedback, the user may restrict the profile set to a subset of the inventory. Th
 profiles.
 
 **Cost.** Every cell needs its own readiness gate, baseline and certification trials. With the Codex inventory of
-2026-10-01 (8 listed models, 44 profiles), a category whose files bind nothing has 44 cells. Attempt 1 then needs at
-least 44 × 93 = 4,092 all-pass trials for that category alone, after 4,400 readiness trials and 2,200 baseline trials.
+2026-10-01 without `ultra` (8 listed models, 39 profiles), a category whose files bind nothing has 39 cells. Attempt 1
+then needs at least 39 × 93 = 3,627 all-pass trials for that category alone, after 3,900 readiness trials and 1,950
+baseline trials.
 A category whose file binds one profile needs 93, 100 and 50.
 
 ## 7. Campaign lifecycle
