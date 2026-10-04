@@ -18,6 +18,8 @@
   rationale the intended reader needs to apply it.
 - Apply iterative generalization to compaction only when evidence proves a shared invariant preserves every existing
   reader decision; retain uncertain wording and report the possible improvement instead.
+- When test runs measure an artifact's compliance, measure each conditional obligation where its trigger is absent too,
+  so wording that applies the obligation beyond its trigger fails a test instead of passing every one.
 
 ## Guidance
 
@@ -136,6 +138,13 @@ outcome, test it against a meaningful counterexample and analogous case, and add
 guidance, test, or other artifact content that makes the outcome achievable. Preservation mapping proves that known
 obligations survived; it does not prove that the artifact covers every declared outcome. Before finalizing, verify that
 every goal or contract maps to retained or new coverage and at least one concrete acceptance check.
+
+When test runs measure an artifact's compliance, give every obligation that applies only under a trigger at least one
+measured case where the trigger is absent, and score that case on the obligated action not occurring. A test set in
+which every case triggers the obligation cannot detect wording that applies it more broadly: an edit that turns "read
+the files a request depends on" into "start every turn by running a command" passes every such case. Before accepting
+an edit that changes an obligation's trigger, run the dissimilar case from its design checkpoint as one of those
+measured cases; reasoning that the wording spares that case does not substitute for measuring it.
 
 Do not treat a goal as covered merely because a guidance passage uses related words or addresses a neighboring example.
 For each broad goal, derive the specific reader decision in the reported case, then test whether the mapped guidance
