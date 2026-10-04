@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,7 +23,7 @@ public final class FakeSessionPort implements SessionPort
 {
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
-	private final boolean deniesHeldOutReads;
+	private final Optional<String> heldOutExposure;
 	private final Map<Path, String> evidence = new HashMap<>();
 	private final Map<Path, Path> evidenceSources = new HashMap<>();
 
@@ -42,21 +43,22 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public FakeSessionPort(HostLogin login)
 	{
-		this(login, true);
+		this(login, Optional.empty());
 	}
 
 	/**
 	 * Creates a port that has started no sessions.
 	 *
 	 * @param login the login that {@link #hostLogin()} reports
-	 * @param deniesHeldOutReads the value that {@link #deniesHeldOutReads()} reports
-	 * @throws NullPointerException if {@code login} is null
+	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports
+	 * @throws NullPointerException if any argument is null
 	 */
-	public FakeSessionPort(HostLogin login, boolean deniesHeldOutReads)
+	public FakeSessionPort(HostLogin login, Optional<String> heldOutExposure)
 	{
 		requireThat(login, "login").isNotNull();
+		requireThat(heldOutExposure, "heldOutExposure").isNotNull();
 		this.login = login;
-		this.deniesHeldOutReads = deniesHeldOutReads;
+		this.heldOutExposure = heldOutExposure;
 	}
 
 	@Override
@@ -66,9 +68,10 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
-	public boolean deniesHeldOutReads()
+	public Optional<String> findHeldOutExposure(Path project)
 	{
-		return deniesHeldOutReads;
+		requireThat(project, "project").isNotNull();
+		return heldOutExposure;
 	}
 
 	@Override

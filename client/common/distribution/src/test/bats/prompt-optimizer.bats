@@ -14,9 +14,9 @@ setup()
 	export HOST_HOME="${TEST_ROOT}/host-home"
 	export PROJECT="${TEST_ROOT}/project"
 	fixture="${BATS_TEST_DIRNAME}/../../../../cli/src/test/resources/optimizer/cli/campaign.json"
-	mkdir -p "${HOST_HOME}" "${PROJECT}/.cat/work/optimizer/fixture-campaign"
+	mkdir -p "${HOST_HOME}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held-out"
 	git -C "${PROJECT}" init -q
-	cp "${fixture}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/campaign.json"
+	cp "${fixture}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held-out/campaign.json"
 }
 
 # Removes the test's fixture directory after its last assertion completes.

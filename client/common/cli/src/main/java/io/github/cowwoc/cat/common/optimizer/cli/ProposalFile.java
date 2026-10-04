@@ -26,8 +26,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Persists the deriver's latest proposal in the campaign directory so that {@code confirm} and {@code revise} can
- * continue after the launcher exited.
+ * Persists the deriver's latest proposal in the campaign's {@code held-out} directory so that {@code confirm} and
+ * {@code revise} can continue after the launcher exited.
  * <p>
  * The file holds the deriver's output, which {@code DeriverProtocol} validates again when it is read, the sources
  * that the deriver's session was observed loading, the profile inventory, capability ranking and bindings that CAT
@@ -77,15 +77,15 @@ final class ProposalFile
 	/**
 	 * Creates a proposal file.
 	 *
-	 * @param campaign the campaign's directory
+	 * @param heldOut the campaign's {@code held-out} directory
 	 * @param json the operation-owned JSON mapper
 	 * @throws NullPointerException if any argument is null
 	 */
-	ProposalFile(Path campaign, JsonMapper json)
+	ProposalFile(Path heldOut, JsonMapper json)
 	{
-		requireThat(campaign, "campaign").isNotNull();
+		requireThat(heldOut, "heldOut").isNotNull();
 		requireThat(json, "json").isNotNull();
-		this.file = campaign.resolve(NAME);
+		this.file = heldOut.resolve(NAME);
 		this.json = json;
 	}
 

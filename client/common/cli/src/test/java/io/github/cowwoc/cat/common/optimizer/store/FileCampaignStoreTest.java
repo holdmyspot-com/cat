@@ -109,7 +109,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign campaign = new Builder().confirmed().working(1).identity(sparse).readyBaseline().
 				development("safety", 2, 0).optimization(evidence).build();
 			new FileCampaignStore(base, JSON).replaceSnapshot(campaign);
-			JsonNode fixture = JSON.readTree(Files.readString(campaignDirectory(base).resolve("campaign.json"), UTF_8));
+			JsonNode fixture = JSON.readTree(Files.readString(heldOutDirectory(base).resolve("campaign.json"), UTF_8));
 			requireThat(fixture.path("identity").path("cells").size(), "cells").isEqualTo(0);
 			requireThat(fixture.path("identity").path("conditions").has("JUDGE"), "judge").isFalse();
 			requireThat(fixture.path("baseline").path("identity"), "baselineIdentity").isEqualTo(fixture.path("identity"));
@@ -132,46 +132,118 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that the held-out paths of a campaign are its snapshot, its proposal and its trial-record directory,
-	 * that the directory is listed before any record is written, so that a session that starts first is denied the
-	 * records written while it runs, and that the campaign's other entries are not listed.
+	 * Verifies that the held-out directories are each campaign's {@code held-out} directory, which holds the snapshot,
+	 * the proposal and the trial records, that it is listed before any record is written, so that a session that
+	 * starts first is denied the records written while it runs, and that the campaign's other entries stay outside it.
 	 *
 	 * @throws IOException if the fixture cannot be stored or listed
 	 */
 	@Test
-	public void listsHeldOutPaths() throws IOException
+	public void listsHeldOutDirectories() throws IOException
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("held-out-paths"));
-			new FileCampaignStore(base, JSON).replaceSnapshot(new Builder().confirmed().build());
-			Path directory = campaignDirectory(base).toRealPath();
-			Files.writeString(directory.resolve(FileCampaignStore.PROPOSAL), "{}");
-			Files.createDirectories(directory.resolve("staged"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
+			store.writeJournal(ID, journal("candidate-2", 0));
+			Path heldOut = heldOutDirectory(base).toRealPath();
 
-			List<Path> paths = FileCampaignStore.heldOutPaths(base);
+			List<Path> directories = FileCampaignStore.heldOutDirectories(base);
 
-			requireThat(Set.copyOf(paths), "paths").isEqualTo(Set.of(directory.resolve("campaign.json"),
-				directory.resolve(FileCampaignStore.PROPOSAL), directory.resolve("trials")));
+			requireThat(directories, "directories").isEqualTo(List.of(heldOut));
+			requireThat(FileCampaignStore.heldOutDirectory(base, ID).toRealPath(), "heldOutDirectory").
+				isEqualTo(heldOut);
+			requireThat(list(heldOut), "heldOutFiles").
+				isEqualTo(List.of(heldOut.resolve("campaign.json"), heldOut.resolve("trials")));
+			requireThat(Files.exists(campaignDirectory(base).resolve("delivery.json")), "journalOutside").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that a worktree without campaigns has no held-out paths.
+	 * Verifies that a worktree without campaigns has no held-out directories.
 	 *
 	 * @throws IOException if the fixture cannot be listed
 	 */
 	@Test
-	public void listsNoHeldOutPathsWithoutCampaigns() throws IOException
+	public void listsNoHeldOutDirectories() throws IOException
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("held-out-paths"));
 
-			requireThat(FileCampaignStore.heldOutPaths(base), "paths").isEmpty();
+			requireThat(FileCampaignStore.heldOutDirectories(base), "directories").isEmpty();
 		}
+	}
+
+	/**
+	 * Verifies that a campaign whose snapshot is stored directly in the campaign directory, outside its
+	 * {@code held-out} directory, is refused with a message that names its version and asks for a new campaign, both
+	 * when it is loaded and when campaigns are listed.
+	 *
+	 * @param listing {@code true} to list the campaigns, {@code false} to load the campaign
+	 * @throws IOException if the store fails
+	 */
+	@Test(dataProvider = "listing", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 15 campaign.*[Ss]tart a new campaign.*")
+	public void refusesCampaignOutsideHeldOutDirectory(boolean listing) throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-15-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path heldOut = heldOutDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(heldOut, UTF_8));
+			root.put("format_version", 15);
+			Files.writeString(campaignDirectory(base).resolve("campaign.json"), JSON.writeValueAsString(root), UTF_8);
+			Files.delete(heldOut);
+
+			FileCampaignStore restarted = new FileCampaignStore(base, JSON);
+			if (listing)
+				restarted.listHeaders();
+			else
+				restarted.load(ID);
+		}
+	}
+
+	/**
+	 * Verifies that a version 15 snapshot inside the {@code held-out} directory is refused with a message that names
+	 * its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 15 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionFifteenCampaign() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-15-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 15);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
+	 * Returns whether a test lists campaigns or loads one.
+	 *
+	 * @return {@code true} to list, {@code false} to load
+	 */
+	@DataProvider
+	public static Object[][] listing()
+	{
+		return new Object[][]{{true}, {false}};
 	}
 
 	/**
@@ -584,7 +656,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				store.writeAssignment(ID, asAssigned(trial));
 			store.writeOutcome(ID, complete(campaign.trials().getFirst().key(), Verdict.PASS));
 
-			List<Path> records = list(campaignDirectory(base).resolve("trials"));
+			List<Path> records = list(heldOutDirectory(base).resolve("trials"));
 			requireThat(records.size(), "records").isEqualTo(campaign.trials().size());
 			for (Path record : records)
 			{
@@ -609,8 +681,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * A campaign is stored as {@code .cat/work/optimizer/<id>/campaign.json} with a format version, and each logical
-	 * trial as one record file.
+	 * A campaign is stored as {@code .cat/work/optimizer/<id>/held-out/campaign.json} with a format version, and each
+	 * logical trial as one record file in the same {@code held-out} directory.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -618,6 +690,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	@Test
 	public void storesSnapshotAndOneRecordPerTrial() throws IOException
 	{
+		// Requirement: R-E24
 		// Requirement: R-W1
 		// Requirement: R-D13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -632,8 +705,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).trial(first).
 				trial(second).build());
 
-			Path directory = campaignDirectory(base);
-			requireThat(list(directory), "campaignFiles").
+			Path directory = heldOutDirectory(base);
+			requireThat(list(campaignDirectory(base)), "campaignFiles").isEqualTo(List.of(directory));
+			requireThat(list(directory), "heldOutFiles").
 				isEqualTo(List.of(directory.resolve("campaign.json"), directory.resolve("trials")));
 			List<Path> records = list(directory.resolve("trials"));
 			requireThat(records.size(), "records").isEqualTo(2);
@@ -641,10 +715,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(15);
+					"recordVersion").isEqualTo(16);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(15);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(16);
 		}
 	}
 
@@ -662,7 +736,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-conflict-store-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
 			document.set("pending_decisions", JSON.readTree("""
 				[{"type":"CONFLICT_FOUND", "conflicts":[
@@ -698,7 +772,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-conflict-version-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
 			document.put("format_version", 8);
 			Files.writeString(snapshot, JSON.writeValueAsString(document));
@@ -721,7 +795,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("campaign-old-format"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 4);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -744,7 +818,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("campaign-unidentified-format"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 5);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -766,7 +840,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("campaign-uncited-format"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 6);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -893,9 +967,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeAssignment(ID, assigned);
 			Path document;
 			if (trialRecord)
-				document = list(campaignDirectory(base).resolve("trials")).getFirst();
+				document = list(heldOutDirectory(base).resolve("trials")).getFirst();
 			else
-				document = campaignDirectory(base).resolve("campaign.json");
+				document = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(document, UTF_8));
 			root.put("format_version", 7);
 			Files.writeString(document, JSON.writeValueAsString(root), UTF_8);
@@ -959,7 +1033,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 					"The reply deleted the directory unasked.", List.of(), null,
 					List.of(new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
 				build());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			((ObjectNode) root.at(parent)).remove(name);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -995,7 +1069,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, assigned);
 			store.writeOutcome(ID, complete(assigned.key(), Verdict.FAIL));
-			Path record = list(campaignDirectory(base).resolve("trials")).getFirst();
+			Path record = list(heldOutDirectory(base).resolve("trials")).getFirst();
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
 			((ObjectNode) root.get("outcome")).remove("rationale");
 			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
@@ -1019,13 +1093,13 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 * @throws IOException if the store fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*campaign-1/campaign\\.json.*")
+		expectedExceptionsMessageRegExp = "(?s).*campaign-1/held-out/campaign\\.json.*")
 	public void rejectsMalformedSnapshot() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-malformed-"));
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			Files.createDirectories(snapshot.getParent());
 			Files.writeString(snapshot, "{ \"format_version\": 1, ", UTF_8);
 
@@ -1049,9 +1123,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 16);
+			root.put("format_version", 17);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);
@@ -1074,7 +1148,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-1-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 1);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -1100,7 +1174,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-2-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 2);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -1125,7 +1199,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-3-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 3);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -1152,7 +1226,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-13-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 13);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -1178,7 +1252,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-14-"));
 			FileCampaignStore store = new FileCampaignStore(base, JSON);
 			store.replaceSnapshot(start());
-			Path snapshot = campaignDirectory(base).resolve("campaign.json");
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 14);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
@@ -1206,6 +1280,17 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	private static Path campaignDirectory(Path base)
 	{
 		return base.resolve(".cat/work/optimizer").resolve(ID);
+	}
+
+	/**
+	 * Returns the directory that holds a campaign's held-out content.
+	 *
+	 * @param base the base worktree
+	 * @return the directory
+	 */
+	private static Path heldOutDirectory(Path base)
+	{
+		return campaignDirectory(base).resolve("held-out");
 	}
 
 	/**

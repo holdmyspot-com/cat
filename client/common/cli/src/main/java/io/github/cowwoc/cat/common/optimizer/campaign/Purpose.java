@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
+
 /**
  * Why an assigned test instance runs, which decides the counts its outcome enters. Representative trials sample new
  * instances from the contract's distribution; targeted trials replay selected instances and do not enter those counts.
@@ -39,6 +41,21 @@ public enum Purpose
 		{
 			case DEVELOPMENT, BASELINE, FORMAL -> true;
 			case DIAGNOSTIC, PROMOTION -> false;
+		};
+	}
+
+	/**
+	 * Returns the part of the contract whose instances trials with this purpose run.
+	 *
+	 * @return {@link Part#HELD_OUT} for {@link #BASELINE} and {@link #FORMAL}, and {@link Part#DEVELOPMENT} for
+	 *   every other purpose
+	 */
+	public Part part()
+	{
+		return switch (this)
+		{
+			case BASELINE, FORMAL -> Part.HELD_OUT;
+			case DEVELOPMENT, DIAGNOSTIC, PROMOTION -> Part.DEVELOPMENT;
 		};
 	}
 }

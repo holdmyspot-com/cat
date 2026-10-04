@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -37,7 +38,7 @@ public final class PortFakesTest
 	 */
 	private static SessionRequest request(String turn)
 	{
-		return new SessionRequest(SessionRole.TRIAL, Path.of("/staged"), List.of(turn), List.of(),
+		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged"), List.of(turn), List.of(),
 			Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 	}
 

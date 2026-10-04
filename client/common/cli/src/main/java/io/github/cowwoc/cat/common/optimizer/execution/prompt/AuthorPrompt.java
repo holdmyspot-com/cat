@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
@@ -171,7 +172,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
 			Map.entry("ended_attempts", pretty(ended)),
 			Map.entry("report_schema", reportSchema)));
-		return new SessionRequest(SessionRole.AUTHOR, copy, List.of(turn), List.of(), TIME_LIMIT,
+		return new SessionRequest(SessionRole.AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(), TIME_LIMIT,
 			brief.contract().judge().profile());
 	}
 

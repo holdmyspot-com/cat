@@ -56,6 +56,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -304,13 +305,13 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a harness whose sessions cannot be denied reads of held-out content is refused before a campaign
-	 * starts: no campaign is created and no session starts.
+	 * Verifies that a host setting that keeps sessions from being denied reads of held-out content is refused before a
+	 * campaign starts, with the message that names it: no campaign is created and no session starts.
 	 *
 	 * @throws Exception if the fixture fails
 	 */
 	@Test(timeOut = 30_000)
-	public void refusesHarnessThatCannotDenyHeldOutReads() throws Exception
+	public void refusesExposingHostSetting() throws Exception
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -319,7 +320,8 @@ public final class OptimizerCoreTest
 			Files.createDirectory(root.resolve(".git"));
 			Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 			Map<String, String> before = contents(root);
-			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, false);
+			String exposure = "The sandbox is off. Remove the setting and run `start` again.";
+			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, Optional.of(exposure));
 			CommandRefusedException refusal = null;
 			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
 				root, Set.of(), _ -> sessions))
@@ -331,7 +333,7 @@ public final class OptimizerCoreTest
 				refusal = e;
 			}
 			requireThat(refusal, "refusal").isNotNull();
-			requireThat(refusal.getMessage(), "message").contains("held-out");
+			requireThat(refusal.getMessage(), "message").isEqualTo(exposure);
 			requireThat(sessions.sessions(), "sessions").isEmpty();
 			requireThat(contents(root), "contents").isEqualTo(before);
 		}
@@ -373,9 +375,9 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
-		public boolean deniesHeldOutReads()
+		public Optional<String> findHeldOutExposure(Path project)
 		{
-			return true;
+			return Optional.empty();
 		}
 
 		@Override
@@ -580,7 +582,7 @@ public final class OptimizerCoreTest
 			String id = result.status().campaignId();
 			requireThat(repository.sessions().roles(), "roles").isEqualTo(List.of(SessionRole.DERIVER));
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
-			requireThat(repository.directory(id).resolve("proposal.json"), "proposalFile").isRegularFile();
+			requireThat(repository.directory(id).resolve("held-out/proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
 		}
 	}
@@ -635,7 +637,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.directory(id).resolve("campaign.json");
+			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(snapshot));
 			stored.remove("ceiling");
 			Files.writeString(snapshot, JSON.writeValueAsString(stored));
@@ -693,7 +695,7 @@ public final class OptimizerCoreTest
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 			requireThat(result.message(), "message").contains("The deriver's proposal is invalid").
 				contains("reported.md");
-			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("proposal.json")),
+			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held-out/proposal.json")),
 				"proposalFileExists").isFalse();
 		}
 	}
@@ -738,7 +740,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("proposal.json");
+			Path file = repository.directory(id).resolve("held-out/proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 3);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
@@ -764,7 +766,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("proposal.json");
+			Path file = repository.directory(id).resolve("held-out/proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 5);
 			stored.remove("ranking");
@@ -865,7 +867,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("proposal.json");
+			Path file = repository.directory(id).resolve("held-out/proposal.json");
 			JsonMapper json = JsonMapper.builder().build();
 			ObjectNode stored = (ObjectNode) json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 2);
@@ -1162,7 +1164,7 @@ public final class OptimizerCoreTest
 				requireThat(e.getMessage(), "message").contains("does not offer a conflict resolution now");
 			}
 			pauseConflicts(repository, id);
-			String before = Files.readString(repository.directory(id).resolve("campaign.json"));
+			String before = Files.readString(repository.directory(id).resolve("held-out/campaign.json"));
 			try
 			{
 				repository.core().resolveConflict(id, 3);
@@ -1172,7 +1174,7 @@ public final class OptimizerCoreTest
 			{
 				requireThat(e.getMessage(), "message").contains("does not offer resolution-3");
 			}
-			requireThat(Files.readString(repository.directory(id).resolve("campaign.json")), "unchanged").
+			requireThat(Files.readString(repository.directory(id).resolve("held-out/campaign.json")), "unchanged").
 				isEqualTo(before);
 		}
 	}
@@ -1198,7 +1200,7 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests.get(1).turns().getFirst(), "turn").
 				contains("cover the formal tone");
 			requireThat(revised.proposal(), "proposal").contains("Revision number 1 limit.");
-			requireThat(Files.readString(repository.directory(id).resolve("proposal.json")), "stored").
+			requireThat(Files.readString(repository.directory(id).resolve("held-out/proposal.json")), "stored").
 				contains("Revision number 1 limit.");
 		}
 	}
@@ -1330,7 +1332,7 @@ public final class OptimizerCoreTest
 				paths.add("missing/fixture.txt");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.root().resolve(".cat/work/optimizer").resolve(id).resolve("campaign.json");
+			Path snapshot = repository.root().resolve(".cat/work/optimizer").resolve(id).resolve("held-out/campaign.json");
 			String before = Files.readString(snapshot);
 			CommandRefusedException refusal = null;
 			try
@@ -1509,7 +1511,7 @@ public final class OptimizerCoreTest
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
-			String before = Files.readString(repository.directory(id).resolve("campaign.json"));
+			String before = Files.readString(repository.directory(id).resolve("held-out/campaign.json"));
 
 			CommandRefusedException refusal = null;
 			try
@@ -1521,7 +1523,7 @@ public final class OptimizerCoreTest
 				refusal = e;
 			}
 			requireThat(refusal, "refusal").isNotNull();
-			requireThat(Files.readString(repository.directory(id).resolve("campaign.json")), "unchanged").
+			requireThat(Files.readString(repository.directory(id).resolve("held-out/campaign.json")), "unchanged").
 				isEqualTo(before);
 
 			CommandResult result = repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, target);
@@ -1559,7 +1561,7 @@ public final class OptimizerCoreTest
 				}
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.directory(id).resolve("campaign.json");
+			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
 			String before = Files.readString(snapshot);
 			try
 			{
@@ -1632,7 +1634,7 @@ public final class OptimizerCoreTest
 				repository.forks().setInventory(repository.directory(id), new FileInventory(repository.root(),
 					entries));
 			}
-			Path snapshot = repository.directory(id).resolve("campaign.json");
+			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
 			String before = Files.readString(snapshot);
 			try
 			{

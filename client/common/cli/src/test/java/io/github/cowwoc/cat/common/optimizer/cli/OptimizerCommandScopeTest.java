@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Tests the behavior that {@link OptimizerCommandScope} shares with every variant.
@@ -55,14 +54,14 @@ public final class OptimizerCommandScopeTest
 	}
 
 	/**
-	 * Verifies that the held-out paths are those of the campaigns in the project's store, even when the command runs
-	 * in a subdirectory of the project.
+	 * Verifies that the held-out directories are those of the campaigns in the project's store, even when the command
+	 * runs in a subdirectory of the project.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project is not found
 	 */
 	@Test
-	public void listsHeldOutPathsOfProjectCampaigns() throws IOException, CommandRefusedException
+	public void listsProjectHeldOutDirectories() throws IOException, CommandRefusedException
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -77,8 +76,8 @@ public final class OptimizerCommandScopeTest
 				scope.store().replaceSnapshot(campaign);
 				Path campaignDirectory = root.resolve(".cat/work/optimizer").resolve(campaign.header().id());
 
-				requireThat(Set.copyOf(scope.heldOutPaths()), "heldOutPaths").isEqualTo(Set.of(
-					campaignDirectory.resolve("campaign.json"), campaignDirectory.resolve("trials")));
+				requireThat(scope.heldOutDirectories(), "heldOutDirectories").
+					isEqualTo(List.of(campaignDirectory.resolve("held-out")));
 			}
 		}
 	}

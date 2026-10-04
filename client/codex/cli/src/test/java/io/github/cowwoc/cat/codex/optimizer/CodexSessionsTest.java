@@ -1,11 +1,13 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -154,8 +156,8 @@ public final class CodexSessionsTest
 					List.of(Turn.replies("ok")), input, output);
 			});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
-				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
@@ -164,43 +166,63 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that every session except the judge passes each listed held-out path to the runner through
-	 * {@code --deny-read}, and that the judge's session passes none.
+	 * Returns each session role with a part that it may request.
+	 *
+	 * @return the roles and parts
+	 */
+	@DataProvider
+	public Object[][] sessionParts()
+	{
+		return new Object[][] {{SessionRole.TRIAL, Part.DEVELOPMENT}, {SessionRole.TRIAL, Part.HELD_OUT},
+			{SessionRole.JUDGE, Part.HELD_OUT}, {SessionRole.TRIAGE, Part.DEVELOPMENT},
+			{SessionRole.AUTHOR, Part.DEVELOPMENT}, {SessionRole.DERIVER, Part.DEVELOPMENT}};
+	}
+
+	/**
+	 * Verifies that the held-out run root beside the run root exists before the session starts, that a session of the
+	 * held-out part runs under it and is denied nothing, and that a session of the development part runs under the
+	 * run root and passes each listed held-out directory and the held-out run root to the runner through
+	 * {@code --deny-read}.
 	 *
 	 * @param role the session's role
+	 * @param part the part that the session may read
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException if the session cannot determine a result
 	 * @throws TimeoutException if the session does not finish
 	 */
-	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
-	public void deniesHeldOutReadsToEveryRoleButTheJudge(SessionRole role)
+	@Test(dataProvider = "sessionParts", timeOut = 120_000)
+	public void deniesHeldOutReadsToDevelopmentSessions(SessionRole role, Part part)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-")).
+				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Path snapshot = root.resolve("campaign.json");
-			Path trials = root.resolve("trials");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
-				() -> List.of(snapshot, trials), "", false, Map.of(), root, HarnessCapacity.unlimited(),
-				Clock.systemUTC());
+			Path heldOut = Files.createDirectories(root.resolve("campaign/held-out"));
+			Path runRoot = root.resolve("runs");
+			Path heldOutRunRoot = root.resolve("runs-held-out");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, () -> List.of(heldOut), "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
 			CodexSessions sessions = new CodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
+				heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
-				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+			SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+			requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
 			List<String> denied = new ArrayList<>();
 			List<String> options = arguments.get(0);
 			for (int i = 0; i < options.size() - 1; ++i)
@@ -208,10 +230,23 @@ public final class CodexSessionsTest
 				if (options.get(i).equals("--deny-read"))
 					denied.add(options.get(i + 1));
 			}
-			List<String> expected = List.of(snapshot.toString(), trials.toString());
-			if (role == SessionRole.JUDGE)
-				expected = List.of();
-			requireThat(denied, "denied").isEqualTo(expected);
+			Path expectedRunRoot;
+			List<String> expectedDenied;
+			if (part == Part.HELD_OUT)
+			{
+				expectedRunRoot = heldOutRunRoot;
+				expectedDenied = List.of();
+			}
+			else
+			{
+				expectedRunRoot = runRoot;
+				expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
+			}
+			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+				isEqualTo(expectedRunRoot.toString());
+			requireThat(denied, "denied").isEqualTo(expectedDenied);
+			requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
+				isTrue();
 		}
 	}
 
@@ -239,7 +274,7 @@ public final class CodexSessionsTest
 	 */
 	private static SessionRequest request(TrialProfile profile, Path source, List<Path> readOnly, String... turns)
 	{
-		return new SessionRequest(SessionRole.TRIAL, source, List.of(turns), readOnly, LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of(turns), readOnly, LIMIT, profile);
 	}
 
 	/**

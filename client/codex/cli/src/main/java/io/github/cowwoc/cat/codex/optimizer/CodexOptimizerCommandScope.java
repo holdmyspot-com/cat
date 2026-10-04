@@ -66,7 +66,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		this.home = home;
 		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
 			environment.get("CODEX_HOME"));
-		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutPaths,
+		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutDirectories,
 			clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
@@ -123,7 +123,7 @@ final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory              the working directory
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
-	 * @param heldOut                lists the paths that hold held-out content
+	 * @param heldOut                lists the campaigns' held-out directories
 	 * @param clock                  the clock
 	 * @return the port
 	 */

@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.cat.codex.optimizer.RecordedAppServer.recorded;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -92,7 +93,7 @@ public final class CodexSessionsContractTest
 	 */
 	private static SessionRequest request(Path root, SessionRole role, String... prompts)
 	{
-		return new SessionRequest(role, root, List.of(prompts), List.of(), LIMIT,
+		return new SessionRequest(role, partOf(role), root, List.of(prompts), List.of(), LIMIT,
 			new TrialProfile("requested-alias", "low"));
 	}
 

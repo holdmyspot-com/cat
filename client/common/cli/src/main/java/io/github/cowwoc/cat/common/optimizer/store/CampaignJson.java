@@ -130,7 +130,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 15;
+	private static final int FORMAT_VERSION = 16;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).

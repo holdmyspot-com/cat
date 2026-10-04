@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.execution.JudgeProtocol;
@@ -123,7 +124,7 @@ public final class JudgePrompt implements JudgeProtocol
 		if (profile.prompt().contains("{{transcript}}") && transcriptDirectory != null &&
 			!readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.JUDGE, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
+		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
 			profile.profile());
 	}
 

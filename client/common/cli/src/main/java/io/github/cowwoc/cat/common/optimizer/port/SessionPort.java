@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Starts nested sessions through the current harness's runner.
@@ -45,10 +46,14 @@ public interface SessionPort
 	HostLogin hostLogin() throws IOException;
 
 	/**
-	 * Indicates whether every session except the judge runs with its harness sandbox denying reads of the files and
-	 * directories that hold held-out content.
+	 * Finds a host setting that keeps the harness sandbox from denying sessions of the development part reads of
+	 * held-out content.
 	 *
-	 * @return {@code true} if the harness denies those reads
+	 * @param project the project's root directory
+	 * @return a message that names the setting and the file that holds it and asks the user to remove it, or empty if
+	 *   every session of the development part is denied those reads
+	 * @throws NullPointerException if {@code project} is null
+	 * @throws IOException if a settings file exists but cannot be read
 	 */
-	boolean deniesHeldOutReads();
+	Optional<String> findHeldOutExposure(Path project) throws IOException;
 }

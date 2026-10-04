@@ -1544,8 +1544,8 @@ public final class Driver implements AutoCloseable
 			source = context.workspace().stage(candidate);
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.instance().cellId()).orElseThrow().profile();
-			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, source, trial.instance().turns(),
-				List.of(), findTimeLimit(trial.instance()), profile));
+			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
+				trial.instance().turns(), List.of(), findTimeLimit(trial.instance()), profile));
 		}
 		catch (IOException e)
 		{

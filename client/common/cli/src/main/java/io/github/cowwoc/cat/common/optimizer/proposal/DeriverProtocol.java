@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -187,8 +188,8 @@ public final class DeriverProtocol
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
 			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
 			"regression_scenarios", scenarios.prompt()));
-		return new SessionRequest(SessionRole.DERIVER, promptSystem, List.of(turn, outputTurn), List.of(), TIME_LIMIT,
-			judge.role());
+		return new SessionRequest(SessionRole.DERIVER, Part.DEVELOPMENT, promptSystem, List.of(turn, outputTurn),
+			List.of(), TIME_LIMIT, judge.role());
 	}
 
 	/**

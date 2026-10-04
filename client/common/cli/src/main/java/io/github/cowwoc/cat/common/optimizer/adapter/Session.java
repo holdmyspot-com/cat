@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.adapter;
 
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -408,7 +409,7 @@ final class Session implements SessionHandle
 	{
 		List<RateLimitWindow> windows = events.windows();
 		if (ended != null)
-			new HarnessRunManager(settings.runRoot(), clock).pruneTerminalRuntimes(sessions.harness());
+			new HarnessRunManager(runRoot(), clock).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();
@@ -447,13 +448,13 @@ final class Session implements SessionHandle
 	 * Builds the runner's command-line options.
 	 *
 	 * @return the options
-	 * @throws IOException if the held-out paths cannot be listed
+	 * @throws IOException if the held-out locations cannot be created or listed
 	 */
 	private List<String> arguments() throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		arguments.addAll(List.of("--artifact", settings.artifact().toString(), "--project",
-			request.source().toString(), "--run-root", settings.runRoot().toString(), "--keep-run"));
+			request.source().toString(), "--run-root", runRoot().toString(), "--keep-run"));
 		if (!settings.executable().isBlank())
 			arguments.addAll(List.of("--executable", settings.executable()));
 		TrialProfile profile = request.profile();
@@ -464,10 +465,10 @@ final class Session implements SessionHandle
 		if (settings.installCat() && request.role() == SessionRole.TRIAL)
 			arguments.add("--install-cat");
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
-		// The judge decides formal trials, so it alone may read held-out content.
-		if (request.role() != SessionRole.JUDGE)
+		List<Path> heldOut = sessions.heldOutLocations();
+		if (request.part() == Part.DEVELOPMENT)
 		{
-			for (Path path : settings.heldOut().list())
+			for (Path path : heldOut)
 				arguments.addAll(List.of("--deny-read", path.toString()));
 		}
 		return arguments;
@@ -485,13 +486,26 @@ final class Session implements SessionHandle
 	}
 
 	/**
+	 * Returns the directory that holds this session's run directory: the held-out run root for a session of the
+	 * held-out part, and the run root otherwise.
+	 *
+	 * @return the directory
+	 */
+	private Path runRoot()
+	{
+		if (request.part() == Part.HELD_OUT)
+			return settings.heldOutRunRoot();
+		return settings.runRoot();
+	}
+
+	/**
 	 * Returns the directory that holds this harness's run directories.
 	 *
 	 * @return the directory
 	 */
 	private Path harnessDirectory()
 	{
-		return settings.runRoot().resolve(sessions.harness());
+		return runRoot().resolve(sessions.harness());
 	}
 
 	/**

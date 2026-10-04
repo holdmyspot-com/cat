@@ -20,9 +20,14 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}: the snapshot in {@code campaign.json},
- * one record per logical trial in {@code trials/<sha256 of the trial key>.json}, and the delivery journal in
- * {@code delivery.json}. The {@code trials} directory exists from the first snapshot write.
+ * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}. The campaign's {@code held-out}
+ * directory holds every file with held-out content: the snapshot in {@code campaign.json}, the proposal in
+ * {@code proposal.json}, and one record per logical trial in {@code trials/<sha256 of the trial key>.json}. The
+ * delivery journal is {@code delivery.json} in the campaign directory. The {@code held-out} and {@code trials}
+ * directories exist from the first snapshot write.
+ * <p>
+ * A snapshot stored directly in the campaign directory belongs to an older format and is refused with a message that
+ * asks the user to start a new campaign.
  * <p>
  * Every file is replaced atomically: the content is written to a temporary file next to the target, forced to the
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
@@ -33,9 +38,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class FileCampaignStore extends AbstractCampaignStore
 {
 	/**
-	 * The name of the file in a campaign directory that holds the proposal.
+	 * The name of the file in a campaign's {@code held-out} directory that holds the proposal.
 	 */
 	public static final String PROPOSAL = "proposal.json";
+	private static final String HELD_OUT = "held-out";
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
@@ -98,36 +104,56 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Returns the files and directories that hold held-out content in a worktree's campaigns: each campaign's
-	 * snapshot, proposal and trial records. Nested sessions other than the judge must not read them.
+	 * Returns the directory that holds a campaign's held-out content: its snapshot, proposal and trial records.
+	 *
+	 * @param base the base worktree
+	 * @param campaignId the campaign's identifier
+	 * @return the campaign's {@code held-out} directory
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Path heldOutDirectory(Path base, String campaignId)
+	{
+		return directory(base, campaignId).resolve(HELD_OUT);
+	}
+
+	/**
+	 * Returns the {@code held-out} directories of a worktree's campaigns. Nested sessions of the development part must
+	 * not read them.
 	 *
 	 * @param base the base worktree
 	 * @return the real paths of those that exist, in no particular order; empty if the worktree has no campaigns
 	 * @throws NullPointerException if {@code base} is null
 	 * @throws IOException if the campaigns directory cannot be listed
 	 */
-	public static List<Path> heldOutPaths(Path base) throws IOException
+	public static List<Path> heldOutDirectories(Path base) throws IOException
 	{
 		requireThat(base, "base").isNotNull();
+		List<Path> paths = new ArrayList<>();
+		for (Path directory : campaignDirectories(base))
+		{
+			Path heldOut = directory.resolve(HELD_OUT);
+			if (Files.isDirectory(heldOut))
+				paths.add(heldOut.toRealPath());
+		}
+		return paths;
+	}
+
+	/**
+	 * Returns the campaign directories of a worktree.
+	 *
+	 * @param base the base worktree
+	 * @return the directories in name order; empty if the worktree has no campaigns
+	 * @throws IOException if the campaigns directory cannot be listed
+	 */
+	private static List<Path> campaignDirectories(Path base) throws IOException
+	{
 		Path root = root(base);
 		if (Files.notExists(root))
 			return List.of();
-		List<Path> directories;
 		try (Stream<Path> entries = Files.list(root))
 		{
-			directories = entries.filter(Files::isDirectory).toList();
+			return entries.filter(Files::isDirectory).sorted().toList();
 		}
-		List<Path> paths = new ArrayList<>();
-		for (Path directory : directories)
-		{
-			for (String name : List.of(SNAPSHOT, PROPOSAL, TRIALS))
-			{
-				Path path = directory.resolve(name);
-				if (Files.exists(path))
-					paths.add(path.toRealPath());
-			}
-		}
-		return paths;
 	}
 
 	/**
@@ -144,9 +170,13 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	Optional<Campaign> readSnapshot(String campaignId) throws IOException
 	{
-		Path file = directory(base, campaignId).resolve(SNAPSHOT);
+		Path directory = directory(base, campaignId);
+		Path file = directory.resolve(HELD_OUT).resolve(SNAPSHOT);
 		if (Files.notExists(file))
+		{
+			refuseOutsideHeldOut(directory);
 			return Optional.empty();
+		}
 		Campaign campaign = JsonFiles.read(json, file, codec::readCampaign, MALFORMED);
 		requireOwner(file, campaignId, campaign.header());
 		return Optional.of(campaign);
@@ -155,10 +185,10 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	void writeSnapshot(Campaign campaign) throws IOException
 	{
-		Path directory = directory(base, campaign.header().id());
+		Path heldOut = heldOutDirectory(base, campaign.header().id());
 		// Sessions that start before the first trial record is written must already be denied the records' directory.
-		AtomicFiles.createDirectories(directory.resolve(TRIALS));
-		JsonFiles.replace(json, directory.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
+		AtomicFiles.createDirectories(heldOut.resolve(TRIALS));
+		JsonFiles.replace(json, heldOut.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
 	}
 
 	@Override
@@ -188,20 +218,15 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	public List<Header> listHeaders() throws IOException
 	{
-		Path root = root(base);
-		if (Files.notExists(root))
-			return List.of();
-		List<Path> directories;
-		try (Stream<Path> entries = Files.list(root))
-		{
-			directories = entries.filter(Files::isDirectory).sorted().toList();
-		}
 		List<Header> headers = new ArrayList<>();
-		for (Path directory : directories)
+		for (Path directory : campaignDirectories(base))
 		{
-			Path file = directory.resolve(SNAPSHOT);
+			Path file = directory.resolve(HELD_OUT).resolve(SNAPSHOT);
 			if (Files.notExists(file))
+			{
+				refuseOutsideHeldOut(directory);
 				continue;
+			}
 			Header header = JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
 			requireOwner(file, directory.getFileName().toString(), header);
 			headers.add(header);
@@ -237,8 +262,25 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
 			key.cell() + "\n" + key.sequence();
-		return directory(base, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
+		return heldOutDirectory(base, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
 			RECORD_SUFFIX);
+	}
+
+	/**
+	 * Refuses a campaign whose snapshot is stored directly in its campaign directory, as older formats stored it.
+	 *
+	 * @param directory the campaign directory
+	 * @throws IOException if the directory holds a snapshot
+	 */
+	private void refuseOutsideHeldOut(Path directory) throws IOException
+	{
+		Path file = directory.resolve(SNAPSHOT);
+		if (Files.notExists(file))
+			return;
+		// Reading the header refuses the snapshot's format with the message that names its version
+		JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
+		throw new IOException("The snapshot " + file + " is stored outside the campaign's " + HELD_OUT + " directory, " +
+			"as older versions of CAT stored it. Start a new campaign.");
 	}
 
 	/**

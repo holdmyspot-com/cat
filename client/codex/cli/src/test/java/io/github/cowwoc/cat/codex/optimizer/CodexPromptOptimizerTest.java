@@ -57,7 +57,7 @@ public final class CodexPromptOptimizerTest
 	{
 		Path root = scope.add(Files.createTempDirectory("codex-optimizer-project")).toRealPath();
 		Files.createDirectory(root.resolve(".git"));
-		Path campaign = root.resolve(".cat/work/optimizer").resolve(CAMPAIGN);
+		Path campaign = root.resolve(".cat/work/optimizer").resolve(CAMPAIGN).resolve("held-out");
 		Files.createDirectories(campaign);
 		Files.copy(FIXTURE, campaign.resolve("campaign.json"));
 		Path home = scope.add(Files.createTempDirectory("codex-optimizer-home")).toRealPath();

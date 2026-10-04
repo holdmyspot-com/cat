@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.directory;
+import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.heldOutDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PluginInfo;
@@ -172,13 +173,10 @@ public final class OptimizerCore implements Core
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
-		if (!scope.sessions().deniesHeldOutReads())
-		{
-			throw new CommandRefusedException("The " + scope.harness().commandName() + " harness cannot keep its " +
-				"sessions from reading the campaign's held-out content, so it cannot run the optimizer.");
-		}
-
 		Path root = scope.projectRoot();
+		Optional<String> exposure = scope.sessions().findHeldOutExposure(root);
+		if (exposure.isPresent())
+			throw new CommandRefusedException(exposure.get());
 		Path absolute = scope.directory().toRealPath().resolve(target).normalize();
 		if (!Files.exists(absolute))
 			throw new CommandRefusedException("The target does not exist: " + absolute);
@@ -570,7 +568,7 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The deriver's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". Run `revise` with feedback, or `start`, to retry.");
 		}
-		new ProposalFile(directory, scope.json()).write(derived, profiles);
+		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
 		return present(root, campaign, fork, derived);
 	}
 
@@ -618,7 +616,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
-		Optional<ProposalFile.Stored> stored = new ProposalFile(directory(root, campaign.header().id()),
+		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(root, campaign.header().id()),
 			scope.json()).read(root);
 		if (stored.isEmpty())
 			return Optional.empty();

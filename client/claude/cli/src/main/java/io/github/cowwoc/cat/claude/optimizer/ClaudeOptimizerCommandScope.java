@@ -67,7 +67,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		this.home = home;
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
-		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutPaths,
+		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutDirectories,
 			clock());
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new ClaudeProfileInventory(artifact);
@@ -124,7 +124,7 @@ final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory              the working directory
 	 * @param artifact               the complete Claude artifact that nested sessions install
 	 * @param configurationDirectory the host's Claude configuration directory
-	 * @param heldOut                lists the paths that hold held-out content
+	 * @param heldOut                lists the campaigns' held-out directories
 	 * @param clock                  the clock
 	 * @return the port
 	 */

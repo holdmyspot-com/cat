@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.execution.TriageProtocol;
@@ -104,8 +105,8 @@ public final class TriagePrompt implements TriageProtocol
 			"effects", evidence.effects().toString(),
 			"deterministic_results", pretty(resultArray),
 			"result_schema", resultSchema));
-		return new SessionRequest(SessionRole.TRIAGE, triageDirectory, List.of(turn), List.of(evidence.effects()),
-			TIME_LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn),
+			List.of(evidence.effects()), TIME_LIMIT, profile);
 	}
 
 	/**

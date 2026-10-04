@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.SchemaValidator;
@@ -143,7 +144,7 @@ public final class ValuesPrompt implements ValuesProtocol
 		String turn = prompt.fill(Map.of(
 			"failed_tests", json.writerWithDefaultPrettyPrinter().writeValueAsString(failedTests),
 			"output_schema", outputSchema));
-		return new SessionRequest(SessionRole.DERIVER, directory, List.of(turn), List.of(), TIME_LIMIT,
+		return new SessionRequest(SessionRole.DERIVER, Part.DEVELOPMENT, directory, List.of(turn), List.of(), TIME_LIMIT,
 			contract.judge().profile());
 	}
 

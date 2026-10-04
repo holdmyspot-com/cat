@@ -1,11 +1,13 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
@@ -29,6 +31,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -155,8 +158,8 @@ public final class ClaudeSessionsTest
 					List.of(Turn.replies("ok")), input, output);
 			});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
-				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
@@ -165,43 +168,63 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that every session except the judge passes each listed held-out path to the runner through
-	 * {@code --deny-read}, and that the judge's session passes none.
+	 * Returns each session role with a part that it may request.
+	 *
+	 * @return the roles and parts
+	 */
+	@DataProvider
+	public Object[][] sessionParts()
+	{
+		return new Object[][] {{SessionRole.TRIAL, Part.DEVELOPMENT}, {SessionRole.TRIAL, Part.HELD_OUT},
+			{SessionRole.JUDGE, Part.HELD_OUT}, {SessionRole.TRIAGE, Part.DEVELOPMENT},
+			{SessionRole.AUTHOR, Part.DEVELOPMENT}, {SessionRole.DERIVER, Part.DEVELOPMENT}};
+	}
+
+	/**
+	 * Verifies that the held-out run root beside the run root exists before the session starts, that a session of the
+	 * held-out part runs under it and is denied nothing, and that a session of the development part runs under the
+	 * run root and passes each listed held-out directory and the held-out run root to the runner through
+	 * {@code --deny-read}.
 	 *
 	 * @param role the session's role
+	 * @param part the part that the session may read
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException if the session cannot determine a result
 	 * @throws TimeoutException if the session does not finish
 	 */
-	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
-	public void deniesHeldOutReadsToEveryRoleButTheJudge(SessionRole role)
+	@Test(dataProvider = "sessionParts", timeOut = 120_000)
+	public void deniesHeldOutReadsToDevelopmentSessions(SessionRole role, Part part)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E24
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-"));
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-")).
+				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Path snapshot = root.resolve("campaign.json");
-			Path trials = root.resolve("trials");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
-				() -> List.of(snapshot, trials), "", false, Map.of(), root, HarnessCapacity.unlimited(),
-				Clock.systemUTC());
+			Path heldOut = Files.createDirectories(root.resolve("campaign/held-out"));
+			Path runRoot = root.resolve("runs");
+			Path heldOutRunRoot = root.resolve("runs-held-out");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, () -> List.of(heldOut), "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
 			ClaudeSessions sessions = new ClaudeSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
+				heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, source, List.of("brief"), List.of(),
-				LIMIT, TrialProfile.HARNESS_DEFAULT)));
+			SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+			requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
 			List<String> denied = new ArrayList<>();
 			List<String> options = arguments.get(0);
 			for (int i = 0; i < options.size() - 1; ++i)
@@ -209,11 +232,131 @@ public final class ClaudeSessionsTest
 				if (options.get(i).equals("--deny-read"))
 					denied.add(options.get(i + 1));
 			}
-			List<String> expected = List.of(snapshot.toString(), trials.toString());
-			if (role == SessionRole.JUDGE)
-				expected = List.of();
-			requireThat(denied, "denied").isEqualTo(expected);
+			Path expectedRunRoot;
+			List<String> expectedDenied;
+			if (part == Part.HELD_OUT)
+			{
+				expectedRunRoot = heldOutRunRoot;
+				expectedDenied = List.of();
+			}
+			else
+			{
+				expectedRunRoot = runRoot;
+				expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
+			}
+			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+				isEqualTo(expectedRunRoot.toString());
+			requireThat(denied, "denied").isEqualTo(expectedDenied);
+			requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
+				isTrue();
 		}
+	}
+
+	/**
+	 * Returns each settings file that outranks CAT's isolated settings, with a setting that turns off the sandbox
+	 * that denies held-out reads and the setting's name.
+	 *
+	 * @return the file's location, its content and the setting's name
+	 */
+	@DataProvider
+	public Object[][] exposingSettings()
+	{
+		List<Object[]> rows = new ArrayList<>();
+		for (String location : List.of("managed", ".claude/settings.json", ".claude/settings.local.json"))
+		{
+			rows.add(new Object[]{location, "{\"sandbox\": {\"enabled\": false}}", "sandbox.enabled"});
+			rows.add(new Object[]{location, "{\"sandbox\": {\"allowUnsandboxedCommands\": true}}",
+				"sandbox.allowUnsandboxedCommands"});
+			rows.add(new Object[]{location, "{\"sandbox\": {\"excludedCommands\": [\"cat\"]}}",
+				"sandbox.excludedCommands"});
+		}
+		return rows.toArray(Object[][]::new);
+	}
+
+	/**
+	 * Verifies that a managed or project settings file that turns off the sandbox, lets commands run outside it, or
+	 * excludes commands from it is reported with the file and the setting, and that the message asks the user to
+	 * remove the setting and run {@code start} again.
+	 *
+	 * @param location {@code managed} for the managed settings file, or the project-relative path of the file
+	 * @param content the file's content
+	 * @param setting the name of the setting that the message names
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test(dataProvider = "exposingSettings")
+	public void reportsSettingThatTurnsOffTheSandbox(String location, String content, String setting)
+		throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-exposure-")).
+				toRealPath();
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path managed = root.resolve("managed-settings.json");
+			Path file;
+			if (location.equals("managed"))
+				file = managed;
+			else
+				file = project.resolve(location);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, content, UTF_8);
+
+			Optional<String> exposure = exposurePort(root, managed).findHeldOutExposure(project);
+
+			requireThat(exposure.isPresent(), "exposure.isPresent").isTrue();
+			requireThat(exposure.orElseThrow(), "exposure").contains(file.toString()).contains(setting).
+				contains("held-out").contains("run `start` again");
+		}
+	}
+
+	/**
+	 * Verifies that no exposure is reported when the managed and project settings files are absent, hold no sandbox
+	 * settings, or keep the sandbox on, and that the host's user settings, which CAT's isolated settings replace, are
+	 * not consulted even when they turn the sandbox off.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void reportsNoExposureWhenTheSandboxStaysOn() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-exposure-")).
+				toRealPath();
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path managed = root.resolve("managed-settings.json");
+			Files.writeString(root.resolve("settings.json"), "{\"sandbox\": {\"enabled\": false}}", UTF_8);
+			ClaudeSessions sessions = exposurePort(root, managed);
+			requireThat(sessions.findHeldOutExposure(project), "absent").isEmpty();
+
+			Files.writeString(managed, "{\"permissions\": {\"allow\": []}}", UTF_8);
+			Files.createDirectories(project.resolve(".claude"));
+			Files.writeString(project.resolve(".claude/settings.json"),
+				"{\"sandbox\": {\"enabled\": true, \"allowUnsandboxedCommands\": false, \"excludedCommands\": []}}",
+				UTF_8);
+			Files.writeString(project.resolve(".claude/settings.local.json"), "{}", UTF_8);
+			requireThat(sessions.findHeldOutExposure(project), "sandboxOn").isEmpty();
+		}
+	}
+
+	/**
+	 * Creates a port that reads the given managed settings file and whose host configuration directory is
+	 * {@code root}.
+	 *
+	 * @param root the host configuration directory
+	 * @param managed the managed settings file
+	 * @return the port
+	 */
+	private static ClaudeSessions exposurePort(Path root, Path managed)
+	{
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+		return new ClaudeSessions(settings, (_, _, _) ->
+		{
+			throw new AssertionError("No session may start");
+		}, List.of(managed));
 	}
 
 	/**
@@ -240,7 +383,7 @@ public final class ClaudeSessionsTest
 	 */
 	private static SessionRequest request(TrialProfile profile, Path source, List<Path> readOnly, String... turns)
 	{
-		return new SessionRequest(SessionRole.TRIAL, source, List.of(turns), readOnly, LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of(turns), readOnly, LIMIT, profile);
 	}
 
 	/**
@@ -423,7 +566,7 @@ public final class ClaudeSessionsTest
 			requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
 			int firstEvidence = options.indexOf("--read-only-evidence");
 			requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
-			requireThat(options.subList(firstEvidence, options.size()), "evidenceOptions").isEqualTo(List.of(
+			requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
 				"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
 			requireThat(options.contains("--keep-run"), "keepRun").isTrue();
 		}

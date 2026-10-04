@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.claude.runner;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -10,6 +11,7 @@ import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -232,8 +234,8 @@ public final class ClaudeSessionsNativeTest
 		// Requirement: R-E6
 		try (HarnessSubject subject = open())
 		{
-			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
+			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT,
+				subject.workspace(), List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
 
 			SessionResult result = await(session);
 
@@ -292,7 +294,7 @@ public final class ClaudeSessionsNativeTest
 		{
 			for (SessionRole role : SessionRole.values())
 			{
-				SessionHandle session = subject.port().start(new SessionRequest(role, subject.workspace(),
+				SessionHandle session = subject.port().start(new SessionRequest(role, partOf(role), subject.workspace(),
 					List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
 
 				SessionResult result = await(session);
@@ -320,8 +322,8 @@ public final class ClaudeSessionsNativeTest
 				"The subagent's only job is to create the file child.txt in the current directory, containing the " +
 				"text child-done, and then reply done. Do not create the file yourself. After you start the " +
 				"subagent, reply with the single word started.";
-			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(prompt), List.of(), LIMIT, PROFILE));
+			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT,
+				subject.workspace(), List.of(prompt), List.of(), LIMIT, PROFILE));
 
 			SessionResult result = await(session);
 
@@ -351,8 +353,8 @@ public final class ClaudeSessionsNativeTest
 			String prompt = "Use the Agent tool with run_in_background set to true to start exactly one subagent. " +
 				"The subagent's only job is to run `sleep 240` with the Bash tool and then reply done. After you " +
 				"start the subagent, reply with the single word started.";
-			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, subject.workspace(),
-				List.of(prompt), List.of(), LIMIT, PROFILE));
+			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT,
+				subject.workspace(), List.of(prompt), List.of(), LIMIT, PROFILE));
 			long deadline = System.nanoTime() + Duration.ofMinutes(5).toNanos();
 			// The root reply ends first, so the session is by then only waiting for the child.
 			while (!subject.transcriptContains("\"task_started\"") || !subject.transcriptContains("\"type\":\"result\""))

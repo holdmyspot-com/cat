@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.adapter;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
@@ -7,6 +8,7 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
@@ -172,8 +174,8 @@ public final class RoleBriefTest
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
 			for (SessionRole role : List.of(SessionRole.JUDGE, SessionRole.TRIAL))
 			{
-				SessionRequest request = new SessionRequest(role, root, List.of("Frozen brief {{rules}}"), List.of(),
-					Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+				SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Frozen brief {{rules}}"),
+					List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 				requireThat(deliver(root, root.resolve("missing-artifact"), request), "briefs").isEqualTo(request.turns());
 			}
 		}
@@ -198,7 +200,7 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			for (SessionRole role : List.of(SessionRole.AUTHOR, SessionRole.DERIVER))
 			{
-				SessionRequest request = new SessionRequest(role, root, List.of("Saved brief"), List.of(),
+				SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Saved brief"), List.of(),
 					Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 				requireThat(deliver(root, artifact, request).getFirst(), "brief").startsWith("Saved brief\n\n## Rules\n\n").
 					contains("Complete guidance for contract-design");
@@ -225,8 +227,8 @@ public final class RoleBriefTest
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			Files.delete(artifact.resolve("rules/include/common/prompt-file-references.md"));
-			SessionRequest request = new SessionRequest(SessionRole.AUTHOR, root, List.of("Brief {{rules}}"), List.of(),
-				Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+			SessionRequest request = new SessionRequest(SessionRole.AUTHOR, Part.DEVELOPMENT, root,
+				List.of("Brief {{rules}}"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 
 			deliver(root, artifact, request);
 		}

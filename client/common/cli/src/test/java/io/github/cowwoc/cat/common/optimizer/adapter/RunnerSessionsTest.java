@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -102,7 +103,7 @@ public final class RunnerSessionsTest
 	 */
 	private static SessionRequest request(TrialProfile profile, Path source, List<Path> readOnly, String... turns)
 	{
-		return new SessionRequest(SessionRole.TRIAL, source, List.of(turns), readOnly, LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of(turns), readOnly, LIMIT, profile);
 	}
 
 	/**

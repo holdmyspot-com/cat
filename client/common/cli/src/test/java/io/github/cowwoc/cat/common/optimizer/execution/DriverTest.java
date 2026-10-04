@@ -106,6 +106,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -2346,8 +2347,9 @@ public final class DriverTest
 	}
 
 	/**
-	 * Development, diagnostic and promotion trials run development instances, and baseline and formal trials run
-	 * held-out ones. After a failed attempt, the author brief names each formal failure's cell, test and failed
+	 * Development, diagnostic and promotion trials run development instances and request sessions of the development
+	 * part, and baseline and formal trials run held-out ones and request sessions of the held-out part. After a failed
+	 * attempt, the author brief names each formal failure's cell, test and failed
 	 * requirements, and the author's prompt holds no held-out instance, reply or judge rationale.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -2359,6 +2361,7 @@ public final class DriverTest
 		// Requirement: R-D9
 		// Requirement: R-C4
 		// Requirement: R-D7
+		// Requirement: R-E24
 		Contract contract = TierFixtures.tieredContract();
 		TrialProfile medium = new TrialProfile("big", "medium");
 		String heldOutReply = "The held-out reply.";
@@ -2369,12 +2372,14 @@ public final class DriverTest
 				new Builder().confirmed(contract, 1).working(1).
 					development(TierFixtures.SMALL_HIGH, 90, 0).development(TierFixtures.SAFETY, 90, 0).build());
 			Map<Purpose, List<TrialInstance>> instancesByPurpose = new EnumMap<>(Purpose.class);
+			Map<Purpose, Set<Part>> requestPartsByPurpose = new EnumMap<>(Purpose.class);
 			AtomicBoolean developmentFailed = new AtomicBoolean();
 			harness.trials(request ->
 			{
 				LogicalTrial trial = runningTrial(harness, request);
 				Purpose purpose = trial.key().purpose();
 				instancesByPurpose.computeIfAbsent(purpose, _ -> new ArrayList<>()).add(trial.instance());
+				requestPartsByPurpose.computeIfAbsent(purpose, _ -> EnumSet.noneOf(Part.class)).add(request.part());
 				if (request.profile().equals(medium))
 				{
 					if (purpose == Purpose.FORMAL)
@@ -2407,6 +2412,8 @@ public final class DriverTest
 				};
 				for (TrialInstance instance : entry.getValue())
 					requireThat(partOf(contract, instance), entry.getKey().name()).isEqualTo(expected);
+				requireThat(requestPartsByPurpose.get(entry.getKey()), entry.getKey().name() + ".requestParts").
+					isEqualTo(Set.of(expected));
 			}
 
 			AuthorBrief brief = harness.author().briefs().getFirst();
@@ -3399,9 +3406,9 @@ public final class DriverTest
 			}
 
 			@Override
-			public boolean deniesHeldOutReads()
+			public Optional<String> findHeldOutExposure(Path project) throws IOException
 			{
-				return delegate.deniesHeldOutReads();
+				return delegate.findHeldOutExposure(project);
 			}
 		};
 	}

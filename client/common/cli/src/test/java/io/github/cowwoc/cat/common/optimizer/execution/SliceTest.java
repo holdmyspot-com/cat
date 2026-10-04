@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -367,9 +368,9 @@ public final class SliceTest
 		}
 
 		@Override
-		public boolean deniesHeldOutReads()
+		public Optional<String> findHeldOutExposure(Path project) throws IOException
 		{
-			return delegate.deniesHeldOutReads();
+			return delegate.findHeldOutExposure(project);
 		}
 	}
 
