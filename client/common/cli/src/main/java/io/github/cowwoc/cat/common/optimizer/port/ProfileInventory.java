@@ -49,6 +49,15 @@ public interface ProfileInventory
 	TrialProfile binding(String content);
 
 	/**
+	 * Indicates whether the harness accepts a model in a trial profile.
+	 *
+	 * @param model the model's name
+	 * @return {@code true} if the harness runs trials and sessions under the model
+	 * @throws NullPointerException if {@code model} is null
+	 */
+	boolean supportsModel(String model);
+
+	/**
 	 * Returns the harness's role profile, which the deriver, judge and author sessions run under: the profile that
 	 * the installed definition of CAT's highest implementer tier, {@code optimize-xhigh}, binds.
 	 *

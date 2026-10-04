@@ -143,6 +143,28 @@ public final class OptimizerCore implements Core
 		return new ProfileEvidence(inventory, bindings);
 	}
 
+	/**
+	 * Describes the staged binding files whose model the harness does not support.
+	 *
+	 * @param profiles the profile that each staged binding file binds
+	 * @return the notice that names each such file with its model and asks the user to change the binding and run
+	 *   {@code start} again, or an empty string if the harness supports every bound model
+	 */
+	private String unsupportedBindings(ProfileEvidence profiles)
+	{
+		List<String> unsupported = new ArrayList<>();
+		for (Map.Entry<String, TrialProfile> binding : new TreeMap<>(profiles.bindings()).entrySet())
+		{
+			String model = binding.getValue().model();
+			if (!model.isEmpty() && !scope.profiles().supportsModel(model))
+				unsupported.add(binding.getKey() + " binds the model " + model);
+		}
+		if (unsupported.isEmpty())
+			return "";
+		return "The deriver session did not start because the harness does not support a bound model: " +
+			String.join("; ", unsupported) + ". Change the binding and run `start` again.";
+	}
+
 	@Override
 	public CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException, InterruptedException
 	{
@@ -497,6 +519,9 @@ public final class OptimizerCore implements Core
 		Path staged = fork.workspace().stage(incumbent);
 		DeriverProtocol protocol = deriver(root);
 		ProfileEvidence profiles = profileEvidence(staged);
+		String unsupported = unsupportedBindings(profiles);
+		if (!unsupported.isEmpty())
+			return report(root, campaign, null, unsupported);
 		SessionRequest request;
 		if (previous == null)
 			request = protocol.request(staged, profiles.inventory());

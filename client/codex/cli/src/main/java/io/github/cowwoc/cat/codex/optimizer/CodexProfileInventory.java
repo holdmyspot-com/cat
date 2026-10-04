@@ -24,12 +24,14 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The Codex profile inventory and bindings.
  * <p>
- * The inventory is every model that {@code codex debug models} lists with visibility {@code list}, each with its
- * supported reasoning levels except {@code ultra}; hidden models are not offered. {@code ultra} is {@code max}
- * reasoning plus automatic task delegation, which changes what the agent does rather than how deeply it reasons, so a
- * model's highest effort is the one below it. A binding is the top-level {@code model} and
- * {@code model_reasoning_effort} of a custom agent's {@code .toml} file below an {@code agents} directory. The role
- * profile is the binding of the artifact's {@code optimize-xhigh} agent definition.
+ * The inventory is every model that {@code codex debug models} lists with visibility {@code list} and whose slug is
+ * {@code gpt-<version>} or {@code gpt-<version>-<rest>} with a major version of 6 or later, each with its supported
+ * reasoning levels except {@code ultra}; hidden models, models of an earlier version and models whose slug has another
+ * form are not offered. {@code ultra} is {@code max} reasoning plus automatic task delegation, which changes what the
+ * agent does rather than how deeply it reasons, so a model's highest effort is the one below it. A binding is the
+ * top-level {@code model} and {@code model_reasoning_effort} of a custom agent's {@code .toml} file below an
+ * {@code agents} directory. The role profile is the binding of the artifact's {@code optimize-xhigh} agent
+ * definition, which must name a model of version 6 or later.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -69,7 +71,7 @@ public final class CodexProfileInventory implements ProfileInventory
 	 * The model list is one JSON document that the command prints whole, so it is parsed whole. Output before the
 	 * document's opening brace and after the document, such as a warning, is skipped.
 	 *
-	 * @throws IOException if the command fails or prints no model list
+	 * @throws IOException if the command fails, prints no model list, or lists no model of version 6 or later
 	 */
 	@Override
 	public ProfileCatalog inventory() throws IOException
@@ -108,6 +110,8 @@ public final class CodexProfileInventory implements ProfileInventory
 			String slug = model.path("slug").asString("");
 			if (slug.isBlank())
 				throw new IOException(COMMAND + " listed a model without a slug.");
+			if (!CodexModelVersions.isSixOrLater(slug))
+				continue;
 			JsonNode levels = model.path("supported_reasoning_levels");
 			if (levels.isEmpty())
 				profiles.add(new TrialProfile(slug, ""));
@@ -119,7 +123,10 @@ public final class CodexProfileInventory implements ProfileInventory
 			}
 		}
 		if (profiles.isEmpty())
-			throw new IOException(COMMAND + " listed no model with visibility " + LISTED + ".");
+		{
+			throw new IOException(COMMAND + " listed no model with visibility " + LISTED +
+				" and no listed model is of version 6 or later.");
+		}
 		return new ProfileCatalog(COMMAND + " of " + HarnessVersion.read(executable, launcher), profiles);
 	}
 
@@ -188,10 +195,33 @@ public final class CodexProfileInventory implements ProfileInventory
 		return null;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex supports a model of version 6 or later.
+	 */
+	@Override
+	public boolean supportsModel(String model)
+	{
+		requireThat(model, "model").isNotNull();
+		return CodexModelVersions.isSixOrLater(model);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws IOException if the installed agent definition is missing or binds no profile, or binds a model that is
+	 *   not of version 6 or later
+	 */
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
 		CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, ROLE_AGENT);
+		if (!CodexModelVersions.isSixOrLater(definition.model()))
+		{
+			throw new IOException("The role profile " + artifact.resolve("agents/codex").resolve(ROLE_AGENT + ".toml") +
+				" binds the model " + definition.model() + ", which is not of version 6 or later.");
+		}
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 }

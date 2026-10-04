@@ -345,4 +345,21 @@ public final class ClaudeProfileInventoryTest
 			throw new AssertionError("A missing role agent must be reported");
 		}
 	}
+
+	/**
+	 * Verifies that Claude supports every model name, including a name that its inventory does not list.
+	 *
+	 * @throws IOException if the artifact cannot be created
+	 */
+	@Test
+	public void supportsEveryModel() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			ClaudeProfileInventory port = new ClaudeProfileInventory(cleanup.add(Files.createTempDirectory("cat-profiles-")));
+			for (String model : List.of("opus", "sonnet", "haiku", "gpt-5.6-luna", "unlisted-model"))
+				requireThat(port.supportsModel(model), "supportsModel(" + model + ")").isTrue();
+		}
+	}
 }

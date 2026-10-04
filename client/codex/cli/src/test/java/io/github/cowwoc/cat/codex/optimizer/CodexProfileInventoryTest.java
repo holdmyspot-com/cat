@@ -143,9 +143,9 @@ public final class CodexProfileInventoryTest
 	}
 
 	/**
-	 * Verifies that the recorded inventory holds the 8 models that Codex lists, each with every reasoning effort that
-	 * it supports except {@code ultra}, leaves out the hidden models, and names the command and the Codex version as its
-	 * source.
+	 * Verifies that the recorded inventory holds the 4 models of version 6 or later that Codex lists, each with every
+	 * reasoning effort that it supports except {@code ultra}, leaves out the hidden models and the models of an
+	 * earlier version, and names the command and the Codex version as its source.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */
@@ -165,10 +165,6 @@ public final class CodexProfileInventoryTest
 			expected.put("gpt-6.1-sol", MAX);
 			expected.put("gpt-6-sol", MAX);
 			expected.put("gpt-6-luna", MAX);
-			expected.put("gpt-5.6-sol", MAX);
-			expected.put("gpt-5.6-terra", MAX);
-			expected.put("gpt-5.6-luna", MAX);
-			expected.put("gpt-5.5", List.of("low", "medium", "high", "xhigh"));
 			Map<String, List<String>> actual = new LinkedHashMap<>();
 			for (TrialProfile profile : inventory.profiles())
 				actual.computeIfAbsent(profile.model(), _ -> new ArrayList<>()).add(profile.effort());
@@ -202,7 +198,7 @@ public final class CodexProfileInventoryTest
 				if (lower != null)
 					requireThat(rank, profile.toString()).isGreaterThan(lower);
 			}
-			requireThat(previous.size(), "models").isEqualTo(8);
+			requireThat(previous.size(), "models").isEqualTo(4);
 		}
 	}
 
@@ -219,12 +215,12 @@ public final class CodexProfileInventoryTest
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
 			String output = "WARNING: proceeding, even though we could not update PATH\n" +
-				"{\"models\":[{\"slug\":\"gpt-5.5\",\"visibility\":\"list\"," +
+				"{\"models\":[{\"slug\":\"gpt-6-sol\",\"visibility\":\"list\"," +
 				"\"supported_reasoning_levels\":[{\"effort\":\"low\"}]}]}\nWARNING: trailing\n";
 			ProfileCatalog inventory = new CodexProfileInventory(artifact, "codex",
 				launcher(output, new CopyOnWriteArrayList<>())).inventory();
 
-			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-5.5", "low")));
+			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-sol", "low")));
 		}
 	}
 
@@ -240,11 +236,11 @@ public final class CodexProfileInventoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
-			String output = "{\"models\":[{\"slug\":\"gpt-plain\",\"visibility\":\"list\"}]}\n";
+			String output = "{\"models\":[{\"slug\":\"gpt-6-plain\",\"visibility\":\"list\"}]}\n";
 			ProfileCatalog inventory = new CodexProfileInventory(artifact, "codex",
 				launcher(output, new CopyOnWriteArrayList<>())).inventory();
 
-			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-plain", "")));
+			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-plain", "")));
 		}
 	}
 
@@ -411,10 +407,149 @@ public final class CodexProfileInventoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
-			writeAgent(artifact, "model = \"gpt-5.5\"\nmodel_reasoning_effort = \"xhigh\"\n");
+			writeAgent(artifact, "model = \"gpt-6-sol\"\nmodel_reasoning_effort = \"xhigh\"\n");
 
 			requireThat(new CodexProfileInventory(artifact, "codex", launcher("", new CopyOnWriteArrayList<>())).
-				roleProfile(), "roleProfile").isEqualTo(new TrialProfile("gpt-5.5", "xhigh"));
+				roleProfile(), "roleProfile").isEqualTo(new TrialProfile("gpt-6-sol", "xhigh"));
+		}
+	}
+
+	/**
+	 * Returns the output of {@code codex debug models} that lists models without reasoning levels.
+	 *
+	 * @param visibility the visibility of every model
+	 * @param slugs the slugs of the models
+	 * @return the output
+	 */
+	private static String listing(String visibility, String... slugs)
+	{
+		List<String> models = new ArrayList<>();
+		for (String slug : slugs)
+			models.add("{\"slug\":\"" + slug + "\",\"visibility\":\"" + visibility + "\"}");
+		return "{\"models\":[" + String.join(",", models) + "]}\n";
+	}
+
+	/**
+	 * Verifies that the inventory keeps only the listed models whose slug is {@code gpt-<version>} or
+	 * {@code gpt-<version>-<rest>} with a major version of 6 or later, and leaves out earlier versions and slugs
+	 * without that form.
+	 *
+	 * @throws IOException if the inventory cannot be read
+	 */
+	@Test
+	public void keepsOnlyListedModelsOfVersionSixOrLater() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			String output = listing("list", "gpt-5.5", "gpt-5.6-sol", "gpt-6-luna", "gpt-6.1-sol", "codex-auto-review",
+				"gpt-daybreak-blue-latest", "gpt-7", "gpt-10-sol", "gpt-6x", "gpt-6.", "gpt-6.1.2", "gpt-", "gpt-6-");
+			ProfileCatalog inventory = new CodexProfileInventory(artifact, "codex",
+				launcher(output, new CopyOnWriteArrayList<>())).inventory();
+
+			List<String> models = inventory.profiles().stream().map(TrialProfile::model).toList();
+			requireThat(models, "models").isEqualTo(List.of("gpt-6-luna", "gpt-6.1-sol", "gpt-7", "gpt-10-sol"));
+		}
+	}
+
+	/**
+	 * Verifies that a model list whose listed models are all earlier than version 6 is reported with a message that
+	 * says that no listed model is of version 6 or later.
+	 *
+	 * @throws IOException if the artifact cannot be created
+	 */
+	@Test
+	public void rejectsAListWithoutRecentModels() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			CodexProfileInventory port = new CodexProfileInventory(artifact, "codex",
+				launcher(listing("list", "gpt-5.5", "gpt-5.6-sol", "codex-auto-review"), new CopyOnWriteArrayList<>()));
+			try
+			{
+				port.inventory();
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("no listed model is of version 6 or later");
+				return;
+			}
+			throw new AssertionError("A model list without a model of version 6 or later must be reported");
+		}
+	}
+
+	/**
+	 * Verifies that the role profile is refused, naming the agent file and its model, when the {@code optimize-xhigh}
+	 * definition binds a model earlier than version 6.
+	 *
+	 * @throws IOException if the artifact cannot be written
+	 */
+	@Test
+	public void refusesRoleProfileOfAnEarlierVersion() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			writeAgent(artifact, "model = \"gpt-5.6-luna\"\nmodel_reasoning_effort = \"xhigh\"\n");
+			CodexProfileInventory port = new CodexProfileInventory(artifact, "codex",
+				launcher("", new CopyOnWriteArrayList<>()));
+			try
+			{
+				port.roleProfile();
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("optimize-xhigh.toml").contains("gpt-5.6-luna");
+				return;
+			}
+			throw new AssertionError("A role profile of an earlier version must be refused");
+		}
+	}
+
+	/**
+	 * Verifies that a role profile that binds a model of version 6 or later is accepted.
+	 *
+	 * @throws IOException if the artifact cannot be written
+	 */
+	@Test
+	public void acceptsRoleProfileOfVersionSixOrLater() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			writeAgent(artifact, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"high\"\n");
+
+			requireThat(new CodexProfileInventory(artifact, "codex", launcher("", new CopyOnWriteArrayList<>())).
+				roleProfile(), "roleProfile").isEqualTo(new TrialProfile("gpt-6-luna", "high"));
+		}
+	}
+
+	/**
+	 * Verifies that Codex supports a model whose slug is {@code gpt-<version>} or {@code gpt-<version>-<rest>} with a
+	 * major version of 6 or later, and no other model.
+	 *
+	 * @throws IOException if the artifact cannot be created
+	 */
+	@Test
+	public void supportsOnlyModelsOfVersionSixOrLater() throws IOException
+	{
+		// Requirement: R-D18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexProfileInventory port = new CodexProfileInventory(cleanup.add(Files.createTempDirectory("cat-profiles-")),
+				"codex", launcher("", new CopyOnWriteArrayList<>()));
+			for (String model : List.of("gpt-6", "gpt-6-luna", "gpt-6.1-sol", "gpt-7", "gpt-10-sol"))
+				requireThat(port.supportsModel(model), "supportsModel(" + model + ")").isTrue();
+			for (String model : List.of("gpt-5.5", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6x", "gpt-", "codex-auto-review",
+				"gpt-daybreak-blue-latest", ""))
+			{
+				requireThat(port.supportsModel(model), "supportsModel(" + model + ")").isFalse();
+			}
 		}
 	}
 }

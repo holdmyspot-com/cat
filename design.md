@@ -1141,7 +1141,7 @@ change a running campaign.
 `CLAUDE.md`, `AGENTS.md`, rules and Codex skills cannot bind a profile. A file that binds only its model or only its
 effort fixes that dimension and leaves the other open. A binding to a value outside the inventory is used as written,
 and the proposal says so, except that CAT refuses a proposal in which a Codex prompt file binds a model below version 6,
-naming the file and the model (D41).
+naming the file and the model, and refuses a Codex role profile that binds such a model (D41).
 
 **Profile set.** CAT computes each category's profile set from the requirements its tests check, excluding the
 core-task requirement, which comes from CAT and not from a file:

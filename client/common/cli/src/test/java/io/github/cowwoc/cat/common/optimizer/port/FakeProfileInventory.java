@@ -7,6 +7,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * A {@link ProfileInventory} with a fixed inventory and role profile.
@@ -14,7 +16,9 @@ import java.util.List;
  * Its binding files are the {@code .agent} files under an {@code agents} directory, whose lines {@code model=VALUE}
  * and {@code effort=VALUE} bind a dimension each.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * It supports every model unless a test names one with {@link #rejectModel(String)}.
+ * <p>
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FakeProfileInventory implements ProfileInventory
 {
@@ -29,6 +33,7 @@ public final class FakeProfileInventory implements ProfileInventory
 	public static final TrialProfile ROLE = new TrialProfile("role-model", "high");
 	private final ProfileCatalog inventory;
 	private final TrialProfile role;
+	private final Set<String> rejectedModels = new CopyOnWriteArraySet<>();
 
 	/**
 	 * Creates a fake with {@link #INVENTORY} and {@link #ROLE}.
@@ -51,6 +56,18 @@ public final class FakeProfileInventory implements ProfileInventory
 		requireThat(role, "role").isNotNull();
 		this.inventory = inventory;
 		this.role = role;
+	}
+
+	/**
+	 * Makes the fake reject a model, so that {@link #supportsModel(String)} returns {@code false} for it.
+	 *
+	 * @param model the model's name
+	 * @throws NullPointerException if {@code model} is null
+	 */
+	public void rejectModel(String model)
+	{
+		requireThat(model, "model").isNotNull();
+		rejectedModels.add(model);
 	}
 
 	/**
@@ -98,6 +115,13 @@ public final class FakeProfileInventory implements ProfileInventory
 				effort = line.substring("effort=".length());
 		}
 		return new TrialProfile(model, effort);
+	}
+
+	@Override
+	public boolean supportsModel(String model)
+	{
+		requireThat(model, "model").isNotNull();
+		return !rejectedModels.contains(model);
 	}
 
 	@Override

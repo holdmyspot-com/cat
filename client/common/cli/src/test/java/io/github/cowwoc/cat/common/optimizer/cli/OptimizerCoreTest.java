@@ -908,6 +908,79 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Starts a campaign whose requirement's source is an agent file that binds a profile.
+	 *
+	 * @param rejected the model that the harness rejects
+	 * @param bound the profile that the agent file binds
+	 * @param observe receives the repository and the result of {@code start}
+	 * @throws Exception if the campaign cannot be started
+	 */
+	private static void startWithBoundAgent(String rejected, TrialProfile bound,
+		java.util.function.BiConsumer<Repository, CommandResult> observe) throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				ObjectNode safety = (ObjectNode) output.get("requirements").get(1);
+				safety.put("source", "agents/safety.agent");
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("agents/safety.agent")));
+			repository.scope().profiles().rejectModel(rejected);
+			Files.createDirectory(repository.root().resolve("agents"));
+			Files.writeString(repository.root().resolve("agents/safety.agent"), FakeProfileInventory.content(bound));
+
+			observe.accept(repository, repository.core().start(Path.of("CLAUDE.md")));
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} starts no deriver session when a staged binding file binds a model that the harness
+	 * does not support, and reports the file and the model with the instruction to change the binding and run
+	 * {@code start} again.
+	 */
+	@Test
+	public void startReportsUnsupportedModelBinding() throws Exception
+	{
+		// Requirement: R-D18
+		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("gpt-5.6-luna", "low"), (repository, result) ->
+		{
+			requireThat(repository.sessions().requests, "requests").isEmpty();
+			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.message(), "message").contains("agents/safety.agent").contains("gpt-5.6-luna").
+				contains("Change the binding").contains("`start` again");
+		});
+	}
+
+	/**
+	 * Verifies that {@code start} derives when a staged binding file binds a model that the harness supports.
+	 */
+	@Test
+	public void startDerivesWithSupportedModelBinding() throws Exception
+	{
+		// Requirement: R-D18
+		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("gpt-6-luna", "low"), (repository, result) ->
+		{
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(1);
+			requireThat(result.proposal(), "proposal").isNotNull().contains("agents/safety.agent binds gpt-6-luna/low");
+		});
+	}
+
+	/**
+	 * Verifies that {@code start} derives when a staged binding file binds only an effort, even though the harness
+	 * rejects a model.
+	 */
+	@Test
+	public void startDerivesWithEffortOnlyBinding() throws Exception
+	{
+		// Requirement: R-D18
+		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("", "low"), (repository, result) ->
+		{
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(1);
+			requireThat(result.proposal(), "proposal").isNotNull();
+		});
+	}
+
+	/**
 	 * Verifies that {@code start} refuses a base worktree that the fork seam reports as dirty, before it stores a
 	 * campaign or starts a session.
 	 */

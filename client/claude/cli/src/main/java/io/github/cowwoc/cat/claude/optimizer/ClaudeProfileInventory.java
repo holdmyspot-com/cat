@@ -206,6 +206,18 @@ public final class ClaudeProfileInventory implements ProfileInventory
 		return matcher.group(1);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude accepts every model name.
+	 */
+	@Override
+	public boolean supportsModel(String model)
+	{
+		requireThat(model, "model").isNotNull();
+		return true;
+	}
+
 	@Override
 	public TrialProfile roleProfile() throws IOException
 	{
