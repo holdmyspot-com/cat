@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_HIGH;
+import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_LOW;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.BIG_MEDIUM;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SAFETY;
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SMALL_HIGH;
@@ -19,8 +20,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -572,6 +576,9 @@ public final class SchedulerTest
 		Builder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
 		for (String cell : TierFixtures.tieredContract().cellIds())
 			attempt.cell(cell, 50, 0);
+		// The cells below BIG_HIGH and the development cell are certified, so BIG_HIGH is open
+		for (String cell : List.of(SMALL_HIGH, BIG_LOW, BIG_MEDIUM))
+			attempt.cell(cell, 100, 0);
 		Campaign campaign = attempt.cell(BIG_HIGH, 50, 1).build();
 		requireThat(CellTier.developmentCellIds(campaign), "before").isEqualTo(List.of(SMALL_HIGH, SAFETY));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "formal").isEqualTo(List.of(formal(BIG_HIGH)));
@@ -652,5 +659,167 @@ public final class SchedulerTest
 			sampled.addAll(campaign.development().counts().keySet());
 		}
 		requireThat(sampled, "sampled").isEqualTo(Set.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
+	}
+
+	/**
+	 * Returns the identifier of a cell of the {@code formatting} category in {@link #codexContract()}.
+	 *
+	 * @param model the cell's model
+	 * @param effort the cell's effort
+	 * @return the identifier
+	 */
+	private static String codexCell(String model, String effort)
+	{
+		return "formatting@" + model + "/" + effort;
+	}
+
+	/**
+	 * Returns the fixture contract under {@link TierFixtures#CODEX_PROFILES} and {@link TierFixtures#CODEX_RANKING}.
+	 * Under the latest-versions scope, the {@code formatting} category has 15 cells: the efforts
+	 * {@code low}, {@code medium}, {@code high}, {@code xhigh} and {@code max} of {@code gpt-6-luna},
+	 * {@code gpt-6.1-sol} and {@code gpt-6-astra}, of which {@code gpt-6-luna/low} is the weakest. The {@code safety}
+	 * category has one cell.
+	 *
+	 * @return the contract
+	 */
+	private static Contract codexContract()
+	{
+		return TierFixtures.contract(TierFixtures.CODEX_PROFILES, TierFixtures.CODEX_RANKING, List.of(),
+			new TrialProfile("gpt-6-luna", "low"));
+	}
+
+	/**
+	 * Returns the builder of a running certification attempt of {@link #codexContract()} under the latest-versions
+	 * scope, whose concurrency window is 8 and whose listed cells are certified.
+	 *
+	 * @param certified the identifiers of the certified cells
+	 * @return the attempt's builder
+	 */
+	private static Builder.AttemptBuilder codexAttempt(String... certified)
+	{
+		Builder.AttemptBuilder attempt = new Builder().confirmed(codexContract(), 1).working(1).readyBaseline().
+			development(codexCell("gpt-6-luna", "low"), 200, 0).development(SAFETY, 200, 0).
+			slowStart(new SlowStart(8, 0)).certificationAttempt(1);
+		for (String cell : certified)
+			attempt.cell(cell, 100, 0);
+		return attempt;
+	}
+
+	/**
+	 * Returns the cells of a plan's formal admissions.
+	 *
+	 * @param campaign the campaign
+	 * @return the cells
+	 */
+	private static Set<String> formalCells(Campaign campaign)
+	{
+		Set<String> cells = new LinkedHashSet<>();
+		for (Admission admission : Scheduler.plan(campaign, NOW, 8))
+		{
+			if (admission instanceof Admission.Assign assign && assign.purpose() == Purpose.FORMAL)
+				cells.add(assign.cell());
+		}
+		return cells;
+	}
+
+	/**
+	 * Verifies that an attempt's formal trials go to the development cells only while they are undecided, although
+	 * every other scope cell is empty, and that the weakest-cell scope is unaffected.
+	 */
+	@Test
+	public void formalStartsInDevelopmentCells()
+	{
+		// Requirement: R-E23
+		requireThat(formalCells(codexAttempt().build()), "latestVersions").
+			isEqualTo(Set.of(codexCell("gpt-6-luna", "low"), SAFETY));
+
+		Campaign weakest = tiered(CertificationScope.WEAKEST_CELL).readyBaseline().development(SMALL_HIGH, 200, 0).
+			development(SAFETY, 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).build();
+		requireThat(formalCells(weakest), "weakestCell").isEqualTo(Set.of(SMALL_HIGH, SAFETY));
+	}
+
+	/**
+	 * Verifies that a stronger cell receives formal trials only once every cell below it is certified: certifying the
+	 * weakest cell opens the next effort of the same model and the lowest effort of the next model, but not the
+	 * cells above them.
+	 */
+	@Test
+	public void strongerCellOpensAfterLowerCellsCertify()
+	{
+		// Requirement: R-E23
+		Campaign campaign = codexAttempt(codexCell("gpt-6-luna", "low"), SAFETY).build();
+		requireThat(formalCells(campaign), "afterWeakest").
+			isEqualTo(Set.of(codexCell("gpt-6-luna", "medium"), codexCell("gpt-6.1-sol", "low")));
+
+		campaign = codexAttempt(codexCell("gpt-6-luna", "low"), SAFETY, codexCell("gpt-6-luna", "medium")).build();
+		requireThat(formalCells(campaign), "beforeLowerCellCertifies").
+			isEqualTo(Set.of(codexCell("gpt-6-luna", "high"), codexCell("gpt-6.1-sol", "low")));
+	}
+
+	/**
+	 * Verifies that a cell opens once the cells below it are certified, whatever the state of a cell that it is not
+	 * below: {@code gpt-6.1-sol/medium} opens while {@code gpt-6-luna/high}, a weaker model at a higher effort, is
+	 * undecided, and the two run together.
+	 */
+	@Test
+	public void incomparableCellsOpenIndependently()
+	{
+		// Requirement: R-E23
+		Campaign campaign = codexAttempt(codexCell("gpt-6-luna", "low"), SAFETY, codexCell("gpt-6-luna", "medium"),
+			codexCell("gpt-6.1-sol", "low")).build();
+		requireThat(formalCells(campaign), "open").isEqualTo(Set.of(codexCell("gpt-6-luna", "high"),
+			codexCell("gpt-6.1-sol", "medium"), codexCell("gpt-6-astra", "low")));
+	}
+
+	/**
+	 * Verifies that among a category's open cells, the one with the fewest formal outcomes goes first, even when
+	 * another open cell has a lower confidence bound.
+	 */
+	@Test
+	public void fewestFormalOutcomesAmongOpenCells()
+	{
+		// Requirement: R-E23
+		String fewer = codexCell("gpt-6.1-sol", "low");
+		String lowerBound = codexCell("gpt-6-luna", "medium");
+		Campaign campaign = codexAttempt(codexCell("gpt-6-luna", "low"), SAFETY).cell(lowerBound, 70, 1).
+			cell(fewer, 60, 0).campaign().slowStart(new SlowStart(1, 0)).build();
+		SignificanceLevel level = campaign.runningAttempt().orElseThrow().procedure().boundaries().level();
+		requireThat(ConfidenceBounds.lower(70, 1, level).value(), "lowerBound").
+			isLessThan(ConfidenceBounds.lower(60, 0, level).value());
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(formal(fewer)));
+	}
+
+	/**
+	 * Verifies that the category limit counts the remaining passes of the open cells only: a development cell 3
+	 * passes from certifying receives 3 formal trials, and the closed cells none, although the window allows 8.
+	 */
+	@Test
+	public void categoryLimitOverOpenCells()
+	{
+		// Requirement: R-E23
+		String weakest = codexCell("gpt-6-luna", "low");
+		Campaign campaign = codexAttempt(SAFETY).cell(weakest, 97, 0).build();
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(formal(weakest), formal(weakest),
+			formal(weakest)));
+	}
+
+	/**
+	 * Verifies that the incumbent's baseline arm is not ordered: its first round of trials covers every scope cell,
+	 * the stronger ones included.
+	 */
+	@Test
+	public void baselineIsNotOrdered()
+	{
+		// Requirement: R-E23
+		Contract contract = codexContract().withScope(CertificationScope.LATEST_VERSIONS);
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).build();
+		List<String> scope = CellTier.scopeCellIds(contract);
+		List<String> baseline = new ArrayList<>();
+		for (Admission admission : Scheduler.plan(campaign, NOW, 64))
+		{
+			if (admission instanceof Admission.Assign assign && assign.purpose() == Purpose.BASELINE)
+				baseline.add(assign.cell());
+		}
+		requireThat(baseline.subList(0, scope.size()), "firstRound").isEqualTo(scope);
 	}
 }

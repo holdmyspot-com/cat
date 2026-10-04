@@ -7,7 +7,10 @@ import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
+import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,6 +31,9 @@ import java.util.Set;
  * lineage adopted a failure. The weakest cell is the lowest effort of the least capable model by the contract's
  * {@link CapabilityRanking}; the contract lists each category's cells in inventory order, and the inventory lists each
  * model's efforts from the lowest to the highest, so a model's first cell in a category is its lowest effort.
+ * <p>
+ * A running attempt's formal trials go to its open cells: each category's development cells, and each other scope cell
+ * once every development cell of its category and every scope cell of its category below it are certified.
  */
 public final class CellTier
 {
@@ -264,5 +270,111 @@ public final class CellTier
 	public static List<String> developmentCellIds(Campaign campaign)
 	{
 		return developmentCells(campaign).stream().map(Cell::id).toList();
+	}
+
+	/**
+	 * Returns the open cells of a running certification attempt: in each category, its development cells, and each
+	 * other cell of the attempt once every development cell of the category and every cell of the category below it
+	 * are certified.
+	 * <p>
+	 * A cell is below another when its model ranks no higher by the contract's {@link CapabilityRanking}, its effort
+	 * is no higher, and the two differ. The inventory lists each model's efforts from the lowest to the highest, and
+	 * an effort is higher than another when some model lists it later, directly or through other efforts, and no model
+	 * lists it earlier. A cell whose model is unranked, or whose effort no model lists in order with the other cell's,
+	 * is neither below nor above it.
+	 *
+	 * @param campaign a campaign with a confirmed contract
+	 * @param attempt the campaign's running attempt
+	 * @return the open cells, in the attempt's cell order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the contract lacks a cell of the attempt
+	 */
+	static List<Cell> openCells(Campaign campaign, CertificationAttempt attempt)
+	{
+		requireThat(campaign, "campaign").isNotNull();
+		requireThat(attempt, "attempt").isNotNull();
+		TrialProfiles profiles = campaign.contract().profiles();
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
+		List<Cell> cells = new ArrayList<>();
+		Set<String> certified = new HashSet<>();
+		for (String id : attempt.procedure().cells())
+		{
+			cells.add(profiles.findCell(id).orElseThrow(() -> new IllegalArgumentException("The contract lacks " +
+				"the cell '" + id + "' of certification attempt " + attempt.index())));
+			if (DecisionTable.cellDecision(boundaries, attempt.count(id)) == DecisionTable.CellDecision.CERTIFIED)
+				certified.add(id);
+		}
+		Set<String> development = new HashSet<>(developmentCellIds(campaign));
+		Map<String, Set<String>> higherEfforts = higherEfforts(profiles.inventory());
+		List<Cell> open = new ArrayList<>();
+		for (Cell cell : cells)
+		{
+			if (development.contains(cell.id()) ||
+				cells.stream().noneMatch(other -> other.categoryId().equals(cell.categoryId()) &&
+					!other.equals(cell) && !certified.contains(other.id()) && (development.contains(other.id()) ||
+					isBelow(profiles.ranking(), higherEfforts, other.profile(), cell.profile()))))
+			{
+				open.add(cell);
+			}
+		}
+		return open;
+	}
+
+	/**
+	 * Indicates whether a trial profile is below another: its model ranks no higher, its effort is no higher, and
+	 * the two differ.
+	 *
+	 * @param ranking the capability ranking
+	 * @param higherEfforts each effort's higher efforts
+	 * @param profile a profile
+	 * @param other another profile
+	 * @return {@code true} if {@code profile} is below {@code other}
+	 */
+	private static boolean isBelow(CapabilityRanking ranking, Map<String, Set<String>> higherEfforts,
+		TrialProfile profile, TrialProfile other)
+	{
+		if (profile.equals(other) || !ranking.isRanked(profile.model()) || !ranking.isRanked(other.model()) ||
+			ranking.compare(profile.model(), other.model()) > 0)
+		{
+			return false;
+		}
+		String effort = profile.effort();
+		String otherEffort = other.effort();
+		return effort.equals(otherEffort) || (higherEfforts.getOrDefault(effort, Set.of()).contains(otherEffort) &&
+			!higherEfforts.getOrDefault(otherEffort, Set.of()).contains(effort));
+	}
+
+	/**
+	 * Returns the efforts that the inventory ranks above each effort: those that some model lists after it, directly
+	 * or through other efforts.
+	 *
+	 * @param inventory the profile inventory, which lists each model's efforts from the lowest to the highest
+	 * @return each effort's higher efforts
+	 */
+	private static Map<String, Set<String>> higherEfforts(ProfileCatalog inventory)
+	{
+		Map<String, List<String>> byModel = new LinkedHashMap<>();
+		for (TrialProfile profile : inventory.profiles())
+			byModel.computeIfAbsent(profile.model(), _ -> new ArrayList<>()).add(profile.effort());
+		Map<String, Set<String>> higher = new HashMap<>();
+		for (List<String> efforts : byModel.values())
+		{
+			for (int i = 0; i < efforts.size(); ++i)
+			{
+				Set<String> above = higher.computeIfAbsent(efforts.get(i), _ -> new HashSet<>());
+				above.addAll(efforts.subList(i + 1, efforts.size()));
+			}
+		}
+		boolean changed = true;
+		while (changed)
+		{
+			changed = false;
+			for (Set<String> above : higher.values())
+			{
+				for (String effort : List.copyOf(above))
+					changed |= above.addAll(higher.getOrDefault(effort, Set.of()));
+			}
+		}
+		return higher;
 	}
 }

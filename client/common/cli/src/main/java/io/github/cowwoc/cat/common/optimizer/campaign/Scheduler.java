@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -170,8 +171,11 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the running attempt's formal trials: one per cell first, then the undecided cell whose confidence lower
-	 * bound at the attempt's significance level is lowest, ties to fewer adopted outcomes and then contract order.
+	 * Plans the running attempt's formal trials in its {@link CellTier open cells}. Each category offers the open cell
+	 * with the fewest adopted outcomes, ties to fewer unadopted trials and then contract order. Among the offered
+	 * cells, an untried cell first, then the cell whose confidence lower bound at the attempt's significance level
+	 * is lowest, ties to fewer adopted outcomes and then contract order. A decided cell, or one whose unadopted trials
+	 * reach its remaining passes to certification, offers nothing.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
@@ -185,18 +189,30 @@ public final class Scheduler
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.FORMAL, attempt.index());
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
+		List<Cell> openCells = CellTier.openCells(campaign, attempt);
 		while (slots > 0 && plan.size() < freeCapacity)
 		{
-			String best = null;
-			for (String cell : attempt.procedure().cells())
+			Map<String, String> offered = new LinkedHashMap<>();
+			for (Cell cell : openCells)
 			{
-				CellCounts counts = attempt.count(cell);
-				int assigned = inFlight.getOrDefault(cell, 0);
+				String id = cell.id();
+				CellCounts counts = attempt.count(id);
+				int assigned = inFlight.getOrDefault(id, 0);
 				if (DecisionTable.cellDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
 					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0)
 				{
 					continue;
 				}
+				offered.merge(cell.categoryId(), id, (current, candidate) ->
+				{
+					if (hasFewerFormalOutcomes(attempt, inFlight, candidate, current))
+						return candidate;
+					return current;
+				});
+			}
+			String best = null;
+			for (String cell : offered.values())
+			{
 				if (best == null || hasFormalPriority(attempt, inFlight, cell, best))
 					best = cell;
 			}
@@ -207,6 +223,25 @@ public final class Scheduler
 			inFlight.merge(best, 1, Integer::sum);
 			--slots;
 		}
+	}
+
+	/**
+	 * Indicates whether a cell has fewer formal outcomes than another of its category: fewer adopted outcomes, then
+	 * fewer unadopted trials. A tie preserves the earlier cell in contract order.
+	 *
+	 * @param attempt the running attempt
+	 * @param inFlight the unadopted trials per cell
+	 * @param cell the identifier of a cell that comes after {@code other} in contract order
+	 * @param other the identifier of the category's first cell so far
+	 * @return {@code true} if {@code cell} comes first
+	 */
+	private static boolean hasFewerFormalOutcomes(CertificationAttempt attempt, Map<String, Integer> inFlight,
+		String cell, String other)
+	{
+		int byOutcomes = Integer.compare(attempt.count(cell).outcomes(), attempt.count(other).outcomes());
+		if (byOutcomes != 0)
+			return byOutcomes < 0;
+		return inFlight.getOrDefault(cell, 0) < inFlight.getOrDefault(other, 0);
 	}
 
 	/**

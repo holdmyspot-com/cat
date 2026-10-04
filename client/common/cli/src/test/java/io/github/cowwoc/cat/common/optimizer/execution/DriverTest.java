@@ -113,6 +113,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -2182,8 +2183,12 @@ public final class DriverTest
 				try
 				{
 					boolean formal = harness.campaign().runningAttempt().isPresent();
-					if (formal && request.profile().equals(ContractFixtures.SMALL))
+					// The weaker cell certifies first, which opens the stronger cell, whose trials fail
+					if (formal && DriverHarness.cell(request).equals("formatting") &&
+						request.profile().equals(ContractFixtures.BIG))
+					{
 						return harness.failed(request.profile().model());
+					}
 					return harness.completed("pass", request.profile().model());
 				}
 				catch (IOException e)
@@ -2205,13 +2210,13 @@ public final class DriverTest
 			CertificationAttempt attempt = campaign.attempt(1);
 			requireThat(attempt.procedure().cells(), "committedCells").
 				isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, "safety"));
-			requireThat(attempt.count(ContractFixtures.BIG_CELL).failures(), "bigFailures").isEqualTo(0);
-			requireThat(attempt.count(ContractFixtures.SMALL_CELL).passes(), "smallPasses").isEqualTo(0);
+			requireThat(attempt.count(ContractFixtures.SMALL_CELL).failures(), "smallFailures").isEqualTo(0);
+			requireThat(attempt.count(ContractFixtures.BIG_CELL).passes(), "bigPasses").isEqualTo(0);
 			DecisionBoundaries boundaries = attempt.procedure().boundaries();
-			requireThat(DecisionTable.cellDecision(boundaries, attempt.count(ContractFixtures.SMALL_CELL)),
-				"smallDecision").isEqualTo(CellDecision.CLEARLY_BELOW);
 			requireThat(DecisionTable.cellDecision(boundaries, attempt.count(ContractFixtures.BIG_CELL)),
-				"bigDecision").isNotEqualTo(CellDecision.CLEARLY_BELOW);
+				"bigDecision").isEqualTo(CellDecision.CLEARLY_BELOW);
+			requireThat(DecisionTable.cellDecision(boundaries, attempt.count(ContractFixtures.SMALL_CELL)),
+				"smallDecision").isEqualTo(CellDecision.CERTIFIED);
 			requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 
 			Map<TrialProfile, Integer> formatting = new HashMap<>();
@@ -2299,6 +2304,43 @@ public final class DriverTest
 					isTrue();
 				for (String cell : List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH))
 					requireThat(development.count(cell).outcomes(), cell).isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * A certification attempt whose formal trials fail in the weakest cell of a category ends there, and no formal
+	 * trial runs in the category's stronger cells, which never open.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void weakestFailureOpensNoStrongerCell() throws IOException
+	{
+		// Requirement: R-E23
+		Contract contract = TierFixtures.tieredContract();
+		TrialProfile weakest = new TrialProfile("small", "high");
+		Set<String> formalCells = ConcurrentHashMap.newKeySet();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().
+					development(TierFixtures.SMALL_HIGH, 200, 0).development(TierFixtures.SAFETY, 200, 0).
+					certificationAttempt(1).build());
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				if (trial.key().purpose() == Purpose.FORMAL)
+					formalCells.add(trial.key().cell());
+				if (request.profile().equals(weakest))
+					return harness.failed();
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> !state.attempt(1).isRunning());
+				requireThat(ended.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
+				requireThat(formalCells, "formalCells").isEqualTo(Set.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 			}
 		}
 	}
