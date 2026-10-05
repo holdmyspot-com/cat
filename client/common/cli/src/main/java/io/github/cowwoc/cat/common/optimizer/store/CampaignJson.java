@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
@@ -199,7 +200,7 @@ final class CampaignJson
 		{
 			ObjectNode node = sequences.addObject();
 			node.put("cell", entry.getKey().cell());
-			node.put("purpose", entry.getKey().purpose().name());
+			node.put("purpose", EnumNames.lowerCase(entry.getKey().purpose()));
 			node.put("snapshot", entry.getKey().snapshot().hex());
 			node.put("last_sequence", entry.getValue());
 		}
@@ -227,7 +228,7 @@ final class CampaignJson
 			ObjectNode node = root.putObject("delivery");
 			node.set("candidate", writeCandidate(delivery.candidate()));
 			node.put("attempt", delivery.attempt());
-			node.put("label", delivery.label().name());
+			node.put("label", EnumNames.lowerCase(delivery.label()));
 		}
 		return root;
 	}
@@ -314,7 +315,7 @@ final class CampaignJson
 		{
 			List<TokenUsage> sessions = evidence.tokenUsage().get(role);
 			if (sessions != null)
-				usage.set(role.name(), writeUsage(sessions));
+				usage.set(EnumNames.lowerCase(role), writeUsage(sessions));
 		}
 
 		ArrayNode authors = node.putArray("authors");
@@ -327,7 +328,7 @@ final class CampaignJson
 			author.put("effects", diagnosis.effects().toString());
 			ObjectNode classifications = author.putObject("classifications");
 			for (Entry<String, FailureKind> entry : new TreeMap<>(diagnosis.classifications()).entrySet())
-				classifications.put(entry.getKey(), entry.getValue().name());
+				classifications.put(entry.getKey(), EnumNames.lowerCase(entry.getValue()));
 			ArrayNode rejections = author.putArray("rejections");
 			for (String reason : diagnosis.rejections())
 				rejections.add(reason);
@@ -393,7 +394,7 @@ final class CampaignJson
 		{
 			Map<String, FailureKind> classifications = new HashMap<>();
 			for (Entry<String, JsonNode> entry : object(author, "classifications").properties())
-				classifications.put(entry.getKey(), FailureKind.valueOf(stringValue(entry.getValue(), "classification")));
+				classifications.put(entry.getKey(), constantValue(entry.getValue(), "classification", FailureKind.class));
 			authors.add(new AuthorDiagnosis(text(author, "cell"), sha256(author, "snapshot"), classifications,
 				readStrings(author, "rejections"), Path.of(text(author, "transcript")), Path.of(text(author, "effects"))));
 		}
@@ -543,7 +544,7 @@ final class CampaignJson
 		else
 		{
 			ObjectNode node = root.putObject("outcome");
-			node.put("verdict", outcome.verdict().name());
+			node.put("verdict", EnumNames.lowerCase(outcome.verdict()));
 			node.put("rationale", outcome.rationale());
 			putFailedRequirements(node, outcome.failedRequirements());
 			node.set("triage", writeTriage(outcome.triage()));
@@ -613,7 +614,7 @@ final class CampaignJson
 		JsonNode roles = object(node, TOKEN_USAGE);
 		for (Entry<String, JsonNode> entry : roles.properties())
 		{
-			SessionRole role = SessionRole.valueOf(entry.getKey());
+			SessionRole role = EnumNames.parse(entry.getKey(), SessionRole.class);
 			usage.put(role, readUsage(roles, entry.getKey()));
 		}
 		return usage;
@@ -690,8 +691,8 @@ final class CampaignJson
 		node.put("id", header.id());
 		node.put("root", header.root().toString());
 		node.put("target", header.target().toString());
-		node.put("harness", header.harness().name());
-		node.put("lifecycle", header.lifecycle().name());
+		node.put("harness", EnumNames.lowerCase(header.harness()));
+		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
 		return node;
 	}
 
@@ -732,7 +733,7 @@ final class CampaignJson
 		for (Outcome outcome : Outcome.values())
 		{
 			if (lineage.unavailable().contains(outcome))
-				unavailable.add(outcome.name());
+				unavailable.add(EnumNames.lowerCase(outcome));
 		}
 		ArrayNode added = node.putArray("added_values");
 		for (AddedCombination combination : lineage.added().combinations())
@@ -1012,7 +1013,7 @@ final class CampaignJson
 		for (PromotionRun run : runs)
 		{
 			ObjectNode node = array.addObject();
-			node.put("role", run.role().name());
+			node.put("role", EnumNames.lowerCase(run.role()));
 			node.set("instance", writeInstance(run.instance()));
 			putKey(node, "trial", run.trial());
 			putConstant(node, "verdict", run.verdict());
@@ -1087,7 +1088,7 @@ final class CampaignJson
 		for (PromotionRun run : state.acceptedRuns())
 		{
 			ObjectNode element = runs.addObject();
-			element.put("role", run.role().name());
+			element.put("role", EnumNames.lowerCase(run.role()));
 			element.set("instance", writeInstance(run.instance()));
 			putKey(element, "trial", run.trial());
 			putConstant(element, "verdict", run.verdict());
@@ -1346,7 +1347,7 @@ final class CampaignJson
 		node.set("instance", writeInstance(trial.instance()));
 		node.set("identity", writeIdentity(trial.identity()));
 		node.set("allocation", writeAllocation(trial.allocation()));
-		node.put("state", trial.state().name());
+		node.put("state", EnumNames.lowerCase(trial.state()));
 		putConstant(node, "verdict", trial.verdict());
 		node.put("rationale", trial.rationale());
 		putFailedRequirements(node, trial.failedRequirements());
@@ -1387,7 +1388,7 @@ final class CampaignJson
 		if (triage == null)
 			return json.nullNode();
 		ObjectNode node = json.createObjectNode();
-		node.put("impact", triage.impact().name());
+		node.put("impact", EnumNames.lowerCase(triage.impact()));
 		node.put("rationale", triage.rationale());
 		return node;
 	}
@@ -1415,7 +1416,7 @@ final class CampaignJson
 	private ObjectNode writeAllocation(Allocation allocation)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("rule", allocation.rule().name());
+		node.put("rule", EnumNames.lowerCase(allocation.rule()));
 		node.put("evidence_revision", allocation.evidenceRevision());
 		node.put("assigned_at", allocation.assignedAt().toString());
 		return node;
@@ -1446,7 +1447,7 @@ final class CampaignJson
 		{
 			ObjectNode node = array.addObject();
 			node.put("ended_at", attempt.endedAt().toString());
-			node.put("failure", attempt.failure().name());
+			node.put("failure", EnumNames.lowerCase(attempt.failure()));
 			node.put("detail", attempt.detail());
 		}
 		return array;
@@ -1482,63 +1483,63 @@ final class CampaignJson
 		{
 			case PendingDecision.MeasurementChanged changed ->
 			{
-				node.put("type", "MEASUREMENT_CHANGED");
+				node.put("type", "measurement_changed");
 				node.set("observed", writeIdentity(changed.observed()));
 				ArrayNode conditions = node.putArray("changed");
 				for (MeasurementCondition condition : changed.changed())
-					conditions.add(condition.name());
+					conditions.add(EnumNames.lowerCase(condition));
 			}
 			case PendingDecision.ConflictFound conflicts ->
 			{
-				node.put("type", "CONFLICT_FOUND");
+				node.put("type", "conflict_found");
 				node.set("conflicts", writeConflicts(conflicts.conflicts()));
 				node.set("resolutions", writeIntegers(conflicts.resolutions()));
 			}
 			case PendingDecision.UnownedChange change ->
 			{
-				node.put("type", "UNOWNED_CHANGE");
+				node.put("type", "unowned_change");
 				node.put("description", change.description());
 			}
 			case PendingDecision.TrialFailures failures ->
 			{
-				node.put("type", "TRIAL_FAILURES");
+				node.put("type", "trial_failures");
 				node.set("key", writeKey(failures.key()));
 			}
 			case PendingDecision.CalibrationFailure failure ->
 			{
-				node.put("type", "CALIBRATION_FAILURE");
+				node.put("type", "calibration_failure");
 				node.put("detail", failure.detail());
 			}
 			case PendingDecision.CheckpointReached checkpoint ->
 			{
-				node.put("type", "CHECKPOINT_REACHED");
+				node.put("type", "checkpoint_reached");
 				node.put("cell", checkpoint.cell());
 				node.put("outcomes", checkpoint.outcomes());
 			}
 			case PendingDecision.FailuresNotReproduced notReproduced ->
 			{
-				node.put("type", "FAILURES_NOT_REPRODUCED");
+				node.put("type", "failures_not_reproduced");
 				node.put("attempt", notReproduced.attempt());
 			}
 			case PendingDecision.ImprovementProven proven ->
 			{
-				node.put("type", "IMPROVEMENT_PROVEN");
+				node.put("type", "improvement_proven");
 				node.put("attempt", proven.attempt());
 			}
 			case PendingDecision.RegressionTradeOff tradeOff ->
 			{
-				node.put("type", "REGRESSION_TRADE_OFF");
+				node.put("type", "regression_trade_off");
 				node.put("attempt", tradeOff.attempt());
 			}
-			case PendingDecision.PlateauReached _ -> node.put("type", "PLATEAU_REACHED");
+			case PendingDecision.PlateauReached _ -> node.put("type", "plateau_reached");
 			case PendingDecision.CertificationUnavailable unavailable ->
 			{
-				node.put("type", "CERTIFICATION_UNAVAILABLE");
-				node.put("outcome", unavailable.outcome().name());
+				node.put("type", "certification_unavailable");
+				node.put("outcome", EnumNames.lowerCase(unavailable.outcome()));
 			}
 			case PendingDecision.AuthorityWarnings warnings ->
 			{
-				node.put("type", "AUTHORITY_WARNINGS");
+				node.put("type", "authority_warnings");
 				ArrayNode array = node.putArray("warnings");
 				for (AuthorityWarning warning : warnings.warnings())
 				{
@@ -1546,10 +1547,10 @@ final class CampaignJson
 					element.put("requirement", warning.requirement());
 					element.put("path", warning.path().toString());
 					element.put("target", warning.target().toString());
-					element.put("limit", warning.limit().name());
+					element.put("limit", EnumNames.lowerCase(warning.limit()));
 					ArrayNode choices = element.putArray("choices");
 					for (AuthorityWarning.Choice choice : warning.choices())
-						choices.add(choice.name());
+						choices.add(EnumNames.lowerCase(choice));
 				}
 			}
 		}
@@ -1567,27 +1568,27 @@ final class CampaignJson
 		String type = text(node, "type");
 		return switch (type)
 		{
-			case "MEASUREMENT_CHANGED" ->
+			case "measurement_changed" ->
 			{
 				List<MeasurementCondition> changed = new ArrayList<>();
 				for (JsonNode element : elements(node, "changed"))
 					changed.add(constantValue(element, "changed", MeasurementCondition.class));
 				yield new PendingDecision.MeasurementChanged(readIdentity(field(node, "observed")), changed);
 			}
-			case "CONFLICT_FOUND" ->
+			case "conflict_found" ->
 				new PendingDecision.ConflictFound(readConflicts(node), readIntegers(node, "resolutions"));
-			case "UNOWNED_CHANGE" -> new PendingDecision.UnownedChange(text(node, "description"));
-			case "TRIAL_FAILURES" -> new PendingDecision.TrialFailures(readKey(field(node, "key")));
-			case "CALIBRATION_FAILURE" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
-			case "CHECKPOINT_REACHED" ->
+			case "unowned_change" -> new PendingDecision.UnownedChange(text(node, "description"));
+			case "trial_failures" -> new PendingDecision.TrialFailures(readKey(field(node, "key")));
+			case "calibration_failure" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
+			case "checkpoint_reached" ->
 				new PendingDecision.CheckpointReached(text(node, "cell"), integer(node, "outcomes"));
-			case "FAILURES_NOT_REPRODUCED" -> new PendingDecision.FailuresNotReproduced(integer(node, "attempt"));
-			case "IMPROVEMENT_PROVEN" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
-			case "REGRESSION_TRADE_OFF" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));
-			case "PLATEAU_REACHED" -> new PendingDecision.PlateauReached();
-			case "CERTIFICATION_UNAVAILABLE" ->
+			case "failures_not_reproduced" -> new PendingDecision.FailuresNotReproduced(integer(node, "attempt"));
+			case "improvement_proven" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
+			case "regression_trade_off" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));
+			case "plateau_reached" -> new PendingDecision.PlateauReached();
+			case "certification_unavailable" ->
 				new PendingDecision.CertificationUnavailable(constant(node, "outcome", Outcome.class));
-			case "AUTHORITY_WARNINGS" ->
+			case "authority_warnings" ->
 			{
 				List<AuthorityWarning> warnings = new ArrayList<>();
 				for (JsonNode element : elements(node, "warnings"))
@@ -1671,7 +1672,7 @@ final class CampaignJson
 	private ObjectNode writeKey(TrialKey key)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("purpose", key.purpose().name());
+		node.put("purpose", EnumNames.lowerCase(key.purpose()));
 		node.put("series", key.series());
 		node.put("snapshot", key.snapshot().hex());
 		node.put("cell", key.cell());
@@ -1746,7 +1747,7 @@ final class CampaignJson
 			turns.add(turn);
 		node.put("expected_behaviour", instance.expectedBehaviour());
 		node.put("generator", instance.generator());
-		node.put("stream_kind", instance.streamKind().name());
+		node.put("stream_kind", EnumNames.lowerCase(instance.streamKind()));
 		node.put("stream_position", instance.streamPosition());
 		node.put("targeted", instance.targeted());
 		return node;
@@ -1826,7 +1827,7 @@ final class CampaignJson
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
 				ObjectNode rerunNode = reruns.addObject();
-				rerunNode.put("verdict", rerun.verdict().name());
+				rerunNode.put("verdict", EnumNames.lowerCase(rerun.verdict()));
 				rerunNode.put("rationale", rerun.rationale());
 			}
 			node.add(element);
@@ -1864,7 +1865,7 @@ final class CampaignJson
 	private ObjectNode writeStream(DrawStream.State state)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("kind", state.kind().name());
+		node.put("kind", EnumNames.lowerCase(state.kind()));
 		node.put("seed", state.seed());
 		node.put("position", state.position());
 		node.put("open", state.open());
@@ -1937,7 +1938,7 @@ final class CampaignJson
 		{
 			String value = values.get(condition);
 			if (value != null)
-				node.put(condition.name(), value);
+				node.put(EnumNames.lowerCase(condition), value);
 		}
 	}
 
@@ -1969,7 +1970,7 @@ final class CampaignJson
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		for (Entry<String, JsonNode> entry : node.properties())
 		{
-			values.put(MeasurementCondition.valueOf(entry.getKey()),
+			values.put(EnumNames.parse(entry.getKey(), MeasurementCondition.class),
 				stringValue(entry.getValue(), name + "." + entry.getKey()));
 		}
 		return values;
@@ -2054,7 +2055,7 @@ final class CampaignJson
 		if (value == null)
 			node.putNull(name);
 		else
-			node.put(name, value.name());
+			node.put(name, EnumNames.lowerCase(value));
 	}
 
 	/**
@@ -2290,7 +2291,7 @@ final class CampaignJson
 		String constantName = stringValue(value, name);
 		try
 		{
-			return Enum.valueOf(type, constantName);
+			return EnumNames.parse(constantName, type);
 		}
 		catch (IllegalArgumentException e)
 		{

@@ -20,21 +20,5 @@ public enum FailureKind
 	/**
 	 * Confirmed requirements cannot be satisfied together and need the user's resolution.
 	 */
-	CONFLICT;
-
-	/**
-	 * Returns the classification label used by author reports and status.
-	 *
-	 * @return the label
-	 */
-	public String label()
-	{
-		return switch (this)
-		{
-			case ROUTING -> "routing";
-			case GUIDANCE -> "guidance";
-			case NOT_GUIDANCE -> "not guidance";
-			case CONFLICT -> "conflict";
-		};
-	}
+	CONFLICT
 }

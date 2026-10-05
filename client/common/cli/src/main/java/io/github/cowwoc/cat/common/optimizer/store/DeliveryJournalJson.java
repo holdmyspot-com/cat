@@ -94,18 +94,18 @@ final class DeliveryJournalJson
 		{
 			case Create create ->
 			{
-				node.put("kind", "CREATE");
+				node.put("kind", "create");
 				putContent(node, create.content(), create.permissions());
 			}
 			case Edit edit ->
 			{
-				node.put("kind", "EDIT");
+				node.put("kind", "edit");
 				node.set("before", writeFile(edit.before()));
 				putContent(node, edit.content(), edit.permissions());
 			}
 			case Delete delete ->
 			{
-				node.put("kind", "DELETE");
+				node.put("kind", "delete");
 				node.set("before", writeFile(delete.before()));
 			}
 		}
@@ -171,11 +171,11 @@ final class DeliveryJournalJson
 		String kind = text(node, "kind");
 		return switch (kind)
 		{
-			case "CREATE" -> new Create(sequence, target, content(node), permissions(node, "permissions"));
-			case "EDIT" -> new Edit(sequence, target, readFile(field(node, "before")), content(node),
+			case "create" -> new Create(sequence, target, content(node), permissions(node, "permissions"));
+			case "edit" -> new Edit(sequence, target, readFile(field(node, "before")), content(node),
 				permissions(node, "permissions"));
-			case "DELETE" -> new Delete(sequence, target, readFile(field(node, "before")));
-			default -> throw new IllegalArgumentException("kind: must be CREATE, EDIT or DELETE, but was " + kind);
+			case "delete" -> new Delete(sequence, target, readFile(field(node, "before")));
+			default -> throw new IllegalArgumentException("kind: must be create, edit or delete, but was " + kind);
 		};
 	}
 

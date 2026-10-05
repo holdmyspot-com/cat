@@ -112,7 +112,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			new FileCampaignStore(base, JSON).replaceSnapshot(campaign);
 			JsonNode fixture = JSON.readTree(Files.readString(heldOutDirectory(base).resolve("campaign.json"), UTF_8));
 			requireThat(fixture.path("identity").path("cells").size(), "cells").isEqualTo(0);
-			requireThat(fixture.path("identity").path("conditions").has("JUDGE"), "judge").isFalse();
+			requireThat(fixture.path("identity").path("conditions").has("judge"), "judge").isFalse();
 			requireThat(fixture.path("baseline").path("identity"), "baselineIdentity").isEqualTo(fixture.path("identity"));
 
 			StatusReport report = StatusReport.of(new FileCampaignStore(base, JSON).load(ID).orElseThrow(),
@@ -596,6 +596,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				JsonNode document = JSON.readTree(Files.readString(campaignDirectory(base).resolve("delivery.json"),
 					UTF_8));
 				requireThat(document.get("format_version").asInt(), "formatVersion").isEqualTo(1);
+				List<String> kinds = new ArrayList<>();
+				for (JsonNode change : document.get("changes"))
+					kinds.add(change.get("kind").asString());
+				requireThat(kinds, "kinds").isEqualTo(List.of("delete", "edit", "create"));
 			}
 		}
 	}
@@ -790,7 +794,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
 			document.set("pending_decisions", JSON.readTree("""
-				[{"type":"CONFLICT_FOUND", "conflicts":[
+				[{"type":"conflict_found", "conflicts":[
 				  {"instances":["failure-1"], "requirement_ids":["r1","r2"],
 				   "quotations":[{"path":"CLAUDE.md","text":"Be brief."}],
 				   "resolutions":["Exempt explanations.","Drop brevity."], "recommended":1,

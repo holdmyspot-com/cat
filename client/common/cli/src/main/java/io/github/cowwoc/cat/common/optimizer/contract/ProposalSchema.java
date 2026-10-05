@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.Count;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ExactText;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ExitStatus;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.FileContent;
@@ -18,7 +19,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -306,7 +306,7 @@ public final class ProposalSchema
 		if (profiles.scope() == null)
 			node.putNull("scope");
 		else
-			node.put("scope", profiles.scope().name().toLowerCase(Locale.ROOT));
+			node.put("scope", EnumNames.lowerCase(profiles.scope()));
 		ArrayNode cells = node.putArray("cells");
 		for (Cell cell : profiles.cells())
 		{
@@ -579,7 +579,7 @@ public final class ProposalSchema
 				text(rankingNode, "source"));
 			CertificationScope scope = null;
 			if (!node.get("scope").isNull())
-				scope = CertificationScope.valueOf(node.get("scope").asString().toUpperCase(Locale.ROOT));
+				scope = EnumNames.parse(node.get("scope").asString(), CertificationScope.class);
 			List<Cell> cells = new ArrayList<>();
 			for (JsonNode cellNode : node.get("cells"))
 				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "category"), profile(cellNode)));

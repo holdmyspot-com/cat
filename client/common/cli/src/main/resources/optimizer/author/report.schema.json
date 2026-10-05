@@ -36,7 +36,7 @@
 						"enum": [
 							"routing",
 							"guidance",
-							"not guidance",
+							"not_guidance",
 							"conflict"
 						]
 					}

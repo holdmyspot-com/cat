@@ -98,6 +98,7 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 			JsonNode document = JSON.readTree(Files.readString(file, UTF_8));
 			requireThat(document.get("format_version").asInt(), "formatVersion").isEqualTo(1);
 			requireThat(document.get("fork").asString(), "fork").isEqualTo(recorded.identity().hex());
+			requireThat(document.get("entries").get(0).get("kind").asString(), "kind").isEqualTo("write");
 			requireThat(document.toString(), "document").doesNotContain("unchanged");
 		}
 	}

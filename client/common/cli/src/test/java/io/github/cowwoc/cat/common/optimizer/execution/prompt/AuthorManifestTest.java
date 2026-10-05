@@ -193,7 +193,7 @@ public final class AuthorManifestTest
 			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
 			Set.of(), Map.of(), "");
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
-		requireThat(turn, "instructions").contains("routing").contains("not guidance").contains("smallest").
+		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
 	}
 	/**

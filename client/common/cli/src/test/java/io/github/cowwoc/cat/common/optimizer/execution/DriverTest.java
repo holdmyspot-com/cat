@@ -1332,7 +1332,7 @@ public final class DriverTest
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
 					failure(Builder.targeted("safety", "cache")).build());
 			harness.authors(_ -> harness.completed("""
-				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not guidance"}],
+				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not_guidance"}],
 				 "hunks":[],"conflicts":[]}
 				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
 			try (Driver driver = harness.open())
@@ -1343,8 +1343,9 @@ public final class DriverTest
 				requireThat(ended.optimization().authors().getFirst().classifications().values(), "classification").
 					contains(FailureKind.NOT_GUIDANCE);
 				StatusReport report = StatusReport.of(ended, ReportEvidence.NONE);
-				requireThat(report.toJson(JsonMapper.builder().build()).path("author_diagnoses").size(),
-					"reportedDiagnoses").isEqualTo(2);
+				JsonNode diagnoses = report.toJson(JsonMapper.builder().build()).path("author_diagnoses");
+				requireThat(diagnoses.size(), "reportedDiagnoses").isEqualTo(2);
+				requireThat(diagnoses.toString(), "diagnoses").contains("\"not_guidance\"");
 				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("not guidance");
 			}
 		}

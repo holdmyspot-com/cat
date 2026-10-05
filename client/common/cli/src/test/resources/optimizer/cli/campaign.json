@@ -4,8 +4,8 @@
     "id" : "fixture-campaign",
     "root" : "/project",
     "target" : "/project/CLAUDE.md",
-    "harness" : "CLAUDE",
-    "lifecycle" : "ACTIVE"
+    "harness" : "claude",
+    "lifecycle" : "active"
   },
   "ceiling" : 8,
   "lineages" : [ {
@@ -205,13 +205,13 @@
     },
     "contract_hash" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
     "development_stream" : {
-      "kind" : "DEVELOPMENT",
+      "kind" : "development",
       "seed" : 1,
       "position" : 0,
       "open" : true
     },
     "baseline_stream" : {
-      "kind" : "BASELINE",
+      "kind" : "baseline",
       "seed" : 1,
       "position" : 0,
       "open" : true
@@ -222,20 +222,20 @@
   } ],
   "identity" : {
     "conditions" : {
-      "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
-      "GENERATOR" : "contract-generator/2",
-      "JUDGE" : "judge-1",
-      "MODEL" : "model-a",
-      "REASONING" : "reasoning-1",
-      "PROVIDER" : "provider-1",
-      "HARNESS_VERSION" : "harness_version-1",
-      "SESSION_ENVIRONMENT_VERSION" : "session_environment_version-1",
-      "RUNNER_VERSION" : "runner_version-1",
-      "CAT_VERSION" : "cat_version-1",
-      "LOADER_CONFIGURATION" : "loader_configuration-1",
-      "PROMPT_SOURCES" : "prompt_sources-1",
-      "HOST_TOOLS" : "host_tools-1",
-      "EXTERNAL_SOURCES" : "external_sources-1"
+      "contract" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "generator" : "contract-generator/2",
+      "judge" : "judge-1",
+      "model" : "model-a",
+      "reasoning" : "reasoning-1",
+      "provider" : "provider-1",
+      "harness_version" : "harness_version-1",
+      "session_environment_version" : "session_environment_version-1",
+      "runner_version" : "runner_version-1",
+      "cat_version" : "cat_version-1",
+      "loader_configuration" : "loader_configuration-1",
+      "prompt_sources" : "prompt_sources-1",
+      "host_tools" : "host_tools-1",
+      "external_sources" : "external_sources-1"
     },
     "cells" : { }
   },
@@ -273,20 +273,20 @@
     "index" : 1,
     "identity" : {
       "conditions" : {
-        "CONTRACT" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
-        "GENERATOR" : "contract-generator/2",
-        "JUDGE" : "judge-1",
-        "MODEL" : "model-a",
-        "REASONING" : "reasoning-1",
-        "PROVIDER" : "provider-1",
-        "HARNESS_VERSION" : "harness_version-1",
-        "SESSION_ENVIRONMENT_VERSION" : "session_environment_version-1",
-        "RUNNER_VERSION" : "runner_version-1",
-        "CAT_VERSION" : "cat_version-1",
-        "LOADER_CONFIGURATION" : "loader_configuration-1",
-        "PROMPT_SOURCES" : "prompt_sources-1",
-        "HOST_TOOLS" : "host_tools-1",
-        "EXTERNAL_SOURCES" : "external_sources-1"
+        "contract" : "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+        "generator" : "contract-generator/2",
+        "judge" : "judge-1",
+        "model" : "model-a",
+        "reasoning" : "reasoning-1",
+        "provider" : "provider-1",
+        "harness_version" : "harness_version-1",
+        "session_environment_version" : "session_environment_version-1",
+        "runner_version" : "runner_version-1",
+        "cat_version" : "cat_version-1",
+        "loader_configuration" : "loader_configuration-1",
+        "prompt_sources" : "prompt_sources-1",
+        "host_tools" : "host_tools-1",
+        "external_sources" : "external_sources-1"
       },
       "cells" : { }
     },

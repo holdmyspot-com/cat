@@ -59,7 +59,7 @@ final class OptimizationJson
 			author.put("effects", diagnosis.effects().toString());
 			ObjectNode classifications = author.putObject("classifications");
 			for (Map.Entry<String, FailureKind> entry : new TreeMap<>(diagnosis.classifications()).entrySet())
-				classifications.put(entry.getKey(), entry.getValue().label());
+				classifications.put(entry.getKey(), EnumNames.lowerCase(entry.getValue()));
 			ArrayNode rejections = author.putArray("rejections");
 			for (String rejection : diagnosis.rejections())
 				rejections.add(rejection);

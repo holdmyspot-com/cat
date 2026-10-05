@@ -15,7 +15,7 @@ and run the author in a copy of the project.
 
 ### classified-as-prompt-defect
 
-The manifest classifies each failure as `routing` or `guidance`, not `not guidance`.
+The manifest classifies each failure as `routing` or `guidance`, not `not_guidance`.
 
 ### interim-message-addressed
 

@@ -92,7 +92,7 @@ public final class TriagePromptTest
 		// Requirement: R-D16
 		String turn = request(List.of(List.of("Deleted.")), List.of()).turns().getFirst();
 		requireThat(turn, "turn").contains("`blocking`").contains("unless the user acts").
-			contains("`self-recovering`").contains("such as reading more than needed").
+			contains("`self_recovering`").contains("such as reading more than needed").
 			contains("\"additionalProperties\" : false");
 	}
 

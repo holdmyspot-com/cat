@@ -69,7 +69,7 @@ in `rationale`, and the targeted reruns of the same instance against the working
 with its verdict and its `rationale`. A `rationale` is the judge's rationale or, when no judge ran, a record of
 deterministic checks that names, for each check, the requirement, the check and the value that it observed. No judge
 runs when a check failed; the record then lists only the failed checks. The `impact` is `blocking` when the reply
-left the user without the turn's correct and complete result, `self-recovering` when the reply still delivered that
+left the user without the turn's correct and complete result, `self_recovering` when the reply still delivered that
 result and the failure cost only extra work, and `null` when no impact was decided. The `responses` array holds
 one ordered array of assistant messages per turn, including interim messages and ending with the final response;
 every message is part of the reply:
@@ -96,8 +96,8 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 ### How to edit
 
 1. Classify every supplied failure before editing: `routing` when an existing instruction was not loaded or applied;
-   `guidance` when an instruction is missing, ambiguous or contradictory; `not guidance` for a model limitation,
-   a test or contract defect, or infrastructure failure. Make no prompt edit for a failure classified `not guidance`.
+   `guidance` when an instruction is missing, ambiguous or contradictory; `not_guidance` for a model limitation,
+   a test or contract defect, or infrastructure failure. Make no prompt edit for a failure classified `not_guidance`.
    An interim message, such as a progress note before a tool call, is part of the turn's reply. Whether a prompt can
    stop the agent from sending one is not known, but the prompt can shape its wording. Classify a failure in an
    interim message as `routing` or `guidance`, and correct the prompt so that every message of the reply complies.

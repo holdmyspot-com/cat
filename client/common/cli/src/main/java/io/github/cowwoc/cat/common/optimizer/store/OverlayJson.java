@@ -30,8 +30,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * The document holds {@code format_version}, the identity of the fork that the overlay is on, and the overlay's
  * entries in path order. It does not hold the fork's files: campaign storage already records them once, and reading
- * supplies them. Each entry holds its path and kind ({@code WRITE} or
- * {@code DELETE}); a write also holds its mode in {@code rwxr-xr-x} form and its bytes in Base64.
+ * supplies them. Each entry holds its path and kind ({@code write} or
+ * {@code delete}); a write also holds its mode in {@code rwxr-xr-x} form and its bytes in Base64.
  * <p>
  * Reading reports a document that does not describe an overlay on the supplied fork with an
  * {@link IllegalArgumentException} or a {@link NullPointerException}.
@@ -82,11 +82,11 @@ final class OverlayJson
 			{
 				case Write write ->
 				{
-					node.put("kind", "WRITE");
+					node.put("kind", "write");
 					node.put("permissions", PosixFilePermissions.toString(write.permissions()));
 					node.put("content", Base64.getEncoder().encodeToString(write.content().bytes()));
 				}
-				case Delete _ -> node.put("kind", "DELETE");
+				case Delete _ -> node.put("kind", "delete");
 			}
 		}
 		return root;
@@ -137,18 +137,18 @@ final class OverlayJson
 		String kind = text(node, "kind");
 		return switch (kind)
 		{
-			case "WRITE" ->
+			case "write" ->
 			{
 				requireFields(node, name, WRITE_FIELDS);
 				FileContent content = new FileContent(Base64.getDecoder().decode(text(node, "content")));
 				yield overlay.write(path, content, PosixFilePermissions.fromString(text(node, "permissions")));
 			}
-			case "DELETE" ->
+			case "delete" ->
 			{
 				requireFields(node, name, DELETE_FIELDS);
 				yield overlay.delete(path);
 			}
-			default -> throw new IllegalArgumentException(name + ".kind: must be WRITE or DELETE, but was " + kind);
+			default -> throw new IllegalArgumentException(name + ".kind: must be write or delete, but was " + kind);
 		};
 	}
 

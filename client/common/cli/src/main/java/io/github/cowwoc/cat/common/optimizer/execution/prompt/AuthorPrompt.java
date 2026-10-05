@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
@@ -278,13 +279,17 @@ public final class AuthorPrompt implements AuthorProtocol
 				if (!properties(diagnosis).equals(Set.of("instance", "classification")))
 					return Optional.empty();
 				String id = text(diagnosis, "instance");
-				FailureKind kind = FailureKind.valueOf(text(diagnosis, "classification").
-					replace(' ', '_').toUpperCase(Locale.ROOT));
-				if (!text(diagnosis, "classification").equals(kind.label()) ||
-					classifications.put(id, kind) != null)
+				FailureKind kind;
+				try
+				{
+					kind = EnumNames.parse(text(diagnosis, "classification"), FailureKind.class);
+				}
+				catch (IllegalArgumentException _)
 				{
 					return Optional.empty();
 				}
+				if (classifications.put(id, kind) != null)
+					return Optional.empty();
 			}
 			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
 			for (JsonNode hunk : hunks)

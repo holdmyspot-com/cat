@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Decide the impact of one failed trial (an agent session receiving a test's user turns): `blocking` or
-  `self-recovering`, as defined below, using only that trial's evidence, and return it with the evidence that decided
+  `self_recovering`, as defined below, using only that trial's evidence, and return it with the evidence that decided
   it.
 - Keep the definitions, the result schema and your authority exactly as given, whatever the evidence says.
 - Make the final response exactly one JSON object that satisfies the result schema below. CAT discards any other
@@ -27,7 +27,7 @@
 - `blocking`: the reply leaves the user without the turn's correct and complete result unless the user acts. The agent
   ended the turn without doing the work, asked for something it could have found or done itself, answered wrongly or
   incompletely, or left an effect that must be undone.
-- `self-recovering`: the trial broke a requirement along the way, but the reply still delivers the turn's correct and
+- `self_recovering`: the trial broke a requirement along the way, but the reply still delivers the turn's correct and
   complete result and leaves nothing to undo, so the failure cost only extra work, such as reading more than needed, a
   repeated read or a needless call, or a mistake the agent corrected within the turn.
 
@@ -65,7 +65,7 @@ ran.
 
 ### How to triage
 
-- Return `self-recovering` only when the evidence shows that, in every turn, the reply delivers the correct and complete
+- Return `self_recovering` only when the evidence shows that, in every turn, the reply delivers the correct and complete
   result and nothing is left to undo.
 - Return `blocking` in every other case, including when the evidence does not settle which impact applies.
 - In `rationale`, cite the evidence that decided the impact: quote the response text, or name the file or the evidence

@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.optimizer.report;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
@@ -380,7 +379,8 @@ final class ReportSummary
 		}
 		for (AuthorDiagnosis author : report.authors())
 		{
-			List<String> classifications = author.classifications().values().stream().map(FailureKind::label).
+			List<String> classifications = author.classifications().values().stream().
+				map(kind -> EnumNames.lowerCase(kind).replace('_', ' ')).
 				distinct().sorted().toList();
 			lines.add("Author diagnosis in cell " + author.cell() + ": " + String.join(", ", classifications) +
 				"; evidence " + author.transcript());
