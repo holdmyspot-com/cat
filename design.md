@@ -911,7 +911,11 @@ requirement, the path, the resolved target, the limit and the viable choices: co
 example through an in-project prompt file, or stop or revise the campaign. No choice makes an external file editable.
 
 The warning is an `awaiting-user` decision. The author reports each edit it needed but did not make, and CAT checks each
-one against this authority.
+one against this authority. The warnings that the authors of one round report form one decision, with each distinct
+warning listed once. When the user chooses to continue within this authority, CAT records the answered warnings for the
+rest of the campaign and does not raise an answered warning again. Every later author is told that the user declined
+those edits and must meet their requirements through the in-project prompt files. The author's list of editable paths
+names only in-project prompt files: a link to an external file appears only among the links, as read-only.
 
 ### 4.4 Trial staging
 
