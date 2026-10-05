@@ -144,8 +144,9 @@ public final class DriverTest
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
-	// Requirement: R-G5
 	// Requirement: R-M1
+	// Requirement: R-M4
+	// Requirement: R-E18
 	@Test
 	public void statusComparesObservedTrials() throws IOException
 	{
