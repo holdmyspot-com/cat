@@ -239,7 +239,7 @@ public final class CodexSessionsContractTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) result;
 			requireThat(completed.model(), "model").isEqualTo("gpt-6.1-sol");
-			requireThat(completed.reasoning(), "reasoning").isEqualTo("medium");
+			requireThat(completed.reasoning(), "reasoning").isEqualTo("low");
 			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(62_269, 29_312, 113, 0));
 			requireThat(completed.windows(), "windows").isEqualTo(WINDOWS);
 		}
