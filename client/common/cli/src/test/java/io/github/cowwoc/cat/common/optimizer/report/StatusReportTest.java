@@ -1367,6 +1367,23 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that, with no certification attempt, the development report lists only the cells of a weakest-cell
+	 * scope although the trial-profile inventory has more cells.
+	 */
+	@Test
+	public void developmentReportsOnlyScopeCells()
+	{
+		Contract contract = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).readyBaseline().build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		List<String> cells = report.cells().stream().map(CellReport::cell).toList();
+		requireThat(contract.cellIds().size(), "inventorySize").isGreaterThan(2);
+		requireThat(cells, "cells").isEqualTo(List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+	}
+
+	/**
 	 * Verifies that a weakest-only claim counts the scope's cells, names each category's profile and says that no
 	 * other profile was certified, and that a latest-versions claim counts its cells without that statement.
 	 */
