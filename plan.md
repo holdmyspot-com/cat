@@ -136,7 +136,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-39 | `optimize-medium` | One finder's directories and selection rule; an error leaves a killed driver's harness processes running or kills a live campaign's sessions. |
 | WI-40 | `optimize-medium` | One more refused setting and one runner settings change; an error leaves held-out content readable or refuses a project for a setting that cannot expose it. |
 | WI-41 | `optimize-high` | A measurement-condition change with a campaign format bump, a declared version per harness and a test that ties it to the generated session settings; an error repeats certifications needlessly or keeps one current after a change the model sees. |
-| WI-42 | `optimize-xhigh` | A new kind of certification attempt that adopts re-judged outcomes before new trials, evidence retention, and a fuller judge identity; an error spends allowance twice, certifies on outcomes the new judge never labelled, or misses a judge change. |
+| WI-42 | `optimize-high` | A measurement-condition change with a campaign format bump, a declared version per harness and a test that ties it to the judge profile and the rendered evidence; an error keeps a certification current after a judge change or misses one. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -255,7 +255,7 @@ requirement names.
 | WI-39 | Done 2026-10-04 (Claude `optimize-medium`; integrated as `6c313619d`; full build 2009 tests, 0 failures; 7 tests at or over 1 s, up to 2.6 s, a different set from WI-37's build, measured at load average 13 on 16 cores while P15 ran; rechecked idle before WI-15). Found while integrating WI-37: reconciliation looked for leftover runs in `<campaign>/runs`, where no run is written. `SessionPort.runRoots()` declares the run root and the held-out run root; `LeftoverRuns` searches both and returns the harness process of a run still marked `running` whose recorded owner, the driver process that hosts the runner bridge, has ended, using the runner's own liveness check. A run whose owner is not identified by pid and start time is not left over. |
 | WI-40 | Done 2026-10-04 (Claude `optimize-medium`; integrated as `87a41b99f`; full build 2013 tests, 0 failures, none at or over 1 s at load average 4.7, which also clears the recheck of WI-37's and WI-39's slow tests). Live: the installed Claude `prompt-optimizer start` refused a project `.claude/settings.json` whose `allowRead` named the held-out directory, naming the file and the setting, and passed that check once the setting was removed. The runner probe with a host `allowRead` is not run: it needs a copy of the Claude credentials in a temporary configuration directory, which this session's permissions denied; `ClaudeConnectionSettingsTest.dropsHostAllowReadOnlyWhenReadsAreDenied` covers the settings the runner writes. Found by WI-37's validation (2026-10-04), through the packaged runners with `--deny-read` for a held-out directory and a run root, while a background job replaced the snapshot by rename and added a file mid-session. Codex (gpt-6-luna, low): one command execution printed the project file and `Permission denied` for the replaced snapshot, the added file, the directory listing and the run root. Claude (Haiku 4.5) with no project settings: the Bash tool found neither directory, and the Read tool was denied. With `permissions.defaultMode: bypassPermissions`, or with `allowRead` naming an ancestor of the held-out directory, a `../` path or a `~/` path, nothing was exposed. With project `.claude/settings.json` or `.claude/settings.local.json` `sandbox.filesystem.allowRead` naming the held-out directory, the run root or the snapshot, the Bash tool printed them: the replaced snapshot, the added file and the run root's file, or, for the snapshot entry, its content at session start. A `Read` allow rule did not override the `Read` deny. The runner copies the host user's `sandbox.filesystem` into the isolated settings, so a user `allowRead` reaches the session too. |
 | WI-41 | Not started. User ruling (`design.md` §5, D21, D48, G5, 2026-10-04): a certification is repeated only when the model's behavior or the desired behavior has changed. |
-| WI-42 | Not started. User ruling (`design.md` §5, §6.4, D50, G5, 2026-10-04): a judge change re-judges the certifying attempt instead of making the certification historical. |
+| WI-42 | Not started. User ruling (`design.md` §5, §6.4, D50, G5, 2026-10-04): the judge is identified by a declared judge version, and a new judge version makes a certification historical. |
 | WI-38 | Not started. User ruling (`design.md` §6.3 "Failure behavior" and "Reproduction before tuning", D47, 2026-10-04), after P15 tuned four times against a formal failure that development had not reproduced. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
@@ -386,9 +386,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §5, D49 and G5: certification parameters define the desired behavior; a certification stays current
   after they change only while its claim implies the new one (95% implies 94%, not 96%) (user ruling, 2026-10-04).
   Added to WI-41.
-- `design.md` §5, §6.4, D50 and G5: a judge change no longer makes a certification historical; CAT re-judges the
-  certifying attempt's retained formal evidence as a new attempt at the next index. The judge's identity is its whole
-  frozen profile plus a declared evidence renderer version (user ruling, 2026-10-04). WI-42 added with §1.1, §2 and §6.
+- `design.md` §5, §6.4, D50 and G5: a judge version that CAT declares per harness, and increments whenever a property
+  that can change a verdict changes, identifies the judge; a new judge version makes a certification historical (user
+  ruling, 2026-10-04). WI-42 added with §1.1, §2 and §6.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -494,7 +494,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
 | R-M1 | Measurement identity is recorded for every trial and result. | §5 | WI-3, WI-8 | U: `MeasurementIdentityTest` |
-| R-M2 | Each listed material change makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not; a parameter change makes it historical only when its claim does not imply the new one; a judge change starts a re-judging attempt instead. | §5 | WI-3, WI-41, WI-42 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
+| R-M2 | Each listed material change makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not; a parameter change makes it historical only when its claim does not imply the new one; a new judge version makes it historical. | §5 | WI-3, WI-41, WI-42 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality, campaign-wide and per cell; a condition only one side records gives `INDETERMINATE` and an unavailable comparison; a condition neither records is unobserved, does not prevent comparison and is a limitation; each differing or missing condition is named in words. | §5 | WI-3 | U: `ComparabilityTest`, `DecisionTableTest`, `KeepImprovementTest`, `OptimizationEvidenceTest`, `StatusReportTest` |
 | R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
@@ -1161,22 +1161,20 @@ The riskiest pure code, built first.
   the session port's run roots, not a campaign directory.
 - **Exit:** unit tests pass; the full build passes.
 
-### WI-42 — Re-judging after a judge change (user ruling, 2026-10-04)
+### WI-42 — Judge version (user ruling, 2026-10-04)
 
-- **Identity:** the judge identity holds the whole frozen profile (role model and effort, prompt, rubric, decision
-  rule, result schema) and a declared evidence renderer version, guarded like WI-41's session environment version by a
-  registry test of the rendered section for fixed harness events. A change to any part is a judge change.
-- **Retention:** each formal trial keeps its rendered evidence section and project effects, compressed, in the
-  campaign's held-out directory.
-- **Re-judging:** after a judge change, a current certification stays current while CAT runs a new certification
-  attempt at the next index. The attempt first adopts the old attempt's adopted formal trials, re-judged by the new
-  judge, in their original assignment order, then continues with new formal trials if they do not decide. It ends as
-  any attempt does; ending not certified, or missing retained evidence, makes the old certification historical.
+- **Change:** the judge measurement condition becomes a judge version, a constant per harness reached through the
+  session port, in place of the judge model. CAT increments it in every release that changes the judge's role profile
+  (model and effort), prompt, rubric, decision rule, result schema, or the evidence section rendered for the same harness
+  events. A new judge version makes a certification historical. The campaign format increases and every older format
+  is refused.
+- **Guard:** each harness module keeps a registry file of its judge versions, each with the hash of the judge profile
+  and of the evidence section rendered for fixed harness events. A test fails when the current hash is not registered
+  under the current version, or when one version has two hashes, so a judge change needs a new version.
 - **Closes:** R-M2 with WI-3 and WI-41.
-- **Tests:** `ApplicabilityTest`: a judge change alone does not make a certification historical, and missing evidence
-  does; `DriverTest`: a re-judging attempt takes the next index, adopts re-judged outcomes in assignment order before
-  any new trial, and continues with new trials when they do not decide; the store keeps and reads the compressed
-  evidence; the renderer registry test; each judge profile field changes the identity.
+- **Tests:** `ApplicabilityTest`: a new judge version makes a certification historical, and an unchanged one keeps it
+  current; the registry test in each harness module; a change to each profile field or to the rendered section changes
+  the hash.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-41 — Session environment version (user ruling, 2026-10-04)
