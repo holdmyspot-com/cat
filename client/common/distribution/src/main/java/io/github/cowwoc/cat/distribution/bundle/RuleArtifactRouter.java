@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
@@ -25,6 +26,7 @@ public final class RuleArtifactRouter
 	private static final int MAXIMUM_RULE_INPUT_BYTES = 1_048_576;
 	private static final String ROUTE_INDEX = ".cat-path-scoped-rules.md";
 	private static final String LAZY_DEPENDENCY_INDEX = ".cat-lazy-rule-dependencies.md";
+	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
 	/**
 	 * Prevents instantiation.
@@ -167,6 +169,14 @@ public final class RuleArtifactRouter
 		}
 		if (frontmatter == null || !frontmatter.isObject())
 			throw new IOException("Packaged rule has invalid YAML frontmatter: " + path);
+		for (Map.Entry<String, JsonNode> property : frontmatter.properties())
+		{
+			if (!FRONTMATTER_KEYS.contains(property.getKey()))
+			{
+				throw new IOException("Unknown frontmatter key " + property.getKey() + " in packaged rule " + path +
+					"; rule frontmatter supports agents, depends-on and paths");
+			}
+		}
 		List<String> dependencies = strings(frontmatter.get("depends-on"), path, "depends-on");
 		JsonNode paths = frontmatter.get("paths");
 		if (paths == null)

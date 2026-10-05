@@ -408,6 +408,29 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies the loader rejects a frontmatter key that rules do not define, such as a misspelled dependency key,
+	 * instead of ignoring the guidance it declares.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*Unknown frontmatter key depends_on.*supports agents, depends-on and paths.*")
+	public void rejectsUnknownFrontmatterKey() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/direct.md", "Direct guidance\n");
+			write(plugin, "rules/common/dependent.md", "---\ndepends_on: [\"./direct.md\"]\n---\n" +
+				"Dependent guidance\n");
+
+			try (ToolScope scope = new ToolScope())
+			{
+				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+			}
+		}
+	}
+
+	/**
 	 * Verifies the loader rejects a circular dependency before it renders any rule context.
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*Cyclic rule dependency.*")

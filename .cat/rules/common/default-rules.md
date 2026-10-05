@@ -33,8 +33,9 @@ When a CAT workflow creates, retains, hands off, or cleans up uncommitted state 
 
 When defining or changing a skill's frontmatter `description`, lazy load `skill-routing.md`.
 
-When defining, parsing, reading, or processing JSON or YAML that this project owns, or independently handleable
-unbounded record or binary input, lazy load `../include/data.md`.
+When defining, parsing, reading, or processing JSON or YAML that this project owns, naming a regression scenario or
+its assertions, or handling independently handleable unbounded record or binary input, lazy load
+`../include/data.md`.
 
 When writing, parsing, or displaying a date or time, including in a name or identifier, lazy load
 `../include/dates-and-times.md`.

@@ -46,6 +46,7 @@ public final class ProjectRuleLoader
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
 	private static final String RULES_DIRECTORY = ".cat/rules";
+	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
 	private final YAMLMapper yamlMapper;
 
@@ -746,6 +747,14 @@ public final class ProjectRuleLoader
 			JsonNode result = yamlMapper.readTree(content.substring(frontmatterStart, end));
 			if (result == null || !result.isObject())
 				throw new IOException("Invalid frontmatter: " + path);
+			for (Map.Entry<String, JsonNode> property : result.properties())
+			{
+				if (!FRONTMATTER_KEYS.contains(property.getKey()))
+				{
+					throw new IOException("Unknown frontmatter key " + property.getKey() + " in " + path +
+						"; rule frontmatter supports agents, depends-on and paths");
+				}
+			}
 			return new Frontmatter(result, content.substring(end + delimiter.length()));
 		}
 		catch (IllegalArgumentException e)

@@ -13,15 +13,18 @@ fields unless the current contract explicitly defines an extension field. Do not
 boundary when a focused domain value can represent the contract.
 
 Spell every key and every symbolic value in project-owned JSON and JSONL in snake_case, such as
-`{"format_version": 1, "delivery_result": "no_change", "requirement_id": "exact_motto_closing"}`. Symbolic values
-include fixed vocabulary, such as types, statuses, and results, enum constants written in lower case, and identifiers
-that CAT, its users, or its models name, such as requirement, behavior, trial-label, scenario, and category
-identifiers. Name a file or directory that carries such an identifier with the same snake_case spelling. Free text,
-such as messages, paths, and prompts, keeps its content. A value in an established external format, such as a
-timestamp, UUID, hash, version, or model name, keeps that format. A composite identifier, such as the trial cell
-`direct_factual_answers@gpt-6-luna/low` or a campaign identifier made of a timestamp and a random suffix, spells each
-CAT-named part in snake_case and keeps its delimiters. JSON whose format another tool owns, such as a harness settings
-file or protocol message, keeps that owner's spelling.
+`{"format_version": 1, "delivery_result": "no_change", "requirement_id": "exact_motto_closing"}`. Spell every key and
+every symbolic value in project-owned YAML, including Markdown frontmatter, in lower case with hyphens, such as
+`depends-on:`. Symbolic values include fixed vocabulary, such as types, statuses, and results, enum constants written
+in lower case, and identifiers that CAT, its users, or its models name, such as requirement, behavior, trial-label,
+scenario, and category identifiers. Name a file or directory that carries such an identifier with the same
+snake_case spelling. A regression scenario's case name, which is its file or directory name, and each assertion
+identifier under its `## Assertions` heading are such identifiers. Free text, such as messages, paths, and prompts,
+keeps its content. A value in an established external format, such as a timestamp, UUID, hash, version, or model
+name, keeps that format. A composite identifier, such as the trial cell `direct_factual_answers@gpt-6-luna/low` or a
+campaign identifier made of a timestamp and a random suffix, spells each CAT-named part in snake_case and keeps its
+delimiters. JSON or YAML whose format another tool owns, such as a harness settings file, a protocol message, or a
+harness's skill or agent frontmatter, keeps that owner's spelling.
 
 When input can grow independently of the current operation and its records can be handled independently, keep working
 memory bounded: read one record or a bounded chunk, process it, and discard it before reading the next. Use a buffered

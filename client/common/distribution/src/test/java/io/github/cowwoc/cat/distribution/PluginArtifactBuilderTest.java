@@ -338,6 +338,30 @@ public final class PluginArtifactBuilderTest
 	}
 
 	/**
+	 * Verifies that routing rejects a packaged rule whose frontmatter declares a key that rules do not define.
+	 *
+	 * @throws IOException for the expected rejection
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*Unknown frontmatter key depends_on.*supports agents, depends-on and paths.*")
+	public void rejectsUnknownRuleFrontmatterKey() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
+			Path common = Files.createDirectories(artifact.resolve("rules/common"));
+			Path include = Files.createDirectories(artifact.resolve("rules/include/java"));
+			Files.writeString(common.resolve("default-rules.md"), "Default rules\n");
+			Files.writeString(include.resolve("javadoc.md"), "---\ndepends_on: [\"../documentation/general.md\"]\n" +
+				"---\nJavadoc rules\n");
+			Files.createDirectories(artifact.resolve("rules/include/documentation"));
+			Files.writeString(artifact.resolve("rules/include/documentation/general.md"), "Documentation rules\n");
+
+			RuleArtifactRouter.route(artifact, scope.yaml());
+		}
+	}
+
+	/**
 	 * Builds an artifact using the smallest complete set of fixture inputs.
 	 *
 	 * @param temporary the fixture directory

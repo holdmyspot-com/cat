@@ -115,7 +115,7 @@ public final class RoleBriefTest
 			Path companion = artifact.resolve("rules/include/common/companion.md").toAbsolutePath().normalize();
 			requireThat(delivered, "brief").contains(companion.toString()).
 				doesNotContain("${CAT_PLUGIN_ROOT}").doesNotContain("<!-- cat:plugin-root -->").
-				doesNotContain("<!-- cat:include").doesNotContain("name: fixture").doesNotContain("\n{{rules}}\n");
+				doesNotContain("<!-- cat:include").doesNotContain("depends-on:").doesNotContain("\n{{rules}}\n");
 		}
 	}
 

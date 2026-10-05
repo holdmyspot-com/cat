@@ -41,7 +41,7 @@ public final class RoleRuleFixtures
 		{
 			Files.writeString(rules.resolve(rule + ".md"), """
 				---
-				name: fixture
+				depends-on: []
 				---
 				# %s
 

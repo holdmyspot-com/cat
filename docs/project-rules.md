@@ -39,8 +39,9 @@ not force the other harness to understand its integration details.
 
 ### 2. Create the rule
 
-Create a Markdown file in the location you selected. Files without frontmatter are injected as direct guidance. For
-example, place a rule that applies to both harnesses in `.cat/rules/common/reviews.md`:
+Create a Markdown file in the location you selected. Files without frontmatter are injected as direct guidance. Rule
+frontmatter accepts only the `agents`, `depends-on` and `paths` keys; CAT refuses to load a rule with any other key.
+For example, place a rule that applies to both harnesses in `.cat/rules/common/reviews.md`:
 
 ```markdown
 # Reviews
