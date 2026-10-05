@@ -165,6 +165,10 @@ public final class CodexProcess implements HarnessProcess
 	 * were collected.
 	 * Messages from child threads are excluded. A turn that ends because the caller interrupted it through
 	 * {@link #interrupt()} is a completed turn.
+	 * <p>
+	 * On the first turn, the listener first receives the lines Codex printed during start-up, such as the
+	 * {@code thread/started} notification, in arrival order; later turns do not receive them again. The listener then
+	 * receives each line of this turn. The result's event stream holds the same lines.
 	 *
 	 * @param request the non-blank user prompt
 	 * @param listener receives each harness event line
@@ -177,6 +181,7 @@ public final class CodexProcess implements HarnessProcess
 		requireThat(request, "request").isNotBlank();
 		requireThat(listener, "listener").isNotNull();
 		long turnRequestId;
+		String startup;
 		StringBuilder events;
 		synchronized (input)
 		{
@@ -189,12 +194,16 @@ public final class CodexProcess implements HarnessProcess
 			turnActive = true;
 			turnId = null;
 			interruptRequested = false;
-			events = new StringBuilder(startupEvents);
+			startup = startupEvents.toString();
+			events = new StringBuilder(startup);
 			startupEvents.setLength(0);
 		}
 		// The turn reads output without holding the input lock, so interrupt() can write a request while it waits.
 		try
 		{
+			// Lines Codex printed before this turn, such as thread/started, reach the listener ahead of the turn's own lines
+			for (String startupLine : startup.lines().toList())
+				listener.accept(startupLine);
 			List<String> assistantMessages = new ArrayList<>();
 			String line = output.readLine();
 			while (line != null)

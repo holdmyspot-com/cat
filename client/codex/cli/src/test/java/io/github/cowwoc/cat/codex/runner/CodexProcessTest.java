@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -17,9 +18,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
+import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -161,6 +164,54 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that notifications Codex prints during start-up, such as {@code thread/started}, reach the first
+	 * turn's listener ahead of that turn's own lines, that the first turn's archived events are those same lines,
+	 * and that a later turn's listener does not receive the start-up notifications again.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void deliversStartupEventsToFirstTurn() throws IOException
+	{
+		List<Long> turnRequests = new CopyOnWriteArrayList<>();
+		LongFunction<List<String>> turnLines = id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "done"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed"));
+		AppServer server = new AppServer(id ->
+		{
+			turnRequests.add(id);
+			return turnLines.apply(id);
+		}, NO_ANSWER).notifyingThreadStarted();
+		try (CodexProcess process = server.start("gpt-5.5", ""))
+		{
+			List<String> firstEvents = new ArrayList<>();
+			HarnessProcessResult first = process.sendTurn("First task.", firstEvents::add);
+			List<String> secondEvents = new ArrayList<>();
+			HarnessProcessResult second = process.sendTurn("Second task.", secondEvents::add);
+
+			List<String> expectedFirst = new ArrayList<>();
+			expectedFirst.add(threadStarted("gpt-5.5"));
+			expectedFirst.addAll(lines(turnLines.apply(turnRequests.get(0))));
+			List<String> expectedSecond = lines(turnLines.apply(turnRequests.get(1)));
+			requireThat(firstEvents, "firstEvents").isEqualTo(expectedFirst);
+			requireThat(first.standardOutput(), "first.standardOutput()").isEqualTo(String.join("\n", expectedFirst) + "\n");
+			requireThat(secondEvents, "secondEvents").isEqualTo(expectedSecond);
+			requireThat(second.standardOutput(), "second.standardOutput()").
+				isEqualTo(String.join("\n", expectedSecond) + "\n");
+		}
+	}
+
+	/**
+	 * Splits printed output into the lines a reader receives.
+	 *
+	 * @param output output chunks, each holding one or more newline-separated lines
+	 * @return the lines in order
+	 */
+	private static List<String> lines(List<String> output)
+	{
+		return output.stream().flatMap(chunk -> Stream.of(chunk.split("\n"))).toList();
+	}
+
+	/**
 	 * Verifies an interrupt during a turn targets the active root turn. Given the supplied {@code interrupted}
 	 * completion notification, the adapter classifies the caller-interrupted turn as successful and retains its
 	 * progress message.
@@ -295,6 +346,19 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Returns the notification that Codex started the root thread. Its fields follow the {@code thread/started}
+	 * notification recorded in {@code optimizer/codex-children.jsonl} (codex-cli 0.159.1).
+	 *
+	 * @param model the model the thread runs
+	 * @return the notification line
+	 */
+	private static String threadStarted(String model)
+	{
+		return "{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"" + ROOT_THREAD + "\"," +
+			"\"parentThreadId\":null,\"modelProvider\":\"openai\",\"model\":\"" + model + "\"}}}";
+	}
+
+	/**
 	 * Returns Codex's empty answer to a request.
 	 *
 	 * @param requestId the request's identifier
@@ -353,6 +417,7 @@ public final class CodexProcessTest
 		private final CountDownLatch turnRequested = new CountDownLatch(1);
 		private volatile long turnRequestId;
 		private volatile boolean closesOutputAfterTurnStart;
+		private volatile boolean notifiesThreadStarted;
 
 		/**
 		 * Creates an app-server that has not started.
@@ -376,6 +441,18 @@ public final class CodexProcessTest
 		private AppServer closingOutputAfterTurnStart()
 		{
 			closesOutputAfterTurnStart = true;
+			return this;
+		}
+
+		/**
+		 * Makes the app-server print a {@code thread/started} notification naming the requested model before it
+		 * answers {@code thread/start}.
+		 *
+		 * @return this app-server
+		 */
+		private AppServer notifyingThreadStarted()
+		{
+			notifiesThreadStarted = true;
 			return this;
 		}
 
@@ -458,8 +535,12 @@ public final class CodexProcessTest
 			{
 				case "initialize" -> process.emit("{\"id\":" + id + ",\"result\":{\"userAgent\":\"codex/0.147.0\"," +
 					"\"codexHome\":\"/codex-home\",\"platformFamily\":\"unix\",\"platformOs\":\"linux\"}}");
-				case "thread/start" -> process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" +
-					ROOT_THREAD + "\"}}}");
+				case "thread/start" ->
+				{
+					if (notifiesThreadStarted)
+						process.emit(threadStarted(request.path("params").path("model").asString("")));
+					process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" + ROOT_THREAD + "\"}}}");
+				}
 				case "turn/start" ->
 				{
 					turnRequestId = id;
