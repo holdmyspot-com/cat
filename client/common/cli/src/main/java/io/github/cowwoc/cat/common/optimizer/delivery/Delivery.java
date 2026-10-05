@@ -65,9 +65,8 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>It checks that the optimization worktree holds only content that CAT recorded, and materializes the selected
  *   candidate there if it is not the working candidate.</li>
  *   <li>It plans the delivery against a fresh scan of the base worktree and the read-only external participants that
- *   the fork recorded, and stops before
- *   writing anything if the plan has conflicts. A certified delivery's plan also creates or replaces the target's
- *   certification record, after the candidate's changes.</li>
+ *   the fork recorded, and stops before writing anything if the plan has conflicts. A certified delivery's plan also
+ *   creates or replaces the target's certification record, after the candidate's changes.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
@@ -140,9 +139,9 @@ public final class Delivery
 	 * @return the result
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
-	 *   an external file, if the request names a
-	 *   different candidate than {@code selected}, if {@code selected} and {@code working} have different forks, or if
-	 *   {@code record} is absent from a certified request or present in another
+	 *   an external file, if the request names a different candidate than {@code selected}, if {@code selected} and
+	 *   {@code working} have different forks, or if {@code record} is absent from a certified request or present in
+	 *   another
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, or if Git fails
 	 */
