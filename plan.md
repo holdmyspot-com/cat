@@ -138,6 +138,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-41 | `optimize-high` | A measurement-condition change with a campaign format bump, a declared version per harness and a test that ties it to the generated session settings; an error repeats certifications needlessly or keeps one current after a change the model sees. |
 | WI-42 | `optimize-high` | A measurement-condition change with a campaign format bump, a declared version per harness and a test that ties it to the judge profile and the rendered evidence; an error keeps a certification current after a judge change or misses one. |
 | WI-43 | `optimize-high` | Deletion of campaign files at two endings, a new project file written by delivery, and status for a target without a campaign; an error deletes a campaign that can still resume or deliver, or reports a stale certification as current. |
+| WI-44 | `optimize-medium` | Two report loops that iterate the scope's cells; an error undercounts the remaining readiness work or omits a development cell from the per-cell report. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -258,7 +259,8 @@ requirement names.
 | WI-41 | In progress 2026-10-04 (Claude `optimize-high`, with WI-42). User ruling (`design.md` §5, D21, D48, G5, 2026-10-04): a certification is repeated only when the model's behavior or the desired behavior has changed. |
 | WI-42 | In progress 2026-10-04 (Claude `optimize-high`, after WI-41 in the same session). User ruling (`design.md` §5, §6.4, D50, G5, 2026-10-04): the judge is identified by a declared judge version, and a new judge version makes a certification historical. |
 | WI-43 | Not started. User rulings (`design.md` §4.1, §4.7, §5, D51, G1, G5, 2026-10-04): a certified campaign removes its files from `.cat/work/` after delivery or a kept incumbent, and delivery writes a certification record into the project. |
-| WI-38 | In progress 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18) and `560cabcde` (R-C19 with the lower-effort stress setting); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. Remaining: Codex's lower tool-output limit as a stress setting, the only one for a cell already at its model's lowest effort. |
+| WI-44 | Not started. Found by WI-38: `RemainingWork.development` and `CellReports` iterate only the certification scope's cells, so a development cell outside the scope, such as a failure cell under a weakest-only scope or a tool-output stress cell, is missing from the development minimum and the per-cell report, although the readiness gate covers it. |
+| WI-38 | Done 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18), `560cabcde` (R-C19 with the lower-effort stress setting) and `8e71d2abb` (Codex's 5000-token tool-output limit as the next stress setting, a derived development cell `<cell>/tool-output-5000` that persists, and the limit recorded in the observed identity; full build 2048 tests, 0 failures, none at or over 1 s); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. The 5000-token limit is the value P15 reproduced its failure under. The runner bridge's path to Codex has unit tests only. The reports' gap for development cells outside the scope is WI-44. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
 | Launcher help (WI-15 E8 finding) | Done 2026-10-02. Both E8 agents ran `prompt-optimizer --help` or `start --help` to find the ceiling option; the launcher answered "Unknown command" or took `--help` as the target, and the skill stopped. `help` alone, or `--help` or `-h` anywhere, now prints the usage as `{"status":"help"}` with exit 0 before the core is called (`CommandsTest.printsUsageOnRequest`). |
@@ -395,6 +397,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
   candidate is delivered or the user keeps the incumbent, and delivery writes a certification record of a few kilobytes
   into the project, from which `status` reports applicability (user rulings, 2026-10-04). WI-43 added with §1.1, §2 and
   §6.
+- `design.md` §6.3: reproduction trials are targeted and stay out of representative development counts, as WI-38
+  implemented. WI-44 added for the reports' gap that WI-38 found.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -468,7 +472,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver. | §3.7 | WI-9 | U: `SliceTest` |
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of runs that an earlier driver left running, under the run root and the held-out run root, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverRunsTest` |
-| R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases; token statistics; no totals or time estimates. | §3.9 | WI-12 | U: `RemainingWorkTest` |
+| R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases, the development minimum summing over every development cell, inside the certification scope or not; token statistics; no totals or time estimates. | §3.9 | WI-12, WI-44 | U: `RemainingWorkTest` |
 | R-E19 | Development cells: representative development trials and author rounds only in a category's development cells (its weakest cell, plus every cell where a certification attempt of the lineage adopted a failure); the coverage floor among them. | §3.3, §6.6, D27 | WI-32 | U: `SchedulerTest` (only development cells sampled, the floor among them, a formal failure adding a cell), `DriverTest` trace 19 |
 | R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
 | R-E13 | Every nested role runs through the runners. Judge and deriver output is schema-validated, and invalid output is an infrastructure failure. The host agent never authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, author and deriver sessions per harness |
@@ -1185,6 +1189,18 @@ The riskiest pure code, built first.
   the hash.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-44 — Reports cover every development cell (2026-10-04)
+
+- **Defect:** `RemainingWork.development` and `CellReports` iterate the certification scope's cells, but the readiness
+  gate covers every development cell. A development cell outside the scope, such as a failure cell under a weakest-only
+  scope or a tool-output stress cell, is missing from the development minimum and from the per-cell report.
+- **Fix:** both iterate `CellTier.developmentCells` together with the scope's cells, each once, in the existing order
+  with the extra development cells after their base cells.
+- **Closes:** R-E12 with WI-12.
+- **Tests:** `RemainingWorkTest`: a development cell outside the scope adds its readiness minimum; `StatusReportTest`
+  or the cell report test: that cell appears once; a scope cell that is also a development cell is not counted twice.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-43 — Cleanup and certification record (user rulings, 2026-10-04)
 
 - **Record:** when the delivered candidate is certified, the delivery change set writes the certification record to
@@ -1466,7 +1482,8 @@ blocks only the part of a work item that it names.
 | WI-41 | WI-38 |
 | WI-42 | WI-41 |
 | WI-43 | WI-42 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42 and WI-43. |
+| WI-44 | WI-38 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43 and WI-44. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
