@@ -23,7 +23,11 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
 - In a try-with-resources header, put each resource declaration on its own line.
 - For every optional-brace control-flow branch (`if`, `else`, `for`, `while`, and `catch`), use braces if either its
   condition or controlled body spans more than one visual line. Remove braces when both each occupy one visual line.
-- Use camelCase names. Public, package-private, and private method names are at most 40 characters.
+- Use camelCase for method names, Java variables (local variables, parameters, and instance fields), and keys and
+  symbolic values that stay inside Java, such as map keys and string identifiers that no external format defines.
+  Static final constants and enum constants keep UPPER_SNAKE_CASE. When a key or symbolic value crosses into
+  project-owned JSON, spell it in snake_case at that boundary; for example, the `deliveryResult` field is written as
+  the `delivery_result` key. Public, package-private, and private method names are at most 40 characters.
 - Apply the language-neutral callable-unit naming contract in the common documentation convention. For a lookup or
   selection, name the action (`find`, `resolve`, or `select`) and document its search scope, matching or selection rule,
   and no-match or ambiguous-match outcome.

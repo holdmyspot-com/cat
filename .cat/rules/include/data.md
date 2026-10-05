@@ -12,6 +12,11 @@ reject malformed required fields with a typed error, and model only fields in th
 fields unless the current contract explicitly defines an extension field. Do not expose Jackson nodes beyond the parsing
 boundary when a focused domain value can represent the contract.
 
+Spell every key and every symbolic value in project-owned JSON and JSONL in snake_case, such as
+`{"format_version": 1, "delivery_result": "no_change"}`. Free text, such as messages, paths, and prompts, keeps its
+content. JSON whose format another tool owns, such as a harness settings file or protocol message, keeps that owner's
+spelling.
+
 When input can grow independently of the current operation and its records can be handled independently, keep working
 memory bounded: read one record or a bounded chunk, process it, and discard it before reading the next. Use a buffered
 reader or streaming parser for JSONL, rollback journals, logs, line-oriented exports, and similarly unbounded record
