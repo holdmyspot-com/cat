@@ -641,7 +641,9 @@ then repeats (H33).
 A trial needs a judge session only for its semantic requirements. When every requirement it checks is deterministic,
 or a deterministic check has already failed, CAT records the outcome without starting a judge ([§6.4](#64-judge)).
 
-A judge or deriver output that does not match its schema is an infrastructure failure. A triage output that does not
+A judge or deriver output that does not match its schema is an infrastructure failure. A deriver, judge, triage or author
+session that reaches its time limit is stopped and is an infrastructure failure whose message names the session and
+the limit; only a trial's time limit is behaviour ([§3.2](#32-logical-trials)). A triage output that does not
 match its schema reruns the triage, and a third failure makes the failure blocking
 ([§2.7](#27-development-readiness-and-edit-or-continue)). The output is the final response when that response is
 exactly one JSON object, either bare or alone inside one Markdown code fence; any other response is invalid (Claude
