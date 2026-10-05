@@ -686,6 +686,8 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   infrastructure attempt. The same logical trial runs again with the same instance. After 3 infrastructure failures
   of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections do not
   count toward that limit; they follow the backoff in [§3.5](#35-volume-safeguards).
+- A turn that completes after the harness reconnected to the provider has a compliance outcome and is judged like
+  any other turn.
 - A trial agent may use the harness's own subagents, recursive delegation and child Git worktrees. All of it belongs to
   one logical trial and yields one judged outcome. Child disposition and merges are reconciled before judging. If they
   cannot be determined, the trial records an observation limit and receives no invented label. Codex trials cannot
