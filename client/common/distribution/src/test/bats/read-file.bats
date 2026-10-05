@@ -80,6 +80,97 @@ next_command()
 	printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
+# Follows the commands that read-file prints, starting from a read of the whole file, and checks that every part is
+# well formed and that the parts deliver every line exactly once, in order.
+#
+# Arguments:
+#   $1 - Path of a file at least three parts long.
+assert_commands_deliver_every_line_once()
+{
+	delivered="${TEST_ROOT}/delivered"
+	: > "${delivered}"
+	command="$(printf '%q %q' "${READ_FILE}" "$1")"
+	parts=0
+	while [ -n "${command}" ]; do
+		part="$(eval "${command}")"
+		parts=$((parts + 1))
+		[ "${parts}" -le 20 ]
+		command="$(next_command "${part}" "$1")"
+		printf '%s\n' "${part%$'\n'*}" >> "${delivered}"
+	done
+
+	[ "${parts}" -ge 3 ]
+	diff "${delivered}" <(numbered "$1")
+}
+
+# Runs one fixed sequence of read-file calls that covers explicit first lines, the end of a file, a first line past
+# the end, usage errors, and the continuation of repeated reads within one Codex thread.
+#
+# Arguments:
+#   $1 - The read-file script to run.
+#   $2 - Path of a file several parts long.
+#   $3 - Path of a file smaller than one part.
+#   $4 - New directory that holds the script's per-thread state.
+#
+# Output:
+#   The standard output, standard error and exit status of every call, in order.
+transcript()
+{
+	mkdir "$4"
+	(
+		export TMPDIR="$4"
+		unset CODEX_THREAD_ID
+		"$1" "$3" 2>&1; echo "status $?"
+		"$1" "$2" 2>&1; echo "status $?"
+		"$1" "$2" 400 2>&1; echo "status $?"
+		"$1" "$3" 9 2>&1; echo "status $?"
+		"$1" 2>&1; echo "status $?"
+		"$1" "$3" 0 2>&1; echo "status $?"
+		"$1" "$3.missing" 2>&1; echo "status $?"
+		export CODEX_THREAD_ID=thread-under-test
+		for _ in $(seq 1 15); do
+			"$1" "$2" 2>&1; echo "status $?"
+		done
+		"$1" "$2" 1 2>&1; echo "status $?"
+		"$1" "$2" 2>&1; echo "status $?"
+	)
+}
+
+# Creates a directory of the commands read-file needs in which, as on macOS, stat accepts only BSD options and the
+# only SHA-256 command is shasum.
+#
+# Output:
+#   The directory, for use as PATH.
+bsd_tool_directory()
+{
+	tools="${TEST_ROOT}/bsd-tools"
+	mkdir "${tools}"
+	for tool in bash awk readlink mkdir cut seq; do
+		ln -s "$(command -v "${tool}")" "${tools}/${tool}"
+	done
+	gnu_stat="$(command -v stat)"
+	gnu_sha256sum="$(command -v sha256sum)"
+	cat > "${tools}/stat" <<-EOF
+	#!${BASH}
+	# Accepts only BSD stat's -f option with the %m and %z fields.
+	if [ "\$1" != -f ]; then
+		echo "stat: illegal option -- \${1#-}" >&2
+		exit 1
+	fi
+	format="\${2//%m/%Y}"
+	shift 2
+	exec "${gnu_stat}" -c "\${format//%z/%s}" "\$@"
+	EOF
+	cat > "${tools}/shasum" <<-EOF
+	#!${BASH}
+	# Accepts only "-a 256" and reads standard input, as read-file calls it.
+	[ "\$*" = "-a 256" ] || exit 1
+	exec "${gnu_sha256sum}"
+	EOF
+	chmod 755 "${tools}/stat" "${tools}/shasum"
+	printf '%s\n' "${tools}"
+}
+
 @test "packaged Codex read-file prints a file smaller than one part with numbered lines and its end marker" {
 	file="${TEST_ROOT}/small.txt"
 	printf 'first\n\tindented\nlast\n' > "${file}"
@@ -91,23 +182,58 @@ next_command()
 }
 
 @test "following each part's command delivers every line of a large file exactly once in parts of at most 18,000 bytes" {
+	file="${TEST_ROOT}/large notes.txt"
+	write_large_file "${file}"
+
+	assert_commands_deliver_every_line_once "${file}"
+}
+
+@test "following each part's command delivers every line once for a path with a backslash and quotes" {
+	file="${TEST_ROOT}/it's a \\back\"slash\".txt"
+	write_large_file "${file}"
+
+	assert_commands_deliver_every_line_once "${file}"
+}
+
+@test "parts of a non-ASCII file hold at most 18,000 bytes in a UTF-8 locale" {
+	file="${TEST_ROOT}/non-ascii.txt"
+	awk 'BEGIN { for (i = 1; i <= 2000; ++i) { printf "ligne %d :", i; for (j = 0; j < i % 17; ++j) printf " été→✓"
+		printf "\n" } }' > "${file}"
+	export LC_ALL=C.UTF-8
+
+	assert_commands_deliver_every_line_once "${file}"
+}
+
+@test "for a plain path the packaged read-file prints exactly what the certified script printed" {
 	file="${TEST_ROOT}/large.txt"
 	write_large_file "${file}"
-	delivered="${TEST_ROOT}/delivered"
-	: > "${delivered}"
+	small="${TEST_ROOT}/small.txt"
+	printf 'first\nsecond\n' > "${small}"
+	mkdir "${TEST_ROOT}/bin"
+	script="${TEST_ROOT}/bin/read-file"
 
-	command="$(printf '%q %q' "${READ_FILE}" "${file}")"
-	parts=0
-	while [ -n "${command}" ]; do
-		part="$(eval "${command}")"
-		parts=$((parts + 1))
-		[ "${parts}" -le 20 ]
-		command="$(next_command "${part}" "${file}")"
-		printf '%s\n' "${part%$'\n'*}" >> "${delivered}"
-	done
+	install -m 755 "${BATS_TEST_DIRNAME}/fixtures/read-file-certified" "${script}"
+	certified="$(transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/certified-state")"
+	install -m 755 "${READ_FILE}" "${script}"
+	packaged="$(transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/packaged-state")"
 
-	[ "${parts}" -ge 3 ]
-	diff "${delivered}" <(numbered "${file}")
+	[ "$(grep -c 'continues: run' <<< "${certified}")" -ge 6 ]
+	[[ "${certified}" == *"[you already have all of ${file}; to read it again, run ${script} ${file} 1]"* ]]
+	diff <(printf '%s\n' "${certified}") <(printf '%s\n' "${packaged}")
+}
+
+@test "with BSD stat and shasum instead of the GNU tools read-file prints the same output" {
+	file="${TEST_ROOT}/large.txt"
+	write_large_file "${file}"
+	small="${TEST_ROOT}/small.txt"
+	printf 'first\nsecond\n' > "${small}"
+	gnu="$(transcript "${READ_FILE}" "${file}" "${small}" "${TEST_ROOT}/gnu-state")"
+	bsd_tools="$(bsd_tool_directory)"
+
+	bsd="$(PATH="${bsd_tools}" transcript "${READ_FILE}" "${file}" "${small}" "${TEST_ROOT}/bsd-state")"
+
+	[ -n "$(find "${TEST_ROOT}/bsd-state" -type f)" ]
+	diff <(printf '%s\n' "${gnu}") <(printf '%s\n' "${bsd}")
 }
 
 @test "within one Codex thread a repeated read continues at the next unread part and then reports that all was read" {

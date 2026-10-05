@@ -18,12 +18,22 @@ if [[ ! -f $path || ! -r $path ]]; then
 	exit 1
 fi
 command=$(printf '%q %q' "$(readlink -f "$0")" "$path")
-version=$(stat -c '%Y %s' -- "$path")
+# GNU stat and sha256sum, or the BSD stat and shasum that macOS provides
+if stat -c '%Y %s' -- "$path" > /dev/null 2>&1; then
+	version=$(stat -c '%Y %s' -- "$path")
+else
+	version=$(stat -f '%m %z' -- "$path")
+fi
+if command -v sha256sum > /dev/null; then
+	hash=(sha256sum)
+else
+	hash=(shasum -a 256)
+fi
 progress=
 if [[ -n ${CODEX_THREAD_ID:-} ]]; then
 	directory=${TMPDIR:-/tmp}/cat-read-file/$CODEX_THREAD_ID
 	mkdir -p "$directory"
-	progress=$directory/$(readlink -f -- "$path" | sha256sum | cut -c1-64)
+	progress=$directory/$(readlink -f -- "$path" | "${hash[@]}" | cut -c1-64)
 fi
 if [[ -z $from ]]; then
 	from=1
@@ -38,15 +48,17 @@ if [[ -z $from ]]; then
 		fi
 	fi
 fi
-# The last line awk prints is the first line of the next part, or 0 at the end of the file.
-result=$(awk -v from="$from" -v limit=18000 -v path="$path" -v next_command="$command" '
+# The last line awk prints is the first line of the next part, or 0 at the end of the file. The C locale makes the
+# limit count bytes, and ENVIRON passes the path and command without awk's escape processing.
+result=$(read_file_path=$path read_file_command=$command LC_ALL=C awk -v from="$from" -v limit=18000 '
+BEGIN { path = ENVIRON["read_file_path"]; next_command = ENVIRON["read_file_command"] }
 NR < from { next }
 { line = sprintf("%6d\t%s\n", NR, $0)
   if (size + length(line) > limit && NR > from) { printf "[%s continues: run %s %d now, before any other command or your answer]\n%d\n", path, next_command, NR, NR; cut = 1; exit }
   size += length(line); printf "%s", line }
 END { if (cut) exit
   if (NR > 0 && NR < from) printf "[%s has only %d lines]\n", path, NR; else printf "[end of %s]\n", path
-  print 0 }' "$path")
+  print 0 }' < "$path")
 next=${result##*$'\n'}
 printf '%s\n' "${result%$'\n'*}"
 if [[ -n $progress ]]; then echo "$version $next" > "$progress"; fi
