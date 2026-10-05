@@ -50,6 +50,8 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-codex.bats
       - name: Verify workflow-temp launcher boundaries
         run: bats client/common/distribution/src/test/bats/workflow-temp.bats
+      - name: Verify read-file script boundaries
+        run: bats client/common/distribution/src/test/bats/read-file.bats
       - name: Upload native distributions
         uses: actions/upload-artifact@v7
         with:

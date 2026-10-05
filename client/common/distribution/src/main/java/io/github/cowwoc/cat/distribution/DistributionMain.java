@@ -192,7 +192,7 @@ public final class DistributionMain
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
-			new ArtifactLayer("codex-plugin", codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
+			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			legalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
 		try (ToolScope scope = new ToolScope())
 		{
@@ -337,6 +337,18 @@ public final class DistributionMain
 			}
 		}
 		Files.createDirectories(directory);
+	}
+
+	/**
+	 * Returns the layer of the Codex plugin's own resources, including the {@code client/bin/read-file} script that the
+	 * Codex complete-file-reads rule tells agents to run.
+	 *
+	 * @param jar the Codex plugin resource JAR
+	 * @return the layer
+	 */
+	static ArtifactLayer codexPluginLayer(Path jar)
+	{
+		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/bin/read-file"));
 	}
 
 	/**

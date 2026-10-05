@@ -68,6 +68,38 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies Codex agents receive the complete-file-reads rule at startup with its script command naming the
+	 * installed plugin's {@code client/bin/read-file}, while Claude agents, which do not ship that script, do not receive
+	 * the rule.
+	 *
+	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void codexAgentsGetCompleteFileReads() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			copyBundledRules(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			String command = "tools.exec_command({cmd: \"" + plugin.toAbsolutePath().normalize() +
+				"/client/bin/read-file <path>\"})";
+
+			for (String codex : List.of(loader.loadForMainAgent(plugin, project, "codex"),
+				loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
+			{
+				requireThat(codex, "codex").contains("# Complete File Reads").contains(command).
+					doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/client/bin/read-file");
+			}
+			requireThat(loader.loadForMainAgent(plugin, project, "claude"), "claude").
+				doesNotContain("# Complete File Reads");
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 */
 	@Test

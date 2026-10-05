@@ -132,6 +132,7 @@
 								<argument>${project.basedir}/../lifecycle/src/main/resources/install/common.sh</argument>
 								<argument>${project.basedir}/../../claude/lifecycle/src/main/resources/install/uninstall-claude.sh</argument>
 								<argument>${project.basedir}/../../codex/lifecycle/src/main/resources/install/uninstall-codex.sh</argument>
+								<argument>${project.basedir}/../../codex/plugin/src/main/resources/client/bin/read-file</argument>
 							</arguments>
 						</configuration>
 					</execution>
