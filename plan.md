@@ -381,6 +381,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §5, D21 and G5 generalized (user ruling, 2026-10-04): a certification is repeated only when the model's
   behavior or the desired behavior has changed. The runner and CAT versions are recorded for information; a declared
   session environment version is material in their place. WI-41 added with §1.1, §2 and §6.
+- `design.md` §5, D49 and G5: certification parameters define the desired behavior; a certification stays current
+  after they change only while its claim implies the new one (95% implies 94%, not 96%) (user ruling, 2026-10-04).
+  Added to WI-41.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -486,7 +489,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
 | R-M1 | Measurement identity is recorded for every trial and result. | §5 | WI-3, WI-8 | U: `MeasurementIdentityTest` |
-| R-M2 | Each listed material change makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not. | §5 | WI-3, WI-41 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
+| R-M2 | Each listed material change makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not; a parameter change makes it historical only when its claim does not imply the new one. | §5 | WI-3, WI-41 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality, campaign-wide and per cell; a condition only one side records gives `INDETERMINATE` and an unavailable comparison; a condition neither records is unobserved, does not prevent comparison and is a limitation; each differing or missing condition is named in words. | §5 | WI-3 | U: `ComparabilityTest`, `DecisionTableTest`, `KeepImprovementTest`, `OptimizationEvidenceTest`, `StatusReportTest` |
 | R-M5 | A run observed under conditions that differ from its trial's measurement identity yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same instance after a restore. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore lets the attempt continue. | §5, §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` (trace 14) |
@@ -1165,9 +1168,14 @@ The riskiest pure code, built first.
   Claude the isolated `settings.json`, for Codex the configuration and permission profile it writes. A test fails when
   the current settings' hash is not registered under the current version, or when one version has two hashes, so a
   settings change needs a new version.
+- **Parameters:** each certification records its pass-probability threshold and its `α_i`. Applicability compares
+  them with the current values: the certification stays current while its threshold is at least the current one and
+  its `α_i` is at most the current level for its attempt index; otherwise it is historical, and the report names the
+  parameter.
 - **Closes:** R-M2 with WI-3.
 - **Tests:** `ApplicabilityTest`: a runner or CAT version change alone leaves a certification current, and a session
-  environment change makes it historical; `ComparabilityTest`: differing CAT versions do not prevent comparison;
+  environment change makes it historical; a recorded threshold above, equal to and below the current one, and an
+  `α_i` below, equal to and above the current level, each give the implied result; `ComparabilityTest`: differing CAT versions do not prevent comparison;
   `DriverTest`: a CAT version change between trials does not pause; the registry test per harness; the format refusal.
 - **Exit:** unit tests pass; the full build passes.
 
