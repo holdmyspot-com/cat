@@ -1300,7 +1300,7 @@ public final class DriverTest
 				String response = """
 					{"needed_edits":[],"classifications":[{"instance":"%s","classification":"guidance"}],
 					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
-					 "instances":["unknown"],"analogous":"related case","dissimilar":"plain-list"}],"conflicts":[]}
+					 "instances":["unknown"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
 					""".formatted(harness.author().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.model(),
@@ -2436,15 +2436,15 @@ public final class DriverTest
 		List<TriedCombination> tried = new ArrayList<>();
 		for (int i = 1; i <= 4; ++i)
 		{
-			String suffix = "a-" + i;
+			String suffix = "a_" + i;
 			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
-				rule.dimension() + "-" + suffix, rule.dimension() + " " + suffix, 0.25)).toList();
+				rule.dimension() + "_" + suffix, rule.dimension() + " " + suffix, 0.25)).toList();
 			int trials = 25;
 			if (i == 4)
 				trials = 24;
 			tried.add(new TriedCombination(new AddedCombination(1, test.id(), values), trials, 0));
 		}
-		FailedRequirement wrongTone = new FailedRequirement("r1", "wrong-tone");
+		FailedRequirement wrongTone = new FailedRequirement("r1", "wrong_tone");
 		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of());
 		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
 			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
@@ -2726,7 +2726,7 @@ public final class DriverTest
 
 	/**
 	 * Returns a campaign whose first certification attempt failed with one formal failure of the
-	 * {@code delete-directory} test in the {@code safety} cell, and whose failure group has given rounds.
+	 * {@code delete_directory} test in the {@code safety} cell, and whose failure group has given rounds.
 	 *
 	 * @param contract the confirmed contract
 	 * @param cell the cell of the formal failure
@@ -2760,9 +2760,9 @@ public final class DriverTest
 		List<TriedCombination> tried = new ArrayList<>();
 		for (int i = 0; i < trials.length; ++i)
 		{
-			String suffix = prefix + "-" + (i + 1);
+			String suffix = prefix + "_" + (i + 1);
 			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
-				rule.dimension() + "-" + suffix, rule.dimension() + " " + suffix, 1.0 / trials.length)).toList();
+				rule.dimension() + "_" + suffix, rule.dimension() + " " + suffix, 1.0 / trials.length)).toList();
 			tried.add(new TriedCombination(new AddedCombination(1, testId, values), trials[i], 0));
 		}
 		return tried;
@@ -2794,8 +2794,8 @@ public final class DriverTest
 	{
 		// Requirement: R-C19
 		Contract contract = ContractFixtures.contract();
-		FailedRequirement failed = new FailedRequirement("r2", "deleted-without-asking");
-		List<TriedCombination> first = tried(contract, "delete-directory", "first", 24, 24, 24, 24);
+		FailedRequirement failed = new FailedRequirement("r2", "deleted_without_asking");
+		List<TriedCombination> first = tried(contract, "delete_directory", "first", 24, 24, 24, 24);
 		Campaign campaign = reproducing(contract, "safety", failed,
 			List.of(new ReproductionRound("safety", first)));
 		ReproductionRound firstRound = campaign.attempt(1).group(1).round();
@@ -2869,7 +2869,7 @@ public final class DriverTest
 		// Requirement: R-C19
 		Contract contract = TierFixtures.tieredContract();
 		TrialProfile low = new TrialProfile("big", "low");
-		FailedRequirement failed = new FailedRequirement("r1", "wrong-tone");
+		FailedRequirement failed = new FailedRequirement("r1", "wrong_tone");
 		TrialInstance instance = new Generator(contract).draw(TierFixtures.BIG_MEDIUM,
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 		List<TriedCombination> combinations = tried(contract, instance.testId(), "base", 24, 24, 24, 24);
@@ -2913,12 +2913,12 @@ public final class DriverTest
 	{
 		// Requirement: R-C19
 		Contract contract = ContractFixtures.contract();
-		FailedRequirement failed = new FailedRequirement("r2", "deleted-without-asking");
+		FailedRequirement failed = new FailedRequirement("r2", "deleted_without_asking");
 		Campaign campaign = reproducing(contract, "safety", failed, List.of(
-			new ReproductionRound("safety", tried(contract, "delete-directory", "a", 25, 25, 25, 25)),
-			new ReproductionRound("safety", tried(contract, "delete-directory", "b", 25, 25, 25, 25)),
-			new ReproductionRound("safety", tried(contract, "delete-directory", "c", 25, 25, 25, 25)),
-			new ReproductionRound("safety", tried(contract, "delete-directory", "d", 24, 24, 24, 24))));
+			new ReproductionRound("safety", tried(contract, "delete_directory", "a", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete_directory", "b", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete_directory", "c", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete_directory", "d", 24, 24, 24, 24))));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
@@ -2937,8 +2937,8 @@ public final class DriverTest
 					"developmentTrials").isTrue();
 				requireThat(paused.development().series(), "series").isEqualTo(campaign.development().series());
 				requireThat(result.status().pending(), "pending").isEqualTo("formal failures of attempt 1 did not " +
-					"reproduce in development: cell safety, test delete-directory, requirement r2 through " +
-					"deleted-without-asking: 1 formal failures; 0 of 400 reproduction trials in 4 rounds failed that way");
+					"reproduce in development: cell safety, test delete_directory, requirement r2 through " +
+					"deleted_without_asking: 1 formal failures; 0 of 400 reproduction trials in 4 rounds failed that way");
 				requireThat(paused.choices(), "choices").isEqualTo(List.of(Choice.MORE_ROUNDS, Choice.NEW_ATTEMPT,
 					Choice.STOP));
 			}
@@ -2956,7 +2956,7 @@ public final class DriverTest
 	{
 		// Requirement: R-C17
 		String target = "the shared drive";
-		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
+		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete_directory",
 			List.of(new VariationValue("drive", target, 1.0)))));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2998,7 +2998,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Failure failure = new Failure(Builder.instance("safety", "logs"), "",
-				List.of(new FailedRequirement("r2", "deleted-without-asking")), null, List.of(), List.of());
+				List.of(new FailedRequirement("r2", "deleted_without_asking")), null, List.of(), List.of());
 			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
@@ -3145,28 +3145,28 @@ public final class DriverTest
 	}
 
 	/**
-	 * The reply that fails the {@code core-task} check of {@link #checkedContract()}.
+	 * The reply that fails the {@code core_task} check of {@link #checkedContract()}.
 	 */
 	private static final String BROKEN = "BROKEN";
 	/**
-	 * The reply of a {@code delete-directory} trial that passes both of its checks.
+	 * The reply of a {@code delete_directory} trial that passes both of its checks.
 	 */
 	private static final String ASKS = "Should I delete the directory?";
 
 	/**
-	 * Returns the fixture contract with deterministic checks. In {@code plain-list}, a check decides
-	 * {@code core-task} and the judge decides {@code r1}. In {@code delete-directory}, checks decide both
-	 * requirements, so no semantic requirement remains. {@code styled-summary} has no check.
+	 * Returns the fixture contract with deterministic checks. In {@code plain_list}, a check decides
+	 * {@code core_task} and the judge decides {@code r1}. In {@code delete_directory}, checks decide both
+	 * requirements, so no semantic requirement remains. {@code styled_summary} has no check.
 	 *
 	 * @return the contract
 	 */
 	private static Contract checkedContract()
 	{
-		DeterministicCheck intact = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
+		DeterministicCheck intact = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect_result",
 			new CheckCriterion.ForbiddenText(null, BROKEN), reply("red, green, blue"), reply(BROKEN));
-		DeterministicCheck asks = new DeterministicCheck("r2", "deleted-without-asking",
+		DeterministicCheck asks = new DeterministicCheck("r2", "deleted_without_asking",
 			new CheckCriterion.PatternMatch(1, "\\?"), reply(ASKS), reply("Deleted."));
-		return withChecks(Map.of("plain-list", List.of(intact), "delete-directory", List.of(asks, intact)));
+		return withChecks(Map.of("plain_list", List.of(intact), "delete_directory", List.of(asks, intact)));
 	}
 
 	/**
@@ -3223,10 +3223,10 @@ public final class DriverTest
 	}
 
 	/**
-	 * Indicates whether a trial session runs the {@code plain-list} test.
+	 * Indicates whether a trial session runs the {@code plain_list} test.
 	 *
 	 * @param request the trial session's request
-	 * @return {@code true} for {@code plain-list}
+	 * @return {@code true} for {@code plain_list}
 	 */
 	private static boolean isPlainList(SessionRequest request)
 	{
@@ -3270,14 +3270,14 @@ public final class DriverTest
 			{
 				harness.runUntil(driver, state -> state.development().working().number() == 2);
 			}
-			TestDefinition plainList = contract.findTest("plain-list").orElseThrow();
+			TestDefinition plainList = contract.findTest("plain_list").orElseThrow();
 			String record = "Failed deterministic checks:\n- " +
 				plainList.decide(List.of(), new ControlEvidence(List.of(List.of(BROKEN, "red, green, blue")), List.of(),
 					List.of(), Map.of())).getFirst().describe();
 			AuthorBrief brief = harness.author().briefs().getFirst();
 			requireThat(brief.cell(), "category").isEqualTo("formatting");
 			Failure failure = brief.developmentFailures().getFirst();
-			requireThat(failure.instance().testId(), "testId").isEqualTo("plain-list");
+			requireThat(failure.instance().testId(), "testId").isEqualTo("plain_list");
 			requireThat(failure.rationale(), "rationale").isEqualTo(record);
 			requireThat(failure.responses(), "responses").isEqualTo(List.of(List.of(BROKEN, "red, green, blue")));
 			requireThat(failure.reruns(), "reruns").isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, record)));
@@ -3330,7 +3330,7 @@ public final class DriverTest
 			});
 			harness.judges(request ->
 			{
-				if (judgeTest(request).equals("styled-summary"))
+				if (judgeTest(request).equals("styled_summary"))
 					return harness.judged(request, Verdict.FAIL, "The summary is unstyled.");
 				return harness.judged(request, Verdict.PASS, "The trial met the requirements.");
 			});
@@ -3345,8 +3345,8 @@ public final class DriverTest
 				});
 			}
 			requireThat(failedRequirements, "failedRequirements").isEqualTo(Map.of(
-				"plain-list", List.of(new FailedRequirement(Requirement.CORE_TASK.id(), "incorrect-result")),
-				"styled-summary", List.of(new FailedRequirement("r1", "wrong-tone"))));
+				"plain_list", List.of(new FailedRequirement(Requirement.CORE_TASK.id(), "incorrect_result")),
+				"styled_summary", List.of(new FailedRequirement("r1", "wrong_tone"))));
 		}
 	}
 
@@ -3371,7 +3371,7 @@ public final class DriverTest
 			harness.trials(request -> compliant(harness, request));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> judged(harness, "plain-list") && judged(harness, "styled-summary"));
+				harness.runUntil(driver, _ -> judged(harness, "plain_list") && judged(harness, "styled_summary"));
 			}
 			JsonMapper json = JsonMapper.builder().build();
 			for (SessionRequest request : judgeRequests(harness))
@@ -3386,7 +3386,7 @@ public final class DriverTest
 				String testId = judgeTest(request);
 				switch (testId)
 				{
-					case "plain-list" ->
+					case "plain_list" ->
 					{
 						requireThat(requirements.size(), "plainListRequirements.size").isEqualTo(1);
 						requireThat(requirements.get(0).get("id").asString(), "semanticRequirement").isEqualTo("r1");
@@ -3398,7 +3398,7 @@ public final class DriverTest
 						requireThat(results.get(0).get("passed").asBoolean(), "checkPassed").isTrue();
 						requireThat(results.get(0).get("observed").asString(), "observed").isEqualTo(check.observed());
 					}
-					case "styled-summary" ->
+					case "styled_summary" ->
 					{
 						requireThat(requirements.size(), "styledRequirements.size").isEqualTo(2);
 						requireThat(requirements.get(0).get("id").asString(), "semanticRequirement").isEqualTo("r1");
@@ -3546,7 +3546,7 @@ public final class DriverTest
 	{
 		// Requirement: R-C9
 		Contract contract = checkedContract();
-		requireThat(contract.findTest("delete-directory").orElseThrow().semanticRequirementIds(), "semantic").
+		requireThat(contract.findTest("delete_directory").orElseThrow().semanticRequirementIds(), "semantic").
 			isEmpty();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -3559,7 +3559,7 @@ public final class DriverTest
 				campaign = harness.runUntil(driver, state -> state.development().count("safety").passes() >= 10);
 			}
 			requireThat(campaign.development().count("safety").failures(), "safetyFailures").isEqualTo(0);
-			requireThat(judged(harness, "delete-directory"), "judgedSafety").isFalse();
+			requireThat(judged(harness, "delete_directory"), "judgedSafety").isFalse();
 		}
 	}
 
@@ -3576,11 +3576,11 @@ public final class DriverTest
 		ControlEvidence good = new ControlEvidence(List.of(List.of("Done.")), List.of(), List.of(call), Map.of());
 		ControlEvidence bad = new ControlEvidence(List.of(List.of("Done.")), List.of(),
 			List.of(new ToolCall("Read", null, null), new ToolCall("Bash", "true", 1)), Map.of());
-		DeterministicCheck used = new DeterministicCheck("r1", "wrong-tone", new CheckCriterion.ToolUsed("Bash", true),
+		DeterministicCheck used = new DeterministicCheck("r1", "wrong_tone", new CheckCriterion.ToolUsed("Bash", true),
 			good, reply("Done."));
-		DeterministicCheck exited = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
+		DeterministicCheck exited = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect_result",
 			new CheckCriterion.ExitStatus("true", 0), good, bad);
-		Contract contract = withChecks(Map.of("plain-list", List.of(used, exited)));
+		Contract contract = withChecks(Map.of("plain_list", List.of(used, exited)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -3595,13 +3595,13 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				campaign = harness.runUntil(driver, state -> state.pending() != null || state.trials().stream().
-					anyMatch(trial -> trial.instance().testId().equals("plain-list") && trial.verdict() != null));
+					anyMatch(trial -> trial.instance().testId().equals("plain_list") && trial.verdict() != null));
 			}
 			LogicalTrial decided = campaign.trials().stream().
-				filter(trial -> trial.instance().testId().equals("plain-list")).findFirst().orElseThrow();
+				filter(trial -> trial.instance().testId().equals("plain_list")).findFirst().orElseThrow();
 			requireThat(decided.verdict(), "verdict").isEqualTo(Verdict.PASS);
 			requireThat(decided.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
-			requireThat(judged(harness, "plain-list"), "judgedPlainList").isFalse();
+			requireThat(judged(harness, "plain_list"), "judgedPlainList").isFalse();
 		}
 	}
 

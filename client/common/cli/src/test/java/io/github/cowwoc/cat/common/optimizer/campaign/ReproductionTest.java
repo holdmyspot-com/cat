@@ -28,11 +28,11 @@ public final class ReproductionTest
 	/**
 	 * The requirement and behavior that the formal failures failed.
 	 */
-	private static final FailedRequirement WRONG_TONE = new FailedRequirement("r1", "wrong-tone");
+	private static final FailedRequirement WRONG_TONE = new FailedRequirement("r1", "wrong_tone");
 	/**
 	 * Another behavior through which a trial can fail.
 	 */
-	private static final FailedRequirement INCORRECT_RESULT = new FailedRequirement("core-task", "incorrect-result");
+	private static final FailedRequirement INCORRECT_RESULT = new FailedRequirement("core_task", "incorrect_result");
 	/**
 	 * The formal failures' instance.
 	 */
@@ -75,9 +75,9 @@ public final class ReproductionTest
 		List<AddedCombination> combinations = new ArrayList<>();
 		for (int i = 1; i <= 4; ++i)
 		{
-			String suffix = prefix + "-" + i;
+			String suffix = prefix + "_" + i;
 			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
-				rule.dimension() + "-" + suffix, rule.dimension() + " " + suffix, 0.25)).toList();
+				rule.dimension() + "_" + suffix, rule.dimension() + " " + suffix, 0.25)).toList();
 			combinations.add(new AddedCombination(1, test.id(), values));
 		}
 		return combinations;

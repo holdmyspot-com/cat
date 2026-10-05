@@ -29,7 +29,7 @@
   `judge.decision_rule`.
 - Leave out `trial_profiles`. CAT computes each category's trial profiles from the requirements' source files, and
   rejects a proposal that contains them.
-- Leave out the core-task requirement `core-task` from `requirements`. CAT adds it, with CAT as its source, to the
+- Leave out the core-task requirement `core_task` from `requirements`. CAT adds it, with CAT as its source, to the
   requirements and to every test, and rejects a proposal that lists it.
 - Leave out `discarded_checks`. CAT runs each check against its controls and discards a check that fails one.
 - Never write code. A deterministic check names one of CAT's check kinds and its parameters; CAT implements every
@@ -46,12 +46,14 @@
 
 ### Requirements, categories and tests
 
+Spell every identifier that you name, which is each requirement, behavior, category and test `id`, variation
+dimension and value `label`, in lowercase words joined by underscores, such as `wrong_tone`.
+
 - `requirements`: every behavioural requirement that the prompt files state, one item each, with a unique `id`.
   Give each its `trigger`: the situation that obliges the action, such as "The user asks to delete a directory", or
   `null` when the requirement applies to every reply.
-  Give each its `behaviors`: every distinct way in which a reply can fail it, each a lowercase identifier of words
-  joined by hyphens, such as `no-tool-call`, `file-not-read-in-full`, `search-instead-of-read`,
-  `read-instead-of-search` or `unneeded-call`. List separately two failures that a prompt edit would fix differently.
+  Give each its `behaviors`: every distinct way in which a reply can fail it, such as `no_tool_call`,
+  `file_not_read_in_full`, `search_instead_of_read`, `read_instead_of_search` or `unneeded_call`. List separately two failures that a prompt edit would fix differently.
   Leave out `other`: a judge names it for a failure that no listed behavior describes.
 - `categories`: create a separate category whenever averaging it with other uses could let common or easy cases hide a
   weak area. A category groups uses that need their own claim; a change to an incidental value is another instance
@@ -104,8 +106,8 @@ system impose no test obligation.
 
 ### The core-task requirement
 
-CAT adds the requirement `core-task`, "Each reply correctly and completely does what the turn asked.", with CAT as its
-source and the behaviors `incorrect-result` and `incomplete-result`, to every test. A test that lists it in
+CAT adds the requirement `core_task`, "Each reply correctly and completely does what the turn asked.", with CAT as its
+source and the behaviors `incorrect_result` and `incomplete_result`, to every test. A test that lists it in
 `requirement_ids` is accepted; one that does not is given it. It keeps a candidate that obeys every rule of the prompt
 system from doing the user's task worse. It is semantic unless the test's expected result is itself mechanical, such
 as an exact file content; only then give it a check.
@@ -148,7 +150,7 @@ proposal says why.
 ### Judge rubric and decision rule
 
 - `judge.rubric`: the semantic criteria that a judge applies to one trial's text, file effects and tool effects. Cover
-  every requirement that is semantic in some test, including `core-task`. The judge decides only a test's semantic
+  every requirement that is semantic in some test, including `core_task`. The judge decides only a test's semantic
   requirements; it sees the deterministic results as evidence but cannot override them.
 - `judge.decision_rule`: exactly when a trial passes and when it fails on its semantic requirements. A trial fails
   whenever one of its checks fails, without a judge.

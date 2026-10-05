@@ -32,7 +32,7 @@ public final class ProfileSetTest
 	 */
 	private static Category category(String id, String... requirementIds)
 	{
-		return new Category(id, "Needs its own claim.", new RiskRank(1), List.of(new TestDefinition(id + "-test",
+		return new Category(id, "Needs its own claim.", new RiskRank(1), List.of(new TestDefinition(id + "_test",
 			List.of(requirementIds), List.of(), "Always.", List.of("Do it."), Duration.ofMinutes(1), "Complies.",
 				List.of(),
 			List.of(), List.of(), List.of(), List.of(), List.of())));
@@ -46,10 +46,10 @@ public final class ProfileSetTest
 	 */
 	private static List<Requirement> requirements()
 	{
-		return List.of(new Requirement("skill", "Follows the skill.", "skills/a/SKILL.md", null, List.of("skill-ignored")),
-			new Requirement("agent", "Follows the agent.", "agents/b.md", null, List.of("agent-ignored")),
-			new Requirement("rule", "Follows the rule.", "CLAUDE.md", null, List.of("rule-ignored")),
-			new Requirement("core", "Does what the turn asked.", "CAT", null, List.of("incorrect-result")));
+		return List.of(new Requirement("skill", "Follows the skill.", "skills/a/SKILL.md", null, List.of("skill_ignored")),
+			new Requirement("agent", "Follows the agent.", "agents/b.md", null, List.of("agent_ignored")),
+			new Requirement("rule", "Follows the rule.", "CLAUDE.md", null, List.of("rule_ignored")),
+			new Requirement("core", "Does what the turn asked.", "CAT", null, List.of("incorrect_result")));
 	}
 
 	/**

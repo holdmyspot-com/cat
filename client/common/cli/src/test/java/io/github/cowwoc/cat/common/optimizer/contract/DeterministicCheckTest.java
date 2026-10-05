@@ -120,7 +120,7 @@ public final class DeterministicCheckTest
 		ControlEvidence good, ControlEvidence bad) throws IOException, UndecidableCheckException
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", criterion, good, bad);
+		DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", criterion, good, bad);
 		TestDefinition validated = test(List.of(), check).withValidatedControls();
 
 		requireThat(criterion.kind(), "kind").isEqualTo(kind);
@@ -171,7 +171,7 @@ public final class DeterministicCheckTest
 		ControlEvidence good, ControlEvidence bad)
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", criterion, bad, bad);
+		DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", criterion, bad, bad);
 		TestDefinition validated = test(List.of(), check).withValidatedControls();
 
 		requireThat(validated.checks(), "checks").isEmpty();
@@ -196,7 +196,7 @@ public final class DeterministicCheckTest
 		ControlEvidence good, ControlEvidence bad)
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", criterion, good, good);
+		DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", criterion, good, good);
 		TestDefinition validated = test(List.of(), check).withValidatedControls();
 
 		requireThat(validated.checks(), "checks").isEmpty();
@@ -219,7 +219,7 @@ public final class DeterministicCheckTest
 		// Requirement: R-C9
 		List<VariationRule> variations = List.of(new VariationRule("version", List.of(
 			new VariationValue("old", "1.2", 0.5), new VariationValue("new", "2.0", 0.5))));
-		DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", new PatternMatch(1, "^Version {{version}}$"),
+		DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", new PatternMatch(1, "^Version {{version}}$"),
 			new ControlEvidence(List.of(List.of("Version 1.2")), List.of(), List.of(), Map.of("version", "old")),
 			new ControlEvidence(List.of(List.of("Version 1x2")), List.of(), List.of(), Map.of("version", "old")));
 		TestDefinition validated = test(variations, check).withValidatedControls();
@@ -244,7 +244,7 @@ public final class DeterministicCheckTest
 		List<CheckCriterion> criteria = List.of(new ExitStatus("mvn", 0), new ToolUsed("Bash", true));
 		for (CheckCriterion criterion : criteria)
 		{
-			DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", criterion, calls(), calls());
+			DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", criterion, calls(), calls());
 			boolean undecidable = false;
 			try
 			{
@@ -290,7 +290,7 @@ public final class DeterministicCheckTest
 	public void undecidableControlDiscardsTheCheck()
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck("r1", "wrong-tone", new ExitStatus("mvn .*test", 0),
+		DeterministicCheck check = new DeterministicCheck("r1", "wrong_tone", new ExitStatus("mvn .*test", 0),
 			calls(new ToolCall("Bash", "mvn test", 0)), calls(new ToolCall("Bash", "mvn test", null)));
 		TestDefinition validated = test(List.of(), check).withValidatedControls();
 
@@ -338,16 +338,16 @@ public final class DeterministicCheckTest
 		ControlEvidence formal = new ControlEvidence(List.of(List.of("Dear Sir")), List.of(), List.of(),
 			Map.of("tone", "formal"));
 		ControlEvidence hi = new ControlEvidence(List.of(List.of("Hi")), List.of(), List.of(), Map.of("tone", "formal"));
-		DeterministicCheck valid = new DeterministicCheck("r1", "wrong-tone", new ExactText(1, "{{tone}}"), formal, hi);
+		DeterministicCheck valid = new DeterministicCheck("r1", "wrong_tone", new ExactText(1, "{{tone}}"), formal, hi);
 		List<Runnable> invalid = List.of(
-			() -> test(variations, new DeterministicCheck("r9", "wrong-tone", valid.criterion(), formal, hi)),
+			() -> test(variations, new DeterministicCheck("r9", "wrong_tone", valid.criterion(), formal, hi)),
 			() -> new TestDefinition("t", List.of("r1"), List.of(), "Always.", List.of("Turn."), Duration.ofMinutes(1),
 				"Complies.", List.of(), variations, List.of(), List.of(valid),
 				List.of(new DiscardedCheck(valid, "It rejected its known-good control.")), List.of()),
-			() -> test(variations, new DeterministicCheck("r1", "wrong-tone", new ExactText(3, "{{tone}}"), formal, hi)),
-			() -> test(variations, new DeterministicCheck("r1", "wrong-tone", new ExactText(1, "{{mood}}"), formal, hi)),
-			() -> test(variations, new DeterministicCheck("r1", "wrong-tone", valid.criterion(), formal, replies("Hi"))),
-			() -> test(variations, new DeterministicCheck("r1", "wrong-tone", valid.criterion(), formal,
+			() -> test(variations, new DeterministicCheck("r1", "wrong_tone", new ExactText(3, "{{tone}}"), formal, hi)),
+			() -> test(variations, new DeterministicCheck("r1", "wrong_tone", new ExactText(1, "{{mood}}"), formal, hi)),
+			() -> test(variations, new DeterministicCheck("r1", "wrong_tone", valid.criterion(), formal, replies("Hi"))),
+			() -> test(variations, new DeterministicCheck("r1", "wrong_tone", valid.criterion(), formal,
 				new ControlEvidence(List.of(List.of("Hi")), List.of(), List.of(), Map.of("tone", "casual")))));
 		requireThat(rejects(() -> test(variations, valid)), "validRejected").isFalse();
 		for (Runnable construction : invalid)

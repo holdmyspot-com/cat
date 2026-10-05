@@ -2035,7 +2035,7 @@ public final class OptimizerCoreTest
 	 */
 	@Test(dataProvider = "confirmationBlockers", expectedExceptions = CommandRefusedException.class,
 		expectedExceptionsMessageRegExp = ".*Confirmation is refused because the proposal lists conflicting " +
-			"requirements: `r1`, `r2` and `core-task`; `r2` and `r1`\\. Run revise with feedback that resolves each " +
+			"requirements: `r1`, `r2` and `core_task`; `r2` and `r1`\\. Run revise with feedback that resolves each " +
 			"conflict\\.")
 	public void confirmListsEveryBlocker(boolean brokenLink)
 		throws IOException, CommandRefusedException, InterruptedException
@@ -2047,7 +2047,7 @@ public final class OptimizerCoreTest
 			{
 				ArrayNode conflicts = output.putArray("conflicts");
 				ObjectNode first = conflicts.addObject();
-				first.putArray("requirement_ids").add("r1").add("r2").add("core-task");
+				first.putArray("requirement_ids").add("r1").add("r2").add("core_task");
 				first.put("evidence", "CLAUDE.md: three incompatible instructions.");
 				first.putArray("resolutions").add("Exempt explanations.").add("Drop brevity.");
 				first.put("recommended", 1);
@@ -2077,7 +2077,7 @@ public final class OptimizerCoreTest
 			catch (CommandRefusedException e)
 			{
 				String expected = "Confirmation is refused because the proposal lists conflicting requirements: " +
-					"`r1`, `r2` and `core-task`; `r2` and `r1`. Run revise with feedback that resolves each conflict.";
+					"`r1`, `r2` and `core_task`; `r2` and `r1`. Run revise with feedback that resolves each conflict.";
 				if (brokenLink)
 				{
 					expected = "These symbolic links block confirmation until they are resolved: broken.md. " + expected;

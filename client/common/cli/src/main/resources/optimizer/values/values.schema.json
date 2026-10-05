@@ -18,8 +18,8 @@
 					"additionalProperties": false,
 					"required": ["dimension", "label", "text"],
 					"properties": {
-						"dimension": {"description": "A key dimension of the test.", "type": "string", "pattern": "\\S"},
-						"label": {"description": "The value's short name, different from the label of every other value of its dimension.", "type": "string", "pattern": "\\S"},
+						"dimension": {"description": "A key dimension of the test.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+						"label": {"description": "The value's short name, different from the label of every other value of its dimension, in lowercase words joined by underscores.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 						"text": {"description": "The text that the turns insert for the dimension, different from the text of every other value of its dimension.", "type": "string", "pattern": "\\S"}
 					}
 				}

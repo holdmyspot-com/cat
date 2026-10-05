@@ -469,7 +469,7 @@ public final class SchedulerTest
 		{
 			int number = i;
 			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
-				"added-" + rule.dimension() + "-" + number, "added " + rule.dimension() + " " + number, 0.25)).toList();
+				"added_" + rule.dimension() + "_" + number, "added " + rule.dimension() + " " + number, 0.25)).toList();
 			combinations.add(new AddedCombination(1, test.id(), values));
 		}
 		return combinations;
@@ -484,7 +484,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-C19
 		TrialInstance failure = tieredFailure(BIG_MEDIUM);
-		Failure formal = new Failure(failure, "", List.of(new FailedRequirement("r1", "wrong-tone")), null, List.of(),
+		Failure formal = new Failure(failure, "", List.of(new FailedRequirement("r1", "wrong_tone")), null, List.of(),
 			List.of());
 		Campaign failed = tiered().slowStart(new SlowStart(4, 0)).development(SMALL_HIGH, 60, 0).
 			development(SAFETY, 60, 0).certificationAttempt(1).failure(formal).outcome(Outcome.INCONCLUSIVE).build();

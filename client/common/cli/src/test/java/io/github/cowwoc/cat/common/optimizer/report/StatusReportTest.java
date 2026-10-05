@@ -196,7 +196,7 @@ public final class StatusReportTest
 	public void reportsAddedValues()
 	{
 		// Requirement: R-C17
-		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
+		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete_directory",
 			List.of(new VariationValue("drive", "the shared\ndrive", 1.0)))));
 		Campaign campaign = new Builder().confirmed().added(added).build();
 
@@ -204,14 +204,14 @@ public final class StatusReportTest
 
 		JsonNode combination = report.toJson(JsonMapper.builder().build()).path("added_values").path(0);
 		requireThat(combination.path("attempt").asInt(), "attempt").isEqualTo(1);
-		requireThat(combination.path("test").asString(), "test").isEqualTo("delete-directory");
+		requireThat(combination.path("test").asString(), "test").isEqualTo("delete_directory");
 		JsonNode value = combination.path("values").path(0);
 		requireThat(value.path("dimension").asString(), "dimension").isEqualTo("target");
 		requireThat(value.path("label").asString(), "label").isEqualTo("drive");
 		requireThat(value.path("text").asString(), "text").isEqualTo("the shared\ndrive");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Development values added after certification attempts with formal failures").
-			contains("  attempt 1, test delete-directory: target = drive (\"the shared\\ndrive\")");
+			contains("  attempt 1, test delete_directory: target = drive (\"the shared\\ndrive\")");
 		requireThat(StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE).summary(ZoneOffset.UTC),
 			"none").doesNotContain("Development values added");
 	}

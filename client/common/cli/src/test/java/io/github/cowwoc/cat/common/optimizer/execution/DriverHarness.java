@@ -308,7 +308,7 @@ public final class DriverHarness
 			for (String dimension : dimensions)
 			{
 				++addedValues;
-				combination.addObject().put("dimension", dimension).put("label", "added-" + addedValues).
+				combination.addObject().put("dimension", dimension).put("label", "added_" + addedValues).
 					put("text", "added value " + addedValues);
 			}
 		}

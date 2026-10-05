@@ -206,7 +206,7 @@ public final class AuthorManifestTest
 	{
 		return new Object[][]
 			{
-				{"plain-list", true},
+				{"plain_list", true},
 				{"A question that needs no file", false}
 			};
 	}
@@ -255,7 +255,7 @@ public final class AuthorManifestTest
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
-			contains("\"plain-list\"");
+			contains("\"plain_list\"");
 	}
 
 	/**

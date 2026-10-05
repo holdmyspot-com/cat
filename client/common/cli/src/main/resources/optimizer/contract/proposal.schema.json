@@ -12,8 +12,8 @@
 			"additionalProperties": false,
 			"required": ["requirement_id", "behavior", "kind", "parameters", "known_good", "known_bad"],
 			"properties": {
-				"requirement_id": {"description": "The requirement that the check decides. The test must check it.", "type": "string", "pattern": "\\S"},
-				"behavior": {"description": "The failure behavior that the check detects: one of the behaviors that its requirement lists.", "type": "string", "pattern": "\\S"},
+				"requirement_id": {"description": "The requirement that the check decides. The test must check it.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+				"behavior": {"description": "The failure behavior that the check detects: one of the behaviors that its requirement lists.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 				"kind": {"type": "string", "pattern": "^(exact_text|forbidden_text|pattern|count|file_exists|file_content|exit_status|tool_used)$"},
 				"parameters": {
 					"type": "object",
@@ -75,8 +75,8 @@
 						"additionalProperties": false,
 						"required": ["dimension", "label"],
 						"properties": {
-							"dimension": {"type": "string", "pattern": "\\S"},
-							"label": {"type": "string", "pattern": "\\S"}
+							"dimension": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+							"label": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}
 						}
 					}
 				}
@@ -85,7 +85,7 @@
 	},
 	"properties": {
 		"requirements": {
-			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project. CAT adds its core-task requirement, `core-task` with CAT as its source, and every test checks it.",
+			"description": "Every requirement and the file or link that states it, including files reached through links and readable files outside the project. CAT adds its core-task requirement, `core_task` with CAT as its source, and every test checks it.",
 			"type": "array",
 			"minItems": 1,
 			"items": {
@@ -93,11 +93,11 @@
 				"additionalProperties": false,
 				"required": ["id", "description", "source", "trigger", "behaviors"],
 				"properties": {
-					"id": {"type": "string", "pattern": "\\S"},
+					"id": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 					"description": {"type": "string", "pattern": "\\S"},
 					"source": {"type": "string", "pattern": "\\S"},
 					"trigger": {"description": "The situation that obliges the action, such as \"The user asks to delete a directory\", or null if the requirement applies to every reply. A requirement with a trigger needs at least one test that lists it in absent_triggers.", "type": ["string", "null"], "pattern": "\\S"},
-					"behaviors": {"description": "Every distinct way in which a reply can fail the requirement, each a lowercase identifier of words joined by hyphens, such as no-tool-call, file-not-read-in-full, search-instead-of-read, read-instead-of-search or unneeded-call. A deterministic check names the one it detects, and a judge names one of them, or other, for each requirement that a trial fails.", "type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}}
+					"behaviors": {"description": "Every distinct way in which a reply can fail the requirement, each a lowercase identifier of words joined by underscores, such as no_tool_call, file_not_read_in_full, search_instead_of_read, read_instead_of_search or unneeded_call. A deterministic check names the one it detects, and a judge names one of them, or other, for each requirement that a trial fails.", "type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}}
 				}
 			}
 		},
@@ -110,7 +110,7 @@
 				"additionalProperties": false,
 				"required": ["id", "rationale", "risk_rank", "tests"],
 				"properties": {
-					"id": {"type": "string", "pattern": "\\S"},
+					"id": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 					"rationale": {"description": "Why averaging this category with others could hide a weak area.", "type": "string", "pattern": "\\S"},
 					"risk_rank": {"description": "1 is the riskiest. Categories may share a rank.", "type": "integer", "minimum": 1},
 					"tests": {
@@ -122,9 +122,9 @@
 							"additionalProperties": false,
 							"required": ["id", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variations", "key_dimensions", "checks", "discarded_checks", "regression_scenarios"],
 							"properties": {
-								"id": {"type": "string", "pattern": "\\S"},
-								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
-								"absent_triggers": {"description": "The requirements whose trigger this test leaves absent, so that the obligated action must not occur. Each names a requirement that has a trigger. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
+								"id": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+								"requirement_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}},
+								"absent_triggers": {"description": "The requirements whose trigger this test leaves absent, so that the obligated action must not occur. Each names a requirement that has a trigger. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}},
 								"applicability": {"description": "The conditions under which the checked requirements apply to a trial.", "type": "string", "pattern": "\\S"},
 								"turns": {
 									"description": "The complete prewritten user turns. {{dimension}} marks where a variation value is inserted.",
@@ -144,7 +144,7 @@
 										"additionalProperties": false,
 										"required": ["dimension", "values"],
 										"properties": {
-											"dimension": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"},
+											"dimension": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 											"values": {
 												"description": "The permitted values. Their probabilities sum to 1.",
 												"type": "array",
@@ -154,7 +154,7 @@
 													"additionalProperties": false,
 													"required": ["label", "text", "probability"],
 													"properties": {
-														"label": {"type": "string", "pattern": "\\S"},
+														"label": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 														"text": {"type": "string"},
 														"probability": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
 													}
@@ -166,7 +166,7 @@
 								"key_dimensions": {
 									"description": "The dimensions of variations whose values carry the test's content, such as the question asked or the file acted on, rather than incidental wording. Empty if every dimension does. Before any trial, CAT assigns each combination of key values to the development part or the held-out part with probability 1/2 each, and instances that share key values share a part. Prompt editing sees only development instances; formal trials draw only held-out ones. CAT refuses a test whose key-value combinations number fewer than 2 in either part.",
 									"type": "array",
-									"items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"}
+									"items": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}
 								},
 								"checks": {
 									"description": "The deterministic checks of this test, at most one per requirement that the test checks. A requirement with a check is deterministic in this test; every other requirement is semantic and the judge decides it. Empty if none.",
@@ -236,7 +236,7 @@
 						"required": ["id", "category", "model", "effort"],
 						"properties": {
 							"id": {"type": "string", "pattern": "\\S"},
-							"category": {"type": "string", "pattern": "\\S"},
+							"category": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 							"model": {"type": "string", "pattern": "^[^\\s/]*$"},
 							"effort": {"type": "string", "pattern": "^[^\\s/]*$"}
 						}

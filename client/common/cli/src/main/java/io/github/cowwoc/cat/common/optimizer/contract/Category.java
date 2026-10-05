@@ -25,12 +25,13 @@ public record Category(String id, String rationale, RiskRank riskRank, List<Test
 	 * @param riskRank the rank that breaks allocation ties
 	 * @param tests the tests in this category, each drawn with equal probability
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code id} or {@code rationale} are blank, {@code tests} is empty, or two
+	 * @throws IllegalArgumentException if {@code id} is not lowercase words joined by underscores, {@code rationale}
+	 *   is blank, {@code tests} is empty, or two
 	 *   tests share an identifier
 	 */
 	public Category
 	{
-		requireThat(id, "id").isNotBlank();
+		requireThat(id, "id").matches(Identifier.SNAKE_CASE);
 		requireThat(rationale, "rationale").isNotBlank();
 		requireThat(riskRank, "riskRank").isNotNull();
 		requireThat(tests, "tests").isNotEmpty();

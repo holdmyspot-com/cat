@@ -73,8 +73,8 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
 	 * <p>
 	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the run's
-	 * {@code run_id} and the turn's {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet. The
-	 * session's {@link HarnessRunnerScope} supplies the clock that times the quiet turn and the heartbeat that checks
+	 * {@code run_id} and the turn's {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet.
+	 * The session's {@link HarnessRunnerScope} supplies the clock that times the quiet turn and the heartbeat that checks
 	 * it.
 	 *
 	 * @param starter starts the isolated persistent session

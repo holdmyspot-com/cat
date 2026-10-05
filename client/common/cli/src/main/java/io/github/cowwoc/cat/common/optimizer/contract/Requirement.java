@@ -8,12 +8,12 @@ import java.util.List;
  * An obligation that an agent receiving the prompt files must meet, its source, and the ways in which a reply can
  * fail it.
  *
- * @param id the identifier that is unique within the contract
+ * @param id the identifier that is unique within the contract, in lowercase words joined by underscores
  * @param description what the prompt system must do
  * @param source the file or link that states the obligation
  * @param trigger the condition under which the obligation applies, or {@code null} if it always applies
  * @param behaviors the failure behaviors that a reply can show when it fails the requirement, such as
- *   {@code no-tool-call}: each a lowercase identifier of words joined by hyphens, none of them
+ *   {@code no_tool_call}: each a lowercase identifier of words joined by underscores, none of them
  *   {@value #OTHER_BEHAVIOR}
  */
 public record Requirement(String id, String description, String source, String trigger, List<String> behaviors)
@@ -26,31 +26,27 @@ public record Requirement(String id, String description, String source, String t
 	 * The requirement, present in every contract and checked by every test, that each reply correctly and completely
 	 * does what the turn asked. CAT adds it, so its source is CAT. It always applies.
 	 */
-	public static final Requirement CORE_TASK = new Requirement("core-task",
+	public static final Requirement CORE_TASK = new Requirement("core_task",
 		"Each reply correctly and completely does what the turn asked.", "CAT", null,
-		List.of("incorrect-result", "incomplete-result"));
-	/**
-	 * The form of a failure behavior: lowercase letters and digits, in words joined by single hyphens.
-	 */
-	private static final String BEHAVIOR_PATTERN = "[a-z0-9]+(-[a-z0-9]+)*";
+		List.of("incorrect_result", "incomplete_result"));
 
 	/**
 	 * Creates a requirement.
 	 *
-	 * @param id the identifier that is unique within the contract
+	 * @param id the identifier that is unique within the contract, in lowercase words joined by underscores
 	 * @param description what the prompt system must do
 	 * @param source the file or link that states the obligation
 	 * @param trigger the condition under which the obligation applies, or {@code null} if it always applies
 	 * @param behaviors the failure behaviors that a reply can show when it fails the requirement
 	 * @throws NullPointerException if {@code id}, {@code description}, {@code source} or {@code behaviors} is null,
 	 *   or {@code behaviors} contains null
-	 * @throws IllegalArgumentException if {@code id}, {@code description}, {@code source} or a non-null
-	 *   {@code trigger} is blank, {@code behaviors} is empty or lists a behavior twice, or a behavior is
-	 *   {@value #OTHER_BEHAVIOR} or not lowercase words joined by hyphens
+	 * @throws IllegalArgumentException if {@code id} or a behavior is not lowercase words joined by underscores,
+	 *   {@code description}, {@code source} or a non-null {@code trigger} is blank, {@code behaviors} is empty or
+	 *   lists a behavior twice, or a behavior is {@value #OTHER_BEHAVIOR}
 	 */
 	public Requirement
 	{
-		requireThat(id, "id").isNotBlank();
+		requireThat(id, "id").matches(Identifier.SNAKE_CASE);
 		requireThat(description, "description").isNotBlank();
 		requireThat(source, "source").isNotBlank();
 		if (trigger != null)
@@ -59,10 +55,10 @@ public record Requirement(String id, String description, String source, String t
 		for (String behavior : behaviors)
 		{
 			requireThat(behavior, "behavior").isNotNull();
-			if (!behavior.matches(BEHAVIOR_PATTERN))
+			if (!Identifier.SNAKE_CASE.matcher(behavior).matches())
 			{
 				throw new IllegalArgumentException("The behavior '" + behavior + "' of the requirement '" + id +
-					"' is not lowercase words joined by hyphens");
+					"' is not lowercase words joined by underscores");
 			}
 			if (behavior.equals(OTHER_BEHAVIOR))
 			{

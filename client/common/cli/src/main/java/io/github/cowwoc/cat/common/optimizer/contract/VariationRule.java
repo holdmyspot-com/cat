@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * One named input varied between trials, called a dimension, with its permitted values and their probabilities.
@@ -15,10 +14,6 @@ import java.util.regex.Pattern;
  */
 public record VariationRule(String dimension, List<VariationValue> values)
 {
-	/**
-	 * The names that a placeholder can have.
-	 */
-	static final Pattern DIMENSION_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
 	/**
 	 * Reject a probability sum when its distance from 1 exceeds this boundary, allowing for decimal rounding.
 	 */
@@ -30,12 +25,12 @@ public record VariationRule(String dimension, List<VariationValue> values)
 	 * @param dimension the placeholder name used in turns and check parameters as {@code {{dimension}}}
 	 * @param values the permitted values; reject their probability sum when it differs from 1 by more than 1e-9
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code dimension} is not an identifier, {@code values} is empty, two
-	 *   values share a label, or the probability sum differs from 1 by more than 1e-9
+	 * @throws IllegalArgumentException if {@code dimension} is not lowercase words joined by underscores,
+	 *   {@code values} is empty, two values share a label, or the probability sum differs from 1 by more than 1e-9
 	 */
 	public VariationRule
 	{
-		requireThat(dimension, "dimension").matches(DIMENSION_NAME);
+		requireThat(dimension, "dimension").matches(Identifier.SNAKE_CASE);
 		requireThat(values, "values").isNotEmpty();
 		values = List.copyOf(values);
 

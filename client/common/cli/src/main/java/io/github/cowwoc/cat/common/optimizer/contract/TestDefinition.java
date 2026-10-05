@@ -59,16 +59,17 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 	 * @param discardedChecks the proposed checks that failed a control, with the reason
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if a text is blank, a list that must not be empty is empty, {@code timeLimit}
-	 *   is not positive or includes fractional seconds, two variation rules share a dimension, a key dimension is
-	 *   listed twice or names no variation rule, a turn or a check parameter names a placeholder that no variation
-	 *   rule defines, a check decides a requirement that the test does not check, two checks decide the same
+	 * @throws IllegalArgumentException if {@code id}, a requirement identifier, an absent trigger or a key dimension
+	 *   is not lowercase words joined by underscores, a text is blank, a list that must not be empty is empty,
+	 *   {@code timeLimit} is not positive or includes fractional seconds, two variation rules share a dimension, a key
+	 *   dimension is listed twice or names no variation rule, a turn or a check parameter names a placeholder that no
+	 *   variation rule defines, a check decides a requirement that the test does not check, two checks decide the same
 	 *   requirement, a check examines a turn that the test does not have, or a control does not choose a permitted
 	 *   value for every dimension that its check names
 	 */
 	public TestDefinition
 	{
-		requireThat(id, "id").isNotBlank();
+		requireThat(id, "id").matches(Identifier.SNAKE_CASE);
 		requireThat(requirementIds, "requirementIds").isNotEmpty();
 		requireThat(absentTriggers, "absentTriggers").isNotNull();
 		requireThat(applicability, "applicability").isNotBlank();
@@ -92,9 +93,11 @@ public record TestDefinition(String id, List<String> requirementIds, List<String
 		discardedChecks = List.copyOf(discardedChecks);
 		regressionScenarios = List.copyOf(regressionScenarios);
 		for (String requirementId : requirementIds)
-			requireThat(requirementId, "requirementId").isNotBlank();
+			requireThat(requirementId, "requirementId").matches(Identifier.SNAKE_CASE);
 		for (String absentTrigger : absentTriggers)
-			requireThat(absentTrigger, "absentTrigger").isNotBlank();
+			requireThat(absentTrigger, "absentTrigger").matches(Identifier.SNAKE_CASE);
+		for (String keyDimension : keyDimensions)
+			requireThat(keyDimension, "keyDimension").matches(Identifier.SNAKE_CASE);
 		for (String turn : turns)
 			requireThat(turn, "turn").isNotBlank();
 		for (String interaction : uncoveredInteractions)

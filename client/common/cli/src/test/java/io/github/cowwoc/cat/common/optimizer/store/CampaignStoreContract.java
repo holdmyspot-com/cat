@@ -248,7 +248,7 @@ public abstract class CampaignStoreContract
 				List.of("A turn"), "Answers in the house style", "generator-1", DrawStream.Kind.FORMAL, 3, false);
 			AddedCombination usb = new AddedCombination(1, "test-3",
 				List.of(new VariationValue("usb", "the backup stick", 0.5)));
-			FailedRequirement wrongTone = new FailedRequirement("r1", "wrong-tone");
+			FailedRequirement wrongTone = new FailedRequirement("r1", "wrong_tone");
 			FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, "test-3", wrongTone, 2, FailureGroup.ROUNDS,
 				List.of(new ReproductionRound(TierFixtures.BIG_LOW, List.of(new TriedCombination(usb, 100, 0))),
 					new ReproductionRound(limited, List.of(new TriedCombination(usb, 9, 2)))),
@@ -861,7 +861,7 @@ public abstract class CampaignStoreContract
 	{
 		List<FailedRequirement> failedRequirements;
 		if (verdict == Verdict.FAIL)
-			failedRequirements = List.of(new FailedRequirement("r2", "deleted-without-asking"));
+			failedRequirements = List.of(new FailedRequirement("r2", "deleted_without_asking"));
 		else
 			failedRequirements = List.of();
 		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
@@ -886,7 +886,7 @@ public abstract class CampaignStoreContract
 
 	/**
 	 * Returns the development values added to a lineage's tests: none for lineage 1, and two combinations of the
-	 * {@code delete-directory} test with text that needs escaping for later lineages.
+	 * {@code delete_directory} test with text that needs escaping for later lineages.
 	 *
 	 * @param lineage the lineage's number
 	 * @return the added values
@@ -896,9 +896,9 @@ public abstract class CampaignStoreContract
 		if (lineage == 1)
 			return AddedValues.NONE;
 		return new AddedValues(List.of(
-			new AddedCombination(1, "delete-directory", List.of(new VariationValue("drive", "the \"shared\" drive",
+			new AddedCombination(1, "delete_directory", List.of(new VariationValue("drive", "the \"shared\" drive",
 				0.5))),
-			new AddedCombination(1, "delete-directory", List.of(new VariationValue("home", "~/home\nfolder", 0.5)))));
+			new AddedCombination(1, "delete_directory", List.of(new VariationValue("home", "~/home\nfolder", 0.5)))));
 	}
 
 	/**
@@ -910,19 +910,19 @@ public abstract class CampaignStoreContract
 	 */
 	private static List<FailureGroup> failureGroups()
 	{
-		AddedCombination usb = new AddedCombination(1, "delete-directory",
+		AddedCombination usb = new AddedCombination(1, "delete_directory",
 			List.of(new VariationValue("usb", "the \"backup\" stick", 0.5)));
-		AddedCombination nas = new AddedCombination(1, "delete-directory",
+		AddedCombination nas = new AddedCombination(1, "delete_directory",
 			List.of(new VariationValue("nas", "a network\nshare", 0.5)));
-		FailureGroup reproduced = new FailureGroup("formatting", "delete-directory", new FailedRequirement("r1",
-			"wrong-tone"), 3, FailureGroup.ROUNDS, List.of(
+		FailureGroup reproduced = new FailureGroup("formatting", "delete_directory", new FailedRequirement("r1",
+			"wrong_tone"), 3, FailureGroup.ROUNDS, List.of(
 				new ReproductionRound("formatting", List.of(new TriedCombination(usb, 50, 1),
 					new TriedCombination(nas, 50, 0))),
 				new ReproductionRound("safety", List.of(new TriedCombination(usb, 7, 2),
 					new TriedCombination(nas, 6, 0)))),
 			FailureGroup.Status.REPRODUCED);
-		FailureGroup unreproduced = new FailureGroup("safety", "delete-directory", new FailedRequirement("r2",
-			"deleted-without-asking"), 1, 2 * FailureGroup.ROUNDS, List.of(
+		FailureGroup unreproduced = new FailureGroup("safety", "delete_directory", new FailedRequirement("r2",
+			"deleted_without_asking"), 1, 2 * FailureGroup.ROUNDS, List.of(
 				new ReproductionRound("safety", List.of(new TriedCombination(nas, 100, 1))),
 				new ReproductionRound("safety", List.of())),
 			FailureGroup.Status.NOT_REPRODUCED);
@@ -960,7 +960,7 @@ public abstract class CampaignStoreContract
 			development("formatting", 120, 7).
 			development("safety", 40, 2).
 			failure(new Failure(instance("safety", "deletion", 3, true), "The reply deleted the directory unasked.",
-				List.of(new FailedRequirement("r2", "deleted-without-asking")),
+				List.of(new FailedRequirement("r2", "deleted_without_asking")),
 				new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
 				List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
 					new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
@@ -996,7 +996,7 @@ public abstract class CampaignStoreContract
 						"runner crashed")), 1, List.of())).
 			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity,
 				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, "The reply deleted the file.",
-				List.of(new FailedRequirement("r1", "wrong-tone"), new FailedRequirement("r2", "deleted-without-asking")),
+				List.of(new FailedRequirement("r1", "wrong_tone"), new FailedRequirement("r2", "deleted_without_asking")),
 				null, 1,
 				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
 						"invalid judge result")), 0, List.of())).
@@ -1045,7 +1045,7 @@ public abstract class CampaignStoreContract
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
 			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.",
-				List.of(new FailedRequirement("r1", "wrong-tone")), null, List.of(), List.of())).
+				List.of(new FailedRequirement("r1", "wrong_tone")), null, List.of(), List.of())).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			groups(failureGroups()).
 			campaign().

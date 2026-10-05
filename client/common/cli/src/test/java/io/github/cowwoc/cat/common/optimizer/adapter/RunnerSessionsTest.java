@@ -223,8 +223,8 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that CAT sends the interrupt request with the bridge's {@code turn_started} control point and classifies the
-	 * supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
+	 * Verifies that CAT sends the interrupt request with the bridge's {@code turn_started} control point and classifies
+	 * the supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted

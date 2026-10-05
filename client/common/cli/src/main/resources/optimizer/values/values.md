@@ -62,6 +62,7 @@ The failure group, as JSON:
   differs from the shown values rather than a variant of them.
 - A value that appears in several of your combinations keeps the same `label` and `text` in each. Give different
   values different labels and different texts, and make every combination differ from the others.
+- Spell each `label` in lowercase words joined by underscores, such as `nested_logs`.
 - Write each `text` so that the turns read correctly with it inserted, as the shown values do.
 
 ### Output

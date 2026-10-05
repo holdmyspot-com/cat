@@ -143,7 +143,7 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-C19
 		TrialInstance instance = Builder.instance("safety", "logs");
-		FailedRequirement failed = new FailedRequirement("r1", "wrong-tone");
+		FailedRequirement failed = new FailedRequirement("r1", "wrong_tone");
 		Builder.AttemptBuilder attempt = ready().certificationAttempt(1).
 			failure(new Failure(instance, "failure", List.of(failed), null, List.of(), List.of())).
 			outcome(Outcome.BELOW_MINIMUM);

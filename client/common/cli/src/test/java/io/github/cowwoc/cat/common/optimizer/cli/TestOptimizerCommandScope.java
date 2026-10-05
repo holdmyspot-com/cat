@@ -38,7 +38,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	 * A seed whose first salts give every test of the fixture derivation at least 2 key-value combinations in each
 	 * part.
 	 */
-	private static final long SEED = 53;
+	private static final long SEED = 432_969;
 	private final Harness harness;
 	private final Path directory;
 	private final JsonMapper json = JsonMapper.builder().build();

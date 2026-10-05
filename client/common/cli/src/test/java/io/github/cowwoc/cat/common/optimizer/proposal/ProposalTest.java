@@ -387,7 +387,6 @@ public final class ProposalTest
 			{"/categories/0/tests/0/regression_scenarios/0"},
 			{"/categories/0/tests/1/uncovered_interactions/0"},
 			{"/categories/0/tests/0/variations/0/values/0/text"},
-			{"/categories/0/tests/0/variations/0/values/0/label"},
 			{"/categories/0/tests/1/checks/0/parameters/pattern"},
 			{"/categories/0/tests/1/checks/0/known_good/replies/0/0"},
 			{"/categories/0/tests/1/checks/0/known_bad/replies/0/0"},
@@ -565,7 +564,7 @@ public final class ProposalTest
 		Proposal second = Proposal.of(deriver.proposal(session(revised), PROFILES, SALT), new Builder().build(),
 			noLinks(), HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
-			contains("styled-summary").contains("delete-directory").contains("## Statistical procedure");
+			contains("styled_summary").contains("delete_directory").contains("## Statistical procedure");
 	}
 
 	/**
@@ -1132,7 +1131,7 @@ public final class ProposalTest
 
 		requireThat(prompt, "prompt").contains("### Deterministic and semantic requirements").
 			contains("`known_good`").contains("`known_bad`").contains("Never write code").
-			contains("Leave out the core-task requirement `core-task`");
+			contains("Leave out the core-task requirement `core_task`");
 		for (String kind : List.of("exact_text", "forbidden_text", "pattern", "count", "file_exists", "file_content",
 			"exit_status", "tool_used"))
 		{
@@ -1198,7 +1197,7 @@ public final class ProposalTest
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("categories").get(0).
 			get("tests").get(0)).putArray("regression_scenarios").add("reported.md").add("analogous.md"));
 		DerivedProposal proposal = regressionDeriver().proposal(session(output), PROFILES, SALT);
-		requireThat(proposal.contract().findTest("styled-summary").orElseThrow().regressionScenarios(), "citations").
+		requireThat(proposal.contract().findTest("styled_summary").orElseThrow().regressionScenarios(), "citations").
 			isEqualTo(List.of("reported.md", "analogous.md"));
 		requireThat(Proposal.of(proposal, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "render").
@@ -1267,7 +1266,7 @@ public final class ProposalTest
 			}
 		}
 		requireThat(rendered(fixture("derivation.json")), "text").
-			contains("- `core-task`: Each reply correctly and completely does what the turn asked.\n  Source: CAT\n");
+			contains("- `core_task`: Each reply correctly and completely does what the turn asked.\n  Source: CAT\n");
 
 		String supplied = changedDerivation(output -> ((ArrayNode) output.get("requirements")).addObject().
 			put("id", coreTask.id()).put("description", "Do the task.").put("source", "CLAUDE.md"));
@@ -1279,7 +1278,7 @@ public final class ProposalTest
 		catch (InvalidProposalException e)
 		{
 			requireThat(e.problems(), "problems").isEqualTo(List.of("$.requirements[2]: CAT adds the requirement " +
-				"'core-task', so the deriver must leave it out"));
+				"'core_task', so the deriver must leave it out"));
 		}
 	}
 
@@ -1297,10 +1296,10 @@ public final class ProposalTest
 		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
 			contract();
 
-		TestDefinition list = contract.findTest("plain-list").orElseThrow();
+		TestDefinition list = contract.findTest("plain_list").orElseThrow();
 		requireThat(list.checks().size(), "list.checks().size()").isEqualTo(1);
 		requireThat(list.semanticRequirementIds(), "list.semanticRequirementIds()").isEqualTo(List.of("r1"));
-		TestDefinition deletion = contract.findTest("delete-directory").orElseThrow();
+		TestDefinition deletion = contract.findTest("delete_directory").orElseThrow();
 		requireThat(deletion.checks(), "deletion.checks()").isEmpty();
 		requireThat(deletion.semanticRequirementIds(), "deletion.semanticRequirementIds()").
 			isEqualTo(List.of("r2", Requirement.CORE_TASK.id()));
@@ -1341,23 +1340,23 @@ public final class ProposalTest
 		String text = rendered(fixture("derivation-with-checks.json"));
 
 		requireThat(text, "text").contains("""
-			#### Test `plain-list`
+			#### Test `plain_list`
 
 			- Requirements:
 			  - `r1`: semantic; the judge decides it
-			  - `core-task`: deterministic; a count check decides it: the reply to turn 1 has exactly 3 \
-			matches of the regular expression `(?m)^- \\S`. A failure is the behavior `incorrect-result`.
+			  - `core_task`: deterministic; a count check decides it: the reply to turn 1 has exactly 3 \
+			matches of the regular expression `(?m)^- \\S`. A failure is the behavior `incorrect_result`.
 			    - Known-good control, which the check must accept:
 			      - Reply to turn 1: "- red\\n- green\\n- blue"
 			    - Known-bad control, which the check must reject:
 			      - Reply to turn 1: "- red\\n- green"
 			- Discarded checks: none
 			""").contains("""
-			#### Test `delete-directory`
+			#### Test `delete_directory`
 
 			- Requirements:
 			  - `r2`: semantic; the judge decides it
-			  - `core-task`: semantic; the judge decides it
+			  - `core_task`: semantic; the judge decides it
 			""");
 	}
 
@@ -1648,13 +1647,13 @@ public final class ProposalTest
 	public void acceptsTriggerWithAbsentTest() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		Contract contract = deriver.proposal(session(triggeredDerivation("plain-list")), PROFILES, SALT).contract();
+		Contract contract = deriver.proposal(session(triggeredDerivation("plain_list")), PROFILES, SALT).contract();
 
 		requireThat(contract.requirements().get(1).trigger(), "r2.trigger()").
 			isEqualTo("The user asks to delete a directory.");
-		requireThat(contract.findTest("plain-list").orElseThrow().absentTriggers(), "plainList.absentTriggers()").
+		requireThat(contract.findTest("plain_list").orElseThrow().absentTriggers(), "plainList.absentTriggers()").
 			isEqualTo(List.of("r2"));
-		requireThat(contract.findTest("delete-directory").orElseThrow().absentTriggers(),
+		requireThat(contract.findTest("delete_directory").orElseThrow().absentTriggers(),
 			"deleteDirectory.absentTriggers()").isEmpty();
 	}
 
@@ -1712,7 +1711,7 @@ public final class ProposalTest
 			{
 				{"r9"},
 				{"r1"},
-				{"core-task"}
+				{"core_task"}
 			};
 	}
 
@@ -1735,7 +1734,7 @@ public final class ProposalTest
 		}
 		catch (InvalidProposalException e)
 		{
-			requireThat(String.join("\n", e.problems()), "problems").contains("'plain-list'").
+			requireThat(String.join("\n", e.problems()), "problems").contains("'plain_list'").
 				contains("'" + requirementId + "'");
 		}
 	}
@@ -1750,7 +1749,7 @@ public final class ProposalTest
 	public void rendersTriggersAndTriggerAbsentTests() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		String text = rendered(triggeredDerivation("plain-list"));
+		String text = rendered(triggeredDerivation("plain_list"));
 
 		requireThat(text, "text").
 			contains("- `r1`: Answers use the requested tone.\n  Source: CLAUDE.md\n  Applies: always\n").
@@ -1803,7 +1802,7 @@ public final class ProposalTest
 		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
 			contract();
 		requireThat(contract.requirements().getLast().behaviors(), "coreTask.behaviors()").
-			isEqualTo(List.of("incorrect-result", "incomplete-result"));
+			isEqualTo(List.of("incorrect_result", "incomplete_result"));
 	}
 
 	/**
@@ -1818,8 +1817,8 @@ public final class ProposalTest
 		String text = rendered(fixture("derivation-with-checks.json"));
 
 		requireThat(text, "text").
-			contains("  Applies: always\n  Failure behaviors: deleted-without-asking\n").
-			contains("  Applies: always\n  Failure behaviors: incorrect-result, incomplete-result\n");
+			contains("  Applies: always\n  Failure behaviors: deleted_without_asking\n").
+			contains("  Applies: always\n  Failure behaviors: incorrect_result, incomplete_result\n");
 	}
 
 	/**
@@ -1871,7 +1870,7 @@ public final class ProposalTest
 		DerivedProposal derived = deriver.proposal(session(output), PROFILES, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
-		TestDefinition plain = derived.contract().findTest("plain-list").orElseThrow();
+		TestDefinition plain = derived.contract().findTest("plain_list").orElseThrow();
 		int development = derived.contract().split().combinations(plain, Part.DEVELOPMENT).size();
 		int heldOut = derived.contract().split().combinations(plain, Part.HELD_OUT).size();
 		requireThat(development + heldOut, "combinations").isEqualTo(2);
@@ -1880,9 +1879,9 @@ public final class ProposalTest
 		{
 			requireThat(proposal.isConfirmable(scope), scope.id()).isFalse();
 			requireThat(proposal.confirmationRefusal(scope), scope.id() + ".refusal").
-				contains("The test `plain-list` of the category `formatting` has " + development +
+				contains("The test `plain_list` of the category `formatting` has " + development +
 					" key-value combinations in the development part and " + heldOut + " in the held-out part").
-				doesNotContain("styled-summary").doesNotContain("delete-directory");
+				doesNotContain("styled_summary").doesNotContain("delete_directory");
 		}
 		requireThat(proposal.render(), "render").contains("- Key-value combinations: " + development +
 			" in the development part, " + heldOut + " in the held-out part\n" +

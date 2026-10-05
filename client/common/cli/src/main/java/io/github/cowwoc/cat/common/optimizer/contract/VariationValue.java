@@ -18,11 +18,12 @@ public record VariationValue(String label, String text, double probability)
 	 * @param text the text that replaces the dimension's placeholder in turns and check parameters
 	 * @param probability the probability of drawing this value, greater than 0 and at most 1
 	 * @throws NullPointerException if {@code label} or {@code text} are null
-	 * @throws IllegalArgumentException if {@code label} is blank or {@code probability} is outside (0, 1]
+	 * @throws IllegalArgumentException if {@code label} is not lowercase words joined by underscores or
+	 *   {@code probability} is outside (0, 1]
 	 */
 	public VariationValue
 	{
-		requireThat(label, "label").isNotBlank();
+		requireThat(label, "label").matches(Identifier.SNAKE_CASE);
 		requireThat(text, "text").isNotNull();
 		requireProbability(probability);
 	}

@@ -40,13 +40,13 @@ public final class ProposalSchemaTest
 		// Requirement: R-C12
 		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
 		ObjectNode check = (ObjectNode) json.readTree("""
-			{"requirement_id":"r1","behavior":"wrong-tone","kind":"forbidden_text","parameters":{"text":"forbidden"},
+			{"requirement_id":"r1","behavior":"wrong_tone","kind":"forbidden_text","parameters":{"text":"forbidden"},
 			 "known_good":{"replies":[["Checking first.","Done."]],"files":[],"tool_calls":[],"choices":[]},
 			 "known_bad":{"replies":[["forbidden progress","Done."]],"files":[],"tool_calls":[],"choices":[]}}
 			""");
 		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
 
-		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain-list").orElseThrow();
+		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain_list").orElseThrow();
 
 		requireThat(loaded.checks().size(), "checks.size()").isEqualTo(1);
 		requireThat(loaded.discardedChecks(), "discardedChecks").isEmpty();
@@ -352,8 +352,8 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that each requirement lists its failure behaviors as lowercase words joined by hyphens, that each check
-	 * names the behavior it detects, and that a stored contract keeps both.
+	 * Verifies that each requirement lists its failure behaviors as lowercase words joined by underscores, that each
+	 * check names the behavior it detects, and that a stored contract keeps both.
 	 *
 	 * @throws InvalidProposalException if the contract is rejected
 	 */
@@ -373,22 +373,54 @@ public final class ProposalSchemaTest
 			problems()), "otherBehavior").contains("'other'");
 
 		Contract contract = ContractFixtures.contract();
-		requireThat(contract.requirements().getFirst().behaviors(), "behaviors").isEqualTo(List.of("wrong-tone"));
+		requireThat(contract.requirements().getFirst().behaviors(), "behaviors").isEqualTo(List.of("wrong_tone"));
 		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(contract));
 		ObjectNode check = (ObjectNode) json.readTree("""
-			{"requirement_id":"r1","behavior":"wrong-tone","kind":"forbidden_text","parameters":{"text":"loud"},
+			{"requirement_id":"r1","behavior":"wrong_tone","kind":"forbidden_text","parameters":{"text":"loud"},
 			 "known_good":{"replies":[["calm"]],"files":[],"tool_calls":[],"choices":[]},
 			 "known_bad":{"replies":[["loud"]],"files":[],"tool_calls":[],"choices":[]}}
 			""");
 		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
 		Contract reread = schema().parse(json.writeValueAsString(stored));
-		requireThat(reread.findTest("plain-list").orElseThrow().checks().getFirst().behavior(), "check.behavior").
-			isEqualTo("wrong-tone");
+		requireThat(reread.findTest("plain_list").orElseThrow().checks().getFirst().behavior(), "check.behavior").
+			isEqualTo("wrong_tone");
 		requireThat(schema().parse(schema().toJson(reread)), "reread").isEqualTo(reread);
 
 		check.remove("behavior");
 		requireThat(rejection(json.writeValueAsString(stored)).problems(), "missingCheckBehavior").
 			contains("$.categories[0].tests[1].checks[0].behavior: required property is missing");
+	}
+
+	/**
+	 * Verifies that a proposal spells each identifier that the deriver names, which are the requirement, behavior,
+	 * category, test, dimension and value-label identifiers, as lowercase words joined by underscores.
+	 */
+	@Test
+	public void requiresSnakeCaseIdentifiers()
+	{
+		String[][] locations = {
+			{"requirements", "0", "id"},
+			{"requirements", "0", "behaviors", "0"},
+			{"categories", "0", "id"},
+			{"categories", "0", "tests", "0", "id"},
+			{"categories", "0", "tests", "0", "requirement_ids", "0"},
+			{"categories", "1", "tests", "0", "key_dimensions", "0"},
+			{"categories", "1", "tests", "0", "variations", "0", "dimension"},
+			{"categories", "1", "tests", "0", "variations", "0", "values", "0", "label"}};
+		for (String[] location : locations)
+		{
+			StringBuilder path = new StringBuilder("$");
+			for (String step : location)
+			{
+				if (step.chars().allMatch(Character::isDigit))
+					path.append('[').append(step).append(']');
+				else
+					path.append('.').append(step);
+			}
+			String problems = String.join(" | ", rejection(changed(location,
+				json.getNodeFactory().stringNode("kebab-case"))).problems());
+			requireThat(problems, "problems").withContext(path, "path").contains(path + ":");
+		}
 	}
 
 	/**
@@ -408,7 +440,7 @@ public final class ProposalSchemaTest
 
 		requireThat(contract.requirements().get(1).trigger(), "trigger").
 			isEqualTo("The user asks to delete a directory.");
-		requireThat(contract.findTest("plain-list").orElseThrow().absentTriggers(), "absentTriggers").
+		requireThat(contract.findTest("plain_list").orElseThrow().absentTriggers(), "absentTriggers").
 			isEqualTo(List.of("r2"));
 		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
 	}
@@ -602,7 +634,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C1
 		rejection(text(new String[]{"requirements", "1", "id"}, "r1"));
 		rejection(text(new String[]{"categories", "1", "id"}, "formatting"));
-		rejection(text(new String[]{"categories", "1", "tests", "0", "id"}, "plain-list"));
+		rejection(text(new String[]{"categories", "1", "tests", "0", "id"}, "plain_list"));
 	}
 
 	/**
@@ -665,7 +697,7 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Returns the fixture contract with checks on its {@code plain-list} test, which checks {@code r1} and the
+	 * Returns the fixture contract with checks on its {@code plain_list} test, which checks {@code r1} and the
 	 * core-task requirement in one turn.
 	 *
 	 * @param checks the test's checks
@@ -703,9 +735,9 @@ public final class ProposalSchemaTest
 		ControlEvidence bad) throws InvalidProposalException
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result", criterion,
+		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect_result", criterion,
 			good, bad);
-		DiscardedCheck discarded = new DiscardedCheck(new DeterministicCheck("r1", "wrong-tone", criterion, bad, good),
+		DiscardedCheck discarded = new DiscardedCheck(new DeterministicCheck("r1", "wrong_tone", criterion, bad, good),
 			"It rejected its known-good control: the evidence differs.");
 		Contract original = withChecks(List.of(check), List.of(discarded));
 
@@ -733,7 +765,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C9
 		ControlEvidence list = new ControlEvidence(List.of(List.of("- red\n- green\n- blue")), List.of(), List.of(),
 			Map.of());
-		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
+		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect_result",
 			new PatternMatch(1, "red"), list, list);
 		JsonNode stored = json.readTree(schema().toJson(ContractFixtures.contract()));
 		JsonNode written = json.readTree(schema().toJson(withChecks(List.of(), List.of(new DiscardedCheck(lenient,
@@ -742,7 +774,7 @@ public final class ProposalSchemaTest
 			get("check");
 		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
 
-		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain-list").orElseThrow();
+		TestDefinition loaded = schema().parse(json.writeValueAsString(stored)).findTest("plain_list").orElseThrow();
 
 		requireThat(loaded.checks(), "checks").isEmpty();
 		requireThat(loaded.discardedChecks().size(), "discardedChecks.size()").isEqualTo(1);
@@ -762,7 +794,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C9
 		ObjectNode check = json.createObjectNode();
 		check.put("requirement_id", "r1");
-		check.put("behavior", "wrong-tone");
+		check.put("behavior", "wrong_tone");
 		check.put("kind", "exact_text");
 		check.putObject("parameters").put("pattern", "x");
 		ObjectNode control = json.createObjectNode();

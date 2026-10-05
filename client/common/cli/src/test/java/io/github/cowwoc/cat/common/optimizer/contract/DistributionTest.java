@@ -48,9 +48,9 @@ public final class DistributionTest
 		for (int i = 0; i < draws; ++i)
 			counts.merge(generator.draw("formatting", stream).testId(), 1, Integer::sum);
 
-		double statistic = ChiSquare.statistic(counts, Map.of("styled-summary", 0.5, "plain-list", 0.5), draws);
+		double statistic = ChiSquare.statistic(counts, Map.of("styled_summary", 0.5, "plain_list", 0.5), draws);
 
-		requireThat(counts.keySet(), "tests").isEqualTo(java.util.Set.of("styled-summary", "plain-list"));
+		requireThat(counts.keySet(), "tests").isEqualTo(java.util.Set.of("styled_summary", "plain_list"));
 		requireThat(statistic, "statistic").isLessThan(ChiSquare.ONE_DEGREE_CUTOFF);
 	}
 

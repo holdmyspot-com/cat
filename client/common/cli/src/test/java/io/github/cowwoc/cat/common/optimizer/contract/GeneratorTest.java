@@ -42,7 +42,7 @@ public final class GeneratorTest
 	 * Draws until the generator picks the test that has variations.
 	 *
 	 * @param generator the generator to draw from
-	 * @return an instance of {@code styled-summary}
+	 * @return an instance of {@code styled_summary}
 	 */
 	private static TrialInstance styledInstance(Generator generator)
 	{
@@ -50,10 +50,10 @@ public final class GeneratorTest
 		for (int i = 0; i < 100; ++i)
 		{
 			TrialInstance instance = generator.draw("formatting", stream);
-			if (instance.testId().equals("styled-summary"))
+			if (instance.testId().equals("styled_summary"))
 				return instance;
 		}
-		throw new AssertionError("No styled-summary instance in 100 draws");
+		throw new AssertionError("No styled_summary instance in 100 draws");
 	}
 
 	/**

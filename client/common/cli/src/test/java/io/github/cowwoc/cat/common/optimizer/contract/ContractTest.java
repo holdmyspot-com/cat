@@ -18,7 +18,7 @@ public final class ContractTest
 	/**
 	 * The failure behaviors of a requirement that a test builds.
 	 */
-	private static final List<String> BEHAVIORS = List.of("skipped-question");
+	private static final List<String> BEHAVIORS = List.of("skipped_question");
 
 	/**
 	 * Creates the test fixture.
@@ -130,7 +130,7 @@ public final class ContractTest
 		TestDefinition orphan = new TestDefinition("orphan", List.of("r99"), List.of(), "Always.", List.of("Hello."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
 		Category orphaned = new Category("orphaned", "Why.", new RiskRank(3), List.of(orphan));
-		TestDefinition duplicate = new TestDefinition("plain-list", List.of("r1"), List.of(), "Always.", List.of("Hello."),
+		TestDefinition duplicate = new TestDefinition("plain_list", List.of("r1"), List.of(), "Always.", List.of("Hello."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
 		Category duplicating = new Category("duplicating", "Why.", new RiskRank(3), List.of(duplicate));
 		List<Runnable> inconsistent = List.of(
@@ -162,8 +162,8 @@ public final class ContractTest
 	}
 
 	/**
-	 * Verifies that a requirement lists at least one failure behavior, each a distinct lowercase identifier other than
-	 * {@code other}, and that CAT's core-task requirement lists its own.
+	 * Verifies that a requirement lists at least one failure behavior, each a distinct identifier of lowercase words
+	 * joined by underscores other than {@code other}, and that CAT's core-task requirement lists its own.
 	 */
 	@Test
 	public void requirementListsItsFailureBehaviors()
@@ -172,8 +172,8 @@ public final class ContractTest
 		requireThat(Requirement.CORE_TASK.behaviors(), "coreTask").isNotEmpty();
 		requireThat(new Requirement("r", "Asks first.", "CLAUDE.md", null, BEHAVIORS).behaviors(), "behaviors").
 			isEqualTo(BEHAVIORS);
-		List<List<String>> invalid = List.of(List.of(), List.of("skipped-question", "skipped-question"),
-			List.of(Requirement.OTHER_BEHAVIOR), List.of("Skipped question"));
+		List<List<String>> invalid = List.of(List.of(), List.of("skipped_question", "skipped_question"),
+			List.of(Requirement.OTHER_BEHAVIOR), List.of("Skipped question"), List.of("skipped-question"));
 		for (List<String> behaviors : invalid)
 		{
 			boolean rejected = false;
@@ -201,10 +201,10 @@ public final class ContractTest
 		ControlEvidence asks = new ControlEvidence(List.of(List.of("Delete it?")), List.of(), List.of(), Map.of());
 		ControlEvidence deletes = new ControlEvidence(List.of(List.of("Deleted.")), List.of(), List.of(), Map.of());
 		CheckCriterion criterion = new CheckCriterion.PatternMatch(1, "\\?");
-		DeterministicCheck listed = new DeterministicCheck("r2", "deleted-without-asking", criterion, asks, deletes);
-		DeterministicCheck unlisted = new DeterministicCheck("r2", "wrong-tone", criterion, asks, deletes);
+		DeterministicCheck listed = new DeterministicCheck("r2", "deleted_without_asking", criterion, asks, deletes);
+		DeterministicCheck unlisted = new DeterministicCheck("r2", "wrong_tone", criterion, asks, deletes);
 
-		requireThat(withDeletionCheck(valid, List.of(listed), List.of()).findTest("delete-directory").orElseThrow().
+		requireThat(withDeletionCheck(valid, List.of(listed), List.of()).findTest("delete_directory").orElseThrow().
 			checks(), "checks").isEqualTo(List.of(listed));
 		List<Runnable> invalid = List.of(
 			() -> withDeletionCheck(valid, List.of(unlisted), List.of()),
@@ -220,14 +220,14 @@ public final class ContractTest
 			{
 				message = e.getMessage();
 			}
-			requireThat(message, "message").contains("wrong-tone").contains("r2");
+			requireThat(message, "message").contains("wrong_tone").contains("r2");
 		}
 	}
 
 	/**
 	 * Returns a contract whose deletion test has the given checks.
 	 *
-	 * @param valid a valid contract that has the {@code delete-directory} test of {@link ContractFixtures#contract()}
+	 * @param valid a valid contract that has the {@code delete_directory} test of {@link ContractFixtures#contract()}
 	 * @param checks the test's checks
 	 * @param discarded the test's discarded checks
 	 * @return the contract
@@ -235,7 +235,7 @@ public final class ContractTest
 	private static Contract withDeletionCheck(Contract valid, List<DeterministicCheck> checks,
 		List<DiscardedCheck> discarded)
 	{
-		TestDefinition deletion = valid.findTest("delete-directory").orElseThrow();
+		TestDefinition deletion = valid.findTest("delete_directory").orElseThrow();
 		TestDefinition checked = new TestDefinition(deletion.id(), deletion.requirementIds(), deletion.absentTriggers(),
 			deletion.applicability(), deletion.turns(), deletion.timeLimit(), deletion.expectedBehaviour(),
 			deletion.uncoveredInteractions(), deletion.variations(), deletion.keyDimensions(), checks, discarded,
@@ -265,7 +265,7 @@ public final class ContractTest
 			filter(requirement -> !requirement.equals(Requirement.CORE_TASK)).toList();
 		List<Requirement> rewritten = new ArrayList<>(withoutCoreTask);
 		rewritten.add(new Requirement(Requirement.CORE_TASK.id(), "Answers the question.", "CLAUDE.md", null,
-			List.of("incorrect-result")));
+			List.of("incorrect_result")));
 		List<Runnable> invalid = List.of(
 			() -> new Contract(withoutCoreTask, valid.categories(), valid.profiles(), valid.judge(), valid.fixtures(),
 				valid.limitations(), valid.salt()),
