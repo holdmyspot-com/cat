@@ -4124,6 +4124,32 @@ public final class DriverTest
 	}
 
 	/**
+	 * Verifies that an author started after the user answered an authority warning by using an authorized source is
+	 * given that warning, so that it is told the user declined the edit.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void authorIsGivenTheAnsweredWarnings() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			AuthorityWarning warning = new AuthorityWarning("r2", Path.of("shared.md"), Path.of("/external/shared.md"),
+				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				authoring().answered(warning).build());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !harness.author().briefs().isEmpty());
+				requireThat(harness.author().briefs().getFirst().answeredWarnings(), "answeredWarnings").
+					isEqualTo(List.of(warning));
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a malformed report of needed edits counts as an author infrastructure failure: the attempt is not
 	 * submitted, and repeated failures stop the slice.
 	 *

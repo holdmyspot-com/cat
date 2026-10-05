@@ -18,6 +18,8 @@ import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorReport;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
+import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -64,7 +66,7 @@ public final class AuthorPrompt implements AuthorProtocol
 	private final JsonResponse responses;
 	private final PromptTemplate prompt;
 	private final String reportSchema;
-	private final String promptSources;
+	private final Set<Path> promptSources;
 	private final String loaderConfiguration;
 
 	/**
@@ -73,7 +75,8 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * @param json the operation-owned JSON mapper
 	 * @param schema writes the confirmed requirements, tests and evaluation settings as JSON for the author
 	 * @param promptSources the in-project prompt files and directories, relative to the project directory, at or below
-	 *   which the author may edit, create, rename and delete ordinary files
+	 *   which the author may edit, create, rename and delete ordinary files; a request leaves out each one whose path
+	 *   is a symbolic link to a file outside the project, because that file is read-only
 	 * @param loaderConfiguration the files and directories that decide which prompt files load, at or below which
 	 *   nothing may change
 	 * @throws NullPointerException if any of the arguments are null or contain null
@@ -89,7 +92,7 @@ public final class AuthorPrompt implements AuthorProtocol
 		this.responses = new JsonResponse(json);
 		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
 		this.reportSchema = pretty(json.readTree(PromptTemplate.load(REPORT_SCHEMA_RESOURCE).text()));
-		this.promptSources = list(promptSources);
+		this.promptSources = Set.copyOf(promptSources);
 		this.loaderConfiguration = list(loaderConfiguration);
 	}
 
@@ -123,6 +126,55 @@ public final class AuthorPrompt implements AuthorProtocol
 			collect(Collectors.joining("\n"));
 	}
 
+	/**
+	 * Returns the prompt sources that the author may edit as a Markdown list.
+	 *
+	 * @param links the resolved target of each symbolic link, keyed by the link's path
+	 * @return one {@code - path} line per prompt source in path order, leaving out each source whose path is a link to
+	 *   a file outside the project, or {@code - none} if no source remains
+	 */
+	private String editableSources(Map<Path, Path> links)
+	{
+		Set<Path> editable = new HashSet<>();
+		for (Path source : promptSources)
+		{
+			Path target = links.get(source);
+			if (target == null || !Authority.isExternal(target))
+				editable.add(source);
+		}
+		return list(editable);
+	}
+
+	/**
+	 * Returns the edits outside the edit authority that the user declined as a Markdown list.
+	 *
+	 * @param warnings the warnings that the user answered by using an authorized source, in the order answered
+	 * @return one {@code - requirement <requirement>: <path> -> <target> (<limit>)} line per warning in order, without
+	 *   {@code -> <target>} when the path is not a link, or {@code - none} if there are none
+	 */
+	private static String declinedEdits(List<AuthorityWarning> warnings)
+	{
+		if (warnings.isEmpty())
+			return "- none";
+		List<String> lines = new ArrayList<>();
+		for (AuthorityWarning warning : warnings)
+		{
+			StringBuilder line = new StringBuilder("- requirement ").append(warning.requirement()).append(": ").
+				append(warning.path());
+			if (!warning.target().equals(warning.path()))
+				line.append(" -> ").append(warning.target());
+			line.append(" (").append(EnumNames.lowerCase(warning.limit())).append(')');
+			lines.add(line.toString());
+		}
+		return String.join("\n", lines);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The prompt lists the editable prompt sources, leaving out each one whose path is a link to a file outside the
+	 * project, and the edits outside the edit authority that the user declined.
+	 */
 	@Override
 	public SessionRequest request(AuthorBrief brief, Path copy)
 	{
@@ -165,9 +217,10 @@ public final class AuthorPrompt implements AuthorProtocol
 		}
 		String turn = prompt.fill(Map.ofEntries(
 			Map.entry("hunk_definition", Hunk.DEFINITION),
-			Map.entry("prompt_sources", promptSources),
+			Map.entry("prompt_sources", editableSources(brief.links())),
 			Map.entry("loader_configuration", loaderConfiguration),
 			Map.entry("links", links(brief.links())),
+			Map.entry("declined_edits", declinedEdits(brief.answeredWarnings())),
 			Map.entry("cell", brief.cell()),
 			Map.entry("approach", brief.approach().text()),
 			Map.entry("contract", json.writeValueAsString(DevelopmentContract.toJson(json, schema,

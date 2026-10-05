@@ -20,6 +20,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Operation;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
@@ -160,7 +162,8 @@ public final class AuthorTest
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION, contract, List.of(failure()),
 			Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
-				List.of(failure().summary()))), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "", List.of());
+				List.of(failure().summary()))), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "",
+			List.of());
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -323,6 +326,108 @@ public final class AuthorTest
 
 		requireThat(turn, "turn").contains("which prompt files load, may change:\n\n- none\n").
 			contains("resolve to these targets:\n\n- none\n");
+	}
+
+	/**
+	 * Verifies that the author is told each edit outside its authority that the user declined, with its requirement,
+	 * path, resolved target and limit, and that a warning whose path is not a link names no target.
+	 */
+	@Test
+	public void statesTheDeclinedEdits()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")),
+			Set.of(Path.of(".claude/settings.json")));
+		List<AuthorityWarning.Choice> choices = List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+			AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN);
+		List<AuthorityWarning> declined = List.of(
+			new AuthorityWarning("R1", Path.of("shared.md"), Path.of("/external/shared.md"),
+				Limit.EXTERNAL_TARGET_READ_ONLY, choices),
+			new AuthorityWarning("R2", Path.of(".claude/settings.json"), Path.of(".claude/settings.json"),
+				Limit.LOADER_CONFIGURATION_FIXED, choices));
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", declined);
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("- The user declined these edits outside your authority. Do not report " +
+			"them again; meet each one's requirement through\n  the editable prompt sources above instead:\n\n" +
+			"- requirement R1: shared.md -> /external/shared.md (external_target_read_only)\n" +
+			"- requirement R2: .claude/settings.json (loader_configuration_fixed)\n");
+	}
+
+	/**
+	 * Verifies that the declined edits read {@code none} when the user declined no edit.
+	 */
+	@Test
+	public void statesNoDeclinedEditsAsNone()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "", List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("the editable prompt sources above instead:\n\n- none\n");
+	}
+
+	/**
+	 * Verifies that a prompt source whose path is a link to a file outside the project is not offered as editable,
+	 * while the link itself stays listed with its target.
+	 */
+	@Test
+	public void externalLinkIsNotAnEditableSource()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"), Path.of("shared.md")),
+			Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- CLAUDE.md\n\n").
+			contains("resolve to these targets:\n\n- shared.md -> /external/shared.md\n");
+	}
+
+	/**
+	 * Verifies that the editable prompt sources read {@code none} when every prompt source is a link to a file outside
+	 * the project.
+	 */
+	@Test
+	public void onlyExternalLinksLeaveNoEditableSource()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("shared.md")), Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- none\n\n");
+	}
+
+	/**
+	 * Verifies that a prompt source whose path is a link to a file inside the project stays editable.
+	 */
+	@Test
+	public void inProjectLinkStaysEditable()
+	{
+		// Requirement: R-W4
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("AGENTS.md"), Path.of("CLAUDE.md")),
+			Set.of());
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			Map.of(Path.of("AGENTS.md"), Path.of("CLAUDE.md")), "", List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- AGENTS.md\n- CLAUDE.md\n\n").
+			contains("resolve to these targets:\n\n- AGENTS.md -> CLAUDE.md\n");
 	}
 
 	/**

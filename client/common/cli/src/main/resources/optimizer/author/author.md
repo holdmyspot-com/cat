@@ -40,6 +40,10 @@
 - When a requirement needs an edit outside this authority, do not make it. Report the requirement, the path, the
   operation and, where the path is a link, its resolved target in your final response. CAT asks the user how to
   continue.
+- The user declined these edits outside your authority. Do not report them again; meet each one's requirement through
+  the editable prompt sources above instead:
+
+{{declined_edits}}
 
 ### Evidence
 

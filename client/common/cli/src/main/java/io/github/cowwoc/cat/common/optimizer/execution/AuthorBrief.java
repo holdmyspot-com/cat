@@ -141,7 +141,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
 			campaign.contract(), development.failures(), development.counts(), ended,
-			links, campaignEdits, List.of());
+			links, campaignEdits, campaign.answeredWarnings());
 	}
 
 	/**
