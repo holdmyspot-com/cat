@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -128,7 +129,7 @@ public final class GitTopicReplayEditor
 		this.gates = new Gates(this.commands);
 		this.outputGates = new OutputGates(this.git, this::createTemporaryDirectory);
 		this.finalization = new Finalization(this.git, this.history, json());
-		this.backups = new Backup(this.git);
+		this.backups = new Backup(this.git, Clock.systemUTC());
 		this.reviewEvidence = new ReviewEvidence(json());
 		this.originReviewReports = new OriginReviewReports(json(), this.originReviewFacts, this.sourceReviewValidation,
 			this.reviewEvidence);

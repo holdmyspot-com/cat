@@ -8,7 +8,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -16,17 +17,21 @@ import java.time.format.DateTimeFormatter;
  */
 final class Backup
 {
-	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").
+		withZone(ZoneOffset.UTC);
 	private final Git git;
+	private final Clock clock;
 
 	/**
 	 * Creates a backup lifecycle owner for one repository.
 	 *
 	 * @param git the repository access boundary
+	 * @param clock the clock that supplies the time, which each backup branch name shows in UTC
 	 */
-	Backup(Git git)
+	Backup(Git git, Clock clock)
 	{
 		this.git = git;
+		this.clock = clock;
 	}
 
 	/**
@@ -45,7 +50,7 @@ final class Backup
 				"backup for recovery or finalize that replay before creating another backup");
 		}
 		String tip = git.run("rev-parse", "HEAD").trim();
-		String prefix = "backup/topic-replay-" + TIMESTAMP.format(LocalDateTime.now());
+		String prefix = "backup/topic-replay-" + TIMESTAMP.format(clock.instant());
 		String backup = uniqueBranch(prefix);
 		git.lines("branch", backup, tip);
 		Files.writeString(inventory, backup + " " + tip + System.lineSeparator(), UTF_8);
