@@ -22,6 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>{@code thread/started} names the root thread, its model and its reasoning effort; an archive without thread
  *   initialization names the root in its first {@code turn/started} notification;</li>
+ *   <li>{@code thread/settings/updated} reports the model and reasoning effort that the thread's turn runs at,
+ *   which can differ from the defaults in {@code thread/started}. For the root thread, each non-blank value
+ *   replaces the one observed so far; the notification of another thread changes nothing. When no root is known
+ *   yet, the notification names the root;</li>
  *   <li>{@code thread/tokenUsage/updated} carries each thread's cumulative {@code total}, and the session's usage is
  *   the sum over every thread, so that child threads count;</li>
  *   <li>{@code account/rateLimits/updated} carries the {@code primary} and {@code secondary} windows, which are
@@ -61,6 +65,7 @@ final class AppServerEvents extends HarnessEvents
 		switch (event.path("method").asString(""))
 		{
 			case "thread/started" -> readThreadStarted(params.path("thread"));
+			case "thread/settings/updated" -> readThreadSettings(params);
 			case "thread/tokenUsage/updated" -> readTokenUsage(params);
 			case "account/rateLimits/updated" -> readRateLimits(params.path("rateLimits"));
 			case "turn/started" -> readTurnStarted(params);
@@ -151,6 +156,30 @@ final class AppServerEvents extends HarnessEvents
 		rootThread = id;
 		setModel(text(thread.path("model")));
 		setReasoning(text(thread.path("reasoningEffort")));
+	}
+
+	/**
+	 * Reads a {@code thread/settings/updated} notification. The root thread's settings replace the model and
+	 * reasoning effort that {@code thread/started} reported, because they are the values that the turn runs at.
+	 *
+	 * @param params the notification's parameters
+	 */
+	private void readThreadSettings(JsonNode params)
+	{
+		String id = text(params.path("threadId"));
+		if (id == null)
+			return;
+		if (rootThread == null)
+			rootThread = id;
+		if (!rootThread.equals(id))
+			return;
+		JsonNode settings = params.path("threadSettings");
+		String model = text(settings.path("model"));
+		if (model != null)
+			setModel(model);
+		String effort = text(settings.path("effort"));
+		if (effort != null)
+			setReasoning(effort);
 	}
 
 	/**

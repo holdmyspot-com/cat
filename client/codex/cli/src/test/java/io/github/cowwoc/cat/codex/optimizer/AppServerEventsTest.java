@@ -49,6 +49,36 @@ public final class AppServerEventsTest
 	}
 
 	/**
+	 * Returns a {@code thread/started} notification.
+	 *
+	 * @param id        the thread's identifier
+	 * @param model     the thread's default model
+	 * @param reasoning the thread's default reasoning effort
+	 * @return the notification line
+	 */
+	private static String threadStarted(String id, String model, String reasoning)
+	{
+		return "{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"" + id +
+			"\",\"parentThreadId\":null,\"modelProvider\":\"openai\",\"model\":\"" + model +
+			"\",\"reasoningEffort\":\"" + reasoning + "\"}}}";
+	}
+
+	/**
+	 * Returns a {@code thread/settings/updated} notification.
+	 *
+	 * @param threadId the thread's identifier
+	 * @param model    the model that the thread's turn runs
+	 * @param effort   the reasoning effort that the thread's turn runs at
+	 * @return the notification line
+	 */
+	private static String threadSettings(String threadId, String model, String effort)
+	{
+		return "{\"method\":\"thread/settings/updated\",\"params\":{\"threadId\":\"" + threadId +
+			"\",\"threadSettings\":{\"model\":\"" + model + "\",\"modelProvider\":\"openai\",\"effort\":\"" +
+			effort + "\"}}}";
+	}
+
+	/**
 	 * Parses recorded lines.
 	 *
 	 * @param lines the harness event lines
@@ -159,6 +189,53 @@ public final class AppServerEventsTest
 		HarnessEvents events = parse(recorded("codex-children.jsonl"));
 		requireThat(events.model(), "model").isEqualTo("gpt-6-luna");
 		requireThat(events.reasoning(), "reasoning").isEqualTo("medium");
+	}
+
+	/**
+	 * Verifies that the model and reasoning effort of the root thread's settings update replace the defaults that
+	 * {@code thread/started} reported, and that a later update replaces an earlier one.
+	 */
+	@Test
+	public void takesModelAndEffortFromSettings()
+	{
+		// Requirement: R-E16
+		HarnessEvents events = parse(List.of(threadStarted("T1", "gpt-6-luna", "medium"),
+			threadSettings("T1", "gpt-6-luna", "low")));
+		requireThat(events.model(), "model").isEqualTo("gpt-6-luna");
+		requireThat(events.reasoning(), "reasoning").isEqualTo("low");
+
+		events = parse(List.of(threadStarted("T1", "gpt-6-luna", "medium"), threadSettings("T1", "gpt-6-luna", "low"),
+			threadSettings("T1", "gpt-6-terra", "high")));
+		requireThat(events.model(), "model").isEqualTo("gpt-6-terra");
+		requireThat(events.reasoning(), "reasoning").isEqualTo("high");
+	}
+
+	/**
+	 * Verifies that a settings update of a thread other than the root changes neither the model nor the reasoning
+	 * effort.
+	 */
+	@Test
+	public void ignoresSettingsOfOtherThreads()
+	{
+		// Requirement: R-E16
+		HarnessEvents events = parse(List.of(threadStarted("T1", "gpt-6-luna", "medium"),
+			threadSettings("T2", "gpt-6-terra", "high")));
+		requireThat(events.model(), "model").isEqualTo("gpt-6-luna");
+		requireThat(events.reasoning(), "reasoning").isEqualTo("medium");
+	}
+
+	/**
+	 * Verifies that a settings update names the root thread when no root is known yet, and that a blank value keeps
+	 * the value that was already observed.
+	 */
+	@Test
+	public void takesRootFromFirstSettingsUpdate()
+	{
+		// Requirement: R-E16
+		HarnessEvents events = parse(List.of(threadSettings("T1", "gpt-6-luna", "low"),
+			threadSettings("T2", "gpt-6-terra", "high"), threadSettings("T1", " ", "")));
+		requireThat(events.model(), "model").isEqualTo("gpt-6-luna");
+		requireThat(events.reasoning(), "reasoning").isEqualTo("low");
 	}
 
 	/**
