@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -41,9 +42,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <ol>
  *   <li>CAT asked for an interrupt: {@link SessionResult.Interrupted}, even if the harness then failed;</li>
  *   <li>the provider rejected a request for a rate limit: {@link SessionResult.RateLimited};</li>
+ *   <li>a deriver, judge, triage or author session exceeded its time limit: {@link SessionResult.Failed}, because
+ *   the limit says nothing about the prompt under test and the session must be retried;</li>
  *   <li>the harness failed or ended early: {@link SessionResult.Failed};</li>
- *   <li>otherwise {@link SessionResult.Completed}. A session that exceeded its time limit is completed with the
- *   replies it had, because exceeding the time limit is trial behavior to judge rather than retry.</li>
+ *   <li>otherwise {@link SessionResult.Completed}. A trial session that exceeded its time limit is completed with
+ *   the replies it had, because exceeding the time limit is trial behavior to judge rather than retry.</li>
  * </ol>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -415,6 +418,11 @@ final class Session implements SessionHandle
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();
 		if (rejection.isPresent())
 			return new SessionResult.RateLimited(rejection.get().resetsAt(), windows);
+		if (timedOut && request.role() != SessionRole.TRIAL)
+		{
+			return new SessionResult.Failed("The " + request.role().name().toLowerCase(Locale.ROOT) +
+				" session reached its " + request.timeLimit().toMinutes() + "-minute time limit", windows);
+		}
 		if (!timedOut)
 		{
 			if (failure == null && events.error() != null)

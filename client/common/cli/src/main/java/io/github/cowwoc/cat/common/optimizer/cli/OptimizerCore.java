@@ -777,10 +777,32 @@ public final class OptimizerCore implements Core
 		else
 			request = protocol.request(staged, profiles, previous, feedback);
 		SessionResult result = await(scope.sessions().start(request));
-		if (!(result instanceof SessionResult.Completed completed))
+		SessionResult.Completed completed;
+		switch (result)
 		{
-			return report(root, campaign, null, "The deriver session did not complete: " + result +
-				". Run `start` again to retry.");
+			case SessionResult.Completed ended -> completed = ended;
+			case SessionResult.Failed failed ->
+			{
+				return report(root, campaign, null, "The deriver session did not complete: " + failed.reason() +
+					". Run `start` again to retry.");
+			}
+			case SessionResult.Interrupted _ ->
+			{
+				return report(root, campaign, null, "The deriver session was interrupted. " +
+					"Run `start` again to retry.");
+			}
+			case SessionResult.RateLimited limited ->
+			{
+				String until = "";
+				String retry = "Run `start` again later.";
+				if (limited.resetsAt() != null)
+				{
+					until = " until " + limited.resetsAt();
+					retry = "Run `start` again after that time.";
+				}
+				return report(root, campaign, null, "The provider rejected the deriver session because of a rate limit" +
+					until + ". " + retry);
+			}
 		}
 
 		if (completed.usage() != null)

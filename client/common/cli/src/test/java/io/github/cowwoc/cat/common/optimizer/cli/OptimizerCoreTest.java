@@ -55,6 +55,7 @@ import java.io.PrintStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
@@ -553,6 +554,23 @@ public final class OptimizerCoreTest
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> deriver,
 		Set<Path> tracked) throws IOException
 	{
+		return repository(scope, deriver, tracked, Optional.empty());
+	}
+
+	/**
+	 * Creates a repository and a core whose sessions follow a script.
+	 *
+	 * @param scope removes the repository
+	 * @param deriver returns the deriver's final response for the number of deriver sessions started so far
+	 * @param tracked the files, relative to the project, that Git tracks
+	 * @param deriverEnd how every deriver session ends instead of completing with {@code deriver}'s response, or
+	 *   empty to let the deriver complete
+	 * @return the repository
+	 * @throws IOException if the repository cannot be written
+	 */
+	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> deriver,
+		Set<Path> tracked, Optional<SessionResult> deriverEnd) throws IOException
+	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
 		Files.createDirectory(root.resolve(".git"));
@@ -568,9 +586,9 @@ public final class OptimizerCoreTest
 				Path effects = Files.createTempDirectory(scratch, "effects");
 				return switch (request.role())
 				{
-					case DERIVER -> new SessionResult.Completed(transcript, List.of(List.of("working", deriver.apply(
-						derivers.getAndIncrement()))), effects, "model", null, null, List.of(), "hook: none",
-							List.of());
+					case DERIVER -> deriverEnd.orElseGet(() -> new SessionResult.Completed(transcript,
+						List.of(List.of("working", deriver.apply(derivers.getAndIncrement()))), effects, "model", null,
+						null, List.of(), "hook: none", List.of()));
 					case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
 						map(_ -> List.of("answer")).toList(), effects, "model", null, null, List.of(), "CLAUDE.md",
 							List.of());
@@ -593,6 +611,57 @@ public final class OptimizerCoreTest
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
 		return new Repository(root, command, new OptimizerCore(command));
+	}
+
+	/**
+	 * Returns each way that a deriver session can end without completing, with the message that {@code start} and
+	 * {@code revise} report.
+	 *
+	 * @return the session result and the text that the message contains
+	 */
+	@DataProvider
+	public Object[][] deriverEndsWithoutCompleting()
+	{
+		Instant resetsAt = Instant.parse("2026-10-05T23:00:00Z");
+		return new Object[][]
+			{
+				{new SessionResult.Failed("The deriver session reached its 30-minute time limit", List.of()),
+					"The deriver session did not complete: The deriver session reached its 30-minute time limit. " +
+					"Run `start` again to retry."},
+				{new SessionResult.Interrupted(List.of()),
+					"The deriver session was interrupted. Run `start` again to retry."},
+				{new SessionResult.RateLimited(resetsAt, List.of()),
+					"The provider rejected the deriver session because of a rate limit until " + resetsAt +
+					". Run `start` again after that time."},
+				{new SessionResult.RateLimited(null, List.of()),
+					"The provider rejected the deriver session because of a rate limit. " +
+					"Run `start` again later."}
+			};
+	}
+
+	/**
+	 * Verifies that {@code start} reports a deriver session that did not complete by its kind and reason, not by the
+	 * result's record text.
+	 *
+	 * @param end how the deriver session ends
+	 * @param message the message that {@code start} reports
+	 * @throws Exception if the repository cannot be written or the command fails
+	 */
+	@Test(dataProvider = "deriverEndsWithoutCompleting")
+	public void startReportsDeriverThatDidNotComplete(SessionResult end, String message) throws Exception
+	{
+		// Requirement: R-E13
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md")), Optional.of(end));
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.message(), "message").contains(message).
+				doesNotContain(end.getClass().getSimpleName() + "[");
+		}
 	}
 
 	/**

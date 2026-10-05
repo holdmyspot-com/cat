@@ -1,10 +1,11 @@
 package io.github.cowwoc.cat.common.optimizer.adapter;
 
+import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.adapter.fakes.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -33,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -69,8 +71,25 @@ public final class RunnerSessionsTest
 	private static TestSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
-			runRoot, capacity, clock);
+		return port(runRoot, runRoot, capacity, clock, arguments, script);
+	}
+
+	/**
+	 * Creates a port whose runner plays a script.
+	 *
+	 * @param artifact the installed artifact that supplies the roles' rules
+	 * @param runRoot the directory for run directories
+	 * @param capacity the shared capacity
+	 * @param clock the clock for time limits
+	 * @param arguments receives the runner's options for each session
+	 * @param script what the harness does, turn by turn
+	 * @return the port
+	 */
+	private static TestSessions port(Path artifact, Path runRoot, HarnessCapacity capacity, Clock clock,
+		List<List<String>> arguments, List<Turn> script)
+	{
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
+			Map.of(), runRoot, capacity, clock);
 		return new TestSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
@@ -103,7 +122,23 @@ public final class RunnerSessionsTest
 	 */
 	private static SessionRequest request(TrialProfile profile, Path source, List<Path> readOnly, String... turns)
 	{
-		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of(turns), readOnly, LIMIT, profile);
+		return request(SessionRole.TRIAL, profile, source, readOnly, turns);
+	}
+
+	/**
+	 * Creates a request for a role.
+	 *
+	 * @param role the kind of work that the session performs
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param source the directory that the session works in
+	 * @param readOnly the evidence that the session may read
+	 * @param turns the turns
+	 * @return the request
+	 */
+	private static SessionRequest request(SessionRole role, TrialProfile profile, Path source, List<Path> readOnly,
+		String... turns)
+	{
+		return new SessionRequest(role, partOf(role), source, List.of(turns), readOnly, LIMIT, profile);
 	}
 
 	/**
@@ -412,7 +447,7 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that CAT classifies an expired session as Completed and excludes the late terminal response supplied
+	 * Verifies that CAT classifies an expired trial session as Completed and excludes the late terminal response supplied
 	 * after its stop request, retaining only replies observed before the limit.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
@@ -442,6 +477,61 @@ public final class RunnerSessionsTest
 			SessionResult result = await(handle);
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of(List.of("first")));
+		}
+	}
+
+	/**
+	 * Returns each role that is not a trial and the lower-case word that its time-limit reason uses.
+	 *
+	 * @return the role and the word
+	 */
+	@DataProvider
+	public Object[][] nonTrialRoles()
+	{
+		return new Object[][]
+			{
+				{SessionRole.DERIVER, "deriver"},
+				{SessionRole.JUDGE, "judge"},
+				{SessionRole.TRIAGE, "triage"},
+				{SessionRole.AUTHOR, "author"}
+			};
+	}
+
+	/**
+	 * Verifies that a deriver, judge, triage or author session that reaches its time limit fails with a reason that
+	 * names the session and the limit, instead of completing with the replies that it gave before the limit.
+	 *
+	 * @param role the role that the session performs
+	 * @param word the role's word in the reason
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "nonTrialRoles", timeOut = 120_000)
+	public void failsAtTheTimeLimitUnlessTrial(SessionRole role, String word)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START);
+			CountDownLatch entered = new CountDownLatch(1);
+			List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			TestSessions sessions = port(artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+				new CopyOnWriteArrayList<>(), script);
+			SessionHandle handle = sessions.start(request(role, TrialProfile.HARNESS_DEFAULT, source, List.of(), "one",
+				"two", "three"));
+			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+
+			clock.advance(LIMIT.plusSeconds(1));
+
+			SessionResult result = await(handle);
+			requireThat(result, "result").isEqualTo(new SessionResult.Failed("The " + word +
+				" session reached its 5-minute time limit", List.of()));
 		}
 	}
 }
