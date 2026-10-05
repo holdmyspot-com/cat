@@ -1199,7 +1199,8 @@ cell, a test, a failed requirement and a behavior.
 1. The deriver writes the group's new development combinations, as above.
 2. CAT runs reproduction trials of those instances in the group's cell, up to 100 per round, and stops the round once
    the requirement has failed twice with the group's behavior. Reproduction trials are development trials of the
-   working candidate.
+   working candidate, targeted at the group's combinations, so they never enter representative counts; development
+   counts restart when the combinations join.
 3. Two such failures reproduce the group: its combinations join development, and development tunes against them.
    Otherwise the deriver receives the combinations that it tried and their reproduction counts, without replies, and
    writes different ones, which replace them.
