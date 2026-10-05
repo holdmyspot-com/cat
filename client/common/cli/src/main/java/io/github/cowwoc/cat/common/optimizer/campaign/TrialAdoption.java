@@ -211,8 +211,9 @@ final class TrialAdoption
 			draft.slowStart = draft.slowStart.afterPass();
 		else
 			draft.slowStart = draft.slowStart.afterFailure();
-		String stressCellId = CellTier.stressCell(contract, group.cellId()).map(Cell::id).orElse(null);
-		FailureGroup updated = group.adopt(index, matched, stressCellId);
+		List<String> stressCellIds = CellTier.stressCells(contract, draft.header.harness(), group.cellId()).stream().
+			map(Cell::id).toList();
+		FailureGroup updated = group.adopt(index, matched, stressCellIds);
 		CertificationAttempt next = attempt.withGroup(number, updated);
 		draft.replaceAttempt(next);
 

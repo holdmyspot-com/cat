@@ -39,6 +39,11 @@ import java.util.Set;
 public final class CellTier
 {
 	/**
+	 * The tool-output token limit of the stress setting that Codex offers.
+	 */
+	private static final int STRESS_TOOL_OUTPUT_TOKENS = 5000;
+
+	/**
 	 * Prevents instantiation.
 	 */
 	private CellTier()
@@ -226,7 +231,7 @@ public final class CellTier
 	 * @param contract the lineage's confirmed contract
 	 * @param lineage the lineage's number
 	 * @param attempts the campaign's certification attempts
-	 * @return the cells, in contract order
+	 * @return the cells, in contract order, each cell under the tool-output stress limit right after its contract cell
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the contract has no certification scope
 	 */
@@ -249,36 +254,60 @@ public final class CellTier
 					cells.add(group.round().cellId());
 			}
 		}
-		return contract.cells().stream().filter(cell -> cells.contains(cell.id())).toList();
+		List<Cell> development = new ArrayList<>();
+		for (Cell cell : contract.cells())
+		{
+			if (cells.contains(cell.id()))
+				development.add(cell);
+			Cell limited = cell.withToolOutputTokenLimit(STRESS_TOOL_OUTPUT_TOKENS);
+			if (cells.contains(limited.id()))
+				development.add(limited);
+		}
+		return development;
 	}
 
 	/**
-	 * Returns the stress setting of a cell: the cell of the same category and model at the next lower reasoning
-	 * effort, under which a failure is likelier.
+	 * Returns the stress settings that a harness offers for a cell, in the order that reproduction rounds try them:
+	 * the cell of the same category and model at the next lower reasoning effort, when one exists, and then, in
+	 * Codex, the cell itself under a tool-output token limit of 5000. A failure is likelier under each.
 	 *
 	 * @param contract a confirmed contract
-	 * @param cellId the cell's identifier
-	 * @return the stress cell, or empty if the cell's model has no lower effort in the cell's category
+	 * @param harness the harness that runs the campaign
+	 * @param cellId the identifier of a contract cell
+	 * @return the stress cells, in the order that rounds try them
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the contract has no such cell
 	 */
-	public static Optional<Cell> stressCell(Contract contract, String cellId)
+	public static List<Cell> stressCells(Contract contract, Harness harness, String cellId)
 	{
 		requireThat(contract, "contract").isNotNull();
+		requireThat(harness, "harness").isNotNull();
 		requireThat(cellId, "cellId").isNotNull();
-		Cell cell = contract.findCell(cellId).orElseThrow(() -> new IllegalArgumentException("The contract has " +
-			"no cell '" + cellId + "'"));
+		Cell cell = contract.cells().stream().filter(candidate -> candidate.id().equals(cellId)).findFirst().
+			orElseThrow(() -> new IllegalArgumentException("The contract has no cell '" + cellId + "'"));
+
+		List<Cell> stress = new ArrayList<>();
 		// The contract lists a category's cells in inventory order, and the inventory lists each model's efforts
 		// lowest first, so the model's previous cell is its next lower effort
 		Cell lower = null;
 		for (Cell other : contract.profiles().cellsOf(cell.categoryId()))
 		{
 			if (other.equals(cell))
-				return Optional.ofNullable(lower);
+				break;
 			if (other.profile().model().equals(cell.profile().model()))
 				lower = other;
 		}
-		return Optional.empty();
+		if (lower != null)
+			stress.add(lower);
+		switch (harness)
+		{
+			case CODEX -> stress.add(cell.withToolOutputTokenLimit(STRESS_TOOL_OUTPUT_TOKENS));
+			case CLAUDE ->
+			{
+				// Claude offers no tool-output token limit
+			}
+		}
+		return stress;
 	}
 
 	/**

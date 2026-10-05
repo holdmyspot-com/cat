@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import org.testng.annotations.Test;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,20 @@ public final class ReproductionTest
 	 */
 	private static final TrialInstance FAILED = new Generator(TierFixtures.tieredContract()).draw(BIG_MEDIUM,
 		DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+	/**
+	 * The formal failures' instance in the lowest effort of its model.
+	 */
+	private static final TrialInstance FAILED_LOW = new TrialInstance(BIG_LOW, FAILED.categoryId(),
+		FAILED.testId(), FAILED.choices(), FAILED.turns(), FAILED.expectedBehaviour(), FAILED.generator(),
+		FAILED.streamKind(), FAILED.streamPosition(), FAILED.targeted());
+	/**
+	 * {@code formatting@big/low} under a tool-output token limit of 5000.
+	 */
+	private static final String BIG_LOW_LIMITED = BIG_LOW + "/tool-output-5000";
+	/**
+	 * {@code formatting@big/medium} under a tool-output token limit of 5000.
+	 */
+	private static final String BIG_MEDIUM_LIMITED = BIG_MEDIUM + "/tool-output-5000";
 
 	/**
 	 * Returns the definition of the failed test.
@@ -91,8 +106,23 @@ public final class ReproductionTest
 	 */
 	private static Builder.AttemptBuilder failed()
 	{
-		Failure failure = new Failure(FAILED, "", List.of(WRONG_TONE), null, List.of(), List.of());
-		return new Builder().confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline().
+		return failed(Harness.CLAUDE, FAILED);
+	}
+
+	/**
+	 * Returns a campaign builder whose first certification attempt failed with two formal failures of
+	 * {@link #WRONG_TONE}, before any reproduction ran.
+	 *
+	 * @param harness the harness that started the campaign
+	 * @param instance the formal failures' instance
+	 * @return the builder
+	 */
+	private static Builder.AttemptBuilder failed(Harness harness, TrialInstance instance)
+	{
+		Failure failure = new Failure(instance, "", List.of(WRONG_TONE), null, List.of(), List.of());
+		Header header = new Header("campaign-1", Path.of("/project"), Path.of("/project/AGENTS.md"), harness,
+			Lifecycle.ACTIVE);
+		return new Builder().header(header).confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline().
 			readyDevelopment().certificationAttempt(1).failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM);
 	}
 
@@ -104,8 +134,20 @@ public final class ReproductionTest
 	 */
 	private static FailureGroup group(ReproductionRound... rounds)
 	{
-		return new FailureGroup(BIG_MEDIUM, FAILED.testId(), WRONG_TONE, 2, FailureGroup.ROUNDS, List.of(rounds),
-			FailureGroup.Status.REPRODUCING);
+		return group(BIG_MEDIUM, FailureGroup.Status.REPRODUCING, rounds);
+	}
+
+	/**
+	 * Returns a failure group of the failed attempt with given rounds.
+	 *
+	 * @param cellId the cell in which the formal failures occurred
+	 * @param status the group's reproduction status
+	 * @param rounds the rounds
+	 * @return the group
+	 */
+	private static FailureGroup group(String cellId, FailureGroup.Status status, ReproductionRound... rounds)
+	{
+		return new FailureGroup(cellId, FAILED.testId(), WRONG_TONE, 2, FailureGroup.ROUNDS, List.of(rounds), status);
 	}
 
 	/**
@@ -373,6 +415,143 @@ public final class ReproductionTest
 		requireThat(campaign.attempt(1).group(1).status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
 		requireThat(CellTier.developmentCells(campaign).stream().map(Cell::id).toList(), "developmentCells").
 			contains(BIG_LOW);
+	}
+
+	/**
+	 * Verifies that in Codex, a round in the lowest effort of its model that ends without reproducing the group
+	 * repeats with the same combinations and fresh counts in the same cell under a tool-output token limit of 5000,
+	 * whose reproduction trials run in that limited cell.
+	 */
+	@Test
+	public void codexStressesTheLowestEffortByToolOutput()
+	{
+		// Requirement: R-C19
+		Campaign campaign = failed(Harness.CODEX, FAILED_LOW).groups(List.of(group(BIG_LOW,
+			FailureGroup.Status.REPRODUCING, new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 24))))).
+			build();
+
+		campaign = reproduce(campaign, Verdict.PASS);
+
+		FailureGroup group = campaign.attempt(1).group(1);
+		requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCING);
+		requireThat(group.round(), "round").isEqualTo(new ReproductionRound(BIG_LOW_LIMITED,
+			tried(combinations("a"), 0, 0, 0, 0)));
+		List<Admission.Assign> reproduction = planned(campaign, Purpose.REPRODUCTION);
+		requireThat(reproduction, "reproduction").isNotEmpty();
+		for (Admission.Assign assign : reproduction)
+			requireThat(assign.cell(), "cell").isEqualTo(BIG_LOW_LIMITED);
+		Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(reproduction.getFirst()));
+		requireThat(assigned.trials().getLast().instance().cellId(), "cellId").isEqualTo(BIG_LOW_LIMITED);
+	}
+
+	/**
+	 * Verifies that Claude offers no tool-output stress: a round in the lowest effort of its model that ends without
+	 * reproducing the group asks the deriver for new values in the group's cell.
+	 */
+	@Test
+	public void claudeOffersNoToolOutputStress()
+	{
+		// Requirement: R-C19
+		Campaign campaign = failed(Harness.CLAUDE, FAILED_LOW).groups(List.of(group(BIG_LOW,
+			FailureGroup.Status.REPRODUCING, new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 24))))).
+			build();
+
+		campaign = reproduce(campaign, Verdict.PASS);
+
+		FailureGroup group = campaign.attempt(1).group(1);
+		requireThat(group.rounds().size(), "rounds").isEqualTo(2);
+		requireThat(group.awaitsValues(), "awaitsValues").isTrue();
+		requireThat(group.round().cellId(), "round().cellId()").isEqualTo(BIG_LOW);
+	}
+
+	/**
+	 * Verifies that in Codex, a stress round under the next lower effort that ends without reproducing the group
+	 * repeats in the group's cell under a tool-output token limit of 5000.
+	 */
+	@Test
+	public void codexStressesToolOutputAfterLowerEffort()
+	{
+		// Requirement: R-C19
+		Campaign campaign = failed(Harness.CODEX, FAILED).groups(List.of(group(BIG_MEDIUM,
+			FailureGroup.Status.REPRODUCING,
+			new ReproductionRound(BIG_MEDIUM, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 24))))).build();
+
+		campaign = reproduce(campaign, Verdict.PASS);
+
+		requireThat(campaign.attempt(1).group(1).round(), "round").isEqualTo(new ReproductionRound(
+			BIG_MEDIUM_LIMITED, tried(combinations("a"), 0, 0, 0, 0)));
+	}
+
+	/**
+	 * Verifies that in Codex, a round under the last stress setting that ends without reproducing the group asks
+	 * the deriver for new values in the group's cell.
+	 */
+	@Test
+	public void codexLastStressRoundAwaitsNewValues()
+	{
+		// Requirement: R-C19
+		Campaign campaign = failed(Harness.CODEX, FAILED).groups(List.of(group(BIG_MEDIUM,
+			FailureGroup.Status.REPRODUCING,
+			new ReproductionRound(BIG_MEDIUM, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_MEDIUM_LIMITED, tried(combinations("a"), 25, 25, 25, 24))))).build();
+
+		campaign = reproduce(campaign, Verdict.PASS);
+
+		FailureGroup group = campaign.attempt(1).group(1);
+		requireThat(group.rounds().size(), "rounds").isEqualTo(4);
+		requireThat(group.awaitsValues(), "awaitsValues").isTrue();
+		requireThat(group.round().cellId(), "round().cellId()").isEqualTo(BIG_MEDIUM);
+	}
+
+	/**
+	 * Verifies that a reproduction under a tool-output token limit makes the limited cell a development cell:
+	 * development trials run in it, and the readiness gate waits for it.
+	 */
+	@Test
+	public void toolOutputReproductionAddsDevelopment()
+	{
+		// Requirement: R-C19
+		List<TriedCombination> limited = new ArrayList<>(tried(combinations("a"), 10, 0, 0, 0));
+		limited.set(0, new TriedCombination(combinations("a").getFirst(), 10, 1));
+		Campaign campaign = failed(Harness.CODEX, FAILED_LOW).groups(List.of(group(BIG_LOW,
+			FailureGroup.Status.REPRODUCING,
+			new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_LOW_LIMITED, limited)))).build();
+
+		campaign = reproduce(campaign, Verdict.FAIL, WRONG_TONE);
+
+		requireThat(campaign.attempt(1).group(1).status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").contains(BIG_LOW_LIMITED);
+
+		// Every contract cell is ready, so the next development trial can only go to the limited cell
+		Campaign reproduced = failed(Harness.CODEX, FAILED_LOW).groups(List.of(group(BIG_LOW,
+			FailureGroup.Status.REPRODUCED,
+			new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_LOW_LIMITED, limited)))).build();
+		requireThat(planned(reproduced, Purpose.DEVELOPMENT).stream().map(Admission.Assign::cell).distinct().
+			toList(), "development").isEqualTo(List.of(BIG_LOW_LIMITED));
+	}
+
+	/**
+	 * Verifies that the readiness gate waits for a development cell under a tool-output token limit until it is
+	 * ready.
+	 */
+	@Test
+	public void gateCoversToolOutputDevelopmentCell()
+	{
+		// Requirement: R-C19
+		List<TriedCombination> limited = new ArrayList<>(tried(combinations("a"), 10, 0, 0, 0));
+		limited.set(0, new TriedCombination(combinations("a").getFirst(), 10, 2));
+		Builder reproduced = failed(Harness.CODEX, FAILED_LOW).groups(List.of(group(BIG_LOW,
+			FailureGroup.Status.REPRODUCED,
+			new ReproductionRound(BIG_LOW, tried(combinations("a"), 25, 25, 25, 25)),
+			new ReproductionRound(BIG_LOW_LIMITED, limited)))).campaign();
+
+		requireThat(ReadinessGate.isMet(reproduced.build()), "isMet").isFalse();
+		requireThat(ReadinessGate.isMet(reproduced.development(BIG_LOW_LIMITED, 100, 0).build()), "readyIsMet").
+			isTrue();
 	}
 
 	/**

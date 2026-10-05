@@ -110,7 +110,8 @@ public final class Builder
 	}
 
 	/**
-	 * Returns a complete set of observed conditions, other than the contract and generator, with the given model.
+	 * Returns a complete set of observed conditions, other than the contract, the generator and the tool-output token
+	 * limit that only a cell under such a limit records, with the given model.
 	 *
 	 * @param model the observed model
 	 * @return the identity
@@ -122,6 +123,7 @@ public final class Builder
 			values.put(condition, condition.name().toLowerCase(Locale.ROOT) + "-1");
 		values.remove(MeasurementCondition.CONTRACT);
 		values.remove(MeasurementCondition.GENERATOR);
+		values.remove(MeasurementCondition.TOOL_OUTPUT_LIMIT);
 		values.put(MeasurementCondition.MODEL, model);
 		return new MeasurementIdentity(values);
 	}

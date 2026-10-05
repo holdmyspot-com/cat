@@ -221,11 +221,12 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
-	 * Finds a cell.
+	 * Finds a cell: one of the contract's cells, or one of them under a tool-output token limit.
 	 *
 	 * @param id a cell identifier
 	 * @return the cell with that identifier, or empty if the contract has none
 	 * @throws NullPointerException if {@code id} is null
+	 * @see TrialProfiles#findCell(String)
 	 */
 	public Optional<Cell> findCell(String id)
 	{

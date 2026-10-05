@@ -231,6 +231,47 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * A development cell under a tool-output token limit survives a reload: the failure group that reproduced there,
+	 * its development counts and its observed identity are unchanged, and it is still a development cell.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void toolOutputCellSurvivesReload() throws IOException
+	{
+		// Requirement: R-C19
+		try (StoreFixture fixture = open())
+		{
+			Contract contract = TierFixtures.tieredContract();
+			String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
+			TrialInstance failed = new TrialInstance(TierFixtures.BIG_LOW, "formatting", "test-3", List.of(),
+				List.of("A turn"), "Answers in the house style", "generator-1", DrawStream.Kind.FORMAL, 3, false);
+			AddedCombination usb = new AddedCombination(1, "test-3",
+				List.of(new VariationValue("usb", "the backup stick", 0.5)));
+			FailedRequirement wrongTone = new FailedRequirement("r1", "wrong-tone");
+			FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, "test-3", wrongTone, 2, FailureGroup.ROUNDS,
+				List.of(new ReproductionRound(TierFixtures.BIG_LOW, List.of(new TriedCombination(usb, 100, 0))),
+					new ReproductionRound(limited, List.of(new TriedCombination(usb, 9, 2)))),
+				FailureGroup.Status.REPRODUCED);
+			MeasurementIdentity identity = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "judge-model"),
+				Map.of(limited, Map.of(MeasurementCondition.MODEL, "big", MeasurementCondition.REASONING, "low",
+					MeasurementCondition.TOOL_OUTPUT_LIMIT, "5000")));
+			Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of());
+			Campaign campaign = new Builder().header(header("campaign-tool-output")).identity(identity).
+				confirmed(contract, 1).working(1).development(limited, 40, 1).
+				certificationAttempt(1).failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM).
+				groups(List.of(group)).campaign().build();
+			fixture.store().replaceSnapshot(campaign);
+
+			Campaign loaded = fixture.reopen().load("campaign-tool-output").orElseThrow();
+			requireThat(loaded, "loaded").isEqualTo(campaign);
+			requireThat(loaded.identity().cells().get(limited).get(MeasurementCondition.TOOL_OUTPUT_LIMIT),
+				"toolOutputLimit").isEqualTo("5000");
+			requireThat(CellTier.developmentCellIds(loaded), "developmentCells").contains(limited);
+		}
+	}
+
+	/**
 	 * The commit fields of every certification attempt survive a reload unchanged.
 	 *
 	 * @throws IOException if the store fails

@@ -29,6 +29,11 @@ public enum MeasurementCondition
 	 */
 	REASONING,
 	/**
+	 * The tool-output token limit that the trial session started under, recorded only when the trial's cell limits
+	 * tool output.
+	 */
+	TOOL_OUTPUT_LIMIT,
+	/**
 	 * The model provider.
 	 */
 	PROVIDER,
@@ -75,6 +80,7 @@ public enum MeasurementCondition
 			case JUDGE -> "judge";
 			case MODEL -> "trial model";
 			case REASONING -> "trial reasoning";
+			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";
 			case PROVIDER -> "model provider";
 			case HARNESS_VERSION -> "harness version";
 			case RUNNER_VERSION -> "runner version";

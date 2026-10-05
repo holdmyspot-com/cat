@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The model and reasoning-effort combinations used to measure a contract's compliance. It records the combinations
@@ -33,6 +35,13 @@ import java.util.function.Function;
 public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
 	List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
 {
+	/**
+	 * The identifier of a contract cell under a tool-output token limit: the contract cell's identifier, then
+	 * {@code /tool-output-} and the token count.
+	 */
+	private static final Pattern LIMITED_CELL = Pattern.compile("(.+)/" + TrialProfile.TOOL_OUTPUT_LABEL +
+		"([1-9][0-9]*)");
+
 	/**
 	 * Creates the trial profiles.
 	 *
@@ -459,7 +468,8 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	}
 
 	/**
-	 * Finds a cell.
+	 * Finds a cell: a contract cell with the identifier, or else, for an identifier that ends with
+	 * {@code /tool-output-} and a positive token count, that contract cell under the tool-output token limit.
 	 *
 	 * @param id a cell identifier
 	 * @return the cell, or empty if there is none
@@ -468,6 +478,33 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	public Optional<Cell> findCell(String id)
 	{
 		requireThat(id, "id").isNotNull();
+		Optional<Cell> contractCell = findContractCell(id);
+		if (contractCell.isPresent())
+			return contractCell;
+		Matcher limited = LIMITED_CELL.matcher(id);
+		if (!limited.matches())
+			return Optional.empty();
+		int tokens;
+		try
+		{
+			tokens = Integer.parseInt(limited.group(2));
+		}
+		catch (NumberFormatException _)
+		{
+			// The token count exceeds the largest limit
+			return Optional.empty();
+		}
+		return findContractCell(limited.group(1)).map(cell -> cell.withToolOutputTokenLimit(tokens));
+	}
+
+	/**
+	 * Finds a cell of the contract.
+	 *
+	 * @param id a cell identifier
+	 * @return the cell, or empty if the contract has none with that identifier
+	 */
+	private Optional<Cell> findContractCell(String id)
+	{
 		return cells.stream().filter(cell -> cell.id().equals(id)).findFirst();
 	}
 }

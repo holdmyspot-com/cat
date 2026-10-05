@@ -9,7 +9,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param id the identifier that is unique within the contract: the category's identifier when the category has one
- *   cell, otherwise the category's identifier followed by {@code @} and the profile's label
+ *   cell, otherwise the category's identifier followed by {@code @} and the profile's label. A cell whose profile
+ *   limits tool output appends {@code /tool-output-} and the token count to its contract cell's identifier
  * @param categoryId the identifier of the category whose tests the cell draws
  * @param profile the profile that the cell's trial sessions start under
  */
@@ -29,5 +30,22 @@ public record Cell(String id, String categoryId, TrialProfile profile)
 		requireThat(id, "id").isNotBlank();
 		requireThat(categoryId, "categoryId").isNotBlank();
 		requireThat(profile, "profile").isNotNull();
+	}
+
+	/**
+	 * Returns this cell under a tool-output token limit: a distinct cell of the same category whose sessions keep at
+	 * most {@code tokens} tokens of each tool output.
+	 *
+	 * @param tokens the most tokens of each tool output that the cell's sessions keep
+	 * @return the limited cell
+	 * @throws IllegalArgumentException if {@code tokens} is not positive
+	 * @throws IllegalStateException if this cell already limits tool output
+	 */
+	public Cell withToolOutputTokenLimit(int tokens)
+	{
+		if (profile.toolOutputTokenLimit() != 0)
+			throw new IllegalStateException("The cell already limits tool output: " + this);
+		return new Cell(id + "/" + TrialProfile.TOOL_OUTPUT_LABEL + tokens, categoryId,
+			profile.withToolOutputTokenLimit(tokens));
 	}
 }

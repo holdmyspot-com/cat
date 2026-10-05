@@ -107,7 +107,7 @@ public final class CodexRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, manager, executable, environment, model, "", installCat, null, List.of(),
-			List.of());
+			List.of(), 0);
 	}
 
 	/**
@@ -131,7 +131,7 @@ public final class CodexRunner
 		throws IOException
 	{
 		return start(artifact, project, manager, executable, environment, model, effort, installCat, agent,
-			List.of(), List.of());
+			List.of(), List.of(), 0);
 	}
 
 	/**
@@ -149,12 +149,14 @@ public final class CodexRunner
 	 *   {@code effort}
 	 * @param readOnlyEvidence the optional completed evidence directory
 	 * @param deniedReads the existing files and directories that the session must not read
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent,
-		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
+		List<Path> readOnlyEvidence, List<Path> deniedReads, int toolOutputTokenLimit) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -163,6 +165,7 @@ public final class CodexRunner
 		requireThat(environment, "environment").isNotNull();
 		requireThat(model, "model").isNotNull();
 		requireThat(effort, "effort").isNotNull();
+		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -179,7 +182,7 @@ public final class CodexRunner
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
-				temporaryDirectory);
+				temporaryDirectory, toolOutputTokenLimit);
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
 				readOnlyEvidence, deniedReads);
 			if (installCat)

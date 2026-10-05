@@ -25,6 +25,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.IntFunction;
 
 /**
@@ -32,6 +33,11 @@ import java.util.function.IntFunction;
  */
 public final class CodexRunnerCli
 {
+	/**
+	 * The Codex-only bridge option that limits the tokens that the session keeps of each tool output.
+	 */
+	private static final String TOOL_OUTPUT_TOKEN_LIMIT = "--tool-output-token-limit";
+
 	/**
 	 * Serves JSONL turns through one persistent isolated Codex process.
 	 *
@@ -77,7 +83,8 @@ public final class CodexRunnerCli
 		try (ToolScope scope = new ToolScope())
 		{
 			String agentName = agentName(args);
-			HarnessOneShotOptions options = HarnessOneShotOptions.parse(withoutAgent(args), "codex", scope.catTemp());
+			HarnessOneShotOptions options = HarnessOneShotOptions.parse(withoutOptions(args, Set.of("--agent")),
+				"codex", scope.catTemp());
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			String prompt = options.prompt();
@@ -127,7 +134,8 @@ public final class CodexRunnerCli
 		try (ToolScope scope = new ToolScope())
 		{
 			String agentName = agentName(args);
-			String[] runnerArgs = withoutAgent(args);
+			int toolOutputTokenLimit = toolOutputTokenLimit(args);
+			String[] runnerArgs = withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT));
 			HarnessRunnerOptions options;
 			if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
 				options = HarnessRunnerOptions.parseServe(runnerArgs, "codex", scope.catTemp());
@@ -139,7 +147,7 @@ public final class CodexRunnerCli
 			{
 				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
 					options.executable(), environment, options.model(), options.effort(), options.installCat(), agent,
-					List.of(), options.deniedReads()), manager, options.keepRun(), input, output);
+					List.of(), options.deniedReads(), toolOutputTokenLimit), manager, options.keepRun(), input, output);
 			}
 		}
 	}
@@ -185,6 +193,42 @@ public final class CodexRunnerCli
 	}
 
 	/**
+	 * Extracts the optional tool-output token limit from one runner command.
+	 *
+	 * @param args the supplied command arguments
+	 * @return the most tokens of each tool output that the session keeps, or {@code 0} for Codex's default
+	 */
+	static int toolOutputTokenLimit(String[] args)
+	{
+		assert args != null;
+		for (int index = 1; index < args.length; ++index)
+		{
+			if (!args[index].equals(TOOL_OUTPUT_TOKEN_LIMIT))
+				continue;
+			if (index + 1 == args.length || args[index + 1].startsWith("--"))
+				throw new IllegalArgumentException("Missing value for " + TOOL_OUTPUT_TOKEN_LIMIT);
+			String value = args[index + 1];
+			int tokens;
+			try
+			{
+				tokens = Integer.parseInt(value);
+			}
+			catch (NumberFormatException e)
+			{
+				throw new IllegalArgumentException(TOOL_OUTPUT_TOKEN_LIMIT + " must be a positive number of tokens: " +
+					value, e);
+			}
+			if (tokens <= 0)
+			{
+				throw new IllegalArgumentException(TOOL_OUTPUT_TOKEN_LIMIT + " must be a positive number of tokens: " +
+					value);
+			}
+			return tokens;
+		}
+		return 0;
+	}
+
+	/**
 	 * Loads the requested CAT agent when one was selected.
 	 *
 	 * @param artifact the complete Codex artifact
@@ -202,18 +246,20 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Removes the Codex-only agent option before parsing the shared runner options.
+	 * Removes Codex-only options before parsing the shared runner options.
 	 *
 	 * @param args the supplied command arguments
+	 * @param options the Codex-only options to remove, each with its value
 	 * @return arguments accepted by the shared parser
 	 */
-	private static String[] withoutAgent(String[] args)
+	private static String[] withoutOptions(String[] args, Set<String> options)
 	{
 		assert args != null;
+		assert options != null;
 		List<String> result = new ArrayList<>(args.length);
 		for (int index = 0; index < args.length; ++index)
 		{
-			if (args[index].equals("--agent"))
+			if (options.contains(args[index]))
 			{
 				index += 1;
 				continue;

@@ -30,6 +30,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
+import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -121,6 +123,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -2312,6 +2315,79 @@ public final class DriverTest
 					isTrue();
 				for (String cell : List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH))
 					requireThat(development.count(cell).outcomes(), cell).isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * In Codex, a reproduction round in the lowest effort of its model that does not reproduce its group repeats
+	 * under a tool-output token limit: its trial sessions start with the limit, a reproduction there makes the
+	 * limited cell a development cell whose development trials start with the limit too, and the observed identity
+	 * records the limit for that cell.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void codexReproducesUnderAToolOutputLimit() throws IOException
+	{
+		// Requirement: R-C19
+		Contract contract = TierFixtures.tieredContract();
+		String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
+		TrialInstance failed = new Generator(contract).draw(TierFixtures.BIG_LOW,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		TestDefinition test = contract.findTest(failed.testId()).orElseThrow();
+		List<TriedCombination> tried = new ArrayList<>();
+		for (int i = 1; i <= 4; ++i)
+		{
+			String suffix = "a-" + i;
+			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
+				rule.dimension() + "-" + suffix, rule.dimension() + " " + suffix, 0.25)).toList();
+			int trials = 25;
+			if (i == 4)
+				trials = 24;
+			tried.add(new TriedCombination(new AddedCombination(1, test.id(), values), trials, 0));
+		}
+		FailedRequirement wrongTone = new FailedRequirement("r1", "wrong-tone");
+		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of());
+		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
+			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
+		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, Path.of("/project"),
+			Path.of("/project").resolve(DriverHarness.PROMPT), Harness.CODEX, Lifecycle.ACTIVE)).
+			confirmed(contract, 1).working(1).readyBaseline().readyDevelopment().certificationAttempt(1).
+			failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(group)).campaign().build();
+		List<TrialProfile> limitedProfiles = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
+			harness.trials(request ->
+			{
+				try
+				{
+					if (request.profile().toolOutputTokenLimit() == 0)
+						return harness.passed();
+					limitedProfiles.add(request.profile());
+					if (harness.campaign().reproducing().isPresent())
+						return harness.failed();
+					return harness.passed();
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign developed = harness.runUntil(driver, state ->
+					state.development().count(limited).outcomes() > 0);
+
+				FailureGroup reproduced = developed.attempt(1).group(1);
+				requireThat(reproduced.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+				requireThat(reproduced.round().cellId(), "round().cellId()").isEqualTo(limited);
+				requireThat(CellTier.developmentCellIds(developed), "developmentCells").contains(limited);
+				requireThat(Set.copyOf(limitedProfiles), "limitedProfiles").
+					isEqualTo(Set.of(new TrialProfile("big", "low", 5000)));
+				requireThat(developed.identity().cells().getOrDefault(limited, Map.of()).
+					get(MeasurementCondition.TOOL_OUTPUT_LIMIT), "toolOutputLimit").isEqualTo("5000");
 			}
 		}
 	}

@@ -63,10 +63,32 @@ final class CodexConnectionConfiguration
 	 */
 	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
 	{
+		copy(source, destination, npmCache, temporaryDirectory, 0);
+	}
+
+	/**
+	 * Copies supported connection settings, makes one verified npm cache available to nested shell commands and
+	 * limits the tokens that the session keeps of each tool output.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param npmCache the verified writable npm cache, or {@code null} when no nested package acquisition is needed
+	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @throws IOException if configuration I/O fails
+	 */
+	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory, int toolOutputTokenLimit)
+		throws IOException
+	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
 			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
 			append(System.lineSeparator());
+		// A top-level key must precede every table
+		if (toolOutputTokenLimit > 0)
+			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());
 		String networkAccess = null;
 		if (Files.isRegularFile(source))
 		{

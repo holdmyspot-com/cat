@@ -484,6 +484,39 @@ public final class CodexSessionsTest
 	}
 
 	/**
+	 * Verifies that a session under a tool-output token limit passes the limit to the Codex runner, and that a
+	 * session without one passes no limit.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesTheToolOutputTokenLimit()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-C19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				arguments, List.of(Turn.replies("ok")));
+
+			await(sessions.start(request(new TrialProfile("gpt-6-luna", "low", 5000), source, List.of(), "limited")));
+			await(sessions.start(request(new TrialProfile("gpt-6-luna", "low"), source, List.of(), "unlimited")));
+
+			requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+			List<String> limited = arguments.get(0);
+			requireThat(ScriptedHarness.optionValue(limited, "--tool-output-token-limit"), "limit").isEqualTo("5000");
+			requireThat(ScriptedHarness.optionValue(limited, "--effort"), "effort").isEqualTo("low");
+			requireThat(arguments.get(1).contains("--tool-output-token-limit"), "unlimited").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that CAT classifies its requested interrupt as Interrupted and retains the parsed windows when the
 	 * bridge supplies a terminal completion. The app-server README documents interrupted completion; this test makes
 	 * no claim about the native harness's stop timing.

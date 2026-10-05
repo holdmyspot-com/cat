@@ -149,6 +149,43 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies a session under a tool-output token limit gets Codex's top-level {@code tool_output_token_limit}
+	 * setting, ahead of every table, and that a session without one keeps Codex's default.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void limitsToolOutput() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-tool-output-"));
+			Path source = root.resolve("host.toml");
+			Files.writeString(source, """
+				model = "gpt-6-luna"
+				tool_output_token_limit = 20000
+
+				[sandbox_workspace_write]
+				network_access = true
+				""");
+			Path limited = root.resolve("limited/config.toml");
+			Path unlimited = root.resolve("unlimited/config.toml");
+
+			CodexConnectionConfiguration.copy(source, limited, null, root.resolve("limited/tmp"), 5000);
+			CodexConnectionConfiguration.copy(source, unlimited, null, root.resolve("unlimited/tmp"), 0);
+
+			List<String> lines = Files.readAllLines(limited);
+			int setting = lines.indexOf("tool_output_token_limit = 5000");
+			requireThat(setting, "setting").isNotNegative();
+			for (String line : lines.subList(0, setting))
+				requireThat(line, "line").doesNotStartWith("[");
+			requireThat(lines.stream().filter(line -> line.startsWith("tool_output_token_limit")).count(),
+				"settings").isEqualTo(1L);
+			requireThat(Files.readString(unlimited), "unlimited").doesNotContain("tool_output_token_limit");
+		}
+	}
+
+	/**
 	 * Verifies an isolated Codex process retains the parent's CAT filesystem permission policy.
 	 *
 	 * @throws IOException if fixture I/O fails

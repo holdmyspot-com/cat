@@ -18,9 +18,11 @@ import java.util.Set;
  * Before any author works on a group, CAT reproduces it: a deriver writes development combinations aimed at the
  * behavior, and reproduction trials of the working candidate run them in the round's cell. A round ends once
  * {@value #FAILURES} trials fail the requirement through the behavior, which reproduces the group, or after
- * {@value #TRIALS} trials. A round that does not reproduce the group is repeated under a stress setting when one
- * exists, the next lower reasoning effort of the cell's model, with the same combinations; otherwise its combinations
- * are replaced. After the group's round limit, the group is not reproduced until the user asks for more rounds.
+ * {@value #TRIALS} trials. A round in the group's cell that does not reproduce the group is repeated with the same
+ * combinations under each stress setting that the harness offers for the cell, one round per setting, until one
+ * reproduces it; after the last setting, or when the harness offers none, the next round in the group's cell replaces
+ * the combinations. Stress rounds count toward the group's round limit. After the round limit, the group is not
+ * reproduced until the user asks for more rounds.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -193,12 +195,15 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	 *
 	 * @param index the position of the trial's combination in the current round
 	 * @param matched {@code true} if the trial failed the requirement through the group's behavior
-	 * @param stressCellId the cell of the stress setting of the group's cell, or {@code null} if none exists
+	 * @param stressCellIds the cells of the stress settings that the harness offers for the group's cell, in the
+	 *   order that rounds try them
 	 * @return the updated group
+	 * @throws NullPointerException if {@code stressCellIds} is null
 	 * @throws IllegalStateException if the group is not reproducing
 	 */
-	FailureGroup adopt(int index, boolean matched, String stressCellId)
+	FailureGroup adopt(int index, boolean matched, List<String> stressCellIds)
 	{
+		requireThat(stressCellIds, "stressCellIds").isNotNull();
 		if (status != Status.REPRODUCING)
 			throw new IllegalStateException("The failure group is " + status + ": " + this);
 		ReproductionRound round = round();
@@ -215,11 +220,20 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 			return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, counted.rounds,
 				Status.NOT_REPRODUCED);
 		}
+		// A round in the group's own cell is followed by the first stress setting, and a stress round by the next
+		// one. A round in a cell that the harness does not offer ends the stress settings.
+		int nextSetting;
+		if (updated.cellId().equals(cellId))
+			nextSetting = 0;
+		else if (stressCellIds.contains(updated.cellId()))
+			nextSetting = stressCellIds.indexOf(updated.cellId()) + 1;
+		else
+			nextSetting = stressCellIds.size();
 		ReproductionRound next;
-		if (stressCellId != null && updated.cellId().equals(cellId))
+		if (nextSetting < stressCellIds.size())
 		{
-			next = new ReproductionRound(stressCellId, updated.combinations().stream().map(combination ->
-				new TriedCombination(combination.combination(), 0, 0)).toList());
+			next = new ReproductionRound(stressCellIds.get(nextSetting), updated.combinations().stream().
+				map(combination -> new TriedCombination(combination.combination(), 0, 0)).toList());
 		}
 		else
 			next = new ReproductionRound(cellId, List.of());
