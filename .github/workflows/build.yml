@@ -52,12 +52,3 @@ jobs:
         run: bats client/common/distribution/src/test/bats/workflow-temp.bats
       - name: Verify read-file script boundaries
         run: bats client/common/distribution/src/test/bats/read-file.bats
-      - name: Upload native distributions
-        uses: actions/upload-artifact@v7
-        with:
-          name: cat-${{ matrix.platform }}
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            client/common/distribution/target/release/cat-*-*.tar.gz
-            client/common/distribution/target/release/SHA256SUMS.txt
