@@ -1029,10 +1029,12 @@ A certified delivery writes a **certification record** into the project, which t
 is a JSON file of a few kilobytes holding the claim and its measurement identity: the certification index, the scope,
 each category's counts, the threshold and `α_i`, and every condition listed above, with the prompt sources and the
 contract by hash. It holds no trial results. Once the campaign's files are removed ([§4.1](#41-storage)), the record is
-what remains of the certification: `status` for a target without a campaign, and the proposal of a new campaign for
-the target, compare it with the conditions CAT knows at that point and report the certification current or historical,
-naming each changed condition. A condition that only a session observes, such as the trial model, is reported as
-unchecked until a later session observes it (D51).
+what remains of the certification: `status` for a target without a resumable campaign, and the proposal of a new
+campaign for the target, compare it with the conditions CAT knows at that point and report the certification current or
+historical, naming each changed condition. A finished campaign stays reachable by its identifier. A condition that only
+a session observes, such as the trial model, is reported as unchecked until a later session observes it; so is every
+harness-specific condition (the provider, the harness, session environment and judge versions, and the trial model,
+reasoning and tool-output limit) when the reporting harness is not the one that certified (D51).
 
 If a material condition changes between trials, CAT pauses as `MEASUREMENT_CHANGED` before the next model call. To
 continue, the user restores the condition, starts a new measurement identity, or cancels. A change to the loader
