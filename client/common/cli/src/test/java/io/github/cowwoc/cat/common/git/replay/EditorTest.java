@@ -8,7 +8,6 @@ import static io.github.cowwoc.cat.common.git.replay.TopicReplayActionResultFixt
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayAttestations.recordIndependentReviewAttestation;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplaySemanticPlacementFixtures.recordSemanticPlacementLedger;
 
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link GitTopicReplayEditor} command behavior.
@@ -41,11 +42,10 @@ public final class EditorTest
 	@Test
 	public void combinesSourcesInOneTopicOutput() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-output-"));
-			Path manifest = writeManifest(scope, replay);
+			Path manifest = writeManifest(replay);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay);
 			Path outputs = replay.resolve("topic-outputs.json");
 			Files.writeString(outputs, "[{\"id\":\"feature\",\"subject\":\"feature: add feature\"}]\n");
@@ -89,8 +89,8 @@ public final class EditorTest
 				requireThat(e.getMessage(), "failureMessage").contains("candidate-discovery passes");
 			}
 			recordCandidateUniverseEvidence(manifest);
-			Files.writeString(reviewerPasses, Files.readString(reviewerPasses).replace("\"newCandidateIds\":[]",
-				"\"newCandidateIds\":[\"independent-0\"]"));
+			Files.writeString(reviewerPasses, Files.readString(reviewerPasses).replace("\"new_candidate_ids\":[]",
+				"\"new_candidate_ids\":[\"independent-0\"]"));
 			try
 			{
 				editor.declareTopicOutputs(manifest, outputs);
@@ -165,7 +165,7 @@ public final class EditorTest
 				implementation + ":1", "feature", documentation + ":1", "feature"));
 			Path incompleteLedger = manifest.resolveSibling(manifest.getFileName() + ".semantic-placement-ledger.json");
 			Files.writeString(incompleteLedger, Files.readString(incompleteLedger).replace(
-				"\"acceptanceCommand\":" + scope.json().writeValueAsString(
+				"\"acceptance_command\":" + ReplayJson.newMapper().writeValueAsString(
 					GateCommandFixture.command(GateCommandFixture.Mode.CHECK_FEATURE)) + ",", ""));
 			try
 			{
@@ -205,7 +205,7 @@ public final class EditorTest
 			recordSemanticPlacementLedger(manifest, List.of("feature"), Map.of(
 				implementation + ":1", "feature", documentation + ":1", "feature"));
 			editor.declareTopicOutputs(manifest, outputs);
-			BatchManifest declared = scope.json().readValue(manifest.toFile(), BatchManifest.class);
+			BatchManifest declared = ReplayJson.newMapper().readValue(manifest.toFile(), BatchManifest.class);
 			Batch implementationBatch = new Batch("implementation", implementation, "feature", null, null);
 			Batch documentationBatch = new Batch("documentation", documentation, "feature", null, null);
 			BatchManifest reviewed = declared.withBatches(List.of(implementationBatch, documentationBatch));
@@ -247,22 +247,9 @@ public final class EditorTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-collapse-"));
-			Path manifest;
-			try (ToolScope scope = new ToolScope())
-			{
-				manifest = writeManifest(scope, replay);
-			}
+			Path manifest = writeManifest(replay);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay);
 			recordCandidateUniverseEvidence(manifest);
-			Path planner = manifest.resolveSibling(manifest.getFileName() + ".candidate-universe.json");
-			String universe = Files.readString(planner).replace(
-				"\"plannerCandidateId\":\"planner-1\",\"independentCandidateId\":\"independent-1\"",
-				"\"plannerCandidateId\":\"planner-1\",\"independentCandidateId\":\"independent-0\"");
-			String collapsedReconciliation = "\"reconciliation\":[{\"plannerCandidateId\":\"planner-0\"," +
-				"\"independentCandidateId\":\"independent-1\",\"disposition\":\"matched\",\"evidence\":" +
-				"\"fixture collapse\"},";
-			universe = universe.replace("\"reconciliation\":[", collapsedReconciliation);
-			Files.writeString(planner, universe);
 			write(manifest, "independent", "independent-", 2, "separate");
 			recordIndependentReviewAttestation(manifest);
 			Path outputs = replay.resolve("topic-outputs.json");
@@ -270,7 +257,7 @@ public final class EditorTest
 			try
 			{
 				editor.declareTopicOutputs(manifest, outputs);
-				throw new AssertionError("Expected declaration to reject reconciliation that collapses separate candidates");
+				throw new AssertionError("Expected declaration to reject separate candidates without a placement ledger");
 			}
 			catch (IOException e)
 			{
@@ -288,18 +275,15 @@ public final class EditorTest
 		expectedExceptionsMessageRegExp = ".*may not be collapsed.*")
 	public void rejectsSeparateCandidateCollapse() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
-		{
-			SemanticCandidate candidate = new SemanticCandidate("collapsed", "combined behavior", "discovery",
-				"split assessment", List.of("independent-0", "independent-1"), "feature", List.of(), List.of(),
-				List.of(), List.of(), List.of(), "placement evidence");
-			CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("independent-0", "independent-1"),
-				new ActionResultMatrix(List.of(), List.of(new ActionPairAssessment("independent-0", "independent-1",
-					"separate", "Each behavior remains usable separately.", List.of("feature.txt"), null))));
+		SemanticCandidate candidate = new SemanticCandidate("collapsed", "combined behavior", "discovery",
+			"split assessment", List.of("independent-0", "independent-1"), "feature", List.of(), List.of(),
+			List.of(), List.of(), List.of(), "placement evidence");
+		CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("independent-0", "independent-1"),
+			new ActionResultMatrix(List.of(), List.of(new ActionPairAssessment("independent-0", "independent-1",
+				"separate", "Each behavior remains usable separately.", List.of("feature.txt"), null))));
 
-			new ReviewEvidence(scope.json()).validateCandidateUniverseLinks(List.of(candidate), evidence,
-				Path.of("semantic-placement-ledger.json"));
-		}
+		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverseLinks(List.of(candidate), evidence,
+			Path.of("semantic-placement-ledger.json"));
 	}
 
 	/**
@@ -354,23 +338,22 @@ public final class EditorTest
 	@Test
 	public void reviewsOnlySourcesAfterFixedPrefix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-fixed-prefix-"));
 			Path manifestFile = root.resolve("manifest.json");
 			BatchManifest manifest = ReplayManifestInitialization.withFixedPrefix(capturedManifest(), List.of("source-1"));
-			scope.json().writeValue(manifestFile.toFile(), manifest);
+			ReplayJson.newMapper().writeValue(manifestFile.toFile(), manifest);
 			List<SourceReview> reviews = List.of(new SourceReview("source-2", "whole", List.of("output-2"), List.of(),
 				"The later commit has no earlier responsibility.", "It introduces the later file."));
 			Path reviewFile = root.resolve("source-review.json");
-			scope.json().writeValue(reviewFile.toFile(), reviews);
+			ReplayJson.newMapper().writeValue(reviewFile.toFile(), reviews);
 			SourceReviewValidation validation = new SourceReviewValidation();
 			validation.validateInput(manifest, reviews, true);
-			ManifestStore<BatchManifest> manifests = new ManifestStore<>(root, scope.json(), BatchManifest.class);
+			ManifestStore<BatchManifest> manifests = new ManifestStore<>(root, ReplayJson.newMapper(), BatchManifest.class);
 
-			new SourceReviewRecording(new Git(root), scope.json(), validation, manifests).recordBatches(manifestFile,
-				List.of(reviewFile));
+			new SourceReviewRecording(new Git(root), ReplayJson.newMapper(), validation, manifests).
+				recordBatches(manifestFile, List.of(reviewFile));
 
 			BatchManifest recorded = manifests.readUnfinalized(manifestFile);
 			requireThat(recorded.sourceReviews().size(), "sourceReviewCount").isEqualTo(1);
@@ -410,21 +393,18 @@ public final class EditorTest
 	@Test
 	public void reportsRawPathTransitionFacts() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
-		{
-			List<PathTransitionFact> transitions = PathTransitionFacts.parse("source-2", null,
-				List.of("R100\told.txt\tnew.txt", "A\tadded.txt"));
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			scope.json().writerWithDefaultPrettyPrinter().writeValue(output, transitions);
-			String facts = output.toString(StandardCharsets.UTF_8);
+		List<PathTransitionFact> transitions = PathTransitionFacts.parse("source-2", null,
+			List.of("R100\told.txt\tnew.txt", "A\tadded.txt"));
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		ReplayJson.newMapper().writerWithDefaultPrettyPrinter().writeValue(output, transitions);
+		String facts = output.toString(StandardCharsets.UTF_8);
 
-			requireThat(facts, "pathTransitionFacts").contains("old.txt").contains("new.txt").contains("added.txt");
-			requireThat(transitions, "rawTransitions").containsExactly(List.of(
-				new PathTransitionFact("source-2:transition:1", "source-2", null, "R100", "old.txt", "new.txt"),
-				new PathTransitionFact("source-2:transition:2", "source-2", null, "A", "added.txt", null)), "parsedFacts");
-			new PathTransitionValidation().validate(capturedManifest(), transitions, List.of(), false,
-				new SourceReviewValidation());
-		}
+		requireThat(facts, "pathTransitionFacts").contains("old.txt").contains("new.txt").contains("added.txt");
+		requireThat(transitions, "rawTransitions").containsExactly(List.of(
+			new PathTransitionFact("source-2:transition:1", "source-2", null, "R100", "old.txt", "new.txt"),
+			new PathTransitionFact("source-2:transition:2", "source-2", null, "A", "added.txt", null)), "parsedFacts");
+		new PathTransitionValidation().validate(capturedManifest(), transitions, List.of(), false,
+			new SourceReviewValidation());
 	}
 
 	/**
@@ -464,16 +444,56 @@ public final class EditorTest
 	@Test
 	public void reportsConfigurationOriginCandidate() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-origin-"));
-			Path manifest = OriginReviewFixtures.writeManifest(scope.json(), repository, false, "release.yml");
+			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest, output);
 
 			requireThat(output.toString(StandardCharsets.UTF_8), "originCandidates").contains("release.yml");
+		}
+	}
+
+	/**
+	 * Verifies printed origin candidates spell their keys in snake_case.
+	 *
+	 * @throws IOException if the fixture or replay operation cannot be created
+	 */
+	@Test
+	public void printsOriginCandidateKeysInSnakeCase() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-origin-"));
+			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest, output);
+
+			JsonNode candidate = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8)).path(0);
+			requireThat(candidate.has("inventory_id"), "hasInventoryId").isTrue();
+			requireThat(candidate.has("inventoryId"), "hasInventoryIdInCamelCase").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies a manifest whose keys are in camelCase is rejected rather than read with missing values.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(expectedExceptions = UnrecognizedPropertyException.class)
+	public void rejectsCamelCaseManifestKeys() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-camel-"));
+			Path manifest = OriginReviewFixtures.writeManifest(JsonMapper.builder().build(), repository, false,
+				"release.yml");
+
+			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest,
+				new ByteArrayOutputStream());
 		}
 	}
 
@@ -485,8 +505,7 @@ public final class EditorTest
 	@Test
 	public void rejectsInvalidatingSealedOutputSuffix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-sealed-suffix-"));
 			Path manifest = replay.resolve("manifest.json");
@@ -495,7 +514,7 @@ public final class EditorTest
 				new OutputWitness("output-1", "tree-0", "tree-1"))).withOutputPlan(new OutputPlan(List.of(
 				new PlannedOutput("output-1", "retained", List.of(new PlannedBatch("source", "source-1", null))),
 				new PlannedOutput("output-2", "discarded", List.of()))));
-			scope.json().writeValue(manifest.toFile(), sealed);
+			ReplayJson.newMapper().writeValue(manifest.toFile(), sealed);
 
 			try
 			{
@@ -506,25 +525,25 @@ public final class EditorTest
 			{
 				requireThat(e.getMessage(), "failureMessage").contains("sealed output plan cannot be changed in place");
 			}
-			JsonNode recorded = scope.json().readTree(Files.readString(manifest));
-			requireThat(recorded.path("outputWitnesses").size(), "outputWitnessCount").isEqualTo(1);
+			JsonNode recorded = ReplayJson.newMapper().readTree(Files.readString(manifest));
+			requireThat(recorded.path("output_witnesses").size(), "outputWitnessCount").isEqualTo(1);
 			requireThat(recorded.path("batches").size(), "batchCount").isEqualTo(1);
-			requireThat(scope.json().readValue(manifest.toFile(), BatchManifest.class), "sealedManifest").isEqualTo(sealed);
+			requireThat(ReplayJson.newMapper().readValue(manifest.toFile(), BatchManifest.class), "sealedManifest").
+				isEqualTo(sealed);
 		}
 	}
 
 	/**
 	 * Writes captured source facts without preparing a Git repository.
 	 *
-	 * @param scope the fixture JSON mapper scope
 	 * @param directory the test-owned manifest directory
 	 * @return the written manifest
 	 * @throws IOException if the captured facts cannot be written
 	 */
-	private Path writeManifest(ToolScope scope, Path directory) throws IOException
+	private Path writeManifest(Path directory) throws IOException
 	{
 		Path manifest = directory.resolve("manifest.json");
-		scope.json().writeValue(manifest.toFile(), capturedManifest());
+		ReplayJson.newMapper().writeValue(manifest.toFile(), capturedManifest());
 		return manifest;
 	}
 

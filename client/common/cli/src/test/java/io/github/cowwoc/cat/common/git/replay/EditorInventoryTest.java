@@ -5,7 +5,6 @@ import static io.github.cowwoc.cat.common.git.replay.ReplayFixtures.addedPath;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invocationManifest;
 import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.manifestJson;
 
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -145,13 +144,10 @@ public final class EditorInventoryTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			new GitTopicReplayEditor(repository).writeOriginCandidates(manifest, output);
 
-			try (ToolScope scope = new ToolScope())
-			{
-				JsonNode candidates = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode candidates = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 
-				requireThat(candidates.size(), "candidateCount").isEqualTo(1);
-				requireThat(candidates.get(0).path("path").stringValue(), "candidatePath").isEqualTo("feature.txt");
-			}
+			requireThat(candidates.size(), "candidateCount").isEqualTo(1);
+			requireThat(candidates.get(0).path("path").stringValue(), "candidatePath").isEqualTo("feature.txt");
 		}
 	}
 
@@ -190,11 +186,8 @@ public final class EditorInventoryTest
 		CandidateUniverseEntry candidate = new CandidateUniverseEntry("agent", "Architecture review is selectable",
 			"Agent declarations expose architecture review", "Architecture review", "Select architecture review",
 			"Review is usable independently", List.of(new CandidateUniverseUnit("agent", "selectable agent")), List.of());
-		try (ToolScope scope = new ToolScope())
-		{
-			new ReviewEvidence(scope.json()).validateCandidateUniverse(requirements,
-				new CandidateUniverse("reviewer", List.of(candidate), List.of()), Path.of("candidate-universe.json"));
-		}
+		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverse(requirements,
+			new CandidateUniverse("reviewer", List.of(candidate), List.of()), Path.of("candidate-universe.json"));
 	}
 
 	/**
@@ -237,11 +230,8 @@ public final class EditorInventoryTest
 				new CandidateUniverseUnit("installer", "installer selection")), entries);
 		EntryPointFamily family = new EntryPointFamily("release", entries, "fixture release surface", "fixture release",
 			"fixture release acceptance");
-		try (ToolScope scope = new ToolScope())
-		{
-			new ReviewEvidence(scope.json()).validateCandidateUniverse(requirements,
-				new CandidateUniverse("reviewer", List.of(candidate), List.of(family)), Path.of("candidate-universe.json"));
-		}
+		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverse(requirements,
+			new CandidateUniverse("reviewer", List.of(candidate), List.of(family)), Path.of("candidate-universe.json"));
 	}
 
 	/**
@@ -263,10 +253,7 @@ public final class EditorInventoryTest
 				new CandidateUniverseUnit("helper", "helper artifact"),
 				new CandidateUniverseUnit("skill", "skill artifact"),
 				new CandidateUniverseUnit("build", "build artifact")), List.of());
-		try (ToolScope scope = new ToolScope())
-		{
-			new ReviewEvidence(scope.json()).validateCandidateUniverse(requirements,
-				new CandidateUniverse("reviewer", List.of(candidate), List.of()), Path.of("candidate-universe.json"));
-		}
+		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverse(requirements,
+			new CandidateUniverse("reviewer", List.of(candidate), List.of()), Path.of("candidate-universe.json"));
 	}
 }

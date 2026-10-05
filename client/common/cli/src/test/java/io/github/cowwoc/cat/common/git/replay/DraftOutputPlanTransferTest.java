@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.git.replay;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,8 +30,7 @@ public final class DraftOutputPlanTransferTest
 	@Test
 	public void copiesPlanWithReplacementPatch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"topic-replay-draft-transfer-"));
@@ -43,16 +41,16 @@ public final class DraftOutputPlanTransferTest
 			Path patchDirectory = Files.createDirectories(previousDirectory.resolve("patches"));
 			Path patch = Files.writeString(patchDirectory.resolve("source.patch"), "patch bytes\n");
 			Path previousPlan = previousDirectory.resolve("draft-plan.json");
-			scope.json().writeValue(previousPlan.toFile(), List.of(new OutputPlanRequest("output", "retained",
+			ReplayJson.newMapper().writeValue(previousPlan.toFile(), List.of(new OutputPlanRequest("output", "retained",
 				List.of(new BatchRequest("batch", "source", "patches/source.patch")))));
 			BatchManifest previous = reviewedManifest();
 			BatchManifest replacement = unreviewedManifest();
 			Path copiedPlan = replacementDirectory.resolve("draft-plan.json");
 
-			new DraftOutputPlanTransfer(scope.json(), new PatchArtifacts()).transfer(previousManifest, previousPlan,
+			new DraftOutputPlanTransfer(ReplayJson.newMapper(), new PatchArtifacts()).transfer(previousManifest, previousPlan,
 				previous, replacementManifest, replacement, copiedPlan);
 
-			OutputPlanRequest[] copied = scope.json().readValue(copiedPlan.toFile(), OutputPlanRequest[].class);
+			OutputPlanRequest[] copied = ReplayJson.newMapper().readValue(copiedPlan.toFile(), OutputPlanRequest[].class);
 			requireThat(copied.length, "copiedPlanCount").isEqualTo(1);
 			requireThat(copied[0].batches().getFirst().patch(), "copiedPatchPath").matches("patches/[0-9a-f]{64}\\.patch");
 			requireThat(replacementDirectory.resolve(copied[0].batches().getFirst().patch()), "copiedPatch").isRegularFile();

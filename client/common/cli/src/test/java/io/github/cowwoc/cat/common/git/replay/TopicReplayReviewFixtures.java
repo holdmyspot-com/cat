@@ -22,17 +22,17 @@ final class TopicReplayReviewFixtures
 	static String manifestJson()
 	{
 		return """
-			{"version":5,"base":"base","tipTree":"tree","sources":[
-			{"hash":"source-1","parentTree":"tree-0","tree":"tree-1"},
-			{"hash":"source-2","parentTree":"tree-1","tree":"tree-2"}],"outputs":[],"inventory":[
-			{"id":"source-1:1","source":"source-1","path":"feature.txt","beforeMode":"100644",
-			"beforeBlob":"blob-0","afterMode":"100644","afterBlob":"blob-1"},
-			{"id":"source-2:1","source":"source-2","path":"feature.txt","beforeMode":"100644",
-			"beforeBlob":"blob-1","afterMode":"100644","afterBlob":"blob-2"},
-			{"id":"source-2:2","source":"source-2","path":"helper.txt","beforeMode":"000000",
-			"beforeBlob":"0000000000000000000000000000000000000000","afterMode":"100644",
-			"afterBlob":"blob-3"}],"batches":[],"sourceReconstructions":[],"outputWitnesses":[],
-			"discardedOutputs":[],"sourceReviews":[],"outputPlan":null}
+			{"version":5,"base":"base","tip_tree":"tree","sources":[
+			{"hash":"source-1","parent_tree":"tree-0","tree":"tree-1"},
+			{"hash":"source-2","parent_tree":"tree-1","tree":"tree-2"}],"outputs":[],"inventory":[
+			{"id":"source-1:1","source":"source-1","path":"feature.txt","before_mode":"100644",
+			"before_blob":"blob-0","after_mode":"100644","after_blob":"blob-1"},
+			{"id":"source-2:1","source":"source-2","path":"feature.txt","before_mode":"100644",
+			"before_blob":"blob-1","after_mode":"100644","after_blob":"blob-2"},
+			{"id":"source-2:2","source":"source-2","path":"helper.txt","before_mode":"000000",
+			"before_blob":"0000000000000000000000000000000000000000","after_mode":"100644",
+			"after_blob":"blob-3"}],"batches":[],"source_reconstructions":[],"output_witnesses":[],
+			"discarded_outputs":[],"source_reviews":[],"output_plan":null}
 			""";
 	}
 
@@ -64,13 +64,13 @@ final class TopicReplayReviewFixtures
 			if (index > 0)
 				result.append(',');
 			JsonNode item = scaffold.get(index);
-			result.append("{\"inventoryId\":\"").append(item.path("inventoryId").stringValue()).append(
+			result.append("{\"inventory_id\":\"").append(item.path("inventory_id").stringValue()).append(
 				"\",\"predecessors\":").append(predecessors(item.path("candidates"))).append(
-				",\"classification\":\"same-unit\",\"affectedUnit\":\"").append(item.path("path").stringValue()).
-				append(" text\",\"owningResponsibility\":\"feature\",\"predecessorRelationship\":").append(
-				"\"corrects-predecessor\",\"destination\":\"").append(destination).append(
-				"\",\"rejectedDestinations\":[],\"evidence\":").
-				append("\"The feature output contains reviewed placement ").append(item.path("inventoryId").stringValue()).
+				",\"classification\":\"same_unit\",\"affected_unit\":\"").append(item.path("path").stringValue()).
+				append(" text\",\"owning_responsibility\":\"feature\",\"predecessor_relationship\":").append(
+				"\"corrects_predecessor\",\"destination\":\"").append(destination).append(
+				"\",\"rejected_destinations\":[],\"evidence\":").
+				append("\"The feature output contains reviewed placement ").append(item.path("inventory_id").stringValue()).
 				append(" for ").append(item.path("path").stringValue()).append(".\"}");
 		}
 		return result.append(']').toString();

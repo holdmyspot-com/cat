@@ -1,7 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +34,7 @@ public final class RecoveryTest
 	@Test
 	public void validatesSealedPrefixAndSuffix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "recovery-prefix-"));
 			Path manifestFile = directory.resolve("manifest.json");
@@ -43,7 +42,7 @@ public final class RecoveryTest
 			Files.writeString(patch, "captured patch bytes\n");
 			PatchArtifacts patches = new PatchArtifacts();
 			BatchManifest manifest = manifest(patches.declare(manifestFile, patch));
-			scope.json().writeValue(manifestFile.toFile(), manifest);
+			ReplayJson.newMapper().writeValue(manifestFile.toFile(), manifest);
 
 			requireThat(new SealedPrefixValidation().length(manifest), "sealedPrefixLength").isEqualTo(1);
 			for (SourceSnapshot source : manifest.sources())

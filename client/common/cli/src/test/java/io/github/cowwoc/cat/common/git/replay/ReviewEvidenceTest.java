@@ -1,14 +1,12 @@
 package io.github.cowwoc.cat.common.git.replay;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 /**
@@ -16,22 +14,11 @@ import org.testng.annotations.Test;
  */
 public final class ReviewEvidenceTest
 {
-	private final ToolScope scope = new ToolScope();
-
 	/**
 	 * Creates the test fixture.
 	 */
 	public ReviewEvidenceTest()
 	{
-	}
-
-	/**
-	 * Closes the operation scope after this test class finishes.
-	 */
-	@AfterClass(alwaysRun = true)
-	public void closeScope()
-	{
-		scope.close();
 	}
 
 	/**
@@ -47,7 +34,7 @@ public final class ReviewEvidenceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"topic-replay-review-evidence-"));
-			new ReviewEvidence(scope.json()).readSemanticCandidates(
+			new ReviewEvidence(ReplayJson.newMapper()).readSemanticCandidates(
 				root.resolve("semantic-plan.json"), "semantic plan");
 		}
 	}
@@ -70,7 +57,7 @@ public final class ReviewEvidenceTest
 			Files.writeString(packet, " \n\t");
 			Files.writeString(ledger, "[{\"operation\":\"add\",\"status\":\"resolved\",\"evidence\":\"review\"}]");
 
-			new ReviewEvidence(scope.json()).validateReplayReadiness(packet, ledger);
+			new ReviewEvidence(ReplayJson.newMapper()).validateReplayReadiness(packet, ledger);
 		}
 	}
 
@@ -92,7 +79,7 @@ public final class ReviewEvidenceTest
 			Files.writeString(packet, "reviewed inventory\n");
 			Files.writeString(ledger, "[{\"operation\":\"merge\",\"status\":\"resolved\",\"evidence\":\"review\"}]");
 
-			new ReviewEvidence(scope.json()).validateReplayReadiness(packet, ledger);
+			new ReviewEvidence(ReplayJson.newMapper()).validateReplayReadiness(packet, ledger);
 		}
 	}
 
@@ -112,12 +99,12 @@ public final class ReviewEvidenceTest
 			Path evidence = root.resolve("passes.json");
 			Files.writeString(evidence, """
 				{"passes":[
-				  {"number":1,"examinedCandidateIds":["candidate-a"],"newCandidateIds":["candidate-a"]},
-				  {"number":2,"examinedCandidateIds":[],"newCandidateIds":[]}
+				  {"number":1,"examined_candidate_ids":["candidate-a"],"new_candidate_ids":["candidate-a"]},
+				  {"number":2,"examined_candidate_ids":[],"new_candidate_ids":[]}
 				]}
 				""");
 
-			new ReviewEvidence(scope.json()).validateCandidateDiscoveryPasses(evidence,
+			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateDiscoveryPasses(evidence,
 				Set.of("candidate-a"), "topic reviewer");
 		}
 	}
@@ -138,12 +125,12 @@ public final class ReviewEvidenceTest
 			Path matrix = root.resolve("action-result-matrix.json");
 			Files.writeString(matrix, """
 				{"rows":[
-				  {"candidateId":"candidate-a","observableBehavior":"behavior-a","observableResult":"result-a",
-				   "acceptanceCheck":"check-a","requiredArtifacts":["artifact-a"],"deferredArtifacts":[]}
+				  {"candidate_id":"candidate-a","observable_behavior":"behavior-a","observable_result":"result-a",
+				   "acceptance_check":"check-a","required_artifacts":["artifact-a"],"deferred_artifacts":[]}
 				],"pairs":[]}
 				""");
 
-			new ReviewEvidence(scope.json()).validateActionResultMatrix(matrix,
+			new ReviewEvidence(ReplayJson.newMapper()).validateActionResultMatrix(matrix,
 				Set.of("candidate-a", "candidate-b"), "topic reviewer");
 		}
 	}
@@ -165,7 +152,7 @@ public final class ReviewEvidenceTest
 				List.of(), Set.of(), false);
 			CandidateUniverse universe = new CandidateUniverse("topic reviewer", List.of(), List.of());
 
-			new ReviewEvidence(scope.json()).validateCandidateUniverse(requirements,
+			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverse(requirements,
 				universe, root.resolve("candidate-universe.json"));
 		}
 	}
@@ -188,7 +175,7 @@ public final class ReviewEvidenceTest
 			CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("reviewer-a"),
 				new ActionResultMatrix(List.of(), List.of()));
 
-			new ReviewEvidence(scope.json()).validateCandidateUniverseLinks(
+			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverseLinks(
 				List.of(candidate), evidence, root.resolve("semantic-plan.json"));
 		}
 	}

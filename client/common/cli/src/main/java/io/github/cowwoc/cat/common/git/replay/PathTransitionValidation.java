@@ -45,9 +45,9 @@ final class PathTransitionValidation
 			{
 				throw new IOException("Every path-transition decision requires one fact, classification, and evidence");
 			}
-			if (decision.classification().equals("independent-removal") && decision.relatedInventoryId() == null)
+			if (decision.classification().equals("independent_removal") && decision.relatedInventoryId() == null)
 				continue;
-			if (decision.classification().equals("related-transition") && decision.relatedInventoryId() != null &&
+			if (decision.classification().equals("related_transition") && decision.relatedInventoryId() != null &&
 				inventoryIds.contains(decision.relatedInventoryId()))
 			{
 				continue;

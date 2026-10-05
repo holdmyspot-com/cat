@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.git.replay;
 
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,14 +19,13 @@ final class ReceiptFixtures
 	/**
 	 * Creates a finalization owner whose data-based operations need no repository subprocesses.
 	 *
-	 * @param scope the JSON mapper owner
 	 * @param directory the test-owned working directory
 	 * @return the finalization owner
 	 */
-	static Finalization finalization(ToolScope scope, Path directory)
+	static Finalization finalization(Path directory)
 	{
 		Git git = new Git(directory);
-		return new Finalization(git, new History(directory, git), scope.json());
+		return new Finalization(git, new History(directory, git), ReplayJson.newMapper());
 	}
 
 	/**

@@ -48,12 +48,12 @@ final class TopicReplayActionResultFixtures
 		{
 			if (index > 0)
 				matrix.append(',');
-			matrix.append("{\"candidateId\":\"").append(candidatePrefix).append(index).
-				append("\",\"observableBehavior\":\"fixture behavior ").append(index).
-				append("\",\"observableResult\":\"fixture result ").append(index).
-				append("\",\"acceptanceCheck\":\"fixture acceptance ").append(index).
-				append("\",\"requiredArtifacts\":[\"fixture artifact ").append(index).
-				append("\"],\"deferredArtifacts\":[]}");
+			matrix.append("{\"candidate_id\":\"").append(candidatePrefix).append(index).
+				append("\",\"observable_behavior\":\"fixture behavior ").append(index).
+				append("\",\"observable_result\":\"fixture result ").append(index).
+				append("\",\"acceptance_check\":\"fixture acceptance ").append(index).
+				append("\",\"required_artifacts\":[\"fixture artifact ").append(index).
+				append("\"],\"deferred_artifacts\":[]}");
 		}
 		matrix.append("],\"pairs\":[");
 		boolean first = true;
@@ -63,13 +63,13 @@ final class TopicReplayActionResultFixtures
 			{
 				if (!first)
 					matrix.append(',');
-				matrix.append("{\"firstCandidateId\":\"").append(candidatePrefix).append(left).
-					append("\",\"secondCandidateId\":\"").append(candidatePrefix).append(right).
+				matrix.append("{\"first_candidate_id\":\"").append(candidatePrefix).append(left).
+					append("\",\"second_candidate_id\":\"").append(candidatePrefix).append(right).
 					append("\",\"disposition\":\"").append(disposition).
-					append("\",\"removalResult\":\"fixture removal ").append(left).
+					append("\",\"removal_result\":\"fixture removal ").append(left).
 					append(" from ").append(right).
-					append(" tests the independent observable behavior\",\"splitEnablingArtifacts\":[\"fixture artifact ").
-					append(left).append("\"],\"missingPrerequisite\":");
+					append(" tests the independent observable behavior\",\"split_enabling_artifacts\":[\"fixture artifact ").
+					append(left).append("\"],\"missing_prerequisite\":");
 				if (disposition.equals("combined"))
 					matrix.append("\"fixture prerequisite\"");
 				else

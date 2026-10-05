@@ -93,7 +93,7 @@ final class OriginPlanFixtures
 			sourceReviews.add(review(source, dispositions.get(index), List.of("output-1"), List.of()));
 			if (index > 0)
 			{
-				origins.add(origin(source + ":1", predecessors, "corrects-predecessor", "output-1"));
+				origins.add(origin(source + ":1", predecessors, "corrects_predecessor", "output-1"));
 				discarded.add("output-" + (index + 1));
 				plannedOutputs.add(new PlannedOutput("output-" + (index + 1), "discarded", List.of()));
 			}
@@ -143,8 +143,8 @@ final class OriginPlanFixtures
 		List<Batch> batches = List.of(batch("feature", "source-1", "output-1", "tree-0", "tree-1"),
 			batch("correction", "source-2", "output-2", "tree-1", "tree-2"));
 		List<OriginReview> origins = List.of(
-			origin("source-2:feature.txt", List.of("source-1"), "corrects-predecessor", "output-1"),
-			origin("source-2:secondary.txt", List.of("source-1"), "corrects-predecessor", "output-1"));
+			origin("source-2:feature.txt", List.of("source-1"), "corrects_predecessor", "output-1"),
+			origin("source-2:secondary.txt", List.of("source-1"), "corrects_predecessor", "output-1"));
 		BatchManifest manifest = manifest(sources, outputs(), inventory, List.of(
 			review("source-1", "whole", List.of("output-1"), List.of()),
 			review("source-2", "whole", List.of("output-2"), List.of())));
@@ -181,7 +181,7 @@ final class OriginPlanFixtures
 			new OutputWitness("output-1", "tree-0", "clean-tree"),
 			new OutputWitness("output-2", "clean-tree", "routing-tree")));
 		return new Facts(manifest(sources, outputs(), inventory, sourceReviews), plan,
-			List.of(origin("source-2:2", List.of("source-1"), "removes-invalid-predecessor", "output-1")),
+			List.of(origin("source-2:2", List.of("source-1"), "removes_invalid_predecessor", "output-1")),
 			Map.of("feature-tree", Map.of("structural-test.txt", state("invalid-test")),
 				"clean-tree", Map.of("structural-test.txt", PathState.absent()),
 				"routing-tree", Map.of("structural-test.txt", PathState.absent())));
@@ -268,7 +268,7 @@ final class OriginPlanFixtures
 	private static OriginReview origin(String inventoryId, List<String> predecessors, String relationship,
 		String destination)
 	{
-		return new OriginReview(inventoryId, List.copyOf(predecessors), "same-unit", inventoryId, "feature", relationship,
+		return new OriginReview(inventoryId, List.copyOf(predecessors), "same_unit", inventoryId, "feature", relationship,
 			destination, List.of(), "Reviewed placement of " + inventoryId);
 	}
 

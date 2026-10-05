@@ -32,7 +32,7 @@ public final class GitTopicReplayEditor
 	private final OutputGates outputGates;
 	private final Finalization finalization;
 	private final Backup backups;
-	private final ToolScope scope = new ToolScope();
+	private final JsonMapper json = ReplayJson.newMapper();
 	private final ReviewEvidence reviewEvidence;
 	private final SemanticEvidence semanticEvidence;
 	private final PatchArtifacts patches;
@@ -128,23 +128,23 @@ public final class GitTopicReplayEditor
 		this.commands = new CommandRunner(this.repository);
 		this.gates = new Gates(this.commands);
 		this.outputGates = new OutputGates(this.git, this::createTemporaryDirectory);
-		this.finalization = new Finalization(this.git, this.history, json());
+		this.finalization = new Finalization(this.git, this.history, json);
 		this.backups = new Backup(this.git, Clock.systemUTC());
-		this.reviewEvidence = new ReviewEvidence(json());
-		this.originReviewReports = new OriginReviewReports(json(), this.originReviewFacts, this.sourceReviewValidation,
+		this.reviewEvidence = new ReviewEvidence(json);
+		this.originReviewReports = new OriginReviewReports(json, this.originReviewFacts, this.sourceReviewValidation,
 			this.reviewEvidence);
-		this.originReviewRecording = new OriginReviewRecording(json(), this.reviewEvidence, this.originReviewValidation,
+		this.originReviewRecording = new OriginReviewRecording(json, this.reviewEvidence, this.originReviewValidation,
 			this.sourceReviewValidation);
-		this.pathTransitionRecording = new PathTransitionRecording(json(), this.reviewEvidence,
+		this.pathTransitionRecording = new PathTransitionRecording(json, this.reviewEvidence,
 			this.pathTransitionValidation, this.sourceReviewValidation);
 		this.pathTransitionFacts = new PathTransitionFacts(this.git);
 		this.patches = new PatchArtifacts();
 		this.semanticEvidence = new SemanticEvidence(this.history, this.patches, this.reviewEvidence,
 			new SemanticPlanValidation(this.reviewEvidence));
 		this.patchArtifactTransfer = new PatchArtifactTransfer(this.patches);
-		this.outputPlanInputExport = new OutputPlanInputExport(json(), this.patchArtifactTransfer);
-		this.draftOutputPlanTransfer = new DraftOutputPlanTransfer(json(), this.patches);
-		this.manifests = new ManifestStore<>(this.temporaryRoot, json(), BatchManifest.class);
+		this.outputPlanInputExport = new OutputPlanInputExport(json, this.patchArtifactTransfer);
+		this.draftOutputPlanTransfer = new DraftOutputPlanTransfer(json, this.patches);
+		this.manifests = new ManifestStore<>(this.temporaryRoot, json, BatchManifest.class);
 		this.patchApplication = new PatchApplication(this.git, this.manifests, this.patches);
 		this.sealedPrefixRecovery = new SealedPrefixRecovery(this.git, this.history, this.patches,
 			this.patchApplication, this.sealedPrefixValidation);
@@ -160,23 +160,23 @@ public final class GitTopicReplayEditor
 		this.patchWorkflow = new PatchWorkflow(this.manifests, this.sourcePatches, this.sourceHunks,
 			this.adaptedSourcePatches, this.targetPatches, this.treeFiles, this.replacementTrees, this.mergeCandidates);
 		this.outputRecording = new OutputRecording(this.history, this.patches, this.patchApplication);
-		this.sealedOutputRecording = new SealedOutputRecording(json(), this.manifests, this.outputPlan,
+		this.sealedOutputRecording = new SealedOutputRecording(json, this.manifests, this.outputPlan,
 			this.outputRecording);
-		this.outputPlanSealing = new OutputPlanSealing(json(), this.manifests, this.sourceReviewValidation,
+		this.outputPlanSealing = new OutputPlanSealing(json, this.manifests, this.sourceReviewValidation,
 			this.originCandidates, this.originReviewValidation, this.outputPlan, this.reviewEvidence);
-		this.draftOutputAcceptance = new DraftOutputAcceptance(json(), this.outputPlan, this.sourceReviewValidation,
+		this.draftOutputAcceptance = new DraftOutputAcceptance(json, this.outputPlan, this.sourceReviewValidation,
 			this.reviewEvidence, this.semanticEvidence, this.outputGates);
-		this.outputPlanWorkflow = new OutputPlanWorkflow(json(), this.manifests, this.outputPlan,
+		this.outputPlanWorkflow = new OutputPlanWorkflow(json, this.manifests, this.outputPlan,
 			this.sealedOutputRecording, this.outputPlanSealing, this.draftOutputAcceptance, this.outputPlanInputExport,
 			this.draftOutputPlanTransfer, this.outputSuffixInvalidation);
-		this.topicOutputDeclaration = new TopicOutputDeclaration(json(), this.manifests, this.reviewEvidence,
+		this.topicOutputDeclaration = new TopicOutputDeclaration(json, this.manifests, this.reviewEvidence,
 			this.semanticEvidence);
-		this.sourceReviewRecording = new SourceReviewRecording(this.git, json(), this.sourceReviewValidation,
+		this.sourceReviewRecording = new SourceReviewRecording(this.git, json, this.sourceReviewValidation,
 			this.manifests);
 		this.replayExecution = new ReplayExecution(this.git, this.history, this.manifests, this.patches);
 		this.replayPreflight = new ReplayPreflight(this.history, this.patchApplication, this.reviewEvidence,
 			this.semanticEvidence, this.pathTransitionFacts, this.pathTransitionValidation, this.sourceReviewValidation,
-			json());
+			json);
 		this.replayVerification = new ReplayVerification(this.git, this.history, this.replayPreflight);
 		this.reviewEvidenceImport = new ReviewEvidenceImport(this.manifests, this.reviewEvidence,
 			this.sourceReviewValidation, this.originCandidates, this.originReviewValidation, this.pathTransitionFacts,
@@ -186,7 +186,7 @@ public final class GitTopicReplayEditor
 			this.manifests);
 		this.sourceReconstructionRecording = new SourceReconstructionRecording(this.patches, this.patchApplication,
 			this.manifests);
-		this.reviewedPrefixImport = new ReviewedPrefixImport(json(), this.manifests, this.sealedPrefixValidation,
+		this.reviewedPrefixImport = new ReviewedPrefixImport(json, this.manifests, this.sealedPrefixValidation,
 			this.patchArtifactTransfer, this.patches, this.patchWorkflow, this.reviewEvidence);
 		this.invocationManifest = new InvocationManifest(this.temporaryRoot);
 		this.completedBatchManifest = new CompletedBatchManifest(this.manifests, this.outputPlan,
@@ -196,16 +196,6 @@ public final class GitTopicReplayEditor
 		this.completion = new TopicReplayCompletion(this.git, this.history, this.manifests,
 			this.completedBatchManifest, this.replayPreflight, this.replayExecution, this.replayVerification, this.backups,
 			this.finalization);
-	}
-
-	/**
-	 * Returns the mapper shared for this command-line process.
-	 *
-	 * @return the process-scoped JSON mapper
-	 */
-	private JsonMapper json()
-	{
-		return scope.json();
 	}
 
 	/**
@@ -1234,7 +1224,7 @@ public final class GitTopicReplayEditor
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(output, "output").isNotNull();
-		json().writerWithDefaultPrettyPrinter().writeValue(output, semanticEvidence.exposedEntryPoints(
+		json.writerWithDefaultPrettyPrinter().writeValue(output, semanticEvidence.exposedEntryPoints(
 			readUnfinalizedBatchManifest(manifestFile)));
 	}
 
@@ -1252,7 +1242,7 @@ public final class GitTopicReplayEditor
 			PlannedOutput::outputId, Function.identity()));
 		List<TopicOutputRequest> topics = manifest.outputs().stream().filter(output -> plan.get(output.id()).disposition().
 			equals("retained")).map(output -> new TopicOutputRequest(output.id(), output.subject())).toList();
-		json().writerWithDefaultPrettyPrinter().writeValue(System.out, topics);
+		json.writerWithDefaultPrettyPrinter().writeValue(System.out, topics);
 	}
 
 	/**
@@ -1375,7 +1365,7 @@ public final class GitTopicReplayEditor
 			collect(Collectors.toSet());
 		Set<String> sourcesToReview = sourceReviewValidation.sourcesRequiringReview(manifest, capturedSourceHashes);
 		List<PathTransitionFact> facts = pathTransitionFacts.read(manifest);
-		json().writerWithDefaultPrettyPrinter().writeValue(output, facts.stream().filter(fact ->
+		json.writerWithDefaultPrettyPrinter().writeValue(output, facts.stream().filter(fact ->
 			sourcesToReview.contains(fact.source())).toList());
 	}
 

@@ -1,7 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,14 +28,15 @@ public final class SemanticPlanTest
 	@Test
 	public void acceptsCompletedSemanticPlan() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-ready-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
-			ReviewEvidence review = new ReviewEvidence(scope.json());
-			scope.json().writeValue(review.semanticPlanFile(manifest).toFile(), SemanticPlanFixtures.candidates());
-			scope.json().writeValue(review.semanticPlacementLedgerFile(manifest).toFile(), SemanticPlanFixtures.candidates());
+			ReviewEvidence review = new ReviewEvidence(ReplayJson.newMapper());
+			ReplayJson.newMapper().writeValue(review.semanticPlanFile(manifest).toFile(), SemanticPlanFixtures.candidates());
+			ReplayJson.newMapper().writeValue(review.semanticPlacementLedgerFile(manifest).toFile(),
+				SemanticPlanFixtures.candidates());
 			Files.writeString(review.reviewPacketFile(manifest), "Captured artifacts and behaviors reviewed\n");
 			Files.writeString(review.challengeLedgerFile(manifest),
 				"[{\"operation\":\"add\",\"status\":\"resolved\",\"evidence\":\"Counterfactual checked\"}]\n");
@@ -54,7 +54,7 @@ public final class SemanticPlanTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*must resolve every challenge.*")
 	public void rejectsUnresolvedChallenges() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-challenge-"));
 			Path packet = directory.resolve("review.md");
@@ -63,7 +63,7 @@ public final class SemanticPlanTest
 			Files.writeString(ledger,
 				"[{\"operation\":\"split\",\"status\":\"open\",\"evidence\":\"Independent behavior still needs review\"}]\n");
 
-			new ReviewEvidence(scope.json()).validateReplayReadiness(packet, ledger);
+			new ReviewEvidence(ReplayJson.newMapper()).validateReplayReadiness(packet, ledger);
 		}
 	}
 
@@ -147,18 +147,19 @@ public final class SemanticPlanTest
 		".*must exactly reproduce the declared semantic-placement ledger.*")
 	public void rejectsPlanLedgerDivergence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-ledger-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
-			ReviewEvidence review = new ReviewEvidence(scope.json());
-			scope.json().writeValue(review.semanticPlacementLedgerFile(manifest).toFile(), SemanticPlanFixtures.candidates());
+			ReviewEvidence review = new ReviewEvidence(ReplayJson.newMapper());
+			ReplayJson.newMapper().writeValue(review.semanticPlacementLedgerFile(manifest).toFile(),
+				SemanticPlanFixtures.candidates());
 			SemanticCandidate original = SemanticPlanFixtures.candidates().getFirst();
 			SemanticCandidate changed = copy(original, original.candidateDiscovery(), original.splitCounterfactual(),
 				original.candidateUniverseIds(), original.rejectedEarlierOutputs(), original.combinedCandidateBlockers(),
 				"Different documented evidence");
-			scope.json().writeValue(review.semanticPlanFile(manifest).toFile(), replaceFirst(changed));
+			ReplayJson.newMapper().writeValue(review.semanticPlanFile(manifest).toFile(), replaceFirst(changed));
 
 			semanticEvidence(directory, review).validatePlan(manifest, SemanticPlanFixtures.manifest(), evidence());
 		}
@@ -174,11 +175,8 @@ public final class SemanticPlanTest
 	private static void validate(List<SemanticCandidate> candidates, CandidateUniverseEvidence evidence)
 		throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
-		{
-			new SemanticPlanValidation(new ReviewEvidence(scope.json())).validate(SemanticPlanFixtures.manifest(),
-				candidates, Set.of("first", "second"), true, Path.of("semantic-plan.json"), evidence);
-		}
+		new SemanticPlanValidation(new ReviewEvidence(ReplayJson.newMapper())).validate(SemanticPlanFixtures.manifest(),
+			candidates, Set.of("first", "second"), true, Path.of("semantic-plan.json"), evidence);
 	}
 
 	/**

@@ -1,7 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,13 +28,13 @@ public final class TopicReplayCompletionTest
 	@Test
 	public void preservesReceiptAcrossCleanupRetry() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "completion-retry-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
-			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization finalization = ReceiptFixtures.finalization(directory);
 			Finalization.FinalizationReceipt captured = ReceiptFixtures.capture(finalization, manifest);
 			AtomicBoolean failed = new AtomicBoolean();
 			try
@@ -54,7 +53,7 @@ public final class TopicReplayCompletionTest
 			requireThat(failed.get(), "cleanupFailed").isTrue();
 			Path receiptFile = finalization.requireReceipt(manifest);
 			String receiptBytes = Files.readString(receiptFile);
-			Finalization.FinalizationReceipt receipt = scope.json().readValue(receiptFile.toFile(),
+			Finalization.FinalizationReceipt receipt = ReplayJson.newMapper().readValue(receiptFile.toFile(),
 				Finalization.FinalizationReceipt.class);
 			requireThat(receipt, "durableReceipt").isEqualTo(captured);
 

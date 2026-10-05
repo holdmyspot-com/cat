@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.git.replay;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,17 +34,17 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsAbsorbedCorrection() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.correction();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
 			validateSourcePlacements(facts);
-			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+			sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(readManifest(ReplayJson.newMapper(), manifestFile).outputPlan(), "sealedPlan").
+				isEqualTo(facts.plan().plan());
 			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1", "source-2"));
@@ -61,23 +60,23 @@ public final class EditorReplayFinalizationTest
 		"(?s).*Topic-replay output plan conflicts with recorded origin decisions.*feature.txt.*output-1.*secondary.txt.*")
 	public void rejectsConflictingOriginPlan() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.conflict();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 			String original = Files.readString(manifestFile);
 			validateSourcePlacements(facts);
 
 			try
 			{
-				sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+				sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(),
+					facts.plan());
 			}
 			finally
 			{
 				requireThat(Files.readString(manifestFile), "storedManifest").isEqualTo(original);
-				BatchManifest unchanged = readManifest(scope.json(), manifestFile);
+				BatchManifest unchanged = readManifest(ReplayJson.newMapper(), manifestFile);
 				requireThat(unchanged.outputPlan(), "outputPlan").isNull();
 				requireThat(unchanged.outputWitnesses(), "outputWitnesses").isEmpty();
 			}
@@ -92,17 +91,16 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsLaterSameOutputCorrection() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.laterCorrection();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
 			validateSourcePlacements(facts);
-			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+			sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			BatchManifest stored = readManifest(scope.json(), manifestFile);
+			BatchManifest stored = readManifest(ReplayJson.newMapper(), manifestFile);
 			requireThat(stored.outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
 			requireThat(stored.outputPlan().outputs().getFirst().batches().stream().map(PlannedBatch::source).toList(),
 				"batchOrder").isEqualTo(List.of("source-1", "source-2", "source-3"));
@@ -120,17 +118,17 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsAbsorbedSourceWithoutBatch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.absorbedWithoutBatch();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
 			validateSourcePlacements(facts);
-			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+			sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(readManifest(ReplayJson.newMapper(), manifestFile).outputPlan(), "sealedPlan").
+				isEqualTo(facts.plan().plan());
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1"));
 			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
@@ -147,17 +145,17 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsSupersededAbsorbedSource() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.supersededAbsorbed();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
 			validateSourcePlacements(facts);
-			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+			sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			requireThat(readManifest(scope.json(), manifestFile).outputPlan(), "sealedPlan").isEqualTo(facts.plan().plan());
+			requireThat(readManifest(ReplayJson.newMapper(), manifestFile).outputPlan(), "sealedPlan").
+				isEqualTo(facts.plan().plan());
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1"));
 			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2", "output-3"));
@@ -193,18 +191,18 @@ public final class EditorReplayFinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires origin reviews.*")
 	public void rejectsMissingRemovalOrigin() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, List.of());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, List.of());
 			String original = Files.readString(manifestFile);
 			validateSourcePlacements(facts);
 
 			try
 			{
-				sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+				sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(),
+					facts.plan());
 			}
 			finally
 			{
@@ -221,17 +219,16 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsRemovalAndIndependentRouting() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
-			Path manifestFile = writeInputs(scope.json(), directory, facts, facts.origins());
+			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
 			validateSourcePlacements(facts);
-			sealing(scope.json(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
+			sealing(ReplayJson.newMapper(), directory, facts).sealValidatedPlan(manifestFile, facts.manifest(), facts.plan());
 
-			OutputPlan stored = readManifest(scope.json(), manifestFile).outputPlan();
+			OutputPlan stored = readManifest(ReplayJson.newMapper(), manifestFile).outputPlan();
 			requireThat(stored, "sealedPlan").isEqualTo(facts.plan().plan());
 			requireThat(stored.outputs().getFirst().batches().stream().map(PlannedBatch::id).toList(), "featureBatches").
 				isEqualTo(List.of("feature", "removal"));

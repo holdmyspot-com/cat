@@ -295,9 +295,9 @@ final class ReviewEvidence
 			throw new IOException("Topic-replay scope attestation must name the captured base, tip, governing rule, and " +
 				"authorization evidence: " + file);
 		}
-		if (attestation.mode().equals("whole-range") && manifest.fixedSources().isEmpty())
+		if (attestation.mode().equals("whole_range") && manifest.fixedSources().isEmpty())
 			return;
-		if (attestation.mode().equals("fixed-prefix") && !manifest.fixedSources().isEmpty() &&
+		if (attestation.mode().equals("fixed_prefix") && !manifest.fixedSources().isEmpty() &&
 			attestation.fixedPrefixTip() != null && attestation.fixedPrefixTip().equals(manifest.fixedSources().getLast()) &&
 			attestation.priorCompletionArtifact() != null && !attestation.priorCompletionArtifact().isBlank())
 		{

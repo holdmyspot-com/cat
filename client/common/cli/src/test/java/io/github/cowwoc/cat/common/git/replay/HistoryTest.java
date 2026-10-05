@@ -100,6 +100,7 @@ public final class HistoryTest
 
 		requireThat(entries.stream().map(ExposedEntryPoint::id).toList(), "entryPoints").
 			isEqualTo(List.of("agent:reviewer", "skill:diagnose"));
+		requireThat(entries.getFirst().kind(), "agentKind").isEqualTo("custom_agent");
 	}
 
 	/**

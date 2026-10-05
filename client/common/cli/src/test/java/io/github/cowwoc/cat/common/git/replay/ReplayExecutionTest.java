@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -43,8 +42,7 @@ public final class ReplayExecutionTest
 	@Test
 	public void replaysOrderedBatchesWithMatchingTag() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "replay-execution-"));
 			initializeRepository(repository);
@@ -56,7 +54,7 @@ public final class ReplayExecutionTest
 			Path manifestFile = invocationDirectory(repository, "replay").resolve("manifest.json");
 			PatchArtifacts patches = new PatchArtifacts();
 			BatchManifest manifest = createManifest(git, manifestFile, base, sources, patches);
-			ManifestStore<BatchManifest> manifests = new ManifestStore<>(manifestFile.getParent(), scope.json(),
+			ManifestStore<BatchManifest> manifests = new ManifestStore<>(manifestFile.getParent(), ReplayJson.newMapper(),
 				BatchManifest.class);
 			manifests.write(manifestFile, manifest);
 

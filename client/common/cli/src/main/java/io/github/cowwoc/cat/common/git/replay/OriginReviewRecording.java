@@ -98,7 +98,7 @@ final class OriginReviewRecording
 				throw new IOException("Origin review does not name a generated candidate: " + review.inventoryId());
 			String classification = review.classification();
 			if (classification == null)
-				classification = "same-unit";
+				classification = "same_unit";
 			result.add(new OriginReview(review.inventoryId(), candidate.predecessors(), classification,
 				review.affectedUnit(), review.owningResponsibility(), review.predecessorRelationship(), review.destination(),
 				review.rejectedDestinations(), review.evidence()));

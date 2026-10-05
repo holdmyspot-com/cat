@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.git.replay;
 
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,20 +29,17 @@ final class TopicReplayAttestations
 	 */
 	static void recordIndependentReviewAttestation(Path manifest) throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
-		{
-			JsonNode replay = scope.json().readTree(Files.readString(manifest));
-			String base = replay.path("base").stringValue();
-			String tip = replay.path("sources").get(replay.path("sources").size() - 1).path("hash").stringValue();
-			Path universe = manifest.resolveSibling(manifest.getFileName() + ".independent-candidate-universe.json");
-			Path matrix = manifest.resolveSibling(manifest.getFileName() + ".independent-action-result-matrix.json");
-			Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".independent-review-attestation.json"),
-				"{\"reviewer\":\"independent\",\"base\":\"" + base + "\",\"tip\":\"" + tip +
-					"\",\"workflowRevision\":\"fixture\",\"rawDiffHandoff\":\"fixture raw diffs\",\n" +
-						"\"candidateUniverseSha256\":\"" +
-					sha256(universe) + "\",\"actionResultMatrixSha256\":\"" + sha256(matrix) +
-					"\",\"unprimed\":true}\n");
-		}
+		JsonNode replay = ReplayJson.newMapper().readTree(Files.readString(manifest));
+		String base = replay.path("base").stringValue();
+		String tip = replay.path("sources").get(replay.path("sources").size() - 1).path("hash").stringValue();
+		Path universe = manifest.resolveSibling(manifest.getFileName() + ".independent-candidate-universe.json");
+		Path matrix = manifest.resolveSibling(manifest.getFileName() + ".independent-action-result-matrix.json");
+		Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".independent-review-attestation.json"),
+			"{\"reviewer\":\"independent\",\"base\":\"" + base + "\",\"tip\":\"" + tip +
+				"\",\"workflow_revision\":\"fixture\",\"raw_diff_handoff\":\"fixture raw diffs\",\n" +
+					"\"candidate_universe_sha256\":\"" +
+				sha256(universe) + "\",\"action_result_matrix_sha256\":\"" + sha256(matrix) +
+				"\",\"unprimed\":true}\n");
 	}
 
 	/**
@@ -54,26 +50,23 @@ final class TopicReplayAttestations
 	 */
 	static void recordScopeAttestation(Path manifest) throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		JsonNode replay = ReplayJson.newMapper().readTree(Files.readString(manifest));
+		String base = replay.path("base").stringValue();
+		String tip = replay.path("sources").get(replay.path("sources").size() - 1).path("hash").stringValue();
+		StringBuilder attestation = new StringBuilder(256).append("{\"base\":\"").append(base).
+			append("\",\"tip\":\"").append(tip).
+			append("\",\"governing_rule_revision\":\"fixture\",\"authorization_evidence\":\"fixture user " +
+				"authorization\"");
+		if (replay.path("fixed_sources").isEmpty())
+			attestation.append(",\"mode\":\"whole_range\"}\n");
+		else
 		{
-			JsonNode replay = scope.json().readTree(Files.readString(manifest));
-			String base = replay.path("base").stringValue();
-			String tip = replay.path("sources").get(replay.path("sources").size() - 1).path("hash").stringValue();
-			StringBuilder attestation = new StringBuilder(256).append("{\"base\":\"").append(base).
-				append("\",\"tip\":\"").append(tip).
-				append("\",\"governingRuleRevision\":\"fixture\",\"authorizationEvidence\":\"fixture user " +
-					"authorization\"");
-			if (replay.path("fixedSources").isEmpty())
-				attestation.append(",\"mode\":\"whole-range\"}\n");
-			else
-			{
-				String fixedPrefixTip = replay.path("fixedSources").get(replay.path("fixedSources").size() - 1).stringValue();
-				attestation.append(",\"mode\":\"fixed-prefix\",\"fixedPrefixTip\":\"").append(fixedPrefixTip).
-					append("\",\"priorCompletionArtifact\":\"fixture prior review\"}\n");
-			}
-			Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".scope-attestation.json"),
-				attestation.toString());
+			String fixedPrefixTip = replay.path("fixed_sources").get(replay.path("fixed_sources").size() - 1).stringValue();
+			attestation.append(",\"mode\":\"fixed_prefix\",\"fixed_prefix_tip\":\"").append(fixedPrefixTip).
+				append("\",\"prior_completion_artifact\":\"fixture prior review\"}\n");
 		}
+		Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".scope-attestation.json"),
+			attestation.toString());
 	}
 
 	/**

@@ -6,7 +6,6 @@ import static io.github.cowwoc.cat.common.git.replay.TopicReplayReviewFixtures.p
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -36,21 +35,21 @@ public final class EditorOriginReviewTest
 	@Test
 	public void scaffoldsAndAuditsOriginDecisions() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
-			Path manifest = writeManifest(scope.json(), repository, false, "feature.txt", "secondary.txt");
+			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt", "secondary.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
-			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			requireThat(scaffold.size(), "scaffoldCount").isEqualTo(2);
 			requireThat(scaffold.get(0).path("path").stringValue(), "firstPath").isEqualTo("feature.txt");
 			requireThat(scaffold.get(0).path("candidates").get(0).path("output").stringValue(), "firstOutput").
 				isEqualTo("output-1");
 			output.reset();
 			editor.writeOriginReviewAudit(manifest, output);
-			JsonNode unreviewed = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode unreviewed = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			requireThat(unreviewed.get(0).path("status").stringValue(), "unreviewedStatus").isEqualTo("unreviewed");
 			requireThat(unreviewed.get(0).path("path").stringValue(), "unreviewedPath").isEqualTo("feature.txt");
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
@@ -58,12 +57,13 @@ public final class EditorOriginReviewTest
 			editor.recordOriginReviews(manifest, reviews);
 			output.reset();
 			editor.writeOriginReviewAudit(manifest, output);
-			JsonNode audit = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode audit = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			requireThat(audit.get(0).path("status").stringValue(), "firstStatus").isEqualTo("reviewed");
-			requireThat(audit.get(0).path("classification").stringValue(), "firstClassification").isEqualTo("same-unit");
+			requireThat(audit.get(0).path("classification").stringValue(), "firstClassification").isEqualTo("same_unit");
 			requireThat(audit.get(0).path("destination").stringValue(), "firstDestination").isEqualTo("output-1");
-			requireThat(scope.json().readTree(Files.readString(manifest.resolveSibling("manifest.json.origin-reviews.json"))).
-				get(0).path("predecessors").get(0).stringValue(), "recordedPredecessor").isEqualTo("source-1");
+			requireThat(ReplayJson.newMapper().readTree(Files.readString(manifest.resolveSibling(
+				"manifest.json.origin-reviews.json"))).get(0).path("predecessors").get(0).stringValue(),
+				"recordedPredecessor").isEqualTo("source-1");
 		}
 	}
 
@@ -76,15 +76,15 @@ public final class EditorOriginReviewTest
 		"(?s).*feature.txt.*earlier possible output.*Select the earlier output.*required prerequisite.*")
 	public void rejectsUnexplainedLaterOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
-			Path manifest = writeManifest(scope.json(), repository, false, "feature.txt");
+			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
-			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			Files.writeString(reviews, originReviews(scaffold, "output-2"));
 
 			editor.recordOriginReviews(manifest, reviews);
@@ -99,28 +99,28 @@ public final class EditorOriginReviewTest
 	@Test
 	public void recordsDifferentUnitOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
-			Path manifest = writeManifest(scope.json(), repository, false, "shared.txt");
+			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "shared.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
-			JsonNode scaffold = scope.json().readTree(output.toString(StandardCharsets.UTF_8));
+			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
 			Files.writeString(reviews, """
-				[{"inventoryId":"%s","classification":"different-unit","affectedUnit":"independent note",
-				"owningResponsibility":"independent note","predecessorRelationship":
-				"introduces-independent-responsibility","evidence":
+				[{"inventory_id":"%s","classification":"different_unit","affected_unit":"independent note",
+				"owning_responsibility":"independent note","predecessor_relationship":
+				"introduces_independent_responsibility","evidence":
 				"The later text replaces the same file but documents an independent topic."}]
-				""".formatted(scaffold.get(0).path("inventoryId").stringValue()));
+				""".formatted(scaffold.get(0).path("inventory_id").stringValue()));
 
 			editor.recordOriginReviews(manifest, reviews);
 
-			JsonNode recorded = scope.json().readTree(Files.readString(manifest.resolveSibling(
+			JsonNode recorded = ReplayJson.newMapper().readTree(Files.readString(manifest.resolveSibling(
 				"manifest.json.origin-reviews.json")));
 			requireThat(recorded.get(0).path("classification").stringValue(), "classification").isEqualTo(
-				"different-unit");
+				"different_unit");
 		}
 	}
 
@@ -132,28 +132,28 @@ public final class EditorOriginReviewTest
 	@Test
 	public void recordsRevertedPredecessorOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
-			Path manifest = writeManifest(scope.json(), repository, true, "feature.txt");
+			Path manifest = writeManifest(ReplayJson.newMapper(), repository, true, "feature.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
-			JsonNode candidate = scope.json().readTree(output.toString(StandardCharsets.UTF_8)).get(0);
+			JsonNode candidate = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8)).get(0);
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
 			Files.writeString(reviews, """
-				[{"inventoryId":"%s","predecessors":%s,"classification":"same-unit",
-				"affectedUnit":"feature removal","owningResponsibility":"feature",
-				"predecessorRelationship":"reverts-predecessor","destination":"output-1",
-				"rejectedDestinations":[],"evidence":"The later change removes the feature introduced by its predecessor."}]
-				""".formatted(candidate.path("inventoryId").stringValue(), predecessors(candidate.path("candidates"))));
+				[{"inventory_id":"%s","predecessors":%s,"classification":"same_unit",
+				"affected_unit":"feature removal","owning_responsibility":"feature",
+				"predecessor_relationship":"reverts_predecessor","destination":"output-1",
+				"rejected_destinations":[],"evidence":"The later change removes the feature introduced by its predecessor."}]
+				""".formatted(candidate.path("inventory_id").stringValue(), predecessors(candidate.path("candidates"))));
 
 			editor.recordOriginReviews(manifest, reviews);
 
-			JsonNode recorded = scope.json().readTree(Files.readString(manifest.resolveSibling(
+			JsonNode recorded = ReplayJson.newMapper().readTree(Files.readString(manifest.resolveSibling(
 				"manifest.json.origin-reviews.json")));
-			requireThat(recorded.get(0).path("predecessorRelationship").stringValue(), "relationship").isEqualTo(
-				"reverts-predecessor");
+			requireThat(recorded.get(0).path("predecessor_relationship").stringValue(), "relationship").isEqualTo(
+				"reverts_predecessor");
 		}
 	}
 }

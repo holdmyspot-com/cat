@@ -6,7 +6,6 @@ import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invoc
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -189,7 +188,7 @@ public final class EditorPatchWorkflowTest
 			editor.captureSourcePatch(manifest, source, replay.resolve("feature.patch"));
 			Path plan = replay.resolve("output-plan.json");
 			Files.writeString(plan, """
-				[{"outputId":"output-1","disposition":"retained","batches":[{"id":"feature","source":"%s",
+				[{"output_id":"output-1","disposition":"retained","batches":[{"id":"feature","source":"%s",
 				"patch":"feature.patch"}]}]
 				""".formatted(source));
 			String tree = editor.writeDraftOutputTree(manifest, plan, "output-1");
@@ -215,9 +214,6 @@ public final class EditorPatchWorkflowTest
 			List.of(snapshot),
 			List.of(new Output("output-1", source, "test: selected source")), List.of(), List.of(), List.of(), List.of(),
 			List.of(), List.of(), List.of(), null);
-		try (ToolScope scope = new ToolScope())
-		{
-			scope.json().writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), manifest);
-		}
+		ReplayJson.newMapper().writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), manifest);
 	}
 }

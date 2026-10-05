@@ -261,7 +261,7 @@ invokes them to produce an installable plugin or release artifact; a separately 
 with its own usable output and acceptance check may be a topic. Re-run this test after every discovery refinement and
 immediately before declaring outputs.
 
-For every semantic candidate, record `acceptanceCommand` as the exact non-empty command array that a clean checkout of
+For every semantic candidate, record `acceptance_command` as the exact non-empty command array that a clean checkout of
 that candidate's output can run to prove its claimed result. Also record the expected observable result in the
 candidate's evidence. A prose instruction, a generic Maven test, a source-file assertion, or a command that does not
 exercise the claimed entry point is not an acceptance command. Choose the command before declaring outputs. The CLI
@@ -391,13 +391,13 @@ Treat a whole-source review as an exceptional conclusion: it is valid only after
 behavior in the source and every pair has a recorded blocker. A raw source patch, an empty placement list, a source-wide
 counterfactual, or a passing source-level build cannot establish that a source is whole. Write the planner's matrix to
 `MANIFEST.planner-action-result-matrix.json` and the independent reviewer's matrix to
-`MANIFEST.independent-action-result-matrix.json`; each has `rows` with `candidateId`, `observableBehavior`,
-`observableResult`, `acceptanceCheck`, `requiredArtifacts`, and `deferredArtifacts`, plus `pairs` with both candidate
-IDs, a `separate` or `combined` disposition, removal result, split-enabling artifacts, and a missing prerequisite only
-for `combined`. The independent attestation must bind both its candidate-universe file and action-result matrix by
-SHA-256. The CLI rejects missing or incomplete matrices and rejects a shared output unless both matrices explicitly mark
-its behavior pair `combined`. Preserve the independent reviewer's artifacts unchanged, and require the adversarial
-challenge ledger to challenge every retained combination before declaring outputs.
+`MANIFEST.independent-action-result-matrix.json`; each has `rows` with `candidate_id`, `observable_behavior`,
+`observable_result`, `acceptance_check`, `required_artifacts`, and `deferred_artifacts`, plus `pairs` with both
+candidate IDs, a `separate` or `combined` disposition, removal result, split-enabling artifacts, and a missing
+prerequisite only for `combined`. The independent attestation must bind both its candidate-universe file and
+action-result matrix by SHA-256. The CLI rejects missing or incomplete matrices and rejects a shared output unless both
+matrices explicitly mark its behavior pair `combined`. Preserve the independent reviewer's artifacts unchanged, and
+require the adversarial challenge ledger to challenge every retained combination before declaring outputs.
 
 ### Derive Split-Enabling Snapshots
 
@@ -441,11 +441,11 @@ commit, its subject, a path grouping, a component label, or a proposed topic as 
 phrase such as “the source's contribution”, “native sessions”, or “rule changes” is not a behavior inventory entry.
 
 Before writing either candidate universe, run `git-topic-replay exposure-inventory MANIFEST`. Map every returned
-selectable entry point to exactly one candidate's `exposedEntryPoints` list in both reviewer universes. A candidate that
-owns more than one returned entry point must name an `entryPointFamilies` record with its complete membership, selection
-surface, shared purpose, and acceptance check. The command normalizes equivalent supported-harness agent declarations
-into one entry point; a shared package, path, or installer never combines distinct entries. The CLI rejects an omitted,
-duplicated, or unsupported entry-point mapping before topic outputs can be declared.
+selectable entry point to exactly one candidate's `exposed_entry_points` list in both reviewer universes. A candidate
+that owns more than one returned entry point must name an `entry_point_families` record with its complete membership,
+selection surface, shared purpose, and acceptance check. The command normalizes equivalent supported-harness agent
+declarations into one entry point; a shared package, path, or installer never combines distinct entries. The CLI rejects
+an omitted, duplicated, or unsupported entry-point mapping before topic outputs can be declared.
 
 An entry-point family is valid only when every member is one selectable behavior with variants, rather than several
 actions that happen to ship together. In the current exposure inventory, high, medium, and low tiers of the same agent
@@ -559,16 +559,16 @@ source order, path, or commit message. Reject a plan whose candidate, responsibi
 generic, ambiguous, duplicated stock rationale, or otherwise not auditable by a reviewer who did not create it.
 
 Before `declare-topic-outputs`, write `MANIFEST.semantic-placement-ledger.json` as a JSON array of behavior candidates.
-Every candidate must provide a stable `id`, an `observableOutcome`, a behavior-first `candidateDiscovery` basis that
-names the affected responsibility and observable evidence rather than its source grouping, a `splitCounterfactual`, its
-earliest proposed `output`, every reviewer-named `units` entry (`inventoryId` and concrete `affectedUnit`) that
-implements it, its `prerequisites`, `rejectedEarlierOutputs` with every earlier output and the specific missing
-condition for each rejection, `combinedCandidateBlockers`, and behavior-specific `evidence`. Assign every declared
+Every candidate must provide a stable `id`, an `observable_outcome`, a behavior-first `candidate_discovery` basis that
+names the affected responsibility and observable evidence rather than its source grouping, a `split_counterfactual`, its
+earliest proposed `output`, every reviewer-named `units` entry (`inventory_id` and concrete `affected_unit`) that
+implements it, its `prerequisites`, `rejected_earlier_outputs` with every earlier output and the specific missing
+condition for each rejection, `combined_candidate_blockers`, and behavior-specific `evidence`. Assign every declared
 semantic unit exactly once, ensure every immutable inventory item has one or more declared units, and ensure every
 declared output has at least one candidate. A path may supply units to separate candidates only when their distinct
-`affectedUnit` values identify the separate semantic behaviors. For each pair of candidates assigned to one output,
-record exactly one `combinedCandidateBlockers` entry naming the other candidate and the specific missing condition that
-prevents the split. `declare-topic-outputs` rejects a missing, incomplete, duplicated, or unauditable ledger. These
+`affected_unit` values identify the separate semantic behaviors. For each pair of candidates assigned to one output,
+record exactly one `combined_candidate_blockers` entry naming the other candidate and the specific missing condition
+that prevents the split. `declare-topic-outputs` rejects a missing, incomplete, duplicated, or unauditable ledger. These
 structural checks ensure every declared candidate is reviewable; they cannot prove that the reviewer discovered every
 behavior, so the frozen candidate-universe inventory and its counterfactuals remain mandatory review evidence.
 
@@ -879,7 +879,7 @@ report the unavailable review as the blocker. Do not wait indefinitely or silent
 The adversarial reviewer must challenge every whole-source review for units that complete, move, replace, explain, test,
 configure, correct, or refactor an earlier feature. It must also challenge every CLI-reported origin candidate,
 delete/add pair, and raw deletion with this counterfactual: if the later source were absent, would an earlier output
-retain an artifact that final history removes or corrects? Challenge every `different-unit` classification and every
+retain an artifact that final history removes or corrects? Challenge every `different_unit` classification and every
 unavailable-prerequisite claim. Resolve every such challenge with cited evidence before freezing the ledger. For each
 mixed source that changes an existing file, it must also test the partial-backport counterfactual: which hunks can move
 to each earlier candidate while another hunk remains later? Require cited missing prerequisites for every hunk retained
@@ -913,7 +913,7 @@ the completed candidate-behavior inventory. If any candidate has its own usable 
 add that output and assign its supporting hunks. Do not let a per-output build result, a successful dry run, or
 final-tree preservation override this boundary review.
 
-Write the plan as one JSON array. Each entry contains `outputId`, `disposition` (`retained` or `discarded`), and
+Write the plan as one JSON array. Each entry contains `output_id`, `disposition` (`retained` or `discarded`), and
 `batches`; retained entries have ordered `{id, source, patch}` batches and discarded entries have an empty batch list.
 Before declaring an output retained, compare its proposed tree with its parent. If the trees are identical, discard that
 output: any source whose units are all already placed in earlier outputs is `absorbed`. Do not preserve an empty commit
@@ -967,7 +967,7 @@ plan before recording a replacement witness.
    destination batches. Derive `absorbed` when every unit belongs in earlier outputs and the source's historical output
    is discarded. An absorbed source may have no batch when an earlier-file batch already contains its state; retain its
    original source patch reconstruction as deterministic proof. Do not use path-level placement, correction, `outputs`,
-   or `absorbedOutputs` fields as placement authorities.
+   or `absorbed_outputs` fields as placement authorities.
 7. Assemble retained outputs in final-history order. For each output, write one reviewer-authored JSON batch file whose
    entries contain only the reviewed batch identifier, source hash, and manifest-relative patch path. Run
    `git-topic-replay record-output MANIFEST OUTPUT BATCH_FILE`. If a placement changes an earlier output, replace its

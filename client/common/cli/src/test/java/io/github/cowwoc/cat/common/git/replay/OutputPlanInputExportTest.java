@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.git.replay;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,8 +30,7 @@ public final class OutputPlanInputExportTest
 	@Test
 	public void exportsRetainedOutputWithCopiedPatch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			 ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-replay-plan-export-"));
 			Path previousDirectory = Files.createDirectories(root.resolve("previous"));
@@ -47,10 +45,10 @@ public final class OutputPlanInputExportTest
 			BatchManifest replacement = replacementManifest();
 			Path plan = replacementDirectory.resolve("plan.json");
 
-			new OutputPlanInputExport(scope.json(), new PatchArtifactTransfer(patches)).export(previousManifest,
+			new OutputPlanInputExport(ReplayJson.newMapper(), new PatchArtifactTransfer(patches)).export(previousManifest,
 				previous, replacementManifest, replacement, plan);
 
-			OutputPlanRequest[] exported = scope.json().readValue(plan.toFile(), OutputPlanRequest[].class);
+			OutputPlanRequest[] exported = ReplayJson.newMapper().readValue(plan.toFile(), OutputPlanRequest[].class);
 			requireThat(exported.length, "exportedPlanCount").isEqualTo(1);
 			requireThat(exported[0].disposition(), "exportedDisposition").isEqualTo("retained");
 			requireThat(exported[0].batches().getFirst().patch(), "exportedPatch").matches(

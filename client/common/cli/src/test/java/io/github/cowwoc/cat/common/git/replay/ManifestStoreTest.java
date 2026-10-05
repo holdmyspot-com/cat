@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.git.replay;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,14 +30,14 @@ public final class ManifestStoreTest
 	@Test
 	public void rejectsManifestOutsideTemporaryRoot() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"cat-work-temporary-root-"));
 			Path externalManifest = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"cat-topic-replay-")).resolve("manifest.json");
 			ManifestStore<ManifestStore.Manifest> store =
-				new ManifestStore<>(temporaryRoot, scope.json(), ManifestStore.Manifest.class);
+				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), ManifestStore.Manifest.class);
 
 			try
 			{
@@ -60,13 +59,13 @@ public final class ManifestStoreTest
 	@Test
 	public void roundTripsUnfinalizedManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"cat-work-temporary-root-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
 			ManifestStore<FixtureManifest> store = new ManifestStore<>(temporaryRoot,
-				scope.json(), FixtureManifest.class);
+				ReplayJson.newMapper(), FixtureManifest.class);
 			FixtureManifest expected = new FixtureManifest(5, List.of("source"));
 
 			store.write(manifestFile, expected);

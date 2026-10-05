@@ -35,9 +35,9 @@ final class TopicReplayDiscoveryFixtures
 				ids.append(',');
 			ids.append('"').append(candidatePrefix).append(index).append('"');
 		}
-		String passes = "{\"passes\":[{\"number\":1,\"examinedCandidateIds\":[" + ids +
-			"],\"newCandidateIds\":[" + ids + "]},{\"number\":2,\"examinedCandidateIds\":[" + ids +
-			"],\"newCandidateIds\":[]}]}\n";
+		String passes = "{\"passes\":[{\"number\":1,\"examined_candidate_ids\":[" + ids +
+			"],\"new_candidate_ids\":[" + ids + "]},{\"number\":2,\"examined_candidate_ids\":[" + ids +
+			"],\"new_candidate_ids\":[]}]}\n";
 		Files.writeString(manifest.resolveSibling(manifest.getFileName() + "." + reviewer +
 			"-candidate-discovery-passes.json"), passes);
 	}

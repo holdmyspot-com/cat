@@ -49,7 +49,7 @@ final class EntryPoints
 			if (entryPoint != null)
 				addExposedEntryPoint(pathsByEntryPoint, entryPoint, item.path());
 		}
-		return pathsByEntryPoint.entrySet().stream().map(entry -> new ExposedEntryPoint(entry.getKey(), "custom-agent",
+		return pathsByEntryPoint.entrySet().stream().map(entry -> new ExposedEntryPoint(entry.getKey(), "custom_agent",
 			entry.getValue().stream().sorted().toList())).sorted(Comparator.comparing(ExposedEntryPoint::id)).toList();
 	}
 

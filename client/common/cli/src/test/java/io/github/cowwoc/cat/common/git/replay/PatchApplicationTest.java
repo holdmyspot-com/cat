@@ -3,7 +3,6 @@ package io.github.cowwoc.cat.common.git.replay;
 import io.github.cowwoc.cat.common.git.Git;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,8 +32,7 @@ public final class PatchApplicationTest
 		expectedExceptionsMessageRegExp = ".*source-patch hash does not match its declared SHA-256.*")
 	public void rejectsChangedPatchAfterVerification() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "patch-application-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
@@ -43,7 +41,7 @@ public final class PatchApplicationTest
 			Files.writeString(patchFile, "immutable source patch\n");
 			PatchArtifacts patches = new PatchArtifacts();
 			PatchApplication patchApplication = new PatchApplication(new Git(temporaryRoot),
-				new ManifestStore<>(temporaryRoot, scope.json(), BatchManifest.class), patches);
+				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), BatchManifest.class), patches);
 			SourceReconstruction reconstruction = new SourceReconstruction("source", null,
 				patches.declare(manifestFile, patchFile), "before-tree", "after-tree");
 			patchApplication.recordVerifiedSourceTree(reconstruction, "after-tree");

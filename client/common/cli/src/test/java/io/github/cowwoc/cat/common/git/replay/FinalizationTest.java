@@ -7,7 +7,6 @@ import static io.github.cowwoc.cat.common.git.replay.TopicReplayRepository.invoc
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,14 +39,13 @@ public final class FinalizationTest
 		".*receipt is missing.*this history is unreviewed.*")
 	public void rejectsManualRewordWithoutReceipt() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-missing-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 
-			ReceiptFixtures.finalization(scope, directory).requireReceipt(manifest);
+			ReceiptFixtures.finalization(directory).requireReceipt(manifest);
 		}
 	}
 
@@ -59,21 +57,20 @@ public final class FinalizationTest
 	@Test
 	public void publishesCapturedReceiptFacts() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-facts-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
-			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization finalization = ReceiptFixtures.finalization(directory);
 			Finalization.FinalizationReceipt captured = ReceiptFixtures.capture(finalization, manifest);
 
 			finalization.requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
 			finalization.publishReceipt(manifest, captured);
 
-			Finalization.FinalizationReceipt receipt = scope.json().readValue(finalization.requireReceipt(manifest).toFile(),
-				Finalization.FinalizationReceipt.class);
+			Finalization.FinalizationReceipt receipt = ReplayJson.newMapper().readValue(
+				finalization.requireReceipt(manifest).toFile(), Finalization.FinalizationReceipt.class);
 			requireThat(receipt, "publishedReceipt").isEqualTo(captured);
 			requireThat(Finalization.matchesSelection(receipt, "base", "replacement-2"), "selectedReplay").isTrue();
 			requireThat(Finalization.matchesSelection(receipt, "other-base", "replacement-2"), "differentBase").isFalse();
@@ -103,14 +100,13 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*evidence changed or is missing.*")
 	public void rejectsChangedEvidence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-evidence-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
-			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization finalization = ReceiptFixtures.finalization(directory);
 			Finalization.FinalizationReceipt receipt = ReceiptFixtures.capture(finalization, manifest);
 			finalization.publishReceipt(manifest, receipt);
 			Files.writeString(manifest.resolveSibling("gates/replay-result.log"), "tampered\n");
@@ -127,13 +123,12 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*does not match its manifest.*")
 	public void rejectsChangedManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-manifest-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
-			Finalization finalization = ReceiptFixtures.finalization(scope, directory);
+			Finalization finalization = ReceiptFixtures.finalization(directory);
 			Finalization.FinalizationReceipt receipt = ReceiptFixtures.capture(finalization, manifest);
 			Files.writeString(manifest, "{\"changed\":true}\n");
 
@@ -149,8 +144,7 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-build.*")
 	public void rejectsMissingOutputBuild() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-build-"));
 			Path manifest = directory.resolve("manifest.json");
@@ -158,7 +152,7 @@ public final class FinalizationTest
 			ReceiptFixtures.writeGates(manifest);
 			Files.delete(manifest.resolveSibling("gates/per-output-build-first.log"));
 
-			ReceiptFixtures.finalization(scope, directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
+			ReceiptFixtures.finalization(directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
 		}
 	}
 
@@ -170,8 +164,7 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-acceptance.*")
 	public void rejectsMissingOutputAcceptance() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-acceptance-"));
 			Path manifest = directory.resolve("manifest.json");
@@ -179,7 +172,7 @@ public final class FinalizationTest
 			ReceiptFixtures.writeGates(manifest);
 			Files.delete(manifest.resolveSibling("gates/per-output-acceptance-first.log"));
 
-			ReceiptFixtures.finalization(scope, directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
+			ReceiptFixtures.finalization(directory).requirePerOutputGateEvidence(manifest, ReceiptFixtures.replay());
 		}
 	}
 
@@ -216,8 +209,7 @@ public final class FinalizationTest
 	@Test
 	public void publishAndVerifyGitReceipt() throws IOException, NoSuchAlgorithmException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-git-"));
 			initializeRepository(repository);
@@ -235,12 +227,12 @@ public final class FinalizationTest
 				List.of(new Finalization.Output("first", true), new Finalization.Output("second", true)),
 				List.of(new Finalization.OutputWitness("first", tree, tree),
 					new Finalization.OutputWitness("second", tree, tree)));
-			Finalization finalization = ReceiptFixtures.finalization(scope, repository);
+			Finalization finalization = ReceiptFixtures.finalization(repository);
 
 			finalization.publish(manifest, replay, tip);
 			Path receiptFile = finalization.requireReceipt(manifest);
 			String published = Files.readString(receiptFile);
-			Finalization.FinalizationReceipt receipt = scope.json().readValue(receiptFile.toFile(),
+			Finalization.FinalizationReceipt receipt = ReplayJson.newMapper().readValue(receiptFile.toFile(),
 				Finalization.FinalizationReceipt.class);
 			requireThat(receipt.outputs().stream().map(Finalization.FinalizedOutput::commit).toList(), "replacementCommits").
 				isEqualTo(List.of(first, tip));
