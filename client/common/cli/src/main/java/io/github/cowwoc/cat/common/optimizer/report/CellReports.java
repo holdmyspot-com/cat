@@ -70,15 +70,16 @@ final class CellReports
 	 * @param campaign the campaign, which has a confirmed contract
 	 * @param attempt the certification attempt to report, or {@code null} to report the working candidate's
 	 *   development results
-	 * @return the reports in contract order: every cell of the contract for development results, or the cells that
-	 *   the attempt certifies
+	 * @return the reports in contract order: every cell of the contract and every development cell for development
+	 *   results, each development cell under a tool-output token limit right after its contract cell, or the cells
+	 *   that the attempt certifies
 	 */
 	static List<CellReport> of(Campaign campaign, CertificationAttempt attempt)
 	{
 		List<CellReport> reports = new ArrayList<>();
 		if (attempt == null)
 		{
-			for (String cell : campaign.contract().cellIds())
+			for (String cell : CellTier.withDevelopmentCellIds(campaign, campaign.contract().cellIds()))
 				reports.add(development(campaign, cell));
 		}
 		else

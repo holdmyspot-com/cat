@@ -1299,6 +1299,29 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that the per-cell report lists a development cell under a tool-output token limit, which the contract
+	 * does not list, once and right after its base cell, and that it carries its development counts.
+	 */
+	@Test
+	public void toolOutputDevelopmentCellIsReportedOnce()
+	{
+		// Requirement: R-E12
+		String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
+		Contract contract = TierFixtures.tieredContract();
+		TrialInstance failure = new Generator(contract).draw(limited, DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).readyBaseline().
+			development(limited, 40, 1).certificationAttempt(1).failure(failure).outcome(Outcome.INCONCLUSIVE).build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		List<String> cells = report.cells().stream().map(CellReport::cell).toList();
+		requireThat(cells, "cells").isEqualTo(List.of(TierFixtures.BIG_LOW, limited, TierFixtures.BIG_MEDIUM,
+			TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+		requireThat(cell(report, limited).trials(), "trials").isEqualTo(41);
+		requireThat(cell(report, limited).comparison().readiness(), "readiness").isEqualTo("not ready");
+	}
+
+	/**
 	 * Verifies that a weakest-only claim counts the scope's cells, names each category's profile and says that no
 	 * other profile was certified, and that a latest-versions claim counts its cells without that statement.
 	 */

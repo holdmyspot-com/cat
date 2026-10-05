@@ -8,7 +8,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork.Entry;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork.Kind;
 import io.github.cowwoc.cat.common.optimizer.statistics.FirstAttemptBoundaries;
@@ -158,6 +161,93 @@ public final class RemainingWorkTest
 		RemainingWork weakestWork = RemainingWork.of(new Builder().confirmed(weakest, 1).working(1).build());
 		requireThat(entries(weakestWork, TierFixtures.BIG_LOW), "outsideScope").isEmpty();
 		requireThat(weakestWork.total(), "weakestTotal").isEqualTo(486);
+	}
+
+	/**
+	 * Verifies that a development cell outside the certification scope adds its readiness minimum and nothing else,
+	 * and follows its base cell in the entries.
+	 */
+	@Test
+	public void developmentCellOutsideScopeAddsReadiness()
+	{
+		// Requirement: R-E12
+		// weakest cell: the scope is small/high and safety. A failure in big/medium makes it a development cell.
+		//   readiness 100 in each of 3 development cells                                = 300
+		//   baseline 50 in each of the 2 scope cells                                    = 100
+		//   next attempt (i = 2) 117 in each of the 2 scope cells                       = 234
+		//   total = 634
+		Contract weakest = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		Campaign campaign = new Builder().confirmed(weakest, 1).working(1).certificationAttempt(1).
+			failure(draw(weakest, TierFixtures.BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+		RemainingWork work = RemainingWork.of(campaign);
+
+		requireThat(entries(work, TierFixtures.BIG_MEDIUM), "outsideScope").isEqualTo(List.of(Kind.READINESS));
+		requireThat(trials(work, TierFixtures.BIG_MEDIUM, Kind.READINESS), "outsideScopeReadiness").isEqualTo(100);
+		requireThat(work.entries().stream().map(Entry::cell).distinct().toList(), "cells").isEqualTo(
+			List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
+		requireThat(work.total(), "total").isEqualTo(634);
+	}
+
+	/**
+	 * Verifies that a tool-output stress cell, which the contract does not list, adds its readiness minimum right
+	 * after its base cell.
+	 */
+	@Test
+	public void toolOutputStressCellAddsReadiness()
+	{
+		// Requirement: R-E12
+		// latest versions: the scope is the 6 contract cells. A failure in big/low under the 5000-token tool-output
+		// limit makes that limited cell a development cell, though no scope cell is the limited cell.
+		//   readiness 100 in each of 3 development cells (limited big/low, small/high, safety)  = 300
+		//   baseline 50 in each of the 6 scope cells                                             = 300
+		//   next attempt (i = 2) 117 in each of the 6 scope cells                                = 702
+		//   total = 1302
+		String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
+		Contract contract = TierFixtures.tieredContract();
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
+			failure(draw(contract, limited)).outcome(Outcome.INCONCLUSIVE).build();
+		RemainingWork work = RemainingWork.of(campaign);
+
+		requireThat(entries(work, limited), "limitedKinds").isEqualTo(List.of(Kind.READINESS));
+		requireThat(trials(work, limited, Kind.READINESS), "limitedReadiness").isEqualTo(100);
+		List<String> cells = work.entries().stream().map(Entry::cell).distinct().toList();
+		requireThat(cells.get(cells.indexOf(TierFixtures.BIG_LOW) + 1), "afterBase").isEqualTo(limited);
+		requireThat(work.total(), "total").isEqualTo(1302);
+	}
+
+	/**
+	 * Verifies that a scope cell that is also a development cell is counted once.
+	 */
+	@Test
+	public void developmentCellInScopeIsCountedOnce()
+	{
+		// Requirement: R-E12
+		// latest versions: big/medium is in the scope and, after a failure there, a development cell.
+		//   readiness 100 in each of 3 development cells (big/medium, small/high, safety)  = 300
+		//   baseline 50 in each of the 6 scope cells                                       = 300
+		//   next attempt (i = 2) 117 in each of the 6 scope cells                          = 702
+		//   total = 1302
+		Contract contract = TierFixtures.tieredContract();
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
+			failure(draw(contract, TierFixtures.BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
+		RemainingWork work = RemainingWork.of(campaign);
+
+		requireThat(entries(work, TierFixtures.BIG_MEDIUM), "bigMediumKinds").
+			isEqualTo(List.of(Kind.READINESS, Kind.BASELINE, Kind.NEXT_ATTEMPT));
+		requireThat(work.entries().stream().map(Entry::cell).distinct().count(), "cells").isEqualTo(6L);
+		requireThat(work.total(), "total").isEqualTo(1302);
+	}
+
+	/**
+	 * Draws a trial instance of a cell.
+	 *
+	 * @param contract the contract
+	 * @param cell the cell's identifier, which may name a cell under a tool-output token limit
+	 * @return the instance
+	 */
+	private static TrialInstance draw(Contract contract, String cell)
+	{
+		return new Generator(contract).draw(cell, DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 	}
 
 	/**

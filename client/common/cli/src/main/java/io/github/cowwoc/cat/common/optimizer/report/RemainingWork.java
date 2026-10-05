@@ -116,10 +116,11 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	/**
 	 * Computes the minimum remaining trials of a campaign.
 	 * <p>
-	 * <b>Development:</b> for every cell, the fewest further all-pass trials after which the readiness gate's count
-	 * conditions hold (at least {@code max(0, max(100, 100·f) − n)} with {@code f} failures in {@code n} outcomes, and
-	 * more when a recent batch holds 2 or more failures), plus the incumbent baseline's remaining trials if every one
-	 * passes, plus the next certification attempt's all-pass minimum.
+	 * <b>Development:</b> for every development cell, inside the certification scope or not, the fewest further
+	 * all-pass trials after which the readiness gate's count conditions hold (at least
+	 * {@code max(0, max(100, 100·f) − n)} with {@code f} failures in {@code n} outcomes, and more when a recent batch
+	 * holds 2 or more failures), plus, for every cell of the certification scope, the incumbent baseline's remaining
+	 * trials if every one passes and the next certification attempt's all-pass minimum.
 	 * <p>
 	 * <b>Formal:</b> for every unresolved cell, the smallest {@code s} such that {@code E↑(S + s, F)} exceeds
 	 * {@code 1/α_i}. A cell that cannot certify within its cap has no minimum.
@@ -154,13 +155,14 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 */
 	private static RemainingWork development(Campaign campaign)
 	{
-		List<String> cells = CellTier.scopeCellIds(campaign.contract());
+		List<String> scope = CellTier.scopeCellIds(campaign.contract());
+		Set<String> scopeIds = Set.copyOf(scope);
 		Set<String> development = Set.copyOf(CellTier.developmentCellIds(campaign));
 		int nextAttempt = DecisionBoundaries.allPassMinimum(
 			ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
-		for (String id : cells)
+		for (String id : CellTier.withDevelopmentCellIds(campaign, scope))
 		{
 			if (development.contains(id))
 			{
@@ -168,10 +170,13 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 				entries.add(new Entry(id, Kind.READINESS, readiness, null));
 				total += readiness;
 			}
-			int baseline = baselineRemaining(campaign.baseline(), id, cells.size());
-			entries.add(new Entry(id, Kind.BASELINE, baseline, null));
-			entries.add(new Entry(id, Kind.NEXT_ATTEMPT, nextAttempt, null));
-			total += baseline + nextAttempt;
+			if (scopeIds.contains(id))
+			{
+				int baseline = baselineRemaining(campaign.baseline(), id, scope.size());
+				entries.add(new Entry(id, Kind.BASELINE, baseline, null));
+				entries.add(new Entry(id, Kind.NEXT_ATTEMPT, nextAttempt, null));
+				total += baseline + nextAttempt;
+			}
 		}
 		return new RemainingWork(Phase.DEVELOPMENT, entries, total, null);
 	}

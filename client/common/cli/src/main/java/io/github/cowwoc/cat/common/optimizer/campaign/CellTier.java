@@ -254,16 +254,28 @@ public final class CellTier
 					cells.add(group.round().cellId());
 			}
 		}
-		List<Cell> development = new ArrayList<>();
+		return inContractOrder(contract, cells);
+	}
+
+	/**
+	 * Selects cells from a contract and from the contract's cells under the tool-output stress limit.
+	 *
+	 * @param contract a confirmed contract
+	 * @param ids the identifiers of the cells to select
+	 * @return the selected cells, in contract order, each cell under the stress limit right after its contract cell
+	 */
+	private static List<Cell> inContractOrder(Contract contract, Set<String> ids)
+	{
+		List<Cell> selected = new ArrayList<>();
 		for (Cell cell : contract.cells())
 		{
-			if (cells.contains(cell.id()))
-				development.add(cell);
+			if (ids.contains(cell.id()))
+				selected.add(cell);
 			Cell limited = cell.withToolOutputTokenLimit(STRESS_TOOL_OUTPUT_TOKENS);
-			if (cells.contains(limited.id()))
-				development.add(limited);
+			if (ids.contains(limited.id()))
+				selected.add(limited);
 		}
-		return development;
+		return selected;
 	}
 
 	/**
@@ -335,6 +347,25 @@ public final class CellTier
 	public static List<String> developmentCellIds(Campaign campaign)
 	{
 		return developmentCells(campaign).stream().map(Cell::id).toList();
+	}
+
+	/**
+	 * Returns the given cells together with the development cells of a campaign's current lineage, each cell once.
+	 *
+	 * @param campaign a campaign with a confirmed contract
+	 * @param cellIds the identifiers of cells of the campaign's contract
+	 * @return the identifiers, in contract order, each development cell under the tool-output stress limit right
+	 *   after its contract cell
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalStateException if no contract has been confirmed
+	 */
+	public static List<String> withDevelopmentCellIds(Campaign campaign, List<String> cellIds)
+	{
+		requireThat(campaign, "campaign").isNotNull();
+		requireThat(cellIds, "cellIds").isNotNull();
+		Set<String> ids = new HashSet<>(cellIds);
+		ids.addAll(developmentCellIds(campaign));
+		return inContractOrder(campaign.contract(), ids).stream().map(Cell::id).toList();
 	}
 
 	/**
