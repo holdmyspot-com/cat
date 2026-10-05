@@ -1085,6 +1085,6 @@ public abstract class CampaignStoreContract
 			built.candidates(), built.authorAttempts(), built.development(), built.baseline(),
 			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
 			built.pendingDecisions(), built.revisionRequested(), built.outcome(),
-			built.delivery(), built.optimization());
+			built.delivery(), built.optimization(), built.answeredWarnings());
 	}
 }

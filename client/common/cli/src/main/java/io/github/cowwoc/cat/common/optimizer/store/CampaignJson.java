@@ -283,7 +283,8 @@ final class CampaignJson
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
-			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")));
+			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
+			List.of());
 	}
 
 	/**

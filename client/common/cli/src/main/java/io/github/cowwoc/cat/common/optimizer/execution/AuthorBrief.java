@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -41,10 +42,12 @@ import java.nio.charset.StandardCharsets;
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
  *   keyed by the link's path; a link whose links form a cycle is absent
  * @param campaignEdits the unified diff of prompt files from confirmation to the working candidate
+ * @param answeredWarnings the needed edits outside the edit authority that the user declined by choosing to use an
+ *   authorized source, in the order they were answered; the author is told not to report them again
  */
 public record AuthorBrief(String cell, AuthorApproach approach, Contract contract, List<Failure> developmentFailures,
 	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Map<Path, Path> links,
-	String campaignEdits)
+	String campaignEdits, List<AuthorityWarning> answeredWarnings)
 {
 	/**
 	 * Creates a brief.
@@ -58,6 +61,8 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
 	 *   keyed by the link's path; a link whose links form a cycle is absent
 	 * @param campaignEdits the unified diff since confirmation, empty if there are no prompt edits
+	 * @param answeredWarnings the needed edits outside the edit authority that the user declined by choosing to use
+	 *   an authorized source, in the order they were answered
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
@@ -74,6 +79,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		endedAttempts = List.copyOf(endedAttempts);
 		links = Map.copyOf(links);
 		requireThat(campaignEdits, "campaignEdits").isNotNull();
+		answeredWarnings = List.copyOf(answeredWarnings);
 	}
 
 	/**
@@ -135,7 +141,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
 			campaign.contract(), development.failures(), development.counts(), ended,
-			links, campaignEdits);
+			links, campaignEdits, List.of());
 	}
 
 	/**

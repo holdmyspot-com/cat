@@ -102,7 +102,7 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			AuthorPrompt author = new AuthorPrompt(json, schema, Set.of(Path.of("AGENTS.md")), Set.of());
 			AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-				ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "");
+				ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "", List.of());
 
 			String delivered = deliver(root, artifact, author.request(brief, root)).getFirst();
 

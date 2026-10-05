@@ -829,7 +829,7 @@ public final class StatusReportTest
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
-			frozen.delivery(), frozen.optimization());
+			frozen.delivery(), frozen.optimization(), frozen.answeredWarnings());
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();

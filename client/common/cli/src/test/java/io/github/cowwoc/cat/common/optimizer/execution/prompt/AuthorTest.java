@@ -68,7 +68,7 @@ public final class AuthorTest
 	{
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", approach, ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Map.of(), "");
+			Map.of(), "", List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -109,7 +109,8 @@ public final class AuthorTest
 	@Test(expectedExceptions = NullPointerException.class)
 	public void briefRejectsMissingApproach()
 	{
-		new AuthorBrief("safety", null, ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "");
+		new AuthorBrief("safety", null, ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "",
+			List.of());
 	}
 
 	/**
@@ -123,7 +124,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Map.of(), "");
+			Map.of(), "", List.of());
 		requireThat(prompt.request(brief, COPY).turns().getFirst(), "editingInstructions").
 			contains("When the failing replies\n" +
 				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
@@ -159,7 +160,7 @@ public final class AuthorTest
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION, contract, List.of(failure()),
 			Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
-				List.of(failure().summary()))), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "");
+				List.of(failure().summary()))), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "", List.of());
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -197,7 +198,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(),
-			List.of(), Map.of(), "");
+			List.of(), Map.of(), "", List.of());
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
@@ -224,7 +225,8 @@ public final class AuthorTest
 			List.of(List.of("The held-out reply.")));
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(formal.summary()))), Map.of(), "");
+			List.of(new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(formal.summary()))), Map.of(), "",
+			List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -250,7 +252,7 @@ public final class AuthorTest
 		// Requirement: R-C16
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(failure()), Map.of(), List.of(), Map.of(), "");
+			ContractFixtures.contract(), List.of(failure()), Map.of(), List.of(), Map.of(), "", List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -315,7 +317,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Map.of(), "");
+			Map.of(), "", List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -343,7 +345,7 @@ public final class AuthorTest
 				new DiagnosticRerun(Verdict.FAIL, checkRecord)), List.of());
 		Failure checked = new Failure(failure().instance(), checkRecord, List.of(), null, List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(development, checked), Map.of(), List.of(), Map.of(), "");
+			ContractFixtures.contract(), List.of(development, checked), Map.of(), List.of(), Map.of(), "", List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -376,7 +378,7 @@ public final class AuthorTest
 			List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(blocking, recovered, untriaged), Map.of(),
-			List.of(), Map.of(), "");
+			List.of(), Map.of(), "", List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -401,7 +403,7 @@ public final class AuthorTest
 		{
 			AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 				ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-				Map.of(), diff);
+				Map.of(), diff, List.of());
 			String turn = prompt.request(brief, COPY).turns().getFirst();
 			requireThat(turn, "diff").contains("It is empty when there are none:\n\n" + diff + "\n");
 		}

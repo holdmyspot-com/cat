@@ -27,6 +27,20 @@ public final class Authority
 {
 	private static final List<Choice> CHOICES = List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN,
 		Choice.REVISE_CAMPAIGN);
+
+	/**
+	 * Indicates whether a resolved target lies outside the project, which makes it a read-only external file.
+	 *
+	 * @param target the path that symbolic links resolve to: relative to the project directory, or absolute for an
+	 *               external file
+	 * @return {@code true} if {@code target} is absolute
+	 * @throws NullPointerException if {@code target} is null
+	 */
+	public static boolean isExternal(Path target)
+	{
+		return target.isAbsolute();
+	}
+
 	private final Set<Path> promptSources;
 	private final Set<Path> loaderConfiguration;
 
@@ -68,7 +82,7 @@ public final class Authority
 	{
 		requireThat(operation, "operation").isNotNull();
 		FileInventory.requireInventoryPath(target, "target");
-		if (target.isAbsolute())
+		if (isExternal(target))
 			return Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 		return switch (operation)
 		{

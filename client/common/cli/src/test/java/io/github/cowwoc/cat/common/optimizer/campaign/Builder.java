@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
@@ -76,6 +77,7 @@ public final class Builder
 	private OptimizationEvidence optimization = OptimizationEvidence.EMPTY;
 	private final Map<SequenceGroup, Long> sequences = new HashMap<>();
 	private long evidenceRevision;
+	private final List<AuthorityWarning> answeredWarnings = new ArrayList<>();
 
 	/**
 	 * Supplies descriptive optimization measurements.
@@ -593,6 +595,18 @@ public final class Builder
 	}
 
 	/**
+	 * Records a warning that the user answered by choosing to use an authorized source, behind those added before.
+	 *
+	 * @param value the warning
+	 * @return this builder
+	 */
+	public Builder answered(AuthorityWarning value)
+	{
+		answeredWarnings.add(value);
+		return this;
+	}
+
+	/**
 	 * Marks a contract revision as requested.
 	 *
 	 * @return this builder
@@ -697,7 +711,7 @@ public final class Builder
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			authorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
 	}
 
 	/**

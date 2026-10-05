@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.util.ArrayList;
@@ -42,13 +43,16 @@ import java.util.Set;
  * @param outcome the outcome that the campaign reports, or {@code null} if none
  * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
  * @param optimization the retained author and minimality evidence
+ * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing to
+ *   use an authorized source, each once, in the order they were answered; a later warning equal to one of them raises
+ *   no decision
  */
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int authorAttempts, Development development,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
-	DeliveryRequest delivery, OptimizationEvidence optimization)
+	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings)
 {
 	/**
 	 * The default maximum number of concurrent nested sessions.
@@ -88,8 +92,11 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param outcome the outcome that the campaign reports, or {@code null} if none
 	 * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
 	 * @param optimization the retained author and minimality evidence
+	 * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing
+	 *   to use an authorized source, each once, in the order they were answered
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
-	 *   {@code delivery} is null, or {@code baseline} is null after a confirmation
+	 *   {@code delivery} is null, {@code baseline} is null after a confirmation, or {@code answeredWarnings} contains
+	 *   null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value #MAXIMUM_CEILING}], a count is
 	 *   negative, the incumbent is not candidate 0, attempts are not
 	 *   numbered 1, 2, …, more than one attempt is running, a group's last sequence number is not positive, a
@@ -138,6 +145,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		trials = List.copyOf(trials);
 		sequences = Map.copyOf(sequences);
 		pendingDecisions = List.copyOf(pendingDecisions);
+		answeredWarnings = List.copyOf(answeredWarnings);
 	}
 
 	/**
@@ -159,7 +167,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
 			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null, null,
-			OptimizationEvidence.EMPTY);
+			OptimizationEvidence.EMPTY, List.of());
 	}
 
 	/**

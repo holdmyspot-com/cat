@@ -1161,7 +1161,7 @@ public final class OptimizerCoreTest
 			c.incumbent(), c.candidates(), c.authorAttempts(), c.development(), c.baseline(),
 			c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 			List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
-			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization()));
+			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(), c.answeredWarnings()));
 	}
 
 	/**
@@ -1874,7 +1874,8 @@ public final class OptimizerCoreTest
 				started.incumbent(), built.candidates(), built.authorAttempts(), started.development(), built.baseline(),
 				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
 				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
-				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization());
+				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization(),
+				built.answeredWarnings());
 			repository.scope().store().replaceSnapshot(tradeOff);
 
 			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
@@ -1944,7 +1945,8 @@ public final class OptimizerCoreTest
 			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
 				c.candidates(), c.authorAttempts(), c.development(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
-				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
+				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
+				c.answeredWarnings());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
 			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));

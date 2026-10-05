@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -170,6 +171,10 @@ final class Draft
 	 * The candidate to deliver, or {@code null}.
 	 */
 	DeliveryRequest delivery;
+	/**
+	 * The warnings that the user answered by choosing to use an authorized source, each once, in answer order.
+	 */
+	final List<AuthorityWarning> answeredWarnings;
 
 	/**
 	 * Copies a campaign.
@@ -217,6 +222,7 @@ final class Draft
 		revisionRequested = campaign.revisionRequested();
 		outcome = campaign.outcome();
 		delivery = campaign.delivery();
+		answeredWarnings = new ArrayList<>(campaign.answeredWarnings());
 	}
 
 	/**
@@ -581,6 +587,6 @@ final class Draft
 			diagnosis, round, author, reviewPoints, instanceOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
 	}
 }
