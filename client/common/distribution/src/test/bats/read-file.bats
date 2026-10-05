@@ -136,6 +136,84 @@ transcript()
 	)
 }
 
+# Creates a directory that holds links to the host commands that read-file needs, other than stat and the SHA-256
+# command.
+#
+# Arguments:
+#   $1 - New directory to create.
+link_common_tools()
+{
+	mkdir "$1"
+	for tool in bash awk readlink mkdir cut seq; do
+		ln -s "$(command -v "${tool}")" "$1/${tool}"
+	done
+}
+
+# Writes the commands that stat and the SHA-256 command of a tool directory run on this host: the host's stat if it
+# accepts the format option of the wanted family, and otherwise the host's stat with the other family's option and
+# fields; sha256sum if the host has it, and otherwise "shasum -a 256". The tests run on Linux, which has GNU tools, and
+# on macOS, which has BSD stat and shasum.
+#
+# Arguments:
+#   $1 - The format option that the tool directory's stat accepts: -c for GNU stat, -f for BSD stat.
+#
+# Output:
+#   Shell code that defines run_host_stat, which takes that option's format and the paths, and run_host_sha256, which
+#   hashes standard input.
+host_tool_commands()
+{
+	host_stat="$(command -v stat)"
+	if [ "$1" = -c ]; then
+		other_option=-f
+		other_fields='format="${format//%Y/%m}"; format="${format//%s/%z}"'
+	else
+		other_option=-c
+		other_fields='format="${format//%m/%Y}"; format="${format//%z/%s}"'
+	fi
+	if "${host_stat}" "$1" '' / > /dev/null 2>&1; then
+		printf 'run_host_stat() { format="$1"; shift; exec %q %q "${format}" "$@"; }\n' "${host_stat}" "$1"
+	else
+		printf 'run_host_stat() { format="$1"; shift; %s; exec %q %q "${format}" "$@"; }\n' "${other_fields}" \
+			"${host_stat}" "${other_option}"
+	fi
+	if command -v sha256sum > /dev/null; then
+		printf 'run_host_sha256() { exec %q; }\n' "$(command -v sha256sum)"
+	else
+		printf 'run_host_sha256() { exec %q -a 256; }\n' "$(command -v shasum)"
+	fi
+}
+
+# Creates a directory of the commands read-file needs in which, as on Linux, stat accepts only GNU options and the
+# SHA-256 command is sha256sum.
+#
+# Output:
+#   The directory, for use as PATH.
+gnu_tool_directory()
+{
+	tools="${TEST_ROOT}/gnu-tools"
+	link_common_tools "${tools}"
+	cat > "${tools}/stat" <<-EOF
+	#!${BASH}
+	# Accepts only GNU stat's -c option.
+	$(host_tool_commands -c)
+	if [ "\$1" != -c ]; then
+		echo "stat: invalid option -- '\${1#-}'" >&2
+		exit 1
+	fi
+	shift
+	run_host_stat "\$@"
+	EOF
+	cat > "${tools}/sha256sum" <<-EOF
+	#!${BASH}
+	# Accepts no arguments and reads standard input, as read-file calls it.
+	$(host_tool_commands -c)
+	[ "\$#" -eq 0 ] || exit 1
+	run_host_sha256
+	EOF
+	chmod 755 "${tools}/stat" "${tools}/sha256sum"
+	printf '%s\n' "${tools}"
+}
+
 # Creates a directory of the commands read-file needs in which, as on macOS, stat accepts only BSD options and the
 # only SHA-256 command is shasum.
 #
@@ -144,28 +222,24 @@ transcript()
 bsd_tool_directory()
 {
 	tools="${TEST_ROOT}/bsd-tools"
-	mkdir "${tools}"
-	for tool in bash awk readlink mkdir cut seq; do
-		ln -s "$(command -v "${tool}")" "${tools}/${tool}"
-	done
-	gnu_stat="$(command -v stat)"
-	gnu_sha256sum="$(command -v sha256sum)"
+	link_common_tools "${tools}"
 	cat > "${tools}/stat" <<-EOF
 	#!${BASH}
-	# Accepts only BSD stat's -f option with the %m and %z fields.
+	# Accepts only BSD stat's -f option.
+	$(host_tool_commands -f)
 	if [ "\$1" != -f ]; then
 		echo "stat: illegal option -- \${1#-}" >&2
 		exit 1
 	fi
-	format="\${2//%m/%Y}"
-	shift 2
-	exec "${gnu_stat}" -c "\${format//%z/%s}" "\$@"
+	shift
+	run_host_stat "\$@"
 	EOF
 	cat > "${tools}/shasum" <<-EOF
 	#!${BASH}
 	# Accepts only "-a 256" and reads standard input, as read-file calls it.
+	$(host_tool_commands -f)
 	[ "\$*" = "-a 256" ] || exit 1
-	exec "${gnu_sha256sum}"
+	run_host_sha256
 	EOF
 	chmod 755 "${tools}/stat" "${tools}/shasum"
 	printf '%s\n' "${tools}"
@@ -212,10 +286,12 @@ bsd_tool_directory()
 	mkdir "${TEST_ROOT}/bin"
 	script="${TEST_ROOT}/bin/read-file"
 
+	gnu_tools="$(gnu_tool_directory)"
+
 	install -m 755 "${BATS_TEST_DIRNAME}/fixtures/read-file-certified" "${script}"
-	certified="$(transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/certified-state")"
+	certified="$(PATH="${gnu_tools}" transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/certified-state")"
 	install -m 755 "${READ_FILE}" "${script}"
-	packaged="$(transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/packaged-state")"
+	packaged="$(PATH="${gnu_tools}" transcript "${script}" "${file}" "${small}" "${TEST_ROOT}/packaged-state")"
 
 	[ "$(grep -c 'continues: run' <<< "${certified}")" -ge 6 ]
 	[[ "${certified}" == *"[you already have all of ${file}; to read it again, run ${script} ${file} 1]"* ]]
@@ -227,9 +303,10 @@ bsd_tool_directory()
 	write_large_file "${file}"
 	small="${TEST_ROOT}/small.txt"
 	printf 'first\nsecond\n' > "${small}"
-	gnu="$(transcript "${READ_FILE}" "${file}" "${small}" "${TEST_ROOT}/gnu-state")"
+	gnu_tools="$(gnu_tool_directory)"
 	bsd_tools="$(bsd_tool_directory)"
 
+	gnu="$(PATH="${gnu_tools}" transcript "${READ_FILE}" "${file}" "${small}" "${TEST_ROOT}/gnu-state")"
 	bsd="$(PATH="${bsd_tools}" transcript "${READ_FILE}" "${file}" "${small}" "${TEST_ROOT}/bsd-state")"
 
 	[ -n "$(find "${TEST_ROOT}/bsd-state" -type f)" ]
