@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
@@ -1640,7 +1641,7 @@ public final class OptimizerCoreTest
 				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified
-				  Not checked until a session observes it: trial model.""");
+				  Not checked: trial model.""");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
 		}
 	}
@@ -1669,7 +1670,7 @@ public final class OptimizerCoreTest
 			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("HARNESS_VERSION");
 			requireThat(status.get("summary").asString(), "summary").contains(
 				"Attempt 1: certified (historical; changed: PROMPT_CONTENT, HARNESS_VERSION)\n" +
-				"  Not checked until a session observes it: trial model.");
+				"  Not checked: trial model.");
 		}
 	}
 
@@ -1696,6 +1697,71 @@ public final class OptimizerCoreTest
 			requireThat(status.get("campaign").asString(), "campaign").isEqualTo(id);
 			requireThat(output(repository, List.of("status", id)).get("campaign").asString(), "byId").
 				isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that a target's finished campaign does not hide a certification record: {@code status} of the target
+	 * reports the record, and {@code status} of the campaign's identifier still reports the campaign.
+	 */
+	@Test
+	public void recordOutranksFinishedCampaign() throws Exception
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Campaign finished = new Builder().header(repository.load(id).header().withLifecycle(Lifecycle.FINISHED)).
+				confirmed().outcome(Outcome.BELOW_MINIMUM).build();
+			repository.scope().store().replaceSnapshot(finished);
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			requireThat(status.get("status").asString(), "status").isEqualTo("certified");
+			requireThat(status.get("campaign").isNull(), "campaignIsNull").isTrue();
+			requireThat(output(repository, List.of("status", id)).get("campaign").asString(), "byId").
+				isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} from a harness other than the one that certified the target leaves the
+	 * harness-specific conditions unchecked instead of changed, so the certification stays current.
+	 */
+	@Test
+	public void otherHarnessLeavesConditionsUnchecked() throws Exception
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", values -> values.put(MeasurementCondition.HARNESS_VERSION, "0.9"));
+
+			CommandResult result;
+			try (TestOptimizerCommandScope<FakeSessionPort> codex = TestOptimizerCommandScope.of(Harness.CODEX,
+				repository.root()))
+			{
+				result = new OptimizerCore(codex).status("CLAUDE.md");
+			}
+
+			Applicability applicability = result.certification().applicability();
+			requireThat(applicability.status(), "applicability").isEqualTo(Applicability.Status.CURRENT);
+			requireThat(applicability.changed(), "changed").isEmpty();
+			requireThat(applicability.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.JUDGE,
+				MeasurementCondition.MODEL, MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION,
+				MeasurementCondition.SESSION_ENVIRONMENT_VERSION));
+			requireThat(result.summary(), "summary").endsWith("""
+				Attempt 1: certified
+				  Not checked: judge version, trial model, model provider, harness version, session environment \
+				version.""");
 		}
 	}
 
@@ -1742,7 +1808,7 @@ public final class OptimizerCoreTest
 				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified (historical; changed: JUDGE)
-				  Not checked until a session observes it: trial model.
+				  Not checked: trial model.
 				""");
 		}
 	}
@@ -1773,6 +1839,8 @@ public final class OptimizerCoreTest
 
 			requireThat(started.get("proposal").isNull(), "proposalIsNull").isFalse();
 			requireThat(started.get("summary").asString(), "summary").endsWith("\n" + warning);
+			// The host shows the proposal instead of the summary, so the warning is in the message too
+			requireThat(started.get("message").asString(), "message").endsWith(warning);
 			String message = refusal(() -> repository.core().cancel("no-such-campaign"));
 			requireThat(message, "message").isEqualTo("No campaign has the identifier no-such-campaign.\n" +
 				warning);

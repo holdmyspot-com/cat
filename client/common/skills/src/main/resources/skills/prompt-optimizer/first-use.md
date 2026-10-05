@@ -19,7 +19,8 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
 1. **Start.** Run `start <target>` with the prompt file or directory the user named. It creates a campaign or resumes
    the one that already exists for that target. Use its `campaign` value in every later command.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
-   the contract, the warnings and each certification scope choice. If the result holds a `message` instead, show it.
+   the contract, the warnings and each certification scope choice. When the result also holds a `message`, show the
+   `message` after the proposal. If the result holds a `message` but no `proposal`, show the `message`.
    - If the proposal lists conflicts, confirmation is refused until each is resolved. For each conflict, ask the user to
      choose one of its resolutions, naming the recommended one and its reason, or to describe another. Do not offer
      confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and repeat this step with its result.
@@ -66,5 +67,5 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    them.
 
 To stop a campaign that the user asks to stop, run `cancel <campaign>`. To show a campaign's state without advancing
-it, run `status <campaign>` or `status <target>`. For a target that has no campaign, `status <target>` reports the
-target's delivered certification instead; show its `summary`.
+it, run `status <campaign>` or `status <target>`. For a target that has no resumable campaign, `status <target>`
+reports the target's delivered certification, if any, instead; show its `summary`.

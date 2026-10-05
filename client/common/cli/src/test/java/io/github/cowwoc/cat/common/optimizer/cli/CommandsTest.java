@@ -398,7 +398,7 @@ public final class CommandsTest
 			Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
 			version)
 			Attempt 2: certified (historical; changed: PROMPT_CONTENT, JUDGE)
-			  Not checked until a session observes it: trial model.""");
+			  Not checked: trial model.""");
 		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();
 		requireThat(json.get("deliveryResult").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();

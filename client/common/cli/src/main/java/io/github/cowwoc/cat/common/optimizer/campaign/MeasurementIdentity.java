@@ -184,6 +184,34 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
+	 * Returns this identity without the harness-specific conditions, campaign-wide and for every cell.
+	 *
+	 * @return the identity that another harness shares
+	 * @see MeasurementCondition#isHarnessSpecific()
+	 */
+	public MeasurementIdentity withoutHarnessSpecific()
+	{
+		Map<MeasurementCondition, String> shared = new EnumMap<>(MeasurementCondition.class);
+		for (Map.Entry<MeasurementCondition, String> entry : values.entrySet())
+		{
+			if (!entry.getKey().isHarnessSpecific())
+				shared.put(entry.getKey(), entry.getValue());
+		}
+		Map<String, Map<MeasurementCondition, String>> sharedCells = new HashMap<>();
+		for (Map.Entry<String, Map<MeasurementCondition, String>> cell : cells.entrySet())
+		{
+			Map<MeasurementCondition, String> own = new EnumMap<>(MeasurementCondition.class);
+			for (Map.Entry<MeasurementCondition, String> entry : cell.getValue().entrySet())
+			{
+				if (!entry.getKey().isHarnessSpecific())
+					own.put(entry.getKey(), entry.getValue());
+			}
+			sharedCells.put(cell.getKey(), own);
+		}
+		return new MeasurementIdentity(shared, sharedCells);
+	}
+
+	/**
 	 * Returns this identity with the conditions that it does not record taken from an observation. Recorded values
 	 * never change.
 	 *

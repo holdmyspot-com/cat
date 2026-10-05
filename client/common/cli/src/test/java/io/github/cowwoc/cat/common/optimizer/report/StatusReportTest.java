@@ -1044,7 +1044,7 @@ public final class StatusReportTest
 		JsonNode attempt = report.toJson(JsonMapper.builder().build()).path("attempts").get(0);
 		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("TOOL_OUTPUT_LIMIT");
 		requireThat(report.summary(), "summary").contains("Attempt 1: certified\n" +
-			"  Not checked until a session observes it: trial tool-output token limit.");
+			"  Not checked: trial tool-output token limit.");
 	}
 
 	/**

@@ -119,8 +119,8 @@ public final class Registry
 	}
 
 	/**
-	 * Returns the campaign that reports a target: its resumable campaign, or else its campaign with the greatest
-	 * identifier, which is the latest to start.
+	 * Returns a target's campaign: its resumable campaign, or else its campaign with the greatest identifier, which is
+	 * the latest to start.
 	 *
 	 * @param headers every campaign's header
 	 * @param root the canonical project root

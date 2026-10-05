@@ -170,7 +170,9 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param currentPromptFiles the content hash of each recorded prompt file that exists now, keyed by its path
 	 *   relative to the project
 	 * @param known the conditions that CAT knows now
-	 * @return the applicability, naming each known change and each recorded condition that {@code known} lacks
+	 * @return the applicability, naming each known change and each recorded condition that {@code known} lacks. If
+	 *   {@code known} records another provider than the record, the harness-specific conditions are unchecked rather
+	 *   than changed.
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Applicability applicability(Map<Path, Sha256> currentPromptFiles, MeasurementIdentity known)
@@ -178,6 +180,11 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(currentPromptFiles, "currentPromptFiles").isNotNull();
 		requireThat(known, "known").isNotNull();
 		boolean promptContentChanged = !promptFiles.equals(currentPromptFiles);
+		String recordedProvider = identity.values().get(MeasurementCondition.PROVIDER);
+		String knownProvider = known.values().get(MeasurementCondition.PROVIDER);
+		// Another harness cannot observe what the certifying harness recorded, so its values are unchecked
+		if (recordedProvider != null && knownProvider != null && !recordedProvider.equals(knownProvider))
+			known = known.withoutHarnessSpecific();
 		List<MeasurementCondition> changed = identity.differences(known);
 		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
 		List<CertificationParameter> notImplied = parameters.notImplying(

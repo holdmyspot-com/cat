@@ -130,7 +130,8 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	}
 
 	/**
-	 * Returns this result with more notices after its own.
+	 * Returns this result with more notices after its own. A result that presents a proposal also appends them to
+	 * its message, because the host shows the proposal instead of the summary.
 	 *
 	 * @param added the notices to add
 	 * @return the result
@@ -144,7 +145,16 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 			return this;
 		List<String> combined = new ArrayList<>(notices);
 		combined.addAll(added);
-		return new CommandResult(status, certification, harness, proposal, delivery, message, combined);
+		String combinedMessage = message;
+		if (proposal != null)
+		{
+			String lines = String.join("\n", added);
+			if (combinedMessage == null)
+				combinedMessage = lines;
+			else
+				combinedMessage += "\n" + lines;
+		}
+		return new CommandResult(status, certification, harness, proposal, delivery, combinedMessage, combined);
 	}
 
 	/**

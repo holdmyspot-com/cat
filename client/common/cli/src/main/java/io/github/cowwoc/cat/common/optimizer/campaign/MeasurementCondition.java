@@ -114,4 +114,21 @@ public enum MeasurementCondition
 			default -> true;
 		};
 	}
+
+	/**
+	 * Indicates whether the condition's value depends on the harness that runs the sessions, so that another
+	 * harness cannot observe the value that a result records.
+	 *
+	 * @return {@code true} for the provider, the harness and session environment versions, the judge version and the
+	 *   trial model, reasoning and tool-output token limit
+	 */
+	public boolean isHarnessSpecific()
+	{
+		return switch (this)
+		{
+			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, JUDGE, MODEL, REASONING,
+				TOOL_OUTPUT_LIMIT -> true;
+			default -> false;
+		};
+	}
 }

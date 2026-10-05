@@ -180,7 +180,7 @@ final class ReportSummary
 			List<String> names = new ArrayList<>();
 			for (MeasurementCondition condition : attempt.unchecked())
 				names.add(condition.displayName());
-			lines.add("  Not checked until a session observes it: " + String.join(", ", names) + ".");
+			lines.add("  Not checked: " + String.join(", ", names) + ".");
 		}
 	}
 

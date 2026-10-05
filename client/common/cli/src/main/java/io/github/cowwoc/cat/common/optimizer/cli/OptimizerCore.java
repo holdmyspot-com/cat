@@ -430,11 +430,14 @@ public final class OptimizerCore implements Core
 			absolute = absolute.toRealPath();
 		requireInsideProject(root, absolute);
 		Optional<Header> header = Registry.ofTarget(store.listHeaders(), root, absolute);
-		if (header.isPresent())
+		if (header.isPresent() && header.get().lifecycle().isResumable())
 			return report(root, require(store, header.get().id(), false), null, null);
 
+		// A finished campaign must not hide a certification that a later campaign delivered
 		Path relative = root.relativize(absolute);
 		Optional<CertificationRecord> record = record(root, relative);
+		if (record.isEmpty() && header.isPresent())
+			return report(root, require(store, header.get().id(), false), null, null);
 		if (record.isEmpty())
 		{
 			String absent = "no campaign or certification record exists for " + relative + ".";
