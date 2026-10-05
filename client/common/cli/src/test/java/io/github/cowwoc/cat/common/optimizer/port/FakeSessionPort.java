@@ -24,6 +24,7 @@ public final class FakeSessionPort implements SessionPort
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final Optional<String> heldOutExposure;
+	private final List<Path> runRoots;
 	private final Map<Path, String> evidence = new HashMap<>();
 	private final Map<Path, Path> evidenceSources = new HashMap<>();
 
@@ -55,10 +56,31 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public FakeSessionPort(HostLogin login, Optional<String> heldOutExposure)
 	{
+		this(login, heldOutExposure, List.of());
+	}
+
+	/**
+	 * Creates a port that has started no sessions.
+	 *
+	 * @param login the login that {@link #hostLogin()} reports
+	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports
+	 * @param runRoots the directories that {@link #runRoots()} reports
+	 * @throws NullPointerException if any argument is null
+	 */
+	public FakeSessionPort(HostLogin login, Optional<String> heldOutExposure, List<Path> runRoots)
+	{
 		requireThat(login, "login").isNotNull();
 		requireThat(heldOutExposure, "heldOutExposure").isNotNull();
+		requireThat(runRoots, "runRoots").isNotNull();
 		this.login = login;
 		this.heldOutExposure = heldOutExposure;
+		this.runRoots = List.copyOf(runRoots);
+	}
+
+	@Override
+	public List<Path> runRoots()
+	{
+		return runRoots;
 	}
 
 	@Override

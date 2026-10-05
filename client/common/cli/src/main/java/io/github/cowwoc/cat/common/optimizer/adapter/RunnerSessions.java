@@ -107,6 +107,12 @@ public abstract class RunnerSessions implements SessionPort
 		return Optional.empty();
 	}
 
+	@Override
+	public final List<Path> runRoots()
+	{
+		return List.of(settings.runRoot(), settings.heldOutRunRoot());
+	}
+
 	/**
 	 * Returns every location that holds held-out content: the directories that {@link Settings#heldOut()} lists and
 	 * the held-out run root, which is created first so that it can be denied before any session of the held-out part

@@ -369,6 +369,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public List<Path> runRoots()
+		{
+			return List.of();
+		}
+
+		@Override
 		public HostLogin hostLogin()
 		{
 			return HostLogin.UNKNOWN;

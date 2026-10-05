@@ -3400,6 +3400,12 @@ public final class DriverTest
 			}
 
 			@Override
+			public List<Path> runRoots()
+			{
+				return delegate.runRoots();
+			}
+
+			@Override
 			public HostLogin hostLogin() throws IOException
 			{
 				return delegate.hostLogin();

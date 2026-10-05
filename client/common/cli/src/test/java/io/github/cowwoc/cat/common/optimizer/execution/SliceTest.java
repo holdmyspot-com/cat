@@ -362,6 +362,12 @@ public final class SliceTest
 		}
 
 		@Override
+		public List<Path> runRoots()
+		{
+			return delegate.runRoots();
+		}
+
+		@Override
 		public HostLogin hostLogin()
 		{
 			return delegate.hostLogin();

@@ -122,6 +122,26 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Verifies that the port declares the run root and the held-out run root as the directories that hold its runs.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void declaresRunRoots() throws IOException
+	{
+		// Requirement: R-E11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path runRoot = root.resolve("runs").normalize();
+			TestSessions sessions = port(runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				new CopyOnWriteArrayList<>(), List.of());
+			Path heldOutRunRoot = root.resolve("runs-held-out").normalize();
+			requireThat(sessions.runRoots(), "runRoots").isEqualTo(List.of(runRoot, heldOutRunRoot));
+		}
+	}
+
+	/**
 	 * Verifies that CAT passes bound model and reasoning-effort dimensions to the runner and omits the options for
 	 * unbound dimensions.
 	 *

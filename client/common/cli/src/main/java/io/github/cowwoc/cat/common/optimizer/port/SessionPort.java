@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -56,4 +57,13 @@ public interface SessionPort
 	 * @throws IOException if a settings file exists but cannot be read
 	 */
 	Optional<String> findHeldOutExposure(Path project) throws IOException;
+
+	/**
+	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign
+	 * of the project. The run root holds the sessions of the development part and the held-out run root holds the
+	 * sessions of the held-out part. Each run is recorded as {@code <directory>/<harness>/<run>/run.json}.
+	 *
+	 * @return the absolute directories, which may not exist yet
+	 */
+	List<Path> runRoots();
 }

@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
+import io.github.cowwoc.cat.common.runner.ProcessHandleLiveness;
+
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -18,57 +21,65 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Finds the processes of runner runs that an earlier {@link Driver} left running.
+ * Finds the harness processes of runner runs that an earlier {@link Driver} left running.
  * <p>
  * The runner records each run in {@code <runRoot>/<harness>/<id>/run.json}, including the run's owner process
  * ({@code ownerPid}, {@code ownerStartedAt}) and its harness process ({@code harnessPid},
- * {@code harnessStartedAt}). The run root must hold only the runs of one campaign, so that every run still marked
- * {@code running} while the driver holds the campaign's lock belongs to an earlier driver of that campaign.
+ * {@code harnessStartedAt}). The session port declares the run roots, which hold the runs of every campaign of the
+ * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists:
+ * a run whose owner is alive belongs to a running driver, of this or another campaign.
  * <p>
  * A manifest that cannot be parsed, or that lacks a process's start time, identifies no process: without the start
- * time, a reused process identifier cannot be told apart from the recorded process.
+ * time, a reused process identifier cannot be told apart from the recorded process. A run whose owner process is
+ * not identified is therefore not left over, and a leftover run whose harness process is not identified yields
+ * nothing.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class LeftoverRuns
 {
-	private final Path runRoot;
+	private final SessionPort sessions;
 	private final JsonMapper json;
+	private final ProcessHandleLiveness liveness = new ProcessHandleLiveness();
 
 	/**
 	 * Creates a finder.
 	 *
-	 * @param runRoot the directory that holds the campaign's runner runs
+	 * @param sessions the session port that declares the run roots
 	 * @param json the JSON mapper that parses run manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public LeftoverRuns(Path runRoot, JsonMapper json)
+	public LeftoverRuns(SessionPort sessions, JsonMapper json)
 	{
-		requireThat(runRoot, "runRoot").isNotNull();
+		requireThat(sessions, "sessions").isNotNull();
 		requireThat(json, "json").isNotNull();
-		this.runRoot = runRoot;
+		this.sessions = sessions;
 		this.json = json;
 	}
 
 	/**
-	 * Finds the processes recorded by runs under this campaign's run root that are still marked {@code running}.
+	 * Finds the harness processes of the runs, under every run root that the session port declares, that are still
+	 * marked {@code running} although their owner process no longer exists.
 	 *
-	 * @return the owner and harness processes whose identifiers and start times can be parsed, in directory order;
-	 *   empty if the run root is missing or is not a directory
+	 * @return the harness processes whose identifiers and start times can be parsed, in run root and directory
+	 *   order; empty if no run root exists
 	 * @throws IOException if the run directories cannot be listed
 	 */
 	public List<RecordedProcess> find() throws IOException
 	{
 		List<RecordedProcess> processes = new ArrayList<>();
-		if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
-			return processes;
-		for (Path harness : list(runRoot))
+		for (Path runRoot : sessions.runRoots())
 		{
-			for (Path run : list(harness))
+			if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
+				continue;
+			for (Path harness : list(runRoot))
 			{
-				Path manifest = run.resolve("run.json");
-				if (Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
-					processes.addAll(parse(Files.readAllBytes(manifest)));
+				for (Path run : list(harness))
+				{
+					Path manifest = run.resolve("run.json");
+					if (Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
+						parse(Files.readAllBytes(manifest)).ifPresent(processes::add);
+				}
 			}
 		}
 		return processes;
@@ -97,15 +108,14 @@ public final class LeftoverRuns
 	}
 
 	/**
-	 * Returns the processes that a run manifest records for a running run.
+	 * Returns the harness process of a run that is marked running although its owner no longer exists.
 	 *
 	 * @param manifest the manifest's content
-	 * @return the owner process and, if recorded, the harness process; empty if the run is not running or the
-	 *   manifest cannot be parsed
+	 * @return the harness process; empty if the run is not running, the manifest cannot be parsed, the owner process
+	 *   is not identified or is alive, or the harness process is not identified
 	 */
-	private List<RecordedProcess> parse(byte[] manifest)
+	private Optional<RecordedProcess> parse(byte[] manifest)
 	{
-		List<RecordedProcess> processes = new ArrayList<>();
 		JsonNode root;
 		try
 		{
@@ -113,13 +123,14 @@ public final class LeftoverRuns
 		}
 		catch (JacksonException _)
 		{
-			return processes;
+			return Optional.empty();
 		}
 		if (root == null || !root.isObject() || !text(root, "state").equals(Optional.of("running")))
-			return processes;
-		process(root, "ownerPid", "ownerStartedAt").ifPresent(processes::add);
-		process(root, "harnessPid", "harnessStartedAt").ifPresent(processes::add);
-		return processes;
+			return Optional.empty();
+		Optional<RecordedProcess> owner = process(root, "ownerPid", "ownerStartedAt");
+		if (owner.isEmpty() || liveness.isAlive(owner.get().pid(), owner.get().startedAt()))
+			return Optional.empty();
+		return process(root, "harnessPid", "harnessStartedAt");
 	}
 
 	/**

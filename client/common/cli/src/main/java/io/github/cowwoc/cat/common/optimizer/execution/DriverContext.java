@@ -35,7 +35,8 @@ import java.util.random.RandomGenerator;
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
- * @param leftoverRuns finds recorded processes of this campaign's runs still marked as running
+ * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
+ *   port's run roots
  * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's to
  *   validate author attempts and diagnose the edits that authors report needing
  * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
@@ -71,7 +72,8 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverRuns finds recorded processes of this campaign's runs still marked as running
+	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
+ *   port's run roots
 	 * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's
 	 *   to validate author attempts and diagnose the edits that authors report needing
 	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of

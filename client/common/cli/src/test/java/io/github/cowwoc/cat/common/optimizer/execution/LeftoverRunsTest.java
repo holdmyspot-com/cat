@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.execution.LeftoverRuns.RecordedProcess;
+import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -13,16 +15,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Covers how the processes of leftover runner runs are read from their manifests.
+ * Covers how the harness processes of leftover runner runs are found in the session port's run roots.
  */
 public final class LeftoverRunsTest
 {
-	/**
-	 * The recorded start time of every owner process.
-	 */
-	private static final Instant OWNER_START = Instant.parse("2026-10-01T11:00:00Z");
 	/**
 	 * The recorded start time of every harness process.
 	 */
@@ -36,7 +35,8 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Returns run manifests and the processes that each identifies.
+	 * Returns run manifests and the processes that each identifies. The owner process of each manifest recorded as
+	 * running no longer exists, because no process started at the recorded time.
 	 *
 	 * @return the cases
 	 */
@@ -48,24 +48,38 @@ public final class LeftoverRunsTest
 				{"""
 					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
 					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
-					List.of(new RecordedProcess(4001, OWNER_START), new RecordedProcess(4002, HARNESS_START))},
+					List.of(new RecordedProcess(4002, HARNESS_START))},
 				{"""
 					{"state": "running", "ownerPid": "4001", "ownerStartedAt": "2026-10-01T11:00:00Z",
+					"harnessPid": "4002", "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					List.of(new RecordedProcess(4002, HARNESS_START))},
+				{"""
+					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
 					"harnessPid": null, "harnessStartedAt": null}""",
-					List.of(new RecordedProcess(4001, OWNER_START))},
+					List.of()},
+				{"""
+					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
+					"harnessPid": 4002}""",
+					List.of()},
 				{"""
 					{"state": "running", "ownerPid": 4001,
 					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
-					List.of(new RecordedProcess(4002, HARNESS_START))},
+					List.of()},
 				{"""
 					{"state": "running", "ownerPid": "41a", "ownerStartedAt": "2026-10-01T11:00:00Z",
+					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					List.of()},
+				{"""
+					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "yesterday",
+					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					List.of()},
+				{"""
+					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
 					"harnessPid": -4, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "yesterday"}""",
-					List.of()},
-				{"""
-					{"state": "completed", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z"}""",
+					{"state": "completed", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
+					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"{\"state\": \"running\", \"ownerPid\": 4001", List.of()},
 				{"[]", List.of()}
@@ -73,8 +87,9 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Verifies that a manifest identifies a process only while its run is marked running and both the process's
-	 * identifier and its start time are recorded and well formed.
+	 * Verifies that a manifest identifies a harness process only while its run is marked running, its owner process
+	 * is identified by an identifier and a start time and no longer exists, and the harness process is identified
+	 * the same way.
 	 *
 	 * @param manifest the manifest's content
 	 * @param expected the processes that the manifest identifies
@@ -87,26 +102,112 @@ public final class LeftoverRunsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			Path run = runRoot.resolve("claude").resolve("run-1");
-			Files.createDirectories(run);
-			Files.writeString(run.resolve("run.json"), manifest);
-			requireThat(new LeftoverRuns(runRoot, JsonMapper.builder().build()).find(), "find").isEqualTo(expected);
+			writeManifest(runRoot.resolve("claude").resolve("run-1"), manifest);
+			requireThat(finder(runRoot).find(), "find").isEqualTo(expected);
 		}
 	}
 
 	/**
-	 * Verifies that a campaign without a run root has no leftover runs.
+	 * Verifies that runs are found in every run root that the session port declares.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void missingRunRoot() throws IOException
+	public void findsRunsInEveryRunRoot() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs")).resolve("missing");
-			requireThat(new LeftoverRuns(runRoot, JsonMapper.builder().build()).find(), "find").isEmpty();
+			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
+			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held-out"));
+			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(4001, 4002));
+			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
+			requireThat(finder(runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+				List.of(new RecordedProcess(4002, HARNESS_START), new RecordedProcess(5002, HARNESS_START)));
 		}
+	}
+
+	/**
+	 * Verifies that a run whose owner process is alive, which belongs to a running driver, is left alone while a run
+	 * of a dead owner beside it is found.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void leavesRunWithLiveOwner() throws IOException
+	{
+		// Requirement: R-E11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
+			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held-out"));
+			ProcessHandle current = ProcessHandle.current();
+			Instant started = current.info().startInstant().orElseThrow();
+			String live = """
+				{"state": "running", "ownerPid": %d, "ownerStartedAt": "%s",
+				"harnessPid": 6002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""".formatted(current.pid(), started);
+			writeManifest(runRoot.resolve("claude").resolve("run-1"), live);
+			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), live);
+			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-3"), running(5001, 5002));
+			requireThat(finder(runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+				List.of(new RecordedProcess(5002, HARNESS_START)));
+		}
+	}
+
+	/**
+	 * Verifies that a session port without run roots, or whose run roots do not exist yet, has no leftover runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void missingRunRoots() throws IOException
+	{
+		// Requirement: R-E11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("runs"));
+			requireThat(finder().find(), "withoutRoots").isEmpty();
+			requireThat(finder(directory.resolve("missing"), directory.resolve("missing-held-out")).find(),
+				"withMissingRoots").isEmpty();
+		}
+	}
+
+	/**
+	 * Creates a finder over the run roots of a session port.
+	 *
+	 * @param runRoots the run roots that the port declares
+	 * @return the finder
+	 */
+	private static LeftoverRuns finder(Path... runRoots)
+	{
+		return new LeftoverRuns(new FakeSessionPort(HostLogin.UNKNOWN, Optional.empty(), List.of(runRoots)),
+			JsonMapper.builder().build());
+	}
+
+	/**
+	 * Returns the manifest of a running run whose owner no longer exists.
+	 *
+	 * @param ownerPid the owner's identifier
+	 * @param harnessPid the harness process's identifier
+	 * @return the manifest
+	 */
+	private static String running(long ownerPid, long harnessPid)
+	{
+		return """
+			{"state": "running", "ownerPid": %d, "ownerStartedAt": "2026-10-01T11:00:00Z",
+			"harnessPid": %d, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""".formatted(ownerPid, harnessPid);
+	}
+
+	/**
+	 * Writes a run manifest.
+	 *
+	 * @param run the run's directory
+	 * @param manifest the manifest's content
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void writeManifest(Path run, String manifest) throws IOException
+	{
+		Files.createDirectories(run);
+		Files.writeString(run.resolve("run.json"), manifest);
 	}
 }

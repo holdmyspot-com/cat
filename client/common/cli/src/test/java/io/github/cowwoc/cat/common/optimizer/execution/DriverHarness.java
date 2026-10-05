@@ -25,6 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.port.FakeHostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.port.FakeWorkspacePort;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -47,6 +48,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Function;
@@ -103,7 +105,7 @@ public final class DriverHarness
 	private final ManualClock clock = new ManualClock(START);
 	private final InMemoryCampaignStore store = new InMemoryCampaignStore();
 	private final CrashingStore crashingStore = new CrashingStore(store);
-	private final FakeSessionPort sessions = new FakeSessionPort();
+	private final FakeSessionPort sessions;
 	private final FakeWorkspacePort fakeWorkspace;
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
 	private final InMemoryOverlays overlays = new InMemoryOverlays();
@@ -168,6 +170,8 @@ public final class DriverHarness
 	public DriverHarness(Path directory, Campaign campaign, FileInventory fork, Path project) throws IOException
 	{
 		this.directory = directory;
+		this.sessions = new FakeSessionPort(HostLogin.UNKNOWN, Optional.empty(),
+			List.of(directory.resolve("runs"), directory.resolve("runs-held-out")));
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));
@@ -211,8 +215,9 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, triage, author, values, deliverer, calibrator, terminator, new LeftoverRuns(directory.resolve("runs"),
-			JsonMapper.builder().build()), new Authority(Set.of(PROMPT), Set.of(), Set.of()), Set.of(PROMPT),
+			judge, triage, author, values, deliverer, calibrator, terminator,
+			new LeftoverRuns(sessions, JsonMapper.builder().build()),
+			new Authority(Set.of(PROMPT), Set.of(), Set.of()), Set.of(PROMPT),
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
 	}
 
