@@ -608,6 +608,63 @@ public final class TransitionsTest
 	}
 
 	/**
+	 * Verifies that one retry resumes the campaign for every logical trial that reached the infrastructure-failure
+	 * limit, and leaves the other pending decisions in their order.
+	 */
+	@Test
+	public void retryResumesEveryTrialFailureOfAnOutage()
+	{
+		// Requirement: R-M5
+		Campaign campaign = new Builder().confirmed().build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey first = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey second = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey third = TransitionSteps.last(campaign);
+		campaign = failToLimit(campaign, first);
+		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
+		PendingDecision measurement = campaign.pendingDecisions().get(1);
+		requireThat(measurement, "measurement").isInstanceOf(PendingDecision.MeasurementChanged.class);
+		campaign = failToLimit(campaign, second);
+		campaign = failToLimit(campaign, third);
+		requireThat(campaign.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(
+			new PendingDecision.TrialFailures(first), measurement, new PendingDecision.TrialFailures(second),
+			new PendingDecision.TrialFailures(third)));
+		List<LogicalTrial> failed = campaign.trials();
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		requireThat(campaign.pendingDecisions(), "retried").isEqualTo(List.of(measurement));
+		requireThat(campaign.trials().size(), "trials.size()").isEqualTo(failed.size());
+		for (int i = 0; i < failed.size(); ++i)
+		{
+			LogicalTrial trial = campaign.trials().get(i);
+			requireThat(trial.infrastructureFailures(), "reset[" + i + "]").isEqualTo(0);
+			requireThat(trial.infrastructureAttempts(), "kept[" + i + "]").
+				isEqualTo(failed.get(i).infrastructureAttempts());
+		}
+	}
+
+	/**
+	 * Runs and fails a logical trial with infrastructure failures until it reaches the limit.
+	 *
+	 * @param campaign the state
+	 * @param key the trial
+	 * @return the state after the failures
+	 */
+	private static Campaign failToLimit(Campaign campaign, TrialKey key)
+	{
+		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT; ++failure)
+		{
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+				"provider error", NOW, null));
+		}
+		return campaign;
+	}
+
+	/**
 	 * Verifies that an assignment records the allocation decision that the scheduler planned it with.
 	 */
 	@Test

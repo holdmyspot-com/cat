@@ -4,7 +4,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
@@ -137,29 +139,38 @@ final class UserChoices
 	}
 
 	/**
-	 * Answers the pending retry decision, clearing a failing trial's consecutive infrastructure-failure count when
-	 * the decision names that trial.
+	 * Answers the pending retry decision. When the decision is a trial failure, the answer resumes the whole
+	 * outage: it clears the consecutive infrastructure-failure count of every trial that any pending trial-failure
+	 * decision names, and resolves all of those decisions. Other pending decisions remain in their order.
 	 *
 	 * @param draft the state
 	 * @param pending the pending decision
 	 */
 	private static void retry(Draft draft, PendingDecision pending)
 	{
-		if (pending instanceof PendingDecision.TrialFailures(TrialKey key))
+		if (!(pending instanceof PendingDecision.TrialFailures))
 		{
-			for (int i = 0; i < draft.trials.size(); ++i)
+			draft.resolve();
+			return;
+		}
+		Set<TrialKey> failing = new HashSet<>();
+		for (PendingDecision decision : draft.pendingDecisions)
+		{
+			if (decision instanceof PendingDecision.TrialFailures(TrialKey key))
+				failing.add(key);
+		}
+		for (int i = 0; i < draft.trials.size(); ++i)
+		{
+			LogicalTrial trial = draft.trials.get(i);
+			if (failing.contains(trial.key()))
 			{
-				LogicalTrial trial = draft.trials.get(i);
-				if (trial.key().equals(key))
-				{
-					draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-						trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedRequirements(),
-						trial.triage(), 0,
-						trial.infrastructureAttempts(), trial.observations(), trial.responses()));
-				}
+				draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
+					trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedRequirements(),
+					trial.triage(), 0,
+					trial.infrastructureAttempts(), trial.observations(), trial.responses()));
 			}
 		}
-		draft.resolve();
+		draft.pendingDecisions.removeIf(decision -> decision instanceof PendingDecision.TrialFailures);
 	}
 
 	/**
