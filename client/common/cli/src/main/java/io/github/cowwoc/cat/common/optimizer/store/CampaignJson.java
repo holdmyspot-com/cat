@@ -2215,7 +2215,7 @@ final class CampaignJson
 	 * @return the level
 	 * @throws IllegalArgumentException if the value is not a valid threshold
 	 */
-	static SignificanceLevel level(JsonNode node, String name)
+	private static SignificanceLevel level(JsonNode node, String name)
 	{
 		String value = text(node, name);
 		try

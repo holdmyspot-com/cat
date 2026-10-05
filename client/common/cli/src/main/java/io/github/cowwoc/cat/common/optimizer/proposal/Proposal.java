@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 
@@ -64,6 +66,7 @@ public final class Proposal
 	private final int ceiling;
 	private final Map<CertificationScope, Campaign> previews;
 	private final List<String> caps;
+	private final CertificationStatus incumbent;
 
 	/**
 	 * Creates a proposal.
@@ -77,9 +80,11 @@ public final class Proposal
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
 	 *   may choose, in choice order; empty while an inventory model is unranked
 	 * @param caps the level and cap of each of the first attempts, as text
+	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 */
 	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
-		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps)
+		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
+		CertificationStatus incumbent)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -89,6 +94,7 @@ public final class Proposal
 		this.ceiling = ceiling;
 		this.previews = previews;
 		this.caps = List.copyOf(caps);
+		this.incumbent = incumbent;
 	}
 
 	/**
@@ -108,6 +114,29 @@ public final class Proposal
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, HostLogin login,
 		CapCalibrator calibrator, ProposalSchema schema)
 	{
+		return of(derived, campaign, links, login, calibrator, schema, Optional.empty());
+	}
+
+	/**
+	 * Completes a deriver's proposal for presentation, showing the target's delivered certification.
+	 *
+	 * @param derived the deriver's proposal
+	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
+	 *   requested
+	 * @param links the symbolic links of the prompt system and the staged fixtures
+	 * @param login how the host's harness account is billed
+	 * @param calibrator calibrates the caps of the first certification attempts
+	 * @param schema the proposal schema, which identifies the contract
+	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
+	 *   proposes, or empty if the target has none
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalStateException if the campaign cannot accept a confirmation
+	 */
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, HostLogin login,
+		CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent)
+	{
+		requireThat(incumbent, "incumbent").isNotNull();
 		requireThat(derived, "derived").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(links, "links").isNotNull();
@@ -150,7 +179,8 @@ public final class Proposal
 			}
 			caps.add("Attempt " + index + ": α = " + Markdown.level(level) + ", cap " + cap);
 		}
-		return new Proposal(derived, contract, schema, links, login, campaign.ceiling(), previews, caps);
+		return new Proposal(derived, contract, schema, links, login, campaign.ceiling(), previews, caps,
+			incumbent.orElse(null));
 	}
 
 	/**
@@ -303,7 +333,7 @@ public final class Proposal
 	 */
 	public String render()
 	{
-		return new Markdown(derived, contract, links, login, ceiling, previews, caps).render();
+		return new Markdown(derived, contract, links, login, ceiling, previews, caps, incumbent).render();
 	}
 
 	/**

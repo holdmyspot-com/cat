@@ -60,13 +60,17 @@ public interface Core
 
 	/**
 	 * Reports a campaign without changing it. Either harness may report any campaign.
+	 * <p>
+	 * {@code subject} names a campaign by its identifier or by its target. A target resolves as {@code start}
+	 * resolves it. A target without a campaign reports its certification record and whether the record still applies.
 	 *
-	 * @param campaign the campaign's identifier
+	 * @param subject the campaign's identifier, or a target
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign does not exist
-	 * @throws IOException if the store cannot be read
+	 * @throws CommandRefusedException if no campaign has the identifier and the target has neither a campaign nor a
+	 *   certification record, or if the target lies outside the project
+	 * @throws IOException if the store, the record or the prompt files cannot be read
 	 */
-	CommandResult status(String campaign) throws CommandRefusedException, IOException;
+	CommandResult status(String subject) throws CommandRefusedException, IOException;
 
 	/**
 	 * Confirms the campaign's current proposal with the certification scope that the user chose.

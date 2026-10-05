@@ -98,7 +98,7 @@ final class SliceReports
 			status = Applicability.Status.HISTORICAL;
 		}
 		return new Applicability(status, content.promptContentChanged() || measurement.promptContentChanged(),
-			measurement.changed(), measurement.parameters());
+			measurement.changed(), measurement.parameters(), measurement.unchecked());
 	}
 
 	/**

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Decides whether to create or resume a campaign for a project root and prompt target. At most one active or
@@ -115,5 +116,38 @@ public final class Registry
 		if (header.harness() == harness)
 			return new Opening.Resume(header);
 		return new Opening.Refuse(header);
+	}
+
+	/**
+	 * Returns the campaign that reports a target: its resumable campaign, or else its campaign with the greatest
+	 * identifier, which is the latest to start.
+	 *
+	 * @param headers every campaign's header
+	 * @param root the canonical project root
+	 * @param target the canonical target path
+	 * @return the campaign, or empty if the target has none
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Optional<Header> ofTarget(List<Header> headers, Path root, Path target)
+	{
+		requireThat(headers, "headers").isNotNull();
+		requireThat(root, "root").isNotNull();
+		requireThat(target, "target").isNotNull();
+		Path normalizedRoot = root.normalize();
+		Path normalizedTarget = target.normalize();
+		Header latest = null;
+		for (Header header : headers)
+		{
+			if (!header.root().normalize().equals(normalizedRoot) ||
+				!header.target().normalize().equals(normalizedTarget))
+			{
+				continue;
+			}
+			if (header.lifecycle().isResumable())
+				return Optional.of(header);
+			if (latest == null || header.id().compareTo(latest.id()) > 0)
+				latest = header;
+		}
+		return Optional.ofNullable(latest);
 	}
 }

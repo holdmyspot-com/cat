@@ -1024,6 +1024,30 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that a condition that an attempt recorded but the campaign's current conditions lack is reported as
+	 * unchecked, without making the attempt historical, in the attempt's JSON and its summary line.
+	 */
+	@Test
+	public void uncheckedConditionIsReportedForAttempt()
+	{
+		// Requirement: R-M6
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(Builder.confirmedIdentity("model-a").values());
+		values.put(MeasurementCondition.TOOL_OUTPUT_LIMIT, "4096");
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
+			identity(new MeasurementIdentity(values)).cell("formatting", 120, 0).cell("safety", 120, 0).
+			outcome(Outcome.CERTIFIED).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		AttemptSummary summary = report.attempts().getFirst();
+		requireThat(summary.historical(), "historical").isFalse();
+		requireThat(summary.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.TOOL_OUTPUT_LIMIT));
+		JsonNode attempt = report.toJson(JsonMapper.builder().build()).path("attempts").get(0);
+		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("TOOL_OUTPUT_LIMIT");
+		requireThat(report.summary(), "summary").contains("Attempt 1: certified\n" +
+			"  Not checked until a session observes it: trial tool-output token limit.");
+	}
+
+	/**
 	 * Verifies that an attempt certified under a lower required pass rate than the current one is reported as
 	 * historical and names the parameter.
 	 */

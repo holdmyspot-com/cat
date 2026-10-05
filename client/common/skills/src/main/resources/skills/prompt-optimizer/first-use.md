@@ -66,4 +66,5 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    them.
 
 To stop a campaign that the user asks to stop, run `cancel <campaign>`. To show a campaign's state without advancing
-it, run `status <campaign>`.
+it, run `status <campaign>` or `status <target>`. For a target that has no campaign, `status <target>` reports the
+target's delivered certification instead; show its `summary`.

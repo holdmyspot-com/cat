@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -34,6 +35,7 @@ import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests the certification record that a certified delivery keeps in the project, and its file.
@@ -116,8 +118,60 @@ public final class CertificationRecordTest
 		requireThat(text, "text").doesNotContain(FAILING_TEXT);
 		JsonNode root = JSON.readTree(bytes);
 		requireThat(new HashSet<>(root.propertyNames()), "fields").isEqualTo(Set.of("format_version", "target",
-			"certification_index", "scope", "required_pass_rate", "level", "cells", "prompt_files", "identity"));
+			"certification_index", "scope", "required_pass_rate", "alpha", "cells", "prompt_files", "identity"));
 		requireThat(root.get("scope").asString(), "scope").isEqualTo("weakest-cell");
+	}
+
+	/**
+	 * The record's file writes the certification level as {@code alpha}, the decimal error probability
+	 * {@code 1 / threshold}: exact when it terminates, otherwise rounded up to ten significant digits so that the
+	 * written claim is never stronger than the certified one. Each value reads back as the same level, and a value that
+	 * is not the reciprocal of an integer is refused.
+	 *
+	 * @throws IOException if a record file cannot be written or read
+	 */
+	@Test
+	public void alphaIsTheLevelAsADecimal() throws IOException
+	{
+		// Requirement: R-M6
+		CertificationRecordJson codec = new CertificationRecordJson(JSON);
+		Map<Integer, String> expected = Map.of(1, "0.02", 2, "0.006666666667", 3, "0.003333333334");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-record-"));
+			for (Map.Entry<Integer, String> entry : expected.entrySet())
+			{
+				int index = entry.getKey();
+				CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), index,
+					CertificationScope.LATEST_VERSIONS, CertificationParameters.current(index), List.of(),
+					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
+				byte[] bytes = codec.write(record);
+				requireThat(JSON.readTree(bytes).get("alpha").asString(), "alpha").withContext(index, "index").
+					isEqualTo(entry.getValue());
+				Path file = directory.resolve("CLAUDE-" + index + ".json");
+				Files.write(file, bytes);
+				requireThat(codec.read(file), "read").withContext(index, "index").isEqualTo(record);
+			}
+
+			CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+				CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1), List.of(), Map.of(),
+				Builder.OBSERVED);
+			ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(record));
+			edited.put("alpha", "0.03");
+			Path file = directory.resolve("edited.json");
+			Files.write(file, JSON.writeValueAsBytes(edited));
+			IOException failure = null;
+			try
+			{
+				codec.read(file);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains("alpha");
+		}
 	}
 
 	/**

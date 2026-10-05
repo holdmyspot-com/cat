@@ -116,12 +116,13 @@ public final class ApplicabilityTest
 	}
 
 	/**
-	 * Verifies that a condition missing from the current observation does not make a result historical.
+	 * Verifies that a condition missing from the current observation does not make a result historical, and is named
+	 * as unchecked.
 	 */
 	@Test
 	public void missingConditionIsNotAChange()
 	{
-		// Requirement: R-M2
+		// Requirement: R-M2, R-M6
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(Builder.OBSERVED.values());
 		values.remove(MeasurementCondition.HOST_TOOLS);
@@ -129,6 +130,8 @@ public final class ApplicabilityTest
 		Applicability applicability = Applicability.of(snapshot, Builder.OBSERVED, snapshot,
 			new MeasurementIdentity(values));
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(applicability.changed(), "changed").isEmpty();
+		requireThat(applicability.unchecked(), "unchecked").containsExactly(List.of(MeasurementCondition.HOST_TOOLS));
 	}
 
 	/**

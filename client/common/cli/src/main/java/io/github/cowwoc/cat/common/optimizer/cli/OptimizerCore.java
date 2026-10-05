@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -53,9 +54,11 @@ import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
+import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
@@ -90,7 +93,8 @@ import java.util.stream.Stream;
  * <p>
  * Every command first completes the removal of any campaign's files that an earlier command started. {@code run}
  * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
- * user retained the incumbent.
+ * user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its refusal, and
+ * the command continues; the next command retries the removal.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe. One launcher process runs one command.
  */
@@ -181,7 +185,22 @@ public final class OptimizerCore implements Core
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
-		cleanup().resume();
+		return withCleanup(_ -> startBody(target, ceiling));
+	}
+
+	/**
+	 * Starts or resumes the campaign of a target.
+	 *
+	 * @param target the target, relative to the working directory
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign
+	 * @return the result
+	 * @throws CommandRefusedException if the command is refused
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	private CommandResult startBody(Path target, int ceiling)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
 		Path root = scope.projectRoot();
 		Optional<String> exposure = scope.sessions().findHeldOutExposure(root);
 		if (exposure.isPresent())
@@ -190,8 +209,7 @@ public final class OptimizerCore implements Core
 		if (!Files.exists(absolute))
 			throw new CommandRefusedException("The target does not exist: " + absolute);
 		absolute = absolute.toRealPath();
-		if (!absolute.startsWith(root) || absolute.equals(root))
-			throw new CommandRefusedException("The target must be inside the project " + root + ": " + absolute);
+		requireInsideProject(root, absolute);
 		CampaignStore store = scope.store();
 		Registry.Opening opening = Registry.open(store.listHeaders(), root, absolute,
 			scope.harness());
@@ -201,6 +219,86 @@ public final class OptimizerCore implements Core
 			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
 			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling);
 		};
+	}
+
+	/**
+	 * Refuses a target that lies outside the project or is the project itself.
+	 *
+	 * @param root the project root
+	 * @param target the absolute target
+	 * @throws CommandRefusedException if the target does not lie inside the project
+	 */
+	private static void requireInsideProject(Path root, Path target) throws CommandRefusedException
+	{
+		if (!target.startsWith(root) || target.equals(root))
+			throw new CommandRefusedException("The target must be inside the project " + root + ": " + target);
+	}
+
+	/**
+	 * Runs a command's body after completing the removals that earlier commands started, and adds a warning for each
+	 * removal that fails to the body's result or refusal.
+	 *
+	 * @param <E> the exception that the body throws besides refusals and I/O failures
+	 * @param body the command's body
+	 * @return the body's result, with the notices that the removals and the body added
+	 * @throws CommandRefusedException if the body refuses the command; its message ends with the warnings
+	 * @throws IOException if the campaigns cannot be listed or the body fails
+	 * @throws E if the body throws it
+	 */
+	private <E extends Exception> CommandResult withCleanup(Body<E> body) throws CommandRefusedException, IOException, E
+	{
+		List<String> notices = new ArrayList<>(cleanup().resume());
+		CommandResult result;
+		try
+		{
+			result = body.run(notices);
+		}
+		catch (CommandRefusedException e)
+		{
+			if (notices.isEmpty())
+				throw e;
+			throw new CommandRefusedException(e.getMessage() + "\n" + String.join("\n", notices), e);
+		}
+		return result.withNotices(notices);
+	}
+
+	/**
+	 * The body of a command, which runs after the removals that earlier commands started.
+	 *
+	 * @param <E> the exception that the body throws besides refusals and I/O failures
+	 */
+	@FunctionalInterface
+	private interface Body<E extends Exception>
+	{
+		/**
+		 * Runs the body.
+		 *
+		 * @param notices receives the lines that follow the result's summary
+		 * @return the result
+		 * @throws CommandRefusedException if the command is refused
+		 * @throws IOException if the command fails
+		 * @throws E if the command throws it
+		 */
+		CommandResult run(List<String> notices) throws CommandRefusedException, IOException, E;
+	}
+
+	/**
+	 * Adds the notice that describes what ending a campaign did to its files.
+	 *
+	 * @param removal what the ending did
+	 * @param notices receives the notice
+	 */
+	private static void noticeOf(Cleanup.Removal removal, List<String> notices)
+	{
+		switch (removal)
+		{
+			case Cleanup.Removal.Removed _ -> notices.add("Removed the campaign's files from .cat/work/.");
+			case Cleanup.Removal.Failed failed -> notices.add(failed.warning());
+			case Cleanup.Removal.Kept _, Cleanup.Removal.Deferred _ ->
+			{
+				// The files stay, or another process holds the lock and a later command removes them silently
+			}
+		}
 	}
 
 	/**
@@ -273,7 +371,7 @@ public final class OptimizerCore implements Core
 		Overlay incumbent = Overlay.of(inventory);
 		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
 		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE);
-		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory));
+		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 		store.replaceSnapshot(campaign);
 		CommandResult result = derive(root, store, campaign, fork, null, null);
 		if (!fork.excludeAdded())
@@ -287,22 +385,89 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
-		Cleanup cleanup = cleanup();
-		cleanup.resume();
-		Path root = scope.projectRoot();
-		Campaign loaded = require(scope.store(), campaign, true);
-		SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
-		Optional<DeliveryResult> delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result);
-		cleanup.end(require(scope.store(), campaign, true), delivery);
-		return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
+		return withCleanup(notices ->
+		{
+			Path root = scope.projectRoot();
+			Campaign loaded = require(scope.store(), campaign, true);
+			SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
+			Optional<DeliveryResult> delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result);
+			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
+			return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
+		});
 	}
 
 	@Override
-	public CommandResult status(String campaign) throws CommandRefusedException, IOException
+	public CommandResult status(String subject) throws CommandRefusedException, IOException
 	{
-		cleanup().resume();
+		requireThat(subject, "subject").isNotNull();
+		return withCleanup(_ -> statusBody(subject));
+	}
+
+	/**
+	 * Reports a campaign by its identifier or its target, or the certification record of a target without a campaign.
+	 *
+	 * @param subject the campaign's identifier, or a target relative to the working directory
+	 * @return the result
+	 * @throws CommandRefusedException if the subject names neither a campaign nor a certification record, or names a
+	 *   target outside the project
+	 * @throws IOException if the store, the record or a prompt file cannot be read
+	 */
+	private CommandResult statusBody(String subject) throws CommandRefusedException, IOException
+	{
 		Path root = scope.projectRoot();
-		return report(root, require(scope.store(), campaign, false), null, null);
+		CampaignStore store = scope.store();
+		boolean isId = Commands.isCampaignId(subject);
+		if (isId)
+		{
+			Optional<Campaign> campaign = store.load(subject);
+			if (campaign.isPresent())
+				return report(root, campaign.get(), null, null);
+		}
+
+		Path absolute = scope.directory().toRealPath().resolve(subject).normalize();
+		// A target that no longer exists may still have a campaign or a record
+		if (Files.exists(absolute))
+			absolute = absolute.toRealPath();
+		requireInsideProject(root, absolute);
+		Optional<Header> header = Registry.ofTarget(store.listHeaders(), root, absolute);
+		if (header.isPresent())
+			return report(root, require(store, header.get().id(), false), null, null);
+
+		Path relative = root.relativize(absolute);
+		Optional<CertificationRecord> record = record(root, relative);
+		if (record.isEmpty())
+		{
+			String absent = "no campaign or certification record exists for " + relative + ".";
+			if (isId)
+				throw new CommandRefusedException("No campaign has the identifier " + subject + ", and " + absent);
+			throw new CommandRefusedException("N" + absent.substring(1));
+		}
+		Map<Path, Sha256> promptFiles = new TreeMap<>();
+		for (Path path : record.get().promptFiles().keySet())
+		{
+			Optional<FileEntry> entry = InventoryScanner.entry(root, path);
+			if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
+				promptFiles.put(path, file.contentHash());
+		}
+		MeasurementIdentity known = environment(path -> InventoryScanner.entry(root, path));
+		return CommandResult.of(new CertificationStatus(record.get(),
+			record.get().applicability(promptFiles, known)));
+	}
+
+	/**
+	 * Reads the certification record of a target.
+	 *
+	 * @param root the project root
+	 * @param target the target, relative to the project
+	 * @return the record, or empty if the target has none
+	 * @throws IOException if the record exists but cannot be read
+	 */
+	private Optional<CertificationRecord> record(Path root, Path target) throws IOException
+	{
+		Path file = root.resolve(CertificationRecord.location(target));
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		return Optional.of(new CertificationRecordJson(scope.json()).read(file));
 	}
 
 	@Override
@@ -314,18 +479,20 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("Confirmation needs the certification scope that you choose: " +
 				CertificationScope.choices() + ".");
 		}
-		cleanup().resume();
-		Path root = scope.projectRoot();
-		CampaignStore store = scope.store();
-		Campaign loaded = require(store, campaign, true);
-		ForkView fork = openFork(root, loaded);
-		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
-			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
-		Proposal proposal = proposal(root, loaded, fork, derived);
-		if (!proposal.isConfirmable(certificationScope))
-			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-		loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
-		return apply(root, loaded, proposal.confirmation(scope.random().nextLong(), certificationScope));
+		return withCleanup(_ ->
+		{
+			Path root = scope.projectRoot();
+			CampaignStore store = scope.store();
+			Campaign loaded = require(store, campaign, true);
+			ForkView fork = openFork(root, loaded);
+			DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
+				"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
+			Proposal proposal = proposal(root, loaded, fork, derived);
+			if (!proposal.isConfirmable(certificationScope))
+				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
+			loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
+			return apply(root, loaded, proposal.confirmation(scope.random().nextLong(), certificationScope));
+		});
 	}
 
 	/**
@@ -432,7 +599,22 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
-		cleanup().resume();
+		return withCleanup(_ -> reviseBody(campaign, feedback));
+	}
+
+	/**
+	 * Derives a revised proposal from the user's feedback.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param feedback the user's feedback
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign cannot be revised
+	 * @throws IOException if the store, the workspace or the session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for the session
+	 */
+	private CommandResult reviseBody(String campaign, String feedback)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
@@ -451,22 +633,38 @@ public final class OptimizerCore implements Core
 	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
 		throws CommandRefusedException, IOException
 	{
-		Cleanup cleanup = cleanup();
-		cleanup.resume();
-		Path root = scope.projectRoot();
-		Campaign loaded = require(scope.store(), campaign, true);
-		CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint,
-			target)));
-		// Retaining the incumbent ends the campaign without a delivery
-		cleanup.end(require(scope.store(), campaign, true), Optional.empty());
-		return result;
+		return withCleanup(notices ->
+		{
+			Path root = scope.projectRoot();
+			Campaign loaded = require(scope.store(), campaign, true);
+			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint,
+				target)));
+			// Retaining the incumbent ends the campaign without a delivery
+			noticeOf(cleanup().end(require(scope.store(), campaign, true), Optional.empty()), notices);
+			return result;
+		});
 	}
 
 	@Override
 	public CommandResult resolveConflict(String campaign, int resolution)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
-		cleanup().resume();
+		return withCleanup(_ -> resolveConflictBody(campaign, resolution));
+	}
+
+	/**
+	 * Records a resolution of the current conflict, revising the proposal after the final conflict's choice.
+	 *
+	 * @param campaign the campaign's identifier
+	 * @param resolution the 1-based position among the current conflict's resolutions
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign offers no such resolution now
+	 * @throws IOException if the store, the workspace or the session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for the session
+	 */
+	private CommandResult resolveConflictBody(String campaign, int resolution)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
 		if (loaded.lifecycle() != Lifecycle.ACTIVE ||
@@ -485,17 +683,19 @@ public final class OptimizerCore implements Core
 				resolution + ": " + e.getMessage(), e);
 		}
 		if (chosen.size() == conflicts.conflicts().size())
-			return revise(campaign, conflicts.feedback(resolution));
+			return reviseBody(campaign, conflicts.feedback(resolution));
 		return apply(root, loaded, List.of(new CampaignEvent.ResolveConflict(resolution)));
 	}
 
 	@Override
 	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 	{
-		cleanup().resume();
-		Path root = scope.projectRoot();
-		Campaign loaded = require(scope.store(), campaign, true);
-		return apply(root, loaded, List.of(new CampaignEvent.Cancel()));
+		return withCleanup(_ ->
+		{
+			Path root = scope.projectRoot();
+			Campaign loaded = require(scope.store(), campaign, true);
+			return apply(root, loaded, List.of(new CampaignEvent.Cancel()));
+		});
 	}
 
 	/**
@@ -633,13 +833,29 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
 	 * @return the proposal
-	 * @throws IOException if the host's login cannot be read
+	 * @throws IOException if the host's login or the target's certification record cannot be read
 	 */
 	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
 	{
-		LinkReport links = LinkReport.of(fork.inventory(), authority(root, campaign));
+		FileInventory inventory = fork.inventory();
+		LinkReport links = LinkReport.of(inventory, authority(root, campaign));
+		Optional<CertificationStatus> incumbent = Optional.empty();
+		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
+		if (record.isPresent())
+		{
+			// Compare the record with the fork's files and the conditions that the campaign knows now
+			Map<Path, Sha256> promptFiles = new TreeMap<>();
+			for (Path path : record.get().promptFiles().keySet())
+			{
+				Optional<FileEntry> entry = inventory.entry(path);
+				if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
+					promptFiles.put(path, file.contentHash());
+			}
+			incumbent = Optional.of(new CertificationStatus(record.get(),
+				record.get().applicability(promptFiles, campaign.identity())));
+		}
 		return Proposal.of(derived, campaign, links, scope.sessions().hostLogin(), scope.calibrator(),
-			schema);
+			schema, incumbent);
 	}
 
 	/**
@@ -791,7 +1007,7 @@ public final class OptimizerCore implements Core
 			new FileCandidateOverlays(directory, inventory, scope.json()), judge, triage, author, values,
 			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
-			promptSources, environment(inventory), lockFile(root, campaign.header().id()), scope.random(),
+			promptSources, environment(inventory::entry), lockFile(root, campaign.header().id()), scope.random(),
 			scope.sliceSettings());
 	}
 
@@ -852,10 +1068,11 @@ public final class OptimizerCore implements Core
 	 * Returns the measurement conditions that the launcher observes before any session runs. The sessions observe
 	 * the model, the reasoning configuration and the prompt sources.
 	 *
-	 * @param inventory the files recorded at the fork
+	 * @param files reads the loader configuration files
 	 * @return the conditions
+	 * @throws IOException if a loader configuration file cannot be read
 	 */
-	private MeasurementIdentity environment(FileInventory inventory)
+	private MeasurementIdentity environment(Entries files) throws IOException
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, scope.harness().commandName());
@@ -865,23 +1082,40 @@ public final class OptimizerCore implements Core
 		values.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
-		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(inventory));
+		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(files));
 		return new MeasurementIdentity(values);
 	}
 
 	/**
-	 * Returns the identity of the loader configuration files in the fork.
-	 *
-	 * @param inventory the files recorded at the fork
-	 * @return a digest of the files' paths and contents
+	 * Reads the entry of a file, by its path relative to the project.
 	 */
-	private String loaderConfiguration(FileInventory inventory)
+	@FunctionalInterface
+	private interface Entries
+	{
+		/**
+		 * Returns the entry of a file.
+		 *
+		 * @param path the file's path relative to the project
+		 * @return the entry, or empty if the file does not exist
+		 * @throws IOException if the file cannot be read
+		 */
+		Optional<FileEntry> entry(Path path) throws IOException;
+	}
+
+	/**
+	 * Returns the identity of the loader configuration files.
+	 *
+	 * @param files reads the files
+	 * @return a digest of the files' paths and contents
+	 * @throws IOException if a file cannot be read
+	 */
+	private String loaderConfiguration(Entries files) throws IOException
 	{
 		StringBuilder lines = new StringBuilder();
 		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
 		{
 			lines.append(path).append('=');
-			Optional<FileEntry> entry = inventory.entry(path);
+			Optional<FileEntry> entry = files.entry(path);
 			if (entry.isEmpty())
 				lines.append("absent");
 			else

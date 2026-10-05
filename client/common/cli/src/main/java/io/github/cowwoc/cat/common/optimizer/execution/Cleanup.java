@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -34,10 +35,13 @@ import tools.jackson.databind.json.JsonMapper;
  * lies below the campaign directory; a run without a readable manifest identifies no campaign and is kept. Every
  * other ending keeps the campaign's files.
  * <p>
- * Before the first step, the campaign directory records that removal started. A removal that a crash interrupts is
- * completed by {@link #resume()}, which every command runs first. Each step does nothing for files that are already
- * gone, so a step may run again. A run's manifest is deleted after the rest of the run, so an interrupted deletion
- * leaves a run that is still attributed to the campaign.
+ * Before the first step, the campaign directory records that removal started. A removal that a crash interrupts or
+ * a step fails is completed by {@link #resume()}, which every command runs first. Each step does nothing for files
+ * that are already gone, so a step may run again. A run's manifest is deleted after the rest of the run, so an
+ * interrupted deletion leaves a run that is still attributed to the campaign.
+ * <p>
+ * A removal that fails does not fail the command that runs it: the command reports a warning that names the path and
+ * the cause, and continues.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe. Removal takes the campaign's write lock; a campaign whose lock
  * another process holds is removed by a later command.
@@ -118,45 +122,122 @@ public final class Cleanup
 	 *
 	 * @param campaign the campaign, as stored after the command that may have ended it
 	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
-	 * @return {@code true} if the ending removes the campaign's files: they are removed, or, if another process holds
-	 *   the campaign's lock, the next command removes them
+	 * @return what the ending did to the campaign's files; a removal that fails after it is recorded is retried by the
+	 *   next command
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the removal cannot be recorded or a step fails; the next command retries it
 	 */
-	public boolean end(Campaign campaign, Optional<DeliveryResult> delivery) throws IOException
+	public Removal end(Campaign campaign, Optional<DeliveryResult> delivery)
 	{
 		if (!isRemovable(campaign, delivery))
-			return false;
+			return new Removal.Kept();
 		String id = campaign.header().id();
-		FileCampaignStore.recordRemoval(base, id);
-		remove(id);
-		return true;
+		try
+		{
+			FileCampaignStore.recordRemoval(base, id);
+		}
+		catch (IOException e)
+		{
+			return new Removal.Failed("Could not record the removal of the files of campaign " + id + ": " +
+				cause(id, e) + ". The files stay in .cat/work/.");
+		}
+		try
+		{
+			if (remove(id))
+				return new Removal.Removed();
+			return new Removal.Deferred();
+		}
+		catch (IOException e)
+		{
+			return new Removal.Failed(retryWarning(id, e));
+		}
 	}
 
 	/**
 	 * Completes every removal that an earlier command started but did not finish.
 	 *
-	 * @throws IOException if the campaigns cannot be listed or a step fails
+	 * @return a warning for each removal that failed again; the next command retries it
+	 * @throws IOException if the campaigns cannot be listed
 	 */
-	public void resume() throws IOException
+	public List<String> resume() throws IOException
 	{
+		List<String> warnings = new ArrayList<>();
 		for (String id : FileCampaignStore.removals(base))
-			remove(id);
-		FileCampaignStore.completeDeletions(base);
+		{
+			try
+			{
+				remove(id);
+			}
+			catch (IOException e)
+			{
+				warnings.add(retryWarning(id, e));
+			}
+		}
+		try
+		{
+			FileCampaignStore.completeDeletions(base);
+		}
+		catch (IOException e)
+		{
+			warnings.add("Could not complete the deletion of a campaign's files: " + cause(null, e) +
+				". The next command retries the deletion.");
+		}
+		return warnings;
+	}
+
+	/**
+	 * Returns the warning of a recorded removal that failed.
+	 *
+	 * @param id the campaign's identifier
+	 * @param failure the failure
+	 * @return the warning
+	 */
+	private String retryWarning(String id, IOException failure)
+	{
+		return "Could not remove the files of campaign " + id + ": " + cause(id, failure) +
+			". The next command retries the removal.";
+	}
+
+	/**
+	 * Names the path and the cause of a failure.
+	 *
+	 * @param id the campaign's identifier, or {@code null} if the failure concerns no single campaign
+	 * @param failure the failure
+	 * @return {@code <path>: <cause>}; the path is the campaign directory, or the optimizer directory if {@code id} is
+	 *   null, when the failure names no file
+	 */
+	private String cause(String id, IOException failure)
+	{
+		if (failure instanceof FileSystemException fileFailure && fileFailure.getFile() != null)
+		{
+			String reason = fileFailure.getReason();
+			if (reason == null)
+				reason = failure.getClass().getSimpleName();
+			return fileFailure.getFile() + ": " + reason;
+		}
+		Path path;
+		if (id == null)
+			path = FileCampaignStore.root(base);
+		else
+			path = FileCampaignStore.directory(base, id);
+		String reason = failure.getMessage();
+		if (reason == null)
+			reason = failure.getClass().getSimpleName();
+		return path + ": " + reason;
 	}
 
 	/**
 	 * Runs every removal step of a campaign whose removal is recorded, under the campaign's lock.
 	 *
 	 * @param id the campaign's identifier
+	 * @return {@code false} if another process holds the campaign's lock, so a later command removes the files
 	 * @throws IOException if a step fails
 	 */
-	private void remove(String id) throws IOException
+	private boolean remove(String id) throws IOException
 	{
 		Path directory = FileCampaignStore.directory(base, id);
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(base, id));
 		if (lock.isEmpty())
-			return;
+			return false;
 		// Deleting the campaign directory deletes the open lock file, which releases nothing until the lock closes
 		try (CampaignLock _ = lock.get())
 		{
@@ -172,6 +253,7 @@ public final class Cleanup
 			beforeStep.accept(Step.CAMPAIGN_DIRECTORY);
 			FileCampaignStore.delete(base, id);
 		}
+		return true;
 	}
 
 	/**
@@ -258,6 +340,42 @@ public final class Cleanup
 			TemporaryDirectories.deleteRecursively(child);
 		Files.deleteIfExists(manifest);
 		Files.deleteIfExists(run);
+	}
+
+	/**
+	 * What ending a campaign did to its files.
+	 */
+	public sealed interface Removal
+	{
+		/**
+		 * The ending keeps the campaign's files.
+		 */
+		record Kept() implements Removal
+		{
+		}
+
+		/**
+		 * The campaign's files are removed.
+		 */
+		record Removed() implements Removal
+		{
+		}
+
+		/**
+		 * Another process holds the campaign's lock, so a later command removes the files.
+		 */
+		record Deferred() implements Removal
+		{
+		}
+
+		/**
+		 * The removal failed.
+		 *
+		 * @param warning the warning for the user, which names the path and the cause
+		 */
+		record Failed(String warning) implements Removal
+		{
+		}
 	}
 
 	/**

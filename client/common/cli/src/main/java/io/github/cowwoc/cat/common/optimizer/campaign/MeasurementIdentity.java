@@ -112,6 +112,20 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
+	 * Returns the material conditions that this identity records and {@code other} does not, for the whole campaign or
+	 * for the same cell.
+	 *
+	 * @param other another identity
+	 * @return the conditions that {@code other} lacks, in declaration order
+	 * @throws NullPointerException if {@code other} is null
+	 */
+	public List<MeasurementCondition> unobservedBy(MeasurementIdentity other)
+	{
+		requireThat(other, "other").isNotNull();
+		return compare(other, (value, otherValue) -> value != null && otherValue == null);
+	}
+
+	/**
 	 * Returns the material conditions whose recorded values are not equal, including those that only one identity
 	 * records.
 	 *

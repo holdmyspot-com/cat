@@ -270,9 +270,11 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param base the base worktree
 	 * @return the campaigns directory
+	 * @throws NullPointerException if {@code base} is null
 	 */
-	private static Path root(Path base)
+	public static Path root(Path base)
 	{
+		requireThat(base, "base").isNotNull();
 		return base.resolve(".cat/work/optimizer");
 	}
 

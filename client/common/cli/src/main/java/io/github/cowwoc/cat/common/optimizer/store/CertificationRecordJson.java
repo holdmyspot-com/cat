@@ -15,8 +15,13 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,8 +37,14 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Converts a {@link CertificationRecord} to and from the JSON file that a certified delivery writes to the project.
  * <p>
- * The file holds the target, the certification index, the scope's identifier, the required pass rate and level as
- * decimal strings, each cell's counts, each prompt file's content hash and the measurement conditions.
+ * The file holds the target, the certification index, the scope's identifier, the required pass rate and the
+ * significance level {@code alpha} as decimal strings, each cell's counts, each prompt file's content hash and the
+ * measurement conditions.
+ * <p>
+ * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
+ * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
+ * Reading takes the smallest threshold whose written form is {@code alpha} and refuses an {@code alpha} that no
+ * threshold writes.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -44,6 +55,15 @@ public final class CertificationRecordJson
 	 */
 	private static final int FORMAT_VERSION = 1;
 	private static final String MALFORMED = "is malformed";
+	/**
+	 * The significant digits of an {@code alpha} that has no finite decimal form.
+	 */
+	private static final int ALPHA_DIGITS = 10;
+	/**
+	 * The precision of the reciprocal that reading {@code alpha} computes, which exceeds the digits of any threshold
+	 * that a campaign uses.
+	 */
+	private static final MathContext RECIPROCAL = new MathContext(34, RoundingMode.CEILING);
 	private final JsonMapper json;
 
 	/**
@@ -75,7 +95,7 @@ public final class CertificationRecordJson
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
 		root.put("required_pass_rate", parameters.requiredPassRate().toPlainString());
-		root.put("level", parameters.level().threshold().toString());
+		root.put("alpha", alpha(parameters.level()));
 
 		ArrayNode cells = root.putArray("cells");
 		for (CellResult cell : record.cells())
@@ -123,7 +143,7 @@ public final class CertificationRecordJson
 		CertificationScope scope = CertificationScope.fromId(scopeId).orElseThrow(() ->
 			new IllegalArgumentException("scope: " + scopeId + " is not a certification scope"));
 		CertificationParameters parameters = new CertificationParameters(
-			CampaignJson.decimal(root, "required_pass_rate"), CampaignJson.level(root, "level"));
+			CampaignJson.decimal(root, "required_pass_rate"), level(CampaignJson.decimal(root, "alpha")));
 
 		List<CellResult> cells = new ArrayList<>();
 		for (JsonNode element : elements(root, "cells"))
@@ -142,5 +162,52 @@ public final class CertificationRecordJson
 		}
 		return new CertificationRecord(Path.of(text(root, "target")), integer(root, "certification_index"), scope,
 			parameters, cells, promptFiles, CampaignJson.readIdentity(field(root, "identity")));
+	}
+
+	/**
+	 * Returns a level's error probability as a decimal string.
+	 *
+	 * @param level the level
+	 * @return {@code 1 / threshold}, rounded up to {@value #ALPHA_DIGITS} significant digits if it has no finite
+	 *   decimal form
+	 */
+	private static String alpha(SignificanceLevel level)
+	{
+		BigDecimal threshold = new BigDecimal(level.threshold());
+		BigDecimal alpha;
+		try
+		{
+			alpha = BigDecimal.ONE.divide(threshold);
+		}
+		catch (ArithmeticException _)
+		{
+			// The reciprocal has no finite decimal form
+			alpha = BigDecimal.ONE.divide(threshold, new MathContext(ALPHA_DIGITS, RoundingMode.CEILING));
+		}
+		return alpha.stripTrailingZeros().toPlainString();
+	}
+
+	/**
+	 * Returns the level whose error probability is written as {@code alpha}.
+	 *
+	 * @param alpha the error probability that the record holds
+	 * @return the level
+	 * @throws IllegalArgumentException if no threshold writes {@code alpha}
+	 */
+	private static SignificanceLevel level(BigDecimal alpha)
+	{
+		if (alpha.signum() <= 0 || alpha.compareTo(BigDecimal.ONE) >= 0)
+			throw new IllegalArgumentException("alpha: must lie strictly between 0 and 1: " + alpha.toPlainString());
+		// Rounding up the written value lowers the reciprocal, so the threshold is the reciprocal rounded up
+		BigInteger threshold = BigDecimal.ONE.divide(alpha, RECIPROCAL).setScale(0, RoundingMode.CEILING).
+			toBigIntegerExact();
+		if (threshold.compareTo(BigInteger.ONE) > 0)
+		{
+			SignificanceLevel level = new SignificanceLevel(threshold);
+			if (new BigDecimal(alpha(level)).compareTo(alpha) == 0)
+				return level;
+		}
+		throw new IllegalArgumentException("alpha: must be the reciprocal of an integer threshold, as CAT writes it: " +
+			alpha.toPlainString());
 	}
 }

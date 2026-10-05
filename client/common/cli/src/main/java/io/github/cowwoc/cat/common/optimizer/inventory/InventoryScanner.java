@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -18,6 +19,7 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -128,6 +130,34 @@ public final class InventoryScanner
 	{
 		requireThat(path, "path").isNotNull();
 		return OMITTED.stream().anyMatch(path::startsWith);
+	}
+
+	/**
+	 * Reads one entry of a project without following symbolic links.
+	 *
+	 * @param root the project directory
+	 * @param path the entry's path relative to {@code root}, or an absolute path
+	 * @return the entry, or empty if nothing or a directory exists at the path
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the entry cannot be read
+	 */
+	public static Optional<FileEntry> entry(Path root, Path path) throws IOException
+	{
+		requireThat(root, "root").isNotNull();
+		requireThat(path, "path").isNotNull();
+		Path location = root.resolve(path);
+		BasicFileAttributes attrs;
+		try
+		{
+			attrs = Files.readAttributes(location, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		}
+		catch (NoSuchFileException _)
+		{
+			return Optional.empty();
+		}
+		if (attrs.isDirectory())
+			return Optional.empty();
+		return Optional.of(entryOf(location, attrs));
 	}
 
 	/**

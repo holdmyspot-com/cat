@@ -179,32 +179,13 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(known, "known").isNotNull();
 		boolean promptContentChanged = !promptFiles.equals(currentPromptFiles);
 		List<MeasurementCondition> changed = identity.differences(known);
-		List<MeasurementCondition> unchecked = identity.missing(known).stream().
-			filter(this::isRecorded).toList();
+		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
 		List<CertificationParameter> notImplied = parameters.notImplying(
 			CertificationParameters.current(certificationIndex));
 		Applicability.Status status = Applicability.Status.CURRENT;
 		if (promptContentChanged || !changed.isEmpty() || !notImplied.isEmpty())
 			status = Applicability.Status.HISTORICAL;
 		return new Applicability(status, promptContentChanged, changed, notImplied, unchecked);
-	}
-
-	/**
-	 * Indicates whether the record holds a value of a condition, campaign-wide or for any cell.
-	 *
-	 * @param condition the condition
-	 * @return {@code true} if the record holds a value
-	 */
-	private boolean isRecorded(MeasurementCondition condition)
-	{
-		if (identity.values().containsKey(condition))
-			return true;
-		for (Map<MeasurementCondition, String> cell : identity.cells().values())
-		{
-			if (cell.containsKey(condition))
-				return true;
-		}
-		return false;
 	}
 
 	/**

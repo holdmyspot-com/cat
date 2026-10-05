@@ -17,7 +17,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import tools.jackson.databind.JsonNode;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
@@ -1565,6 +1572,245 @@ public final class OptimizerCoreTest
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(Files.notExists(directory), "directoryIsAbsent").isTrue();
 			requireThat(repository.forks().exists(directory), "forkAfter").isFalse();
+		}
+	}
+
+	/**
+	 * Writes the certification record of {@code CLAUDE.md} as a certified delivery would, for the first certification
+	 * under the current parameters and the latest-versions scope. The record names the provider, harness version,
+	 * session environment version and judge version that the test scope reports, except for any condition that
+	 * {@code change} replaces, and the trial model {@code model-a}, which only a session observes.
+	 *
+	 * @param repository the test project
+	 * @param promptText the text whose hash the record holds for {@code CLAUDE.md}
+	 * @param change edits the recorded conditions
+	 * @throws IOException if the record cannot be written
+	 */
+	private static void writeRecord(Repository repository, String promptText,
+		java.util.function.Consumer<Map<MeasurementCondition, String>> change) throws IOException
+	{
+		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
+		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
+		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
+		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+			String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
+		values.put(MeasurementCondition.JUDGE, String.valueOf(FakeSessionPort.JUDGE_VERSION));
+		values.put(MeasurementCondition.MODEL, "model-a");
+		change.accept(values);
+		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1), List.of(),
+			Map.of(Path.of("CLAUDE.md"), Sha256.of(promptText.getBytes(StandardCharsets.UTF_8))),
+			new MeasurementIdentity(values));
+		Path file = repository.root().resolve(CertificationRecord.location(record.target()));
+		Files.createDirectories(file.getParent());
+		Files.write(file, new CertificationRecordJson(JSON).write(record));
+	}
+
+	/**
+	 * Verifies that {@code status} of a target that has no campaign but a certification record reports the record as
+	 * one result: current while the prompt file and every condition that CAT knows are unchanged, with the trial
+	 * model, which only a session observes, unchecked.
+	 */
+	@Test
+	public void statusOfTargetReportsCurrentRecord() throws Exception
+	{
+		// Requirement: R-M6, R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			requireThat(status.get("status").asString(), "status").isEqualTo("certified");
+			requireThat(status.get("target").asString(), "target").isEqualTo("CLAUDE.md");
+			requireThat(status.get("attempt").asInt(), "attempt").isEqualTo(1);
+			requireThat(status.get("scope").asString(), "scope").isEqualTo("latest-versions");
+			JsonNode applicability = status.get("applicability");
+			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("current");
+			requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isFalse();
+			requireThat(applicability.get("changed").isEmpty(), "changedIsEmpty").isTrue();
+			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("MODEL");
+			requireThat(applicability.get("unchecked").size(), "uncheckedSize").isEqualTo(1);
+			requireThat(status.get("summary").asString(), "summary").isEqualTo("""
+				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+				version)
+				Attempt 1: certified
+				  Not checked until a session observes it: trial model.""");
+			requireThat(repository.sessions().roles(), "roles").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target reports its certification record as historical, naming each change,
+	 * when the prompt file's content or a recorded condition that CAT knows changed.
+	 */
+	@Test
+	public void statusOfTargetReportsHistoricalRecord() throws Exception
+	{
+		// Requirement: R-M6, R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be terse.\n", values -> values.put(MeasurementCondition.HARNESS_VERSION,
+				"0.9"));
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			JsonNode applicability = status.get("applicability");
+			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
+			requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
+			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("HARNESS_VERSION");
+			requireThat(status.get("summary").asString(), "summary").contains(
+				"Attempt 1: certified (historical; changed: PROMPT_CONTENT, HARNESS_VERSION)\n" +
+				"  Not checked until a session observes it: trial model.");
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target that has a campaign reports the campaign, even when a certification
+	 * record exists too.
+	 */
+	@Test
+	public void statusOfTargetReportsItsCampaign() throws Exception
+	{
+		// Requirement: R-M6, R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			requireThat(status.get("campaign").asString(), "campaign").isEqualTo(id);
+			requireThat(output(repository, List.of("status", id)).get("campaign").asString(), "byId").
+				isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target that has neither a campaign nor a certification record is refused.
+	 */
+	@Test
+	public void statusOfUnknownTargetIsRefused() throws Exception
+	{
+		// Requirement: R-M6, R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+
+			String message = refusal(() -> repository.core().status("CLAUDE.md"));
+
+			requireThat(message, "message").isEqualTo("No campaign or certification record exists for CLAUDE.md.");
+		}
+	}
+
+	/**
+	 * Verifies that a new campaign's proposal shows the incumbent's certification from the target's record, compared
+	 * with what CAT knows when it presents the proposal.
+	 */
+	@Test
+	public void proposalShowsIncumbentCertification() throws Exception
+	{
+		// Requirement: R-M6, R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", values -> values.put(MeasurementCondition.JUDGE, "0"));
+
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(started.proposal(), "proposal").contains("""
+
+				## Incumbent certification
+
+				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+				version)
+				Attempt 1: certified (historical; changed: JUDGE)
+				  Not checked until a session observes it: trial model.
+				""");
+		}
+	}
+
+	/**
+	 * Verifies that a removal that keeps failing does not fail other commands: a command for another target
+	 * succeeds and warns with the path and the cause, a refused command carries the same warning, and the removal
+	 * stays recorded for the next command.
+	 */
+	@Test
+	public void failingRemovalWarnsOtherCommands() throws Exception
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("AGENTS.md")));
+			Files.writeString(repository.root().resolve("AGENTS.md"), "Be kind.\n");
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			FileCampaignStore.recordRemoval(repository.root(), id);
+			Path worktree = repository.directory(id).resolve("worktree");
+			repository.forks().denyRemoval();
+			String warning = "Could not remove the files of campaign " + id + ": " + worktree +
+				": Permission denied. The next command retries the removal.";
+
+			ObjectNode started = output(repository, List.of("start", "AGENTS.md"));
+
+			requireThat(started.get("proposal").isNull(), "proposalIsNull").isFalse();
+			requireThat(started.get("summary").asString(), "summary").endsWith("\n" + warning);
+			String message = refusal(() -> repository.core().cancel("no-such-campaign"));
+			requireThat(message, "message").isEqualTo("No campaign has the identifier no-such-campaign.\n" +
+				warning);
+			requireThat(FileCampaignStore.removals(repository.root()), "removals").isEqualTo(List.of(id));
+		}
+	}
+
+	/**
+	 * Verifies that a command that removes its campaign's files says so in its summary: retaining the incumbent after
+	 * a certified attempt ends the campaign and removes its files.
+	 */
+	@Test
+	public void removalIsReported() throws Exception
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Campaign started = repository.load(id);
+			Campaign built = new Builder().header(started.header()).confirmed().working(1).
+				certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).outcome(Outcome.CERTIFIED).
+				campaign().outcome(Outcome.CERTIFIED).build();
+			// The optimization worktree holds the started campaign's working candidate, whose overlay is saved
+			Campaign tradeOff = new Campaign(built.header(), built.ceiling(), built.lineages(), built.identity(),
+				started.incumbent(), built.candidates(), built.authorAttempts(), started.development(), built.baseline(),
+				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
+				built.throttle(), built.authorizedTargets(), List.of(new PendingDecision.RegressionTradeOff(1)),
+				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization());
+			repository.scope().store().replaceSnapshot(tradeOff);
+
+			ObjectNode chosen = output(repository, List.of("choose", id, "retain-incumbent"));
+
+			requireThat(chosen.get("summary").asString(), "summary").
+				endsWith("\nRemoved the campaign's files from .cat/work/.");
+			requireThat(Files.notExists(repository.directory(id)), "directoryIsAbsent").isTrue();
 		}
 	}
 

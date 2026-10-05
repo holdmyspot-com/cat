@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -38,6 +39,7 @@ final class InMemoryForks implements Forks
 	private final List<Set<Path>> added = new ArrayList<>();
 	private boolean dirty;
 	private boolean excludeAdded;
+	private boolean removalDenied;
 
 	/**
 	 * Creates the forks of a project.
@@ -66,6 +68,14 @@ final class InMemoryForks implements Forks
 	void addExcludeOnCreate()
 	{
 		excludeAdded = true;
+	}
+
+	/**
+	 * Makes every later {@code remove} fail as a file system that denies deleting the optimization worktree would.
+	 */
+	void denyRemoval()
+	{
+		removalDenied = true;
 	}
 
 	/**
@@ -115,8 +125,10 @@ final class InMemoryForks implements Forks
 	}
 
 	@Override
-	public void remove(Path base, Path campaign)
+	public void remove(Path base, Path campaign) throws IOException
 	{
+		if (removalDenied)
+			throw new AccessDeniedException(campaign.resolve("worktree").toString(), null, "Permission denied");
 		inventories.remove(campaign);
 	}
 

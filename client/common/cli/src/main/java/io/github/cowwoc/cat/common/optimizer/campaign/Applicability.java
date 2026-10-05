@@ -101,7 +101,8 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	 * @param resultIdentity the conditions that the result was measured under
 	 * @param currentSnapshot the current snapshot
 	 * @param currentIdentity the current conditions
-	 * @return the applicability, naming each known change
+	 * @return the applicability, naming each known change and each condition that the result records but the current
+	 *   conditions lack
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static Applicability of(Sha256 resultSnapshot, MeasurementIdentity resultIdentity, Sha256 currentSnapshot,
@@ -113,9 +114,11 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 		requireThat(currentIdentity, "currentIdentity").isNotNull();
 		boolean promptContentChanged = !resultSnapshot.equals(currentSnapshot);
 		List<MeasurementCondition> changed = resultIdentity.differences(currentIdentity);
+		List<MeasurementCondition> unchecked = resultIdentity.unobservedBy(currentIdentity);
+		Status status = Status.CURRENT;
 		if (promptContentChanged || !changed.isEmpty())
-			return new Applicability(Status.HISTORICAL, promptContentChanged, changed);
-		return new Applicability(Status.CURRENT, false, changed);
+			status = Status.HISTORICAL;
+		return new Applicability(status, promptContentChanged, changed, List.of(), unchecked);
 	}
 
 	/**
@@ -125,7 +128,8 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	 * @param currentSnapshot the current snapshot
 	 * @param currentIdentity the current conditions
 	 * @param currentParameters the parameters that the current version of CAT certifies the attempt under
-	 * @return the applicability, naming each known change
+	 * @return the applicability, naming each known change and each condition that the attempt records but the current
+	 *   conditions lack
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static Applicability of(CertificationAttempt attempt, Sha256 currentSnapshot,
@@ -139,6 +143,7 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 		Status status = measurement.status;
 		if (!parameters.isEmpty())
 			status = Status.HISTORICAL;
-		return new Applicability(status, measurement.promptContentChanged, measurement.changed, parameters);
+		return new Applicability(status, measurement.promptContentChanged, measurement.changed, parameters,
+			measurement.unchecked);
 	}
 }

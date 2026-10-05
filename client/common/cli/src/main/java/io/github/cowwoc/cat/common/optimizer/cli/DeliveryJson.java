@@ -105,7 +105,7 @@ final class DeliveryJson
 	 * @param node the node to fill
 	 * @param applicability the applicability
 	 */
-	private static void applicability(ObjectNode node, Applicability applicability)
+	static void applicability(ObjectNode node, Applicability applicability)
 	{
 		node.put("status", EnumNames.lowerCase(applicability.status()));
 		node.put("promptContentChanged", applicability.promptContentChanged());
@@ -114,6 +114,9 @@ final class DeliveryJson
 			changed.add(condition.name());
 		for (CertificationParameter parameter : applicability.parameters())
 			changed.add(parameter.name());
+		ArrayNode unchecked = node.putArray("unchecked");
+		for (MeasurementCondition condition : applicability.unchecked())
+			unchecked.add(condition.name());
 	}
 
 	/**

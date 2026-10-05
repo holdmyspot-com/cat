@@ -5,6 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -14,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import org.testng.annotations.DataProvider;
@@ -29,6 +32,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -164,6 +168,7 @@ public final class CommandsTest
 			List.of("start", "prompts/a.md"),
 			List.of("run", "c1"),
 			List.of("status", "c1"),
+			List.of("status", "prompts/a.md"),
 			List.of("confirm", "c1", "weakest-cell"),
 			List.of("confirm", "c1", "latest-versions"),
 			List.of("confirm", "c1", "described"),
@@ -178,6 +183,7 @@ public final class CommandsTest
 			"start prompts/a.md",
 			"run c1",
 			"status c1",
+			"status prompts/a.md",
 			"confirm c1 weakest-cell",
 			"confirm c1 latest-versions",
 			"confirm c1 described",
@@ -327,7 +333,8 @@ public final class CommandsTest
 		// Requirement: R-I2
 		Path external = Path.of("/etc/external.md");
 		DeliveryResult.Delivered delivered = new DeliveryResult.Delivered(Outcome.CERTIFIED,
-			new Applicability(Applicability.Status.HISTORICAL, true, List.of(MeasurementCondition.MODEL)),
+			new Applicability(Applicability.Status.HISTORICAL, true, List.of(MeasurementCondition.MODEL), List.of(),
+				List.of(MeasurementCondition.HOST_TOOLS)),
 			List.of(Path.of("prompts/a.md")), List.of(Path.of("notes.md")),
 			List.of(new DeliveryChange.Create(4, external, new FileContent("x".getBytes(StandardCharsets.UTF_8)),
 				Set.of())),
@@ -347,10 +354,72 @@ public final class CommandsTest
 		requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
 		requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
 		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("MODEL");
+		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("HOST_TOOLS");
 		JsonNode change = delivery.get("externalChanges").get(0);
 		requireThat(change.get("target").asString(), "target").isEqualTo("/etc/external.md");
 		requireThat(change.get("sequence").asInt(), "sequence").isEqualTo(4);
 		requireThat(change.get("kind").asString(), "kind").isEqualTo("create");
+	}
+
+	/**
+	 * Verifies that the status of a target that only a certification record describes is one object with the
+	 * record's index, scope and applicability, and a summary that names them, and no campaign, harness, proposal or
+	 * delivery.
+	 */
+	@Test
+	public void printsCertificationRecord()
+	{
+		// Requirement: R-M6
+		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 2,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(2), List.of(), Map.of(),
+			Builder.OBSERVED);
+		Applicability applicability = new Applicability(Applicability.Status.HISTORICAL, true,
+			List.of(MeasurementCondition.JUDGE), List.of(), List.of(MeasurementCondition.MODEL));
+		FakeCore core = new FakeCore();
+		core.result = CommandResult.of(new CertificationStatus(record, applicability));
+		StringBuilder output = new StringBuilder();
+
+		requireThat(run(core, List.of("status", "CLAUDE.md"), output), "exit").isEqualTo(0);
+
+		requireThat(core.calls, "calls").isEqualTo(List.of("status CLAUDE.md"));
+		JsonNode json = JSON.readTree(output.toString());
+		requireThat(json.get("status").asString(), "status").isEqualTo("certified");
+		requireThat(json.get("campaign").isNull(), "campaignIsNull").isTrue();
+		requireThat(json.get("target").asString(), "target").isEqualTo("CLAUDE.md");
+		requireThat(json.get("attempt").asInt(), "attempt").isEqualTo(2);
+		requireThat(json.get("scope").asString(), "scope").isEqualTo("latest-versions");
+		JsonNode applicabilityNode = json.get("applicability");
+		requireThat(applicabilityNode.get("status").asString(), "applicability").isEqualTo("historical");
+		requireThat(applicabilityNode.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
+		requireThat(applicabilityNode.get("changed").get(0).asString(), "changed").isEqualTo("JUDGE");
+		requireThat(applicabilityNode.get("unchecked").get(0).asString(), "unchecked").isEqualTo("MODEL");
+		requireThat(json.get("harness").isNull(), "harnessIsNull").isTrue();
+		requireThat(json.get("summary").asString(), "summary").isEqualTo("""
+			Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+			version)
+			Attempt 2: certified (historical; changed: PROMPT_CONTENT, JUDGE)
+			  Not checked until a session observes it: trial model.""");
+		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();
+		requireThat(json.get("deliveryResult").isNull(), "deliveryResultIsNull").isTrue();
+		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();
+	}
+
+	/**
+	 * Verifies that a command's notices follow the status summary, one per line.
+	 */
+	@Test
+	public void appendsNoticesToSummary()
+	{
+		// Requirement: R-W9
+		FakeCore core = new FakeCore();
+		core.result = CommandResult.of(core.status, Harness.CLAUDE).withNotices(List.of("First notice.",
+			"Second notice."));
+		StringBuilder output = new StringBuilder();
+
+		requireThat(run(core, List.of("run", "c1"), output), "exit").isEqualTo(0);
+
+		requireThat(JSON.readTree(output.toString()).get("summary").asString(), "summary").
+			isEqualTo(core.status.summary() + "\nFirst notice.\nSecond notice.");
 	}
 
 	/**
@@ -387,7 +456,9 @@ public final class CommandsTest
 				{List.of("run")},
 				{List.of("run", "c1", "extra")},
 				{List.of("run", "../escape")},
-				{List.of("status", "a/b")},
+				{List.of("status")},
+				{List.of("status", " ")},
+				{List.of("status", "c1", "extra")},
 				{List.of("confirm", "")},
 				{List.of("confirm", "c1")},
 				{List.of("confirm", "c1", "all-models")},

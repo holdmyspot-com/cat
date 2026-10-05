@@ -24,6 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork;
 import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
@@ -57,6 +58,7 @@ final class Markdown
 	private final int ceiling;
 	private final Map<CertificationScope, Campaign> previews;
 	private final List<String> caps;
+	private final CertificationStatus incumbent;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
 	/**
@@ -70,9 +72,10 @@ final class Markdown
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
 	 *   may choose, in choice order; empty while an inventory model is unranked
 	 * @param caps the level and cap of each of the first attempts, as text
+	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, int ceiling,
-		Map<CertificationScope, Campaign> previews, List<String> caps)
+		Map<CertificationScope, Campaign> previews, List<String> caps, CertificationStatus incumbent)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -81,6 +84,7 @@ final class Markdown
 		this.ceiling = ceiling;
 		this.previews = previews;
 		this.caps = caps;
+		this.incumbent = incumbent;
 	}
 
 	/**
@@ -106,6 +110,7 @@ final class Markdown
 	String render()
 	{
 		text.append("# Contract proposal\n");
+		incumbent();
 		requirements();
 		loading();
 		categories();
@@ -120,6 +125,17 @@ final class Markdown
 		scope();
 		limitations();
 		return text.toString();
+	}
+
+	/**
+	 * Shows the target's delivered certification and whether it applies to what CAT knows now, if the target has one.
+	 */
+	private void incumbent()
+	{
+		if (incumbent == null)
+			return;
+		heading("Incumbent certification");
+		text.append(incumbent.summary()).append('\n');
 	}
 
 	/**

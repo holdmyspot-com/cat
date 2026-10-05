@@ -4,7 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ChoiceItem;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -34,7 +37,7 @@ public final class Commands
 		usage: prompt-optimizer <command> ...
 		  start <target> [%s <1..%d>]
 		  run <campaign>
-		  status <campaign>
+		  status <campaign | target>
 		  confirm <campaign> <weakest-cell | latest-versions | described>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N | --target <path>]
@@ -83,8 +86,8 @@ public final class Commands
 			}
 			case "status" ->
 			{
-				expect(name, rest, 1, "<campaign>");
-				yield new Command.Status(campaign(rest.getFirst()));
+				expect(name, rest, 1, "<campaign | target>");
+				yield new Command.Status(subject(rest.getFirst()));
 			}
 			case "confirm" -> confirm(rest);
 			case "cancel" ->
@@ -117,7 +120,7 @@ public final class Commands
 		String form = "<target> [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING + ">]";
 		if (rest.isEmpty())
 			throw new InvalidCommandException("start: expected " + form);
-		Path target = target(rest.getFirst());
+		Path target = target("start", rest.getFirst());
 		if (rest.size() == 1)
 			return new Command.Start(target, Campaign.DEFAULT_CEILING);
 		if (rest.size() != 3 || !rest.get(1).equals(MAX_CONCURRENCY))
@@ -263,29 +266,56 @@ public final class Commands
 	 */
 	private static String campaign(String value)
 	{
-		if (!CAMPAIGN_ID.matcher(value).matches())
+		if (!isCampaignId(value))
 			throw new InvalidCommandException("Invalid campaign identifier: '" + value + "'");
+		return value;
+	}
+
+	/**
+	 * Indicates whether a value is a well-formed campaign identifier.
+	 *
+	 * @param value the value
+	 * @return {@code true} if the value has the form of a campaign identifier
+	 * @throws NullPointerException if {@code value} is null
+	 */
+	static boolean isCampaignId(String value)
+	{
+		return CAMPAIGN_ID.matcher(value).matches();
+	}
+
+	/**
+	 * Validates the subject of {@code status}: a campaign identifier or a target.
+	 *
+	 * @param value the argument
+	 * @return the argument
+	 * @throws InvalidCommandException if the argument is neither a campaign identifier nor a path
+	 */
+	private static String subject(String value)
+	{
+		if (!isCampaignId(value))
+			target("status", value);
 		return value;
 	}
 
 	/**
 	 * Validates a target.
 	 *
+	 * @param command the command's name, which prefixes the message of a rejected argument
 	 * @param value the argument
 	 * @return the target
 	 * @throws InvalidCommandException if the argument is not a path
 	 */
-	private static Path target(String value)
+	private static Path target(String command, String value)
 	{
 		if (value.isBlank())
-			throw new InvalidCommandException("start: the target is blank.");
+			throw new InvalidCommandException(command + ": the target is blank.");
 		try
 		{
 			return Path.of(value);
 		}
 		catch (InvalidPathException e)
 		{
-			throw new InvalidCommandException("start: the target is not a path: " + e.getMessage());
+			throw new InvalidCommandException(command + ": the target is not a path: " + e.getMessage());
 		}
 	}
 
@@ -393,7 +423,7 @@ public final class Commands
 		{
 			case Command.Start start -> core.start(start.target(), start.ceiling());
 			case Command.Run run -> core.run(run.campaign());
-			case Command.Status status -> core.status(status.campaign());
+			case Command.Status status -> core.status(status.subject());
 			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());
 			case Command.Revise revise -> core.revise(revise.campaign(), revise.feedback());
 			case Command.Choose choose ->
@@ -411,9 +441,18 @@ public final class Commands
 	 */
 	private String render(CommandResult result)
 	{
-		ObjectNode root = result.status().toJson(json);
-		root.put("harness", result.harness().commandName());
-		root.put("summary", result.status().summary());
+		ObjectNode root;
+		if (result.status() == null)
+		{
+			root = certification(result.certification());
+			root.putNull("harness");
+		}
+		else
+		{
+			root = result.status().toJson(json);
+			root.put("harness", result.harness().commandName());
+		}
+		root.put("summary", result.summary());
 		if (result.proposal() == null)
 			root.putNull("proposal");
 		else
@@ -427,6 +466,25 @@ public final class Commands
 		else
 			root.put("message", result.message());
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Renders the certification record of a target that has no campaign.
+	 *
+	 * @param certification the record and its applicability
+	 * @return the JSON object, without the fields that every result has
+	 */
+	private ObjectNode certification(CertificationStatus certification)
+	{
+		CertificationRecord record = certification.record();
+		ObjectNode root = json.createObjectNode();
+		root.put("status", Outcome.CERTIFIED.label());
+		root.putNull("campaign");
+		root.put("target", record.target().toString());
+		root.put("attempt", record.certificationIndex());
+		root.put("scope", record.scope().id());
+		DeliveryJson.applicability(root.putObject("applicability"), certification.applicability());
+		return root;
 	}
 
 	/**

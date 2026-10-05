@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
@@ -86,6 +87,9 @@ final class ReportJson
 			putText(node, "outcome", attempt.outcome());
 			node.put("historical", attempt.historical());
 			strings(node.putArray("changed"), attempt.changed());
+			ArrayNode unchecked = node.putArray("unchecked");
+			for (MeasurementCondition condition : attempt.unchecked())
+				unchecked.add(condition.name());
 		}
 		keepOffers(root.putArray("keepOffers"), report);
 		putText(root, "claim", report.claim());

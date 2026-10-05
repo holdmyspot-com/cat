@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -147,16 +148,7 @@ final class ReportSummary
 		if (report.assumptions().dependenceDetected())
 			lines.add("Dependence between trials was detected: " + report.assumptions().consequence().label());
 		for (AttemptSummary attempt : report.attempts())
-		{
-			StringBuilder text = new StringBuilder(200).append("Attempt ").append(attempt.index()).append(": ");
-			if (attempt.outcome() == null)
-				text.append("running");
-			else
-				text.append(attempt.outcome());
-			if (attempt.historical())
-				text.append(" (historical; changed: ").append(String.join(", ", attempt.changed())).append(')');
-			lines.add(text.toString());
-		}
+			attempt(lines, attempt);
 		for (KeepOffer offer : report.keepOffers())
 			offer(lines, offer);
 		if (report.claim() != null)
@@ -165,6 +157,31 @@ final class ReportSummary
 		for (String limitation : report.limitations())
 			lines.add("  - " + limitation);
 		return String.join("\n", lines);
+	}
+
+	/**
+	 * Describes a certification attempt's outcome, its applicability and the conditions it leaves unchecked.
+	 *
+	 * @param lines receives the text's lines
+	 * @param attempt the attempt
+	 */
+	static void attempt(List<String> lines, AttemptSummary attempt)
+	{
+		StringBuilder text = new StringBuilder(200).append("Attempt ").append(attempt.index()).append(": ");
+		if (attempt.outcome() == null)
+			text.append("running");
+		else
+			text.append(attempt.outcome());
+		if (attempt.historical())
+			text.append(" (historical; changed: ").append(String.join(", ", attempt.changed())).append(')');
+		lines.add(text.toString());
+		if (!attempt.unchecked().isEmpty())
+		{
+			List<String> names = new ArrayList<>();
+			for (MeasurementCondition condition : attempt.unchecked())
+				names.add(condition.displayName());
+			lines.add("  Not checked until a session observes it: " + String.join(", ", names) + ".");
+		}
 	}
 
 	/**

@@ -18,9 +18,12 @@ import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
+import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
+import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -72,9 +75,10 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
 
-			boolean removed = fixture.cleanup(NO_HOOK).end(campaign, Optional.of(delivered(Outcome.CERTIFIED)));
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign,
+				Optional.of(delivered(Outcome.CERTIFIED)));
 
-			requireThat(removed, "removed").isTrue();
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
 			fixture.requireRemoved();
 		}
 	}
@@ -93,9 +97,9 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(null));
 
-			boolean removed = fixture.cleanup(NO_HOOK).end(campaign, Optional.empty());
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, Optional.empty());
 
-			requireThat(removed, "removed").isTrue();
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
 			fixture.requireRemoved();
 		}
 	}
@@ -129,9 +133,10 @@ public final class CleanupTest
 				Fixture fixture = Fixture.create(cleanup);
 				Campaign campaign = fixture.store(ending.campaign());
 
-				boolean removed = fixture.cleanup(NO_HOOK).end(campaign, ending.delivery());
+				Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, ending.delivery());
 
-				requireThat(removed, "removed").withContext(ending.name(), "ending").isFalse();
+				requireThat(removal, "removal").withContext(ending.name(), "ending").
+					isEqualTo(new Cleanup.Removal.Kept());
 				fixture.requireKept(ending.name());
 			}
 		}
@@ -182,6 +187,71 @@ public final class CleanupTest
 	}
 
 	/**
+	 * A removal step that fails returns a warning that names the path and the cause instead of failing, and keeps the
+	 * removal recorded, so each later command retries it and warns again until a retry succeeds.
+	 *
+	 * @throws IOException if the fixture or cleanup fails
+	 */
+	@Test
+	public void failingRemovalWarnsAndIsRetried() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			Path worktree = fixture.directory(CAMPAIGN).resolve("worktree");
+			Forks denying = new DenyingForks(worktree);
+			String warning = "Could not remove the files of campaign " + CAMPAIGN + ": " + worktree +
+				": Permission denied. The next command retries the removal.";
+
+			Cleanup.Removal removal = fixture.cleanup(denying).end(campaign,
+				Optional.of(delivered(Outcome.CERTIFIED)));
+
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Failed(warning));
+			requireThat(FileCampaignStore.removals(fixture.base()), "removals").isEqualTo(List.of(CAMPAIGN));
+			requireThat(fixture.cleanup(denying).resume(), "retryWarnings").isEqualTo(List.of(warning));
+			requireThat(FileCampaignStore.removals(fixture.base()), "removalsAfterRetry").
+				isEqualTo(List.of(CAMPAIGN));
+
+			requireThat(fixture.cleanup(NO_HOOK).resume(), "warnings").isEmpty();
+			fixture.requireRemoved();
+		}
+	}
+
+	/**
+	 * When the removal cannot be recorded, ending the campaign returns a warning that names the path and the cause
+	 * and says that the files stay, instead of failing, and removes nothing.
+	 *
+	 * @throws IOException if the fixture or cleanup fails
+	 */
+	@Test
+	public void unrecordedRemovalWarns() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			// A directory where the record's temporary file belongs cannot be opened for writing
+			Path blocker = Files.createDirectory(fixture.directory(CAMPAIGN).resolve("removal.tmp"));
+			Files.writeString(blocker.resolve("child"), "x", UTF_8);
+
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign,
+				Optional.of(delivered(Outcome.CERTIFIED)));
+
+			requireThat(removal, "removal").isInstanceOf(Cleanup.Removal.Failed.class);
+			String warning = ((Cleanup.Removal.Failed) removal).warning();
+			requireThat(warning, "warning").startsWith("Could not record the removal of the files of campaign " +
+				CAMPAIGN + ": " + blocker + ": ").endsWith(". The files stay in .cat/work/.");
+			requireThat(FileCampaignStore.removals(fixture.base()), "removals").isEmpty();
+			Files.delete(blocker.resolve("child"));
+			Files.delete(blocker);
+			fixture.requireKept("unrecorded");
+		}
+	}
+
+	/**
 	 * Resuming when no removal was recorded changes nothing.
 	 *
 	 * @throws IOException if the fixture or cleanup fails
@@ -195,7 +265,7 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
 
-			fixture.cleanup(NO_HOOK).resume();
+			requireThat(fixture.cleanup(NO_HOOK).resume(), "warnings").isEmpty();
 
 			fixture.requireKept("resume");
 		}
@@ -334,6 +404,17 @@ public final class CleanupTest
 		}
 
 		/**
+		 * Returns a cleanup of the base worktree that removes optimization worktrees through other forks.
+		 *
+		 * @param forks removes the campaigns' optimization worktrees
+		 * @return the cleanup
+		 */
+		Cleanup cleanup(Forks forks)
+		{
+			return new Cleanup(base, forks, runRoots, JSON, NO_HOOK);
+		}
+
+		/**
 		 * Requires every file of {@link #CAMPAIGN} to be removed, and every file of {@link #OTHER} and the malformed
 		 * runs to remain.
 		 *
@@ -398,6 +479,39 @@ public final class CleanupTest
 				requireThat(runRoot.resolve("claude/run-malformed/run.json"), "malformedRun").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
+		}
+	}
+
+	/**
+	 * Real Git forks whose removal of one optimization worktree is denied, as a file system that refuses the
+	 * deletion would.
+	 *
+	 * @param denied the worktree whose removal fails
+	 */
+	private record DenyingForks(Path denied) implements Forks
+	{
+		@Override
+		public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
+		{
+			return new GitForks().create(base, campaign, participants);
+		}
+
+		@Override
+		public ForkView open(Path base, Path campaign) throws IOException
+		{
+			return new GitForks().open(base, campaign);
+		}
+
+		@Override
+		public boolean exists(Path campaign)
+		{
+			return new GitForks().exists(campaign);
+		}
+
+		@Override
+		public void remove(Path base, Path campaign) throws IOException
+		{
+			throw new AccessDeniedException(denied.toString(), null, "Permission denied");
 		}
 	}
 

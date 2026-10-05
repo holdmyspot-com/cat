@@ -61,23 +61,23 @@ public sealed interface Command
 	}
 
 	/**
-	 * Reports a campaign without changing it.
+	 * Reports a campaign, or the certification record of a target that has no campaign, without changing it.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param campaign the campaign's identifier
+	 * @param subject the campaign's identifier or the target
 	 */
-	record Status(String campaign) implements Command
+	record Status(String subject) implements Command
 	{
 		/**
 		 * Creates the command.
 		 *
-		 * @param campaign the campaign's identifier
-		 * @throws NullPointerException if {@code campaign} is null
+		 * @param subject the campaign's identifier or the target
+		 * @throws NullPointerException if {@code subject} is null
 		 */
 		public Status
 		{
-			requireThat(campaign, "campaign").isNotNull();
+			requireThat(subject, "subject").isNotNull();
 		}
 	}
 
