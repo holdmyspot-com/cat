@@ -1,15 +1,15 @@
-## CAT Data Structures
+## Data Structures
 
 ## Design Goals
 
-- Keep CAT data structures explicit, stable, and easy to validate.
+- Keep this project's data structures explicit, stable, and easy to validate.
 - Process independently handleable unbounded input with bounded working memory.
 
 ## Guidance
 
-Treat CAT-owned JSON and YAML as versioned data contracts. Parse and validate their shape at the boundary, reject
-malformed required fields with a typed error, and model only fields in the current contract. Reject unknown fields
-unless the current contract explicitly defines an extension field. Do not expose Jackson nodes beyond the parsing
+Treat JSON and YAML that this project owns as versioned data contracts. Parse and validate their shape at the boundary,
+reject malformed required fields with a typed error, and model only fields in the current contract. Reject unknown
+fields unless the current contract explicitly defines an extension field. Do not expose Jackson nodes beyond the parsing
 boundary when a focused domain value can represent the contract.
 
 When input can grow independently of the current operation and its records can be handled independently, keep working

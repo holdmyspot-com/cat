@@ -32,9 +32,6 @@ When handling strings, text blocks, external string checks, or return-value vali
 When validating Java parameters or using Requirements.java APIs such as `requireThat()`, `that()`, or `checkIf()`, lazy
 load `../include/requirements-api.md`.
 
-When defining, parsing, reading, or processing CAT-owned JSON or YAML, or independently handleable unbounded record or
-binary input, lazy load `../include/data.md`.
-
 When defining CLI or hook output and error behavior, lazy load `../include/cli-output.md`.
 
 When designing classes, interfaces, scopes, constructors, builders, method visibility, entrypoint classes, or

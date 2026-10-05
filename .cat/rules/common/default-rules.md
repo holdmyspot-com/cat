@@ -33,6 +33,9 @@ When a CAT workflow creates, retains, hands off, or cleans up uncommitted state 
 
 When defining or changing a skill's frontmatter `description`, lazy load `skill-routing.md`.
 
+When defining, parsing, reading, or processing JSON or YAML that this project owns, or independently handleable
+unbounded record or binary input, lazy load `../include/data.md`.
+
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
 `plugin-data-migration.md`.
 
