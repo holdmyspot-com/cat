@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -19,6 +20,11 @@ import java.util.stream.Stream;
  */
 public final class RegressionScenariosTest
 {
+	/**
+	 * Lowercase letters and digits in words joined by single underscores, such as {@code reported_case}.
+	 */
+	private static final Pattern SNAKE_CASE = Pattern.compile("[a-z0-9]+(_[a-z0-9]+)*");
+
 	/**
 	 * Verifies that discovery finds every recorded scenario of the repository, so that each one names existing
 	 * guidance.
@@ -51,6 +57,44 @@ public final class RegressionScenariosTest
 		}
 		requireThat(recorded, "recorded").isNotEmpty();
 		requireThat(citations(root), "citations").containsAll(recorded);
+	}
+
+	/**
+	 * Verifies that every recorded scenario names its case and its assertions in snake_case.
+	 *
+	 * @throws IOException if the scenarios cannot be read
+	 */
+	@Test
+	public void scenarioIdentifiersAreSnakeCase() throws IOException
+	{
+		Path root = project();
+		List<String> misspelled = new ArrayList<>();
+		for (RegressionScenarios.Scenario scenario : RegressionScenarios.read(root,
+			root.resolve("client/target/no-home")).scenarios())
+		{
+			Path file = Path.of(scenario.citation());
+			String name = file.getFileName().toString();
+			String caseName;
+			if (name.equals("scenario.md"))
+				caseName = file.getParent().getFileName().toString();
+			else
+				caseName = name.substring(0, name.length() - ".md".length());
+			if (!SNAKE_CASE.matcher(caseName).matches())
+				misspelled.add(scenario.citation() + ": case " + caseName);
+			boolean assertions = false;
+			for (String line : scenario.content().lines().toList())
+			{
+				if (line.startsWith("## "))
+					assertions = line.equals("## Assertions");
+				else if (assertions && line.startsWith("### "))
+				{
+					String assertion = line.substring("### ".length()).strip();
+					if (!SNAKE_CASE.matcher(assertion).matches())
+						misspelled.add(scenario.citation() + ": assertion " + assertion);
+				}
+			}
+		}
+		requireThat(misspelled, "misspelled").isEmpty();
 	}
 
 	/**
