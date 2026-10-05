@@ -26,9 +26,9 @@ import java.util.Optional;
  * The file-system implementation of {@link WorkspacePort}: staged sources, authoring copies, and the optimization
  * worktree.
  * <p>
- * The optimization worktree holds the working candidate's project files. Edits to external targets live in a mirror
- * beside it, never in the live target, until delivery. A scan of the worktree reports the mirror's files under their
- * absolute paths, so it is comparable with a candidate's {@link Overlay#snapshot() snapshot}.
+ * The optimization worktree holds the working candidate's project files. Copies of the read-only external
+ * participants live in a mirror beside it, never in the live files. A scan of the worktree reports the mirror's files
+ * under their absolute paths, so it is comparable with a candidate's {@link Overlay#snapshot() snapshot}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Writes to the worktree and scans of it do not overlap.
  */
@@ -46,7 +46,7 @@ public final class Workspace implements WorkspacePort
 	 *
 	 * @param tree the fork's files
 	 * @param storage the campaign storage directory, which holds the staged sources, the authoring copies and the
-	 *   mirror of external targets
+	 *   mirror of the read-only external participants
 	 * @param worktree the optimization worktree's directory
 	 * @throws NullPointerException if any of the arguments are null
 	 */

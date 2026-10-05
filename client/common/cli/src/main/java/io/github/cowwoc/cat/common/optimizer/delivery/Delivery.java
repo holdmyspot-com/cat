@@ -57,21 +57,22 @@ import java.util.function.Consumer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Delivers a selected candidate to the base worktree and its authorized external targets.
+ * Delivers a selected candidate to the base worktree. Delivery writes only files inside the project; external files
+ * are read-only participants.
  * <p>
  * Delivery runs in four steps:
  * <ol>
  *   <li>It checks that the optimization worktree holds only content that CAT recorded, and materializes the selected
  *   candidate there if it is not the working candidate.</li>
- *   <li>It plans the delivery against a fresh scan of the base worktree and the external targets, and stops before
+ *   <li>It plans the delivery against a fresh scan of the base worktree and the read-only external participants that
+ *   the fork recorded, and stops before
  *   writing anything if the plan has conflicts. A certified delivery's plan also creates or replaces the target's
  *   certification record, after the candidate's changes.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
  *   <li>It checks that every target holds the candidate's state and reports the Git diff of the base worktree, the
- *   external change record, the paths that only the base or external state changed, and whether the result is
- *   current or historical.</li>
+ *   paths that changed outside the candidate since the fork, and whether the result is current or historical.</li>
  * </ol>
  * Delivery never commits, stages or moves a branch in the base worktree; the user reviews the uncommitted changes.
  * <p>
@@ -132,12 +133,14 @@ public final class Delivery
 	 * @param working the working candidate's overlay, which the optimization worktree holds unless the selected
 	 *   candidate was already materialized there
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
-	 *   external targets; a base-only change at or below one of them makes the result historical
+	 *   read-only external participants; a change outside the candidate at or below one of them makes the result
+	 *   historical
 	 * @param record the certification record to write to the base worktree, present exactly when the request is
 	 *   labelled {@code certified}
 	 * @return the result
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if the request names a
+	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
+	 *   an external file, if the request names a
 	 *   different candidate than {@code selected}, if {@code selected} and {@code working} have different forks, or if
 	 *   {@code record} is absent from a certified request or present in another
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
@@ -164,6 +167,7 @@ public final class Delivery
 		requireThat(request.candidate().snapshot(), "request.candidate().snapshot()").
 			isEqualTo(selected.identity(), "selected.identity()");
 		requireThat(working.fork(), "working.fork()").isEqualTo(selected.fork(), "selected.fork()");
+		DeliveryPlan.requireProjectChanges(selected);
 
 		Optional<DeliveryJournal> recorded = store.loadJournal(campaignId);
 		if (recorded.isPresent() && !recorded.get().candidate().equals(selected.identity()))
@@ -266,7 +270,7 @@ public final class Delivery
 
 	/**
 	 * Returns the entries of an inventory that lie inside the project. The optimization worktree holds only these; the
-	 * external targets exist once, outside every worktree.
+	 * read-only external participants exist once, outside every worktree.
 	 *
 	 * @param inventory the inventory
 	 * @return the entries keyed by a relative path
@@ -283,8 +287,8 @@ public final class Delivery
 	}
 
 	/**
-	 * Returns the external paths that a scan of the base must cover: every external file that the fork recorded or
-	 * that the candidate changes.
+	 * Returns the external paths that a scan of the base must cover: every read-only external participant that the
+	 * fork recorded, so that a change made to one since the fork is reported.
 	 *
 	 * @param selected the selected candidate
 	 * @return the absolute paths
@@ -293,11 +297,6 @@ public final class Delivery
 	{
 		Set<Path> paths = new TreeSet<>();
 		for (Path path : selected.fork().entries().keySet())
-		{
-			if (path.isAbsolute())
-				paths.add(path);
-		}
-		for (Path path : selected.entries().keySet())
 		{
 			if (path.isAbsolute())
 				paths.add(path);
@@ -438,7 +437,7 @@ public final class Delivery
 	 *
 	 * @param base the base worktree
 	 * @param changes the delivered changes
-	 * @return the diff, or an empty string if the candidate changes only external targets
+	 * @return the diff, or an empty string if no delivered path differs from {@code HEAD}
 	 * @throws IOException if Git fails
 	 */
 	private static String diff(Path base, List<DeliveryChange> changes) throws IOException
@@ -447,8 +446,6 @@ public final class Delivery
 		List<String> existing = new ArrayList<>();
 		for (DeliveryChange change : changes)
 		{
-			if (change.target().isAbsolute())
-				continue;
 			targets.add(change.target().toString());
 			if (change.postimage().isPresent())
 				existing.add(change.target().toString());

@@ -30,14 +30,13 @@ public final class AuthorityTest
 
 	/**
 	 * Returns the authority used by most tests: prompt sources {@code prompts} and {@code .claude}, loader configuration
-	 * {@code .claude/settings.json}, and no authorized external target.
+	 * {@code .claude/settings.json}.
 	 *
 	 * @return the authority
 	 */
 	private static Authority promptAuthority()
 	{
-		return new Authority(Set.of(Path.of("prompts"), Path.of(".claude")), Set.of(Path.of(".claude/settings.json")),
-			Set.of());
+		return new Authority(Set.of(Path.of("prompts"), Path.of(".claude")), Set.of(Path.of(".claude/settings.json")));
 	}
 
 	/**
@@ -78,28 +77,52 @@ public final class AuthorityTest
 	}
 
 	/**
-	 * Verifies that an external target stays read-only until the user authorizes it, and that authorization permits
-	 * only content edits.
+	 * Verifies that every operation on an external file, whether it is reached through a link or read directly,
+	 * returns {@link Limit#EXTERNAL_TARGET_READ_ONLY}.
 	 */
 	@Test
-	public void externalTargetsAllowOnlyContentEdits()
+	public void externalFilesAreReadOnly()
 	{
 		// Requirement: R-W4
+		Authority authority = promptAuthority();
 		Path shared = Path.of("/external/shared.md");
-		Authority readOnly = promptAuthority();
-		Authority authorized = new Authority(Set.of(Path.of("prompts")), Set.of(), Set.of(shared));
+		Optional<Limit> readOnly = Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 
-		requireThat(readOnly.limitOf(Operation.EDIT_CONTENT, shared), "readOnlyEdit").
-			isEqualTo(Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY));
-		requireThat(authorized.limitOf(Operation.EDIT_CONTENT, shared), "authorizedEdit").isEmpty();
-		requireThat(authorized.limitOf(Operation.CREATE, Path.of("/external/new.md")), "authorizedCreate").
-			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
-		requireThat(authorized.limitOf(Operation.DELETE, shared), "authorizedDelete").
-			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
-		requireThat(authorized.limitOf(Operation.CHANGE_MODE, shared), "authorizedMode").
-			isEqualTo(Optional.of(Limit.MODE_FIXED));
-		requireThat(authorized.limitOf(Operation.CHANGE_LINK, shared), "authorizedLink").
-			isEqualTo(Optional.of(Limit.LINK_FIXED));
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, shared), "edit").isEqualTo(readOnly);
+		requireThat(authority.limitOf(Operation.CREATE, Path.of("/external/new.md")), "create").isEqualTo(readOnly);
+		requireThat(authority.limitOf(Operation.DELETE, shared), "delete").isEqualTo(readOnly);
+		requireThat(authority.limitOf(Operation.CHANGE_MODE, shared), "mode").isEqualTo(readOnly);
+		requireThat(authority.limitOf(Operation.CHANGE_LINK, shared), "retarget").isEqualTo(readOnly);
+	}
+
+	/**
+	 * Verifies that the warning about each needed operation on an external file, reached through a link or named
+	 * directly, offers no choice that edits the file.
+	 */
+	@Test
+	public void externalWarningOffersNoEdit()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/shared.md", link("/external/shared.md"),
+			"/external/shared.md", file("shared")));
+		Authority authority = promptAuthority();
+		List<Choice> withoutEdit = List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN);
+
+		for (Operation operation : Operation.values())
+		{
+			Optional<AuthorityWarning> throughLink = authority.diagnose("R-3", Path.of("prompts/shared.md"), operation,
+				fork);
+			requireThat(throughLink, "throughLink." + operation).isEqualTo(Optional.of(new AuthorityWarning("R-3",
+				Path.of("prompts/shared.md"), Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY,
+				withoutEdit)));
+
+			Optional<AuthorityWarning> direct = authority.diagnose("R-3", Path.of("/external/shared.md"), operation,
+				fork);
+			requireThat(direct, "direct." + operation).isEqualTo(Optional.of(new AuthorityWarning("R-3",
+				Path.of("/external/shared.md"), Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY,
+				withoutEdit)));
+		}
 	}
 
 	/**
@@ -109,17 +132,7 @@ public final class AuthorityTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*/project/prompts.*")
 	public void rejectsAbsolutePromptSource()
 	{
-		new Authority(Set.of(Path.of("/project/prompts")), Set.of(), Set.of());
-	}
-
-	/**
-	 * Verifies that the authority rejects an authorized target given as a project-relative path, because only
-	 * external targets need authorization.
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*shared\\.md.*")
-	public void rejectsRelativeAuthorizedTarget()
-	{
-		new Authority(Set.of(Path.of("prompts")), Set.of(), Set.of(Path.of("shared.md")));
+		new Authority(Set.of(Path.of("/project/prompts")), Set.of());
 	}
 
 	/**
@@ -169,49 +182,6 @@ public final class AuthorityTest
 	}
 
 	/**
-	 * Verifies that diagnosis warns about a needed content edit to an unauthorized external target, naming the
-	 * requirement, link path, resolved target, limit and every viable choice, including authorizing the target.
-	 */
-	@Test
-	public void warnsAboutUnauthorizedExternalTarget()
-	{
-		// Requirement: R-W4
-		FileInventory fork = inventory(Map.of(
-			"prompts/shared.md", link("/external/shared.md"),
-			"/external/shared.md", file("shared")));
-
-		Optional<AuthorityWarning> warning = promptAuthority().diagnose("R-3", Path.of("prompts/shared.md"),
-			Operation.EDIT_CONTENT, fork);
-
-		requireThat(warning, "warning").isEqualTo(Optional.of(new AuthorityWarning("R-3", Path.of("prompts/shared.md"),
-			Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY,
-			List.of(Choice.AUTHORIZE_TARGET, Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN,
-				Choice.REVISE_CAMPAIGN))));
-	}
-
-	/**
-	 * Verifies that diagnosis of a structural edit to an authorized external target does not offer authorization,
-	 * because reauthorizing the target cannot permit it.
-	 */
-	@Test
-	public void structuralWarningOmitsAuthorization()
-	{
-		// Requirement: R-W4
-		FileInventory fork = inventory(Map.of(
-			"prompts/shared", link("/external/shared"),
-			"/external/shared/a.md", file("shared")));
-		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of(),
-			Set.of(Path.of("/external/shared/a.md")));
-
-		Optional<AuthorityWarning> warning = authority.diagnose("R-4", Path.of("prompts/shared/new.md"),
-			Operation.CREATE, fork);
-
-		requireThat(warning, "warning").isEqualTo(Optional.of(new AuthorityWarning("R-4",
-			Path.of("prompts/shared/new.md"), Path.of("/external/shared/new.md"), Limit.EXTERNAL_STRUCTURE_FIXED,
-			List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN))));
-	}
-
-	/**
 	 * Verifies that diagnosis produces no warning for an edit inside the authority.
 	 */
 	@Test
@@ -224,54 +194,5 @@ public final class AuthorityTest
 			Operation.EDIT_CONTENT, fork);
 
 		requireThat(warning, "warning").isEmpty();
-	}
-
-	/**
-	 * Verifies that authorizing an external target again, after the campaign already authorized it, permits its
-	 * content edits but never a structural edit or a mode change, and that diagnosing such an edit does not offer
-	 * authorization again.
-	 */
-	@Test
-	public void reauthorizingKeepsStructureFixed()
-	{
-		// Requirement: R-W4
-		Path target = Path.of("/external/shared.md");
-		FileInventory fork = inventory(Map.of(
-			"prompts/shared.md", link("/external/shared.md"),
-			"/external/shared.md", file("shared")));
-		Authority authorized = promptAuthority().withAuthorizedTargets(Set.of(target));
-		Authority reauthorized = authorized.withAuthorizedTargets(Set.of(target));
-
-		requireThat(reauthorized.limitOf(Operation.EDIT_CONTENT, target), "edit").isEmpty();
-		requireThat(reauthorized.limitOf(Operation.DELETE, target), "delete").
-			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
-		requireThat(reauthorized.limitOf(Operation.CREATE, target), "create").
-			isEqualTo(Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED));
-		requireThat(reauthorized.limitOf(Operation.CHANGE_MODE, target), "mode").
-			isEqualTo(Optional.of(Limit.MODE_FIXED));
-		requireThat(reauthorized.diagnose("R-6", Path.of("prompts/shared.md"), Operation.EDIT_CONTENT, fork),
-			"editWarning").isEmpty();
-		requireThat(reauthorized.diagnose("R-6", Path.of("prompts/shared.md"), Operation.DELETE, fork),
-			"deleteWarning").isEqualTo(Optional.of(new AuthorityWarning("R-6", Path.of("prompts/shared.md"), target,
-				Limit.EXTERNAL_STRUCTURE_FIXED,
-				List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN))));
-	}
-
-	/**
-	 * Verifies that replacing the authorized targets keeps the prompt sources and loader configuration.
-	 */
-	@Test
-	public void authorizedTargetsReplaceOnlyTargets()
-	{
-		// Requirement: R-W4
-		Path target = Path.of("/external/shared.md");
-		Authority authority = promptAuthority().withAuthorizedTargets(Set.of(target));
-
-		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("prompts/a.md")), "prompt").isEmpty();
-		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of(".claude/settings.json")), "loader").
-			isEqualTo(Optional.of(Limit.LOADER_CONFIGURATION_FIXED));
-		requireThat(promptAuthority().limitOf(Operation.EDIT_CONTENT, target), "before").
-			isEqualTo(Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY));
-		requireThat(authority.limitOf(Operation.EDIT_CONTENT, target), "after").isEmpty();
 	}
 }

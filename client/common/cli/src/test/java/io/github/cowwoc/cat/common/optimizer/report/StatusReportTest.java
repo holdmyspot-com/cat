@@ -827,7 +827,7 @@ public final class StatusReportTest
 			frozen.attempts(),
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
-			frozen.authorizedTargets(), frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
+			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
 			frozen.delivery(), frozen.optimization());
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
@@ -1233,8 +1233,8 @@ public final class StatusReportTest
 		// Requirement: R-W4
 		AuthorityWarning warning = new AuthorityWarning("R1", Path.of("rules/shared.md"),
 			Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
-				AuthorityWarning.Choice.AUTHORIZE_TARGET, AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
-				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
+				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+				AuthorityWarning.Choice.REVISE_CAMPAIGN));
 		Campaign campaign = confirmed().pending(new PendingDecision.AuthorityWarnings(List.of(warning))).build();
 
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
@@ -1243,7 +1243,7 @@ public final class StatusReportTest
 		requireThat(report.pending(), "pending").isNotNull().contains("R1");
 		requireThat(report.authorityWarnings(), "authorityWarnings").isEqualTo(List.of(warning));
 		requireThat(report.choices().stream().map(ChoiceItem::id).toList(), "choices").
-			isEqualTo(List.of("authorize_target", "use_authorized_source", "stop"));
+			isEqualTo(List.of("use_authorized_source", "stop"));
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
 		JsonNode shown = json.path("authority_warnings").get(0);
 		requireThat(shown.path("requirement").asString(), "requirement").isEqualTo("R1");
@@ -1254,11 +1254,11 @@ public final class StatusReportTest
 		for (JsonNode choice : shown.path("choices"))
 			choices.add(choice.asString());
 		requireThat(choices, "warningChoices").
-			isEqualTo(List.of("authorize_target", "use_authorized_source", "stop", "revise"));
+			isEqualTo(List.of("use_authorized_source", "stop", "revise"));
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Authority warning: requirement R1 needs an edit at " +
 				"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
-				"choices: authorize target (--target /external/shared.md), use authorized source, stop, revise");
+				"choices: use authorized source, stop, revise");
 	}
 
 	/**

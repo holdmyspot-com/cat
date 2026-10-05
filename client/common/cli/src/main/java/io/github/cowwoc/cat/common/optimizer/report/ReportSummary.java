@@ -210,13 +210,7 @@ final class ReportSummary
 	{
 		List<String> choices = new ArrayList<>();
 		for (AuthorityWarning.Choice choice : warning.choices())
-		{
-			String label = ReportJson.command(choice).replace('_', ' ');
-			if (choice == AuthorityWarning.Choice.AUTHORIZE_TARGET)
-				choices.add(label + " (--target " + warning.target() + ")");
-			else
-				choices.add(label);
-		}
+			choices.add(ReportJson.command(choice).replace('_', ' '));
 		return "Authority warning: requirement " + warning.requirement() + " needs an edit at " + warning.path() +
 			", which resolves to " + warning.target() + " (limit: " +
 			EnumNames.lowerCase(warning.limit()).replace('_', ' ') + "); choices: " +

@@ -35,14 +35,14 @@ public final class InventoryDiffTest
 	}
 
 	/**
-	 * Returns an authority whose only prompt source is {@code prompts}, whose loader configuration is
-	 * {@code prompts/loader.json}, and which authorizes no external target.
+	 * Returns an authority whose only prompt source is {@code prompts} and whose loader configuration is
+	 * {@code prompts/loader.json}.
 	 *
 	 * @return the authority
 	 */
 	private static Authority promptAuthority()
 	{
-		return new Authority(Set.of(Path.of("prompts")), Set.of(Path.of("prompts/loader.json")), Set.of());
+		return new Authority(Set.of(Path.of("prompts")), Set.of(Path.of("prompts/loader.json")));
 	}
 
 	/**
@@ -153,9 +153,8 @@ public final class InventoryDiffTest
 
 	/**
 	 * Verifies operations on paths that the fork reaches through links, as seen in an author copy where every link is
-	 * replaced by a copy of its target: deleting a link path changes a link, editing an unauthorized external target is
-	 * read-only, creating a file inside a linked external directory is structural, and a path whose links form a cycle
-	 * cannot be resolved.
+	 * replaced by a copy of its target: deleting a link path changes a link, editing an external file or creating one
+	 * inside a linked external directory is read-only, and a path whose links form a cycle cannot be resolved.
 	 */
 	@Test
 	public void classifiesOperationsThroughLinks()
@@ -187,7 +186,7 @@ public final class InventoryDiffTest
 			new ForbiddenOperation(Path.of("prompts/alias.md"), Path.of("prompts/a.md"), Operation.CHANGE_LINK,
 				Limit.LINK_FIXED),
 			new ForbiddenOperation(Path.of("prompts/library/y.md"), Path.of("/external/library/y.md"), Operation.CREATE,
-				Limit.EXTERNAL_STRUCTURE_FIXED),
+				Limit.EXTERNAL_TARGET_READ_ONLY),
 			new ForbiddenOperation(Path.of("prompts/loop/z.md"), Path.of("prompts/loop/z.md"), Operation.CREATE,
 				Limit.LINK_CYCLE),
 			new ForbiddenOperation(Path.of("prompts/shared.md"), Path.of("/external/shared.md"), Operation.EDIT_CONTENT,

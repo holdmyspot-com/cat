@@ -130,8 +130,7 @@ public abstract class CampaignStoreContract
 	 * infrastructure attempts, the judge's rationale and the failed requirements for each judged trial and each
 	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of each development failure, an
 	 * ended attempt's failure groups with their rounds and counts, a reproduction trial, the campaign's evidence
-	 * revision, a pending authority warning, a pause over unreproduced failures and the authorized external targets,
-	 * survives a reload unchanged.
+	 * revision, a pending authority warning and a pause over unreproduced failures, survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -770,7 +769,7 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * Returns a delivery journal that deletes, edits and creates one file each, including an external file.
+	 * Returns a delivery journal that deletes, edits and creates one file each.
 	 *
 	 * @param candidate the name whose digest identifies the delivered candidate
 	 * @param applied the number of leading changes known to be applied
@@ -784,7 +783,7 @@ public abstract class CampaignStoreContract
 		FileContent original = new FileContent("original\n".getBytes(UTF_8));
 		List<DeliveryChange> changes = List.of(
 			new DeliveryChange.Delete(0, Path.of("rules/old.md"), new RegularFile(removed.hash(), readWrite)),
-			new DeliveryChange.Edit(1, Path.of("/external/shared.md"), new RegularFile(original.hash(), readWrite),
+			new DeliveryChange.Edit(1, Path.of("rules/shared.md"), new RegularFile(original.hash(), readWrite),
 				new FileContent("edited\n".getBytes(UTF_8)), readWrite),
 			new DeliveryChange.Create(2, Path.of("rules/new.sh"), new FileContent(new byte[]{0, 1, 2, -1}),
 				executable));
@@ -1027,14 +1026,11 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.FailuresNotReproduced(1)).
 			pending(new PendingDecision.AuthorityWarnings(List.of(
 				new AuthorityWarning("R1", Path.of("rules/shared.md"), Path.of("/external/shared.md"),
-					Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
-						AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
-						AuthorityWarning.Choice.REVISE_CAMPAIGN)),
+					Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+						AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN)),
 				new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,
 					List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 						AuthorityWarning.Choice.REVISE_CAMPAIGN))))).
-			authorizedTarget(Path.of("/external/authorized.md")).
-			authorizedTarget(Path.of("/external/also-authorized.md")).
 			revisionRequested().
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			delivery(new DeliveryRequest(new Candidate(3, Builder.snapshot("candidate-3")), 1,
@@ -1074,7 +1070,7 @@ public abstract class CampaignStoreContract
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
 			built.candidates(), built.authorAttempts(), built.development(), built.baseline(),
 			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
-			built.authorizedTargets(), built.pendingDecisions(), built.revisionRequested(), built.outcome(),
+			built.pendingDecisions(), built.revisionRequested(), built.outcome(),
 			built.delivery(), built.optimization());
 	}
 }

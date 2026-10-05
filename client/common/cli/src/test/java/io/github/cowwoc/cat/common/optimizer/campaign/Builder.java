@@ -19,7 +19,6 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -70,7 +69,6 @@ public final class Builder
 	private AddedValues added = AddedValues.NONE;
 	private SlowStart slowStart = SlowStart.INITIAL;
 	private Throttle throttle = Throttle.NONE;
-	private final Set<Path> authorizedTargets = new LinkedHashSet<>();
 	private final List<PendingDecision> pendingDecisions = new ArrayList<>();
 	private boolean revisionRequested;
 	private Outcome outcome;
@@ -570,18 +568,6 @@ public final class Builder
 	}
 
 	/**
-	 * Adds an external target whose content the user authorized CAT to edit.
-	 *
-	 * @param value the target's absolute path
-	 * @return this builder
-	 */
-	public Builder authorizedTarget(Path value)
-	{
-		authorizedTargets.add(value);
-		return this;
-	}
-
-	/**
 	 * Adds a pending decision behind those added before.
 	 *
 	 * @param value the decision
@@ -698,7 +684,7 @@ public final class Builder
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			authorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart, throttle,
-			authorizedTargets, pendingDecisions, revisionRequested, outcome, delivery, optimization);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization);
 	}
 
 	/**

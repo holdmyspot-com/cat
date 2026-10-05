@@ -1,11 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
-
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
@@ -75,7 +70,6 @@ final class UserChoices
 				draft.outcome = Outcome.NOT_CERTIFIED;
 				finish(draft, new DeliveryRequest(draft.working, 0, Outcome.NOT_CERTIFIED));
 			}
-			case AUTHORIZE_TARGET -> authorize(draft, (PendingDecision.AuthorityWarnings) pending, choose.target());
 			case USE_AUTHORIZED_SOURCE -> draft.resolve();
 			case RESOLUTION -> throw new IllegalArgumentException("Choose a numbered resolution of the conflict");
 			case MORE_ROUNDS -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
@@ -83,41 +77,6 @@ final class UserChoices
 			case NEW_ATTEMPT -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
 				FailureGroup::abandon);
 		}
-	}
-
-	/**
-	 * Records authorization of the external target that pending warnings name. Warnings about that target are
-	 * answered; warnings about other targets remain pending.
-	 *
-	 * @param draft the state
-	 * @param warnings the pending decision
-	 * @param target the target to authorize
-	 * @throws IllegalArgumentException if no pending warning offers authorizing {@code target}
-	 */
-	private static void authorize(Draft draft, PendingDecision.AuthorityWarnings warnings, Path target)
-	{
-		List<AuthorityWarning> remaining = new ArrayList<>();
-		boolean offered = false;
-		for (AuthorityWarning warning : warnings.warnings())
-		{
-			if (warning.target().equals(target))
-			{
-				if (!warning.choices().contains(AuthorityWarning.Choice.AUTHORIZE_TARGET))
-				{
-					throw new IllegalArgumentException("Authorizing " + target + " cannot permit the " +
-						warning.limit() + " edit that requirement " + warning.requirement() + " needs");
-				}
-				offered = true;
-			}
-			else
-				remaining.add(warning);
-		}
-		if (!offered)
-			throw new IllegalArgumentException("No pending authority warning names the target " + target);
-		draft.authorizedTargets.add(target);
-		draft.resolve();
-		if (!remaining.isEmpty())
-			draft.pendingDecisions.addFirst(new PendingDecision.AuthorityWarnings(remaining));
 	}
 
 	/**

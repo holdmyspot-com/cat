@@ -21,18 +21,18 @@ import java.util.List;
 public sealed interface DeliveryResult
 {
 	/**
-	 * Every change of the candidate is in place in the base worktree and the external targets, and verified.
+	 * Every change of the candidate is in place in the base worktree, and verified.
 	 *
 	 * @param label the certification label that the delivered result carries
-	 * @param applicability {@code HISTORICAL} if an edit made only in the base worktree or the external targets changed a
-	 *                      prompt source that the candidate does not change, so that the merged prompt system is a
-	 *                      different snapshot than the one measured; otherwise {@code CURRENT}
-	 * @param changedPromptSources the prompt-source paths that only the base or external state changed, in path order
-	 * @param baseOnlyChanges every path that only the base or external state changed since the fork; delivery left them
-	 *                        unchanged
+	 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork, in the base worktree
+	 *                      or to a read-only external participant, changed a prompt source, so that the merged prompt
+	 *                      system is a different snapshot than the one measured; otherwise {@code CURRENT}
+	 * @param changedPromptSources the prompt-source paths that changed outside the candidate since the fork, in path
+	 *                             order
+	 * @param baseOnlyChanges every path that changed outside the candidate since the fork; delivery left them unchanged
 	 * @param changes the changes that delivered the candidate, in the order they were applied
 	 * @param diff the Git diff of the delivered paths in the base worktree against its {@code HEAD}, including created
-	 *             files; empty if the candidate changes only external targets
+	 *             files
 	 */
 	record Delivered(Outcome label, Applicability applicability, List<Path> changedPromptSources,
 		List<Path> baseOnlyChanges, List<DeliveryChange> changes, String diff) implements DeliveryResult
@@ -41,10 +41,10 @@ public sealed interface DeliveryResult
 		 * Creates a result.
 		 *
 		 * @param label the certification label that the delivered result carries
-		 * @param applicability {@code HISTORICAL} if an edit made only in the base worktree or the external targets
-		 *                      changed a prompt source that the candidate does not change; otherwise {@code CURRENT}
-		 * @param changedPromptSources the prompt-source paths that only the base or external state changed
-		 * @param baseOnlyChanges every path that only the base or external state changed since the fork
+		 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork changed a prompt
+		 *                      source; otherwise {@code CURRENT}
+		 * @param changedPromptSources the prompt-source paths that changed outside the candidate since the fork
+		 * @param baseOnlyChanges every path that changed outside the candidate since the fork
 		 * @param changes the changes that delivered the candidate, in the order they were applied
 		 * @param diff the Git diff of the delivered paths in the base worktree against its {@code HEAD}
 		 * @throws NullPointerException if any of the arguments are null
@@ -58,20 +58,10 @@ public sealed interface DeliveryResult
 			changes = List.copyOf(changes);
 			requireThat(diff, "diff").isNotNull();
 		}
-
-		/**
-		 * Returns the external change record: the delivered changes to files outside the base worktree.
-		 *
-		 * @return the changes whose target is absolute, in the order they were applied
-		 */
-		public List<DeliveryChange> externalChanges()
-		{
-			return changes.stream().filter(change -> change.target().isAbsolute()).toList();
-		}
 	}
 
 	/**
-	 * The preflight found conflicts between the candidate and the current base or external state. Delivery stopped
+	 * The preflight found conflicts between the candidate and the current base worktree. Delivery stopped
 	 * before writing any file or journal; the user decides how to proceed.
 	 *
 	 * @param conflicts the conflicts, grouped by the candidate's target in path order
@@ -92,8 +82,8 @@ public sealed interface DeliveryResult
 
 	/**
 	 * The optimization worktree holds files that neither the working candidate nor the delivered candidate records.
-	 * Delivery stopped before changing any file in the base worktree or the external targets, and did not incorporate
-	 * the change; the user decides how to proceed.
+	 * Delivery stopped before changing any file in the base worktree, and did not incorporate the change; the user
+	 * decides how to proceed.
 	 *
 	 * @param changes the differences between the working candidate and the optimization worktree, in path order
 	 */

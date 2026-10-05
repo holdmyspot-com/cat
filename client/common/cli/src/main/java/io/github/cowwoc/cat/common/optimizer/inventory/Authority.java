@@ -16,8 +16,8 @@ import java.util.Set;
  *   deletes.</li>
  *   <li>Existing symbolic links, their destinations and existing file modes stay fixed.</li>
  *   <li>Loader configuration stays fixed, even inside a prompt source.</li>
- *   <li>External targets stay read-only unless the user authorizes them; an authorized target permits only content
- *   edits to the existing file.</li>
+ *   <li>External files, whether reached through links or read directly from outside the project, are read-only: no
+ *   operation may change one.</li>
  * </ul>
  * Authority applies to resolved targets: an edit made at a link path applies to the link's target.
  * <p>
@@ -25,13 +25,10 @@ import java.util.Set;
  */
 public final class Authority
 {
-	private static final List<Choice> CHOICES_WITH_AUTHORIZATION = List.of(Choice.AUTHORIZE_TARGET,
-		Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN);
-	private static final List<Choice> CHOICES_WITHOUT_AUTHORIZATION = List.of(Choice.USE_AUTHORIZED_SOURCE,
-		Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN);
+	private static final List<Choice> CHOICES = List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN,
+		Choice.REVISE_CAMPAIGN);
 	private final Set<Path> promptSources;
 	private final Set<Path> loaderConfiguration;
-	private final Set<Path> authorizedTargets;
 
 	/**
 	 * Creates an authority.
@@ -40,12 +37,11 @@ public final class Authority
 	 *                      ordinary file at or below one may be edited, created or deleted
 	 * @param loaderConfiguration the files and directories, relative to the project directory or absolute, that decide
 	 *                            which prompt files load; nothing at or below one may change
-	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized CAT to edit
 	 * @throws NullPointerException if any of the arguments are null or contain null
-	 * @throws IllegalArgumentException if a path is empty, not normalized or starts with {@code ..}, if a prompt source
-	 *                                  is absolute, or if an authorized target is relative
+	 * @throws IllegalArgumentException if a path is empty, not normalized or starts with {@code ..}, or if a prompt
+	 *                                  source is absolute
 	 */
-	public Authority(Set<Path> promptSources, Set<Path> loaderConfiguration, Set<Path> authorizedTargets)
+	public Authority(Set<Path> promptSources, Set<Path> loaderConfiguration)
 	{
 		for (Path promptSource : promptSources)
 		{
@@ -54,27 +50,8 @@ public final class Authority
 		}
 		for (Path path : loaderConfiguration)
 			FileInventory.requireInventoryPath(path, "loaderConfiguration");
-		for (Path target : authorizedTargets)
-		{
-			FileInventory.requireInventoryPath(target, "authorizedTarget");
-			requireThat(target, "authorizedTarget").isAbsolute();
-		}
 		this.promptSources = Set.copyOf(promptSources);
 		this.loaderConfiguration = Set.copyOf(loaderConfiguration);
-		this.authorizedTargets = Set.copyOf(authorizedTargets);
-	}
-
-	/**
-	 * Returns an authority with the same prompt sources and loader configuration and other authorized targets.
-	 *
-	 * @param targets the absolute paths of the external files whose content the user authorized CAT to edit
-	 * @return the authority
-	 * @throws NullPointerException if {@code targets} is null or contains null
-	 * @throws IllegalArgumentException if a target is empty, not normalized or relative
-	 */
-	public Authority withAuthorizedTargets(Set<Path> targets)
-	{
-		return new Authority(promptSources, loaderConfiguration, targets);
 	}
 
 	/**
@@ -82,7 +59,7 @@ public final class Authority
 	 *
 	 * @param operation the operation
 	 * @param target the path the operation changes after symbolic links are resolved: relative to the project
-	 *               directory, or absolute for an external target
+	 *               directory, or absolute for an external file
 	 * @return the limit, or empty if the operation is authorized
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code target} is empty, not normalized or starts with {@code ..}
@@ -91,48 +68,27 @@ public final class Authority
 	{
 		requireThat(operation, "operation").isNotNull();
 		FileInventory.requireInventoryPath(target, "target");
+		if (target.isAbsolute())
+			return Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 		return switch (operation)
 		{
 			case CHANGE_MODE -> Optional.of(Limit.MODE_FIXED);
 			case CHANGE_LINK -> Optional.of(Limit.LINK_FIXED);
-			case EDIT_CONTENT -> contentLimitOf(target);
-			case CREATE, DELETE -> structureLimitOf(target);
+			case EDIT_CONTENT, CREATE, DELETE -> projectLimitOf(target);
 		};
 	}
 
 	/**
-	 * Returns the limit that forbids a content edit to a resolved target.
+	 * Returns the limit that forbids a content edit, or creating or deleting an ordinary file, at a resolved target
+	 * inside the project.
 	 *
-	 * @param target the resolved target
-	 * @return the limit, or empty if the edit is authorized
-	 */
-	private Optional<Limit> contentLimitOf(Path target)
-	{
-		if (isLoaderConfiguration(target))
-			return Optional.of(Limit.LOADER_CONFIGURATION_FIXED);
-		if (target.isAbsolute())
-		{
-			if (authorizedTargets.contains(target))
-				return Optional.empty();
-			return Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
-		}
-		if (isPromptSource(target))
-			return Optional.empty();
-		return Optional.of(Limit.OUTSIDE_PROMPT_SOURCES);
-	}
-
-	/**
-	 * Returns the limit that forbids creating or deleting an ordinary file at a resolved target.
-	 *
-	 * @param target the resolved target
+	 * @param target the resolved target, relative to the project directory
 	 * @return the limit, or empty if the change is authorized
 	 */
-	private Optional<Limit> structureLimitOf(Path target)
+	private Optional<Limit> projectLimitOf(Path target)
 	{
 		if (isLoaderConfiguration(target))
 			return Optional.of(Limit.LOADER_CONFIGURATION_FIXED);
-		if (target.isAbsolute())
-			return Optional.of(Limit.EXTERNAL_STRUCTURE_FIXED);
 		if (isPromptSource(target))
 			return Optional.empty();
 		return Optional.of(Limit.OUTSIDE_PROMPT_SOURCES);
@@ -162,8 +118,8 @@ public final class Authority
 
 	/**
 	 * Checks an edit that diagnosis found a requirement needs, and warns the user when the edit lies outside this
-	 * authority. The warning offers authorizing the target only when that would permit the edit: a content edit to an
-	 * external target that is not yet authorized.
+	 * authority. Every warning offers the same choices, none of which widens the authority: continue within it, stop
+	 * the campaign or revise it.
 	 *
 	 * @param requirement the identifier of the requirement that needs the edit
 	 * @param path the path at which the edit is needed, relative to the project directory or absolute
@@ -181,20 +137,10 @@ public final class Authority
 		requireThat(fork, "fork").isNotNull();
 		Optional<Path> resolved = fork.resolve(path);
 		if (resolved.isEmpty())
-		{
-			return Optional.of(new AuthorityWarning(requirement, path, path, Limit.LINK_CYCLE,
-				CHOICES_WITHOUT_AUTHORIZATION));
-		}
+			return Optional.of(new AuthorityWarning(requirement, path, path, Limit.LINK_CYCLE, CHOICES));
 
 		Path target = resolved.get();
-		Optional<Limit> limit = limitOf(operation, target);
-		if (limit.isEmpty())
-			return Optional.empty();
-		List<Choice> choices;
-		if (limit.get() == Limit.EXTERNAL_TARGET_READ_ONLY)
-			choices = CHOICES_WITH_AUTHORIZATION;
-		else
-			choices = CHOICES_WITHOUT_AUTHORIZATION;
-		return Optional.of(new AuthorityWarning(requirement, path, target, limit.get(), choices));
+		return limitOf(operation, target).
+			map(limit -> new AuthorityWarning(requirement, path, target, limit, CHOICES));
 	}
 }

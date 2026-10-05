@@ -343,20 +343,5 @@ public sealed interface PendingDecision
 			requireThat(warnings, "warnings").isNotEmpty();
 			warnings = List.copyOf(warnings);
 		}
-
-		/**
-		 * Indicates whether authorizing a target would permit some warned edit.
-		 *
-		 * @return {@code true} if a warning offers {@link AuthorityWarning.Choice#AUTHORIZE_TARGET}
-		 */
-		public boolean offersAuthorization()
-		{
-			for (AuthorityWarning warning : warnings)
-			{
-				if (warning.choices().contains(AuthorityWarning.Choice.AUTHORIZE_TARGET))
-					return true;
-			}
-			return false;
-		}
 	}
 }

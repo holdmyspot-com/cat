@@ -167,7 +167,6 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("hunk_definition", Hunk.DEFINITION),
 			Map.entry("prompt_sources", promptSources),
 			Map.entry("loader_configuration", loaderConfiguration),
-			Map.entry("authorized_targets", list(brief.authorizedTargets())),
 			Map.entry("links", links(brief.links())),
 			Map.entry("cell", brief.cell()),
 			Map.entry("approach", brief.approach().text()),

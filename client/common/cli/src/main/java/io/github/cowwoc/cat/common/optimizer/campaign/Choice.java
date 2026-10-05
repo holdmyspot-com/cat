@@ -58,11 +58,6 @@ public enum Choice
 	 */
 	ACCEPT_WITHOUT_CERTIFICATION,
 	/**
-	 * Record the external target that an authority warning names as authorized, so that later author attempts may
-	 * edit its content.
-	 */
-	AUTHORIZE_TARGET,
-	/**
 	 * Continue development within the confirmed edit authority, leaving the warned edit unmade.
 	 */
 	USE_AUTHORIZED_SOURCE,

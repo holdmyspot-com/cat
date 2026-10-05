@@ -23,14 +23,10 @@ public enum Limit
 	 */
 	LINK_FIXED,
 	/**
-	 * The resolved target lies outside the project and the user has not authorized edits to it.
+	 * The resolved target lies outside the project. External files are read-only: no operation may edit, create,
+	 * rename, delete, re-mode or retarget one.
 	 */
 	EXTERNAL_TARGET_READ_ONLY,
-	/**
-	 * The resolved target lies outside the project, where only content edits to authorized existing files are
-	 * allowed: never a create, rename or delete. Authorizing the target cannot lift this limit.
-	 */
-	EXTERNAL_STRUCTURE_FIXED,
 	/**
 	 * The operation creates or deletes something other than an ordinary file, such as a named pipe.
 	 */

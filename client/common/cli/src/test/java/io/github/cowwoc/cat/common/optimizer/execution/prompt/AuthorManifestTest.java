@@ -191,7 +191,7 @@ public final class AuthorManifestTest
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
-			Set.of(), Map.of(), "");
+			Map.of(), "");
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
@@ -251,7 +251,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), List.of(), Set.of(), Map.of(), "");
+			ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "");
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
@@ -332,7 +332,7 @@ public final class AuthorManifestTest
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure, failure), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()))),
-			Set.of(), Map.of(), "");
+			Map.of(), "");
 		requireThat(brief.failureIds(), "classifiedFailures").
 			isEqualTo(Set.of(brief.developmentId(0), brief.developmentId(1)));
 		requireThat(brief.developmentId(0), "firstOccurrence").isNotEqualTo(brief.developmentId(1));

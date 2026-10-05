@@ -45,10 +45,6 @@ public record AuthorityWarning(String requirement, Path path, Path target, Limit
 	public enum Choice
 	{
 		/**
-		 * Authorize content edits to the external target.
-		 */
-		AUTHORIZE_TARGET,
-		/**
 		 * Satisfy the requirement through another source the campaign is already authorized to edit.
 		 */
 		USE_AUTHORIZED_SOURCE,

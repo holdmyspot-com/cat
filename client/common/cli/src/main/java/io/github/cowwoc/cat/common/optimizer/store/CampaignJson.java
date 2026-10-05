@@ -99,14 +99,12 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -135,7 +133,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 18;
+	private static final int FORMAT_VERSION = 19;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -212,9 +210,6 @@ final class CampaignJson
 		throttle.put("hold_until", campaign.throttle().holdUntil().toString());
 		throttle.put("window_cap", campaign.throttle().windowCap());
 		throttle.put("backoffs", campaign.throttle().backoffs());
-		ArrayNode authorizedTargets = root.putArray("authorized_targets");
-		for (Path target : new TreeSet<>(campaign.authorizedTargets()))
-			authorizedTargets.add(target.toString());
 		ArrayNode pending = root.putArray("pending_decisions");
 		for (PendingDecision decision : campaign.pendingDecisions())
 			pending.add(writeDecision(decision));
@@ -271,12 +266,6 @@ final class CampaignJson
 		}
 		JsonNode slowStart = field(root, "slow_start");
 		JsonNode throttle = field(root, "throttle");
-		Set<Path> authorizedTargets = new HashSet<>();
-		for (JsonNode node : elements(root, "authorized_targets"))
-		{
-			if (!authorizedTargets.add(pathValue(node, "authorized_targets")))
-				throw new IllegalArgumentException("authorized_targets: duplicate target " + node.asString());
-		}
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
 			pending.add(readDecision(node));
@@ -297,7 +286,7 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
 				integer(throttle, "backoffs")),
-			authorizedTargets, pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
+			pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
 			delivery, readOptimization(field(root, "optimization")));
 	}
 

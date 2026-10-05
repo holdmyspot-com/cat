@@ -5,7 +5,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
-import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
@@ -46,14 +45,6 @@ final class DeliveryJson
 				applicability(root.putObject("applicability"), delivered.applicability());
 				paths(root.putArray("changed_prompt_sources"), delivered.changedPromptSources());
 				paths(root.putArray("base_only_changes"), delivered.baseOnlyChanges());
-				ArrayNode external = root.putArray("external_changes");
-				for (DeliveryChange change : delivered.externalChanges())
-				{
-					ObjectNode node = external.addObject();
-					node.put("target", change.target().toString());
-					node.put("sequence", change.sequence());
-					node.put("kind", kind(change));
-				}
 				root.put("diff", delivered.diff());
 			}
 			case DeliveryResult.Conflicted conflicted ->
@@ -129,21 +120,5 @@ final class DeliveryJson
 	{
 		for (Path path : paths)
 			array.add(path.toString());
-	}
-
-	/**
-	 * Returns the kind of a change.
-	 *
-	 * @param change the change
-	 * @return {@code "create"}, {@code "edit"} or {@code "delete"}
-	 */
-	private static String kind(DeliveryChange change)
-	{
-		return switch (change)
-		{
-			case DeliveryChange.Create _ -> "create";
-			case DeliveryChange.Edit _ -> "edit";
-			case DeliveryChange.Delete _ -> "delete";
-		};
 	}
 }

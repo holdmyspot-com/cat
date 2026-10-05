@@ -202,7 +202,6 @@ final class ReportJson
 	{
 		return switch (choice)
 		{
-			case AUTHORIZE_TARGET -> "authorize_target";
 			case USE_AUTHORIZED_SOURCE -> "use_authorized_source";
 			case STOP_CAMPAIGN -> "stop";
 			case REVISE_CAMPAIGN -> "revise";

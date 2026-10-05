@@ -55,12 +55,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Delivery} against a test-owned base worktree, which is a real Git repository, and a test-owned
- * external directory that holds an authorized external target. The optimization worktree is the in-memory
+ * external directory that holds a read-only external participant. The optimization worktree is the in-memory
  * {@link FakeWorkspacePort}. Git runs only to set up the base, to report the final diff and for the no-commit check.
  * <p>
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
- * holds {@code shared.md}. The candidate edits {@code rules/main.md} and {@code shared.md}, creates
+ * holds the read-only prompt source {@code shared.md}. The candidate edits {@code rules/main.md}, creates
  * {@code rules/new.md} and deletes {@code rules/old.md}. A certified delivery also writes the certification record of
  * the target {@code rules/main.md} to {@code .cat/certifications/rules/main.json}.
  */
@@ -83,8 +83,8 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A certified candidate is delivered, labelled {@code certified}, together with its authorized external edit, while
-	 * an edit that the user made after the fork to a file the candidate does not change survives. The result is
+	 * A certified candidate is delivered, labelled {@code certified}, while an edit that the user made after the fork to
+	 * a file the candidate does not change survives. The result is
 	 * current because the surviving edit is not a prompt source.
 	 *
 	 * @throws IOException if the fixture or delivery fails
@@ -111,8 +111,6 @@ public final class DeliveryTest
 			requireThat(read(fixture.base().resolve("README.md")), "README.md").
 				isEqualTo("readme edited by the user\n");
 			requireCandidateDelivered(fixture);
-			requireThat(delivered.externalChanges().stream().map(DeliveryChange::target).toList(), "externalChanges").
-				isEqualTo(List.of(fixture.shared()));
 			requireThat(delivered.diff(), "diff").contains("+main v2").contains("new file mode").
 				contains("+new rule").contains("deleted file mode").doesNotContain("README.md");
 		}
@@ -164,7 +162,7 @@ public final class DeliveryTest
 	public void faultBetweenWritesResumesOnce() throws IOException
 	{
 		// Requirement: R-W8
-		int changeCount = 5;
+		int changeCount = 4;
 		for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -199,7 +197,7 @@ public final class DeliveryTest
 
 				requireDelivered(result);
 				requireThat(written, "written").withContext(crashAfter, "crashAfter").
-					isEqualTo(List.of(0, 1, 2, 3, 4));
+					isEqualTo(List.of(0, 1, 2, 3));
 				requireCandidateDelivered(fixture);
 				requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
 					isEqualTo(RECORD.orElseThrow());
@@ -280,6 +278,73 @@ public final class DeliveryTest
 	}
 
 	/**
+	 * When the user changed a read-only external participant after the fork, delivery leaves it unchanged, delivers the
+	 * candidate, and reports the result as historical, naming the external participant as a changed prompt source.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void externalParticipantChangeIsHistorical() throws IOException
+	{
+		// Requirement: R-W8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+			Files.writeString(fixture.shared(), "shared edited by the user\n", UTF_8);
+
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+				deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
+					fixture.promptSources(), Optional.empty());
+
+			Delivered delivered = requireDelivered(result);
+			requireThat(delivered.applicability(), "applicability").
+				isEqualTo(new Applicability(Applicability.Status.HISTORICAL, true, List.of()));
+			requireThat(delivered.changedPromptSources(), "changedPromptSources").
+				isEqualTo(List.of(fixture.shared()));
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEqualTo(List.of(fixture.shared()));
+			requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared edited by the user\n");
+			requireThat(read(fixture.base().resolve("rules/main.md")), "main.md").isEqualTo("main v2\n");
+		}
+	}
+
+	/**
+	 * A candidate that changes an external file is refused before delivery writes any file or journal, because
+	 * external files are read-only.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void externalChangeRefusedBeforeAnyWrite() throws IOException
+	{
+		// Requirement: R-W4, R-W8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate().write(fixture.shared(), content("shared v2\n"), READ_WRITE);
+			CampaignStore store = new InMemoryCampaignStore();
+			List<DeliveryChange> writes = new ArrayList<>();
+
+			try
+			{
+				fixture.delivery(store, candidate, writes::add).
+					deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
+						fixture.promptSources(), Optional.empty());
+				throw new AssertionError("A candidate that changes an external file was delivered");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains(fixture.shared().toString()).contains("read-only");
+			}
+			requireThat(writes, "writes").isEmpty();
+			requireThat(store.loadJournal(CAMPAIGN), "journal").isEmpty();
+			requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared v1\n");
+			requireThat(read(fixture.base().resolve("rules/main.md")), "main.md").isEqualTo("main v1\n");
+			requireThat(fixture.base().resolve("rules/old.md"), "old.md").isRegularFile();
+		}
+	}
+
+	/**
 	 * Keeping an improvement whose candidate is older than the working candidate first materializes the kept candidate
 	 * in the optimization worktree, then delivers that candidate, labelled {@code improved, not certified}.
 	 *
@@ -342,7 +407,7 @@ public final class DeliveryTest
 
 	/**
 	 * When the optimization worktree holds a change that CAT did not record, delivery stops before changing the base
-	 * worktree or the external targets and reports the change.
+	 * worktree and reports the change.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -679,7 +744,7 @@ public final class DeliveryTest
 		Path base = fixture.base();
 		requireThat(read(base.resolve("rules/new.md")), "new.md").isEqualTo("new rule\n");
 		requireThat(Files.notExists(base.resolve("rules/old.md")), "oldIsAbsent").isTrue();
-		requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared v2\n");
+		requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared v1\n");
 		requireThat(Files.getPosixFilePermissions(base.resolve("rules/new.md")), "newPermissions").
 			isEqualTo(READ_WRITE);
 		requireThat(read(base.resolve("rules/main.md")), "main.md").isEqualTo("main v2\n");
@@ -731,7 +796,7 @@ public final class DeliveryTest
 	 *
 	 * @param root the test-owned directory that holds both
 	 * @param base the base worktree, a Git repository whose {@code HEAD} holds the fork's files
-	 * @param external the directory outside the base that holds the authorized external target
+	 * @param external the directory outside the base that holds the read-only external participant
 	 * @param fork the files recorded at the fork
 	 */
 	private record Fixture(Path root, Path base, Path external, FileInventory fork)
@@ -784,7 +849,7 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Returns the authorized external target.
+		 * Returns the read-only external participant.
 		 *
 		 * @return the absolute path of {@code shared.md}
 		 */
@@ -794,7 +859,7 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Returns the prompt sources: the {@code rules} directory and the external target.
+		 * Returns the prompt sources: the {@code rules} directory and the read-only external participant.
 		 *
 		 * @return the paths
 		 */
@@ -804,8 +869,8 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Returns the candidate that edits {@code rules/main.md} and {@code shared.md}, creates {@code rules/new.md}
-		 * and deletes {@code rules/old.md}.
+		 * Returns the candidate that edits {@code rules/main.md}, creates {@code rules/new.md} and deletes
+		 * {@code rules/old.md}.
 		 *
 		 * @return the candidate
 		 */
@@ -813,7 +878,6 @@ public final class DeliveryTest
 		{
 			return Overlay.of(fork).
 				write(Path.of("rules/main.md"), content("main v2\n"), recordedPermissions(Path.of("rules/main.md"))).
-				write(shared(), content("shared v2\n"), recordedPermissions(shared())).
 				write(Path.of("rules/new.md"), content("new rule\n"), READ_WRITE).
 				delete(Path.of("rules/old.md"));
 		}
@@ -844,7 +908,7 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Scans the base worktree and the external target as delivery's preflight does.
+		 * Scans the base worktree and the external participant as delivery's preflight does.
 		 *
 		 * @return the current files
 		 * @throws IOException if a file cannot be read

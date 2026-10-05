@@ -287,6 +287,53 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a version 18 snapshot, which has an {@code authorized_targets} array, is refused with a message that
+	 * names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 18 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionEighteenCampaign() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-18-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 18);
+			root.putArray("authorized_targets").add("/external/shared.md");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
+	 * Verifies that a stored campaign records no external target as editable and survives a reload unchanged.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void storesNoEditableExternalTargets() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-external-"));
+			Campaign campaign = populated(ID);
+			new FileCampaignStore(base, JSON).replaceSnapshot(campaign);
+
+			JsonNode snapshot = JSON.readTree(Files.readString(heldOutDirectory(base).resolve("campaign.json"), UTF_8));
+			requireThat(snapshot.has("authorized_targets"), "hasAuthorizedTargets").isFalse();
+			requireThat(new FileCampaignStore(base, JSON).load(ID), "loaded").isEqualTo(Optional.of(campaign));
+		}
+	}
+
+	/**
 	 * Returns whether a test lists campaigns or loads one.
 	 *
 	 * @return {@code true} to list, {@code false} to load
@@ -770,10 +817,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(18);
+					"recordVersion").isEqualTo(19);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(18);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(19);
 		}
 	}
 
@@ -1180,7 +1227,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 19);
+			root.put("format_version", 20);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

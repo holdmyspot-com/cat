@@ -633,15 +633,14 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
+	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
 		throws CommandRefusedException, IOException
 	{
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
 			Campaign loaded = require(scope.store(), campaign, true);
-			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint,
-				target)));
+			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
 			// Retaining the incumbent ends the campaign without a delivery
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), Optional.empty()), notices);
 			return result;
@@ -1015,7 +1014,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the edit authority of a campaign, with the external targets that the user authorized.
+	 * Returns the edit authority of a campaign.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -1023,8 +1022,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Authority authority(Path root, Campaign campaign) throws IOException
 	{
-		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()),
-			campaign.authorizedTargets());
+		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()));
 	}
 
 	/**

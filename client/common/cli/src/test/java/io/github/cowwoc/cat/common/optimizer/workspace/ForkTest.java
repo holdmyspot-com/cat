@@ -557,7 +557,7 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
 			LinkReport report = LinkReport.of(fork.inventory(),
-				new Authority(Set.of(Path.of("prompt.md")), Set.of(), Set.of()));
+				new Authority(Set.of(Path.of("prompt.md")), Set.of()));
 
 			requireThat(report.entries(), "entries").contains(new Entry(Path.of("docs/reply-rules.md"),
 				Optional.of(rules), Status.RESOLVED, Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY)));

@@ -199,7 +199,7 @@ public final class OptimizerCoreTest
 					() -> core.run(id),
 					() -> core.confirm(id, CertificationScope.LATEST_VERSIONS),
 					() -> core.revise(id, "more"),
-					() -> core.choose(id, Choice.STOP, 0, 0, null),
+					() -> core.choose(id, Choice.STOP, 0, 0),
 					() -> core.cancel(id),
 					() -> core.start(project.target()));
 				for (ThrowingCall call : calls)
@@ -1160,7 +1160,7 @@ public final class OptimizerCoreTest
 		repository.scope().store().replaceSnapshot(new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(),
 			c.incumbent(), c.candidates(), c.authorAttempts(), c.development(), c.baseline(),
 			c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
-			c.authorizedTargets(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
+			List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
 			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization()));
 	}
 
@@ -1873,7 +1873,7 @@ public final class OptimizerCoreTest
 			Campaign tradeOff = new Campaign(built.header(), built.ceiling(), built.lineages(), built.identity(),
 				started.incumbent(), built.candidates(), built.authorAttempts(), started.development(), built.baseline(),
 				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
-				built.throttle(), built.authorizedTargets(), List.of(new PendingDecision.RegressionTradeOff(1)),
+				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization());
 			repository.scope().store().replaceSnapshot(tradeOff);
 
@@ -1906,7 +1906,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				repository.core().choose(id, Choice.STOP, 0, 0, null);
+				repository.core().choose(id, Choice.STOP, 0, 0);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -1918,11 +1918,13 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code choose authorize-target} records the target that a pending authority warning names, and
-	 * that a target no warning names is refused without a change.
+	 * Verifies that {@code choose use_authorized_source} answers a pending warning about an edit to an external file,
+	 * which is read-only, and records nothing that would let a later author attempt edit the file.
+	 *
+	 * @throws Exception if the owned repository or store fails
 	 */
 	@Test
-	public void authorizeTargetRecordsTheWarnedTarget() throws Exception
+	public void useAuthorizedSourceAnswersTheWarning() throws Exception
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -1934,38 +1936,25 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			Path target = Path.of("/external/shared.md");
 			AuthorityWarning warning = new AuthorityWarning("R1", Path.of("shared.md"), target,
-				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
-				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
-				AuthorityWarning.Choice.REVISE_CAMPAIGN));
+				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
 			// The scripted deriver yields no supported output, which leaves a pending decision about it; clear the
 			// pending decisions so that the authority warning becomes the decision asked now
 			Campaign c = repository.load(id);
 			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
 				c.candidates(), c.authorAttempts(), c.development(), c.baseline(), c.attempts(),
-				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(), c.authorizedTargets(),
+				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
-			String before = Files.readString(repository.directory(id).resolve("held_out/campaign.json"));
+			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
 
-			CommandRefusedException refusal = null;
-			try
-			{
-				repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, Path.of("/external/other.md"));
-			}
-			catch (CommandRefusedException e)
-			{
-				refusal = e;
-			}
-			requireThat(refusal, "refusal").isNotNull();
-			requireThat(Files.readString(repository.directory(id).resolve("held_out/campaign.json")), "unchanged").
-				isEqualTo(before);
-
-			CommandResult result = repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, target);
+			CommandResult result = repository.core().choose(id, Choice.USE_AUTHORIZED_SOURCE, 0, 0);
 			requireThat(result.status().authorityWarnings(), "warnings").isEmpty();
 			Campaign stored = repository.load(id);
-			requireThat(stored.authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(target));
 			requireThat(stored.pending(), "pending").isNull();
+			String json = Files.readString(repository.directory(id).resolve("held_out/campaign.json"));
+			requireThat(json, "json").doesNotContain(target.toString());
 		}
 	}
 

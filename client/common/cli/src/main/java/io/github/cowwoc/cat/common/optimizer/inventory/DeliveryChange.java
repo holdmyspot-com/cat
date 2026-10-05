@@ -29,7 +29,7 @@ public sealed interface DeliveryChange
 	/**
 	 * Returns the changed file.
 	 *
-	 * @return the resolved path, relative to the project directory or absolute for an external target
+	 * @return the resolved path, relative to the project directory
 	 */
 	Path target();
 

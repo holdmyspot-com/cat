@@ -35,6 +35,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -116,13 +117,10 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
+		public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
 			throws CommandRefusedException, IOException
 		{
-			String call = "choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint;
-			if (target != null)
-				call += " " + target;
-			return answer(call);
+			return answer("choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
 		}
 
 		@Override
@@ -273,7 +271,7 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that the authority-warning choices reach the core, the authorize-target choice with its target.
+	 * Verifies that the authority-warning choice that continues within the confirmed authority reaches the core.
 	 */
 	@Test
 	public void dispatchesAuthorityWarningChoices()
@@ -281,14 +279,34 @@ public final class CommandsTest
 		// Requirement: R-W4
 		FakeCore core = new FakeCore();
 		StringBuilder output = new StringBuilder();
-		List<List<String>> commands = List.of(
-			List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
-			List.of("choose", "c1", "use_authorized_source"));
-		for (List<String> command : commands)
-			requireThat(run(core, command, output), "exit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEqualTo(List.of(
-			"choose c1 AUTHORIZE_TARGET 0 0 /external/shared.md",
-			"choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+		requireThat(run(core, List.of("choose", "c1", "use_authorized_source"), output), "exit").isEqualTo(0);
+		requireThat(core.calls, "calls").isEqualTo(List.of("choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+	}
+
+	/**
+	 * Verifies that no choice makes an external file editable: {@code authorize_target} is an unknown choice and
+	 * {@code --target} an unknown option, each rejected before the core is called.
+	 */
+	@Test
+	public void rejectsExternalTargetAuthorization()
+	{
+		// Requirement: R-W4
+		FakeCore core = new FakeCore();
+		StringBuilder choiceOutput = new StringBuilder();
+		int choiceExit = run(core, List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
+			choiceOutput);
+		StringBuilder optionOutput = new StringBuilder();
+		int optionExit = run(core, List.of("choose", "c1", "use_authorized_source", "--target", "/external/shared.md"),
+			optionOutput);
+
+		requireThat(choiceExit, "choiceExit").isEqualTo(2);
+		requireThat(JSON.readTree(choiceOutput.toString()).get("message").asString(), "choiceMessage").
+			contains("Unknown choice: 'authorize_target'");
+		requireThat(optionExit, "optionExit").isEqualTo(2);
+		requireThat(JSON.readTree(optionOutput.toString()).get("message").asString(), "optionMessage").
+			contains("unknown option --target");
+		requireThat(core.calls, "calls").isEmpty();
+		requireThat(Commands.USAGE, "usage").doesNotContain("--target");
 	}
 
 	/**
@@ -354,19 +372,18 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that a delivery appears with its diff, external change record, base-only changes and applicability.
+	 * Verifies that a delivery appears with its diff, base-only changes and applicability, and with no other field.
 	 */
 	@Test
 	public void printsDelivery()
 	{
 		// Requirement: R-I2
-		Path external = Path.of("/etc/external.md");
 		DeliveryResult.Delivered delivered = new DeliveryResult.Delivered(Outcome.CERTIFIED,
 			new Applicability(Applicability.Status.HISTORICAL, true, List.of(MeasurementCondition.MODEL), List.of(),
 				List.of(MeasurementCondition.HOST_TOOLS)),
 			List.of(Path.of("prompts/a.md")), List.of(Path.of("notes.md")),
-			List.of(new DeliveryChange.Create(4, external, new FileContent("x".getBytes(StandardCharsets.UTF_8)),
-				Set.of())),
+			List.of(new DeliveryChange.Create(4, Path.of("prompts/a.md"),
+				new FileContent("x".getBytes(StandardCharsets.UTF_8)), Set.of())),
 			"diff --git a/prompts/a.md b/prompts/a.md");
 		FakeCore core = new FakeCore();
 		core.result = new CommandResult(core.status, Harness.CLAUDE, null,
@@ -384,10 +401,8 @@ public final class CommandsTest
 		requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
 		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
 		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("host_tools");
-		JsonNode change = delivery.get("external_changes").get(0);
-		requireThat(change.get("target").asString(), "target").isEqualTo("/etc/external.md");
-		requireThat(change.get("sequence").asInt(), "sequence").isEqualTo(4);
-		requireThat(change.get("kind").asString(), "kind").isEqualTo("create");
+		requireThat(new HashSet<>(delivery.propertyNames()), "fields").isEqualTo(Set.of("result", "label",
+			"applicability", "changed_prompt_sources", "base_only_changes", "diff"));
 	}
 
 	/**
@@ -507,12 +522,6 @@ public final class CommandsTest
 				{List.of("choose", "c1", "stop", "--bogus", "1")},
 				{List.of("choose", "c1", "stop", "--attempt")},
 				{List.of("choose", "c1", "authorize_target")},
-				{List.of("choose", "c1", "authorize_target", "--target")},
-				{List.of("choose", "c1", "authorize_target", "--target", "shared.md")},
-				{List.of("choose", "c1", "authorize_target", "--target", "/external/../shared.md")},
-				{List.of("choose", "c1", "authorize_target", "--target", " ")},
-				{List.of("choose", "c1", "authorize_target", "--attempt", "1")},
-				{List.of("choose", "c1", "use_authorized_source", "--target", "/external/shared.md")},
 				{List.of("choose", "c1", "stop", "--target", "/external/shared.md")}
 			};
 	}

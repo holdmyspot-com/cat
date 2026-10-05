@@ -25,17 +25,21 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * Delivery preflight: a three-way comparison of the fork baseline, the current base and external state, and the
- * candidate.
+ * Delivery preflight: a three-way comparison of the fork baseline, the current state, and the candidate. The current
+ * state covers the base worktree and the read-only external participants that the fork recorded.
+ * <p>
+ * A plan changes only files inside the project. External files are read-only, so a candidate that changes one is
+ * refused before any plan is made.
  * <p>
  * Delivery stops before changing any file if any overlay target conflicts with the current state:
  * <ul>
- *   <li>the base or external state also changed or deleted a file the candidate changes;</li>
+ *   <li>the base worktree also changed or deleted a file the candidate changes;</li>
  *   <li>the current structure collides with a file the candidate writes;</li>
  *   <li>a symbolic link through which the fork reached a target was removed or retargeted;</li>
  *   <li>a target path now resolves to a different file.</li>
  * </ul>
- * Base-only changes to other paths survive delivery and are reported.
+ * Changes made outside the candidate to other paths, including read-only external participants, survive delivery
+ * and are reported.
  * <p>
  * A plan may also write files that are not part of the candidate, such as a certification record. Such a file
  * replaces whatever regular file the current state holds at its path, and conflicts only if the candidate also writes
@@ -58,7 +62,7 @@ public final class DeliveryPlan
 	 *
 	 * @param conflicts the conflicts, in target order
 	 * @param changes the changes to apply, in sequence order
-	 * @param baseOnlyChanges the paths that only the base or external state changed, in path order
+	 * @param baseOnlyChanges the paths that changed outside the candidate since the fork, in path order
 	 */
 	private DeliveryPlan(List<DeliveryConflict> conflicts, List<DeliveryChange> changes, List<Path> baseOnlyChanges)
 	{
@@ -74,6 +78,7 @@ public final class DeliveryPlan
 	 * @param current a fresh scan of the base worktree and of the same external paths as the fork
 	 * @return the plan
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code candidate} changes an external file
 	 */
 	public static DeliveryPlan of(Overlay candidate, FileInventory current)
 	{
@@ -89,13 +94,15 @@ public final class DeliveryPlan
 	 *   relative to the base worktree
 	 * @return the plan
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if a path in {@code additionalFiles} is absolute
+	 * @throws IllegalArgumentException if the candidate changes an external file, or if {@code additionalFiles} has an
+	 *   absolute path
 	 */
 	public static DeliveryPlan of(Overlay candidate, FileInventory current, Map<Path, FileContent> additionalFiles)
 	{
 		requireThat(candidate, "candidate").isNotNull();
 		requireThat(current, "current").isNotNull();
 		requireThat(additionalFiles, "additionalFiles").isNotNull();
+		requireProjectChanges(candidate);
 		for (Path path : additionalFiles.keySet())
 			requireThat(path.isAbsolute(), "additionalFiles.isAbsolute(" + path + ")").isFalse();
 		FileInventory fork = candidate.fork();
@@ -128,6 +135,28 @@ public final class DeliveryPlan
 			}
 		}
 		return new DeliveryPlan(conflicts, changes, baseOnlyChanges);
+	}
+
+	/**
+	 * Refuses a candidate that changes an external file. External files are read-only, so edit authority never
+	 * permits such a change and delivery never writes one.
+	 *
+	 * @param candidate the candidate
+	 * @throws NullPointerException if {@code candidate} is null
+	 * @throws IllegalArgumentException if {@code candidate} changes a file outside the project
+	 */
+	public static void requireProjectChanges(Overlay candidate)
+	{
+		requireThat(candidate, "candidate").isNotNull();
+		for (Path target : candidate.entries().keySet())
+		{
+			if (target.isAbsolute())
+			{
+				throw new IllegalArgumentException("The candidate changes " + target + ", which lies outside the " +
+					"project. External files are read-only and delivery writes only files inside the project. Select a " +
+					"candidate that changes only project files.");
+			}
+		}
 	}
 
 	/**
@@ -313,7 +342,7 @@ public final class DeliveryPlan
 	}
 
 	/**
-	 * Returns the paths that only the base or external state changed since the fork. Delivery leaves them unchanged.
+	 * Returns the paths that changed outside the candidate since the fork. Delivery leaves them unchanged.
 	 *
 	 * @return the paths, in path order
 	 */

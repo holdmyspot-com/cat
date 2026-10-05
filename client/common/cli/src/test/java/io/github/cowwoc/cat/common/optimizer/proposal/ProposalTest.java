@@ -186,7 +186,7 @@ public final class ProposalTest
 	private static LinkReport noLinks()
 	{
 		return LinkReport.of(new FileInventory(Path.of("/project"), Map.of()),
-			new Authority(Set.of(Path.of("prompts")), Set.of(), Set.of()));
+			new Authority(Set.of(Path.of("prompts")), Set.of()));
 	}
 
 	/**
@@ -211,7 +211,7 @@ public final class ProposalTest
 			entries.put(Path.of("loop-b.md"), new FileEntry.SymbolicLink(Path.of("loop-a.md")));
 		}
 		return LinkReport.of(new FileInventory(Path.of("/project"), entries),
-			new Authority(Set.of(Path.of("prompts")), Set.of(), Set.of()));
+			new Authority(Set.of(Path.of("prompts")), Set.of()));
 	}
 
 	/**

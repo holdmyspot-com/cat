@@ -5,10 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,8 +36,6 @@ import java.util.Set;
  *   the evidence its decision used
  * @param slowStart the slow-start limit on the active candidate's concurrency
  * @param throttle the provider's rate-limit waiting and concurrency limits
- * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
- *   to edit
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
  *   asked now
  * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
@@ -51,7 +47,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	Candidate incumbent, int candidates, int authorAttempts, Development development,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
-	Set<Path> authorizedTargets, List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
+	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
 	DeliveryRequest delivery, OptimizationEvidence optimization)
 {
 	/**
@@ -86,8 +82,6 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
 	 * @param slowStart the slow-start limit on the active candidate's concurrency
 	 * @param throttle the provider's rate-limit waiting and concurrency limits
-	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
-	 *   attempts to edit
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
 	 *   asked now
 	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
@@ -99,7 +93,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value #MAXIMUM_CEILING}], a count is
 	 *   negative, the incumbent is not candidate 0, attempts are not
 	 *   numbered 1, 2, …, more than one attempt is running, a group's last sequence number is not positive, a
-	 *   trial's sequence number exceeds its group's, or an authorized target is not a normalized absolute path
+	 *   trial's sequence number exceeds its group's
 	 */
 	public Campaign
 	{
@@ -139,13 +133,6 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		requireThat(pendingDecisions, "pendingDecisions").isNotNull();
 		requireThat(slowStart, "slowStart").isNotNull();
 		requireThat(throttle, "throttle").isNotNull();
-		requireThat(authorizedTargets, "authorizedTargets").isNotNull();
-		for (Path target : authorizedTargets)
-		{
-			FileInventory.requireInventoryPath(target, "authorizedTarget");
-			requireThat(target, "authorizedTarget").isAbsolute();
-		}
-		authorizedTargets = Set.copyOf(authorizedTargets);
 		lineages = List.copyOf(lineages);
 		attempts = List.copyOf(attempts);
 		trials = List.copyOf(trials);
@@ -171,8 +158,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
-			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, Set.of(), List.of(), false, null,
-			null, OptimizationEvidence.EMPTY);
+			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null, null,
+			OptimizationEvidence.EMPTY);
 	}
 
 	/**
@@ -397,12 +384,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				if (acceptable)
 					choices.add(Choice.ACCEPT_WITHOUT_CERTIFICATION);
 			}
-			case PendingDecision.AuthorityWarnings warnings ->
-			{
-				if (warnings.offersAuthorization())
-					choices.add(Choice.AUTHORIZE_TARGET);
-				choices.add(Choice.USE_AUTHORIZED_SOURCE);
-			}
+			case PendingDecision.AuthorityWarnings _ -> choices.add(Choice.USE_AUTHORIZED_SOURCE);
 		}
 		choices.add(Choice.STOP);
 		return choices;

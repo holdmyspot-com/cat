@@ -21,8 +21,7 @@ import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
- * Verifies delivery preflight: the three-way comparison of the fork baseline, the current base and external state,
- * and the candidate.
+ * Verifies delivery preflight: the three-way comparison of the fork baseline, the current state, and the candidate.
  */
 public final class DeliveryPlanTest
 {
@@ -112,27 +111,26 @@ public final class DeliveryPlanTest
 		// Requirement: R-W8
 		FileInventory fork = inventory(Map.of(
 			"prompts/a.md", file("a"),
-			"prompts/shared", link("/external/shared"),
-			"/external/shared/s.md", file("s")));
+			"prompts/shared", link("../library"),
+			"library/s.md", file("s")));
 		Overlay candidate = Overlay.of(fork).
 			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
-			write(Path.of("/external/shared/s.md"), content("S"), READ_WRITE);
+			write(Path.of("library/s.md"), content("S"), READ_WRITE);
 		FileInventory current = inventory(Map.of(
 			"prompts", link("/elsewhere"),
-			"/external/shared/s.md", file("s")));
+			"library/s.md", file("s")));
 
 		DeliveryPlan plan = DeliveryPlan.of(candidate, current);
 
 		requireThat(plan.conflicts(), "conflicts").isEqualTo(List.of(
-			new DeliveryConflict(Kind.LINK_DESTINATION_CHANGED, Path.of("/external/shared/s.md"),
-				Path.of("prompts/shared")),
+			new DeliveryConflict(Kind.LINK_DESTINATION_CHANGED, Path.of("library/s.md"), Path.of("prompts/shared")),
 			new DeliveryConflict(Kind.TARGET_IDENTITY_MISMATCH, Path.of("prompts/a.md"), Path.of("prompts"))));
 		requireThat(plan.changes(), "changes").isEmpty();
 	}
 
 	/**
 	 * Verifies that a conflict-free plan orders deletes before writes, numbers each change, and gives each change the
-	 * live state it expects before and after it is applied, including an authorized external target.
+	 * live state it expects before and after it is applied, and leaves a read-only external participant unchanged.
 	 */
 	@Test
 	public void ordersChangesWithPreimages()
@@ -145,8 +143,7 @@ public final class DeliveryPlanTest
 		Overlay candidate = Overlay.of(fork).
 			write(Path.of("prompts/m.md"), content("M"), READ_WRITE).
 			delete(Path.of("prompts/z.md")).
-			write(Path.of("prompts/a.md"), content("A"), EXECUTABLE).
-			write(Path.of("/external/s.md"), content("S"), READ_WRITE);
+			write(Path.of("prompts/a.md"), content("A"), EXECUTABLE);
 
 		DeliveryPlan plan = DeliveryPlan.of(candidate, fork);
 
@@ -155,13 +152,40 @@ public final class DeliveryPlanTest
 		List<DeliveryChange> changes = plan.changes();
 		requireThat(changes, "changes").isEqualTo(List.of(
 			new Delete(0, Path.of("prompts/z.md"), file("z")),
-			new Edit(1, Path.of("/external/s.md"), file("s"), content("S"), READ_WRITE),
-			new Create(2, Path.of("prompts/a.md"), content("A"), EXECUTABLE),
-			new Edit(3, Path.of("prompts/m.md"), file("m"), content("M"), READ_WRITE)));
+			new Create(1, Path.of("prompts/a.md"), content("A"), EXECUTABLE),
+			new Edit(2, Path.of("prompts/m.md"), file("m"), content("M"), READ_WRITE)));
 		requireThat(changes.get(0).preimage(), "deletePreimage").isEqualTo(Optional.of(file("z")));
 		requireThat(changes.get(0).postimage(), "deletePostimage").isEmpty();
-		requireThat(changes.get(2).preimage(), "createPreimage").isEmpty();
-		requireThat(changes.get(2).postimage(), "createPostimage").isEqualTo(Optional.of(file("A", EXECUTABLE)));
-		requireThat(changes.get(3).postimage(), "editPostimage").isEqualTo(Optional.of(file("M")));
+		requireThat(changes.get(1).preimage(), "createPreimage").isEmpty();
+		requireThat(changes.get(1).postimage(), "createPostimage").isEqualTo(Optional.of(file("A", EXECUTABLE)));
+		requireThat(changes.get(2).postimage(), "editPostimage").isEqualTo(Optional.of(file("M")));
+	}
+
+	/**
+	 * Verifies that a candidate that changes an external file is refused before any plan is made, because external
+	 * files are read-only and delivery writes only files inside the project.
+	 */
+	@Test
+	public void refusesExternalChange()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/a.md", file("a"),
+			"/external/s.md", file("s")));
+		Overlay candidate = Overlay.of(fork).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
+			write(Path.of("/external/s.md"), content("S"), READ_WRITE);
+
+		IllegalArgumentException refusal = null;
+		try
+		{
+			DeliveryPlan.of(candidate, fork);
+		}
+		catch (IllegalArgumentException e)
+		{
+			refusal = e;
+		}
+		requireThat(refusal, "refusal").isNotNull();
+		requireThat(refusal.getMessage(), "message").contains("/external/s.md").contains("read-only");
 	}
 }

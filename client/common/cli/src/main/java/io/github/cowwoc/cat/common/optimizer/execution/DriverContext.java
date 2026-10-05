@@ -37,10 +37,9 @@ import java.util.random.RandomGenerator;
  * @param terminator requests termination of processes that an earlier driver left running
  * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
  *   port's run roots
- * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's to
- *   validate author attempts and diagnose the edits that authors report needing
- * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
- *   external targets
+ * @param authority the confirmed edit authority, which validates author attempts and diagnoses the edits that
+ *   authors report needing
+ * @param promptSources the in-project prompt sources, relative to the project
  * @param environment the measurement conditions that the driver observes outside trials; it records no
  *   {@link MeasurementCondition#MODEL}, {@link MeasurementCondition#REASONING},
  *   {@link MeasurementCondition#TOOL_OUTPUT_LIMIT} or {@link MeasurementCondition#PROMPT_SOURCES}, which only sessions
@@ -75,10 +74,9 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param terminator requests termination of processes that an earlier driver left running
 	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
  *   port's run roots
-	 * @param authority the confirmed edit authority; the driver replaces its authorized targets with the campaign's
-	 *   to validate author attempts and diagnose the edits that authors report needing
-	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
-	 *   external targets
+	 * @param authority the confirmed edit authority, which validates author attempts and diagnoses the edits that
+	 *   authors report needing
+	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
 	 * @param lockFile the campaign's write-lock file
 	 * @param random the source of the certification trial stream's seed when a candidate is committed

@@ -226,8 +226,8 @@ public final class CertificationRecordTest
 	}
 
 	/**
-	 * Returns the participating prompt sources: the target, the {@code rules} directory and an authorized external
-	 * target.
+	 * Returns the participating prompt sources: the target, the {@code rules} directory and a read-only external
+	 * participant.
 	 *
 	 * @return the sources
 	 */

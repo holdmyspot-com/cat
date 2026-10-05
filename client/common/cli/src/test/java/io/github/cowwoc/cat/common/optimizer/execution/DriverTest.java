@@ -3880,10 +3880,10 @@ public final class DriverTest
 	}
 
 	/**
-	 * Trace: an author reports that requirement {@code r2} needs a content edit through a link to an external target.
-	 * The warning becomes an {@code awaiting_user} decision that survives a restart; the user authorizes the target; a
-	 * later author attempt receives the target and edits it; the attempt is promoted, certified and delivered with the
-	 * external edit.
+	 * Trace: an author reports that requirement {@code r2} needs a content edit through a link to an external file.
+	 * The warning offers no choice that edits the file and becomes an {@code awaiting_user} decision that survives a
+	 * restart; the user continues within the confirmed authority; the in-project edit is promoted, certified and
+	 * delivered, the external file stays unchanged, and delivery checks it as a read-only participant.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3898,12 +3898,13 @@ public final class DriverTest
 			Files.writeString(target, "external", UTF_8);
 			Path link = Path.of("shared.md");
 			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+			RegularFile externalFile = new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions);
 			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
 				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
 				link, new FileEntry.SymbolicLink(target),
-				target, new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions)));
+				target, externalFile));
 			DriverHarness harness = new DriverHarness(directory, authorityWarningCampaign(), fork);
-			// Safety requires the external owning file to change, so reverting that change must fail.
+			// Safety fails until the in-project prompt changes
 			Map<Path, Boolean> failsSafety = new HashMap<>();
 			SessionResult.Completed passed = harness.passed();
 			SessionResult.Completed failed = harness.failed();
@@ -3916,9 +3917,9 @@ public final class DriverTest
 				{
 					if (fails == null)
 					{
-						FileEntry external = harness.overlays().require(harness.snapshot(request)).snapshot().
-							entry(target).orElseThrow();
-						fails = ((RegularFile) external).contentHash().equals(Sha256.of("external".getBytes(UTF_8)));
+						FileEntry prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
+							entry(DriverHarness.PROMPT).orElseThrow();
+						fails = ((RegularFile) prompt).contentHash().equals(Sha256.of("fork".getBytes(UTF_8)));
 						failsSafety.put(request.source(), fails);
 					}
 				}
@@ -3930,33 +3931,16 @@ public final class DriverTest
 					return failed;
 				return passed;
 			});
-			harness.authors(request ->
-			{
-				if (harness.author().briefs().getLast().authorizedTargets().contains(target))
-				{
-					try
-					{
-						Files.createDirectories(request.source());
-						Files.writeString(request.source().resolve(link), "external", UTF_8);
-					}
-					catch (IOException e)
-					{
-						throw new UncheckedIOException(e);
-					}
-					return harness.edit(request, target);
-				}
-				return harness.edit(request, DriverHarness.PROMPT);
-			});
 			harness.author().reports(_ ->
 			{
-				if (harness.author().briefs().getLast().authorizedTargets().isEmpty())
+				if (harness.author().briefs().size() == 1)
 					return Optional.of(List.of(new NeededEdit("r2", link, Operation.EDIT_CONTENT, target)));
 				return Optional.of(List.of());
 			});
 			PendingDecision.AuthorityWarnings warnings = new PendingDecision.AuthorityWarnings(List.of(
 				new AuthorityWarning("r2", link, target, Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
-					AuthorityWarning.Choice.AUTHORIZE_TARGET, AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
-					AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN))));
+					AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+					AuthorityWarning.Choice.REVISE_CAMPAIGN))));
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -3964,6 +3948,8 @@ public final class DriverTest
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 				requireThat(harness.campaign().pending(), "pending").isEqualTo(warnings);
 				requireThat(result.status().authorityWarnings(), "reported").isEqualTo(warnings.warnings());
+				requireThat(harness.campaign().choices(), "choices").
+					isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
 			}
 			// A restart between the warning and the choice keeps the decision and starts nothing
 			int sessions = harness.sessions().sessions().size();
@@ -3977,18 +3963,17 @@ public final class DriverTest
 			}
 			try (Driver driver = harness.open())
 			{
-				driver.apply(CampaignEvent.Choose.authorize(target));
-				requireThat(harness.campaign().authorizedTargets(), "authorizedTargets").isEqualTo(Set.of(target));
+				driver.apply(CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 				requireThat(harness.campaign().pending(), "answered").isNull();
 				harness.runSlice(driver);
 			}
 			Campaign campaign = harness.campaign();
 			requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
-			requireThat(harness.author().briefs().getLast().authorizedTargets(), "briefTargets").
-				isEqualTo(Set.of(target));
 			RecordingDeliverer.Call delivery = harness.deliverer().calls().getLast();
-			requireThat(delivery.selected().snapshot().entry(target), "deliveredTarget").isEqualTo(Optional.of(
-				new RegularFile(Sha256.of("author-2".getBytes(UTF_8)), permissions)));
+			requireThat(delivery.selected().snapshot().entry(target), "deliveredTarget").
+				isEqualTo(Optional.of(externalFile));
+			requireThat(delivery.selected().entries().keySet(), "deliveredChanges").
+				isEqualTo(Set.of(DriverHarness.PROMPT));
 			requireThat(delivery.promptSources(), "promptSources").contains(target);
 		}
 	}
@@ -4059,7 +4044,6 @@ public final class DriverTest
 			{
 				Campaign campaign = harness.runUntil(driver, state -> state.authorAttempts() == 1);
 				requireThat(campaign.pendingDecisions(), "pendingDecisions").isEmpty();
-				requireThat(campaign.authorizedTargets(), "authorizedTargets").isEmpty();
 				requireThat(campaign.development().author(), "author").isNotNull();
 			}
 		}

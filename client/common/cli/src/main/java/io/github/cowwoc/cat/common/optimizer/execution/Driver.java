@@ -1314,7 +1314,7 @@ public final class Driver implements AutoCloseable
 			authorFailed("The author's report of needed edits is malformed");
 			return;
 		}
-		Authority authority = authority();
+		Authority authority = context.authority();
 		FileInventory fork = author.overlay().fork();
 		List<AuthorityWarning> warnings = new ArrayList<>();
 		for (NeededEdit edit : report.get().neededEdits())
@@ -1418,16 +1418,6 @@ public final class Driver implements AutoCloseable
 				return false;
 		}
 		return true;
-	}
-
-	/**
-	 * Returns the campaign's edit authority: the confirmed authority with the targets that the user authorized.
-	 *
-	 * @return the authority
-	 */
-	private Authority authority()
-	{
-		return context.authority().withAuthorizedTargets(campaign.authorizedTargets());
 	}
 
 	/**
@@ -1583,9 +1573,13 @@ public final class Driver implements AutoCloseable
 			return false;
 		Overlay selected = context.overlays().require(request.candidate().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
-		// An authorized external target participates like a prompt source, so its applicability is checked too
+		// A read-only external participant that changed after the fork makes the delivered system a different snapshot
 		Set<Path> promptSources = new HashSet<>(context.promptSources());
-		promptSources.addAll(campaign.authorizedTargets());
+		for (Path path : selected.fork().entries().keySet())
+		{
+			if (path.isAbsolute())
+				promptSources.add(path);
+		}
 		Optional<CertificationRecord> record = Optional.empty();
 		if (request.label() == Outcome.CERTIFIED)
 		{
@@ -1821,7 +1815,7 @@ public final class Driver implements AutoCloseable
 		measurePrompt(campaign.development().working().snapshot());
 		measurePrompt(campaign.incumbent().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
-		boolean symbolicLinks = !LinkReport.of(working.fork(), authority()).entries().isEmpty();
+		boolean symbolicLinks = !LinkReport.of(working.fork(), context.authority()).entries().isEmpty();
 		StatusReport report = StatusReport.of(campaign,
 			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure));
 		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);

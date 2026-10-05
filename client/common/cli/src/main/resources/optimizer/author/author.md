@@ -29,11 +29,8 @@
 
 - Fixed: existing symbolic links, their destinations and existing file modes. Do not create, delete or retarget a link,
   and do not change a mode.
-- External targets reached through links are read-only, except these authorized targets. For them, only edit the
-  content of the existing file; never create, rename, delete or change the mode of one:
-
-{{authorized_targets}}
-
+- Read-only: external files, whether reached through links or read directly from outside the project. Never edit,
+  create, rename, delete, re-mode or retarget one.
 - These project paths are symbolic links that resolve to these targets:
 
 {{links}}

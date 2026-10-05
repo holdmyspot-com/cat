@@ -35,7 +35,7 @@ public record DeliveryConflict(Kind kind, Path target, Path path)
 	public enum Kind
 	{
 		/**
-		 * The candidate changes a file that the base or external state also changed or deleted since the fork.
+		 * The candidate changes a file that the base worktree also changed or deleted since the fork.
 		 */
 		BOTH_CHANGED,
 		/**

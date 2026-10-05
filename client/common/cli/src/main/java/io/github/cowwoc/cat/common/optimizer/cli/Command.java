@@ -139,9 +139,8 @@ public sealed interface Command
 	 * @param choice the choice
 	 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
 	 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
-	 * @param target the external target that {@link Choice#AUTHORIZE_TARGET} names, otherwise {@code null}
 	 */
-	record Choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target) implements Command
+	record Choose(String campaign, Choice choice, int attempt, int reviewPoint) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -150,7 +149,6 @@ public sealed interface Command
 		 * @param choice the choice
 		 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
 		 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
-		 * @param target the external target that {@link Choice#AUTHORIZE_TARGET} names, otherwise {@code null}
 		 * @throws NullPointerException if {@code campaign} or {@code choice} are null
 		 */
 		public Choose

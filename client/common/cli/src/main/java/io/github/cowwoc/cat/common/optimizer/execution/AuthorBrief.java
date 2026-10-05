@@ -38,15 +38,13 @@ import java.nio.charset.StandardCharsets;
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param developmentCounts the working candidate's development outcomes per cell
  * @param endedAttempts the certification attempts that have ended, in index order
- * @param authorizedTargets the absolute paths of the external files whose content the user authorized author attempts
- *   to edit
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
  *   keyed by the link's path; a link whose links form a cycle is absent
  * @param campaignEdits the unified diff of prompt files from confirmation to the working candidate
  */
 public record AuthorBrief(String cell, AuthorApproach approach, Contract contract, List<Failure> developmentFailures,
-	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Set<Path> authorizedTargets,
-	Map<Path, Path> links, String campaignEdits)
+	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Map<Path, Path> links,
+	String campaignEdits)
 {
 	/**
 	 * Creates a brief.
@@ -57,8 +55,6 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param developmentCounts the working candidate's development outcomes per cell
 	 * @param endedAttempts the certification attempts that have ended, in index order
-	 * @param authorizedTargets the absolute paths of the external files whose content the user authorized author
-	 *   attempts to edit
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
 	 *   keyed by the link's path; a link whose links form a cycle is absent
 	 * @param campaignEdits the unified diff since confirmation, empty if there are no prompt edits
@@ -76,7 +72,6 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		developmentFailures = List.copyOf(developmentFailures);
 		developmentCounts = Map.copyOf(developmentCounts);
 		endedAttempts = List.copyOf(endedAttempts);
-		authorizedTargets = Set.copyOf(authorizedTargets);
 		links = Map.copyOf(links);
 		requireThat(campaignEdits, "campaignEdits").isNotNull();
 	}
@@ -140,7 +135,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
 			campaign.contract(), development.failures(), development.counts(), ended,
-			campaign.authorizedTargets(), links, campaignEdits);
+			links, campaignEdits);
 	}
 
 	/**

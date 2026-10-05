@@ -84,7 +84,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param attempt the certified attempt
 	 * @param snapshot the files of the delivered candidate
 	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
-	 *   external targets, which the record omits
+	 *   read-only external participants, which the record omits
 	 * @return the record
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the campaign has no lineage of the attempt, or that lineage's contract has

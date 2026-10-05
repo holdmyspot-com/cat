@@ -80,7 +80,8 @@ public final class RecordingDeliverer implements Deliverer
 	 * @param request the delivery request
 	 * @param selected the selected candidate's overlay
 	 * @param working the working candidate's overlay
-	 * @param promptSources the prompt sources and authorized targets that the delivery checks applicability against
+	 * @param promptSources the prompt sources and read-only external participants that the delivery checks
+	 *   applicability against
 	 * @param record the certification record that the delivery writes, or empty if the delivery is not certified
 	 */
 	public record Call(DeliveryRequest request, Overlay selected, Overlay working, Set<Path> promptSources,

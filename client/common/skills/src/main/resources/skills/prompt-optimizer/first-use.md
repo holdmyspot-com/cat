@@ -54,9 +54,9 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
      `attempt`. For `more_evidence`, ask the user for a review point above the entry's `review_point_above` and add
      `--review-point <N>`. A review point is the trial count at which the campaign next pauses the entry's category
      for review.
-   - For an entry of `authority_warnings`, show its `requirement`, `path`, `target` and `limit`. Pass `authorize_target`
-     as `choose <campaign> authorize_target --target <target>`, `use_authorized_source` and `stop` as
-     `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>` with the user's words.
+   - For an entry of `authority_warnings`, show its `requirement`, `path`, `target` and `limit`. Pass
+     `use_authorized_source` and `stop` as `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>`
+     with the user's words.
    - For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
      true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
      <campaign> <feedback>`.
