@@ -78,7 +78,7 @@ public enum CertificationScope
 	/**
 	 * Describes every choice for a message that asks the user to choose one.
 	 *
-	 * @return text such as {@code weakest-cell (each category's weakest cell only), ...}
+	 * @return text such as {@code weakest_cell (each category's weakest cell only), ...}
 	 */
 	public static String choices()
 	{

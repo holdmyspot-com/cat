@@ -18,6 +18,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.regex.Pattern;
 
 /**
@@ -39,10 +40,10 @@ public final class Commands
 		  start <target> [%s <1..%d>]
 		  run <campaign>
 		  status <campaign | target>
-		  confirm <campaign> <weakest-cell | latest-versions | described>
+		  confirm <campaign> <%s>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N]
-		  cancel <campaign>""".formatted(MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING);
+		  cancel <campaign>""".formatted(MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds());
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -205,13 +206,13 @@ public final class Commands
 			}
 		}
 		if (choice == Choice.KEEP_IMPROVEMENT && attempt == 0)
-			throw new InvalidCommandException("choose keep-improvement requires --attempt N.");
+			throw new InvalidCommandException("choose " + id(Choice.KEEP_IMPROVEMENT) + " requires --attempt N.");
 		if (choice != Choice.KEEP_IMPROVEMENT && attempt != 0)
-			throw new InvalidCommandException("--attempt is valid only for keep-improvement.");
+			throw new InvalidCommandException("--attempt is valid only for " + id(Choice.KEEP_IMPROVEMENT) + ".");
 		if (choice == Choice.MORE_EVIDENCE && reviewPoint == 0)
-			throw new InvalidCommandException("choose more-evidence requires --review-point N.");
+			throw new InvalidCommandException("choose " + id(Choice.MORE_EVIDENCE) + " requires --review-point N.");
 		if (choice != Choice.MORE_EVIDENCE && reviewPoint != 0)
-			throw new InvalidCommandException("--review-point is valid only for more-evidence.");
+			throw new InvalidCommandException("--review-point is valid only for " + id(Choice.MORE_EVIDENCE) + ".");
 		return new Command.Choose(campaign, choice, attempt, reviewPoint);
 	}
 
@@ -302,9 +303,33 @@ public final class Commands
 	private static Choice choice(String value)
 	{
 		for (Choice choice : Choice.values())
-			if (choice != Choice.RESOLUTION && new ChoiceItem(choice, 0, false, 0).id().equals(value))
+			if (choice != Choice.RESOLUTION && id(choice).equals(value))
 				return choice;
 		throw new InvalidCommandException("Unknown choice: '" + value + "'");
+	}
+
+	/**
+	 * Returns the identifier that {@code choose} accepts for a choice.
+	 *
+	 * @param choice the choice
+	 * @return the identifier, such as {@code keep_improvement}
+	 */
+	private static String id(Choice choice)
+	{
+		return new ChoiceItem(choice, 0, false, 0).id();
+	}
+
+	/**
+	 * Lists the certification scopes that {@code confirm} accepts, for the usage text.
+	 *
+	 * @return the scope identifiers separated by {@code " | "}, such as {@code weakest_cell | latest_versions}
+	 */
+	private static String scopeIds()
+	{
+		StringJoiner ids = new StringJoiner(" | ");
+		for (CertificationScope scope : CertificationScope.values())
+			ids.add(scope.id());
+		return ids.toString();
 	}
 
 	/**

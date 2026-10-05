@@ -271,6 +271,67 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Verifies that the usage text lists exactly the certification scopes that {@code confirm} accepts, so that each
+	 * spelling it shows reaches the core.
+	 */
+	@Test
+	public void usageListsAcceptedScopes()
+	{
+		// Requirement: R-C15
+		String line = Commands.USAGE.lines().map(String::strip).filter(text -> text.startsWith("confirm ")).
+			findFirst().orElseThrow();
+		String alternatives = line.substring(line.lastIndexOf('<') + 1, line.lastIndexOf('>'));
+		List<String> shown = new ArrayList<>();
+		for (String alternative : alternatives.split("\\|"))
+			shown.add(alternative.strip());
+		List<String> accepted = new ArrayList<>();
+		for (CertificationScope scope : CertificationScope.values())
+			accepted.add(scope.id());
+		requireThat(shown, "shown").isEqualTo(accepted);
+		for (String scope : shown)
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			requireThat(run(core, List.of("confirm", "c1", scope), output), "exit").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Returns each {@code choose} whose option and choice disagree, with the choice that the refusal must name as it
+	 * is typed.
+	 *
+	 * @return the arguments and the choice that the refusal names
+	 */
+	@DataProvider
+	public Object[][] mismatchedChoiceOptions()
+	{
+		return new Object[][]
+			{
+				{List.of("choose", "c1", "keep_improvement"), "keep_improvement"},
+				{List.of("choose", "c1", "stop", "--attempt", "1"), "keep_improvement"},
+				{List.of("choose", "c1", "more_evidence"), "more_evidence"},
+				{List.of("choose", "c1", "stop", "--review-point", "1"), "more_evidence"}
+			};
+	}
+
+	/**
+	 * Verifies that a refused {@code choose} names the choice that its option belongs to as the user types it.
+	 *
+	 * @param args   the arguments
+	 * @param choice the choice that the refusal names
+	 */
+	@Test(dataProvider = "mismatchedChoiceOptions")
+	public void optionRefusalNamesAcceptedChoice(List<String> args, String choice)
+	{
+		// Requirement: R-I2
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		requireThat(run(core, args, output), "exit").isEqualTo(2);
+		String message = JSON.readTree(output.toString()).get("message").asString();
+		requireThat(message.lines().findFirst().orElseThrow(), "message").contains(choice);
+	}
+
+	/**
 	 * Verifies that the authority-warning choice that continues within the confirmed authority reaches the core.
 	 */
 	@Test
