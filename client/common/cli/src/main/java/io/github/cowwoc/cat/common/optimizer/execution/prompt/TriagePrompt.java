@@ -124,7 +124,7 @@ public final class TriagePrompt implements TriageProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The output is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
-	 * fence, that holds exactly an {@code impact} of {@code blocking} or {@code self-recovering} and a non-blank
+	 * fence, that holds exactly an {@code impact} of {@code blocking} or {@code self_recovering} and a non-blank
 	 * {@code rationale}, as the result schema requires. The triage keeps the rationale as the session wrote it.
 	 */
 	@Override

@@ -5,7 +5,7 @@
 	"additionalProperties": false,
 	"required": ["impact", "rationale"],
 	"properties": {
-		"impact": {"enum": ["blocking", "self-recovering"]},
+		"impact": {"enum": ["blocking", "self_recovering"]},
 		"rationale": {"description": "The evidence that decided the impact.", "type": "string", "pattern": "\\S"}
 	}
 }

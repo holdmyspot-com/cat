@@ -119,7 +119,7 @@ public final class CertificationRecordTest
 		JsonNode root = JSON.readTree(bytes);
 		requireThat(new HashSet<>(root.propertyNames()), "fields").isEqualTo(Set.of("format_version", "target",
 			"certification_index", "scope", "required_pass_rate", "alpha", "cells", "prompt_files", "identity"));
-		requireThat(root.get("scope").asString(), "scope").isEqualTo("weakest-cell");
+		requireThat(root.get("scope").asString(), "scope").isEqualTo("weakest_cell");
 	}
 
 	/**

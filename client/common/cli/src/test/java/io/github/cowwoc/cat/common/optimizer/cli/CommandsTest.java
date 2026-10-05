@@ -173,12 +173,12 @@ public final class CommandsTest
 			List.of("run", "c1"),
 			List.of("status", "c1"),
 			List.of("status", "prompts/a.md"),
-			List.of("confirm", "c1", "weakest-cell"),
-			List.of("confirm", "c1", "latest-versions"),
+			List.of("confirm", "c1", "weakest_cell"),
+			List.of("confirm", "c1", "latest_versions"),
 			List.of("confirm", "c1", "described"),
 			List.of("revise", "c1", "tighten the contract"),
-			List.of("choose", "c1", "keep-improvement", "--attempt", "2"),
-			List.of("choose", "c1", "more-evidence", "--review-point", "3"),
+			List.of("choose", "c1", "keep_improvement", "--attempt", "2"),
+			List.of("choose", "c1", "more_evidence", "--review-point", "3"),
 			List.of("choose", "c1", "stop"),
 			List.of("cancel", "c1"));
 		for (List<String> command : commands)
@@ -188,8 +188,8 @@ public final class CommandsTest
 			"run c1",
 			"status c1",
 			"status prompts/a.md",
-			"confirm c1 weakest-cell",
-			"confirm c1 latest-versions",
+			"confirm c1 weakest_cell",
+			"confirm c1 latest_versions",
 			"confirm c1 described",
 			"revise c1 tighten the contract",
 			"choose c1 KEEP_IMPROVEMENT 2 0",
@@ -206,14 +206,14 @@ public final class CommandsTest
 	public void confirmNamesEveryScopeChoice()
 	{
 		// Requirement: R-C15
-		for (List<String> args : List.of(List.of("confirm", "c1"), List.of("confirm", "c1", "all-models")))
+		for (List<String> args : List.of(List.of("confirm", "c1"), List.of("confirm", "c1", "all_models")))
 		{
 			FakeCore core = new FakeCore();
 			StringBuilder output = new StringBuilder();
 			requireThat(run(core, args, output), "exit").isEqualTo(2);
 			requireThat(core.calls, "calls").isEmpty();
 			String message = JSON.readTree(output.toString()).get("message").asString();
-			requireThat(message, "message").contains("weakest-cell").contains("latest-versions").
+			requireThat(message, "message").contains("weakest_cell").contains("latest_versions").
 				contains("described");
 		}
 	}
@@ -282,8 +282,8 @@ public final class CommandsTest
 		FakeCore core = new FakeCore();
 		StringBuilder output = new StringBuilder();
 		List<List<String>> commands = List.of(
-			List.of("choose", "c1", "authorize-target", "--target", "/external/shared.md"),
-			List.of("choose", "c1", "use-authorized-source"));
+			List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
+			List.of("choose", "c1", "use_authorized_source"));
 		for (List<String> command : commands)
 			requireThat(run(core, command, output), "exit").isEqualTo(0);
 		requireThat(core.calls, "calls").isEqualTo(List.of(
@@ -300,7 +300,7 @@ public final class CommandsTest
 		// Requirement: R-D13
 		FakeCore core = new FakeCore();
 		StringBuilder output = new StringBuilder();
-		requireThat(run(core, List.of("choose", "c1", "resolution-2"), output), "exit").isEqualTo(0);
+		requireThat(run(core, List.of("choose", "c1", "resolution_2"), output), "exit").isEqualTo(0);
 		requireThat(core.calls, "calls").isEqualTo(List.of("resolve c1 2"));
 	}
 
@@ -323,7 +323,7 @@ public final class CommandsTest
 		requireThat(json.get("harness").asString(), "harness").isEqualTo("codex");
 		requireThat(json.get("summary").asString(), "summary").isEqualTo(core.status.summary(ZoneOffset.UTC));
 		requireThat(json.get("proposal").asString(), "proposal").isEqualTo("the proposal");
-		requireThat(json.get("deliveryResult").isNull(), "deliveryResultIsNull").isTrue();
+		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").asString(), "message").isEqualTo("a notice");
 		requireThat(output.toString().strip().lines().count(), "lines").isEqualTo(1L);
 	}
@@ -348,7 +348,7 @@ public final class CommandsTest
 
 		requireThat(exit, "exit").isEqualTo(0);
 		JsonNode json = JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
-		requireThat(json.path("concurrency").path("holdUntil").asString(), "holdUntil").
+		requireThat(json.path("concurrency").path("hold_until").asString(), "holdUntil").
 			isEqualTo("2026-10-09T21:13:08Z");
 		requireThat(json.get("summary").asString(), "summary").contains("hold until 2026-10-09T17:13:08-04:00");
 	}
@@ -373,18 +373,18 @@ public final class CommandsTest
 			new DeliveryReport(delivered, delivered.applicability()), null);
 		StringBuilder output = new StringBuilder();
 		run(core, List.of("run", "c1"), output);
-		JsonNode delivery = JSON.readTree(output.toString()).get("deliveryResult");
+		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
 		requireThat(delivery.get("result").asString(), "result").isEqualTo("delivered");
 		requireThat(delivery.get("label").asString(), "label").isEqualTo("certified");
 		requireThat(delivery.get("diff").asString(), "diff").isEqualTo("diff --git a/prompts/a.md b/prompts/a.md");
-		requireThat(delivery.get("baseOnlyChanges").get(0).asString(), "baseOnly").isEqualTo("notes.md");
-		requireThat(delivery.get("changedPromptSources").get(0).asString(), "sources").isEqualTo("prompts/a.md");
+		requireThat(delivery.get("base_only_changes").get(0).asString(), "baseOnly").isEqualTo("notes.md");
+		requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").isEqualTo("prompts/a.md");
 		JsonNode applicability = delivery.get("applicability");
 		requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
-		requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
-		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("MODEL");
-		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("HOST_TOOLS");
-		JsonNode change = delivery.get("externalChanges").get(0);
+		requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
+		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
+		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("host_tools");
+		JsonNode change = delivery.get("external_changes").get(0);
 		requireThat(change.get("target").asString(), "target").isEqualTo("/etc/external.md");
 		requireThat(change.get("sequence").asInt(), "sequence").isEqualTo(4);
 		requireThat(change.get("kind").asString(), "kind").isEqualTo("create");
@@ -416,20 +416,20 @@ public final class CommandsTest
 		requireThat(json.get("campaign").isNull(), "campaignIsNull").isTrue();
 		requireThat(json.get("target").asString(), "target").isEqualTo("CLAUDE.md");
 		requireThat(json.get("attempt").asInt(), "attempt").isEqualTo(2);
-		requireThat(json.get("scope").asString(), "scope").isEqualTo("latest-versions");
+		requireThat(json.get("scope").asString(), "scope").isEqualTo("latest_versions");
 		JsonNode applicabilityNode = json.get("applicability");
 		requireThat(applicabilityNode.get("status").asString(), "applicability").isEqualTo("historical");
-		requireThat(applicabilityNode.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
-		requireThat(applicabilityNode.get("changed").get(0).asString(), "changed").isEqualTo("JUDGE");
-		requireThat(applicabilityNode.get("unchecked").get(0).asString(), "unchecked").isEqualTo("MODEL");
+		requireThat(applicabilityNode.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
+		requireThat(applicabilityNode.get("changed").get(0).asString(), "changed").isEqualTo("judge");
+		requireThat(applicabilityNode.get("unchecked").get(0).asString(), "unchecked").isEqualTo("model");
 		requireThat(json.get("harness").isNull(), "harnessIsNull").isTrue();
 		requireThat(json.get("summary").asString(), "summary").isEqualTo("""
-			Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+			Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
 			version)
-			Attempt 2: certified (historical; changed: PROMPT_CONTENT, JUDGE)
+			Attempt 2: certified (historical; changed: prompt_content, judge)
 			  Not checked: trial model.""");
 		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();
-		requireThat(json.get("deliveryResult").isNull(), "deliveryResultIsNull").isTrue();
+		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();
 	}
 
@@ -463,8 +463,8 @@ public final class CommandsTest
 			new DeliveryReport(new DeliveryResult.VerificationFailed(List.of(Path.of("a.md"))), null), null);
 		StringBuilder output = new StringBuilder();
 		run(core, List.of("run", "c1"), output);
-		JsonNode delivery = JSON.readTree(output.toString()).get("deliveryResult");
-		requireThat(delivery.get("result").asString(), "result").isEqualTo("verification-failed");
+		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
+		requireThat(delivery.get("result").asString(), "result").isEqualTo("verification_failed");
 		requireThat(delivery.get("mismatched").get(0).asString(), "mismatched").isEqualTo("a.md");
 	}
 
@@ -490,29 +490,29 @@ public final class CommandsTest
 				{List.of("status", "c1", "extra")},
 				{List.of("confirm", "")},
 				{List.of("confirm", "c1")},
-				{List.of("confirm", "c1", "all-models")},
-				{List.of("confirm", "c1", "latest-versions", "extra")},
+				{List.of("confirm", "c1", "all_models")},
+				{List.of("confirm", "c1", "latest_versions", "extra")},
 				{List.of("cancel", "-rf")},
 				{List.of("revise", "c1")},
 				{List.of("revise", "c1", "  ")},
 				{List.of("choose", "c1")},
 				{List.of("choose", "c1", "no-such-choice")},
 				{List.of("choose", "c1", "KEEP_IMPROVEMENT", "--attempt", "1")},
-				{List.of("choose", "c1", "keep-improvement")},
-				{List.of("choose", "c1", "keep-improvement", "--attempt", "0")},
-				{List.of("choose", "c1", "keep-improvement", "--attempt", "x")},
+				{List.of("choose", "c1", "keep_improvement")},
+				{List.of("choose", "c1", "keep_improvement", "--attempt", "0")},
+				{List.of("choose", "c1", "keep_improvement", "--attempt", "x")},
 				{List.of("choose", "c1", "stop", "--attempt", "1")},
-				{List.of("choose", "c1", "more-evidence")},
+				{List.of("choose", "c1", "more_evidence")},
 				{List.of("choose", "c1", "stop", "--review-point", "1")},
 				{List.of("choose", "c1", "stop", "--bogus", "1")},
 				{List.of("choose", "c1", "stop", "--attempt")},
-				{List.of("choose", "c1", "authorize-target")},
-				{List.of("choose", "c1", "authorize-target", "--target")},
-				{List.of("choose", "c1", "authorize-target", "--target", "shared.md")},
-				{List.of("choose", "c1", "authorize-target", "--target", "/external/../shared.md")},
-				{List.of("choose", "c1", "authorize-target", "--target", " ")},
-				{List.of("choose", "c1", "authorize-target", "--attempt", "1")},
-				{List.of("choose", "c1", "use-authorized-source", "--target", "/external/shared.md")},
+				{List.of("choose", "c1", "authorize_target")},
+				{List.of("choose", "c1", "authorize_target", "--target")},
+				{List.of("choose", "c1", "authorize_target", "--target", "shared.md")},
+				{List.of("choose", "c1", "authorize_target", "--target", "/external/../shared.md")},
+				{List.of("choose", "c1", "authorize_target", "--target", " ")},
+				{List.of("choose", "c1", "authorize_target", "--attempt", "1")},
+				{List.of("choose", "c1", "use_authorized_source", "--target", "/external/shared.md")},
 				{List.of("choose", "c1", "stop", "--target", "/external/shared.md")}
 			};
 	}
@@ -532,7 +532,7 @@ public final class CommandsTest
 		requireThat(exit, "exit").isEqualTo(2);
 		requireThat(core.calls, "calls").isEmpty();
 		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("invalid-input");
+		requireThat(json.get("status").asString(), "status").isEqualTo("invalid_input");
 		requireThat(json.get("message").asString(), "message").contains("usage:");
 	}
 

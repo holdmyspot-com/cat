@@ -1299,7 +1299,7 @@ public final class Driver implements AutoCloseable
 	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
 	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
 	 * malformed report contributes no candidate and counts as an infrastructure failure. A needed
-	 * edit outside the authority raises an {@code awaiting-user} decision that holds the warnings. A valid conflict
+	 * edit outside the authority raises an {@code awaiting_user} decision that holds the warnings. A valid conflict
 	 * report discards the candidate and pauses for the user's resolution.
 	 *
 	 * @param author the session

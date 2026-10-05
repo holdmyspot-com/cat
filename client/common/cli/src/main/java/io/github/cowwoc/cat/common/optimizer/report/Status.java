@@ -13,7 +13,7 @@ public enum Status
 	/**
 	 * The campaign waits for the user: to confirm a contract, to answer a pending decision, or to resume.
 	 */
-	AWAITING_USER("awaiting-user"),
+	AWAITING_USER("awaiting_user"),
 	/**
 	 * Another driver holds the campaign. The driver reports this; the report never derives it from campaign state.
 	 */

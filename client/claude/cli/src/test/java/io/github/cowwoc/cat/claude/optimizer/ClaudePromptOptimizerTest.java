@@ -58,7 +58,7 @@ public final class ClaudePromptOptimizerTest
 	{
 		Path root = scope.add(Files.createTempDirectory("claude-optimizer-project")).toRealPath();
 		Files.createDirectory(root.resolve(".git"));
-		Path campaign = root.resolve(".cat/work/optimizer").resolve(CAMPAIGN).resolve("held-out");
+		Path campaign = root.resolve(".cat/work/optimizer").resolve(CAMPAIGN).resolve("held_out");
 		Files.createDirectories(campaign);
 		Files.copy(FIXTURE, campaign.resolve("campaign.json"));
 		Path home = scope.add(Files.createTempDirectory("claude-optimizer-home")).toRealPath();

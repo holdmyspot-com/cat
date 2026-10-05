@@ -184,9 +184,9 @@ public final class Commands
 		}
 		String campaign = campaign(rest.getFirst());
 		String answer = rest.get(1);
-		if (answer.startsWith("resolution-"))
+		if (answer.startsWith("resolution_"))
 		{
-			expect("choose", rest, 2, "<campaign> resolution-<n>");
+			expect("choose", rest, 2, "<campaign> resolution_<n>");
 			return new Command.ResolveConflict(campaign, positive("resolution", answer.substring(11)));
 		}
 		Choice choice = choice(rest.get(1));
@@ -222,7 +222,7 @@ public final class Commands
 	}
 
 	/**
-	 * Validates the external target that an {@code authorize-target} choice names.
+	 * Validates the external target that an {@code authorize_target} choice names.
 	 *
 	 * @param value the argument
 	 * @return the target
@@ -386,7 +386,7 @@ public final class Commands
 		}
 		catch (InvalidCommandException e)
 		{
-			out.println(statusMessage(json, "invalid-input", e.getMessage() + "\n" + USAGE));
+			out.println(statusMessage(json, "invalid_input", e.getMessage() + "\n" + USAGE));
 			return 2;
 		}
 		try
@@ -463,9 +463,9 @@ public final class Commands
 		else
 			root.put("proposal", result.proposal());
 		if (result.delivery() == null)
-			root.putNull("deliveryResult");
+			root.putNull("delivery_result");
 		else
-			root.set("deliveryResult", DeliveryJson.of(result.delivery(), json));
+			root.set("delivery_result", DeliveryJson.of(result.delivery(), json));
 		if (result.message() == null)
 			root.putNull("message");
 		else
@@ -509,7 +509,7 @@ public final class Commands
 	 * Renders a failure or the usage text.
 	 *
 	 * @param json the JSON mapper
-	 * @param status {@code "refused"}, {@code "invalid-input"}, {@code "error"} or {@code "help"}
+	 * @param status {@code "refused"}, {@code "invalid_input"}, {@code "error"} or {@code "help"}
 	 * @param message the explanation
 	 * @return the JSON text
 	 */

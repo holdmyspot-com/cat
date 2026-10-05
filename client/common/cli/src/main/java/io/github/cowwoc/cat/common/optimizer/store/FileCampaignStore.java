@@ -23,10 +23,10 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}. The campaign's {@code held-out}
+ * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}. The campaign's {@code held_out}
  * directory holds every file with held-out content: the snapshot in {@code campaign.json}, the proposal in
  * {@code proposal.json}, and one record per logical trial in {@code trials/<sha256 of the trial key>.json}. The
- * delivery journal is {@code delivery.json} in the campaign directory. The {@code held-out} and {@code trials}
+ * delivery journal is {@code delivery.json} in the campaign directory. The {@code held_out} and {@code trials}
  * directories exist from the first snapshot write.
  * <p>
  * The file {@code removal} in a campaign directory records that the removal of the campaign's files started. The
@@ -45,10 +45,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class FileCampaignStore extends AbstractCampaignStore
 {
 	/**
-	 * The name of the file in a campaign's {@code held-out} directory that holds the proposal.
+	 * The name of the file in a campaign's {@code held_out} directory that holds the proposal.
 	 */
 	public static final String PROPOSAL = "proposal.json";
-	private static final String HELD_OUT = "held-out";
+	private static final String HELD_OUT = "held_out";
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
@@ -131,7 +131,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param base the base worktree
 	 * @param campaignId the campaign's identifier
-	 * @return the campaign's {@code held-out} directory
+	 * @return the campaign's {@code held_out} directory
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static Path heldOutDirectory(Path base, String campaignId)
@@ -140,7 +140,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Returns the {@code held-out} directories of a worktree's campaigns. Nested sessions of the development part must
+	 * Returns the {@code held_out} directories of a worktree's campaigns. Nested sessions of the development part must
 	 * not read them.
 	 *
 	 * @param base the base worktree

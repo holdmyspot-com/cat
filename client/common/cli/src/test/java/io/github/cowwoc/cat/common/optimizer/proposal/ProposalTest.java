@@ -751,8 +751,8 @@ public final class ProposalTest
 		String text = proposal.render();
 		requireThat(text, "text").
 			contains("Capability ranking, most capable first (test ranking in inventory order): big, small").
-			contains("### `weakest-cell`: each category's weakest cell only").
-			contains("### `latest-versions`: every cell of each model family's latest version").
+			contains("### `weakest_cell`: each category's weakest cell only").
+			contains("### `latest_versions`: every cell of each model family's latest version").
 			doesNotContain("### `described`").
 			contains("To certify other cells, describe them in revision feedback").
 			contains("Cells: `" + ContractFixtures.SMALL_CELL + "`, `safety` (2 cells)").
@@ -762,7 +762,7 @@ public final class ProposalTest
 			contains("Cells: every cell of category `formatting`, `safety` (3 cells)").
 			contains("At least " + 2 * latest + " nested sessions remain if every trial passes: " + latest +
 				" trials");
-		requireThat(text.indexOf("### `weakest-cell`"), "order").isLessThan(text.indexOf("### `latest-versions`"));
+		requireThat(text.indexOf("### `weakest_cell`"), "order").isLessThan(text.indexOf("### `latest_versions`"));
 
 		CampaignEvent confirm = proposal.confirmation(7, CertificationScope.WEAKEST_CELL).getFirst();
 		Contract scoped = proposal.contract().withScope(CertificationScope.WEAKEST_CELL);
@@ -789,7 +789,7 @@ public final class ProposalTest
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
 		requireThat(proposal.render(), "render").contains("Unranked models: small").
-			contains("No choice is available yet").doesNotContain("### `weakest-cell`");
+			contains("No choice is available yet").doesNotContain("### `weakest_cell`");
 		for (CertificationScope scope : List.of(CertificationScope.WEAKEST_CELL, CertificationScope.LATEST_VERSIONS))
 		{
 			requireThat(proposal.isConfirmable(scope), scope.id()).isFalse();

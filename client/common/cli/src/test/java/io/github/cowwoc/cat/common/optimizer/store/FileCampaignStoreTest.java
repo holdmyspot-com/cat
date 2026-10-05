@@ -133,7 +133,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that the held-out directories are each campaign's {@code held-out} directory, which holds the snapshot,
+	 * Verifies that the held-out directories are each campaign's {@code held_out} directory, which holds the snapshot,
 	 * the proposal and the trial records, that it is listed before any record is written, so that a session that
 	 * starts first is denied the records written while it runs, and that the campaign's other entries stay outside it.
 	 *
@@ -181,7 +181,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 	/**
 	 * Verifies that a campaign whose snapshot is stored directly in the campaign directory, outside its
-	 * {@code held-out} directory, is refused with a message that names its version and asks for a new campaign, both
+	 * {@code held_out} directory, is refused with a message that names its version and asks for a new campaign, both
 	 * when it is loaded and when campaigns are listed.
 	 *
 	 * @param listing {@code true} to list the campaigns, {@code false} to load the campaign
@@ -212,7 +212,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that a version 15 snapshot inside the {@code held-out} directory is refused with a message that names
+	 * Verifies that a version 15 snapshot inside the {@code held_out} directory is refused with a message that names
 	 * its version and asks for a new campaign.
 	 *
 	 * @throws IOException if the store fails
@@ -732,8 +732,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * A campaign is stored as {@code .cat/work/optimizer/<id>/held-out/campaign.json} with a format version, and each
-	 * logical trial as one record file in the same {@code held-out} directory.
+	 * A campaign is stored as {@code .cat/work/optimizer/<id>/held_out/campaign.json} with a format version, and each
+	 * logical trial as one record file in the same {@code held_out} directory.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -1144,7 +1144,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 * @throws IOException if the store fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*campaign-1/held-out/campaign\\.json.*")
+		expectedExceptionsMessageRegExp = "(?s).*campaign-1/held_out/campaign\\.json.*")
 	public void rejectsMalformedSnapshot() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1341,7 +1341,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	private static Path heldOutDirectory(Path base)
 	{
-		return campaignDirectory(base).resolve("held-out");
+		return campaignDirectory(base).resolve("held_out");
 	}
 
 	/**

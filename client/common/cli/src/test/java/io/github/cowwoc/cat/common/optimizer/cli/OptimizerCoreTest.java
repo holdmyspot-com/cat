@@ -611,7 +611,7 @@ public final class OptimizerCoreTest
 			String id = result.status().campaignId();
 			requireThat(repository.sessions().roles(), "roles").isEqualTo(List.of(SessionRole.DERIVER));
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
-			requireThat(repository.directory(id).resolve("held-out/proposal.json"), "proposalFile").isRegularFile();
+			requireThat(repository.directory(id).resolve("held_out/proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
 		}
 	}
@@ -704,7 +704,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
+			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(snapshot));
 			stored.remove("ceiling");
 			Files.writeString(snapshot, JSON.writeValueAsString(stored));
@@ -762,7 +762,7 @@ public final class OptimizerCoreTest
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 			requireThat(result.message(), "message").contains("The deriver's proposal is invalid").
 				contains("reported.md");
-			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held-out/proposal.json")),
+			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
 				"proposalFileExists").isFalse();
 		}
 	}
@@ -807,7 +807,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("held-out/proposal.json");
+			Path file = repository.directory(id).resolve("held_out/proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 3);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
@@ -833,7 +833,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("held-out/proposal.json");
+			Path file = repository.directory(id).resolve("held_out/proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 5);
 			stored.remove("ranking");
@@ -861,7 +861,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("held-out/proposal.json");
+			Path file = repository.directory(id).resolve("held_out/proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 7);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
@@ -906,7 +906,7 @@ public final class OptimizerCoreTest
 				contains("Added /.cat/work/").contains("info/exclude");
 			requireThat(started.get("proposal").isNull(), "missingProposal").isFalse();
 			String id = started.get("campaign").asString();
-			requireThat(output(repository, List.of("confirm", id, "latest-versions")).get("message").isNull(),
+			requireThat(output(repository, List.of("confirm", id, "latest_versions")).get("message").isNull(),
 				"confirmNotice").isTrue();
 			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").isNull(), "resumeNotice").
 				isTrue();
@@ -961,7 +961,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path file = repository.directory(id).resolve("held-out/proposal.json");
+			Path file = repository.directory(id).resolve("held_out/proposal.json");
 			JsonMapper json = JsonMapper.builder().build();
 			ObjectNode stored = (ObjectNode) json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 2);
@@ -1182,12 +1182,12 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
-			ObjectNode first = output(repository, List.of("choose", id, "resolution-2"));
+			ObjectNode first = output(repository, List.of("choose", id, "resolution_2"));
 			requireThat(first.get("proposal").isNull(), "proposal").isTrue();
 			requireThat(first.get("choices").get(0).get("label").asString(), "nextResolution").
 				isEqualTo("Exempt greetings.");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
-			ObjectNode last = output(repository, List.of("choose", id, "resolution-1"));
+			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
 			requireThat(last.get("proposal").asString(), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
@@ -1258,7 +1258,7 @@ public final class OptimizerCoreTest
 				requireThat(e.getMessage(), "message").contains("does not offer a conflict resolution now");
 			}
 			pauseConflicts(repository, id);
-			String before = Files.readString(repository.directory(id).resolve("held-out/campaign.json"));
+			String before = Files.readString(repository.directory(id).resolve("held_out/campaign.json"));
 			try
 			{
 				repository.core().resolveConflict(id, 3);
@@ -1266,9 +1266,9 @@ public final class OptimizerCoreTest
 			}
 			catch (CommandRefusedException e)
 			{
-				requireThat(e.getMessage(), "message").contains("does not offer resolution-3");
+				requireThat(e.getMessage(), "message").contains("does not offer resolution_3");
 			}
-			requireThat(Files.readString(repository.directory(id).resolve("held-out/campaign.json")), "unchanged").
+			requireThat(Files.readString(repository.directory(id).resolve("held_out/campaign.json")), "unchanged").
 				isEqualTo(before);
 		}
 	}
@@ -1294,7 +1294,7 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests.get(1).turns().getFirst(), "turn").
 				contains("cover the formal tone");
 			requireThat(revised.proposal(), "proposal").contains("Revision number 1 limit.");
-			requireThat(Files.readString(repository.directory(id).resolve("held-out/proposal.json")), "stored").
+			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
 				contains("Revision number 1 limit.");
 		}
 	}
@@ -1315,7 +1315,7 @@ public final class OptimizerCoreTest
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			String missing = refusal(() -> repository.core().confirm(id, null));
-			requireThat(missing, "missing").contains("weakest-cell").contains("latest-versions").contains("described");
+			requireThat(missing, "missing").contains("weakest_cell").contains("latest_versions").contains("described");
 			requireThat(repository.load(id).isConfirmed(), "confirmedWithoutScope").isFalse();
 
 			String described = refusal(() -> repository.core().confirm(id, CertificationScope.DESCRIBED));
@@ -1426,7 +1426,7 @@ public final class OptimizerCoreTest
 				paths.add("missing/fixture.txt");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.root().resolve(".cat/work/optimizer").resolve(id).resolve("held-out/campaign.json");
+			Path snapshot = repository.root().resolve(".cat/work/optimizer").resolve(id).resolve("held_out/campaign.json");
 			String before = Files.readString(snapshot);
 			CommandRefusedException refusal = null;
 			try
@@ -1632,15 +1632,15 @@ public final class OptimizerCoreTest
 			requireThat(status.get("status").asString(), "status").isEqualTo("certified");
 			requireThat(status.get("target").asString(), "target").isEqualTo("CLAUDE.md");
 			requireThat(status.get("attempt").asInt(), "attempt").isEqualTo(1);
-			requireThat(status.get("scope").asString(), "scope").isEqualTo("latest-versions");
+			requireThat(status.get("scope").asString(), "scope").isEqualTo("latest_versions");
 			JsonNode applicability = status.get("applicability");
 			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("current");
-			requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isFalse();
+			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isFalse();
 			requireThat(applicability.get("changed").isEmpty(), "changedIsEmpty").isTrue();
-			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("MODEL");
+			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("model");
 			requireThat(applicability.get("unchecked").size(), "uncheckedSize").isEqualTo(1);
 			requireThat(status.get("summary").asString(), "summary").isEqualTo("""
-				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+				Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified
 				  Not checked: trial model.""");
@@ -1668,10 +1668,10 @@ public final class OptimizerCoreTest
 
 			JsonNode applicability = status.get("applicability");
 			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
-			requireThat(applicability.get("promptContentChanged").asBoolean(), "promptContentChanged").isTrue();
-			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("HARNESS_VERSION");
+			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
+			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("harness_version");
 			requireThat(status.get("summary").asString(), "summary").contains(
-				"Attempt 1: certified (historical; changed: PROMPT_CONTENT, HARNESS_VERSION)\n" +
+				"Attempt 1: certified (historical; changed: prompt_content, harness_version)\n" +
 				"  Not checked: trial model.");
 		}
 	}
@@ -1807,9 +1807,9 @@ public final class OptimizerCoreTest
 
 				## Incumbent certification
 
-				Certification record of CLAUDE.md, scope latest-versions (every cell of each model family's latest \
+				Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
 				version)
-				Attempt 1: certified (historical; changed: JUDGE)
+				Attempt 1: certified (historical; changed: judge)
 				  Not checked: trial model.
 				""");
 		}
@@ -1876,7 +1876,7 @@ public final class OptimizerCoreTest
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization());
 			repository.scope().store().replaceSnapshot(tradeOff);
 
-			ObjectNode chosen = output(repository, List.of("choose", id, "retain-incumbent"));
+			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
 
 			requireThat(chosen.get("summary").asString(), "summary").
 				endsWith("\nRemoved the campaign's files from .cat/work/.");
@@ -1945,7 +1945,7 @@ public final class OptimizerCoreTest
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			repository.scope().store().replaceSnapshot(warned);
-			String before = Files.readString(repository.directory(id).resolve("held-out/campaign.json"));
+			String before = Files.readString(repository.directory(id).resolve("held_out/campaign.json"));
 
 			CommandRefusedException refusal = null;
 			try
@@ -1957,7 +1957,7 @@ public final class OptimizerCoreTest
 				refusal = e;
 			}
 			requireThat(refusal, "refusal").isNotNull();
-			requireThat(Files.readString(repository.directory(id).resolve("held-out/campaign.json")), "unchanged").
+			requireThat(Files.readString(repository.directory(id).resolve("held_out/campaign.json")), "unchanged").
 				isEqualTo(before);
 
 			CommandResult result = repository.core().choose(id, Choice.AUTHORIZE_TARGET, 0, 0, target);
@@ -1995,7 +1995,7 @@ public final class OptimizerCoreTest
 				}
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
+			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
 			String before = Files.readString(snapshot);
 			try
 			{
@@ -2068,7 +2068,7 @@ public final class OptimizerCoreTest
 				repository.forks().setInventory(repository.directory(id), new FileInventory(repository.root(),
 					entries));
 			}
-			Path snapshot = repository.directory(id).resolve("held-out/campaign.json");
+			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
 			String before = Files.readString(snapshot);
 			try
 			{

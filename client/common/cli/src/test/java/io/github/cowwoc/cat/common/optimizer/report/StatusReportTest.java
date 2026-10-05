@@ -12,7 +12,6 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
-import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
@@ -109,7 +108,7 @@ public final class StatusReportTest
 			ReportEvidence.NONE);
 		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
 
-		requireThat(concurrency.path("holdUntil").asString(), "holdUntil").isEqualTo("2026-10-09T21:13:08.789Z");
+		requireThat(concurrency.path("hold_until").asString(), "holdUntil").isEqualTo("2026-10-09T21:13:08.789Z");
 		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").
 			contains("throttle hold until 2026-10-09T17:13:08-04:00 (window cap 2, backoffs 3)");
 	}
@@ -182,9 +181,9 @@ public final class StatusReportTest
 		JsonNode reverted = report.toJson(JsonMapper.builder().build()).path("reverts").path(0);
 		requireThat(reverted.path("withdrawn").path("number").asInt(), "withdrawn").isEqualTo(2);
 		requireThat(reverted.path("cell").asString(), "cell").isEqualTo("safety");
-		requireThat(reverted.path("upperBound").asDouble(), "upperBound").
+		requireThat(reverted.path("upper_bound").asDouble(), "upperBound").
 			isEqualTo(ExploratoryBounds.wilson(0, 1).upper());
-		requireThat(reverted.path("predecessorRate").asDouble(), "predecessorRate").isEqualTo(0.9);
+		requireThat(reverted.path("predecessor_rate").asDouble(), "predecessorRate").isEqualTo(0.9);
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Reverted candidate 2").contains("safety").
 			contains("upper bound").contains("predecessor rate");
 	}
@@ -203,7 +202,7 @@ public final class StatusReportTest
 
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 
-		JsonNode combination = report.toJson(JsonMapper.builder().build()).path("addedValues").path(0);
+		JsonNode combination = report.toJson(JsonMapper.builder().build()).path("added_values").path(0);
 		requireThat(combination.path("attempt").asInt(), "attempt").isEqualTo(1);
 		requireThat(combination.path("test").asString(), "test").isEqualTo("delete-directory");
 		JsonNode value = combination.path("values").path(0);
@@ -233,11 +232,11 @@ public final class StatusReportTest
 		JsonNode choices = report.toJson(JsonMapper.builder().build()).get("choices");
 
 		requireThat(choices.size(), "choiceCount").isEqualTo(3);
-		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("resolution-1");
+		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("resolution_1");
 		requireThat(choices.get(0).get("label").asString(), "firstLabel").isEqualTo("Exempt explanations.");
 		requireThat(choices.get(0).get("recommended").asBoolean(), "firstRecommended").isFalse();
 		requireThat(choices.get(0).has("reason"), "firstReason").isFalse();
-		requireThat(choices.get(1).get("id").asString(), "secondId").isEqualTo("resolution-2");
+		requireThat(choices.get(1).get("id").asString(), "secondId").isEqualTo("resolution_2");
 		requireThat(choices.get(1).get("recommended").asBoolean(), "secondRecommended").isTrue();
 		requireThat(choices.get(1).get("reason").asString(), "reason").isEqualTo("Keeps the core task.");
 		requireThat(choices.get(2).get("id").asString(), "lastId").isEqualTo("stop");
@@ -940,10 +939,10 @@ public final class StatusReportTest
 			Map.of("formatting", Map.of(MeasurementCondition.MODEL, "model-c")));
 		StatusReport report = StatusReport.of(confirmed().identity(identity).readyDevelopment().build(),
 			ReportEvidence.NONE);
-		requireThat(report.conditions().get(MeasurementCondition.MODEL.name()), "model").isEqualTo("model-a");
-		requireThat(report.conditions().get(MeasurementCondition.MODEL.name() + "[formatting]"), "cellModel").
+		requireThat(report.conditions().get("model"), "model").isEqualTo("model-a");
+		requireThat(report.conditions().get("model[formatting]"), "cellModel").
 			isEqualTo("model-c");
-		requireThat(report.claim(), "claim").contains("MODEL[formatting]=model-c");
+		requireThat(report.claim(), "claim").contains("model[formatting]=model-c");
 	}
 
 	/**
@@ -959,7 +958,7 @@ public final class StatusReportTest
 		requireThat(report.claim(), "claim").contains(ContractFixtures.judge().profile().label()).
 			contains(ContractFixtures.judge().decisionRule()).contains("balanced benchmark").
 			contains("not usage frequencies").contains("model-a");
-		requireThat(report.conditions().get(MeasurementCondition.MODEL.name()), "model").isEqualTo("model-a");
+		requireThat(report.conditions().get("model"), "model").isEqualTo("model-a");
 		requireThat(report.conditions().size(), "conditions").
 			isEqualTo(campaign.identity().values().size());
 		requireThat(report.limitations(), "limitations").contains("Only the English prompts are covered.");
@@ -1004,11 +1003,11 @@ public final class StatusReportTest
 			cell("formatting", 120, 0).cell("safety", 95, 5).outcome(Outcome.INCONCLUSIVE).campaign().
 			pending(new PendingDecision.ImprovementProven(1)).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(report.status().label(), "status").isEqualTo("awaiting-user");
+		requireThat(report.status().label(), "status").isEqualTo("awaiting_user");
 		List<String> ids = new ArrayList<>();
 		for (ChoiceItem choice : report.choices())
 			ids.add(choice.id());
-		requireThat(ids, "ids").isEqualTo(List.of("keep-improvement", "optimize-further", "stop"));
+		requireThat(ids, "ids").isEqualTo(List.of("keep_improvement", "optimize_further", "stop"));
 		requireThat(report.choices().getFirst().attempt(), "attempt").isEqualTo(1);
 
 		requireThat(report.keepOffers().size(), "offers").isEqualTo(1);
@@ -1031,7 +1030,7 @@ public final class StatusReportTest
 		requireThat(safety.difference().lower(), "differenceLower").isLessThan(0.0);
 		requireThat(safety.note(), "safetyNote").isNotNull();
 
-		JsonNode offerNode = report.toJson(JsonMapper.builder().build()).path("keepOffers").get(0);
+		JsonNode offerNode = report.toJson(JsonMapper.builder().build()).path("keep_offers").get(0);
 		requireThat(offerNode.has("categories"), "offerCategories").isFalse();
 		requireThat(offerNode.path("cells").get(0).path("cell").asString(), "offerCell").isEqualTo("formatting");
 	}
@@ -1051,11 +1050,11 @@ public final class StatusReportTest
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		KeepOffer offer = report.keepOffers().getFirst();
 		requireThat(offer.historical(), "historical").isTrue();
-		requireThat(offer.differing(), "differing").isEqualTo(List.of(MeasurementCondition.MODEL.name()));
+		requireThat(offer.differing(), "differing").isEqualTo(List.of("model"));
 		requireThat(report.choices().getFirst().historical(), "choiceHistorical").isTrue();
 		AttemptSummary summary = report.attempts().getFirst();
 		requireThat(summary.historical(), "attemptHistorical").isTrue();
-		requireThat(summary.changed(), "changed").contains(MeasurementCondition.MODEL.name());
+		requireThat(summary.changed(), "changed").contains("model");
 	}
 
 	/**
@@ -1077,7 +1076,7 @@ public final class StatusReportTest
 		requireThat(summary.historical(), "historical").isFalse();
 		requireThat(summary.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.TOOL_OUTPUT_LIMIT));
 		JsonNode attempt = report.toJson(JsonMapper.builder().build()).path("attempts").get(0);
-		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("TOOL_OUTPUT_LIMIT");
+		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("tool_output_limit");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1: certified\n" +
 			"  Not checked: trial tool-output token limit.");
 	}
@@ -1097,7 +1096,7 @@ public final class StatusReportTest
 			cell("safety", 120, 0).outcome(Outcome.CERTIFIED).build();
 		AttemptSummary summary = StatusReport.of(campaign, ReportEvidence.NONE).attempts().getFirst();
 		requireThat(summary.historical(), "historical").isTrue();
-		requireThat(summary.changed(), "changed").isEqualTo(List.of(CertificationParameter.REQUIRED_PASS_RATE.name()));
+		requireThat(summary.changed(), "changed").isEqualTo(List.of("required_pass_rate"));
 	}
 
 	/**
@@ -1112,7 +1111,7 @@ public final class StatusReportTest
 		Campaign waiting = confirmed().readyDevelopment().pending(new PendingDecision.CheckpointReached("safety", 200)).
 			build();
 		StatusReport report = StatusReport.of(waiting, ReportEvidence.NONE);
-		requireThat(report.status().label(), "awaiting").isEqualTo("awaiting-user");
+		requireThat(report.status().label(), "awaiting").isEqualTo("awaiting_user");
 		requireThat(report.pending(), "pending").isNotNull().contains("safety");
 		ChoiceItem more = report.choices().getFirst();
 		requireThat(more.choice(), "choice").isEqualTo(Choice.MORE_EVIDENCE);
@@ -1124,7 +1123,7 @@ public final class StatusReportTest
 			ReportEvidence.NONE).status().label(), "cancelled").isEqualTo("interrupted");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).status().label(),
 			"unconfirmedStatus").
-			isEqualTo("awaiting-user");
+			isEqualTo("awaiting_user");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
 			isEqualTo(Phase.UNCONFIRMED);
 	}
@@ -1139,7 +1138,7 @@ public final class StatusReportTest
 		Campaign campaign = confirmed().working(1).readyDevelopment().outcome(Outcome.PLATEAU).
 			pending(new PendingDecision.PlateauReached()).build();
 		StatusReport waiting = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(waiting.status().label(), "waitingStatus").isEqualTo("awaiting-user");
+		requireThat(waiting.status().label(), "waitingStatus").isEqualTo("awaiting_user");
 		requireThat(waiting.summary(ZoneOffset.UTC), "waitingSummary").contains("Waiting for: a full development round");
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
 		StatusReport stopped = StatusReport.of(campaign, ReportEvidence.NONE);
@@ -1159,7 +1158,7 @@ public final class StatusReportTest
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		StatusReport resumed = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(resumed.status().label(), "resumedStatus").isEqualTo("awaiting-user");
+		requireThat(resumed.status().label(), "resumedStatus").isEqualTo("awaiting_user");
 		requireThat(resumed.summary(ZoneOffset.UTC), "resumedSummary").contains("Waiting for: a full development round").
 			doesNotContain("The user stopped the campaign.");
 	}
@@ -1201,7 +1200,7 @@ public final class StatusReportTest
 		requireThat(json.path("remaining").path("total").asInt(), "remaining").isEqualTo(226);
 		JsonNode first = json.path("cells").get(0);
 		requireThat(first.path("cell").asString(), "cell").isEqualTo("formatting");
-		requireThat(first.path("passRate").path("label").asString(), "label").isEqualTo("development estimate");
+		requireThat(first.path("pass_rate").path("label").asString(), "label").isEqualTo("development estimate");
 		requireThat(first.path("comparison").path("state").asString(), "state").isEqualTo("not certified");
 		String text = json.toString().toLowerCase(java.util.Locale.ROOT);
 		requireThat(text, "text").doesNotContain("tokentotal").doesNotContain("timeestimate").
@@ -1240,22 +1239,22 @@ public final class StatusReportTest
 
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 
-		requireThat(report.status().label(), "status").isEqualTo("awaiting-user");
+		requireThat(report.status().label(), "status").isEqualTo("awaiting_user");
 		requireThat(report.pending(), "pending").isNotNull().contains("R1");
 		requireThat(report.authorityWarnings(), "authorityWarnings").isEqualTo(List.of(warning));
 		requireThat(report.choices().stream().map(ChoiceItem::id).toList(), "choices").
-			isEqualTo(List.of("authorize-target", "use-authorized-source", "stop"));
+			isEqualTo(List.of("authorize_target", "use_authorized_source", "stop"));
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
-		JsonNode shown = json.path("authorityWarnings").get(0);
+		JsonNode shown = json.path("authority_warnings").get(0);
 		requireThat(shown.path("requirement").asString(), "requirement").isEqualTo("R1");
 		requireThat(shown.path("path").asString(), "path").isEqualTo("rules/shared.md");
 		requireThat(shown.path("target").asString(), "target").isEqualTo("/external/shared.md");
-		requireThat(shown.path("limit").asString(), "limit").isEqualTo("external-target-read-only");
+		requireThat(shown.path("limit").asString(), "limit").isEqualTo("external_target_read_only");
 		List<String> choices = new ArrayList<>();
 		for (JsonNode choice : shown.path("choices"))
 			choices.add(choice.asString());
 		requireThat(choices, "warningChoices").
-			isEqualTo(List.of("authorize-target", "use-authorized-source", "stop", "revise"));
+			isEqualTo(List.of("authorize_target", "use_authorized_source", "stop", "revise"));
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Authority warning: requirement R1 needs an edit at " +
 				"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
@@ -1286,8 +1285,8 @@ public final class StatusReportTest
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
 			contains(ContractFixtures.TWO_PROFILES.source());
 
-		JsonNode profiles = report.toJson(JsonMapper.builder().build()).path("trialProfiles");
-		requireThat(profiles.path("inventorySource").asString(), "inventorySource").
+		JsonNode profiles = report.toJson(JsonMapper.builder().build()).path("trial_profiles");
+		requireThat(profiles.path("inventory_source").asString(), "inventorySource").
 			isEqualTo(ContractFixtures.TWO_PROFILES.source());
 		requireThat(profiles.path("inventory").size(), "inventory").isEqualTo(2);
 		requireThat(profiles.path("bindings").get(0).path("file").asString(), "binding").
@@ -1334,7 +1333,7 @@ public final class StatusReportTest
 		JsonNode entries = json.path("remaining").path("entries");
 		requireThat(entries.isEmpty(), "entries.isEmpty").isFalse();
 		requireThat(cells, "cells").containsAll(values(entries, "cell"));
-		JsonNode profileCells = json.path("trialProfiles").path("cells");
+		JsonNode profileCells = json.path("trial_profiles").path("cells");
 		requireThat(values(profileCells, "id"), "trialProfiles.cells").isEqualTo(cells);
 		requireThat(values(profileCells, "category"), "trialProfiles.categories").
 			isEqualTo(List.of("formatting", "formatting", "safety"));
@@ -1362,19 +1361,19 @@ public final class StatusReportTest
 				TierFixtures.BIG_MEDIUM + ", " + TierFixtures.SMALL_HIGH).
 			contains("Category safety: weakest cell " + TierFixtures.SAFETY + "; development cells " +
 				TierFixtures.SAFETY);
-		JsonNode tier = report.toJson(JsonMapper.builder().build()).path("cellTier");
+		JsonNode tier = report.toJson(JsonMapper.builder().build()).path("cell_tier");
 		requireThat(tier.path("scope").asString(), "scope").isEqualTo("latest_versions");
 		JsonNode categories = tier.path("categories");
 		requireThat(values(categories, "category"), "categories").isEqualTo(List.of("formatting", "safety"));
-		requireThat(values(categories, "weakestCell"), "weakestCells").
+		requireThat(values(categories, "weakest_cell"), "weakestCells").
 			isEqualTo(List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		List<String> cells = new ArrayList<>();
-		for (JsonNode cell : categories.get(0).path("developmentCells"))
+		for (JsonNode cell : categories.get(0).path("development_cells"))
 			cells.add(cell.asString());
 		requireThat(cells, "formattingCells").isEqualTo(List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH));
 
 		StatusReport unconfirmed = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
-		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cellTier").isNull(), "unconfirmed").
+		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cell_tier").isNull(), "unconfirmed").
 			isTrue();
 		requireThat(unconfirmed.summary(ZoneOffset.UTC), "unconfirmedSummary").contains("Weakest cells: not yet fixed");
 	}

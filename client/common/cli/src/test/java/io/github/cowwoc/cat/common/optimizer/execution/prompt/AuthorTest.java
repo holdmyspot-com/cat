@@ -387,7 +387,7 @@ public final class AuthorTest
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
 		requireThat(failures.get(0).get("impact").asString(), "blocking").isEqualTo("blocking");
-		requireThat(failures.get(1).get("impact").asString(), "recovered").isEqualTo("self-recovering");
+		requireThat(failures.get(1).get("impact").asString(), "recovered").isEqualTo("self_recovering");
 		requireThat(failures.get(2).get("impact").isNull(), "untriaged").isTrue();
 	}
 

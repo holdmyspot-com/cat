@@ -136,7 +136,7 @@ public final class RunnerSessionsTest
 			Path runRoot = root.resolve("runs").normalize();
 			TestSessions sessions = port(runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				new CopyOnWriteArrayList<>(), List.of());
-			Path heldOutRunRoot = root.resolve("runs-held-out").normalize();
+			Path heldOutRunRoot = root.resolve("runs-held_out").normalize();
 			requireThat(sessions.runRoots(), "runRoots").isEqualTo(List.of(runRoot, heldOutRunRoot));
 		}
 	}

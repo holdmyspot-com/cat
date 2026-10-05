@@ -105,7 +105,7 @@ public final class TriagePromptTest
 		// Requirement: R-D16
 		requireThat(prompt.triage(completed(List.of(List.of(OUTPUT)))), "bare").
 			isEqualTo(Optional.of(new Triage(Impact.BLOCKING, " The logs are gone. ")));
-		String recovered = "{\"impact\":\"self-recovering\",\"rationale\":\"It restored the logs.\"}";
+		String recovered = "{\"impact\":\"self_recovering\",\"rationale\":\"It restored the logs.\"}";
 		requireThat(prompt.triage(completed(List.of(List.of("```json\n" + recovered + "\n```")))), "fenced").
 			isEqualTo(Optional.of(new Triage(Impact.SELF_RECOVERING, "It restored the logs.")));
 	}

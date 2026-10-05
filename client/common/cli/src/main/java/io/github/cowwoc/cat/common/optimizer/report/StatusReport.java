@@ -390,7 +390,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			{
 				List<String> names = new ArrayList<>();
 				for (MeasurementCondition condition : changed.changed())
-					names.add(condition.name());
+					names.add(EnumNames.lowerCase(condition));
 				yield "the measurement conditions changed: " + String.join(", ", names);
 			}
 			case PendingDecision.ConflictFound conflicts -> describeConflict(conflicts.current());
@@ -544,11 +544,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	{
 		Map<String, String> conditions = new LinkedHashMap<>();
 		for (Map.Entry<MeasurementCondition, String> entry : identity.values().entrySet())
-			conditions.put(entry.getKey().name(), entry.getValue());
+			conditions.put(EnumNames.lowerCase(entry.getKey()), entry.getValue());
 		for (Map.Entry<String, Map<MeasurementCondition, String>> cell : identity.cells().entrySet())
 		{
 			for (Map.Entry<MeasurementCondition, String> entry : cell.getValue().entrySet())
-				conditions.put(entry.getKey().name() + "[" + cell.getKey() + "]", entry.getValue());
+				conditions.put(EnumNames.lowerCase(entry.getKey()) + "[" + cell.getKey() + "]", entry.getValue());
 		}
 		return conditions;
 	}
@@ -658,7 +658,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			}
 			List<String> differing = new ArrayList<>();
 			for (MeasurementCondition condition : offer.differing())
-				differing.add(condition.name());
+				differing.add(EnumNames.lowerCase(condition));
 			offers.add(new KeepOffer(offer.attempt(), offer.historical(), differing, weakest, cells));
 		}
 		return offers;

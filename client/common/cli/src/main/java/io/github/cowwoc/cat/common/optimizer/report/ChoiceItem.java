@@ -93,13 +93,13 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	/**
 	 * Returns the identifier that the command that passes an answer back accepts.
 	 *
-	 * @return {@code resolution-<n>} for a resolution, otherwise the choice name in lower case with hyphens
+	 * @return {@code resolution_<n>} for a resolution, otherwise the choice name in lower case
 	 */
 	public String id()
 	{
 		if (choice == Choice.RESOLUTION)
-			return "resolution-" + resolution;
-		return words('-');
+			return "resolution_" + resolution;
+		return EnumNames.lowerCase(choice);
 	}
 
 	/**
@@ -111,17 +111,6 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	{
 		if (choice == Choice.RESOLUTION)
 			return conflict.resolutions().get(resolution - 1);
-		return words(' ');
-	}
-
-	/**
-	 * Returns the choice's name in lower case.
-	 *
-	 * @param separator the character between words
-	 * @return the words of the name, joined by {@code separator}
-	 */
-	private String words(char separator)
-	{
-		return EnumNames.lowerCase(choice).replace('_', separator);
+		return EnumNames.lowerCase(choice).replace('_', ' ');
 	}
 }

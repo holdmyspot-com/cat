@@ -59,11 +59,11 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 		requireThat(applicability, "applicability").isNotNull();
 		List<String> changed = new ArrayList<>();
 		if (applicability.promptContentChanged())
-			changed.add("PROMPT_CONTENT");
+			changed.add("prompt_content");
 		for (MeasurementCondition condition : applicability.changed())
-			changed.add(condition.name());
+			changed.add(EnumNames.lowerCase(condition));
 		for (CertificationParameter parameter : applicability.parameters())
-			changed.add(parameter.name());
+			changed.add(EnumNames.lowerCase(parameter));
 		return new AttemptSummary(index, outcome, applicability.status() == Applicability.Status.HISTORICAL, changed,
 			applicability.unchecked());
 	}

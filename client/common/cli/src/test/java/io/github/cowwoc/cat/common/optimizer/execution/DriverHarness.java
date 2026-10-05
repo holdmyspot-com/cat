@@ -172,7 +172,7 @@ public final class DriverHarness
 	{
 		this.directory = directory;
 		this.sessions = new FakeSessionPort(HostLogin.UNKNOWN, Optional.empty(),
-			List.of(directory.resolve("runs"), directory.resolve("runs-held-out")));
+			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));

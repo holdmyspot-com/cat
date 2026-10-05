@@ -49,13 +49,13 @@ final class ReportJson
 		candidate.put("number", report.candidate());
 		candidate.put("snapshot", report.snapshot());
 		putText(root, "outcome", report.outcome());
-		putText(root, "outcomeDetail", report.outcomeDetail());
+		putText(root, "outcome_detail", report.outcomeDetail());
 		ObjectNode delivery = root.putObject("delivery");
 		putText(delivery, "label", report.delivery());
 		delivery.put("attempt", report.deliveryAttempt());
 		putText(root, "pending", report.pending());
 		choices(root.putArray("choices"), report);
-		authorityWarnings(root.putArray("authorityWarnings"), report);
+		authorityWarnings(root.putArray("authority_warnings"), report);
 		ArrayNode cells = root.putArray("cells");
 		for (CellReport cell : report.cells())
 			cell(cells.addObject(), cell);
@@ -69,17 +69,17 @@ final class ReportJson
 		tokens(root.putObject("tokens"), report.tokens());
 		OptimizationJson.write(root, report.optimization());
 		reverts(root.putArray("reverts"), report.reverts());
-		addedValues(root.putArray("addedValues"), report.addedValues());
+		addedValues(root.putArray("added_values"), report.addedValues());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
 		concurrencyNode.put("ceiling", concurrency.ceiling());
-		concurrencyNode.put("slowStartSize", concurrency.slowStartSize());
+		concurrencyNode.put("slow_start_size", concurrency.slowStartSize());
 		if (concurrency.holdUntil() == null)
-			concurrencyNode.putNull("holdUntil");
+			concurrencyNode.putNull("hold_until");
 		else
-			concurrencyNode.put("holdUntil", concurrency.holdUntil().toString());
-		concurrencyNode.put("windowCap", concurrency.windowCap());
+			concurrencyNode.put("hold_until", concurrency.holdUntil().toString());
+		concurrencyNode.put("window_cap", concurrency.windowCap());
 		concurrencyNode.put("backoffs", concurrency.backoffs());
 		assumptions(root.putObject("assumptions"), report.assumptions());
 		ArrayNode attempts = root.putArray("attempts");
@@ -92,9 +92,9 @@ final class ReportJson
 			strings(node.putArray("changed"), attempt.changed());
 			ArrayNode unchecked = node.putArray("unchecked");
 			for (MeasurementCondition condition : attempt.unchecked())
-				unchecked.add(condition.name());
+				unchecked.add(EnumNames.lowerCase(condition));
 		}
-		keepOffers(root.putArray("keepOffers"), report);
+		keepOffers(root.putArray("keep_offers"), report);
 		putText(root, "claim", report.claim());
 		strings(root.putArray("limitations"), report.limitations());
 		ObjectNode conditions = root.putObject("conditions");
@@ -118,8 +118,8 @@ final class ReportJson
 			withdrawn.put("number", revert.withdrawn().number());
 			withdrawn.put("snapshot", revert.withdrawn().snapshot().hex());
 			node.put("cell", revert.cell());
-			node.put("upperBound", revert.upperBound());
-			node.put("predecessorRate", revert.predecessorRate());
+			node.put("upper_bound", revert.upperBound());
+			node.put("predecessor_rate", revert.predecessorRate());
 		}
 	}
 
@@ -167,7 +167,7 @@ final class ReportJson
 				node.put("historical", choice.historical());
 			}
 			if (choice.reviewPointAbove() > 0)
-				node.put("reviewPointAbove", choice.reviewPointAbove());
+				node.put("review_point_above", choice.reviewPointAbove());
 		}
 	}
 
@@ -185,7 +185,7 @@ final class ReportJson
 			node.put("requirement", warning.requirement());
 			node.put("path", warning.path().toString());
 			node.put("target", warning.target().toString());
-			node.put("limit", EnumNames.lowerCase(warning.limit()).replace('_', '-'));
+			node.put("limit", EnumNames.lowerCase(warning.limit()));
 			ArrayNode choices = node.putArray("choices");
 			for (AuthorityWarning.Choice choice : warning.choices())
 				choices.add(command(choice));
@@ -202,8 +202,8 @@ final class ReportJson
 	{
 		return switch (choice)
 		{
-			case AUTHORIZE_TARGET -> "authorize-target";
-			case USE_AUTHORIZED_SOURCE -> "use-authorized-source";
+			case AUTHORIZE_TARGET -> "authorize_target";
+			case USE_AUTHORIZED_SOURCE -> "use_authorized_source";
 			case STOP_CAMPAIGN -> "stop";
 			case REVISE_CAMPAIGN -> "revise";
 		};
@@ -220,7 +220,7 @@ final class ReportJson
 		node.put("cell", report.cell());
 		node.put("passes", report.passes());
 		node.put("trials", report.trials());
-		ObjectNode passRate = node.putObject("passRate");
+		ObjectNode passRate = node.putObject("pass_rate");
 		passRate.put("label", report.passRate().label());
 		putNumber(passRate, "rate", report.passRate().rate());
 		putText(passRate, "unavailable", report.passRate().unavailable());
@@ -240,30 +240,30 @@ final class ReportJson
 		if (improvement.difference() != null)
 		{
 			interval(improvementNode.putObject("difference"), improvement.difference());
-			putText(improvementNode, "differenceMethod", improvement.differenceMethod());
+			putText(improvementNode, "difference_method", improvement.differenceMethod());
 		}
 		putText(improvementNode, "state", improvement.state());
-		putNumber(improvementNode, "incumbentUpper", improvement.incumbentUpper());
-		putNumber(improvementNode, "incumbentLower", improvement.incumbentLower());
+		putNumber(improvementNode, "incumbent_upper", improvement.incumbentUpper());
+		putNumber(improvementNode, "incumbent_lower", improvement.incumbentLower());
 
 		CellReport.Threshold comparison = report.comparison();
 		ObjectNode comparisonNode = node.putObject("comparison");
 		comparisonNode.put("state", comparison.state());
 		putText(comparisonNode, "readiness", comparison.readiness());
 		strings(comparisonNode.putArray("reasons"), comparison.reasons());
-		putNumber(comparisonNode, "lowerBound", comparison.lowerBound());
-		putNumber(comparisonNode, "upperBound", comparison.upperBound());
+		putNumber(comparisonNode, "lower_bound", comparison.lowerBound());
+		putNumber(comparisonNode, "upper_bound", comparison.upperBound());
 		putNumber(comparisonNode, "alpha", comparison.alpha());
 
-		ArrayNode bars = node.putArray("errorBars");
+		ArrayNode bars = node.putArray("error_bars");
 		for (CellReport.ErrorBar bar : report.errorBars())
 		{
 			ObjectNode barNode = bars.addObject();
 			barNode.put("method", bar.method());
-			barNode.put("oneSided", bar.oneSided());
+			barNode.put("one_sided", bar.oneSided());
 			barNode.put("exploratory", bar.exploratory());
-			putNumber(barNode, "errorProbability", bar.errorProbability());
-			barNode.put("sampleSize", bar.sampleSize());
+			putNumber(barNode, "error_probability", bar.errorProbability());
+			barNode.put("sample_size", bar.sampleSize());
 			interval(barNode.putObject("interval"), bar.interval());
 		}
 	}
@@ -287,7 +287,7 @@ final class ReportJson
 			ObjectNode node = array.addObject();
 			node.put("cell", weights.cell());
 			node.put("tests", weights.tests());
-			node.put("testWeight", weights.testWeight());
+			node.put("test_weight", weights.testWeight());
 		}
 	}
 
@@ -301,11 +301,11 @@ final class ReportJson
 	{
 		if (profiles == null)
 		{
-			root.putNull("trialProfiles");
+			root.putNull("trial_profiles");
 			return;
 		}
-		ObjectNode node = root.putObject("trialProfiles");
-		node.put("inventorySource", profiles.inventory().source());
+		ObjectNode node = root.putObject("trial_profiles");
+		node.put("inventory_source", profiles.inventory().source());
 		ArrayNode inventory = node.putArray("inventory");
 		for (TrialProfile profile : profiles.inventory().profiles())
 			profile(inventory.addObject(), profile);
@@ -315,7 +315,7 @@ final class ReportJson
 			ObjectNode bindingNode = bindings.addObject();
 			bindingNode.put("file", binding.file());
 			profile(bindingNode, binding.profile());
-			bindingNode.put("outsideInventory", profiles.inventory().isOutside(binding.profile()));
+			bindingNode.put("outside_inventory", profiles.inventory().isOutside(binding.profile()));
 		}
 		ArrayNode restriction = node.putArray("restriction");
 		for (TrialProfile pattern : profiles.restriction())
@@ -340,19 +340,19 @@ final class ReportJson
 	{
 		if (tier == null)
 		{
-			root.putNull("cellTier");
+			root.putNull("cell_tier");
 			return;
 		}
-		ObjectNode node = root.putObject("cellTier");
+		ObjectNode node = root.putObject("cell_tier");
 		node.put("scope", EnumNames.lowerCase(tier.scope()));
-		node.put("scopeCells", tier.scopeCells());
+		node.put("scope_cells", tier.scopeCells());
 		ArrayNode categories = node.putArray("categories");
 		for (CellTierReport.CategoryCells cells : tier.categories())
 		{
 			ObjectNode category = categories.addObject();
 			category.put("category", cells.category());
-			category.put("weakestCell", cells.weakestCell());
-			ArrayNode development = category.putArray("developmentCells");
+			category.put("weakest_cell", cells.weakestCell());
+			ArrayNode development = category.putArray("development_cells");
 			for (String cell : cells.developmentCells())
 				development.add(cell);
 		}
@@ -416,9 +416,9 @@ final class ReportJson
 			ObjectNode roleNode = roles.putObject(EnumNames.lowerCase(role));
 			roleNode.put("sessions", usage.sessions());
 			percentiles(roleNode.putObject("input"), usage.input());
-			percentiles(roleNode.putObject("cachedInput"), usage.cachedInput());
+			percentiles(roleNode.putObject("cached_input"), usage.cachedInput());
 			percentiles(roleNode.putObject("output"), usage.output());
-			percentiles(roleNode.putObject("reasoningOutput"), usage.reasoningOutput());
+			percentiles(roleNode.putObject("reasoning_output"), usage.reasoningOutput());
 		}
 	}
 
@@ -442,7 +442,7 @@ final class ReportJson
 	 */
 	private static void assumptions(ObjectNode node, AssumptionReport assumptions)
 	{
-		ArrayNode rates = node.putArray("passRatesByConcurrency");
+		ArrayNode rates = node.putArray("pass_rates_by_concurrency");
 		for (AssumptionCheck.LevelRate rate : assumptions.passRatesByConcurrency())
 		{
 			ObjectNode rateNode = rates.addObject();
@@ -452,7 +452,7 @@ final class ReportJson
 			interval(rateNode.putObject("interval"), rate.interval());
 		}
 		node.put("descriptive", true);
-		node.put("dependenceDetected", assumptions.dependenceDetected());
+		node.put("dependence_detected", assumptions.dependenceDetected());
 		if (assumptions.consequence() == null)
 			node.putNull("consequence");
 		else
@@ -473,7 +473,7 @@ final class ReportJson
 			node.put("attempt", offer.attempt());
 			node.put("historical", offer.historical());
 			strings(node.putArray("differing"), offer.differing());
-			node.put("weakestLowerBound", offer.weakestLowerBound());
+			node.put("weakest_lower_bound", offer.weakestLowerBound());
 			ArrayNode cells = node.putArray("cells");
 			for (KeepOffer.CellEvidence cell : offer.cells())
 			{
@@ -482,8 +482,8 @@ final class ReportJson
 				cellNode.put("passes", cell.passes());
 				cellNode.put("trials", cell.trials());
 				cellNode.put("state", cell.state());
-				cellNode.put("incumbentUpper", cell.incumbentUpper());
-				cellNode.put("incumbentLower", cell.incumbentLower());
+				cellNode.put("incumbent_upper", cell.incumbentUpper());
+				cellNode.put("incumbent_lower", cell.incumbentLower());
 				interval(cellNode.putObject("difference"), cell.difference());
 				putText(cellNode, "note", cell.note());
 			}

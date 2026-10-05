@@ -1169,7 +1169,7 @@ public final class DriverTest
 				requireThat(harness.author().briefs().size(), "authorsBeforePause").isEqualTo(1);
 				requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
 				requireThat(StatusReport.of(reverted, ReportEvidence.NONE).status().label(), "status").
-					isEqualTo("awaiting-user");
+					isEqualTo("awaiting_user");
 			}
 		}
 	}
@@ -3880,7 +3880,7 @@ public final class DriverTest
 
 	/**
 	 * Trace: an author reports that requirement {@code r2} needs a content edit through a link to an external target.
-	 * The warning becomes an {@code awaiting-user} decision that survives a restart; the user authorizes the target; a
+	 * The warning becomes an {@code awaiting_user} decision that survives a restart; the user authorizes the target; a
 	 * later author attempt receives the target and edits it; the attempt is promoted, certified and delivered with the
 	 * external edit.
 	 *

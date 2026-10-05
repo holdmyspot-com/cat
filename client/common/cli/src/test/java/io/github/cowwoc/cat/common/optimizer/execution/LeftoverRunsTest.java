@@ -119,7 +119,7 @@ public final class LeftoverRunsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held-out"));
+			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
 			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(4001, 4002));
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
 			requireThat(finder(runRoot, heldOutRunRoot).find(), "find").isEqualTo(
@@ -140,7 +140,7 @@ public final class LeftoverRunsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held-out"));
+			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
 			ProcessHandle current = ProcessHandle.current();
 			Instant started = current.info().startInstant().orElseThrow();
 			String live = """

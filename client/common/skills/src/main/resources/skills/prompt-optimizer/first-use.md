@@ -30,11 +30,11 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    - Otherwise, ask the user to give feedback or to confirm by choosing the cells that certification covers. Present
      these choices with their tradeoffs, naming each choice's cells, weakest cells and minimum session count from the
      proposal's "Certification scope" section:
-     - `weakest-cell`: certification covers only each category's weakest cell, the lowest effort of the least capable
+     - `weakest_cell`: certification covers only each category's weakest cell, the lowest effort of the least capable
        model among the latest versions. It costs the fewest trials. The claim covers only that profile, and says that
        no other profile was certified; a stronger model or a higher effort can fail in ways that the weakest profile
        does not.
-     - `latest-versions`: certification covers every cell of each model family's latest version. The claim covers the
+     - `latest_versions`: certification covers every cell of each model family's latest version. The claim covers the
        models that the harness offers by default, and a failure that only a stronger profile makes is found before
        delivery. It claims nothing about an older version in the inventory, and certification trials grow with the
        number of cells.
@@ -44,18 +44,18 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
      run `revise <campaign> <feedback>` with feedback that describes the certification scope as those profiles, and
      repeat this step with its result. Show the user the `described` choice's cells, weakest cells and minimum session
      count, and ask the user to confirm them.
-   - On confirmation, run `confirm <campaign> <choice>` with `weakest-cell`, `latest-versions` or, for cells that the
+   - On confirmation, run `confirm <campaign> <choice>` with `weakest_cell`, `latest_versions` or, for cells that the
      user described and confirmed, `described`.
    - Never confirm or choose the cells on the user's behalf.
 3. **Run.** While `status` is `running`, run `run <campaign>` again. After each run, show the user its `summary`.
-4. **Decide.** When `status` is `awaiting-user` and no `proposal` is present, show the `summary` and each choice's
+4. **Decide.** When `status` is `awaiting_user` and no `proposal` is present, show the `summary` and each choice's
    `label`, then ask the user to choose. Never choose on the user's behalf.
    - Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
-     `attempt`. For `more-evidence`, ask the user for a review point above the entry's `reviewPointAbove` and add
+     `attempt`. For `more_evidence`, ask the user for a review point above the entry's `review_point_above` and add
      `--review-point <N>`. A review point is the trial count at which the campaign next pauses the entry's category
      for review.
-   - For an entry of `authorityWarnings`, show its `requirement`, `path`, `target` and `limit`. Pass `authorize-target`
-     as `choose <campaign> authorize-target --target <target>`, `use-authorized-source` and `stop` as
+   - For an entry of `authority_warnings`, show its `requirement`, `path`, `target` and `limit`. Pass `authorize_target`
+     as `choose <campaign> authorize_target --target <target>`, `use_authorized_source` and `stop` as
      `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>` with the user's words.
    - For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
      true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
@@ -63,7 +63,7 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    - Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its
-   outcome, claim and limitations, and any `deliveryResult`. The user reviews delivered changes with Git; never commit
+   outcome, claim and limitations, and any `delivery_result`. The user reviews delivered changes with Git; never commit
    them.
 
 To stop a campaign that the user asks to stop, run `cancel <campaign>`. To show a campaign's state without advancing

@@ -682,7 +682,7 @@ public final class OptimizerCore implements Core
 		}
 		catch (IllegalArgumentException e)
 		{
-			throw new CommandRefusedException("Campaign " + campaign + " does not offer resolution-" +
+			throw new CommandRefusedException("Campaign " + campaign + " does not offer resolution_" +
 				resolution + ": " + e.getMessage(), e);
 		}
 		if (chosen.size() == conflicts.conflicts().size())

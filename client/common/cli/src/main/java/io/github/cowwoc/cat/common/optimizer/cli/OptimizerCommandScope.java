@@ -217,7 +217,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	}
 
 	/**
-	 * Lists the {@code held-out} directories of the project's campaigns.
+	 * Lists the {@code held_out} directories of the project's campaigns.
 	 *
 	 * @return the real paths of those that exist
 	 * @throws IllegalStateException if this scope is closed

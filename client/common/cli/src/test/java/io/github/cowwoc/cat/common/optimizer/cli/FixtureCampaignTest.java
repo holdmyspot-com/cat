@@ -48,7 +48,7 @@ public final class FixtureCampaignTest
 			requireThat(committed, "committed").isNotNull();
 			String stored = new String(committed.readAllBytes(), StandardCharsets.UTF_8);
 			Path root = scope.add(Files.createTempDirectory("fixture-campaign"));
-			Path written = root.resolve(".cat/work/optimizer").resolve(ID).resolve("held-out/campaign.json");
+			Path written = root.resolve(".cat/work/optimizer").resolve(ID).resolve("held_out/campaign.json");
 			Files.createDirectories(written.getParent());
 			Files.writeString(written, stored, StandardCharsets.UTF_8);
 			FileCampaignStore store = new FileCampaignStore(root, JsonMapper.builder().build());

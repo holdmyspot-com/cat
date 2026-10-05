@@ -44,9 +44,9 @@ final class DeliveryJson
 				root.put("result", "delivered");
 				root.put("label", delivered.label().label());
 				applicability(root.putObject("applicability"), delivered.applicability());
-				paths(root.putArray("changedPromptSources"), delivered.changedPromptSources());
-				paths(root.putArray("baseOnlyChanges"), delivered.baseOnlyChanges());
-				ArrayNode external = root.putArray("externalChanges");
+				paths(root.putArray("changed_prompt_sources"), delivered.changedPromptSources());
+				paths(root.putArray("base_only_changes"), delivered.baseOnlyChanges());
+				ArrayNode external = root.putArray("external_changes");
 				for (DeliveryChange change : delivered.externalChanges())
 				{
 					ObjectNode node = external.addObject();
@@ -63,14 +63,14 @@ final class DeliveryJson
 				for (DeliveryConflict conflict : conflicted.conflicts())
 				{
 					ObjectNode node = array.addObject();
-					node.put("kind", EnumNames.lowerCase(conflict.kind()).replace('_', '-'));
+					node.put("kind", EnumNames.lowerCase(conflict.kind()));
 					node.put("target", conflict.target().toString());
 					node.put("path", conflict.path().toString());
 				}
 			}
 			case DeliveryResult.UnownedChange unowned ->
 			{
-				root.put("result", "unowned-change");
+				root.put("result", "unowned_change");
 				ArrayNode array = root.putArray("changes");
 				for (PathChange change : unowned.changes())
 				{
@@ -86,13 +86,13 @@ final class DeliveryJson
 			}
 			case DeliveryResult.ConcurrentEdit edit ->
 			{
-				root.put("result", "concurrent-edit");
+				root.put("result", "concurrent_edit");
 				root.put("target", edit.change().target().toString());
 				root.put("applied", edit.applied());
 			}
 			case DeliveryResult.VerificationFailed failed ->
 			{
-				root.put("result", "verification-failed");
+				root.put("result", "verification_failed");
 				paths(root.putArray("mismatched"), failed.mismatched());
 			}
 		}
@@ -108,15 +108,15 @@ final class DeliveryJson
 	static void applicability(ObjectNode node, Applicability applicability)
 	{
 		node.put("status", EnumNames.lowerCase(applicability.status()));
-		node.put("promptContentChanged", applicability.promptContentChanged());
+		node.put("prompt_content_changed", applicability.promptContentChanged());
 		ArrayNode changed = node.putArray("changed");
 		for (MeasurementCondition condition : applicability.changed())
-			changed.add(condition.name());
+			changed.add(EnumNames.lowerCase(condition));
 		for (CertificationParameter parameter : applicability.parameters())
-			changed.add(parameter.name());
+			changed.add(EnumNames.lowerCase(parameter));
 		ArrayNode unchecked = node.putArray("unchecked");
 		for (MeasurementCondition condition : applicability.unchecked())
-			unchecked.add(condition.name());
+			unchecked.add(EnumNames.lowerCase(condition));
 	}
 
 	/**

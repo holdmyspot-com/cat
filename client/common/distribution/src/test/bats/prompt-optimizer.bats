@@ -14,9 +14,9 @@ setup()
 	export HOST_HOME="${TEST_ROOT}/host-home"
 	export PROJECT="${TEST_ROOT}/project"
 	fixture="${BATS_TEST_DIRNAME}/../../../../cli/src/test/resources/optimizer/cli/campaign.json"
-	mkdir -p "${HOST_HOME}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held-out"
+	mkdir -p "${HOST_HOME}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held_out"
 	git -C "${PROJECT}" init -q
-	cp "${fixture}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held-out/campaign.json"
+	cp "${fixture}" "${PROJECT}/.cat/work/optimizer/fixture-campaign/held_out/campaign.json"
 }
 
 # Removes the test's fixture directory after its last assertion completes.
@@ -67,6 +67,6 @@ run_optimizer()
 	for harness in claude codex; do
 		run_optimizer "${harness}" choose fixture-campaign keep-improvement
 		[ "${status}" -eq 2 ]
-		printf '%s\n' "${output}" | jq -e '.status == "invalid-input"'
+		printf '%s\n' "${output}" | jq -e '.status == "invalid_input"'
 	done
 }

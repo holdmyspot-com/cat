@@ -446,7 +446,7 @@ public final class CleanupTest
 		 */
 		void requireKept(String context) throws IOException
 		{
-			requireThat(directory(CAMPAIGN).resolve("held-out/campaign.json"), "snapshot").
+			requireThat(directory(CAMPAIGN).resolve("held_out/campaign.json"), "snapshot").
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(CAMPAIGN).resolve("worktree/CLAUDE.md"), "worktree").
 				withContext(context, "context").isRegularFile();
@@ -466,7 +466,7 @@ public final class CleanupTest
 		 */
 		void requireOtherKept(String context) throws IOException
 		{
-			requireThat(directory(OTHER).resolve("held-out/campaign.json"), "otherSnapshot").
+			requireThat(directory(OTHER).resolve("held_out/campaign.json"), "otherSnapshot").
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(OTHER).resolve("worktree/CLAUDE.md"), "otherWorktree").
 				withContext(context, "context").isRegularFile();

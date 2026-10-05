@@ -202,9 +202,9 @@ public final class CodexSessionsTest
 				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Path heldOut = Files.createDirectories(root.resolve("campaign/held-out"));
+			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
 			Path runRoot = root.resolve("runs");
-			Path heldOutRunRoot = root.resolve("runs-held-out");
+			Path heldOutRunRoot = root.resolve("runs-held_out");
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, () -> List.of(heldOut), "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();

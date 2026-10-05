@@ -234,13 +234,13 @@ public abstract class RunnerSessions implements SessionPort
 
 		/**
 		 * Returns the held-out run root: the directory beside the run root that holds the run directories of sessions
-		 * of the held-out part. Its name is the run root's name followed by {@code -held-out}.
+		 * of the held-out part. Its name is the run root's name followed by {@code -held_out}.
 		 *
 		 * @return the absolute directory
 		 */
 		public Path heldOutRunRoot()
 		{
-			return runRoot.resolveSibling(runRoot.getFileName() + "-held-out");
+			return runRoot.resolveSibling(runRoot.getFileName() + "-held_out");
 		}
 	}
 

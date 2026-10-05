@@ -77,7 +77,7 @@ public final class OptimizerCommandScopeTest
 				Path campaignDirectory = root.resolve(".cat/work/optimizer").resolve(campaign.header().id());
 
 				requireThat(scope.heldOutDirectories(), "heldOutDirectories").
-					isEqualTo(List.of(campaignDirectory.resolve("held-out")));
+					isEqualTo(List.of(campaignDirectory.resolve("held_out")));
 			}
 		}
 	}

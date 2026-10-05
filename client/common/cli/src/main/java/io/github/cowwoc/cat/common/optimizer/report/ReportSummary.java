@@ -212,7 +212,7 @@ final class ReportSummary
 		List<String> choices = new ArrayList<>();
 		for (AuthorityWarning.Choice choice : warning.choices())
 		{
-			String label = ReportJson.command(choice).replace('-', ' ');
+			String label = ReportJson.command(choice).replace('_', ' ');
 			if (choice == AuthorityWarning.Choice.AUTHORIZE_TARGET)
 				choices.add(label + " (--target " + warning.target() + ")");
 			else

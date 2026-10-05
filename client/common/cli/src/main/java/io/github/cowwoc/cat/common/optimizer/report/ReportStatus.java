@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 /**
  * What the host agent does next, or how the campaign ended.
  * <p>
- * The values are: {@code running}, {@code awaiting-user},
+ * The values are: {@code running}, {@code awaiting_user},
  * {@code busy}, or the label of a terminal outcome.
  * <p>
  * <b>Thread Safety:</b> Implementations are immutable and thread-safe.
@@ -26,14 +26,14 @@ public sealed interface ReportStatus
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param status {@code running}, {@code awaiting-user} or {@code busy}
+	 * @param status {@code running}, {@code awaiting_user} or {@code busy}
 	 */
 	record Active(Status status) implements ReportStatus
 	{
 		/**
 		 * Creates a status.
 		 *
-		 * @param status {@code running}, {@code awaiting-user} or {@code busy}
+		 * @param status {@code running}, {@code awaiting_user} or {@code busy}
 		 * @throws NullPointerException if {@code status} is null
 		 */
 		public Active

@@ -27,7 +27,7 @@ public enum Impact
 		return switch (this)
 		{
 			case BLOCKING -> "blocking";
-			case SELF_RECOVERING -> "self-recovering";
+			case SELF_RECOVERING -> "self_recovering";
 		};
 	}
 }

@@ -40,11 +40,11 @@ public enum CertificationScope
 	/**
 	 * Returns the identifier that the {@code confirm} command accepts.
 	 *
-	 * @return the identifier, such as {@code weakest-cell}
+	 * @return the identifier, such as {@code weakest_cell}
 	 */
 	public String id()
 	{
-		return name().toLowerCase(Locale.ROOT).replace('_', '-');
+		return name().toLowerCase(Locale.ROOT);
 	}
 
 	/**
