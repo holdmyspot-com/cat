@@ -69,12 +69,12 @@ public final class MaintenanceTest
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC()).create("harnessa");
 			Path manifest = run.directory().resolve("run.json");
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst(
-				"\\\"ownerStartedAt\\\": \\\"[^\\\"]+\\\"", "\"ownerStartedAt\": \"1970-01-01T00:00:00Z\""));
+				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\"owner_started_at\": \"1970-01-01T00:00:00Z\""));
 
 			execute(root, "--fail-run", "--run-id", run.id(), "--diagnostic", "supervisor failure", "--exit-code", "17");
 
 			requireThat(Files.readString(manifest), "manifest").contains("supervisor failure").
-				contains("\"exitCode\": 17").contains("\"state\": \"failed\"");
+				contains("\"exit_code\": 17").contains("\"state\": \"failed\"");
 		}
 	}
 

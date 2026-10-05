@@ -431,17 +431,17 @@ public final class ReconciliationTest
 			Instant harnessStart = Instant.parse("2026-10-01T11:00:01Z");
 			ProcessHandle current = ProcessHandle.current();
 			writeManifest(runRoots.get(0).resolve("claude/run-1"), """
-				{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-				"harnessPid": "4002", "harnessStartedAt": "2026-10-01T11:00:01Z"}""");
+				{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+				"harness_pid": "4002", "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			writeManifest(runRoots.get(1).resolve("claude/run-2"), """
-				{"state": "running", "ownerPid": 4003, "ownerStartedAt": "2026-10-01T11:00:00Z",
-				"harnessPid": 4004, "harnessStartedAt": "2026-10-01T11:00:01Z"}""");
+				{"state": "running", "owner_pid": 4003, "owner_started_at": "2026-10-01T11:00:00Z",
+				"harness_pid": 4004, "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			writeManifest(runRoots.get(0).resolve("claude/run-3"), """
-				{"state": "completed", "ownerPid": 5001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-				"harnessPid": 5002, "harnessStartedAt": "2026-10-01T11:00:01Z"}""");
+				{"state": "completed", "owner_pid": 5001, "owner_started_at": "2026-10-01T11:00:00Z",
+				"harness_pid": 5002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			writeManifest(runRoots.get(1).resolve("claude/run-4"), """
-				{"state": "running", "ownerPid": %d, "ownerStartedAt": "%s",
-				"harnessPid": 6002, "harnessStartedAt": "2026-10-01T11:00:01Z"}""".formatted(current.pid(),
+				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
+				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01Z"}""".formatted(current.pid(),
 				current.info().startInstant().orElseThrow()));
 			try (Driver _ = harness.open())
 			{

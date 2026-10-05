@@ -198,7 +198,7 @@ public final class ClaudeRunner
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, marketplace, installCat,
 				hookResults, readOnlyEvidence);
-			manager.initialize(run, artifact, project, "claude-stream-json", command);
+			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
 				isolatedEnvironment));

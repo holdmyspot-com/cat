@@ -46,42 +46,42 @@ public final class LeftoverRunsTest
 		return new Object[][]
 			{
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": 4002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of(new RecordedProcess(4002, HARNESS_START))},
 				{"""
-					{"state": "running", "ownerPid": "4001", "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": "4002", "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": "4001", "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": "4002", "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of(new RecordedProcess(4002, HARNESS_START))},
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": null, "harnessStartedAt": null}""",
+					{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": null, "harness_started_at": null}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": 4002}""",
+					{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": 4002}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": 4001,
-					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": 4001,
+					"harness_pid": 4002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": "41a", "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": "41a", "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": 4002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "yesterday",
-					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": 4001, "owner_started_at": "yesterday",
+					"harness_pid": 4002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
-					{"state": "running", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": -4, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": -4, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
 				{"""
-					{"state": "completed", "ownerPid": 4001, "ownerStartedAt": "2026-10-01T11:00:00Z",
-					"harnessPid": 4002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""",
+					{"state": "completed", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
+					"harness_pid": 4002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""",
 					List.of()},
-				{"{\"state\": \"running\", \"ownerPid\": 4001", List.of()},
+				{"{\"state\": \"running\", \"owner_pid\": 4001", List.of()},
 				{"[]", List.of()}
 			};
 	}
@@ -144,8 +144,8 @@ public final class LeftoverRunsTest
 			ProcessHandle current = ProcessHandle.current();
 			Instant started = current.info().startInstant().orElseThrow();
 			String live = """
-				{"state": "running", "ownerPid": %d, "ownerStartedAt": "%s",
-				"harnessPid": 6002, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""".formatted(current.pid(), started);
+				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
+				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01.250Z"}""".formatted(current.pid(), started);
 			writeManifest(runRoot.resolve("claude").resolve("run-1"), live);
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), live);
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-3"), running(5001, 5002));
@@ -194,8 +194,8 @@ public final class LeftoverRunsTest
 	private static String running(long ownerPid, long harnessPid)
 	{
 		return """
-			{"state": "running", "ownerPid": %d, "ownerStartedAt": "2026-10-01T11:00:00Z",
-			"harnessPid": %d, "harnessStartedAt": "2026-10-01T11:00:01.250Z"}""".formatted(ownerPid, harnessPid);
+			{"state": "running", "owner_pid": %d, "owner_started_at": "2026-10-01T11:00:00Z",
+			"harness_pid": %d, "harness_started_at": "2026-10-01T11:00:01.250Z"}""".formatted(ownerPid, harnessPid);
 	}
 
 	/**

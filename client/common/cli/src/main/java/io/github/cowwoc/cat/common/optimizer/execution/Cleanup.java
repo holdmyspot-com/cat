@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Removes the files of a campaign that ended by a certified delivery or by retaining the incumbent.
  * <p>
  * Removal runs three steps, in order: it removes the campaign's optimization worktree, then the campaign's runs below
- * every run root, then the campaign directory. A run belongs to the campaign when its manifest's {@code projectPath}
+ * every run root, then the campaign directory. A run belongs to the campaign when its manifest's {@code project_path}
  * lies below the campaign directory; a run without a readable manifest identifies no campaign and is kept. Every
  * other ending keeps the campaign's files.
  * <p>
@@ -301,7 +301,7 @@ public final class Cleanup
 		}
 		if (root == null || !root.isObject())
 			return Optional.empty();
-		JsonNode value = root.get("projectPath");
+		JsonNode value = root.get("project_path");
 		if (value == null || !value.isString())
 			return Optional.empty();
 		Path path;

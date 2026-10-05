@@ -203,12 +203,12 @@ public final class RunnerSessionsTest
 				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"runId\":\"" + run.id() + "\"}\n");
+				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
 				BufferedReader requests = new BufferedReader(input);
 				for (int turn = 0; turn < 2; ++turn)
 				{
 					requests.readLine();
-					output.write("{\"type\":\"turn-completed\",\"assistant_response\":\"final-only\"," +
+					output.write("{\"type\":\"turn_completed\",\"assistant_response\":\"final-only\"," +
 						"\"assistant_messages\":[\"interim-" + turn + "\",\"final-" + turn + "\"]}\n");
 				}
 				requests.readLine();
@@ -223,7 +223,7 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that CAT sends the interrupt request with the bridge's turn-started control point and classifies the
+	 * Verifies that CAT sends the interrupt request with the bridge's {@code turn_started} control point and classifies the
 	 * supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
@@ -250,7 +250,7 @@ public final class RunnerSessionsTest
 				HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"runId\":\"" + run.id() + "\"}\n");
+				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
 				output.flush();
 				BufferedReader lines = new BufferedReader(input);
 				String line = lines.readLine();
@@ -261,7 +261,7 @@ public final class RunnerSessionsTest
 						turnReceived.countDown();
 					if (line.contains("\"type\":\"interrupt\""))
 					{
-						output.write("{\"type\":\"turn-completed\",\"assistant_messages\":[\"stopped\"]}\n");
+						output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"stopped\"]}\n");
 						output.flush();
 					}
 					line = lines.readLine();
@@ -273,7 +273,7 @@ public final class RunnerSessionsTest
 			handle.interrupt();
 
 			requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-			requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn-started\"}");
+			requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
 		}
 	}
 

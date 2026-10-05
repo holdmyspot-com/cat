@@ -177,13 +177,13 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
 			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
-				"\\\"ownerStartedAt\\\": \\\"[^\\\"]+\\\"", "\\\"ownerStartedAt\\\": \\\"1970-01-01T00:00:00Z\\\"");
+				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\\\"owner_started_at\\\": \\\"1970-01-01T00:00:00Z\\\"");
 			Files.writeString(manifestPath, inactiveOwnerManifest);
 
 			manager.fail("harness", run.id(), "capture timed out after 600 seconds", 143);
 
 			requireThat(Files.readString(manifestPath), "manifest").contains("\"state\": \"failed\"").
-				contains("\"exitCode\": 143").contains("capture timed out after 600 seconds");
+				contains("\"exit_code\": 143").contains("capture timed out after 600 seconds");
 		}
 	}
 
@@ -206,7 +206,7 @@ public final class HarnessRunManagerTest
 			Path manifestPath = run.directory().resolve("run.json");
 			manager.fail(run, "harness exited with exit status 2");
 			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
-				"\\\"ownerStartedAt\\\": \\\"[^\\\"]+\\\"", "\\\"ownerStartedAt\\\": \\\"1970-01-01T00:00:00Z\\\"");
+				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\\\"owner_started_at\\\": \\\"1970-01-01T00:00:00Z\\\"");
 			Files.writeString(manifestPath, inactiveOwnerManifest);
 
 			manager.fail("harness", run.id(), "runner ended with exit status 1", 1);
@@ -385,8 +385,8 @@ public final class HarnessRunManagerTest
 			manager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-29T00:00:00Z"));
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(manifest, "manifest").contains("\"harnessPid\": 12345").
-				contains("\"harnessStartedAt\": \"2026-07-29T00:00:00Z\"");
+			requireThat(manifest, "manifest").contains("\"harness_pid\": 12345").
+				contains("\"harness_started_at\": \"2026-07-29T00:00:00Z\"");
 		}
 	}
 
@@ -412,12 +412,12 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 
-			manager.initialize(run, artifact, project, "structured-protocol", List.of("harness", "--api-key", "secret"));
+			manager.initialize(run, artifact, project, "structured_protocol", List.of("harness", "--api-key", "secret"));
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(manifest, "manifest").contains("\"artifactPath\": \"" + artifact + "\"").
-				contains("\"projectPath\": \"" + project + "\"").contains("\"transport\": \"structured-protocol\"").
-				contains("\"harnessCommand\": \"harness --api-key <redacted>\"").doesNotContain("secret");
+			requireThat(manifest, "manifest").contains("\"artifact_path\": \"" + artifact + "\"").
+				contains("\"project_path\": \"" + project + "\"").contains("\"transport\": \"structured_protocol\"").
+				contains("\"harness_command\": \"harness --api-key <redacted>\"").doesNotContain("secret");
 		}
 	}
 
@@ -676,7 +676,7 @@ public final class HarnessRunManagerTest
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = new HarnessRunManager(root, oldClock).create("harness");
 			Path manifest = run.directory().resolve("run.json");
-			String content = Files.readString(manifest).replaceFirst("\"ownerPid\": [0-9]+", "\"ownerPid\": 999999");
+			String content = Files.readString(manifest).replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": 999999");
 			Files.writeString(manifest, content);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
 			HarnessRunManager manager = new HarnessRunManager(root, currentClock);
@@ -709,8 +709,8 @@ public final class HarnessRunManagerTest
 			HarnessRun run = oldManager.create("harness");
 			oldManager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
 			Path manifest = run.directory().resolve("run.json");
-			String orphanedManifest = Files.readString(manifest).replaceFirst("\"ownerPid\": [0-9]+",
-				"\"ownerPid\": 999999");
+			String orphanedManifest = Files.readString(manifest).replaceFirst("\"owner_pid\": [0-9]+",
+				"\"owner_pid\": 999999");
 			Files.writeString(manifest, orphanedManifest);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = new HarnessRunManager(root, currentClock, processLiveness);

@@ -63,7 +63,7 @@ public final class HarnessRunnerBridgeTest
 			requireThat(process.closed, "closed").isTrue();
 			requireThat(result, "result").isEqualTo(run);
 			requireThat(output.toString(), "output").contains("\"type\":\"started\"").
-				contains("\"type\":\"harness-event\"").contains("\"type\":\"turn-completed\"").
+				contains("\"type\":\"harness_event\"").contains("\"type\":\"turn_completed\"").
 				contains("\"type\":\"completed\"");
 			requireThat(output.toString().lines().count(), "lineCount").isEqualTo(6L);
 			requireThat(output.toString(), "output").doesNotContain("\"events\":");
@@ -119,7 +119,7 @@ public final class HarnessRunnerBridgeTest
 
 			JsonMapper json = JsonMapper.builder().build();
 			JsonNode completed = output.toString().lines().map(json::readTree).
-				filter(event -> event.path("type").asString().equals("turn-completed")).findFirst().orElseThrow();
+				filter(event -> event.path("type").asString().equals("turn_completed")).findFirst().orElseThrow();
 			requireThat(completed.path("assistant_messages").size(), "messageCount").isEqualTo(2);
 			requireThat(completed.path("assistant_messages").get(0).asString(), "interim").
 				isEqualTo("interim with a \"quote\"");
@@ -234,7 +234,7 @@ public final class HarnessRunnerBridgeTest
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
 			requireThat(manifest, "manifest").contains("\"state\": \"failed\"").
-				contains("\"exitCode\": 143").contains("exit status 143");
+				contains("\"exit_code\": 143").contains("exit status 143");
 		}
 	}
 
@@ -343,13 +343,13 @@ public final class HarnessRunnerBridgeTest
 			requireThat(process.steers, "steers").isEqualTo(1);
 			requireThat(process.interrupts, "interrupts").isEqualTo(1);
 			requireThat(output.toString(), "output").contains("\"type\":\"steered\"").
-				contains("\"type\":\"interrupted\"").contains("\"type\":\"turn-completed\"");
+				contains("\"type\":\"interrupted\"").contains("\"type\":\"turn_completed\"");
 		}
 	}
 
 	/**
 	 * Verifies an interrupt that reaches the bridge after its turn ended leaves the harness untouched and the bridge
-	 * keeps serving later requests. The bridge's turn thread is held right after it writes {@code turn-completed}
+	 * keeps serving later requests. The bridge's turn thread is held right after it writes {@code turn_completed}
 	 * until the bridge has handled the interrupt, so the interrupt reaches the bridge while the thread that ran the
 	 * turn has not yet returned.
 	 *
@@ -366,7 +366,7 @@ public final class HarnessRunnerBridgeTest
 			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", firstTurnCompleted,
 				"{\"type\":\"interrupt\"}\n", interruptHandled,
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
-			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", firstTurnCompleted, interruptHandled))
+			Writer output = new SignalingWriter("\"type\":\"turn_completed\"", firstTurnCompleted, interruptHandled))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
@@ -383,7 +383,7 @@ public final class HarnessRunnerBridgeTest
 	/**
 	 * Verifies that while a turn writes no record for 30 seconds, the bridge writes a {@code waiting} record and
 	 * repeats it every 30 seconds; that any other record of the turn restarts that count; and that no {@code waiting}
-	 * record is written before a turn, after {@code turn-completed}, or between turns. The test moves the clock and runs
+	 * record is written before a turn, after {@code turn_completed}, or between turns. The test moves the clock and runs
 	 * the heartbeat itself.
 	 *
 	 * @throws IOException if the bridge fails
@@ -419,7 +419,7 @@ public final class HarnessRunnerBridgeTest
 			QuietProcess process = new QuietProcess(clock, ticker);
 			Reader input = new QuietReader(quietBetweenTurns, "{\"type\":\"turn\",\"prompt\":\"first\"}\n",
 				turnCompleted, "{\"type\":\"complete\"}\n");
-			Writer output = new SignalingWriter("\"type\":\"turn-completed\"", turnCompleted, new CountDownLatch(0)))
+			Writer output = new SignalingWriter("\"type\":\"turn_completed\"", turnCompleted, new CountDownLatch(0)))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
@@ -433,14 +433,14 @@ public final class HarnessRunnerBridgeTest
 				String type = record.path("type").asString();
 				if (type.equals("waiting"))
 				{
-					requireThat(record.path("runId").asString(), "runId").isEqualTo("run-1");
-					records.add(type + " " + record.path("quietSeconds").asLong());
+					requireThat(record.path("run_id").asString(), "runId").isEqualTo("run-1");
+					records.add(type + " " + record.path("quiet_seconds").asLong());
 				}
 				else
 					records.add(type);
 			}
-			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "harness-event",
-				"waiting 30", "turn-completed", "completed"));
+			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "harness_event",
+				"waiting 30", "turn_completed", "completed"));
 		}
 	}
 
@@ -525,7 +525,7 @@ public final class HarnessRunnerBridgeTest
 		 *
 		 * @param quiet         runs before the first request and once {@code turnCompleted} opens
 		 * @param turn          the turn request
-		 * @param turnCompleted opens once the bridge has written {@code turn-completed}
+		 * @param turnCompleted opens once the bridge has written {@code turn_completed}
 		 * @param rest          the requests sent after the turn completed
 		 */
 		private QuietReader(Runnable quiet, String turn, CountDownLatch turnCompleted, String rest)

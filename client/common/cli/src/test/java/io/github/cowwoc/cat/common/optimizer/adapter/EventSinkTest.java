@@ -53,9 +53,9 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","runId":"r"}
-					{"type":"waiting","runId":"r","quietSeconds":30}
-					{"type":"turn-completed","assistant_response":"done","assistant_messages":["done"]}
+					{"type":"started","run_id":"r"}
+					{"type":"waiting","run_id":"r","quiet_seconds":30}
+					{"type":"turn_completed","assistant_response":"done","assistant_messages":["done"]}
 					""");
 			}
 
@@ -86,8 +86,8 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","runId":"r"}
-					{"type":"turn-completed","assistant_response":"final-only","assistant_messages":["interim","done"]}
+					{"type":"started","run_id":"r"}
+					{"type":"turn_completed","assistant_response":"final-only","assistant_messages":["interim","done"]}
 					""");
 			}
 
@@ -123,12 +123,12 @@ public final class EventSinkTest
 			directories -> new TestSessions.Sources(JSON, directories), Path.of("runs"), Map.of(),
 			new LinkedBlockingQueue<>()))
 		{
-			sink.write("{\"type\":\"turn-completed\",\"assistant_messages\":" + value + "}\n");
+			sink.write("{\"type\":\"turn_completed\",\"assistant_messages\":" + value + "}\n");
 		}
 	}
 
 	/**
-	 * Verifies that a {@code harness-event} record, which the bridge writes for each raw event line that the
+	 * Verifies that a {@code harness_event} record, which the bridge writes for each raw event line that the
 	 * harness prints, reaches the retained event transcript.
 	 *
 	 * @throws IOException if the run directory cannot be created
@@ -148,8 +148,8 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","runId":"r"}
-					{"type":"harness-event","event":"{\\"type\\":\\"system\\"}"}
+					{"type":"started","run_id":"r"}
+					{"type":"harness_event","event":"{\\"type\\":\\"system\\"}"}
 					""");
 			}
 

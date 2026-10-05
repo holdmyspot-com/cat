@@ -33,7 +33,7 @@ public final class HarnessRunnerBridge
 {
 	/**
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
-	 * {@code harness-event} responses; the terminal response records the status, error, final assistant response
+	 * {@code harness_event} responses; the terminal response records the status, error, final assistant response
 	 * and every assistant message in order.
 	 *
 	 * @param starter starts the isolated persistent session
@@ -73,7 +73,7 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
 	 * <p>
 	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the run's
-	 * {@code runId} and the turn's {@code quietSeconds}, and repeats it every 30 seconds while the turn stays quiet. The
+	 * {@code run_id} and the turn's {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet. The
 	 * session's {@link HarnessRunnerScope} supplies the clock that times the quiet turn and the heartbeat that checks
 	 * it.
 	 *
@@ -114,7 +114,7 @@ public final class HarnessRunnerBridge
 					run = session.run();
 					if (manager != null)
 						manager.markIdle(run);
-					client.write(event(session.scope(), "started").put("runId", session.run().id()));
+					client.write(event(session.scope(), "started").put("run_id", session.run().id()));
 					BufferedReader lines = new BufferedReader(input);
 					String line = lines.readLine();
 					while (line != null)
@@ -147,9 +147,9 @@ public final class HarnessRunnerBridge
 										throw harnessTurnFailure(result);
 									if (manager != null)
 										manager.markIdle(session.run());
-									ObjectNode response = event(session.scope(), "turn-completed");
-									response.put("runId", session.run().id());
-									response.put("exitCode", result.exitCode());
+									ObjectNode response = event(session.scope(), "turn_completed");
+									response.put("run_id", session.run().id());
+									response.put("exit_code", result.exitCode());
 									response.put("error", result.standardError());
 									response.put("assistant_response", result.assistantResponse());
 									ArrayNode reply = response.putArray("assistant_messages");
@@ -172,7 +172,7 @@ public final class HarnessRunnerBridge
 								throw new IOException("Bridge has no active turn to steer");
 							awaitRequestedTurnStart(request, activeTurnStarted);
 							session.steer(requiredText(request, "prompt"));
-							client.write(event(session.scope(), "steered").put("runId", session.run().id()));
+							client.write(event(session.scope(), "steered").put("run_id", session.run().id()));
 						}
 						else if (type.equals("interrupt"))
 						{
@@ -182,13 +182,13 @@ public final class HarnessRunnerBridge
 							{
 								awaitRequestedTurnStart(request, activeTurnStarted);
 								session.interrupt();
-								client.write(event(session.scope(), "interrupted").put("runId", session.run().id()));
+								client.write(event(session.scope(), "interrupted").put("run_id", session.run().id()));
 							}
 						}
 						else if (type.equals("complete"))
 						{
 							awaitActiveTurn(activeTurn);
-							client.write(event(session.scope(), "completed").put("runId", session.run().id()));
+							client.write(event(session.scope(), "completed").put("run_id", session.run().id()));
 							completed = true;
 							break;
 						}
@@ -278,7 +278,7 @@ public final class HarnessRunnerBridge
 		assert request != null;
 		if (!request.has("after"))
 			return;
-		if (!"turn-started".equals(requiredText(request, "after")))
+		if (!"turn_started".equals(requiredText(request, "after")))
 			throw new IOException("Unsupported bridge control point: " + requiredText(request, "after"));
 		if (turnStarted == null)
 			throw new IOException("Bridge has no submitted turn start to await");
@@ -430,8 +430,8 @@ public final class HarnessRunnerBridge
 		assert session != null;
 		assert client != null;
 		assert harnessEvent != null;
-		ObjectNode response = event(session.scope(), "harness-event");
-		response.put("runId", session.run().id());
+		ObjectNode response = event(session.scope(), "harness_event");
+		response.put("run_id", session.run().id());
 		response.put("event", harnessEvent);
 		client.write(response);
 	}
@@ -458,7 +458,7 @@ public final class HarnessRunnerBridge
 		private final String runId;
 		/**
 		 * Whether a turn has been submitted and has not yet ended. Changed only while holding {@link #lock}, so
-		 * that no {@code waiting} response follows {@code turn-completed}, and read without it, so that a request does
+		 * that no {@code waiting} response follows {@code turn_completed}, and read without it, so that a request does
 		 * not wait for a response that is being written.
 		 */
 		private volatile boolean turnActive;
@@ -550,11 +550,11 @@ public final class HarnessRunnerBridge
 		}
 
 		/**
-		 * Ends the active turn and then writes its {@code turn-completed} response. A client may send an interrupt as
+		 * Ends the active turn and then writes its {@code turn_completed} response. A client may send an interrupt as
 		 * soon as it reads that response, before the turn's thread returns, so the turn ends first and the interrupt
 		 * finds no active turn.
 		 *
-		 * @param event the {@code turn-completed} response
+		 * @param event the {@code turn_completed} response
 		 * @throws IOException if output fails
 		 */
 		void completeTurn(ObjectNode event) throws IOException
@@ -603,8 +603,8 @@ public final class HarnessRunnerBridge
 				if (now.isBefore(nextWaiting))
 					return;
 				ObjectNode waiting = event(scope, "waiting");
-				waiting.put("runId", runId);
-				waiting.put("quietSeconds", Duration.between(lastResponse, now).toSeconds());
+				waiting.put("run_id", runId);
+				waiting.put("quiet_seconds", Duration.between(lastResponse, now).toSeconds());
 				writeLine(waiting);
 				while (!nextWaiting.isAfter(now))
 					nextWaiting = nextWaiting.plus(QUIET_INTERVAL);

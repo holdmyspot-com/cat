@@ -24,8 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Finds the harness processes of runner runs that an earlier {@link Driver} left running.
  * <p>
  * The runner records each run in {@code <runRoot>/<harness>/<id>/run.json}, including the run's owner process
- * ({@code ownerPid}, {@code ownerStartedAt}) and its harness process ({@code harnessPid},
- * {@code harnessStartedAt}). The session port declares the run roots, which hold the runs of every campaign of the
+ * ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid},
+ * {@code harness_started_at}). The session port declares the run roots, which hold the runs of every campaign of the
  * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists:
  * a run whose owner is alive belongs to a running driver, of this or another campaign.
  * <p>
@@ -127,10 +127,10 @@ public final class LeftoverRuns
 		}
 		if (root == null || !root.isObject() || !text(root, "state").equals(Optional.of("running")))
 			return Optional.empty();
-		Optional<RecordedProcess> owner = process(root, "ownerPid", "ownerStartedAt");
+		Optional<RecordedProcess> owner = process(root, "owner_pid", "owner_started_at");
 		if (owner.isEmpty() || liveness.isAlive(owner.get().pid(), owner.get().startedAt()))
 			return Optional.empty();
-		return process(root, "harnessPid", "harnessStartedAt");
+		return process(root, "harness_pid", "harness_started_at");
 	}
 
 	/**

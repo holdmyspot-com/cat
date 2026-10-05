@@ -23,8 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The runner's response stream. It reads each response line as the runner writes it.
  * <p>
- * A {@code harness-event} response goes to the transcript, the event parser and the prompt-source observation. A
- * {@code started} or {@code turn-completed} response goes to the session driver.
+ * A {@code harness_event} response goes to the transcript, the event parser and the prompt-source observation. A
+ * {@code started} or {@code turn_completed} response goes to the session driver.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -135,8 +135,8 @@ final class EventSink extends Writer
 		}
 		switch (response.path("type").asString(""))
 		{
-			case "started" -> start(response.path("runId").asString(""));
-			case "harness-event" ->
+			case "started" -> start(response.path("run_id").asString(""));
+			case "harness_event" ->
 			{
 				String event = response.path("event").asString("");
 				events.accept(event);
@@ -145,11 +145,11 @@ final class EventSink extends Writer
 				if (transcript != null)
 					Files.writeString(transcript, event + "\n", UTF_8, CREATE, APPEND);
 			}
-			case "turn-completed" ->
+			case "turn_completed" ->
 			{
 				JsonNode values = response.path("assistant_messages");
 				if (!values.isArray())
-					throw new IOException("Runner turn-completed requires assistant_messages to be an array of strings");
+					throw new IOException("Runner turn_completed requires assistant_messages to be an array of strings");
 				List<String> assistantMessages = new ArrayList<>();
 				for (JsonNode message : values)
 				{

@@ -47,25 +47,25 @@ public final class HarnessRunManager
 	static final int MAXIMUM_MANIFEST_BYTES = 1_048_576;
 	private static final Pattern MANIFEST = Pattern.compile("""
 		\\A\\{
-		  "schemaVersion": 3,
-		  "catVersion": "(?<catVersion>[^\"]+)",
+		  "schema_version": 3,
+		  "cat_version": "(?<catVersion>[^\"]+)",
 		  "harness": "(?<harness>[a-z0-9]+)",
 		  "id": "(?<id>[a-z0-9]+-[a-z0-9]+)",
 		  "state": "(?<state>running|completed|failed)",
 		  "phase": "(?<phase>initializing|idle|working|completed|failed)",
-		  "ownerPid": "?(?<ownerPid>[1-9][0-9]*)"?,
-		  "ownerStartedAt": "(?<ownerStartedAt>[^\"]+)",
-		  "harnessPid": (?<harnessPid>null|[1-9][0-9]*),
-		  "harnessStartedAt": (?<harnessStartedAt>null|"(?<harnessStartedAtValue>[^\"]+)"),
-		  "createdAt": "(?<createdAt>[^\"]+)",
-		  "artifactPath": "(?<artifactPath>(?:[^"\\\\]|\\\\.)*)",
-		  "projectPath": "(?<projectPath>(?:[^"\\\\]|\\\\.)*)",
+		  "owner_pid": "?(?<ownerPid>[1-9][0-9]*)"?,
+		  "owner_started_at": "(?<ownerStartedAt>[^\"]+)",
+		  "harness_pid": (?<harnessPid>null|[1-9][0-9]*),
+		  "harness_started_at": (?<harnessStartedAt>null|"(?<harnessStartedAtValue>[^\"]+)"),
+		  "created_at": "(?<createdAt>[^\"]+)",
+		  "artifact_path": "(?<artifactPath>(?:[^"\\\\]|\\\\.)*)",
+		  "project_path": "(?<projectPath>(?:[^"\\\\]|\\\\.)*)",
 		  "transport": "(?<transport>(?:[^"\\\\]|\\\\.)*)",
-		  "harnessCommand": "(?<harnessCommand>(?:[^"\\\\]|\\\\.)*)",
-		  "startedAt": (?<startedAt>null|"(?<startedAtValue>[^\"]+)"),
-		  "turnNumber": (?<turnNumber>[0-9]+),
-		  "exitCode": (?<exitCode>null|-?[0-9]+),
-		  "finishedAt": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
+		  "harness_command": "(?<harnessCommand>(?:[^"\\\\]|\\\\.)*)",
+		  "started_at": (?<startedAt>null|"(?<startedAtValue>[^\"]+)"),
+		  "turn_number": (?<turnNumber>[0-9]+),
+		  "exit_code": (?<exitCode>null|-?[0-9]+),
+		  "finished_at": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
 		  "diagnostic": "(?:[^"\\\\]|\\\\.)*"
 		}\\n\\z""");
 	private final Path root;
@@ -733,18 +733,18 @@ public final class HarnessRunManager
 	{
 		assert manifest != null;
 		assert directory != null;
-		String content = "{\n  \"schemaVersion\": 3,\n  \"catVersion\": \"" + PluginInfo.CAT_VERSION +
+		String content = "{\n  \"schema_version\": 3,\n  \"cat_version\": \"" + PluginInfo.CAT_VERSION +
 			"\",\n  \"harness\": \"" + manifest.harness() + "\",\n  \"id\": \"" + manifest.id() +
 			"\",\n  \"state\": \"" + manifest.state() + "\",\n  \"phase\": \"" + manifest.phase() +
-			"\",\n  \"ownerPid\": " + manifest.ownerPid() +
-			",\n  \"ownerStartedAt\": \"" + manifest.ownerStartedAt() + "\",\n  \"harnessPid\": " +
-			nullableNumber(manifest.harnessPid()) + ",\n  \"harnessStartedAt\": " +
-			nullableInstant(manifest.harnessStartedAt()) + ",\n  \"createdAt\": \"" + manifest.createdAt() +
-			"\",\n  \"artifactPath\": \"" + escape(manifest.artifactPath()) + "\",\n  \"projectPath\": \"" +
+			"\",\n  \"owner_pid\": " + manifest.ownerPid() +
+			",\n  \"owner_started_at\": \"" + manifest.ownerStartedAt() + "\",\n  \"harness_pid\": " +
+			nullableNumber(manifest.harnessPid()) + ",\n  \"harness_started_at\": " +
+			nullableInstant(manifest.harnessStartedAt()) + ",\n  \"created_at\": \"" + manifest.createdAt() +
+			"\",\n  \"artifact_path\": \"" + escape(manifest.artifactPath()) + "\",\n  \"project_path\": \"" +
 			escape(manifest.projectPath()) + "\",\n  \"transport\": \"" + escape(manifest.transport()) +
-			"\",\n  \"harnessCommand\": \"" + escape(manifest.harnessCommand()) + "\",\n  \"startedAt\": " +
-			nullableInstant(manifest.startedAt()) + ",\n  \"turnNumber\": " + manifest.turnNumber() +
-			",\n  \"exitCode\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finishedAt\": " +
+			"\",\n  \"harness_command\": \"" + escape(manifest.harnessCommand()) + "\",\n  \"started_at\": " +
+			nullableInstant(manifest.startedAt()) + ",\n  \"turn_number\": " + manifest.turnNumber() +
+			",\n  \"exit_code\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finished_at\": " +
 			nullableInstant(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
 			escape(manifest.diagnostic()) + "\"\n}\n";
 		writeAtomically(directory.resolve("run.json"), content);

@@ -373,7 +373,7 @@ public final class CleanupTest
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
-				Files.writeString(run.resolve("run.json"), "{\"projectPath\": \"" +
+				Files.writeString(run.resolve("run.json"), "{\"project_path\": \"" +
 					directory.resolve("staged/project") + "\", \"state\": \"completed\"}", UTF_8);
 				Files.createDirectories(run.resolve("project"));
 				Files.writeString(run.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);

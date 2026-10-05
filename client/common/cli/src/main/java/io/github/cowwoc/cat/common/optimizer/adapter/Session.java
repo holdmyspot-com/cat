@@ -322,7 +322,7 @@ final class Session implements SessionHandle
 		interruptSent = true;
 		graceDeadline = now.plus(GRACE);
 		if (turn > 0)
-			feed.send("{\"type\":\"interrupt\",\"after\":\"turn-started\"}");
+			feed.send("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
 	}
 
 	/**
@@ -383,7 +383,7 @@ final class Session implements SessionHandle
 			failureSuspected = false;
 			return false;
 		}
-		boolean finishedWorking = manifest.path("turnNumber").asInt(0) == turn &&
+		boolean finishedWorking = manifest.path("turn_number").asInt(0) == turn &&
 			manifest.path("phase").asString("").equals("working");
 		if (!finishedWorking)
 		{
@@ -395,7 +395,7 @@ final class Session implements SessionHandle
 			failureSuspected = true;
 			return false;
 		}
-		failure = "Turn " + turn + " ended without a result (exit status " + manifest.path("exitCode").asString("?") + ")";
+		failure = "Turn " + turn + " ended without a result (exit status " + manifest.path("exit_code").asString("?") + ")";
 		return true;
 	}
 

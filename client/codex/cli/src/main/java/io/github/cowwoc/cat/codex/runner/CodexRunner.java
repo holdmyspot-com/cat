@@ -214,7 +214,7 @@ public final class CodexRunner
 				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-add");
 			}
 			List<String> command = appServerCommand(executable, installCat);
-			manager.initialize(run, artifact, project, "codex-app-server", command);
+			manager.initialize(run, artifact, project, "codex_app_server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
 			CodexProcess process = new CodexProcess(processes.start(command, worktree, isolatedEnvironment), scope,
