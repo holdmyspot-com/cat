@@ -91,3 +91,23 @@ jobs:
         run: >-
           gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
           --title "CAT ${GITHUB_REF_NAME}" --generate-notes
+
+  # Artifact storage is billed by the hour, so delete the native release files once publishing ends instead of
+  # keeping them for their retention period. This also runs when a build or the publish job fails.
+  cleanup:
+    name: Delete native release files
+    needs: [build, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Delete native release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '.artifacts[] | select(.name | startswith("cat-")) | .id' |
+          while read -r id; do
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}"
+          done
