@@ -764,7 +764,9 @@ CAT cannot know the threshold at which a provider flags automated volume, so it 
   logical trial after the wait.
 - **No evasion:** CAT presents its real client identity and never adds randomized human-like pacing, rotates accounts,
   credentials or network addresses, or works around a harness's own limits.
-- **Records:** every trial records its concurrency, throttle state, start and end times, and reported token usage.
+- **Records:** every trial records its concurrency, the campaign's throttle state, the rate-limit windows that its
+  session reported, its start and end times, its reported token usage and whether the harness authenticates through a
+  subscription login or an API key.
 
 ### 3.6 Shared harness capacity
 
