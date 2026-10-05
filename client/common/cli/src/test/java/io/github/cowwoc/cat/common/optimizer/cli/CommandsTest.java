@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
@@ -30,6 +31,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -149,7 +153,7 @@ public final class CommandsTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = new Commands(core, JSON).execute(args, out);
+			exit = new Commands(core, JSON, ZoneOffset.UTC).execute(args, out);
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
@@ -317,11 +321,36 @@ public final class CommandsTest
 		requireThat(json.get("campaign").asString(), "campaign").isEqualTo(core.status.campaignId());
 		requireThat(json.has("choices"), "hasChoices").isTrue();
 		requireThat(json.get("harness").asString(), "harness").isEqualTo("codex");
-		requireThat(json.get("summary").asString(), "summary").isEqualTo(core.status.summary());
+		requireThat(json.get("summary").asString(), "summary").isEqualTo(core.status.summary(ZoneOffset.UTC));
 		requireThat(json.get("proposal").asString(), "proposal").isEqualTo("the proposal");
 		requireThat(json.get("deliveryResult").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").asString(), "message").isEqualTo("a notice");
 		requireThat(output.toString().strip().lines().count(), "lines").isEqualTo(1L);
+	}
+
+	/**
+	 * Verifies that the printed summary shows times in the zone that the commands were created with, while the status
+	 * object keeps the UTC instant.
+	 */
+	@Test
+	public void printsSummaryTimesInUserTimeZone()
+	{
+		FakeCore core = new FakeCore();
+		StatusReport held = StatusReport.of(new Builder().confirmed().
+			throttle(new Throttle(Instant.parse("2026-10-09T21:13:08Z"), 2, 1)).build(), ReportEvidence.NONE);
+		core.result = CommandResult.of(held, Harness.CLAUDE);
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		int exit;
+		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		{
+			exit = new Commands(core, JSON, ZoneId.of("America/Toronto")).execute(List.of("status", "c1"), out);
+		}
+
+		requireThat(exit, "exit").isEqualTo(0);
+		JsonNode json = JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
+		requireThat(json.path("concurrency").path("holdUntil").asString(), "holdUntil").
+			isEqualTo("2026-10-09T21:13:08Z");
+		requireThat(json.get("summary").asString(), "summary").contains("hold until 2026-10-09T17:13:08-04:00");
 	}
 
 	/**
@@ -419,7 +448,7 @@ public final class CommandsTest
 		requireThat(run(core, List.of("run", "c1"), output), "exit").isEqualTo(0);
 
 		requireThat(JSON.readTree(output.toString()).get("summary").asString(), "summary").
-			isEqualTo(core.status.summary() + "\nFirst notice.\nSecond notice.");
+			isEqualTo(core.status.summary(ZoneOffset.UTC) + "\nFirst notice.\nSecond notice.");
 	}
 
 	/**

@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -125,7 +126,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(inputs.workingMedian(), "workingMedian").isEqualTo(30L);
 			requireThat(inputs.incumbentMedian(), "incumbentMedian").isEqualTo(70L);
 			requireThat(inputs.unavailable(), "unavailable").isNull();
-			requireThat(report.summary().contains("INDETERMINATE"), "enumReason").isFalse();
+			requireThat(report.summary(ZoneOffset.UTC).contains("INDETERMINATE"), "enumReason").isFalse();
 			requireThat(report.toJson(JSON).path("trial_input_tokens").get(1).path("unavailable").isNull(),
 				"jsonReason").isTrue();
 		}

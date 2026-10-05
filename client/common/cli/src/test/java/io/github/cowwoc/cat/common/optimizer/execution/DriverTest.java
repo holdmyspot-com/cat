@@ -113,6 +113,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -1200,7 +1201,7 @@ public final class DriverTest
 				StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 				requireThat(report.toJson(JsonMapper.builder().build()).path("removed_hunks").get(0).asString(),
 					"reportedRemoval").isEqualTo("CLAUDE.md#2");
-				requireThat(report.summary(), "summary").contains("CLAUDE.md#2");
+				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("CLAUDE.md#2");
 			}
 		}
 	}
@@ -1343,7 +1344,7 @@ public final class DriverTest
 				StatusReport report = StatusReport.of(ended, ReportEvidence.NONE);
 				requireThat(report.toJson(JsonMapper.builder().build()).path("author_diagnoses").size(),
 					"reportedDiagnoses").isEqualTo(2);
-				requireThat(report.summary(), "summary").contains("not guidance");
+				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("not guidance");
 			}
 		}
 	}

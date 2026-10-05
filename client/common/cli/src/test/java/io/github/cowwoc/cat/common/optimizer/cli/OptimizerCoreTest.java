@@ -55,6 +55,7 @@ import java.io.PrintStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -635,7 +636,7 @@ public final class OptimizerCoreTest
 				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 				{
-					requireThat(new Commands(repository.core(), JSON).execute(args, out), "exit").isEqualTo(0);
+					requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(args, out), "exit").isEqualTo(0);
 				}
 				String id = JSON.readTree(bytes.toString(StandardCharsets.UTF_8)).get("campaign").asString();
 				Campaign campaign = repository.load(id);
@@ -880,7 +881,8 @@ public final class OptimizerCoreTest
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			requireThat(new Commands(repository.core(), JSON).execute(arguments, out), "exitCode").isEqualTo(0);
+			requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(arguments, out), "exitCode").
+				isEqualTo(0);
 		}
 		return (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
 	}
@@ -1758,7 +1760,7 @@ public final class OptimizerCoreTest
 			requireThat(applicability.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.JUDGE,
 				MeasurementCondition.MODEL, MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION,
 				MeasurementCondition.SESSION_ENVIRONMENT_VERSION));
-			requireThat(result.summary(), "summary").endsWith("""
+			requireThat(result.summary(ZoneOffset.UTC), "summary").endsWith("""
 				Attempt 1: certified
 				  Not checked: judge version, trial model, model provider, harness version, session environment \
 				version.""");

@@ -11,6 +11,10 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -56,9 +60,10 @@ final class ReportSummary
 	 * Renders a report.
 	 *
 	 * @param report the report
+	 * @param zone the user's time zone, in which the text shows times
 	 * @return the text
 	 */
-	static String of(StatusReport report)
+	static String of(StatusReport report, ZoneId zone)
 	{
 		List<String> lines = new ArrayList<>();
 		lines.add("Campaign " + report.campaignId() + ": " + report.status().label() + " (phase " +
@@ -132,7 +137,7 @@ final class ReportSummary
 		StatusReport.Concurrency concurrency = report.concurrency();
 		String throttle = "no hold";
 		if (concurrency.holdUntil() != null)
-			throttle = "hold until " + concurrency.holdUntil();
+			throttle = "hold until " + localTime(concurrency.holdUntil(), zone);
 		lines.add("Concurrency: window " + concurrency.window() + " of ceiling " + concurrency.ceiling() +
 			", slow start " + concurrency.slowStartSize() + ", throttle " + throttle + " (window cap " +
 			concurrency.windowCap() + ", backoffs " + concurrency.backoffs() + ")");
@@ -182,6 +187,18 @@ final class ReportSummary
 				names.add(condition.displayName());
 			lines.add("  Not checked: " + String.join(", ", names) + ".");
 		}
+	}
+
+	/**
+	 * Formats an instant for the user to read: ISO-8601 in the user's time zone with its UTC offset, to the second.
+	 *
+	 * @param instant the instant
+	 * @param zone the user's time zone
+	 * @return the text, for example {@code 2026-10-09T17:13:08-04:00}
+	 */
+	private static String localTime(Instant instant, ZoneId zone)
+	{
+		return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(instant.truncatedTo(ChronoUnit.SECONDS).atZone(zone));
 	}
 
 	/**

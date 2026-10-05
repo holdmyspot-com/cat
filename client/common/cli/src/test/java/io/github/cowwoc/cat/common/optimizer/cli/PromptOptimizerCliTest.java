@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.ZoneOffset;
 
 /**
  * Tests shared optimizer command scope ownership and failure output.
@@ -34,7 +35,7 @@ public final class PromptOptimizerCliTest
 		try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, Path.of("."));
 			PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 		{
-			int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, () -> scope, out);
+			int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, () -> scope, ZoneOffset.UTC, out);
 
 			requireThat(exit, "exit").isEqualTo(2);
 			requireThat(scope.isClosed(), "closed").isTrue();
@@ -53,7 +54,7 @@ public final class PromptOptimizerCliTest
 			int exit = PromptOptimizerCli.run(new String[]{"status"}, () ->
 			{
 				throw new IOException("configuration unavailable");
-			}, out);
+			}, ZoneOffset.UTC, out);
 
 			requireThat(exit, "exit").isEqualTo(1);
 			JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));

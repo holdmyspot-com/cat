@@ -75,7 +75,10 @@ final class ReportJson
 		concurrencyNode.put("window", concurrency.window());
 		concurrencyNode.put("ceiling", concurrency.ceiling());
 		concurrencyNode.put("slowStartSize", concurrency.slowStartSize());
-		putText(concurrencyNode, "holdUntil", concurrency.holdUntil());
+		if (concurrency.holdUntil() == null)
+			concurrencyNode.putNull("holdUntil");
+		else
+			concurrencyNode.put("holdUntil", concurrency.holdUntil().toString());
 		concurrencyNode.put("windowCap", concurrency.windowCap());
 		concurrencyNode.put("backoffs", concurrency.backoffs());
 		assumptions(root.putObject("assumptions"), report.assumptions());

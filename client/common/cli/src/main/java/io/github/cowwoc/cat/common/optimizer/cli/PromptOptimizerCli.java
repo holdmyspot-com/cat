@@ -6,6 +6,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -36,7 +37,8 @@ public final class PromptOptimizerCli
 	}
 
 	/**
-	 * Runs the launcher command and exits the process when its exit code is nonzero.
+	 * Runs the launcher command, showing times in the JVM's default time zone, and exits the process when its exit
+	 * code is nonzero.
 	 *
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
@@ -46,7 +48,7 @@ public final class PromptOptimizerCli
 	@SuppressWarnings("PMD.DoNotTerminateVM")
 	public static void main(String[] args, ScopeFactory factory)
 	{
-		int exitCode = run(args, factory, System.out);
+		int exitCode = run(args, factory, ZoneId.systemDefault(), System.out);
 		if (exitCode != 0)
 			System.exit(exitCode);
 	}
@@ -56,18 +58,20 @@ public final class PromptOptimizerCli
 	 *
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
+	 * @param zone the user's time zone, in which the human summary shows times
 	 * @param out receives the command's JSON result or failure
 	 * @return 0 for a result, 1 for a refusal or failure, or 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(String[] args, ScopeFactory factory, PrintStream out)
+	public static int run(String[] args, ScopeFactory factory, ZoneId zone, PrintStream out)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(factory, "factory").isNotNull();
+		requireThat(zone, "zone").isNotNull();
 		requireThat(out, "out").isNotNull();
 		try (OptimizerCommandScope scope = factory.open())
 		{
-			return run(scope, List.of(args), out);
+			return run(scope, List.of(args), zone, out);
 		}
 		catch (IOException e)
 		{
@@ -81,16 +85,18 @@ public final class PromptOptimizerCli
 	 *
 	 * @param scope the command's scope
 	 * @param args the launcher's arguments
+	 * @param zone the user's time zone, in which the human summary shows times
 	 * @param out where the JSON goes
 	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(OptimizerCommandScope scope, List<String> args, PrintStream out)
+	public static int run(OptimizerCommandScope scope, List<String> args, ZoneId zone, PrintStream out)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(args, "args").isNotNull();
+		requireThat(zone, "zone").isNotNull();
 		requireThat(out, "out").isNotNull();
-		return new Commands(new OptimizerCore(scope), scope.json()).execute(args, out);
+		return new Commands(new OptimizerCore(scope), scope.json(), zone).execute(args, out);
 	}
 
 	/**

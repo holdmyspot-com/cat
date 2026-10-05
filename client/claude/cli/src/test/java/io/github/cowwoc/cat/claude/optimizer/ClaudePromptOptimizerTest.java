@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -82,7 +83,7 @@ public final class ClaudePromptOptimizerTest
 			try (ClaudeOptimizerCommandScope scope = new ClaudeOptimizerCommandScope(environment, setup.home(), setup.root(),
 				setup.home().resolve("artifact")))
 			{
-				exit = PromptOptimizerCli.run(scope, args, out);
+				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
 			}
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));

@@ -38,6 +38,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -138,11 +139,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param window the active candidate's concurrency window
 	 * @param ceiling the campaign's ceiling
 	 * @param slowStartSize the slow-start limit
-	 * @param holdUntil the instant before which no trial is admitted, in ISO-8601, or {@code null} if none
+	 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 	 * @param windowCap the window that the last rate-limit response set, or 0 if none
 	 * @param backoffs the consecutive rate-limit backoffs
 	 */
-	public record Concurrency(int window, int ceiling, int slowStartSize, String holdUntil, int windowCap,
+	public record Concurrency(int window, int ceiling, int slowStartSize, Instant holdUntil, int windowCap,
 		int backoffs)
 	{
 		/**
@@ -591,9 +592,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	private static Concurrency concurrency(Campaign campaign)
 	{
 		Throttle throttle = campaign.throttle();
-		String holdUntil = null;
+		Instant holdUntil = null;
 		if (!throttle.holdUntil().equals(Instant.EPOCH))
-			holdUntil = throttle.holdUntil().toString();
+			holdUntil = throttle.holdUntil();
 		return new Concurrency(ConcurrencyPolicy.window(campaign), campaign.ceiling(), campaign.slowStart().size(),
 			holdUntil, throttle.windowCap(), throttle.backoffs());
 	}
@@ -679,10 +680,13 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	/**
 	 * Returns the human summary.
 	 *
+	 * @param zone the user's time zone, in which the summary shows times
 	 * @return the summary text
+	 * @throws NullPointerException if {@code zone} is null
 	 */
-	public String summary()
+	public String summary(ZoneId zone)
 	{
-		return ReportSummary.of(this);
+		requireThat(zone, "zone").isNotNull();
+		return ReportSummary.of(this, zone);
 	}
 }

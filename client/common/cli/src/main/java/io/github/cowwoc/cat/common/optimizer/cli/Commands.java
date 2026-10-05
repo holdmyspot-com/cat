@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -45,20 +46,24 @@ public final class Commands
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
+	private final ZoneId zone;
 
 	/**
 	 * Creates the commands.
 	 *
 	 * @param core what the commands call
 	 * @param json the mapper that renders the output
+	 * @param zone the user's time zone, in which the human summary shows times
 	 * @throws NullPointerException if any argument is null
 	 */
-	public Commands(Core core, JsonMapper json)
+	public Commands(Core core, JsonMapper json, ZoneId zone)
 	{
 		requireThat(core, "core").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(zone, "zone").isNotNull();
 		this.core = core;
 		this.json = json;
+		this.zone = zone;
 	}
 
 	/**
@@ -452,7 +457,7 @@ public final class Commands
 			root = result.status().toJson(json);
 			root.put("harness", result.harness().commandName());
 		}
-		root.put("summary", result.summary());
+		root.put("summary", result.summary(zone));
 		if (result.proposal() == null)
 			root.putNull("proposal");
 		else

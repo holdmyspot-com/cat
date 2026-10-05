@@ -38,6 +38,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -64,6 +65,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -91,7 +94,38 @@ public final class StatusReportTest
 		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
 
 		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(16);
-		requireThat(report.summary(), "summary").contains("Concurrency: window 1 of ceiling 16");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Concurrency: window 1 of ceiling 16");
+	}
+
+	/**
+	 * The human summary shows the throttle hold in the user's time zone to the second, while the JSON keeps the UTC
+	 * instant.
+	 */
+	@Test
+	public void summaryShowsHoldInUserTimeZone()
+	{
+		Instant holdUntil = Instant.parse("2026-10-09T21:13:08.789Z");
+		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 2, 3)).build(),
+			ReportEvidence.NONE);
+		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
+
+		requireThat(concurrency.path("holdUntil").asString(), "holdUntil").isEqualTo("2026-10-09T21:13:08.789Z");
+		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").
+			contains("throttle hold until 2026-10-09T17:13:08-04:00 (window cap 2, backoffs 3)");
+	}
+
+	/**
+	 * The human summary shows a throttle hold that falls on a whole minute with its seconds.
+	 */
+	@Test
+	public void summaryShowsZeroSecondsOfHold()
+	{
+		Instant holdUntil = Instant.parse("2026-01-15T05:00:00Z");
+		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 1, 1)).build(),
+			ReportEvidence.NONE);
+
+		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").
+			contains("throttle hold until 2026-01-15T00:00:00-05:00 ");
 	}
 
 	/**
@@ -105,7 +139,7 @@ public final class StatusReportTest
 		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
 
 		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(8);
-		requireThat(report.summary(), "summary").contains("Concurrency: window 1 of ceiling 8");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Concurrency: window 1 of ceiling 8");
 	}
 
 	/**
@@ -151,7 +185,7 @@ public final class StatusReportTest
 		requireThat(reverted.path("upperBound").asDouble(), "upperBound").
 			isEqualTo(ExploratoryBounds.wilson(0, 1).upper());
 		requireThat(reverted.path("predecessorRate").asDouble(), "predecessorRate").isEqualTo(0.9);
-		requireThat(report.summary(), "summary").contains("Reverted candidate 2").contains("safety").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Reverted candidate 2").contains("safety").
 			contains("upper bound").contains("predecessor rate");
 	}
 
@@ -176,11 +210,11 @@ public final class StatusReportTest
 		requireThat(value.path("dimension").asString(), "dimension").isEqualTo("target");
 		requireThat(value.path("label").asString(), "label").isEqualTo("drive");
 		requireThat(value.path("text").asString(), "text").isEqualTo("the shared\ndrive");
-		requireThat(report.summary(), "summary").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Development values added after certification attempts with formal failures").
 			contains("  attempt 1, test delete-directory: target = drive (\"the shared\\ndrive\")");
-		requireThat(StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE).summary(), "none").
-			doesNotContain("Development values added");
+		requireThat(StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE).summary(ZoneOffset.UTC),
+			"none").doesNotContain("Development values added");
 	}
 
 	/**
@@ -207,7 +241,7 @@ public final class StatusReportTest
 		requireThat(choices.get(1).get("recommended").asBoolean(), "secondRecommended").isTrue();
 		requireThat(choices.get(1).get("reason").asString(), "reason").isEqualTo("Keeps the core task.");
 		requireThat(choices.get(2).get("id").asString(), "lastId").isEqualTo("stop");
-		requireThat(report.summary(), "summary").contains("r1").contains("r2").contains("CLAUDE.md").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("r1").contains("r2").contains("CLAUDE.md").
 			contains("Be brief.").contains("1. Exempt explanations.").
 			contains("2. Drop brevity. (recommended: Keeps the core task.)");
 	}
@@ -252,7 +286,7 @@ public final class StatusReportTest
 		requireThat(attempts.get(1).get("total_runs").asInt(), "totalRuns").isEqualTo(2);
 		requireThat(attempts.get(1).get("accepted").asBoolean(), "accepted").isFalse();
 		requireThat(attempts.get(1).get("winner").asBoolean(), "winner").isFalse();
-		requireThat(report.summary(), "summary").contains("Attempt 1").contains("2/2").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1").contains("2/2").
 			contains("accepted: true").contains("winner: true").contains("Attempt 2").contains("1/2").
 			contains("accepted: false").contains("winner: false");
 	}
@@ -312,7 +346,7 @@ public final class StatusReportTest
 			if (position >= 3)
 				round = 2;
 			requireThat(attempts.get(position).path("round").asInt(), "round").isEqualTo(round);
-			requireThat(report.summary(), "summary").contains("Round " + round + ", Attempt " + (position + 1));
+			requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Round " + round + ", Attempt " + (position + 1));
 		}
 		requireThat(results.getLast().round(), "storedRoundIdentity").isEqualTo(4);
 	}
@@ -336,7 +370,8 @@ public final class StatusReportTest
 		requireThat(attempts.get(0).path("round").asInt(), "firstRound").isEqualTo(1);
 		requireThat(attempts.get(1).path("round").asInt(), "currentRound").isEqualTo(2);
 		requireThat(attempts.get(1).path("number").asInt(), "attemptNumber").isEqualTo(4);
-		requireThat(report.summary(), "summary").contains("Round 1, Attempt 1").contains("Round 2, Attempt 4");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Round 1, Attempt 1").
+			contains("Round 2, Attempt 4");
 		requireThat(campaign.development().round().number(), "storedRoundIdentity").isEqualTo(4);
 	}
 
@@ -426,7 +461,7 @@ public final class StatusReportTest
 					requireThat(cell.get("incumbent_median").asLong(), "incumbentMedian").isEqualTo(70);
 				}
 				requireThat(output.get("trial_input_tokens").size(), "cells").isEqualTo(2);
-				requireThat(report.summary(), "summary").contains("13 bytes").contains("30").contains("70");
+				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("13 bytes").contains("30").contains("70");
 			}
 		}
 	}
@@ -476,7 +511,7 @@ public final class StatusReportTest
 		requireThat(cell(report, "formatting").improvement().unavailable(), "improvement").isNull();
 		requireThat(String.join(" ", report.limitations()), "limitations").contains("host tools").
 			contains("external sources");
-		requireThat(report.summary(), "summary").contains("host tools").contains("external sources");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("host tools").contains("external sources");
 		requireThat(report.toJson(JsonMapper.builder().build()).path("limitations").toString(), "jsonLimitations").
 			contains("host tools").contains("external sources");
 	}
@@ -503,7 +538,7 @@ public final class StatusReportTest
 		requireThat(inputs.unavailable(), "tokenReason").isNull();
 		String reason = cell(report, "safety").improvement().unavailable();
 		requireThat(reason, "improvementReason").contains("trial model").contains("safety");
-		requireThat(report.summary(), "summary").contains(reason);
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains(reason);
 		JsonNode output = report.toJson(JsonMapper.builder().build());
 		requireThat(output.path("cells").path(1).path("improvement").path("unavailable").asString(),
 			"jsonReason").isEqualTo(reason);
@@ -568,7 +603,7 @@ public final class StatusReportTest
 
 		CellReport safety = cell(report, "safety");
 		requireThat(safety.comparison().state(), "safetyState").isEqualTo("not certified");
-		requireThat(report.summary(), "summary").contains("development estimate").contains("not certified");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("development estimate").contains("not certified");
 	}
 
 	/**
@@ -824,7 +859,7 @@ public final class StatusReportTest
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
 		requireThat(json.has("allocation"), "allocation").isTrue();
 		requireThat(json.has("benchmark"), "benchmark").isTrue();
-		String text = json.toString() + report.summary();
+		String text = json.toString() + report.summary(ZoneOffset.UTC);
 		requireThat(text, "text").doesNotContain("pooled").doesNotContain("99.4").doesNotContain("0.9944").
 			doesNotContain("0.9945");
 	}
@@ -930,7 +965,7 @@ public final class StatusReportTest
 		requireThat(report.limitations(), "limitations").contains("Only the English prompts are covered.");
 		// the contract's own limitations come after the fixed ones, which are always listed
 		requireThat(report.limitations().size(), "limitationCount").isGreaterThan(1);
-		requireThat(report.summary(), "summary").contains(ContractFixtures.judge().profile().label()).
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains(ContractFixtures.judge().profile().label()).
 			contains("Only the English prompts are covered.");
 	}
 
@@ -1043,7 +1078,7 @@ public final class StatusReportTest
 		requireThat(summary.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.TOOL_OUTPUT_LIMIT));
 		JsonNode attempt = report.toJson(JsonMapper.builder().build()).path("attempts").get(0);
 		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("TOOL_OUTPUT_LIMIT");
-		requireThat(report.summary(), "summary").contains("Attempt 1: certified\n" +
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1: certified\n" +
 			"  Not checked: trial tool-output token limit.");
 	}
 
@@ -1105,7 +1140,7 @@ public final class StatusReportTest
 			pending(new PendingDecision.PlateauReached()).build();
 		StatusReport waiting = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(waiting.status().label(), "waitingStatus").isEqualTo("awaiting-user");
-		requireThat(waiting.summary(), "waitingSummary").contains("Waiting for: a full development round");
+		requireThat(waiting.summary(ZoneOffset.UTC), "waitingSummary").contains("Waiting for: a full development round");
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
 		StatusReport stopped = StatusReport.of(campaign, ReportEvidence.NONE);
 		JsonNode json = stopped.toJson(JsonMapper.builder().build());
@@ -1117,7 +1152,7 @@ public final class StatusReportTest
 		requireThat(json.path("pending").isNull(), "jsonPending").isTrue();
 		requireThat(stopped.choices().stream().map(ChoiceItem::choice).toList(), "choices").
 			containsExactly(List.of(Choice.RESUME, Choice.ACCEPT_WITHOUT_CERTIFICATION));
-		requireThat(stopped.summary(), "summary").contains("The user stopped the campaign.").
+		requireThat(stopped.summary(ZoneOffset.UTC), "summary").contains("The user stopped the campaign.").
 			contains("Outcome: not certified: plateau").contains("resume").contains("accept without certification").
 			doesNotContain("Waiting for:").doesNotContain("a full development round produced no stronger candidate");
 		requireThat(campaign.pending(), "retainedDecision").isEqualTo(new PendingDecision.PlateauReached());
@@ -1125,7 +1160,7 @@ public final class StatusReportTest
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		StatusReport resumed = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(resumed.status().label(), "resumedStatus").isEqualTo("awaiting-user");
-		requireThat(resumed.summary(), "resumedSummary").contains("Waiting for: a full development round").
+		requireThat(resumed.summary(ZoneOffset.UTC), "resumedSummary").contains("Waiting for: a full development round").
 			doesNotContain("The user stopped the campaign.");
 	}
 
@@ -1221,9 +1256,10 @@ public final class StatusReportTest
 			choices.add(choice.asString());
 		requireThat(choices, "warningChoices").
 			isEqualTo(List.of("authorize-target", "use-authorized-source", "stop", "revise"));
-		requireThat(report.summary(), "summary").contains("Authority warning: requirement R1 needs an edit at " +
-			"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
-			"choices: authorize target (--target /external/shared.md), use authorized source, stop, revise");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("Authority warning: requirement R1 needs an edit at " +
+				"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
+				"choices: authorize target (--target /external/shared.md), use authorized source, stop, revise");
 	}
 
 	/**
@@ -1247,7 +1283,7 @@ public final class StatusReportTest
 		requireThat(cell(report, ContractFixtures.SMALL_CELL).comparison().readiness(), "smallReadiness").
 			isEqualTo("not ready");
 		requireThat(report.claim(), "claim").contains("3 cells");
-		requireThat(report.summary(), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
 			contains(ContractFixtures.TWO_PROFILES.source());
 
 		JsonNode profiles = report.toJson(JsonMapper.builder().build()).path("trialProfiles");
@@ -1320,7 +1356,7 @@ public final class StatusReportTest
 		Campaign campaign = new Builder().confirmed(contract, 1).working(1).readyBaseline().certificationAttempt(1).
 			failure(failure).outcome(Outcome.INCONCLUSIVE).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(report.summary(), "summary").
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Certification scope: latest versions (6 cells)").
 			contains("Category formatting: weakest cell " + TierFixtures.SMALL_HIGH + "; development cells " +
 				TierFixtures.BIG_MEDIUM + ", " + TierFixtures.SMALL_HIGH).
@@ -1340,7 +1376,7 @@ public final class StatusReportTest
 		StatusReport unconfirmed = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
 		requireThat(unconfirmed.toJson(JsonMapper.builder().build()).path("cellTier").isNull(), "unconfirmed").
 			isTrue();
-		requireThat(unconfirmed.summary(), "unconfirmedSummary").contains("Weakest cells: not yet fixed");
+		requireThat(unconfirmed.summary(ZoneOffset.UTC), "unconfirmedSummary").contains("Weakest cells: not yet fixed");
 	}
 
 	/**

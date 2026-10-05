@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -160,13 +161,16 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	/**
 	 * Returns the summary that the user reads: the status's summary followed by each notice on its own line.
 	 *
+	 * @param zone the user's time zone, in which the summary shows times
 	 * @return the summary text
+	 * @throws NullPointerException if {@code zone} is null
 	 */
-	public String summary()
+	public String summary(ZoneId zone)
 	{
+		requireThat(zone, "zone").isNotNull();
 		String summary;
 		if (status != null)
-			summary = status.summary();
+			summary = status.summary(zone);
 		else
 			summary = certification.summary();
 		if (notices.isEmpty())
