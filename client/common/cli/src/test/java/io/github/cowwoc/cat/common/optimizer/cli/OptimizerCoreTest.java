@@ -783,6 +783,32 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that confirmation refuses the proposal format that predates failure behaviors.
+	 *
+	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*version 7 proposal file.*")
+	public void confirmRefusesProposalWithoutBehaviors() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		// Requirement: R-C18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("held-out/proposal.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.put("format_version", 7);
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+		}
+	}
+
+	/**
 	 * Executes a command and reads the JSON that the user sees.
 	 *
 	 * @param repository the test project and core

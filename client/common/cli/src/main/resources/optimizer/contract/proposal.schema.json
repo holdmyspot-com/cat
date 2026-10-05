@@ -10,9 +10,10 @@
 			"description": "A deterministic check: code that CAT implements decides one requirement of this test from the trial's recorded evidence alone. The kind is one of a closed set and takes only its own parameters. A string parameter may contain {{dimension}} placeholders, which the trial's variation value fills; a regular expression matches the inserted value literally. Kinds and parameters: exact_text (text; optional turn): the reply, without leading and trailing whitespace, is exactly the text. forbidden_text (text; optional turn): the reply does not contain the text. pattern (pattern; optional turn): the reply contains a match of the Java regular expression. count (pattern, and minimum, maximum or both; optional turn): the number of matches lies within the inclusive bounds. file_exists (path, exists): the project-relative path exists, or does not exist, after the trial. file_content (path, text): the file holds exactly the text, ignoring trailing whitespace. exit_status (command, status): the last command that the trial ran and whose command line matches the Java regular expression exited with the status; CAT never runs a command. tool_used (tool, used): the trial called, or never called, the tool. A reply kind with turn examines the reply to that turn, counted from 1; without turn it examines every reply, and count counts across them.",
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["requirement_id", "kind", "parameters", "known_good", "known_bad"],
+			"required": ["requirement_id", "behavior", "kind", "parameters", "known_good", "known_bad"],
 			"properties": {
 				"requirement_id": {"description": "The requirement that the check decides. The test must check it.", "type": "string", "pattern": "\\S"},
+				"behavior": {"description": "The failure behavior that the check detects: one of the behaviors that its requirement lists.", "type": "string", "pattern": "\\S"},
 				"kind": {"type": "string", "pattern": "^(exact_text|forbidden_text|pattern|count|file_exists|file_content|exit_status|tool_used)$"},
 				"parameters": {
 					"type": "object",
@@ -90,12 +91,13 @@
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["id", "description", "source", "trigger"],
+				"required": ["id", "description", "source", "trigger", "behaviors"],
 				"properties": {
 					"id": {"type": "string", "pattern": "\\S"},
 					"description": {"type": "string", "pattern": "\\S"},
 					"source": {"type": "string", "pattern": "\\S"},
-					"trigger": {"description": "The situation that obliges the action, such as \"The user asks to delete a directory\", or null if the requirement applies to every reply. A requirement with a trigger needs at least one test that lists it in absent_triggers.", "type": ["string", "null"], "pattern": "\\S"}
+					"trigger": {"description": "The situation that obliges the action, such as \"The user asks to delete a directory\", or null if the requirement applies to every reply. A requirement with a trigger needs at least one test that lists it in absent_triggers.", "type": ["string", "null"], "pattern": "\\S"},
+					"behaviors": {"description": "Every distinct way in which a reply can fail the requirement, each a lowercase identifier of words joined by hyphens, such as no-tool-call, file-not-read-in-full, search-instead-of-read, read-instead-of-search or unneeded-call. A deterministic check names the one it detects, and a judge names one of them, or other, for each requirement that a trial fails.", "type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}}
 				}
 			}
 		},

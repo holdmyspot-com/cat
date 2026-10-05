@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Creates a judge session request from a trial's evidence and parses its verdict and rationale, for the {@link Driver}.
+ * Creates a judge session request from a trial's evidence and parses its verdict, rationale and failure behaviors, for
+ * the {@link Driver}.
  * <p>
  * The driver supplies the contract's frozen judge profile; the protocol writes the prompt. The driver requests a
  * judge only after every deterministic check of the trial passed and a requirement that needs the judge's
@@ -41,11 +42,13 @@ public interface JudgeProtocol
 		List<Requirement> requirements, List<CheckResult> results, String evidenceSection);
 
 	/**
-	 * Extracts the verdict and its rationale from a judge session.
+	 * Extracts the verdict, its rationale and the behavior of each failure from a judge session.
 	 *
 	 * @param result the judge session's result
-	 * @return the judgment, or empty if the output does not match the judge's result schema
-	 * @throws NullPointerException if {@code result} is null
+	 * @param decided the requirements that the judge decided, which are the only requirements that a failure may name
+	 * @return the judgment, or empty if the output does not match the judge's result schema, or a failure names a
+	 *   requirement outside {@code decided} or a behavior that its requirement does not admit
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	Optional<Judgment> judgment(SessionResult.Completed result);
+	Optional<Judgment> judgment(SessionResult.Completed result, List<Requirement> decided);
 }

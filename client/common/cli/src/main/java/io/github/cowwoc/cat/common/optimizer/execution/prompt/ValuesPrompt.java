@@ -138,7 +138,7 @@ public final class ValuesPrompt implements ValuesProtocol
 				ObjectNode failureNode = failureNodes.addObject();
 				failureNode.put("cell", failure.cellId());
 				ArrayNode failed = failureNode.putArray("failed_requirements");
-				failure.failedRequirements().forEach(failed::add);
+				failure.failedRequirements().forEach(requirement -> failed.add(requirement.requirementId()));
 			}
 		}
 		String turn = prompt.fill(Map.of(

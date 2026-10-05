@@ -244,6 +244,8 @@ public final class ProposalSchema
 			node.put("description", requirement.description());
 			node.put("source", requirement.source());
 			node.put("trigger", requirement.trigger());
+			ArrayNode behaviors = node.putArray("behaviors");
+			requirement.behaviors().forEach(behaviors::add);
 		}
 		ArrayNode categories = root.putArray("categories");
 		for (Category category : contract.categories())
@@ -386,6 +388,7 @@ public final class ProposalSchema
 	private static void write(DeterministicCheck check, ObjectNode node)
 	{
 		node.put("requirement_id", check.requirementId());
+		node.put("behavior", check.behavior());
 		node.put("kind", check.criterion().kind());
 		ObjectNode parameters = node.putObject("parameters");
 		switch (check.criterion())
@@ -524,7 +527,7 @@ public final class ProposalSchema
 			int problemsBefore = problems.size();
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
 				attempt(location, () -> new Requirement(text(node, "id"), text(node, "description"),
-					text(node, "source"), optionalText(node, "trigger"))));
+					text(node, "source"), optionalText(node, "trigger"), strings(node.get("behaviors")))));
 			List<Category> categories = list(root.get("categories"), "$.categories", this::category);
 			JsonNode judgeNode = root.get("judge");
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
@@ -670,8 +673,8 @@ public final class ProposalSchema
 			ControlEvidence knownBad = attempt(location + ".known_bad", () -> control(node.get("known_bad")));
 			if (problems.size() > problemsBefore)
 				return null;
-			return attempt(location, () -> new DeterministicCheck(text(node, "requirement_id"), criterion, knownGood,
-				knownBad));
+			return attempt(location, () -> new DeterministicCheck(text(node, "requirement_id"), text(node, "behavior"),
+				criterion, knownGood, knownBad));
 		}
 
 		/**

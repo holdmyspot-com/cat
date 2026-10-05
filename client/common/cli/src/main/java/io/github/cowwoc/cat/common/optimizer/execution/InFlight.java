@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
@@ -130,13 +131,15 @@ sealed interface InFlight
 	 * @param evidenceSection the rendered trial activity and file changes, unchanged across triage attempts
 	 * @param results the results of the test's deterministic checks
 	 * @param rationale the judge's rationale or, when no judge ran, the record of the failed deterministic checks
+	 * @param failures the requirements that the trial failed, each with its behavior
 	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
 	 *   not name one
 	 * @param attempt the triage attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
 	record Triaging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence, String evidenceSection,
-		List<CheckResult> results, String rationale, String judgeModel, int attempt, int concurrency)
+		List<CheckResult> results, String rationale, List<FailedRequirement> failures, String judgeModel, int attempt,
+		int concurrency)
 	{
 		/**
 		 * Returns the next triage attempt with the same evidence.
@@ -145,8 +148,8 @@ sealed interface InFlight
 		 */
 		Triaging retry()
 		{
-			return new Triaging(key, instance, evidence, evidenceSection, results, rationale, judgeModel, attempt + 1,
-				concurrency);
+			return new Triaging(key, instance, evidence, evidenceSection, results, rationale, failures, judgeModel,
+				attempt + 1, concurrency);
 		}
 	}
 }

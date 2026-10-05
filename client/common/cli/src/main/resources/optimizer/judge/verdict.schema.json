@@ -3,9 +3,22 @@
 	"title": "Judge verdict",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["verdict", "rationale"],
+	"required": ["verdict", "rationale", "failures"],
 	"properties": {
 		"verdict": {"enum": ["pass", "fail"]},
-		"rationale": {"description": "The evidence that decided the verdict.", "type": "string", "pattern": "\\S"}
+		"rationale": {"description": "The evidence that decided the verdict.", "type": "string", "pattern": "\\S"},
+		"failures": {
+			"description": "One item per requirement that the trial failed: at least one when the verdict is fail, none when it is pass.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["requirement_id", "behavior"],
+				"properties": {
+					"requirement_id": {"description": "The id of a requirement listed under Requirements to decide.", "type": "string"},
+					"behavior": {"description": "One of the behaviors that the requirement lists, or other when none of them describes the failure.", "type": "string", "pattern": "\\S"}
+				}
+			}
+		}
 	}
 }

@@ -141,7 +141,7 @@ public final class ProfileTypesTest
 			List.of(new TestDefinition("formatting-test", List.of("missing"), List.of(), "Always.", List.of("Do it."),
 				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(), List.of())));
 		List<Requirement> requirements = List.of(new Requirement("skill", "Follows the skill.",
-			"skills/a/SKILL.md", null));
+			"skills/a/SKILL.md", null, List.of("skill-ignored")));
 		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
 			List.of(), List.of(), requirements,
 			List.of(category), Set.of())), "unknown").contains("'missing'");

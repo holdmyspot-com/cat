@@ -338,6 +338,9 @@ public final class DeriverProtocol
 			node.put("description", coreTask.description());
 			node.put("source", coreTask.source());
 			node.put("trigger", coreTask.trigger());
+			ArrayNode behaviors = node.putArray("behaviors");
+			for (String behavior : coreTask.behaviors())
+				behaviors.add(behavior);
 		}
 		if (!(output.get("categories") instanceof ArrayNode categories))
 			return;

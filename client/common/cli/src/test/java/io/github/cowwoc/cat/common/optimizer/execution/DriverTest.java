@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.execution.fixture.FaultingFileChannel;
 import io.github.cowwoc.cat.common.optimizer.campaign.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
@@ -2395,7 +2396,7 @@ public final class DriverTest
 			harness.judges(request ->
 			{
 				if (request.turns().getFirst().contains(heldOutReply))
-					return harness.judged(new Judgment(Verdict.FAIL, heldOutRationale));
+					return harness.judged(request, Verdict.FAIL, heldOutRationale);
 				return harness.scriptedJudgment(request);
 			});
 			try (Driver driver = harness.open())
@@ -2438,11 +2439,15 @@ public final class DriverTest
 				requireThat(new HashSet<>(failure.propertyNames()), "fields").
 					isEqualTo(Set.of("cell", "test", "failed_requirements"));
 				requireThat(failure.get("cell").asString(), "cell").isEqualTo(TierFixtures.BIG_MEDIUM);
-				List<String> failedRequirements = new ArrayList<>();
-				for (JsonNode requirement : failure.get("failed_requirements"))
-					failedRequirements.add(requirement.asString());
-				requireThat(failedRequirements, "failedRequirements").isEqualTo(contract.findTest(
-					failure.get("test").asString()).orElseThrow().semanticRequirementIds());
+				// Requirement: R-C18
+				String firstSemantic = contract.findTest(failure.get("test").asString()).orElseThrow().
+					semanticRequirementIds().getFirst();
+				Requirement judged = contract.requirements().stream().
+					filter(requirement -> requirement.id().equals(firstSemantic)).findFirst().orElseThrow();
+				JsonNode expected = JsonMapper.builder().build().createArrayNode().addObject().
+					put("requirement_id", judged.id()).put("behavior", judged.behaviors().getFirst());
+				requireThat(failure.get("failed_requirements"), "failedRequirements").
+					isEqualTo(JsonMapper.builder().build().createArrayNode().add(expected));
 			}
 		}
 	}
@@ -2715,10 +2720,10 @@ public final class DriverTest
 	 */
 	private static Contract checkedContract()
 	{
-		DeterministicCheck intact = new DeterministicCheck(Requirement.CORE_TASK.id(),
+		DeterministicCheck intact = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
 			new CheckCriterion.ForbiddenText(null, BROKEN), reply("red, green, blue"), reply(BROKEN));
-		DeterministicCheck asks = new DeterministicCheck("r2", new CheckCriterion.PatternMatch(1, "\\?"), reply(ASKS),
-			reply("Deleted."));
+		DeterministicCheck asks = new DeterministicCheck("r2", "deleted-without-asking",
+			new CheckCriterion.PatternMatch(1, "\\?"), reply(ASKS), reply("Deleted."));
 		return withChecks(Map.of("plain-list", List.of(intact), "delete-directory", List.of(asks, intact)));
 	}
 
@@ -2858,8 +2863,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * A failure records the requirements it failed: those of its failed deterministic checks, or every requirement
-	 * that its judge assessed when the judge failed it.
+	 * A failure records the requirements it failed with their behaviors: the behavior that each failed deterministic
+	 * check detects, or the behavior that the judge named for each requirement it failed.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -2868,6 +2873,7 @@ public final class DriverTest
 	{
 		// Requirement: R-D9
 		// Requirement: R-C9
+		// Requirement: R-C18
 		Contract contract = checkedContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2883,10 +2889,10 @@ public final class DriverTest
 			harness.judges(request ->
 			{
 				if (judgeTest(request).equals("styled-summary"))
-					return harness.judged(new Judgment(Verdict.FAIL, "The summary is unstyled."));
-				return harness.judged(new Judgment(Verdict.PASS, "The trial met the requirements."));
+					return harness.judged(request, Verdict.FAIL, "The summary is unstyled.");
+				return harness.judged(request, Verdict.PASS, "The trial met the requirements.");
 			});
-			Map<String, List<String>> failedRequirements = new HashMap<>();
+			Map<String, List<FailedRequirement>> failedRequirements = new HashMap<>();
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, state ->
@@ -2897,8 +2903,8 @@ public final class DriverTest
 				});
 			}
 			requireThat(failedRequirements, "failedRequirements").isEqualTo(Map.of(
-				"plain-list", List.of(Requirement.CORE_TASK.id()),
-				"styled-summary", contract.findTest("styled-summary").orElseThrow().semanticRequirementIds()));
+				"plain-list", List.of(new FailedRequirement(Requirement.CORE_TASK.id(), "incorrect-result")),
+				"styled-summary", List.of(new FailedRequirement("r1", "wrong-tone"))));
 		}
 	}
 
@@ -3128,9 +3134,9 @@ public final class DriverTest
 		ControlEvidence good = new ControlEvidence(List.of(List.of("Done.")), List.of(), List.of(call), Map.of());
 		ControlEvidence bad = new ControlEvidence(List.of(List.of("Done.")), List.of(),
 			List.of(new ToolCall("Read", null, null), new ToolCall("Bash", "true", 1)), Map.of());
-		DeterministicCheck used = new DeterministicCheck("r1", new CheckCriterion.ToolUsed("Bash", true), good,
-			reply("Done."));
-		DeterministicCheck exited = new DeterministicCheck(Requirement.CORE_TASK.id(),
+		DeterministicCheck used = new DeterministicCheck("r1", "wrong-tone", new CheckCriterion.ToolUsed("Bash", true),
+			good, reply("Done."));
+		DeterministicCheck exited = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
 			new CheckCriterion.ExitStatus("true", 0), good, bad);
 		Contract contract = withChecks(Map.of("plain-list", List.of(used, exited)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3690,7 +3696,7 @@ public final class DriverTest
 				developing().slowStart(new SlowStart(1, 0)).build());
 			harness.trials(_ -> harness.completed("An unrelated trial reply.", DriverHarness.MODEL));
 			String rationale = "Evidence: \"quoted reply\".\nKeep this line.";
-			harness.judges(_ -> harness.judged(new Judgment(verdict, rationale)));
+			harness.judges(request -> harness.judged(request, verdict, rationale));
 			try (Driver driver = harness.open())
 			{
 				driver.step();

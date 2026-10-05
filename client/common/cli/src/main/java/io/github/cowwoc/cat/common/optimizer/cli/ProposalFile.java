@@ -46,7 +46,7 @@ final class ProposalFile
 	 * The version of the proposal layout, including regression scenario citations and key dimensions in each test
 	 * definition, the triggers of the requirements, the shipped capability ranking and the salt.
 	 */
-	private static final int FORMAT_VERSION = 7;
+	private static final int FORMAT_VERSION = 8;
 	private final Path file;
 	private final JsonMapper json;
 

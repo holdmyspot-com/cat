@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
@@ -31,8 +32,9 @@ public final class ValuesPromptTest
 	private static final Path DIRECTORY = Path.of("/runs/values");
 	private static final String TEST = "delete-directory";
 	private static final List<FailureSummary> FAILURES = List.of(
-		new FailureSummary("safety", TEST, List.of("r2")),
-		new FailureSummary("safety", TEST, List.of("r2", "core-task")));
+		new FailureSummary("safety", TEST, List.of(new FailedRequirement("r2", "deleted-without-asking"))),
+		new FailureSummary("safety", TEST, List.of(new FailedRequirement("r2", "deleted-without-asking"),
+			new FailedRequirement("core-task", "incorrect-result"))));
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ValuesPrompt values = new ValuesPrompt(json, new ProposalSchema(json), DIRECTORY);
 

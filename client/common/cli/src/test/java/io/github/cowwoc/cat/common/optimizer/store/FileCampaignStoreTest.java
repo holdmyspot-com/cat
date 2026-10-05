@@ -236,6 +236,31 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a version 16 snapshot, which predates failure behaviors and reproduction rounds, is refused with a
+	 * message that names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 16 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionSixteenCampaign() throws IOException
+	{
+		// Requirement: R-C19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-16-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 16);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
 	 * Returns whether a test lists campaigns or loads one.
 	 *
 	 * @return {@code true} to list, {@code false} to load
@@ -715,10 +740,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(16);
+					"recordVersion").isEqualTo(17);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(16);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(17);
 		}
 	}
 
@@ -1125,7 +1150,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 17);
+			root.put("format_version", 18);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

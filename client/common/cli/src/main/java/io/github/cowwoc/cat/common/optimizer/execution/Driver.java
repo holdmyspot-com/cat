@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
@@ -610,17 +611,20 @@ public final class Driver implements AutoCloseable
 		if (!failed.isEmpty())
 		{
 			String record = checkRecord("Failed deterministic checks:", failed);
+			List<FailedRequirement> failures = failed.stream().
+				map(result -> new FailedRequirement(result.check().requirementId(), result.check().behavior())).
+				toList();
 			if (trial.key().purpose() != Purpose.DEVELOPMENT)
 			{
-				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, results, null,
+				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, failures, null,
 					null);
 				return;
 			}
 			Optional<String> section = renderEvidence(trial.key(), completed, trial.source(), now);
 			if (section.isPresent())
 			{
-				triageQueue.add(new Triaging(trial.key(), instance, completed, section.get(), results, record, null, 1,
-					trial.concurrency()));
+				triageQueue.add(new Triaging(trial.key(), instance, completed, section.get(), results, record, failures,
+					null, 1, trial.concurrency()));
 			}
 			return;
 		}
@@ -628,7 +632,7 @@ public final class Driver implements AutoCloseable
 		if (semanticIds.isEmpty())
 		{
 			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.PASS,
-				checkRecord("Passed deterministic checks:", results), results, null, null);
+				checkRecord("Passed deterministic checks:", results), List.of(), null, null);
 			return;
 		}
 		Map<String, Requirement> requirementById = new HashMap<>();
@@ -755,7 +759,7 @@ public final class Driver implements AutoCloseable
 			case null -> reason = "The judge session failed: " + describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				Optional<Judgment> judgment = context.judge().judgment(completed);
+				Optional<Judgment> judgment = context.judge().judgment(completed, judging.requirements());
 				if (judgment.isPresent())
 				{
 					judged(judging, judgment.get(), completed.model(), now);
@@ -790,7 +794,7 @@ public final class Driver implements AutoCloseable
 		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
 		{
 			complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(), judgment.verdict(),
-				judgment.rationale(), judging.results(), judgeModel, null);
+				judgment.rationale(), judgment.failures(), judgeModel, null);
 			return;
 		}
 		String section = judging.evidenceSection();
@@ -802,7 +806,7 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		triageQueue.add(new Triaging(judging.key(), judging.instance(), judging.evidence(), section, judging.results(),
-			judgment.rationale(), judgeModel, 1, judging.concurrency()));
+			judgment.rationale(), judgment.failures(), judgeModel, 1, judging.concurrency()));
 	}
 
 	/**
@@ -932,24 +936,7 @@ public final class Driver implements AutoCloseable
 	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
 	{
 		complete(triaging.key(), triaging.instance(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
-			triaging.rationale(), triaging.results(), triaging.judgeModel(), triage);
-	}
-
-	/**
-	 * Returns the requirements that a failed trial failed. The judge's verdict covers the requirements it assessed as
-	 * a whole, so a trial that its judge failed fails every one of them.
-	 *
-	 * @param instance the trial's instance
-	 * @param results the results of the trial's deterministic checks
-	 * @return the requirements of the failed checks or, when every check passed, the test's semantic requirements
-	 */
-	private List<String> failedRequirements(TrialInstance instance, List<CheckResult> results)
-	{
-		List<String> failedChecks = results.stream().filter(result -> !result.passed()).
-			map(result -> result.check().requirementId()).distinct().toList();
-		if (!failedChecks.isEmpty())
-			return failedChecks;
-		return campaign.contract().findTest(instance.testId()).orElseThrow().semanticRequirementIds();
+			triaging.rationale(), triaging.failures(), triaging.judgeModel(), triage);
 	}
 
 	/**
@@ -963,23 +950,18 @@ public final class Driver implements AutoCloseable
 	 * @param trial the trial session's result
 	 * @param verdict the trial's label
 	 * @param rationale the judge's rationale or, when no judge ran, the record of the trial's deterministic checks
-	 * @param results the results of the trial's deterministic checks
+	 * @param failures the requirements that a failed trial failed, each with its behavior; empty for a pass
 	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
 	 *   not name one
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
 	private void complete(TrialKey key, TrialInstance instance, int concurrency, SessionResult.Completed trial,
-		Verdict verdict, String rationale, List<CheckResult> results, String judgeModel, Triage triage)
+		Verdict verdict, String rationale, List<FailedRequirement> failures, String judgeModel, Triage triage)
 		throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
-		List<String> failedRequirements;
-		if (verdict == Verdict.FAIL)
-			failedRequirements = failedRequirements(instance, results);
-		else
-			failedRequirements = List.of();
-		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failedRequirements,
+		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
 			triage, observed, trialInputTokens(trial), trial.responses());
 		if (campaign.identity().differences(observed).isEmpty())
 		{

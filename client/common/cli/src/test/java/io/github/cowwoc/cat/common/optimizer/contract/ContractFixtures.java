@@ -116,8 +116,10 @@ public final class ContractFixtures
 				new VariationValue("vendor", "vendor", 0.125), new VariationValue("coverage", "coverage", 0.125),
 				new VariationValue("venv", "venv", 0.125)))), List.of("target"), List.of(), List.of(), List.of());
 		List<Requirement> requirements = List.of(
-			new Requirement("r1", "Answers use the requested tone.", "CLAUDE.md", null),
-			new Requirement("r2", "Never delete a directory without asking.", safetySource, null), Requirement.CORE_TASK);
+			new Requirement("r1", "Answers use the requested tone.", "CLAUDE.md", null,
+				List.of("wrong-tone")),
+			new Requirement("r2", "Never delete a directory without asking.", safetySource, null,
+				List.of("deleted-without-asking")), Requirement.CORE_TASK);
 		List<Category> categories = List.of(
 			new Category("formatting", "Tone errors hide behind safe answers.", new RiskRank(2),
 				List.of(styled, plain)),

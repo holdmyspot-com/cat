@@ -40,7 +40,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C12
 		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
 		ObjectNode check = (ObjectNode) json.readTree("""
-			{"requirement_id":"r1","kind":"forbidden_text","parameters":{"text":"forbidden"},
+			{"requirement_id":"r1","behavior":"wrong-tone","kind":"forbidden_text","parameters":{"text":"forbidden"},
 			 "known_good":{"replies":[["Checking first.","Done."]],"files":[],"tool_calls":[],"choices":[]},
 			 "known_bad":{"replies":[["forbidden progress","Done."]],"files":[],"tool_calls":[],"choices":[]}}
 			""");
@@ -349,6 +349,46 @@ public final class ProposalSchemaTest
 			contains("$.requirements[0].trigger");
 		requireThat(String.join(" | ", rejection(changed(absent, json.createArrayNode().add(" "))).problems()),
 			"blankAbsentTrigger").contains("$.categories[0].tests[0].absent_triggers[0]");
+	}
+
+	/**
+	 * Verifies that each requirement lists its failure behaviors as lowercase words joined by hyphens, that each check
+	 * names the behavior it detects, and that a stored contract keeps both.
+	 *
+	 * @throws InvalidProposalException if the contract is rejected
+	 */
+	@Test
+	public void requiresFailureBehaviors() throws InvalidProposalException
+	{
+		// Requirement: R-C18
+		String[] behaviors = {"requirements", "0", "behaviors"};
+
+		requireThat(rejection(changed(behaviors, null)).problems(), "missingBehaviors").
+			contains("$.requirements[0].behaviors: required property is missing");
+		requireThat(String.join(" | ", rejection(changed(behaviors, json.createArrayNode())).problems()),
+			"emptyBehaviors").contains("$.requirements[0].behaviors");
+		requireThat(String.join(" | ", rejection(changed(behaviors, json.createArrayNode().add("Wrong tone"))).
+			problems()), "spacedBehavior").contains("$.requirements[0].behaviors[0]");
+		requireThat(String.join(" | ", rejection(changed(behaviors, json.createArrayNode().add("other"))).
+			problems()), "otherBehavior").contains("'other'");
+
+		Contract contract = ContractFixtures.contract();
+		requireThat(contract.requirements().getFirst().behaviors(), "behaviors").isEqualTo(List.of("wrong-tone"));
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(contract));
+		ObjectNode check = (ObjectNode) json.readTree("""
+			{"requirement_id":"r1","behavior":"wrong-tone","kind":"forbidden_text","parameters":{"text":"loud"},
+			 "known_good":{"replies":[["calm"]],"files":[],"tool_calls":[],"choices":[]},
+			 "known_bad":{"replies":[["loud"]],"files":[],"tool_calls":[],"choices":[]}}
+			""");
+		((ArrayNode) stored.get("categories").get(0).get("tests").get(1).get("checks")).add(check);
+		Contract reread = schema().parse(json.writeValueAsString(stored));
+		requireThat(reread.findTest("plain-list").orElseThrow().checks().getFirst().behavior(), "check.behavior").
+			isEqualTo("wrong-tone");
+		requireThat(schema().parse(schema().toJson(reread)), "reread").isEqualTo(reread);
+
+		check.remove("behavior");
+		requireThat(rejection(json.writeValueAsString(stored)).problems(), "missingCheckBehavior").
+			contains("$.categories[0].tests[1].checks[0].behavior: required property is missing");
 	}
 
 	/**
@@ -663,8 +703,9 @@ public final class ProposalSchemaTest
 		ControlEvidence bad) throws InvalidProposalException
 	{
 		// Requirement: R-C9
-		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), criterion, good, bad);
-		DiscardedCheck discarded = new DiscardedCheck(new DeterministicCheck("r1", criterion, bad, good),
+		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result", criterion,
+			good, bad);
+		DiscardedCheck discarded = new DiscardedCheck(new DeterministicCheck("r1", "wrong-tone", criterion, bad, good),
 			"It rejected its known-good control: the evidence differs.");
 		Contract original = withChecks(List.of(check), List.of(discarded));
 
@@ -692,8 +733,8 @@ public final class ProposalSchemaTest
 		// Requirement: R-C9
 		ControlEvidence list = new ControlEvidence(List.of(List.of("- red\n- green\n- blue")), List.of(), List.of(),
 			Map.of());
-		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), new PatternMatch(1, "red"),
-			list, list);
+		DeterministicCheck lenient = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
+			new PatternMatch(1, "red"), list, list);
 		JsonNode stored = json.readTree(schema().toJson(ContractFixtures.contract()));
 		JsonNode written = json.readTree(schema().toJson(withChecks(List.of(), List.of(new DiscardedCheck(lenient,
 			"placeholder")))));
@@ -721,6 +762,7 @@ public final class ProposalSchemaTest
 		// Requirement: R-C9
 		ObjectNode check = json.createObjectNode();
 		check.put("requirement_id", "r1");
+		check.put("behavior", "wrong-tone");
 		check.put("kind", "exact_text");
 		check.putObject("parameters").put("pattern", "x");
 		ObjectNode control = json.createObjectNode();

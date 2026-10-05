@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
@@ -20,9 +21,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -92,7 +95,8 @@ public final class JudgePrompt implements JudgeProtocol
 			requirementArray.addObject().
 				put("id", requirement.id()).
 				put("description", requirement.description()).
-				put("source", requirement.source());
+				put("source", requirement.source()).
+				set("behaviors", json.valueToTree(requirement.behaviors()));
 		}
 		ArrayNode resultArray = json.createArrayNode();
 		for (CheckResult result : results)
@@ -143,28 +147,72 @@ public final class JudgePrompt implements JudgeProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The output is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
-	 * fence, that holds exactly a {@code verdict} of {@code pass} or {@code fail} and a non-blank {@code rationale}, as
-	 * CAT's result schema requires. The judgment keeps the rationale as the judge wrote it.
+	 * fence, that holds exactly a {@code verdict} of {@code pass} or {@code fail}, a non-blank {@code rationale} and
+	 * {@code failures}, as CAT's result schema requires. A failed verdict names at least one failure and a passing
+	 * verdict none. Each failure names a decided requirement, at most once, and a behavior that the requirement lists
+	 * or {@code other}. The judgment keeps the rationale as the judge wrote it.
 	 */
 	@Override
-	public Optional<Judgment> judgment(SessionResult.Completed result)
+	public Optional<Judgment> judgment(SessionResult.Completed result, List<Requirement> decided)
 	{
 		requireThat(result, "result").isNotNull();
+		requireThat(decided, "decided").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
-		if (output.isEmpty() || output.get().size() != 2)
+		if (output.isEmpty() || output.get().size() != 3)
 			return Optional.empty();
-		JsonNode verdict = output.get().get("verdict");
+		JsonNode verdictNode = output.get().get("verdict");
 		JsonNode rationale = output.get().get("rationale");
-		if (verdict == null || !verdict.isString() || rationale == null || !rationale.isString() ||
+		if (verdictNode == null || !verdictNode.isString() || rationale == null || !rationale.isString() ||
 			rationale.asString().isBlank())
 		{
 			return Optional.empty();
 		}
-		return switch (verdict.asString())
+		Verdict verdict;
+		switch (verdictNode.asString())
 		{
-			case "pass" -> Optional.of(new Judgment(Verdict.PASS, rationale.asString()));
-			case "fail" -> Optional.of(new Judgment(Verdict.FAIL, rationale.asString()));
-			default -> Optional.empty();
-		};
+			case "pass" -> verdict = Verdict.PASS;
+			case "fail" -> verdict = Verdict.FAIL;
+			default ->
+			{
+				return Optional.empty();
+			}
+		}
+		Optional<List<FailedRequirement>> failures = failures(output.get().get("failures"), decided);
+		if (failures.isEmpty() || failures.get().isEmpty() == (verdict == Verdict.FAIL))
+			return Optional.empty();
+		return Optional.of(new Judgment(verdict, rationale.asString(), failures.get()));
+	}
+
+	/**
+	 * Returns the failures that a judge named.
+	 *
+	 * @param node the judge's {@code failures} value, or {@code null} if it is absent
+	 * @param decided the requirements that the judge decided
+	 * @return the failures, or empty if a failure does not match the result schema, names a requirement outside
+	 *   {@code decided} or more than once, or names a behavior that its requirement does not admit
+	 */
+	private static Optional<List<FailedRequirement>> failures(JsonNode node, List<Requirement> decided)
+	{
+		if (node == null || !node.isArray())
+			return Optional.empty();
+		Map<String, Requirement> requirementById = new HashMap<>();
+		for (Requirement requirement : decided)
+			requirementById.put(requirement.id(), requirement);
+		List<FailedRequirement> failures = new ArrayList<>();
+		Set<String> named = new HashSet<>();
+		for (JsonNode element : node)
+		{
+			if (!element.isObject() || element.size() != 2)
+				return Optional.empty();
+			JsonNode requirementId = element.get("requirement_id");
+			JsonNode behavior = element.get("behavior");
+			if (requirementId == null || !requirementId.isString() || behavior == null || !behavior.isString())
+				return Optional.empty();
+			Requirement requirement = requirementById.get(requirementId.asString());
+			if (requirement == null || !requirement.admits(behavior.asString()) || !named.add(requirement.id()))
+				return Optional.empty();
+			failures.add(new FailedRequirement(requirement.id(), behavior.asString()));
+		}
+		return Optional.of(failures);
 	}
 }

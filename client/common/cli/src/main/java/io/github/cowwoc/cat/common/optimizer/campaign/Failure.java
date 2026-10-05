@@ -16,15 +16,15 @@ import java.util.List;
  * @param instance the instance that failed: the targeted copy of a development failure's instance, or the held-out
  *   instance of a certification failure
  * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
- * @param failedRequirements the identifiers of the requirements that the failure violated: those of its failed
- *   deterministic checks or, when its judge failed it, every requirement that the judge assessed
+ * @param failedRequirements the requirements that the failure violated, each with its behavior: those of its failed
+ *   deterministic checks or, when its judge failed it, those that the judge named
  * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
  *   failure that a build without impacts recorded
  * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
  * @param responses each turn's assistant messages in order, ending with its final response
  */
-public record Failure(TrialInstance instance, String rationale, List<String> failedRequirements, Triage triage,
-	List<DiagnosticRerun> reruns, List<List<String>> responses)
+public record Failure(TrialInstance instance, String rationale, List<FailedRequirement> failedRequirements,
+	Triage triage, List<DiagnosticRerun> reruns, List<List<String>> responses)
 {
 	/**
 	 * Creates a failure.
@@ -32,13 +32,13 @@ public record Failure(TrialInstance instance, String rationale, List<String> fai
 	 * @param instance the instance that failed: the targeted copy of a development failure's instance, or the
 	 *   held-out instance of a certification failure
 	 * @param rationale the judge's explanation of the failure, or the record of each failed deterministic check
-	 * @param failedRequirements the identifiers of the requirements that the failure violated: those of its failed
-	 *   deterministic checks or, when its judge failed it, every requirement that the judge assessed
+	 * @param failedRequirements the requirements that the failure violated, each with its behavior: those of its
+	 *   failed deterministic checks or, when its judge failed it, those that the judge named
 	 * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
 	 *   failure that a build without impacts recorded
 	 * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
 	 * @param responses each turn's assistant messages in order, ending with its final response
-	 * @throws NullPointerException if an argument other than {@code triage}, a requirement identifier, a rerun, a
+	 * @throws NullPointerException if an argument other than {@code triage}, a failed requirement, a rerun, a
 	 *   turn's messages or an assistant message is null
 	 */
 	public Failure
@@ -72,7 +72,7 @@ public record Failure(TrialInstance instance, String rationale, List<String> fai
 	/**
 	 * Returns what development may learn of this failure when its instance is held out.
 	 *
-	 * @return the failure's cell, test and failed requirements
+	 * @return the failure's cell, test and failed requirements with their behaviors
 	 */
 	public FailureSummary summary()
 	{

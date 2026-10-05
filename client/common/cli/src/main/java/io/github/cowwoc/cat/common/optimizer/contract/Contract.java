@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,7 +40,8 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
 	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
-	 *   requirement that the contract does not list, the contract does not list {@link Requirement#CORE_TASK} or a
+	 *   requirement that the contract does not list, a check detects a behavior that its requirement does not list,
+	 *   the contract does not list {@link Requirement#CORE_TASK} or a
 	 *   test does not check it, a test leaves absent the trigger of a requirement that the contract does not list or
 	 *   that always applies, a requirement with a trigger is left absent by no test, a category has no cell, or a cell
 	 *   names a category that the contract does not list
@@ -92,6 +94,19 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 						throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
 							requirementId + "', which the contract does not list. Listed requirements: " +
 							requirementIds);
+					}
+				}
+				List<DeterministicCheck> proposed = new ArrayList<>(test.checks());
+				for (DiscardedCheck discarded : test.discardedChecks())
+					proposed.add(discarded.check());
+				for (DeterministicCheck check : proposed)
+				{
+					Requirement requirement = requirementById.get(check.requirementId());
+					if (requirement != null && !requirement.behaviors().contains(check.behavior()))
+					{
+						throw new IllegalArgumentException("The test '" + test.id() + "' has a check for the requirement '" +
+							requirement.id() + "' that detects the behavior '" + check.behavior() + "', which the " +
+							"requirement does not list. Listed behaviors: " + requirement.behaviors());
 					}
 				}
 				if (!test.requirementIds().contains(coreTask))

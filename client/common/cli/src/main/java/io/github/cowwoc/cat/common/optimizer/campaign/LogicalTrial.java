@@ -20,9 +20,8 @@ import java.util.List;
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
  * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
  *   deterministic checks, or {@code null} if the trial is not judged
- * @param failedRequirements the identifiers of the requirements that a failed trial violated: those of its failed
- *   deterministic checks or, when its judge failed it, every requirement that the judge assessed; empty unless the
- *   trial failed
+ * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its failed
+ *   deterministic checks or, when its judge failed it, those that the judge named; empty unless the trial failed
  * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
  *   another purpose or was judged by a build that did not decide impacts
  * @param infrastructureFailures the runs that ended without an outcome and count toward
@@ -32,7 +31,7 @@ import java.util.List;
  * @param responses each completed turn's assistant messages in order; empty before the trial is judged
  */
 public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
-	TrialState state, Verdict verdict, String rationale, List<String> failedRequirements, Triage triage,
+	TrialState state, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements, Triage triage,
 	int infrastructureFailures,
 	List<InfrastructureAttempt> infrastructureAttempts, int observations, List<List<String>> responses)
 {
@@ -47,9 +46,9 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
 	 * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
 	 *   deterministic checks, or {@code null} if the trial is not judged
-	 * @param failedRequirements the identifiers of the requirements that a failed trial violated: those of its
-	 *   failed deterministic checks or, when its judge failed it, every requirement that the judge assessed; empty
-	 *   unless the trial failed
+	 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
+	 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty unless the trial
+	 *   failed
 	 * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
 	 *   another purpose or was judged by a build that did not decide impacts
 	 * @param infrastructureFailures the runs that ended without an outcome and count toward
@@ -59,7 +58,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param responses each completed turn's assistant messages in order; empty before the trial is judged
 	 * @throws NullPointerException if {@code key}, {@code instance}, {@code identity}, {@code allocation},
 	 *   {@code state}, {@code failedRequirements}, {@code infrastructureAttempts} or {@code responses} are null, or a
-	 *   requirement identifier, a turn's messages or an assistant message is null
+	 *   failed requirement, a turn's messages or an assistant message is null
 	 * @throws IllegalArgumentException if a count is negative, the instance's cell differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
 	 *   or that state lacks a verdict, only one of {@code rationale} and {@code verdict} has a value,

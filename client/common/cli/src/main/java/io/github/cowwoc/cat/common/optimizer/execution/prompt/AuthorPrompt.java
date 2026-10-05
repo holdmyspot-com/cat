@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
@@ -154,7 +155,11 @@ public final class AuthorPrompt implements AuthorProtocol
 				failureNode.put("cell", failure.cellId());
 				failureNode.put("test", failure.testId());
 				ArrayNode failedRequirements = failureNode.putArray("failed_requirements");
-				failure.failedRequirements().forEach(failedRequirements::add);
+				for (FailedRequirement failed : failure.failedRequirements())
+				{
+					failedRequirements.addObject().put("requirement_id", failed.requirementId()).
+						put("behavior", failed.behavior());
+				}
 			}
 		}
 		String turn = prompt.fill(Map.ofEntries(

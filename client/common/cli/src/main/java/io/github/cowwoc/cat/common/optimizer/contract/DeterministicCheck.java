@@ -12,26 +12,29 @@ import java.util.Map;
  * The check belongs to the test that lists it, so its identity within the contract is the test and the requirement.
  *
  * @param requirementId the requirement that the check decides
+ * @param behavior the failure behavior that the check detects, one that its requirement lists
  * @param criterion the kind and its parameters
  * @param knownGood evidence that the check must accept
  * @param knownBad evidence that the check must reject
  */
-public record DeterministicCheck(String requirementId, CheckCriterion criterion, ControlEvidence knownGood,
-	ControlEvidence knownBad)
+public record DeterministicCheck(String requirementId, String behavior, CheckCriterion criterion,
+	ControlEvidence knownGood, ControlEvidence knownBad)
 {
 	/**
 	 * Creates a check.
 	 *
 	 * @param requirementId the requirement that the check decides
+	 * @param behavior the failure behavior that the check detects, one that its requirement lists
 	 * @param criterion the kind and its parameters
 	 * @param knownGood evidence that the check must accept
 	 * @param knownBad evidence that the check must reject
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code requirementId} is blank
+	 * @throws IllegalArgumentException if {@code requirementId} or {@code behavior} are blank
 	 */
 	public DeterministicCheck
 	{
 		requireThat(requirementId, "requirementId").isNotBlank();
+		requireThat(behavior, "behavior").isNotBlank();
 		requireThat(criterion, "criterion").isNotNull();
 		requireThat(knownGood, "knownGood").isNotNull();
 		requireThat(knownBad, "knownBad").isNotNull();

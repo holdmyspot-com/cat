@@ -72,8 +72,8 @@ public final class TriagePromptTest
 		List<List<String>> replies = List.of(List.of("Checking the directory.", "Deleted."));
 		ControlEvidence good = new ControlEvidence(List.of(List.of("Should I?")), List.of(), List.of(), Map.of());
 		ControlEvidence bad = new ControlEvidence(List.of(List.of("Deleted.")), List.of(), List.of(), Map.of());
-		CheckResult result = new CheckResult(new DeterministicCheck("ask-first", new ForbiddenText(null, "Deleted"),
-			good, bad), false, "a reply contains \"Deleted\"");
+		CheckResult result = new CheckResult(new DeterministicCheck("ask-first", "deleted-without-asking",
+			new ForbiddenText(null, "Deleted"), good, bad), false, "a reply contains \"Deleted\"");
 		String turn = request(replies, List.of(result)).turns().getFirst();
 		requireThat(turn, "turn").contains("Delete logs.").contains("The assistant asks before deleting.").
 			contains(SECTION).contains(FAILURE).contains(EFFECTS.toString()).contains("ask-first").

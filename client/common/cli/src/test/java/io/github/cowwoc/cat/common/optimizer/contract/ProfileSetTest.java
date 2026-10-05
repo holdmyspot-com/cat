@@ -46,10 +46,10 @@ public final class ProfileSetTest
 	 */
 	private static List<Requirement> requirements()
 	{
-		return List.of(new Requirement("skill", "Follows the skill.", "skills/a/SKILL.md", null),
-			new Requirement("agent", "Follows the agent.", "agents/b.md", null),
-			new Requirement("rule", "Follows the rule.", "CLAUDE.md", null),
-			new Requirement("core", "Does what the turn asked.", "CAT", null));
+		return List.of(new Requirement("skill", "Follows the skill.", "skills/a/SKILL.md", null, List.of("skill-ignored")),
+			new Requirement("agent", "Follows the agent.", "agents/b.md", null, List.of("agent-ignored")),
+			new Requirement("rule", "Follows the rule.", "CLAUDE.md", null, List.of("rule-ignored")),
+			new Requirement("core", "Does what the turn asked.", "CAT", null, List.of("incorrect-result")));
 	}
 
 	/**

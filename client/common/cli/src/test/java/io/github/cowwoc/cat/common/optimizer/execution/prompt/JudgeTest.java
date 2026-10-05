@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ForbiddenText;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
@@ -38,7 +39,12 @@ public final class JudgeTest
 	private static final Path TRANSCRIPT = Path.of("/runs/trial-1/artifacts/transcript.jsonl");
 	private static final String SECTION = "Turn 1\nTool: shell\nInput:\ntrue\nExit status: 0\nOutput:\ncomplete\n";
 	private static final Requirement ASK_FIRST = new Requirement("r2", "Never delete a directory without asking.",
-		"rules/safety.md", null);
+		"rules/safety.md", null, List.of("deleted-without-asking"));
+	private static final String PASS = "{\"verdict\": \"pass\", \"rationale\": \"It asked.\", \"failures\": []}";
+	private static final String FAIL = "{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\", \"failures\": " +
+		"[{\"requirement_id\": \"r2\", \"behavior\": \"deleted-without-asking\"}]}";
+	private static final Judgment FAILED = new Judgment(Verdict.FAIL, "It deleted logs.",
+		List.of(new FailedRequirement("r2", "deleted-without-asking")));
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final JudgePrompt prompt = new JudgePrompt(json, JUDGE_DIRECTORY);
 
@@ -69,20 +75,21 @@ public final class JudgeTest
 	 */
 	private Optional<Judgment> verdictOf(String response)
 	{
-		return prompt.judgment(judged(List.of(List.of(response))));
+		return prompt.judgment(judged(List.of(List.of(response))), List.of(ASK_FIRST));
 	}
 
 	/**
-	 * Verifies that a bare JSON object is the judge's output, and that its rationale is kept with the verdict.
+	 * Verifies that a bare JSON object is the judge's output, and that its rationale and the behavior of each failure
+	 * are kept with the verdict.
 	 */
 	@Test
 	public void acceptsABareObject()
 	{
 		// Requirement: R-E13
-		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"The reply asked first.\"}"), "verdict").
-			isEqualTo(Optional.of(new Judgment(Verdict.PASS, "The reply asked first.")));
-		requireThat(verdictOf("\n  {\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\"}\n"), "padded").
-			isEqualTo(Optional.of(new Judgment(Verdict.FAIL, "It deleted logs.")));
+		// Requirement: R-C18
+		requireThat(verdictOf(PASS), "verdict").isEqualTo(Optional.of(new Judgment(Verdict.PASS, "It asked.",
+			List.of())));
+		requireThat(verdictOf("\n  " + FAIL + "\n"), "padded").isEqualTo(Optional.of(FAILED));
 	}
 
 	/**
@@ -93,10 +100,9 @@ public final class JudgeTest
 	public void acceptsASinglyFencedObject()
 	{
 		// Requirement: R-E13
-		requireThat(verdictOf("```json\n{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\"}\n```"),
-			"backticks").isEqualTo(Optional.of(new Judgment(Verdict.FAIL, "It deleted logs.")));
-		requireThat(verdictOf("~~~~\n{\"verdict\": \"pass\", \"rationale\": \"It asked.\"}\n~~~~\n"), "tildes").
-			isEqualTo(Optional.of(new Judgment(Verdict.PASS, "It asked.")));
+		requireThat(verdictOf("```json\n" + FAIL + "\n```"), "backticks").isEqualTo(Optional.of(FAILED));
+		requireThat(verdictOf("~~~~\n" + PASS + "\n~~~~\n"), "tildes").
+			isEqualTo(Optional.of(new Judgment(Verdict.PASS, "It asked.", List.of())));
 	}
 
 	/**
@@ -106,9 +112,8 @@ public final class JudgeTest
 	public void rejectsTwoObjects()
 	{
 		// Requirement: R-E13
-		String object = "{\"verdict\": \"pass\", \"rationale\": \"It asked.\"}";
-		requireThat(verdictOf(object + "\n" + object), "bare").isEmpty();
-		requireThat(verdictOf("```json\n" + object + "\n```\n```json\n" + object + "\n```"), "fenced").isEmpty();
+		requireThat(verdictOf(PASS + "\n" + PASS), "bare").isEmpty();
+		requireThat(verdictOf("```json\n" + PASS + "\n```\n```json\n" + PASS + "\n```"), "fenced").isEmpty();
 	}
 
 	/**
@@ -118,31 +123,72 @@ public final class JudgeTest
 	public void rejectsProseAroundTheObject()
 	{
 		// Requirement: R-E13
-		String object = "{\"verdict\": \"pass\", \"rationale\": \"It asked.\"}";
-		requireThat(verdictOf("Verdict:\n" + object), "before").isEmpty();
-		requireThat(verdictOf(object + "\nThat is my verdict."), "after").isEmpty();
-		requireThat(verdictOf("Here it is:\n```json\n" + object + "\n```"), "beforeFence").isEmpty();
-		requireThat(verdictOf("```json\n" + object + "\nDone.\n```"), "insideFence").isEmpty();
-		requireThat(verdictOf("```json\n" + object + "\n``"), "unclosedFence").isEmpty();
+		requireThat(verdictOf("Verdict:\n" + PASS), "before").isEmpty();
+		requireThat(verdictOf(PASS + "\nThat is my verdict."), "after").isEmpty();
+		requireThat(verdictOf("Here it is:\n```json\n" + PASS + "\n```"), "beforeFence").isEmpty();
+		requireThat(verdictOf("```json\n" + PASS + "\nDone.\n```"), "insideFence").isEmpty();
+		requireThat(verdictOf("```json\n" + PASS + "\n``"), "unclosedFence").isEmpty();
 	}
 
 	/**
 	 * Verifies that an object that violates the result schema is rejected: an unknown verdict, a missing or blank
-	 * rationale, an extra property, a repeated property and a value that is not an object.
+	 * rationale, missing failures, an extra property, a repeated property and a value that is not an object.
 	 */
 	@Test
 	public void rejectsSchemaViolations()
 	{
 		// Requirement: R-E13
-		requireThat(verdictOf("{\"verdict\": \"partial\", \"rationale\": \"Half.\"}"), "verdict").isEmpty();
-		requireThat(verdictOf("{\"verdict\": \"pass\"}"), "missingRationale").isEmpty();
-		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"  \"}"), "blankRationale").isEmpty();
-		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": 3}"), "numericRationale").isEmpty();
-		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"It asked.\", \"score\": 1}"), "extra").
+		requireThat(verdictOf("{\"verdict\": \"partial\", \"rationale\": \"Half.\", \"failures\": []}"), "verdict").
 			isEmpty();
-		requireThat(verdictOf("{\"verdict\": \"fail\", \"verdict\": \"pass\", \"rationale\": \"It asked.\"}"),
-			"repeated").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"failures\": []}"), "missingRationale").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"  \", \"failures\": []}"), "blankRationale").
+			isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": 3, \"failures\": []}"), "numericRationale").
+			isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"It asked.\"}"), "missingFailures").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"It asked.\", \"failures\": [], \"score\": 1}"),
+			"extra").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"fail\", \"verdict\": \"pass\", \"rationale\": \"It asked.\", " +
+			"\"failures\": []}"), "repeated").isEmpty();
 		requireThat(verdictOf("[\"pass\"]"), "array").isEmpty();
+	}
+
+	/**
+	 * Verifies that a failed verdict names, for each failed requirement, one of the requirement's listed behaviors or
+	 * {@code other}, and that a judgment naming an unlisted behavior, a requirement the judge does not decide, no
+	 * failure, or a failure beside a passing verdict is refused.
+	 */
+	@Test
+	public void failureNamesAListedBehavior()
+	{
+		// Requirement: R-C18
+		requireThat(verdictOf(failure("r2", "other")), "other").isEqualTo(Optional.of(new Judgment(Verdict.FAIL,
+			"It deleted logs.", List.of(new FailedRequirement("r2", "other")))));
+		requireThat(verdictOf(failure("r2", "wrong-tone")), "unlisted").isEmpty();
+		requireThat(verdictOf(failure("core-task", "incorrect-result")), "undecided").isEmpty();
+		requireThat(verdictOf(failure("r2", "")), "blank").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\", \"failures\": []}"),
+			"noFailure").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"pass\", \"rationale\": \"It asked.\", \"failures\": " +
+			"[{\"requirement_id\": \"r2\", \"behavior\": \"deleted-without-asking\"}]}"), "passWithFailure").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\", \"failures\": " +
+			"[{\"requirement_id\": \"r2\", \"behavior\": \"deleted-without-asking\"}, " +
+			"{\"requirement_id\": \"r2\", \"behavior\": \"other\"}]}"), "repeatedRequirement").isEmpty();
+		requireThat(verdictOf("{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\", \"failures\": " +
+			"[{\"requirement_id\": \"r2\", \"behavior\": \"other\", \"note\": \"x\"}]}"), "extraField").isEmpty();
+	}
+
+	/**
+	 * Returns a failed verdict that names one failure.
+	 *
+	 * @param requirementId the failed requirement
+	 * @param behavior the behavior through which it failed
+	 * @return the judge's output
+	 */
+	private static String failure(String requirementId, String behavior)
+	{
+		return "{\"verdict\": \"fail\", \"rationale\": \"It deleted logs.\", \"failures\": [{\"requirement_id\": \"" +
+			requirementId + "\", \"behavior\": \"" + behavior + "\"}]}";
 	}
 
 	/**
@@ -152,12 +198,12 @@ public final class JudgeTest
 	public void readsOnlyTheFinalResponse()
 	{
 		// Requirement: R-E13
-		String object = "{\"verdict\": \"pass\", \"rationale\": \"It asked.\"}";
-		Optional<Judgment> proseLast = prompt.judgment(judged(List.of(List.of(object, "I am done."))));
+		List<Requirement> decided = List.of(ASK_FIRST);
+		Optional<Judgment> proseLast = prompt.judgment(judged(List.of(List.of(PASS, "I am done."))), decided);
 		requireThat(proseLast, "proseLast").isEmpty();
-		requireThat(prompt.judgment(judged(List.of(List.of("Thinking.", object)))), "objectLast").
-			isEqualTo(Optional.of(new Judgment(Verdict.PASS, "It asked.")));
-		requireThat(prompt.judgment(judged(List.of())), "none").isEmpty();
+		requireThat(prompt.judgment(judged(List.of(List.of("Thinking.", PASS))), decided), "objectLast").
+			isEqualTo(Optional.of(new Judgment(Verdict.PASS, "It asked.", List.of())));
+		requireThat(prompt.judgment(judged(List.of()), decided), "none").isEmpty();
 	}
 
 	/**
@@ -241,7 +287,7 @@ public final class JudgeTest
 			List.of());
 		ControlEvidence good = new ControlEvidence(List.of(List.of("Should I?")), List.of(), List.of(), Map.of());
 		ControlEvidence bad = new ControlEvidence(List.of(List.of("Deleted.")), List.of(), List.of(), Map.of());
-		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(),
+		DeterministicCheck check = new DeterministicCheck(Requirement.CORE_TASK.id(), "incorrect-result",
 			new ForbiddenText(null, "Deleted"), good, bad);
 		CheckResult result = new CheckResult(check, true, "no reply contains \"Deleted\"");
 
@@ -253,6 +299,10 @@ public final class JudgeTest
 		requireThat(requirements.get(0).get("id").asString(), "id").isEqualTo(ASK_FIRST.id());
 		requireThat(requirements.get(0).get("description").asString(), "description").
 			isEqualTo(ASK_FIRST.description());
+		// Requirement: R-C18
+		requireThat(requirements.get(0).get("behaviors").get(0).asString(), "behaviors").
+			isEqualTo("deleted-without-asking");
+		requireThat(turn, "turn").contains("`failures`").contains("`other`");
 		requireThat(turn, "turn").doesNotContain(Requirement.CORE_TASK.description());
 		JsonNode results = jsonAfter(turn, "### Deterministic results");
 		requireThat(results.size(), "results.size()").isEqualTo(1);

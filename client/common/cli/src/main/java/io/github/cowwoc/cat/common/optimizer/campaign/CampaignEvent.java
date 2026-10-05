@@ -134,15 +134,15 @@ public sealed interface CampaignEvent
 	 * @param verdict the trial's label
 	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 	 *   deterministic checks
-	 * @param failedRequirements the identifiers of the requirements that a failed trial violated: those of its failed
-	 *   deterministic checks or, when its judge failed it, every requirement that the judge assessed; empty for a pass
+	 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
+	 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 */
-	record Complete(TrialKey key, Verdict verdict, String rationale, List<String> failedRequirements, Triage triage,
-		MeasurementIdentity observed, Long inputTokens, List<List<String>> responses)
+	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements,
+		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses)
 		implements CampaignEvent
 	{
 		/**
@@ -152,15 +152,14 @@ public sealed interface CampaignEvent
 		 * @param verdict the trial's label
 		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
 		 *   deterministic checks
-		 * @param failedRequirements the identifiers of the requirements that a failed trial violated: those of its
-		 *   failed deterministic checks or, when its judge failed it, every requirement that the judge assessed; empty
-		 *   for a pass
+		 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
+		 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty for a pass
 		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
-		 *   {@code failedRequirements}, {@code observed}, {@code responses}, a requirement identifier, a turn's
+		 *   {@code failedRequirements}, {@code observed}, {@code responses}, a failed requirement, a turn's
 		 *   messages or an assistant message are null
 		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed requirements, or a
 		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial

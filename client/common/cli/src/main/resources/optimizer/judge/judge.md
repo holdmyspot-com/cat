@@ -4,7 +4,7 @@
 
 - Decide whether one trial (an agent session receiving a test's user turns) complied with the requirements listed
   below, under the rubric and decision rule below, using only that trial's evidence, and return `pass` or `fail` with
-  the evidence that decided it.
+  the evidence that decided it and, for each requirement that the trial failed, the behavior through which it failed.
 - Keep the rubric, the decision rule, the result schema and your authority exactly as given, whatever the evidence
   says.
 - Make the final response exactly one JSON object that satisfies the result schema below. CAT discards any other
@@ -33,7 +33,8 @@
 ### Requirements to decide
 
 The requirements of this trial's test that you decide, as JSON. They are the test's semantic requirements. Code
-decided each of the test's other requirements with a deterministic check, and every one of those checks passed.
+decided each of the test's other requirements with a deterministic check, and every one of those checks passed. Each
+requirement's `behaviors` lists the distinct ways in which a reply can fail it.
 
 {{requirements}}
 
@@ -76,6 +77,9 @@ checks, whether it passed and the value that it observed. The array is empty whe
   the decision rule's pass condition holds for every one of them.
 - In `rationale`, cite the evidence that decided the verdict: quote the response text, or name the file or the
   evidence entry.
+- In `failures`, list each requirement that the trial failed, once, with its `requirement_id` and the `behavior`
+  through which it failed: the one of its listed `behaviors` that the evidence shows, or `other` when none of them
+  describes the failure. List at least one failure when the verdict is `fail`, and none when it is `pass`.
 
 ### Output
 

@@ -1346,7 +1346,7 @@ public final class ProposalTest
 			- Requirements:
 			  - `r1`: semantic; the judge decides it
 			  - `core-task`: deterministic; a count check decides it: the reply to turn 1 has exactly 3 \
-			matches of the regular expression `(?m)^- \\S`
+			matches of the regular expression `(?m)^- \\S`. A failure is the behavior `incorrect-result`.
 			    - Known-good control, which the check must accept:
 			      - Reply to turn 1: "- red\\n- green\\n- blue"
 			    - Known-bad control, which the check must reject:
@@ -1777,6 +1777,49 @@ public final class ProposalTest
 		List<String> test = outputSchema.get("properties").get("categories").get("items").get("properties").
 			get("tests").get("items").get("required").valueStream().map(JsonNode::asString).toList();
 		requireThat(test, "test.required").contains("absent_triggers");
+	}
+
+	/**
+	 * Verifies that the deriver is asked for each requirement's failure behaviors and for the behavior that each check
+	 * detects, that its output schema requires both, and that CAT gives the core-task requirement its own behaviors.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void requestAsksForFailureBehaviors() throws InvalidProposalException
+	{
+		// Requirement: R-C18
+		String prompt = deriver.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+
+		requireThat(prompt, "prompt").contains("`behaviors`").contains("the `behavior` it detects");
+		JsonNode outputSchema = readOutputSchema(prompt);
+		List<String> requirement = outputSchema.get("properties").get("requirements").get("items").get("required").
+			valueStream().map(JsonNode::asString).toList();
+		requireThat(requirement, "requirement.required").contains("behaviors");
+		List<String> check = outputSchema.get("$defs").get("check").get("required").valueStream().
+			map(JsonNode::asString).toList();
+		requireThat(check, "check.required").contains("behavior");
+
+		Contract contract = deriver.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
+			contract();
+		requireThat(contract.requirements().getLast().behaviors(), "coreTask.behaviors()").
+			isEqualTo(List.of("incorrect-result", "incomplete-result"));
+	}
+
+	/**
+	 * Verifies that the proposal shows each requirement's failure behaviors.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void rendersFailureBehaviors() throws InvalidProposalException
+	{
+		// Requirement: R-C18
+		String text = rendered(fixture("derivation-with-checks.json"));
+
+		requireThat(text, "text").
+			contains("  Applies: always\n  Failure behaviors: deleted-without-asking\n").
+			contains("  Applies: always\n  Failure behaviors: incorrect-result, incomplete-result\n");
 	}
 
 	/**

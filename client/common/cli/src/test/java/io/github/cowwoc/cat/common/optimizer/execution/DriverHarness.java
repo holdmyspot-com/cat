@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
@@ -114,7 +115,7 @@ public final class DriverHarness
 	private final JudgePrompt judge;
 	private final TriagePrompt triage;
 	private final ValuesPrompt values;
-	private final Map<Path, Judgment> judgments = new HashMap<>();
+	private final Map<Path, Verdict> judgments = new HashMap<>();
 	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
 	private final FileInventory fork;
@@ -382,16 +383,67 @@ public final class DriverHarness
 	 */
 	public SessionResult.Completed scriptedJudgment(SessionRequest request)
 	{
-		Judgment judgment = judgments.get(request.readOnly().getFirst());
-		if (judgment == null)
+		Verdict verdict = judgments.get(request.readOnly().getFirst());
+		if (verdict == null)
 			throw new AssertionError("No judgment scripted for trial evidence: " + request.readOnly());
-		return judged(judgment);
+		String rationale = switch (verdict)
+		{
+			case PASS -> "The trial met the requirements.";
+			case FAIL -> "The trial did not meet the requirements.";
+		};
+		return judged(request, verdict, rationale);
 	}
 
 	/**
-	 * Returns a judge session's schema-valid final response, preserving its rationale exactly.
+	 * Returns a judge session's schema-valid final response, preserving its rationale exactly. A failed verdict names
+	 * the first requirement that the request asks the judge to decide, with that requirement's first listed behavior.
 	 *
-	 * @param judgment the scripted verdict and rationale
+	 * @param request the judge session's request
+	 * @param verdict the scripted verdict
+	 * @param rationale the scripted rationale
+	 * @return the completed judge session
+	 */
+	public SessionResult.Completed judged(SessionRequest request, Verdict verdict, String rationale)
+	{
+		List<FailedRequirement> failures;
+		if (verdict == Verdict.FAIL)
+			failures = List.of(firstDecidedFailure(request));
+		else
+			failures = List.of();
+		return judged(new Judgment(verdict, rationale, failures));
+	}
+
+	/**
+	 * Returns the first requirement that a judge request asks the judge to decide, failed through its first listed
+	 * behavior.
+	 *
+	 * @param request the judge session's request
+	 * @return the failure
+	 */
+	public FailedRequirement firstDecidedFailure(SessionRequest request)
+	{
+		JsonNode requirement = decidedRequirements(request).get(0);
+		return new FailedRequirement(requirement.get("id").asString(), requirement.get("behaviors").get(0).asString());
+	}
+
+	/**
+	 * Returns the requirements that a judge request asks the judge to decide.
+	 *
+	 * @param request the judge session's request
+	 * @return the requirements as JSON objects
+	 */
+	public JsonNode decidedRequirements(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		int start = turn.indexOf('[', turn.indexOf("### Requirements to decide"));
+		int end = turn.indexOf("\n\n", start);
+		return json.readTree(turn.substring(start, end));
+	}
+
+	/**
+	 * Returns a judge session's schema-valid final response, preserving its rationale and failures exactly.
+	 *
+	 * @param judgment the scripted verdict, rationale and failures
 	 * @return the completed judge session
 	 */
 	public SessionResult.Completed judged(Judgment judgment)
@@ -401,7 +453,14 @@ public final class DriverHarness
 			case PASS -> "pass";
 			case FAIL -> "fail";
 		};
-		return judged(json.createObjectNode().put("verdict", verdict).put("rationale", judgment.rationale()).toString());
+		ObjectNode output = json.createObjectNode().put("verdict", verdict).put("rationale", judgment.rationale());
+		ArrayNode failures = output.putArray("failures");
+		for (FailedRequirement failure : judgment.failures())
+		{
+			failures.addObject().put("requirement_id", failure.requirementId()).
+				put("behavior", failure.behavior());
+		}
+		return judged(output.toString());
 	}
 
 	/**
@@ -465,7 +524,7 @@ public final class DriverHarness
 	public SessionResult.Completed failed(String model)
 	{
 		SessionResult.Completed result = completed("fail", model);
-		judgments.put(result.effects(), new Judgment(Verdict.FAIL, "The trial did not meet the requirements."));
+		judgments.put(result.effects(), Verdict.FAIL);
 		return result;
 	}
 
@@ -494,7 +553,7 @@ public final class DriverHarness
 		++trialResults;
 		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
 		Path effects = evidence.resolve("project");
-		judgments.put(effects, new Judgment(Verdict.PASS, "The trial met the requirements."));
+		judgments.put(effects, Verdict.PASS);
 		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(List.of(response)),
 			effects, model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}

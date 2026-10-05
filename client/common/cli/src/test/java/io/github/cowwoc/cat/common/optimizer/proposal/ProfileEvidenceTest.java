@@ -35,7 +35,7 @@ public final class ProfileEvidenceTest
 	 */
 	private static Requirement requirement(String source)
 	{
-		return new Requirement("requirement", "Follows the file.", source, null);
+		return new Requirement("requirement", "Follows the file.", source, null, List.of("file-ignored"));
 	}
 
 	/**

@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
@@ -813,9 +814,9 @@ public abstract class CampaignStoreContract
 	 */
 	static CampaignEvent.Complete complete(TrialKey key, Verdict verdict)
 	{
-		List<String> failedRequirements;
+		List<FailedRequirement> failedRequirements;
 		if (verdict == Verdict.FAIL)
-			failedRequirements = List.of("r2");
+			failedRequirements = List.of(new FailedRequirement("r2", "deleted-without-asking"));
 		else
 			failedRequirements = List.of();
 		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
@@ -886,7 +887,8 @@ public abstract class CampaignStoreContract
 			development("formatting", 120, 7).
 			development("safety", 40, 2).
 			failure(new Failure(instance("safety", "deletion", 3, true), "The reply deleted the directory unasked.",
-				List.of("r2"), new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
+				List.of(new FailedRequirement("r2", "deleted-without-asking")),
+				new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
 				List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
 					new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
 			failure(instance("safety", "deletion", 15, true)).
@@ -921,7 +923,8 @@ public abstract class CampaignStoreContract
 						"runner crashed")), 1, List.of())).
 			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity,
 				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, "The reply deleted the file.",
-				List.of("r1", "r2"), null, 1,
+				List.of(new FailedRequirement("r1", "wrong-tone"), new FailedRequirement("r2", "deleted-without-asking")),
+				null, 1,
 				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
 						"invalid judge result")), 0, List.of())).
 			trial(new LogicalTrial(diagnostic, instance("safety", "deletion", 4, true), identity,
@@ -963,8 +966,8 @@ public abstract class CampaignStoreContract
 			candidate(new Candidate(2, Builder.snapshot("candidate-2"))).
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
-			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.", List.of("r1"), null,
-				List.of(), List.of())).
+			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.",
+				List.of(new FailedRequirement("r1", "wrong-tone")), null, List.of(), List.of())).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			campaign().
 			certificationAttempt(2).

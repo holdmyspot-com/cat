@@ -30,8 +30,9 @@ public final class JudgePromptTest
 	private static final Path TRANSCRIPT = EFFECTS.getParent().resolve("artifacts/transcript.jsonl");
 	private static final String SECTION = "Turn 1\nTool: shell\nInput:\ntrue\nExit status: 0\nOutput:\ncomplete\n";
 	private static final Requirement REQUIREMENT = new Requirement("ask-first", "Ask before deleting.",
-		"rules/safety.md", null);
-	private static final String OUTPUT = "{\"verdict\":\"pass\",\"rationale\":\" It asked. \"}";
+		"rules/safety.md", null, List.of("deleted-without-asking"));
+	private static final List<Requirement> DECIDED = List.of(REQUIREMENT);
+	private static final String OUTPUT = "{\"verdict\":\"pass\",\"rationale\":\" It asked. \",\"failures\":[]}";
 	private final JudgePrompt prompt = new JudgePrompt(JsonMapper.builder().build(),
 		Path.of("contract-evidence/judge"));
 
@@ -203,9 +204,9 @@ public final class JudgePromptTest
 	public void acceptsSchemaOutput()
 	{
 		// Requirement: R-E13
-		Judgment expected = new Judgment(Verdict.PASS, " It asked. ");
-		requireThat(prompt.judgment(completed(List.of(List.of(OUTPUT)))), "bare").isEqualTo(Optional.of(expected));
-		requireThat(prompt.judgment(completed(List.of(List.of("```json\n" + OUTPUT + "\n```")))), "fenced").
+		Judgment expected = new Judgment(Verdict.PASS, " It asked. ", List.of());
+		requireThat(prompt.judgment(completed(List.of(List.of(OUTPUT))), DECIDED), "bare").isEqualTo(Optional.of(expected));
+		requireThat(prompt.judgment(completed(List.of(List.of("```json\n" + OUTPUT + "\n```"))), DECIDED), "fenced").
 			isEqualTo(Optional.of(expected));
 	}
 
@@ -216,8 +217,8 @@ public final class JudgePromptTest
 	public void rejectsBareVerdicts()
 	{
 		// Requirement: R-E13
-		requireThat(prompt.judgment(completed(List.of(List.of("pass")))), "pass").isEmpty();
-		requireThat(prompt.judgment(completed(List.of(List.of("fail")))), "fail").isEmpty();
+		requireThat(prompt.judgment(completed(List.of(List.of("pass"))), DECIDED), "pass").isEmpty();
+		requireThat(prompt.judgment(completed(List.of(List.of("fail"))), DECIDED), "fail").isEmpty();
 	}
 
 	/**
@@ -230,7 +231,7 @@ public final class JudgePromptTest
 		for (String response : List.of("not JSON", "{", "{\"verdict\":\"partial\",\"rationale\":\"Half.\"}",
 			"{\"verdict\":\"pass\"}", "{\"verdict\":\"pass\",\"rationale\":\" \"}", "Here it is: " + OUTPUT))
 		{
-			requireThat(prompt.judgment(completed(List.of(List.of(response)))), "judgment").isEmpty();
+			requireThat(prompt.judgment(completed(List.of(List.of(response))), DECIDED), "judgment").isEmpty();
 		}
 	}
 
@@ -245,7 +246,7 @@ public final class JudgePromptTest
 		for (String earlier : List.of("pass", OUTPUT))
 		{
 			SessionResult.Completed result = completed(List.of(List.of(OUTPUT), List.of(earlier, "No final verdict.")));
-			requireThat(prompt.judgment(result), "judgment").isEmpty();
+			requireThat(prompt.judgment(result, DECIDED), "judgment").isEmpty();
 		}
 	}
 
@@ -256,7 +257,7 @@ public final class JudgePromptTest
 	public void rejectsAbsentResponses()
 	{
 		// Requirement: R-E13
-		requireThat(prompt.judgment(completed(List.of())), "judgment").isEmpty();
+		requireThat(prompt.judgment(completed(List.of()), DECIDED), "judgment").isEmpty();
 	}
 
 	/**

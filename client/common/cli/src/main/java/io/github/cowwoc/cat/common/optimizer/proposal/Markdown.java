@@ -123,7 +123,8 @@ final class Markdown
 	}
 
 	/**
-	 * Lists every requirement, its source and the condition under which it applies.
+	 * Lists every requirement, its source, the condition under which it applies and the ways in which a reply can fail
+	 * it.
 	 */
 	private void requirements()
 	{
@@ -136,6 +137,7 @@ final class Markdown
 				text.append("  Applies: always\n");
 			else
 				text.append("  Applies when: ").append(requirement.trigger()).append('\n');
+			text.append("  Failure behaviors: ").append(String.join(", ", requirement.behaviors())).append('\n');
 		}
 	}
 
@@ -310,7 +312,8 @@ final class Markdown
 				continue;
 			}
 			text.append("deterministic; a ").append(check.criterion().kind()).append(" check decides it: ").
-				append(check.criterion().describe()).append('\n').
+				append(check.criterion().describe()).append(". A failure is the behavior `").append(check.behavior()).
+				append("`.\n").
 				append("    - Known-good control, which the check must accept:\n");
 			control(check.knownGood());
 			text.append("    - Known-bad control, which the check must reject:\n");

@@ -49,6 +49,10 @@
 - `requirements`: every behavioural requirement that the prompt files state, one item each, with a unique `id`.
   Give each its `trigger`: the situation that obliges the action, such as "The user asks to delete a directory", or
   `null` when the requirement applies to every reply.
+  Give each its `behaviors`: every distinct way in which a reply can fail it, each a lowercase identifier of words
+  joined by hyphens, such as `no-tool-call`, `file-not-read-in-full`, `search-instead-of-read`,
+  `read-instead-of-search` or `unneeded-call`. List separately two failures that a prompt edit would fix differently.
+  Leave out `other`: a judge names it for a failure that no listed behavior describes.
 - `categories`: create a separate category whenever averaging it with other uses could let common or easy cases hide a
   weak area. A category groups uses that need their own claim; a change to an incidental value is another instance
   of the same test, not another category. Give each category a `rationale` that says which weak area a separate claim
@@ -101,7 +105,7 @@ system impose no test obligation.
 ### The core-task requirement
 
 CAT adds the requirement `core-task`, "Each reply correctly and completely does what the turn asked.", with CAT as its
-source, to every test. A test that lists it in `requirement_ids` is accepted; one that does not is given it. It keeps a
+source and the behaviors `incorrect-result` and `incomplete-result`, to every test. A test that lists it in `requirement_ids` is accepted; one that does not is given it. It keeps a
 candidate that obeys every rule of the prompt system from doing the user's task worse. It is semantic unless the
 test's expected result is itself mechanical, such as an exact file content; only then give it a check.
 
@@ -113,7 +117,8 @@ one of the kinds below observes everything that compliance means. Whether a repl
 appropriate stays semantic. When no kind fits, leave the requirement semantic.
 
 A check belongs to one test and one requirement that the test checks, with at most one check per requirement. Give
-its `requirement_id`, its `kind` and only the `parameters` of that kind:
+its `requirement_id`, the `behavior` it detects, which is one of the behaviors that its requirement lists, its `kind`
+and only the `parameters` of that kind:
 
 - `exact_text` (`text`; optional `turn`): the reply, without leading and trailing whitespace, is exactly the text;
 - `forbidden_text` (`text`; optional `turn`): the reply does not contain the text;

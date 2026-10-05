@@ -40,6 +40,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Predecessor;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
@@ -130,7 +131,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 16;
+	private static final int FORMAT_VERSION = 17;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -461,20 +462,6 @@ final class CampaignJson
 	}
 
 	/**
-	 * Writes an array of strings.
-	 *
-	 * @param node the containing object
-	 * @param name the array property
-	 * @param values the strings
-	 */
-	private static void putStrings(ObjectNode node, String name, List<String> values)
-	{
-		ArrayNode array = node.putArray(name);
-		for (String value : values)
-			array.add(value);
-	}
-
-	/**
 	 * Reads an array of required strings.
 	 *
 	 * @param node the containing object
@@ -487,6 +474,33 @@ final class CampaignJson
 		for (JsonNode element : elements(node, name))
 			values.add(stringValue(element, name));
 		return List.copyOf(values);
+	}
+
+	/**
+	 * Writes the requirements that a trial failed, each with its behavior.
+	 *
+	 * @param node the containing object
+	 * @param failures the failed requirements
+	 */
+	private static void putFailedRequirements(ObjectNode node, List<FailedRequirement> failures)
+	{
+		ArrayNode array = node.putArray(FAILED_REQUIREMENTS);
+		for (FailedRequirement failure : failures)
+			array.addObject().put("requirement_id", failure.requirementId()).put("behavior", failure.behavior());
+	}
+
+	/**
+	 * Reads the requirements that a trial failed, each with its behavior.
+	 *
+	 * @param node the containing object
+	 * @return the failed requirements
+	 */
+	private static List<FailedRequirement> readFailedRequirements(JsonNode node)
+	{
+		List<FailedRequirement> failures = new ArrayList<>();
+		for (JsonNode element : elements(node, FAILED_REQUIREMENTS))
+			failures.add(new FailedRequirement(text(element, "requirement_id"), text(element, "behavior")));
+		return List.copyOf(failures);
 	}
 
 	/**
@@ -528,7 +542,7 @@ final class CampaignJson
 			ObjectNode node = root.putObject("outcome");
 			node.put("verdict", outcome.verdict().name());
 			node.put("rationale", outcome.rationale());
-			putStrings(node, FAILED_REQUIREMENTS, outcome.failedRequirements());
+			putFailedRequirements(node, outcome.failedRequirements());
 			node.set("triage", writeTriage(outcome.triage()));
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
@@ -555,7 +569,7 @@ final class CampaignJson
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readStrings(outcomeNode, FAILED_REQUIREMENTS), readTriage(outcomeNode),
+				text(outcomeNode, "rationale"), readFailedRequirements(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
 				readResponses(outcomeNode));
 		}
@@ -1245,7 +1259,7 @@ final class CampaignJson
 		node.put("state", trial.state().name());
 		putConstant(node, "verdict", trial.verdict());
 		node.put("rationale", trial.rationale());
-		putStrings(node, FAILED_REQUIREMENTS, trial.failedRequirements());
+		putFailedRequirements(node, trial.failedRequirements());
 		node.set("triage", writeTriage(trial.triage()));
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
@@ -1266,7 +1280,7 @@ final class CampaignJson
 		String rationale = nullableText(node, "rationale");
 		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), verdict, rationale, readStrings(node, FAILED_REQUIREMENTS),
+			constant(node, "state", TrialState.class), verdict, rationale, readFailedRequirements(node),
 			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
 			readResponses(node));
@@ -1709,7 +1723,7 @@ final class CampaignJson
 		{
 			ObjectNode element = writeInstance(failure.instance());
 			element.put("rationale", failure.rationale());
-			putStrings(element, FAILED_REQUIREMENTS, failure.failedRequirements());
+			putFailedRequirements(element, failure.failedRequirements());
 			element.set("triage", writeTriage(failure.triage()));
 			element.set("responses", writeResponses(failure.responses()));
 			ArrayNode reruns = element.putArray("reruns");
@@ -1740,7 +1754,7 @@ final class CampaignJson
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
 			failures.add(new Failure(readInstance(element), text(element, "rationale"),
-				readStrings(element, FAILED_REQUIREMENTS), readTriage(element), reruns, readResponses(element)));
+				readFailedRequirements(element), readTriage(element), reruns, readResponses(element)));
 		}
 		return failures;
 	}
