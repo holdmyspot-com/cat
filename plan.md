@@ -1541,7 +1541,7 @@ blocks only the part of a work item that it names.
 | WI-43 | WI-42 |
 | WI-44 | WI-38 |
 | WI-45 | WI-43 |
-| WI-46 | WI-45 |
+| WI-46 | WI-38 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45 and WI-46. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
