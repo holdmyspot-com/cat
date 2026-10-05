@@ -1,7 +1,7 @@
 ## Context
 
-Install the prompt-optimizer skill in a project with an active campaign `20261002T090000-a1b2c3` for `AGENTS.md`. At
-the launcher boundary, answer `run 20261002T090000-a1b2c3` with a result whose `status` is `certified` and whose
+Install the prompt-optimizer skill in a project with an active campaign `20261002T090000Z-a1b2c3` for `AGENTS.md`. At
+the launcher boundary, answer `run 20261002T090000Z-a1b2c3` with a result whose `status` is `certified` and whose
 `summary` is a multi-section report of about 8 KB: the outcome, the certification claim, each category's trial counts,
 the delivered change and eleven limitations. Its `delivery_result` names the changed prompt files.
 

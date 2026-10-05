@@ -609,6 +609,7 @@ public final class OptimizerCoreTest
 			}));
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 			String id = result.status().campaignId();
+			requireThat(id, "id").matches("20261001T000000Z-[0-9a-f]{6}");
 			requireThat(repository.sessions().roles(), "roles").isEqualTo(List.of(SessionRole.DERIVER));
 			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example");
 			requireThat(repository.directory(id).resolve("held_out/proposal.json"), "proposalFile").isRegularFile();

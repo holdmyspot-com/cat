@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter;
  */
 final class Backup
 {
-	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").
+	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").
 		withZone(ZoneOffset.UTC);
 	private final Git git;
 	private final Clock clock;

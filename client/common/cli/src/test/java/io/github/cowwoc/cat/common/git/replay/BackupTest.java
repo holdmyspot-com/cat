@@ -92,7 +92,7 @@ public final class BackupTest
 
 			String backup = backups.create(repository.resolve("manifest.json"));
 
-			requireThat(backup, "backup").isEqualTo("backup/topic-replay-20261009-211308");
+			requireThat(backup, "backup").isEqualTo("backup/topic-replay-20261009T211308Z");
 		}
 	}
 }

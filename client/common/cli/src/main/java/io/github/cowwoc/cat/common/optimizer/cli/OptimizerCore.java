@@ -100,7 +100,7 @@ import java.util.stream.Stream;
  */
 public final class OptimizerCore implements Core
 {
-	private static final DateTimeFormatter ID_TIME = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss").
+	private static final DateTimeFormatter ID_TIME = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").
 		withZone(ZoneOffset.UTC);
 	private static final int RANDOM_ID_DIGITS = 6;
 	private final OptimizerCommandScope scope;
