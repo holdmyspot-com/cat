@@ -312,6 +312,30 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a version 19 snapshot, whose regression instances do not record whether a failing outcome was
+	 * settled, is refused with a message that names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 19 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionNineteenCampaign() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-19-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 19);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).load(ID);
+		}
+	}
+
+	/**
 	 * Verifies that a stored campaign records no external target as editable and survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
@@ -355,7 +379,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("campaign-predecessor"));
-			Campaign promoted = promotedForRevert();
+			Campaign promoted = promotedForRevert(false);
 			new FileCampaignStore(base, JSON).replaceSnapshot(promoted);
 			Campaign reloaded = new FileCampaignStore(base, JSON).load(ID).orElseThrow();
 			requireThat(reloaded, "reloaded").isEqualTo(promoted);
@@ -365,23 +389,52 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(reverted.development().count("safety"), "counts").isEqualTo(Builder.counts(99, 1));
 			requireThat(reverted.development().round(), "endedRound").isNull();
 			requireThat(reverted.outcome(), "outcome").isNull();
+			requireThat(reverted.lineage().regressionSet().getFirst().settled(), "settledByEndedRound").isTrue();
 			new FileCampaignStore(base, JSON).replaceSnapshot(reverted);
 			requireThat(new FileCampaignStore(base, JSON).load(ID).orElseThrow(), "reloadedRevert").isEqualTo(reverted);
 		}
 	}
 
 	/**
+	 * A fresh store read retains whether the predecessor's failing outcome on a regression instance was settled, so a
+	 * revert restores it.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void settledPredecessorSurvivesRestart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("campaign-settled-predecessor"));
+			Campaign promoted = promotedForRevert(true);
+			requireThat(promoted.development().predecessor().regressionSet().getFirst().settled(), "settledPredecessor").
+				isTrue();
+
+			new FileCampaignStore(base, JSON).replaceSnapshot(promoted);
+			requireThat(new FileCampaignStore(base, JSON).load(ID).orElseThrow(), "reloaded").isEqualTo(promoted);
+		}
+	}
+
+	/**
 	 * Returns a candidate promoted after the final attempt of a sequential round.
 	 *
+	 * @param settled {@code true} if an earlier round that ended without a promotable attempt settled the
+	 *   predecessor's failing outcome on the round's triggering instance; {@code false} if that failure is not settled
 	 * @return the promoted campaign
 	 */
-	private static Campaign promotedForRevert()
+	private static Campaign promotedForRevert(boolean settled)
 	{
 		TrialInstance logs = Builder.targeted("safety", "logs");
 		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The defect reproduced");
-		Campaign campaign = new Builder().confirmed().working(1).development("safety", 99, 1).
+		Builder builder = new Builder().confirmed().working(1).development("safety", 99, 1).
 			failure(new Failure(logs, "Removed the directory", List.of(), null, List.of(failed, failed, failed), List.of())).
-			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 1))).build();
+			round(new Round(Map.of("safety", 1)));
+		if (settled)
+			builder.settledRegression(logs);
+		else
+			builder.regression(logs, Verdict.FAIL);
+		Campaign campaign = builder.build();
 		Sha256 snapshot = Builder.snapshot("stored-promoted-revert-candidate");
 		campaign = Transitions.apply(campaign, new CampaignEvent.StartAuthorAttempt("safety"));
 		campaign = Transitions.apply(campaign, new CampaignEvent.SubmitAuthorAttempt(1, "safety", snapshot,
@@ -816,10 +869,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(19);
+					"recordVersion").isEqualTo(20);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(19);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(20);
 		}
 	}
 
@@ -1226,7 +1279,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 20);
+			root.put("format_version", 21);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

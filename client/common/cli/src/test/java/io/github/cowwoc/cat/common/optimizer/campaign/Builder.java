@@ -482,7 +482,7 @@ public final class Builder
 	}
 
 	/**
-	 * Adds an instance to the lineage's regression set.
+	 * Adds an instance to the lineage's regression set whose latest working-candidate outcome is not settled.
 	 *
 	 * @param instance the instance
 	 * @param workingVerdict the working candidate's latest outcome on it, or {@code null} if none
@@ -490,7 +490,20 @@ public final class Builder
 	 */
 	public Builder regression(TrialInstance instance, Verdict workingVerdict)
 	{
-		regressionSet.add(new RegressionInstance(instance, workingVerdict));
+		regressionSet.add(new RegressionInstance(instance, workingVerdict, false));
+		return this;
+	}
+
+	/**
+	 * Adds an instance to the lineage's regression set that the working candidate failed last, where an optimization
+	 * round that ended without a promotable attempt settled that failure.
+	 *
+	 * @param instance the instance
+	 * @return this builder
+	 */
+	public Builder settledRegression(TrialInstance instance)
+	{
+		regressionSet.add(new RegressionInstance(instance, Verdict.FAIL, true));
 		return this;
 	}
 

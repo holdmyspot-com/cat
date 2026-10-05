@@ -12,18 +12,28 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
  *
  * @param instance the instance that failed
  * @param working the working candidate's latest outcome on the instance, or {@code null} if it has none
+ * @param settled {@code true} if the working candidate's failing outcome on the instance was already addressed by an
+ *   optimization round that ended without a promotable attempt, so the failure no longer keeps the working candidate
+ *   from certification; {@code false} if the outcome is not a failure or no such round ended after it
  */
-public record RegressionInstance(TrialInstance instance, Verdict working)
+public record RegressionInstance(TrialInstance instance, Verdict working, boolean settled)
 {
 	/**
 	 * Creates a regression instance.
 	 *
 	 * @param instance the instance that failed
 	 * @param working the working candidate's latest outcome on the instance, or {@code null} if it has none
+	 * @param settled {@code true} if the working candidate's failing outcome on the instance was already addressed by
+	 *   an optimization round that ended without a promotable attempt, so the failure no longer keeps the working
+	 *   candidate from certification; {@code false} if the outcome is not a failure or no such round ended after it
 	 * @throws NullPointerException if {@code instance} is null
+	 * @throws IllegalArgumentException if {@code settled} is {@code true} and {@code working} is not
+	 *   {@link Verdict#FAIL}
 	 */
 	public RegressionInstance
 	{
 		requireThat(instance, "instance").isNotNull();
+		if (settled)
+			requireThat(working, "working").withContext(settled, "settled").isEqualTo(Verdict.FAIL);
 	}
 }

@@ -25,7 +25,8 @@ public final class RevertTest
 
 	/**
 	 * A worse promoted candidate restores the predecessor's retained evidence and completes an unproductive round,
-	 * after which the predecessor resumes sampling because every cell has at most the failure limit.
+	 * after which the predecessor resumes sampling because every cell has at most the failure limit. The round's end
+	 * settles the predecessor's restored failing verdict.
 	 */
 	// Requirement: R-D15
 	@Test
@@ -38,8 +39,9 @@ public final class RevertTest
 		requireThat(reverted.development().working(), "working").isEqualTo(predecessor.development().working());
 		requireThat(reverted.development().counts(), "counts").isEqualTo(predecessor.development().counts());
 		requireThat(reverted.development().failures(), "failures").isEqualTo(predecessor.development().failures());
+		RegressionInstance retained = predecessor.lineage().regressionSet().getFirst();
 		requireThat(reverted.lineage().regressionSet().getFirst(), "retainedRegression").
-			isEqualTo(predecessor.lineage().regressionSet().getFirst());
+			isEqualTo(new RegressionInstance(retained.instance(), retained.working(), true));
 		requireThat(reverted.development().reverts().getFirst().withdrawn(), "withdrawn").
 			isEqualTo(promoted.development().working());
 		requireThat(reverted.development().reverts().getFirst().development().count("safety"), "withdrawnCounts").

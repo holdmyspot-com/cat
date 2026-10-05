@@ -65,8 +65,9 @@ public final class ReadinessGate
 
 	/**
 	 * Indicates whether the working candidate meets the gate: every development cell is ready, no diagnosis, round or
-	 * author attempt is unresolved, no ended attempt is reproducing its formal failures, no regression instance is
-	 * known to fail for the working candidate, and the incumbent baseline is met.
+	 * author attempt is unresolved, no ended attempt is reproducing its formal failures, the working candidate's latest
+	 * outcome on every regression instance is not a failure or is a {@link RegressionInstance#settled() settled}
+	 * failure, and the incumbent baseline is met.
 	 *
 	 * @param campaign the campaign
 	 * @return {@code true} if the gate is met
@@ -87,7 +88,7 @@ public final class ReadinessGate
 		}
 		for (RegressionInstance regression : campaign.lineage().regressionSet())
 		{
-			if (regression.working() == Verdict.FAIL)
+			if (regression.working() == Verdict.FAIL && !regression.settled())
 				return false;
 		}
 		return Baseline.isMet(campaign.baseline(), campaign.contract());

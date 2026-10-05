@@ -392,7 +392,8 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Restores known predecessor verdicts while retaining newly discovered regression instances without a verdict.
+	 * Restores the predecessor's known verdicts, and whether each failing verdict was settled, while retaining newly
+	 * discovered regression instances without a verdict.
 	 *
 	 * @param draft the campaign state
 	 * @param retained the predecessor's regression verdicts
@@ -402,16 +403,16 @@ final class TrialAdoption
 		for (int index = 0; index < draft.regressionSet.size(); ++index)
 		{
 			RegressionInstance regression = draft.regressionSet.get(index);
-			Verdict verdict = null;
+			RegressionInstance restored = new RegressionInstance(regression.instance(), null, false);
 			for (RegressionInstance prior : retained)
 			{
 				if (Promotion.isSameContent(prior.instance(), regression.instance()))
 				{
-					verdict = prior.working();
+					restored = new RegressionInstance(regression.instance(), prior.working(), prior.settled());
 					break;
 				}
 			}
-			draft.regressionSet.set(index, new RegressionInstance(regression.instance(), verdict));
+			draft.regressionSet.set(index, restored);
 		}
 	}
 
@@ -443,11 +444,12 @@ final class TrialAdoption
 			if (Promotion.isSameContent(regression.instance(), targeted))
 				return;
 		}
-		draft.regressionSet.add(new RegressionInstance(targeted, working));
+		draft.regressionSet.add(new RegressionInstance(targeted, working, false));
 	}
 
 	/**
-	 * Records the working candidate's verdict on every regression instance with the same content.
+	 * Records the working candidate's verdict on every regression instance with the same content. The recorded verdict
+	 * replaces a settled failure and is not settled.
 	 *
 	 * @param draft the state
 	 * @param instance the instance that the working candidate ran
@@ -459,7 +461,7 @@ final class TrialAdoption
 		{
 			RegressionInstance regression = draft.regressionSet.get(i);
 			if (Promotion.isSameContent(regression.instance(), instance))
-				draft.regressionSet.set(i, new RegressionInstance(regression.instance(), verdict));
+				draft.regressionSet.set(i, new RegressionInstance(regression.instance(), verdict, false));
 		}
 	}
 
@@ -670,7 +672,8 @@ final class TrialAdoption
 	 * {@value EditOrContinue#FAILURE_LIMIT} representative development failures, reports a plateau and keeps the round
 	 * for the user's decision. Otherwise the round ends, the working candidate stays, and its representative trials
 	 * resume with a concurrency window of one; the round's attempts and author diagnoses remain in the optimization
-	 * evidence.
+	 * evidence. Every regression instance that the working candidate failed last becomes settled, so that failure no
+	 * longer blocks the readiness gate until the working candidate runs the instance again.
 	 *
 	 * @param draft the state, whose round is complete
 	 */
@@ -684,6 +687,12 @@ final class TrialAdoption
 		}
 		draft.round = null;
 		draft.slowStart = SlowStart.INITIAL;
+		for (int i = 0; i < draft.regressionSet.size(); ++i)
+		{
+			RegressionInstance regression = draft.regressionSet.get(i);
+			if (regression.working() == Verdict.FAIL)
+				draft.regressionSet.set(i, new RegressionInstance(regression.instance(), Verdict.FAIL, true));
+		}
 	}
 
 	/**
@@ -733,7 +742,7 @@ final class TrialAdoption
 		{
 			RegressionInstance regression = draft.regressionSet.get(i);
 			draft.regressionSet.set(i, new RegressionInstance(regression.instance(),
-				promotedVerdict(author, regression.instance())));
+				promotedVerdict(author, regression.instance()), false));
 		}
 		++draft.candidates;
 		draft.startDevelopment(new Candidate(draft.candidates, author.snapshot()));

@@ -209,8 +209,8 @@ public final class PromotionTest
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance cache = targeted("safety", "cache");
 		TrialInstance formal = targeted("formatting", "formal");
-		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(logs, Verdict.FAIL),
-			new RegressionInstance(cache, Verdict.PASS), new RegressionInstance(formal, null));
+		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(logs, Verdict.FAIL, false),
+			new RegressionInstance(cache, Verdict.PASS, false), new RegressionInstance(formal, null, false));
 		List<PromotionRun> plan = Promotion.plan("safety", List.of(logs, formal), regressionSet,
 			new Generator(ContractFixtures.contract()));
 
@@ -229,7 +229,7 @@ public final class PromotionTest
 		// Requirement: R-D3
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance cache = targeted("safety", "cache");
-		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(cache, Verdict.PASS));
+		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(cache, Verdict.PASS, false));
 		requireThat(decide(attempt(run(Role.TRIGGERING, logs, Verdict.PASS),
 			run(Role.TRIGGERING, logs, Verdict.PASS), run(Role.REGRESSION, cache, Verdict.PASS)), regressionSet),
 			"decision").isEqualTo(Promotion.Decision.PROMOTE);
@@ -261,8 +261,8 @@ public final class PromotionTest
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance cache = targeted("safety", "cache");
 		TrialInstance tmp = targeted("safety", "tmp");
-		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(cache, Verdict.PASS),
-			new RegressionInstance(tmp, Verdict.FAIL));
+		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(cache, Verdict.PASS, false),
+			new RegressionInstance(tmp, Verdict.FAIL, false));
 		PromotionRun first = run(Role.TRIGGERING, logs, Verdict.PASS);
 		PromotionRun second = run(Role.TRIGGERING, logs, Verdict.PASS);
 
@@ -284,7 +284,7 @@ public final class PromotionTest
 		// Requirement: R-D3
 		TrialInstance logs = targeted("safety", "logs");
 		TrialInstance formal = targeted("formatting", "formal");
-		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(formal, null));
+		List<RegressionInstance> regressionSet = List.of(new RegressionInstance(formal, null, false));
 		PromotionRun first = run(Role.TRIGGERING, logs, Verdict.PASS);
 		PromotionRun second = run(Role.TRIGGERING, logs, Verdict.PASS);
 		PromotionRun regression = run(Role.REGRESSION, formal, Verdict.FAIL);
@@ -462,7 +462,7 @@ public final class PromotionTest
 		TrialInstance formal = targeted("formatting", "formal");
 		requireThat(decide(attempt(run(Role.TRIGGERING, logs, Verdict.PASS),
 			run(Role.TRIGGERING, logs, Verdict.PASS), run(Role.TRIGGERING, cache), run(Role.TRIGGERING, cache),
-			run(Role.REGRESSION, formal, Verdict.FAIL)), List.of(new RegressionInstance(formal, Verdict.PASS))),
+			run(Role.REGRESSION, formal, Verdict.FAIL)), List.of(new RegressionInstance(formal, Verdict.PASS, false))),
 			"decision").isEqualTo(Promotion.Decision.REJECT);
 	}
 
@@ -554,7 +554,7 @@ public final class PromotionTest
 		requireThat(campaign.development().count("safety"), "newCounts").isEqualTo(CellCounts.EMPTY);
 		requireThat(campaign.development().round(), "round").isNull();
 		requireThat(campaign.lineage().regressionSet(), "regressionSet").
-			isEqualTo(List.of(new RegressionInstance(logs, Verdict.PASS)));
+			isEqualTo(List.of(new RegressionInstance(logs, Verdict.PASS, false)));
 	}
 
 	/**

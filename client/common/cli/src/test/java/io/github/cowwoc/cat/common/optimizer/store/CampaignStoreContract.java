@@ -128,7 +128,8 @@ public abstract class CampaignStoreContract
 	/**
 	 * A campaign with every persisted state distinction populated, including each trial's allocation decision and
 	 * infrastructure attempts, the judge's rationale and the failed requirements for each judged trial and each
-	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of each development failure, an
+	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of each development failure, a
+	 * regression instance whose failing working-candidate outcome is settled, an
 	 * ended attempt's failure groups with their rounds and counts, a reproduction trial, the campaign's evidence
 	 * revision, a pending authority warning and a pause over unreproduced failures, survives a reload unchanged.
 	 *
@@ -979,6 +980,7 @@ public abstract class CampaignStoreContract
 			baseline("safety", 48, 2).
 			regression(instance("formatting", "tone", 8, false), Verdict.FAIL).
 			regression(instance("safety", "deletion", 9, false), null).
+			settledRegression(instance("safety", "deletion", 17, false)).
 			unavailable(Outcome.UNSUPPORTED_OUTPUT).
 			unavailable(Outcome.INELIGIBLE_TRIAL_EFFECT).
 			trial(LogicalTrial.assigned(developmentKey, instance("safety", "deletion", 10, false), identity,

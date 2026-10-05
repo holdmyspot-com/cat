@@ -135,6 +135,20 @@ public final class ReadinessGateTest
 	}
 
 	/**
+	 * Verifies that a regression instance whose failing working-candidate outcome was settled by a round that ended
+	 * without a promotable attempt does not block the gate, while the same unsettled failure does.
+	 */
+	@Test
+	public void settledRegressionDoesNotBlockGate()
+	{
+		TrialInstance logs = Builder.targeted("safety", "logs");
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+			settledRegression(logs).build()), "settled").isTrue();
+		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+			regression(logs, Verdict.FAIL).build()), "unsettled").isFalse();
+	}
+
+	/**
 	 * Verifies that the gate does not hold while a failure group of the latest certification attempt is reproducing,
 	 * and holds again once the group is reproduced or the user chose a new attempt without reproducing it.
 	 */

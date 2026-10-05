@@ -233,30 +233,116 @@ public final class PlateauTest
 	}
 
 	/**
-	 * Verifies that a working candidate that resumed sampling after a round without a promotion is committed once it
-	 * meets the readiness gate. Its later representative trials include a pass on the content of the round's triggering
-	 * failure, which replaces the failing verdict in the regression set.
+	 * Returns a campaign whose round, triggered by the working candidate's reproducible failure on {@code safety}, has
+	 * one author attempt left. Its {@code safety} counts meet the readiness gate and {@code formatting} is one passing
+	 * trial short of it.
+	 *
+	 * @return the campaign
+	 */
+	private static Campaign oneTrialShortOfReadiness()
+	{
+		TrialInstance logs = targeted("safety", "logs");
+		return new Builder().confirmed().working(1).readyBaseline().development("safety", 99, List.of(1, 0)).
+			development("formatting", 99, 0).failure(logs).regression(logs, Verdict.FAIL).
+			round(new Round(Map.of("safety", 1))).authorAttempts(1).build();
+	}
+
+	/**
+	 * Verifies that a working candidate that resumed sampling after a round without a promotion is committed once its
+	 * counts meet the readiness gate, although no later trial ran the round's triggering failure again: the round's end
+	 * settled the working candidate's failing verdict on that instance.
 	 */
 	@Test
 	public void resumedCandidateCommitsAtReadiness()
 	{
-		TrialInstance logs = targeted("safety", "logs");
-		Campaign campaign = new Builder().confirmed().working(1).readyBaseline().
-			development("safety", 98, List.of(1, 0)).development("formatting", 100, 0).failure(logs).
-			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 1))).authorAttempts(1).build();
-		campaign = rejectLastAttempt(campaign);
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
 		requireThat(campaign.development().round(), "round").isNull();
 		requireThat(ReadinessGate.isCommitDue(campaign), "dueBeforeTrials").isFalse();
 
-		for (int trial = 0; trial < ReadinessGate.MINIMUM_TRIALS && !ReadinessGate.isCommitDue(campaign); ++trial)
-			campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 		requireThat(ReadinessGate.isCommitDue(campaign), "dueAfterTrials").isTrue();
-		requireThat(campaign.lineage().regressionSet().getFirst().working(), "laterVerdict").isEqualTo(Verdict.PASS);
+		RegressionInstance regression = campaign.lineage().regressionSet().getFirst();
+		requireThat(regression.working(), "workingVerdict").isEqualTo(Verdict.FAIL);
+		requireThat(regression.settled(), "settled").isTrue();
 
 		Candidate working = campaign.development().working();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(new CapCalibration(
 			ErrorBudget.certificationLevel(1), 262), 1));
 		requireThat(campaign.runningAttempt().orElseThrow().candidate(), "committed").isEqualTo(working);
+	}
+
+	/**
+	 * Verifies that a later representative failure of the resumed working candidate on a settled regression instance
+	 * replaces the settled failure, blocks the readiness gate again and goes through edit-or-continue.
+	 */
+	@Test
+	public void laterFailureOnSettledInstanceBlocksGate()
+	{
+		TrialInstance logs = targeted("safety", "logs");
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
+		requireThat(campaign.lineage().regressionSet().getFirst().settled(), "settledBefore").isTrue();
+
+		boolean failed = false;
+		for (int trial = 0; trial < ReadinessGate.MINIMUM_TRIALS && !failed; ++trial)
+		{
+			campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+			TrialInstance drawn = campaign.trials().getLast().instance();
+			failed = Promotion.isSameContent(drawn, logs);
+			campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), failOnlyContent(drawn, logs));
+		}
+		requireThat(failed, "drewSettledInstance").isTrue();
+
+		RegressionInstance regression = campaign.lineage().regressionSet().getFirst();
+		requireThat(regression.working(), "workingVerdict").isEqualTo(Verdict.FAIL);
+		requireThat(regression.settled(), "settled").isFalse();
+		requireThat(ReadinessGate.isMet(campaign), "met").isFalse();
+		requireThat(campaign.development().diagnosis().pending().size(), "diagnosed").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that a promotion after a round settled the working candidate's failure does not settle the promoted
+	 * candidate's failure on the same instance: the promoted attempt fixes a later blocking failure but still fails the
+	 * settled instance, and that failure blocks the readiness gate for the promoted candidate.
+	 */
+	@Test
+	public void promotionDoesNotCarrySettledState()
+	{
+		TrialInstance logs = targeted("safety", "logs");
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
+		requireThat(campaign.lineage().regressionSet().getFirst().settled(), "settledBefore").isTrue();
+		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The directory was removed."));
+		requireThat(Promotion.isSameContent(campaign.development().failures().getLast().instance(), logs),
+			"blockingFailureOnSettledInstance").isFalse();
+
+		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
+		while (campaign.development().author().runs().stream().anyMatch(run -> run.verdict() == null))
+		{
+			AuthorAttempt author = campaign.development().author();
+			PromotionRun run = author.runs().stream().filter(element -> element.verdict() == null).
+				findFirst().orElseThrow();
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, author.number(), ATTEMPT, run.instance(),
+				failOnlyContent(run.instance(), logs));
+		}
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
+
+		requireThat(campaign.development().working().snapshot(), "working").isEqualTo(ATTEMPT);
+		RegressionInstance regression = campaign.lineage().regressionSet().getFirst();
+		requireThat(regression.working(), "promotedVerdict").isEqualTo(Verdict.FAIL);
+		requireThat(regression.settled(), "settled").isFalse();
+	}
+
+	/**
+	 * Returns the judged outcome of a trial that fails only on one instance's content.
+	 *
+	 * @param ran the instance that the trial ran
+	 * @param failing the instance whose content fails
+	 * @return {@code FAIL} if {@code ran} has the content of {@code failing}, otherwise {@code PASS}
+	 */
+	private static Verdict failOnlyContent(TrialInstance ran, TrialInstance failing)
+	{
+		if (Promotion.isSameContent(ran, failing))
+			return Verdict.FAIL;
+		return Verdict.PASS;
 	}
 
 	/**

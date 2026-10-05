@@ -133,7 +133,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 19;
+	private static final int FORMAT_VERSION = 20;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -717,6 +717,7 @@ final class CampaignJson
 			ObjectNode element = regressionSet.addObject();
 			element.set("instance", writeInstance(regression.instance()));
 			putConstant(element, "working_verdict", regression.working());
+			element.put("settled", regression.settled());
 		}
 		ArrayNode unavailable = node.putArray("unavailable");
 		for (Outcome outcome : Outcome.values())
@@ -855,7 +856,7 @@ final class CampaignJson
 		for (JsonNode element : elements(node, "regression_set"))
 		{
 			regressionSet.add(new RegressionInstance(readInstance(field(element, "instance")),
-				nullableConstant(element, "working_verdict", Verdict.class)));
+				nullableConstant(element, "working_verdict", Verdict.class), bool(element, "settled")));
 		}
 		Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
 		for (JsonNode element : elements(node, "unavailable"))
@@ -928,6 +929,7 @@ final class CampaignJson
 				ObjectNode instance = regressions.addObject();
 				instance.set("instance", writeInstance(regression.instance()));
 				putConstant(instance, "working_verdict", regression.working());
+				instance.put("settled", regression.settled());
 			}
 		}
 		ArrayNode reverts = node.putArray("reverts");
@@ -1175,7 +1177,7 @@ final class CampaignJson
 			for (JsonNode regression : elements(predecessorNode, "regression_set"))
 			{
 				regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
-					nullableConstant(regression, "working_verdict", Verdict.class)));
+					nullableConstant(regression, "working_verdict", Verdict.class), bool(regression, "settled")));
 			}
 			predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development")),
 				readRound(field(predecessorNode, "round")), text(predecessorNode, "cell"), regressions);
