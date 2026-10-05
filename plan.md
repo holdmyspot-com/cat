@@ -139,6 +139,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-42 | `optimize-high` | A measurement-condition change with a campaign format bump, a declared version per harness and a test that ties it to the judge profile and the rendered evidence; an error keeps a certification current after a judge change or misses one. |
 | WI-43 | `optimize-high` | Deletion of campaign files at two endings, a new project file written by delivery, and status for a target without a campaign; an error deletes a campaign that can still resume or deliver, or reports a stale certification as current. |
 | WI-44 | `optimize-medium` | Two report loops that iterate the scope's cells; an error undercounts the remaining readiness work or omits a development cell from the per-cell report. |
+| WI-46 | `optimize-high` | Changes when development ends: a completed round without a promotion resumes sampling unless the failure limit is exceeded; an error ends development on a candidate that could still pass the gate, or loops without a plateau on one that cannot. |
 | WI-45 | `optimize-high` | Removes a user choice, a command option, a stored campaign key with a format bump and a delivery output, and narrows delivery to the project; an error lets an author attempt or a delivery change an external file, or leaves a retired choice reachable. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
@@ -264,6 +265,7 @@ requirement names.
 | WI-43 | Done 2026-10-04 (Claude `optimize-high`; integrated as `2d1a7bc72`, `61b1d8001`, `559af86d7`; full build 2117 tests, 0 failures; at or over 1 s: `DriverTest.heldOutInstancesStayOutOfDevelopment` 1.16 s, not changed by it). User rulings (`design.md` §4.1, §4.7, §5, D51, G1, G5, 2026-10-04): a certified campaign removes its files from `.cat/work/` after delivery or a kept incumbent, and delivery writes a certification record into the project. `Cleanup` marks a removal, renames the campaign directory aside and finishes an interrupted removal on the next command for the target; a failed removal warns in later commands' `message`. The record is `.cat/certifications/<target without extension>.json` (`format_version` 1), the last journaled change of delivery. `status <target>` reports the resumable campaign, else the record, else the latest campaign; the record's report lists `Not checked: …` conditions, and from the other harness the harness-specific conditions are unchecked rather than changed. A new campaign's proposal shows the incumbent's record under "## Incumbent certification". |
 | WI-44 | Done 2026-10-04 (Claude `optimize-medium`; integrated as `91570ec55`; full build 2052 tests, 0 failures; at or over 1 s: the unchanged `ExecutableFilesTest.runsConfiguredExecutable` 1.2 s, `retriesTextFileBusyStart` 1.2 s and `interruptedWaitStopsRetries` 1.2 s). `RemainingWork` adds a readiness entry for each development cell outside the scope; `CellReports`, which already listed every contract cell, now also lists stress cells after their base cells. |
 | WI-45 | Not started. User ruling (`design.md` §4.3, §4.7, D52 and G2, 2026-10-05): external files are read-only members of the prompt family. |
+| WI-46 | Not started. User ruling (`design.md` §2.7, outcome table and D53, 2026-10-05): a round without a promotion keeps sampling the working candidate; a plateau requires that candidate to exceed the failure limit. E1 restarts on the build that includes it. |
 | WI-38 | Done 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18), `560cabcde` (R-C19 with the lower-effort stress setting) and `8e71d2abb` (Codex's 5000-token tool-output limit as the next stress setting, a derived development cell `<cell>/tool-output-5000` that persists, and the limit recorded in the observed identity; full build 2048 tests, 0 failures, none at or over 1 s); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. The 5000-token limit is the value P15 reproduced its failure under. The runner bridge's path to Codex has unit tests only. The reports' gap for development cells outside the scope is WI-44. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
@@ -413,6 +415,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §4.3, §4.7, D52 and G2: every external file is a read-only member of the prompt family; no choice makes
   one editable and delivery writes no file outside the project (user ruling, 2026-10-05). WI-45 added with §1.1, §2
   and §6; E7, WI-6, WI-11 and H-13 updated.
+- `design.md` §2.7, the outcome table and D53: a complete round without a promotable attempt keeps the working
+  candidate and resumes its representative trials; `not certified: plateau` requires that candidate to have more than
+  2 failures in a category (user ruling, 2026-10-05). WI-46 added with §1.1, §2 and §6.
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -447,7 +452,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D9 | Authors, triage and diagnosis receive development instances and outcomes only; from a formal failure they receive its cell, test definition and failed requirements, never a held-out instance, reply or judge rationale. | §3.1, §6.3 | WI-9, WI-33 | U: `DriverTest` (author input during a formal attempt and after a failed one) |
 | R-D4 | A new candidate starts new counts; earlier outcomes are retained for diagnosis. | §2.7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-D5 | Review checkpoint at 200 unresolved trials: stop the category, offer choices, record the next review point. | §2.7 | WI-3 | U: `ReviewCheckpointTest` |
-| R-D6 | Rounds and plateau: a round gives each failing category a diagnosis and up to 2 author attempts. A plateau requires a complete round without promotion. Interruption, infrastructure failure or time never cause a plateau. | §2.7 | WI-3 | U: `PlateauTest` |
+| R-D6 | Rounds and plateau: a round gives each failing category a diagnosis and up to 2 author attempts. A complete round without promotion keeps the working candidate and resumes its representative trials; a plateau requires such a round while the working candidate has more than 2 failures in a category. Interruption, infrastructure failure or time never cause a plateau. | §2.7 | WI-3, WI-46 | U: `PlateauTest`, `DriverTest` |
 | R-D7 | Incumbent baseline arm of held-out instances: 50 in every certification-scope cell, plus 50 in a scope cell below 95% not yet proven deficient. The incumbent's development trials never count toward it. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3, WI-32, WI-33 | U: `BaselineTest`, `AdmissionTest`, `SchedulerTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25, D30 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
@@ -1204,6 +1209,22 @@ The riskiest pure code, built first.
   the hash.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-46 — Development continues after a round without a promotion (user ruling, 2026-10-05)
+
+- **Change:** when a round completes without a promotable attempt, whether every attempt failed its promotion runs, no
+  attempt was accepted, or a revert counted the round as unproductive, CAT checks the working candidate's development
+  counts. If no category has more than `EditOrContinue.FAILURE_LIMIT` failures, the round ends with its attempts and
+  diagnoses retained, the working candidate stays, and representative admissions resume with concurrency restarting at
+  1; a later adopted failure goes through edit-or-continue as usual, and the readiness gate commits the candidate once
+  it holds. Otherwise the outcome is `not certified: plateau` as before. The status text for the plateau names the
+  failure limit. Apply this at each place that now reports a plateau.
+- **Closes:** R-D6.
+- **Tests:** `TrialAdoptionTest` or the existing plateau tests: a sequential round, a weak round and a revert, each
+  without a promotion, resume sampling while every category has at most 2 failures, and report a plateau when one
+  has 3; a candidate that resumed sampling and then meets the readiness gate is committed; `DriverTest`: a campaign
+  whose only round fails continues admitting representative trials; `StatusReportTest`: the plateau text.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-45 — External files are read-only (user ruling, 2026-10-05)
 
 - **Change:** an external file, reached through a link or read directly, is a read-only member of the prompt family.
@@ -1520,7 +1541,8 @@ blocks only the part of a work item that it names.
 | WI-43 | WI-42 |
 | WI-44 | WI-38 |
 | WI-45 | WI-43 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44 and WI-45. |
+| WI-46 | WI-45 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45 and WI-46. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 

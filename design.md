@@ -78,7 +78,7 @@ CAT reports each of these outcomes with its evidence and available next actions.
 | `not certified` | The user accepted an uncertified candidate ([§2.8](#28-decision-table)). |
 | `not certified: below minimum` | A category is proven below 95% in the current certification attempt. |
 | `not certified: inconclusive` | A category reached its trial cap undecided. |
-| `not certified: plateau` | A full development round produced no stronger candidate. |
+| `not certified: plateau` | A full development round produced no stronger candidate while the working candidate is clearly below the readiness gate. |
 | `not certified: stopped for contract revision` | The user stopped a certification attempt to revise the contract. |
 | `not certified: testing environment changed` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
 | `certification unavailable: unsupported instruction source` | A remote or MCP response supplies governing instructions. |
@@ -352,7 +352,9 @@ following:
 - at least 100 representative development trials;
 - at least 99% observed passes;
 - latest two completed batches of 50 each at 98% or more;
-- no unresolved reproducible defect or known regression.
+- no unresolved reproducible defect or known regression. A defect is unresolved while its diagnosis, round or author
+  attempts are in progress; a round that ends without a promotable attempt leaves the working candidate's later trials
+  to decide.
 
 The first three are the gate's **count conditions**. The incumbent's baseline targets must also be met
 ([§2.5](#25-incumbent-baseline)). The gate is a cost control, not evidence. It keeps weak candidates from spending
@@ -515,9 +517,13 @@ or stopping. An authorized extension names its next review point.
 
 **Rounds and plateau.** In a development round, every currently failing category receives a bounded diagnosis and up to
 2 author attempts made one at a time, or 3 concurrent attempts while the working candidate is weak. A round that
-promotes a stronger candidate still below readiness starts the next round automatically. `not certified: plateau`
-requires a complete round that produced no promotable attempt. An interrupted round or an infrastructure failure never
-establishes a plateau. CAT never predicts a plateau from elapsed time or tokens.
+promotes a stronger candidate still below readiness starts the next round automatically. Failing to prove an attempt
+better never ends development (user ruling, 2026-10-05). A complete round that produced no promotable attempt keeps the
+working candidate and resumes its representative trials, until it passes the readiness gate and is committed, or until
+a later failure makes it edit again under edit-or-continue. `not certified: plateau` requires a complete round that
+produced no promotable attempt while the working candidate is clearly below the gate: it can no longer meet the gate by
+the 200-trial review checkpoint, which means more than 2 failures in any category. An interrupted round or an
+infrastructure failure never establishes a plateau. CAT never predicts a plateau from elapsed time or tokens.
 
 Development estimates use exploratory 95% Wilson intervals. They are labelled `development estimate` and
 `not certified`, and they are never presented as simultaneous guarantees.
@@ -1671,6 +1677,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D50 | Identify the judge by a version number that CAT increments whenever a property that can change a verdict changes, and make a certification historical when the judge version changes (user ruling, 2026-10-04). | The judge's role profile, prompt, rubric, decision rule, result schema and evidence renderer each can change verdicts, and the code recorded only the judge's model. One declared number covers them all and needs no per-property comparison. Re-judging retained trials could keep a certification current across a judge change, but it needs retained evidence and a new attempt per change. | A judge change makes every certification under the old judge historical, even when the model's compliance is unchanged. A judge property changed without a version increment fails the build. |
 | D51 | Remove a certified campaign's files from `.cat/work/` once its candidate is delivered or the user keeps the incumbent, and keep a certification record of a few kilobytes in the project (user rulings, 2026-10-04). | A campaign's run directories take about 1.7 MB per trial, and a finished certification needs none of them. Without a record, deleting the snapshot would leave nothing from which to report whether the delivered prompt's certification is current. A record under `.cat/work/` would be local to one clone, and committing trial results would put megabytes into the repository. | The record is a committed project file that changes with each certified delivery. After cleanup, a certified campaign cannot be resumed or diagnosed, and its evidence cannot be re-examined. A campaign that ends any other way keeps its files until the user removes them. |
 | D52 | Treat every external file as a read-only member of the prompt family: CAT reads, stages and measures it but never edits it (user ruling, 2026-10-05). | Letting the user authorize edits to an external target meant a delivery could change files outside the project that other projects or users share, with a separate preflight and change record for them. | A requirement that needs an external edit must be met through an in-project prompt file, or the campaign stops or is revised. |
+| D53 | Keep sampling the working candidate after a round that promoted no attempt, and report a plateau only when that candidate can no longer meet the readiness gate by the review checkpoint (user ruling, 2026-10-05). | Pausing at every round without a promotion ended development whenever attempts could not be proven better, although the working candidate might already be ready or close to it. | A candidate near the gate spends more development trials before the user is asked; the review checkpoint still bounds them. |
 
 ## 14. Acceptance evidence
 
