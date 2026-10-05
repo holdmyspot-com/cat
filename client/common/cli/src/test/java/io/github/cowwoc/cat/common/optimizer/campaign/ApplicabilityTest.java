@@ -1,7 +1,9 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
@@ -9,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -292,6 +295,85 @@ public final class ApplicabilityTest
 		CertificationParameters current = new CertificationParameters(BettingProcess.REQUIRED_PASS_RATE,
 			currentLevel);
 		assertParameterApplicability(current, staysCurrent, CertificationParameter.CERTIFICATION_LEVEL);
+	}
+
+	/**
+	 * A certification record compared with a changed prompt file, judge version and session environment version is
+	 * historical and names each change. The trial model, which only a session observes, is unchecked rather than
+	 * changed.
+	 */
+	@Test
+	public void recordNamesEachChangedCondition()
+	{
+		// Requirement: R-M6
+		CertificationRecord record = record();
+		Map<MeasurementCondition, String> known = new EnumMap<>(MeasurementCondition.class);
+		known.put(MeasurementCondition.PROVIDER, "claude");
+		known.put(MeasurementCondition.JUDGE, "judge-2");
+		known.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-2");
+
+		Applicability applicability = record.applicability(Map.of(Path.of("CLAUDE.md"), hash("prompt v3")),
+			new MeasurementIdentity(known));
+
+		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(applicability.promptContentChanged(), "promptContentChanged").isTrue();
+		requireThat(applicability.changed(), "changed").containsExactly(List.of(MeasurementCondition.JUDGE,
+			MeasurementCondition.SESSION_ENVIRONMENT_VERSION));
+		requireThat(applicability.unchecked(), "unchecked").containsExactly(List.of(MeasurementCondition.MODEL));
+		requireThat(applicability.parameters(), "parameters").isEmpty();
+	}
+
+	/**
+	 * A certification record compared with unchanged prompt files and conditions stays current, even though the trial
+	 * model that only a session observes is unchecked.
+	 */
+	@Test
+	public void uncheckedConditionKeepsRecordCurrent()
+	{
+		// Requirement: R-M6
+		CertificationRecord record = record();
+		Map<MeasurementCondition, String> known = new EnumMap<>(MeasurementCondition.class);
+		known.put(MeasurementCondition.PROVIDER, "claude");
+		known.put(MeasurementCondition.JUDGE, "judge-1");
+		known.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-1");
+
+		Applicability applicability = record.applicability(Map.of(Path.of("CLAUDE.md"), hash("prompt v2")),
+			new MeasurementIdentity(known));
+
+		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(applicability.promptContentChanged(), "promptContentChanged").isFalse();
+		requireThat(applicability.changed(), "changed").isEmpty();
+		requireThat(applicability.unchecked(), "unchecked").containsExactly(List.of(MeasurementCondition.MODEL));
+	}
+
+	/**
+	 * Returns the record of a first certification of {@code CLAUDE.md} under the current parameters, measured with
+	 * the trial model {@code model-a}, judge version {@code judge-1} and session environment version
+	 * {@code environment-1}.
+	 *
+	 * @return the record
+	 */
+	private static CertificationRecord record()
+	{
+		Map<MeasurementCondition, String> recorded = new EnumMap<>(MeasurementCondition.class);
+		recorded.put(MeasurementCondition.PROVIDER, "claude");
+		recorded.put(MeasurementCondition.JUDGE, "judge-1");
+		recorded.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-1");
+		recorded.put(MeasurementCondition.MODEL, "model-a");
+		return new CertificationRecord(Path.of("CLAUDE.md"), 1, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(1), List.of(new CertificationRecord.CellResult("formatting", "formatting",
+			100, 0)), Map.of(Path.of("CLAUDE.md"), hash("prompt v2")), new MeasurementIdentity(recorded));
+	}
+
+	/**
+	 * Returns the hash of a text.
+	 *
+	 * @param text the text
+	 * @return the hash of its UTF-8 bytes
+	 */
+	private static Sha256 hash(String text)
+	{
+		return Sha256.of(text.getBytes(UTF_8));
 	}
 
 	/**

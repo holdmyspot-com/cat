@@ -92,7 +92,7 @@ public final class LeftoverRuns
 	 * @return the subdirectories, sorted by name
 	 * @throws IOException if the directory cannot be listed
 	 */
-	private static List<Path> list(Path directory) throws IOException
+	static List<Path> list(Path directory) throws IOException
 	{
 		List<Path> children = new ArrayList<>();
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory))

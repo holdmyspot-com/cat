@@ -36,4 +36,10 @@ public final class GitForks implements Forks
 	{
 		return Files.isDirectory(Fork.worktreeOf(campaign));
 	}
+
+	@Override
+	public void remove(Path base, Path campaign) throws IOException
+	{
+		Fork.remove(base, campaign);
+	}
 }

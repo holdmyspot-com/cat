@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -10,6 +11,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -46,11 +48,11 @@ public final class RecordingDeliverer implements Deliverer
 
 	@Override
 	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected,
-		Overlay working, Set<Path> promptSources)
+		Overlay working, Set<Path> promptSources, Optional<CertificationRecord> record)
 	{
 		synchronized (lock)
 		{
-			calls.add(new Call(request, selected, working, promptSources));
+			calls.add(new Call(request, selected, working, promptSources, record));
 			DeliveryResult result = scripted.poll();
 			if (result != null)
 				return result;
@@ -79,8 +81,10 @@ public final class RecordingDeliverer implements Deliverer
 	 * @param selected the selected candidate's overlay
 	 * @param working the working candidate's overlay
 	 * @param promptSources the prompt sources and authorized targets that the delivery checks applicability against
+	 * @param record the certification record that the delivery writes, or empty if the delivery is not certified
 	 */
-	public record Call(DeliveryRequest request, Overlay selected, Overlay working, Set<Path> promptSources)
+	public record Call(DeliveryRequest request, Overlay selected, Overlay working, Set<Path> promptSources,
+		Optional<CertificationRecord> record)
 	{
 	}
 }

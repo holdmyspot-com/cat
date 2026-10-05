@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.ConcurrentEdit;
@@ -29,6 +30,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 
 import java.io.IOException;
@@ -43,6 +45,7 @@ import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -50,6 +53,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Delivers a selected candidate to the base worktree and its authorized external targets.
@@ -59,7 +64,8 @@ import java.util.function.Consumer;
  *   <li>It checks that the optimization worktree holds only content that CAT recorded, and materializes the selected
  *   candidate there if it is not the working candidate.</li>
  *   <li>It plans the delivery against a fresh scan of the base worktree and the external targets, and stops before
- *   writing anything if the plan has conflicts.</li>
+ *   writing anything if the plan has conflicts. A certified delivery's plan also creates or replaces the target's
+ *   certification record, after the candidate's changes.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
@@ -76,6 +82,7 @@ public final class Delivery
 	private static final String TEMPORARY_SUFFIX = ".cat-delivery";
 	private final CampaignStore store;
 	private final WorkspacePort workspace;
+	private final CertificationRecordJson recordCodec;
 	private final Consumer<DeliveryChange> afterWrite;
 
 	/**
@@ -83,11 +90,12 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
+	 * @param json the JSON mapper that writes certification records
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Delivery(CampaignStore store, WorkspacePort workspace)
+	public Delivery(CampaignStore store, WorkspacePort workspace, JsonMapper json)
 	{
-		this(store, workspace, _ ->
+		this(store, workspace, json, _ ->
 		{
 		});
 	}
@@ -97,17 +105,21 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
+	 * @param json the JSON mapper that writes certification records
 	 * @param afterWrite receives each change after its target is written and before the journal records it; an
 	 *   exception that it throws stops the delivery at that point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Delivery(CampaignStore store, WorkspacePort workspace, Consumer<DeliveryChange> afterWrite)
+	public Delivery(CampaignStore store, WorkspacePort workspace, JsonMapper json,
+		Consumer<DeliveryChange> afterWrite)
 	{
 		requireThat(store, "store").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
+		requireThat(json, "json").isNotNull();
 		requireThat(afterWrite, "afterWrite").isNotNull();
 		this.store = store;
 		this.workspace = workspace;
+		this.recordCodec = new CertificationRecordJson(json);
 		this.afterWrite = afterWrite;
 	}
 
@@ -121,22 +133,34 @@ public final class Delivery
 	 *   candidate was already materialized there
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
 	 *   external targets; a base-only change at or below one of them makes the result historical
+	 * @param record the certification record to write to the base worktree, present exactly when the request is
+	 *   labelled {@code certified}
 	 * @return the result
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if the request names a
-	 *   different candidate than {@code selected}, or if {@code selected} and {@code working} have different forks
+	 *   different candidate than {@code selected}, if {@code selected} and {@code working} have different forks, or if
+	 *   {@code record} is absent from a certified request or present in another
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, or if Git fails
 	 */
 	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
-		Set<Path> promptSources) throws IOException
+		Set<Path> promptSources, Optional<CertificationRecord> record) throws IOException
 	{
 		requireThat(campaignId, "campaignId").isNotNull();
 		requireThat(request, "request").isNotNull();
 		requireThat(selected, "selected").isNotNull();
 		requireThat(working, "working").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
+		requireThat(record, "record").isNotNull();
 		requireDeliverable(request.label());
+		boolean certified = request.label() == Outcome.CERTIFIED;
+		if (certified && record.isEmpty())
+			throw new IllegalArgumentException("A delivery labelled \"certified\" requires a certification record.");
+		if (!certified && record.isPresent())
+		{
+			throw new IllegalArgumentException("A delivery labelled \"" + request.label().label() + "\" may not " +
+				"write a certification record.");
+		}
 		requireThat(request.candidate().snapshot(), "request.candidate().snapshot()").
 			isEqualTo(selected.identity(), "selected.identity()");
 		requireThat(working.fork(), "working.fork()").isEqualTo(selected.fork(), "selected.fork()");
@@ -159,7 +183,13 @@ public final class Delivery
 			journal = recorded.get();
 		else
 		{
-			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths));
+			Map<Path, FileContent> additionalFiles = new HashMap<>();
+			if (record.isPresent())
+			{
+				additionalFiles.put(CertificationRecord.location(record.get().target()),
+					new FileContent(recordCodec.write(record.get())));
+			}
+			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths), additionalFiles);
 			if (!plan.conflicts().isEmpty())
 				return new Conflicted(plan.conflicts());
 			journal = new DeliveryJournal(selected.identity(), plan.changes(), 0);
@@ -384,8 +414,12 @@ public final class Delivery
 			return new VerificationFailed(mismatched);
 
 		FileInventory current = InventoryScanner.scan(base, externalPaths);
+		// The journal's targets hold the delivered state, which includes files written beside the candidate
+		Set<Path> delivered = new HashSet<>();
+		for (DeliveryChange change : journal.changes())
+			delivered.add(change.target());
 		List<Path> baseOnlyChanges = InventoryDiff.between(selected.snapshot(), current).changes().stream().
-			map(PathChange::path).sorted().toList();
+			map(PathChange::path).filter(path -> !delivered.contains(path)).sorted().toList();
 		List<Path> changedPromptSources = baseOnlyChanges.stream().
 			filter(path -> promptSources.stream().anyMatch(path::startsWith)).toList();
 		Applicability applicability;

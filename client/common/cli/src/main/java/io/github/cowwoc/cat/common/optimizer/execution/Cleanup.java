@@ -1,0 +1,281 @@
+package io.github.cowwoc.cat.common.optimizer.execution;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
+import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
+import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
+import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
+import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
+
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.function.Consumer;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Removes the files of a campaign that ended by a certified delivery or by retaining the incumbent.
+ * <p>
+ * Removal runs three steps, in order: it removes the campaign's optimization worktree, then the campaign's runs below
+ * every run root, then the campaign directory. A run belongs to the campaign when its manifest's {@code projectPath}
+ * lies below the campaign directory; a run without a readable manifest identifies no campaign and is kept. Every
+ * other ending keeps the campaign's files.
+ * <p>
+ * Before the first step, the campaign directory records that removal started. A removal that a crash interrupts is
+ * completed by {@link #resume()}, which every command runs first. Each step does nothing for files that are already
+ * gone, so a step may run again. A run's manifest is deleted after the rest of the run, so an interrupted deletion
+ * leaves a run that is still attributed to the campaign.
+ * <p>
+ * <b>Thread Safety:</b> This class is not thread-safe. Removal takes the campaign's write lock; a campaign whose lock
+ * another process holds is removed by a later command.
+ */
+public final class Cleanup
+{
+	private static final String MANIFEST = "run.json";
+	private final Path base;
+	private final Forks forks;
+	private final List<Path> runRoots;
+	private final JsonMapper json;
+	private final Consumer<Step> beforeStep;
+
+	/**
+	 * Creates a cleanup.
+	 *
+	 * @param base the base worktree
+	 * @param forks creates and removes the campaigns' optimization worktrees
+	 * @param runRoots the directories that hold the runs of every campaign of the project
+	 * @param json the JSON mapper that parses run manifests
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public Cleanup(Path base, Forks forks, List<Path> runRoots, JsonMapper json)
+	{
+		this(base, forks, runRoots, json, _ ->
+		{
+		});
+	}
+
+	/**
+	 * Creates a cleanup that reports each step before it runs.
+	 *
+	 * @param base the base worktree
+	 * @param forks creates and removes the campaigns' optimization worktrees
+	 * @param runRoots the directories that hold the runs of every campaign of the project
+	 * @param json the JSON mapper that parses run manifests
+	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
+	 *   point, as a crash would
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public Cleanup(Path base, Forks forks, List<Path> runRoots, JsonMapper json, Consumer<Step> beforeStep)
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(forks, "forks").isNotNull();
+		requireThat(runRoots, "runRoots").isNotNull();
+		requireThat(json, "json").isNotNull();
+		requireThat(beforeStep, "beforeStep").isNotNull();
+		this.base = base;
+		this.forks = forks;
+		this.runRoots = List.copyOf(runRoots);
+		this.json = json;
+		this.beforeStep = beforeStep;
+	}
+
+	/**
+	 * Indicates whether a campaign's ending removes its files: the campaign finished as {@code certified}, and either
+	 * the user retained the incumbent, so it delivers nothing, or its certified delivery passed final verification.
+	 *
+	 * @param campaign the campaign, as stored after the command that may have ended it
+	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
+	 * @return {@code true} if the campaign's files are removed
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean isRemovable(Campaign campaign, Optional<DeliveryResult> delivery)
+	{
+		requireThat(campaign, "campaign").isNotNull();
+		requireThat(delivery, "delivery").isNotNull();
+		if (campaign.lifecycle() != Lifecycle.FINISHED || campaign.outcome() != Outcome.CERTIFIED)
+			return false;
+		// A certified campaign that delivers nothing ended by retaining the incumbent
+		boolean retainedIncumbent = campaign.delivery() == null;
+		return retainedIncumbent ||
+			delivery.orElse(null) instanceof Delivered delivered && delivered.label() == Outcome.CERTIFIED;
+	}
+
+	/**
+	 * Removes a campaign's files if its ending removes them.
+	 *
+	 * @param campaign the campaign, as stored after the command that may have ended it
+	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
+	 * @return {@code true} if the ending removes the campaign's files: they are removed, or, if another process holds
+	 *   the campaign's lock, the next command removes them
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the removal cannot be recorded or a step fails; the next command retries it
+	 */
+	public boolean end(Campaign campaign, Optional<DeliveryResult> delivery) throws IOException
+	{
+		if (!isRemovable(campaign, delivery))
+			return false;
+		String id = campaign.header().id();
+		FileCampaignStore.recordRemoval(base, id);
+		remove(id);
+		return true;
+	}
+
+	/**
+	 * Completes every removal that an earlier command started but did not finish.
+	 *
+	 * @throws IOException if the campaigns cannot be listed or a step fails
+	 */
+	public void resume() throws IOException
+	{
+		for (String id : FileCampaignStore.removals(base))
+			remove(id);
+		FileCampaignStore.completeDeletions(base);
+	}
+
+	/**
+	 * Runs every removal step of a campaign whose removal is recorded, under the campaign's lock.
+	 *
+	 * @param id the campaign's identifier
+	 * @throws IOException if a step fails
+	 */
+	private void remove(String id) throws IOException
+	{
+		Path directory = FileCampaignStore.directory(base, id);
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(base, id));
+		if (lock.isEmpty())
+			return;
+		// Deleting the campaign directory deletes the open lock file, which releases nothing until the lock closes
+		try (CampaignLock _ = lock.get())
+		{
+			beforeStep.accept(Step.WORKTREE);
+			forks.remove(base, directory);
+
+			beforeStep.accept(Step.RUNS);
+			List<Path> owners = new ArrayList<>(List.of(directory.toAbsolutePath().normalize()));
+			owners.add(directory.toRealPath());
+			for (Path runRoot : runRoots)
+				removeRuns(runRoot, owners);
+
+			beforeStep.accept(Step.CAMPAIGN_DIRECTORY);
+			FileCampaignStore.delete(base, id);
+		}
+	}
+
+	/**
+	 * Deletes the runs of a campaign below one run root.
+	 *
+	 * @param runRoot the run root, which holds {@code <harness>/<run>/run.json}
+	 * @param owners the campaign directory's paths that a run's project path may start with
+	 * @throws IOException if a directory cannot be listed or a run cannot be deleted
+	 */
+	private void removeRuns(Path runRoot, List<Path> owners) throws IOException
+	{
+		if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
+			return;
+		for (Path harness : LeftoverRuns.list(runRoot))
+		{
+			for (Path run : LeftoverRuns.list(harness))
+			{
+				Optional<Path> project = projectPath(run.resolve(MANIFEST));
+				if (project.isPresent() && owners.stream().anyMatch(project.get()::startsWith))
+					deleteRun(run);
+			}
+		}
+	}
+
+	/**
+	 * Returns the project path that a run manifest records.
+	 *
+	 * @param manifest the run's manifest
+	 * @return the absolute, normalized path; empty if the manifest does not exist, cannot be parsed, or records no
+	 *   absolute path
+	 * @throws IOException if the manifest cannot be read
+	 */
+	private Optional<Path> projectPath(Path manifest) throws IOException
+	{
+		if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		JsonNode root;
+		try
+		{
+			root = json.readTree(Files.readAllBytes(manifest));
+		}
+		catch (JacksonException _)
+		{
+			return Optional.empty();
+		}
+		if (root == null || !root.isObject())
+			return Optional.empty();
+		JsonNode value = root.get("projectPath");
+		if (value == null || !value.isString())
+			return Optional.empty();
+		Path path;
+		try
+		{
+			path = Path.of(value.asString());
+		}
+		catch (InvalidPathException _)
+		{
+			return Optional.empty();
+		}
+		if (!path.isAbsolute())
+			return Optional.empty();
+		return Optional.of(path.normalize());
+	}
+
+	/**
+	 * Deletes a run directory, deleting its manifest after everything else.
+	 *
+	 * @param run the run directory
+	 * @throws IOException if the run cannot be deleted
+	 */
+	private static void deleteRun(Path run) throws IOException
+	{
+		Path manifest = run.resolve(MANIFEST);
+		List<Path> children = new ArrayList<>();
+		try (DirectoryStream<Path> stream = Files.newDirectoryStream(run))
+		{
+			for (Path child : stream)
+			{
+				if (!child.equals(manifest))
+					children.add(child);
+			}
+		}
+		for (Path child : children)
+			TemporaryDirectories.deleteRecursively(child);
+		Files.deleteIfExists(manifest);
+		Files.deleteIfExists(run);
+	}
+
+	/**
+	 * A step of a campaign's removal.
+	 */
+	public enum Step
+	{
+		/**
+		 * Removes the campaign's optimization worktree.
+		 */
+		WORKTREE,
+		/**
+		 * Removes the campaign's runs below every run root.
+		 */
+		RUNS,
+		/**
+		 * Removes the campaign directory.
+		 */
+		CAMPAIGN_DIRECTORY
+	}
+}

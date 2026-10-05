@@ -1915,7 +1915,7 @@ final class CampaignJson
 	 * @param identity the conditions
 	 * @return the document
 	 */
-	private ObjectNode writeIdentity(MeasurementIdentity identity)
+	ObjectNode writeIdentity(MeasurementIdentity identity)
 	{
 		ObjectNode node = json.createObjectNode();
 		writeConditions(node.putObject("conditions"), identity.values());
@@ -1947,7 +1947,7 @@ final class CampaignJson
 	 * @param node the document
 	 * @return the conditions
 	 */
-	private static MeasurementIdentity readIdentity(JsonNode node)
+	static MeasurementIdentity readIdentity(JsonNode node)
 	{
 		requireObject(node, "identity");
 		Map<String, Map<MeasurementCondition, String>> cells = new HashMap<>();
@@ -2194,7 +2194,7 @@ final class CampaignJson
 	 * @return the value
 	 * @throws IllegalArgumentException if the value is not a decimal string
 	 */
-	private static BigDecimal decimal(JsonNode node, String name)
+	static BigDecimal decimal(JsonNode node, String name)
 	{
 		String value = text(node, name);
 		try
@@ -2215,7 +2215,7 @@ final class CampaignJson
 	 * @return the level
 	 * @throws IllegalArgumentException if the value is not a valid threshold
 	 */
-	private static SignificanceLevel level(JsonNode node, String name)
+	static SignificanceLevel level(JsonNode node, String name)
 	{
 		String value = text(node, name);
 		try

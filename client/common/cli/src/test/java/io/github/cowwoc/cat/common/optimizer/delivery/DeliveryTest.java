@@ -7,13 +7,21 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.ConcurrentEdit;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.UnownedChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryPlan;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -24,6 +32,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.port.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.InMemoryCampaignStore;
@@ -52,7 +61,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
  * holds {@code shared.md}. The candidate edits {@code rules/main.md} and {@code shared.md}, creates
- * {@code rules/new.md} and deletes {@code rules/old.md}.
+ * {@code rules/new.md} and deletes {@code rules/old.md}. A certified delivery also writes the certification record of
+ * the target {@code rules/main.md} to {@code .cat/certifications/rules/main.json}.
  */
 public final class DeliveryTest
 {
@@ -62,6 +72,8 @@ public final class DeliveryTest
 	private static final Consumer<DeliveryChange> NO_HOOK = _ ->
 	{
 	};
+	private static final Optional<CertificationRecord> RECORD = Optional.of(record(1));
+	private static final Path RECORD_FILE = Path.of(".cat/certifications/rules/main.json");
 
 	/**
 	 * Creates the test.
@@ -88,7 +100,8 @@ public final class DeliveryTest
 			Files.writeString(fixture.base().resolve("README.md"), "readme edited by the user\n", UTF_8);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
-				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.label(), "label").isEqualTo(Outcome.CERTIFIED);
@@ -124,7 +137,8 @@ public final class DeliveryTest
 			List<DeliveryChange> writes = new ArrayList<>();
 
 			DeliveryResult result = fixture.delivery(store, candidate, writes::add).
-				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
 
 			requireThat(result, "result").isInstanceOf(Conflicted.class);
 			requireThat(((Conflicted) result).conflicts(), "conflicts").isEqualTo(List.of(
@@ -141,7 +155,8 @@ public final class DeliveryTest
 
 	/**
 	 * A crash after any change's file is written, but before the journal records it, is followed by a restart that
-	 * resumes the same delivery: every change is written exactly once across both runs, and the delivery completes.
+	 * resumes the same delivery: every change, including the certification record's, is written exactly once across
+	 * both runs, and the delivery completes.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -149,7 +164,7 @@ public final class DeliveryTest
 	public void faultBetweenWritesResumesOnce() throws IOException
 	{
 		// Requirement: R-W8
-		int changeCount = 4;
+		int changeCount = 5;
 		for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -169,7 +184,7 @@ public final class DeliveryTest
 				try
 				{
 					fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
-						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 				}
 				catch (SimulatedCrash _)
 				{
@@ -180,11 +195,14 @@ public final class DeliveryTest
 				// The restarted process opens a new store and executor over the same base worktree
 				DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
 					change -> written.add(change.sequence())).
-					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 
 				requireDelivered(result);
-				requireThat(written, "written").withContext(crashAfter, "crashAfter").isEqualTo(List.of(0, 1, 2, 3));
+				requireThat(written, "written").withContext(crashAfter, "crashAfter").
+					isEqualTo(List.of(0, 1, 2, 3, 4));
 				requireCandidateDelivered(fixture);
+				requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
+					isEqualTo(RECORD.orElseThrow());
 			}
 		}
 	}
@@ -215,7 +233,7 @@ public final class DeliveryTest
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 
 			DeliveryResult result = fixture.delivery(store, candidate, userEdit).
-				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 
 			requireThat(result, "result").isEqualTo(new ConcurrentEdit(planned.get(1), 1));
 			requireThat(read(editedByUser), "editedByUser").isEqualTo("edited by the user during delivery\n");
@@ -223,7 +241,7 @@ public final class DeliveryTest
 				isEqualTo(Optional.of(1));
 
 			DeliveryResult resumed = fixture.delivery(store, candidate, NO_HOOK).
-				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 			requireThat(resumed, "resumed").isEqualTo(new ConcurrentEdit(planned.get(1), 1));
 			requireThat(read(editedByUser), "editedByUser").isEqualTo("edited by the user during delivery\n");
 		}
@@ -246,7 +264,8 @@ public final class DeliveryTest
 			Files.writeString(fixture.base().resolve("rules/style.md"), "style edited by the user\n", UTF_8);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
-				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.applicability(), "applicability").
@@ -277,11 +296,11 @@ public final class DeliveryTest
 			Overlay working = kept.write(Path.of("rules/main.md"), content("main v3\n"), READ_WRITE);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
 				working.snapshot());
-			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, NO_HOOK);
+			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, JSON, NO_HOOK);
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
 				new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED), kept, working,
-				fixture.promptSources());
+				fixture.promptSources(), Optional.empty());
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(kept));
@@ -310,7 +329,8 @@ public final class DeliveryTest
 			String headBefore = git.run("rev-parse", "HEAD");
 
 			requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
-				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources()));
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD));
 
 			requireThat(git.lines("rev-list", "--all"), "commits").isEqualTo(commitsBefore);
 			requireThat(git.run("rev-parse", "HEAD"), "head").isEqualTo(headBefore);
@@ -342,8 +362,8 @@ public final class DeliveryTest
 				new FileInventory(fixture.base(), files));
 			CampaignStore store = new InMemoryCampaignStore();
 
-			DeliveryResult result = new Delivery(store, workspace, NO_HOOK).deliver(CAMPAIGN,
-				request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources());
+			DeliveryResult result = new Delivery(store, workspace, JSON, NO_HOOK).deliver(CAMPAIGN,
+				request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(), RECORD);
 
 			requireThat(result, "result").isEqualTo(new UnownedChange(List.of(
 				new PathChange.Added(Path.of("rules/stray.md"), stray))));
@@ -370,7 +390,7 @@ public final class DeliveryTest
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED),
-					candidate, candidate, fixture.promptSources());
+					candidate, candidate, fixture.promptSources(), Optional.empty());
 
 			requireThat(requireDelivered(result).label().label(), "label").isEqualTo("not certified");
 		}
@@ -394,7 +414,7 @@ public final class DeliveryTest
 
 			fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
-					fixture.promptSources());
+					fixture.promptSources(), Optional.empty());
 		}
 	}
 
@@ -414,11 +434,11 @@ public final class DeliveryTest
 			CampaignStore store = new InMemoryCampaignStore();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 			DeliveryResult first = fixture.delivery(store, candidate, NO_HOOK).
-				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 			List<DeliveryChange> writes = new ArrayList<>();
 
 			DeliveryResult second = fixture.delivery(store, candidate, writes::add).
-				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD);
 
 			requireThat(writes, "writes").isEmpty();
 			requireThat(second, "second").isEqualTo(first);
@@ -445,7 +465,168 @@ public final class DeliveryTest
 			store.writeJournal(CAMPAIGN, new DeliveryJournal(other.identity(), List.of(), 0));
 
 			fixture.delivery(store, candidate, NO_HOOK).
-				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources());
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
+		}
+	}
+
+	/**
+	 * A certified delivery creates the target's certification record as the last change of the same change set: the
+	 * record is in the delivered diff, is not reported as a base-only change, and reads back as the delivered record.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void certifiedDeliveryCreatesRecord() throws IOException
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+
+			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD));
+
+			DeliveryChange last = delivered.changes().getLast();
+			requireThat(last, "last").isInstanceOf(Create.class);
+			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
+			requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
+				isEqualTo(RECORD.orElseThrow());
+			requireThat(delivered.diff(), "diff").contains("+++ b/" + RECORD_FILE).contains("\"certification_index\"");
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
+			requireThat(delivered.applicability().status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		}
+	}
+
+	/**
+	 * A certified delivery replaces the record that an earlier certification of the same target left, and the diff
+	 * shows the replacement.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void certifiedDeliveryReplacesEarlierRecord() throws IOException
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CertificationRecordJson codec = new CertificationRecordJson(JSON);
+			Fixture fixture = Fixture.create(cleanup).commit(RECORD_FILE, codec.write(record(3)));
+			Overlay candidate = fixture.candidate();
+
+			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD));
+
+			DeliveryChange last = delivered.changes().getLast();
+			requireThat(last, "last").isInstanceOf(Edit.class);
+			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
+			requireThat(codec.read(fixture.resolve(RECORD_FILE)), "record").isEqualTo(RECORD.orElseThrow());
+			requireThat(delivered.diff(), "diff").contains("+++ b/" + RECORD_FILE).
+				contains("-  \"certification_index\" : 3").contains("+  \"certification_index\" : 1");
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
+		}
+	}
+
+	/**
+	 * Delivery checks the record's target like any other: a directory at the record's path stops delivery before any
+	 * write, and a file that appears there after planning stops delivery before the record is written and survives.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void recordTargetIsChecked() throws IOException
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+			Path recordFile = fixture.resolve(RECORD_FILE);
+			Files.createDirectories(recordFile.resolve("occupied"));
+			Files.writeString(recordFile.resolve("occupied/file.txt"), "user data\n", UTF_8);
+			List<DeliveryChange> writes = new ArrayList<>();
+
+			DeliveryResult conflicted = fixture.delivery(new InMemoryCampaignStore(), candidate, writes::add).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
+
+			requireThat(conflicted, "conflicted").isEqualTo(new Conflicted(List.of(new DeliveryConflict(
+				DeliveryConflict.Kind.STRUCTURAL_COLLISION, RECORD_FILE, RECORD_FILE.resolve("occupied/file.txt")))));
+			requireThat(writes, "writes").isEmpty();
+		}
+
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+			Path recordFile = fixture.resolve(RECORD_FILE);
+			// The user writes the record's path while CAT is between its first and second writes
+			Consumer<DeliveryChange> userEdit = change ->
+			{
+				if (change.sequence() == 0)
+				{
+					try
+					{
+						Files.createDirectories(recordFile.getParent());
+					}
+					catch (IOException e)
+					{
+						throw new AssertionError("Could not create " + recordFile.getParent(), e);
+					}
+					write(recordFile, "written by the user\n");
+				}
+			};
+
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, userEdit).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD);
+
+			requireThat(result, "result").isInstanceOf(ConcurrentEdit.class);
+			requireThat(((ConcurrentEdit) result).change().target(), "target").isEqualTo(RECORD_FILE);
+			requireThat(read(recordFile), "record").isEqualTo("written by the user\n");
+		}
+	}
+
+	/**
+	 * Only a certified delivery carries a certification record: a certified request without one, or another label
+	 * with one, is rejected before anything changes.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void recordAccompaniesOnlyCertifiedDelivery() throws IOException
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+			Delivery delivery = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK);
+
+			try
+			{
+				delivery.deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate,
+					fixture.promptSources(), Optional.empty());
+				throw new AssertionError("A certified delivery without a record was accepted");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains("record");
+			}
+			try
+			{
+				delivery.deliver(CAMPAIGN, request(candidate, Outcome.IMPROVED_NOT_CERTIFIED), candidate, candidate,
+					fixture.promptSources(), RECORD);
+				throw new AssertionError("An uncertified delivery with a record was accepted");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains("record");
+			}
+			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 		}
 	}
 
@@ -459,6 +640,20 @@ public final class DeliveryTest
 	private static DeliveryRequest request(Overlay candidate, Outcome label)
 	{
 		return new DeliveryRequest(new Candidate(2, candidate.identity()), 1, label);
+	}
+
+	/**
+	 * Returns the certification record of the target {@code rules/main.md}.
+	 *
+	 * @param certificationIndex the certification index
+	 * @return the record
+	 */
+	private static CertificationRecord record(int certificationIndex)
+	{
+		return new CertificationRecord(Path.of("rules/main.md"), certificationIndex, CertificationScope.WEAKEST_CELL,
+			CertificationParameters.current(certificationIndex), List.of(new CellResult("formatting", "formatting",
+			120, 0)), Map.of(Path.of("rules/main.md"), content("main v2\n").hash()),
+			new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "claude"), Map.of()));
 	}
 
 	/**
@@ -569,6 +764,26 @@ public final class DeliveryTest
 		}
 
 		/**
+		 * Commits a file to the base worktree and records the fork again.
+		 *
+		 * @param path the file's path, relative to the base worktree
+		 * @param bytes the file's content
+		 * @return the fixture whose fork holds the file
+		 * @throws IOException if the file cannot be written or committed
+		 */
+		Fixture commit(Path path, byte[] bytes) throws IOException
+		{
+			Path file = base.resolve(path);
+			Files.createDirectories(file.getParent());
+			Files.write(file, bytes);
+			Git git = new Git(base);
+			git.run("add", "--all");
+			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
+				"commit", "--quiet", "--no-verify", "--message", "Earlier certification");
+			return new Fixture(root, base, external, InventoryScanner.scan(base, Set.of(external)));
+		}
+
+		/**
 		 * Returns the authorized external target.
 		 *
 		 * @return the absolute path of {@code shared.md}
@@ -625,7 +840,7 @@ public final class DeliveryTest
 		Delivery delivery(CampaignStore store, Overlay working, Consumer<DeliveryChange> afterWrite)
 		{
 			FakeWorkspacePort workspace = new FakeWorkspacePort(root.resolve("workspace"), working.snapshot());
-			return new Delivery(store, workspace, afterWrite);
+			return new Delivery(store, workspace, JSON, afterWrite);
 		}
 
 		/**

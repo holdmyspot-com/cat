@@ -114,6 +114,12 @@ final class InMemoryForks implements Forks
 		return inventories.containsKey(campaign);
 	}
 
+	@Override
+	public void remove(Path base, Path campaign)
+	{
+		inventories.remove(campaign);
+	}
+
 	/**
 	 * Builds an inventory of files from the project's directory.
 	 *

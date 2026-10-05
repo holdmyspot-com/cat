@@ -35,6 +35,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
+import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import org.testng.annotations.DataProvider;
@@ -1530,6 +1531,40 @@ public final class OptimizerCoreTest
 				contains(SessionRole.JUDGE);
 			requireThat(repository.load(id).trials().size() + repository.load(id).evidenceRevision(), "progress").
 				isGreaterThan(0L);
+		}
+	}
+
+	/**
+	 * Verifies that a command first completes a removal that an earlier command recorded but did not finish: the
+	 * campaign's directory and optimization worktree are gone, so the command no longer finds the campaign.
+	 */
+	@Test
+	public void commandCompletesInterruptedRemoval() throws Exception
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path directory = repository.directory(id);
+			requireThat(repository.forks().exists(directory), "forkBefore").isTrue();
+			FileCampaignStore.recordRemoval(repository.root(), id);
+
+			CommandRefusedException refusal = null;
+			try
+			{
+				repository.core().status(id);
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e;
+			}
+
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(Files.notExists(directory), "directoryIsAbsent").isTrue();
+			requireThat(repository.forks().exists(directory), "forkAfter").isFalse();
 		}
 	}
 

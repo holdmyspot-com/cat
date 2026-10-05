@@ -11,13 +11,17 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -33,10 +37,18 @@ import java.util.TreeSet;
  * </ul>
  * Base-only changes to other paths survive delivery and are reported.
  * <p>
+ * A plan may also write files that are not part of the candidate, such as a certification record. Such a file
+ * replaces whatever regular file the current state holds at its path, and conflicts only if the candidate also writes
+ * the path, the path resolves to a different file, or the current structure collides with it.
+ * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class DeliveryPlan
 {
+	/**
+	 * The mode of a file that the plan writes beside the candidate where none exists.
+	 */
+	private static final Set<PosixFilePermission> NEW_FILE_PERMISSIONS = PosixFilePermissions.fromString("rw-r--r--");
 	private final List<DeliveryConflict> conflicts;
 	private final List<DeliveryChange> changes;
 	private final List<Path> baseOnlyChanges;
@@ -65,28 +77,98 @@ public final class DeliveryPlan
 	 */
 	public static DeliveryPlan of(Overlay candidate, FileInventory current)
 	{
+		return of(candidate, current, Map.of());
+	}
+
+	/**
+	 * Plans the delivery of a candidate together with files that are not part of it.
+	 *
+	 * @param candidate the candidate, whose fork is the baseline
+	 * @param current a fresh scan of the base worktree and of the same external paths as the fork
+	 * @param additionalFiles the content of each file to write after the candidate's changes, keyed by its path
+	 *   relative to the base worktree
+	 * @return the plan
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if a path in {@code additionalFiles} is absolute
+	 */
+	public static DeliveryPlan of(Overlay candidate, FileInventory current, Map<Path, FileContent> additionalFiles)
+	{
 		requireThat(candidate, "candidate").isNotNull();
 		requireThat(current, "current").isNotNull();
+		requireThat(additionalFiles, "additionalFiles").isNotNull();
+		for (Path path : additionalFiles.keySet())
+			requireThat(path.isAbsolute(), "additionalFiles.isAbsolute(" + path + ")").isFalse();
 		FileInventory fork = candidate.fork();
 		Map<Path, OverlayEntry> overlay = candidate.entries();
+		Map<Path, FileContent> additions = new TreeMap<>(additionalFiles);
 
 		List<DeliveryConflict> conflicts = new ArrayList<>();
 		for (Path target : overlay.keySet())
 			conflicts.addAll(conflictsOf(target, fork, current));
+		for (Path target : additions.keySet())
+			conflicts.addAll(additionConflictsOf(target, overlay, current));
 
 		List<DeliveryChange> changes = new ArrayList<>();
 		if (conflicts.isEmpty())
+		{
 			changes = changesOf(overlay, fork);
+			for (Entry<Path, FileContent> entry : additions.entrySet())
+				changes.add(additionOf(changes.size(), entry.getKey(), entry.getValue(), current));
+		}
 
 		SortedSet<Path> paths = new TreeSet<>(fork.entries().keySet());
 		paths.addAll(current.entries().keySet());
 		List<Path> baseOnlyChanges = new ArrayList<>();
 		for (Path path : paths)
 		{
-			if (!overlay.containsKey(path) && !Objects.equals(fork.entry(path), current.entry(path)))
+			if (!overlay.containsKey(path) && !additions.containsKey(path) &&
+				!Objects.equals(fork.entry(path), current.entry(path)))
+			{
 				baseOnlyChanges.add(path);
+			}
 		}
 		return new DeliveryPlan(conflicts, changes, baseOnlyChanges);
+	}
+
+	/**
+	 * Returns the conflicts that block a file that the plan writes beside the candidate.
+	 *
+	 * @param target the file's path
+	 * @param overlay the candidate's overlay entries
+	 * @param current the current files
+	 * @return the conflicts, empty if the file can be written
+	 */
+	private static List<DeliveryConflict> additionConflictsOf(Path target, Map<Path, OverlayEntry> overlay,
+		FileInventory current)
+	{
+		if (!current.resolve(target).equals(Optional.of(target)))
+		{
+			return List.of(new DeliveryConflict(Kind.TARGET_IDENTITY_MISMATCH, target,
+				current.firstLinkPrefix(target).orElse(target)));
+		}
+		if (overlay.containsKey(target))
+			return List.of(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+		return structuralCollision(target, current).
+			map(path -> List.of(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, path))).
+			orElse(List.of());
+	}
+
+	/**
+	 * Returns the change that writes a file beside the candidate: an edit of the regular file that the current state
+	 * holds at its path, keeping that file's mode, or else the creation of a new file.
+	 *
+	 * @param sequence the change's position in the plan
+	 * @param target the file's path
+	 * @param content the file's content
+	 * @param current the current files
+	 * @return the change
+	 */
+	private static DeliveryChange additionOf(int sequence, Path target, FileContent content, FileInventory current)
+	{
+		// A conflict-free plan holds nothing but a regular file at the target
+		if (current.entry(target).orElse(null) instanceof RegularFile before)
+			return new Edit(sequence, target, before, content, before.permissions());
+		return new Create(sequence, target, content, NEW_FILE_PERMISSIONS);
 	}
 
 	/**

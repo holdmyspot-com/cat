@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.directory;
 import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.heldOutDirectory;
+import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.lockFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PluginInfo;
@@ -21,6 +22,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
+import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
+import io.github.cowwoc.cat.common.optimizer.execution.Cleanup;
+import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.execution.Driver;
 import io.github.cowwoc.cat.common.optimizer.execution.DriverContext;
 import io.github.cowwoc.cat.common.optimizer.execution.LeftoverRuns;
@@ -83,6 +87,10 @@ import java.util.stream.Stream;
  * <p>
  * Every command that changes a campaign first checks that the harness that runs it started the campaign, and refuses
  * before it changes anything otherwise. {@code status} is the exception: either harness may report any campaign.
+ * <p>
+ * Every command first completes the removal of any campaign's files that an earlier command started. {@code run}
+ * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
+ * user retained the incumbent.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe. One launcher process runs one command.
  */
@@ -173,6 +181,7 @@ public final class OptimizerCore implements Core
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		Optional<String> exposure = scope.sessions().findHeldOutExposure(root);
 		if (exposure.isPresent())
@@ -278,15 +287,20 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
+		Cleanup cleanup = cleanup();
+		cleanup.resume();
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
 		SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
+		Optional<DeliveryResult> delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result);
+		cleanup.end(require(scope.store(), campaign, true), delivery);
 		return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
 	}
 
 	@Override
 	public CommandResult status(String campaign) throws CommandRefusedException, IOException
 	{
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		return report(root, require(scope.store(), campaign, false), null, null);
 	}
@@ -300,6 +314,7 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("Confirmation needs the certification scope that you choose: " +
 				CertificationScope.choices() + ".");
 		}
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
@@ -417,6 +432,7 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
@@ -435,15 +451,22 @@ public final class OptimizerCore implements Core
 	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint, Path target)
 		throws CommandRefusedException, IOException
 	{
+		Cleanup cleanup = cleanup();
+		cleanup.resume();
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
-		return apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint, target)));
+		CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint,
+			target)));
+		// Retaining the incumbent ends the campaign without a delivery
+		cleanup.end(require(scope.store(), campaign, true), Optional.empty());
+		return result;
 	}
 
 	@Override
 	public CommandResult resolveConflict(String campaign, int resolution)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
 		if (loaded.lifecycle() != Lifecycle.ACTIVE ||
@@ -469,9 +492,22 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 	{
+		cleanup().resume();
 		Path root = scope.projectRoot();
 		Campaign loaded = require(scope.store(), campaign, true);
 		return apply(root, loaded, List.of(new CampaignEvent.Cancel()));
+	}
+
+	/**
+	 * Returns the cleanup of the project's campaigns.
+	 *
+	 * @return the cleanup
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository
+	 * @throws IOException if the project root cannot be resolved
+	 */
+	private Cleanup cleanup() throws CommandRefusedException, IOException
+	{
+		return new Cleanup(scope.projectRoot(), scope.forks(), scope.sessions().runRoots(), scope.json());
 	}
 
 	/**
@@ -753,9 +789,9 @@ public final class OptimizerCore implements Core
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory);
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
 			new FileCandidateOverlays(directory, inventory, scope.json()), judge, triage, author, values,
-			new Delivery(store, fork.workspace())::deliver, scope.calibrator(),
+			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
-			promptSources, environment(inventory), directory.resolve("driver.lock"), scope.random(),
+			promptSources, environment(inventory), lockFile(root, campaign.header().id()), scope.random(),
 			scope.sliceSettings());
 	}
 

@@ -48,7 +48,7 @@ public sealed interface DeliveryChange
 	Optional<RegularFile> postimage();
 
 	/**
-	 * Creates a file that the fork did not record.
+	 * Creates a file where none exists.
 	 *
 	 * @param sequence the zero-based position in the plan
 	 * @param target the resolved path of the new file
@@ -90,11 +90,11 @@ public sealed interface DeliveryChange
 	}
 
 	/**
-	 * Replaces the content of a file that the fork recorded.
+	 * Replaces the content of an existing file.
 	 *
 	 * @param sequence the zero-based position in the plan
 	 * @param target the resolved path of the file
-	 * @param before the file the fork recorded
+	 * @param before the file that the target holds when delivery is planned
 	 * @param content the file's new bytes
 	 * @param permissions the file's new mode
 	 */
@@ -106,7 +106,7 @@ public sealed interface DeliveryChange
 		 *
 		 * @param sequence the zero-based position in the plan
 		 * @param target the resolved path of the file
-		 * @param before the file the fork recorded
+		 * @param before the file that the target holds when delivery is planned
 		 * @param content the file's new bytes
 		 * @param permissions the file's new mode
 		 * @throws NullPointerException if any of the arguments are null

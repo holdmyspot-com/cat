@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -183,6 +184,28 @@ public final class Fork implements ForkView
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
 		return new Fork(tree, new Workspace(tree, normalizedCampaign, worktree), worktree, false);
+	}
+
+	/**
+	 * Removes the optimization worktree that a campaign holds, and Git's record of it. Removing a worktree that does
+	 * not exist only prunes Git's records of missing worktrees.
+	 *
+	 * @param base the base worktree
+	 * @param campaign the campaign storage directory
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if Git fails or the worktree cannot be deleted
+	 */
+	public static void remove(Path base, Path campaign) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(campaign, "campaign").isNotNull();
+		Git git = new Git(base.toAbsolutePath().normalize());
+		Path worktree = worktreeOf(campaign.toAbsolutePath().normalize());
+		// A worktree whose deletion was interrupted may have lost its ".git" file, which Git needs to remove it
+		if (Files.exists(worktree.resolve(".git"), LinkOption.NOFOLLOW_LINKS))
+			git.run("worktree", "remove", "--force", worktree.toString());
+		TemporaryDirectories.deleteRecursively(worktree);
+		git.run("worktree", "prune");
 	}
 
 	/**

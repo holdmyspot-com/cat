@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.store;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -10,7 +11,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +28,10 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code proposal.json}, and one record per logical trial in {@code trials/<sha256 of the trial key>.json}. The
  * delivery journal is {@code delivery.json} in the campaign directory. The {@code held-out} and {@code trials}
  * directories exist from the first snapshot write.
+ * <p>
+ * The file {@code removal} in a campaign directory records that the removal of the campaign's files started. The
+ * campaign directory is deleted by renaming it to {@code .deleting-<campaign-id>} and deleting that directory, so an
+ * interrupted deletion never leaves a partial campaign; a directory whose name starts with a dot is not a campaign.
  * <p>
  * A snapshot stored directly in the campaign directory belongs to an older format and is refused with a message that
  * asks the user to start a new campaign.
@@ -47,6 +54,9 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
 	private static final String MALFORMED = "is malformed";
+	private static final String REMOVAL = "removal";
+	private static final String LOCK = "driver.lock";
+	private static final String DELETING_PREFIX = ".deleting-";
 	private final Path base;
 	private final JsonMapper json;
 	private final CampaignJson codec;
@@ -104,6 +114,19 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
+	 * Returns the file whose lock gives one process at a time the right to write a campaign.
+	 *
+	 * @param base the base worktree
+	 * @param campaignId the campaign's identifier
+	 * @return the lock file in the campaign directory
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Path lockFile(Path base, String campaignId)
+	{
+		return directory(base, campaignId).resolve(LOCK);
+	}
+
+	/**
 	 * Returns the directory that holds a campaign's held-out content: its snapshot, proposal and trial records.
 	 *
 	 * @param base the base worktree
@@ -139,7 +162,93 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Returns the campaign directories of a worktree.
+	 * Records that the removal of a campaign's files started, so that a later process can complete an interrupted
+	 * removal. Recording it again does nothing.
+	 *
+	 * @param base the base worktree
+	 * @param campaignId the campaign's identifier
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the campaign directory does not exist or the record cannot be written
+	 */
+	public static void recordRemoval(Path base, String campaignId) throws IOException
+	{
+		Path file = directory(base, campaignId).resolve(REMOVAL);
+		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+			return;
+		AtomicFiles.replace(file, new byte[0], _ ->
+		{
+		});
+	}
+
+	/**
+	 * Returns the campaigns of a worktree whose removal started.
+	 *
+	 * @param base the base worktree
+	 * @return the campaigns' identifiers, in name order
+	 * @throws NullPointerException if {@code base} is null
+	 * @throws IOException if the campaigns directory cannot be listed
+	 */
+	public static List<String> removals(Path base) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		List<String> ids = new ArrayList<>();
+		for (Path directory : campaignDirectories(base))
+		{
+			if (isCampaign(directory) && Files.exists(directory.resolve(REMOVAL), LinkOption.NOFOLLOW_LINKS))
+				ids.add(directory.getFileName().toString());
+		}
+		return ids;
+	}
+
+	/**
+	 * Deletes a campaign's directory and everything below it. Deleting a directory that does not exist does nothing.
+	 *
+	 * @param base the base worktree
+	 * @param campaignId the campaign's identifier
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the directory cannot be renamed or deleted
+	 */
+	public static void delete(Path base, String campaignId) throws IOException
+	{
+		Path directory = directory(base, campaignId);
+		Path deleting = root(base).resolve(DELETING_PREFIX + campaignId);
+		// A deletion of the same campaign that was interrupted after its rename holds the name
+		TemporaryDirectories.deleteRecursively(deleting);
+		if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
+			Files.move(directory, deleting, StandardCopyOption.ATOMIC_MOVE);
+		TemporaryDirectories.deleteRecursively(deleting);
+	}
+
+	/**
+	 * Completes every campaign directory deletion that was interrupted after its rename.
+	 *
+	 * @param base the base worktree
+	 * @throws NullPointerException if {@code base} is null
+	 * @throws IOException if the campaigns directory cannot be listed or a directory cannot be deleted
+	 */
+	public static void completeDeletions(Path base) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		for (Path directory : campaignDirectories(base))
+		{
+			if (directory.getFileName().toString().startsWith(DELETING_PREFIX))
+				TemporaryDirectories.deleteRecursively(directory);
+		}
+	}
+
+	/**
+	 * Indicates whether a directory below the campaigns directory holds a campaign.
+	 *
+	 * @param directory the directory
+	 * @return {@code false} if its name starts with a dot, as a directory that is being deleted does
+	 */
+	private static boolean isCampaign(Path directory)
+	{
+		return !directory.getFileName().toString().startsWith(".");
+	}
+
+	/**
+	 * Returns the directories below the campaigns directory of a worktree, including those that are being deleted.
 	 *
 	 * @param base the base worktree
 	 * @return the directories in name order; empty if the worktree has no campaigns
@@ -221,6 +330,8 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		List<Header> headers = new ArrayList<>();
 		for (Path directory : campaignDirectories(base))
 		{
+			if (!isCampaign(directory))
+				continue;
 			Path file = directory.resolve(HELD_OUT).resolve(SNAPSHOT);
 			if (Files.notExists(file))
 			{

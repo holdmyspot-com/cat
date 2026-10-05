@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
@@ -1471,6 +1472,10 @@ public final class DriverTest
 				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
 				requireThat(campaign.delivery().label(), "label").isEqualTo(Outcome.CERTIFIED);
 				requireThat(harness.deliverer().calls().size(), "deliveries").isEqualTo(1);
+				CertificationAttempt certified = campaign.attempt(campaign.delivery().attempt());
+				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				requireThat(record.certificationIndex(), "certificationIndex").isEqualTo(certified.index());
+				requireThat(record.identity(), "identity").isEqualTo(certified.identity());
 				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Delivered.class);
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Ended(Outcome.CERTIFIED));
 			}
@@ -2174,6 +2179,7 @@ public final class DriverTest
 				requireThat(call.selected(), "selected").isEqualTo(harness.overlays().require(first.snapshot()));
 				requireThat(call.working(), "working").
 					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-2")));
+				requireThat(call.record(), "record").isEmpty();
 			}
 		}
 	}

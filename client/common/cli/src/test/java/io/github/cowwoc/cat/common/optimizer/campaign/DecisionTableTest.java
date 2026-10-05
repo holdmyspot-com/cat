@@ -286,6 +286,7 @@ public final class DecisionTableTest
 		Campaign retained = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETAIN_INCUMBENT));
 		requireThat(retained.lifecycle(), "retained.lifecycle").isEqualTo(Lifecycle.FINISHED);
 		requireThat(retained.delivery(), "retained.delivery").isNull();
+		requireThat(retained.outcome(), "retained.outcome").isEqualTo(Outcome.CERTIFIED);
 	}
 
 	/**

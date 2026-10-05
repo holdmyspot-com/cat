@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
@@ -24,6 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
@@ -1584,7 +1586,14 @@ public final class Driver implements AutoCloseable
 		// An authorized external target participates like a prompt source, so its applicability is checked too
 		Set<Path> promptSources = new HashSet<>(context.promptSources());
 		promptSources.addAll(campaign.authorizedTargets());
-		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working, promptSources);
+		Optional<CertificationRecord> record = Optional.empty();
+		if (request.label() == Outcome.CERTIFIED)
+		{
+			record = Optional.of(CertificationRecord.of(campaign, campaign.attempt(request.attempt()),
+				selected.snapshot(), context.promptSources()));
+		}
+		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working, promptSources,
+			record);
 		Applicability applicability = null;
 		if (result instanceof DeliveryResult.Delivered delivered)
 		{

@@ -41,4 +41,13 @@ public interface Forks
 	 * @return {@code true} if the campaign holds an optimization worktree
 	 */
 	boolean exists(Path campaign);
+
+	/**
+	 * Removes the optimization worktree that a campaign holds. Removing a worktree that does not exist does nothing.
+	 *
+	 * @param base the base worktree
+	 * @param campaign the campaign storage directory
+	 * @throws IOException if the worktree cannot be removed
+	 */
+	void remove(Path base, Path campaign) throws IOException;
 }
