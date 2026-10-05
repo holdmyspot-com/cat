@@ -48,12 +48,12 @@ final class TopicReplaySemanticPlacementFixtures
 				candidates.append(',');
 			String inventoryId = inventory.get(index).path("id").stringValue();
 			String output = destinations.getOrDefault(inventoryId, outputs.get(index % outputs.size()));
-			String candidateId = "candidate-" + index;
+			String candidateId = "candidate_" + index;
 			candidates.append("{\"id\":\"").append(candidateId).
 				append("\",\"observable_outcome\":\"fixture ").append(candidateId).
 				append(" outcome\",\"candidate_discovery\":\"fixture responsibility and observable outcome ").
 				append(candidateId).append("\",\"split_counterfactual\":\"fixture split assessment ").
-				append(candidateId).append("\",\"candidate_universe_ids\":[\"independent-").append(index).
+				append(candidateId).append("\",\"candidate_universe_ids\":[\"independent_").append(index).
 				append("\"],\"output\":\"").append(output).
 				append("\",\"units\":[{\"inventory_id\":\"").
 				append(inventoryId).append("\",\"affected_unit\":\"fixture ").append(candidateId).
@@ -76,7 +76,7 @@ final class TopicReplaySemanticPlacementFixtures
 					continue;
 				if (!firstBlocker)
 					candidates.append(',');
-				candidates.append("{\"candidate_id\":\"candidate-").append(other).
+				candidates.append("{\"candidate_id\":\"candidate_").append(other).
 					append("\",\"reason\":\"Fixture artifacts require one output.\"}");
 				firstBlocker = false;
 			}

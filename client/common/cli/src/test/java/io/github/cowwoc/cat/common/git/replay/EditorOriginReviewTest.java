@@ -46,7 +46,7 @@ public final class EditorOriginReviewTest
 			requireThat(scaffold.size(), "scaffoldCount").isEqualTo(2);
 			requireThat(scaffold.get(0).path("path").stringValue(), "firstPath").isEqualTo("feature.txt");
 			requireThat(scaffold.get(0).path("candidates").get(0).path("output").stringValue(), "firstOutput").
-				isEqualTo("output-1");
+				isEqualTo("output_1");
 			output.reset();
 			editor.writeOriginReviewAudit(manifest, output);
 			JsonNode unreviewed = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
@@ -60,7 +60,7 @@ public final class EditorOriginReviewTest
 			JsonNode audit = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 			requireThat(audit.get(0).path("status").stringValue(), "firstStatus").isEqualTo("reviewed");
 			requireThat(audit.get(0).path("classification").stringValue(), "firstClassification").isEqualTo("same_unit");
-			requireThat(audit.get(0).path("destination").stringValue(), "firstDestination").isEqualTo("output-1");
+			requireThat(audit.get(0).path("destination").stringValue(), "firstDestination").isEqualTo("output_1");
 			requireThat(ReplayJson.newMapper().readTree(Files.readString(manifest.resolveSibling(
 				"manifest.json.origin-reviews.json"))).get(0).path("predecessors").get(0).stringValue(),
 				"recordedPredecessor").isEqualTo("source-1");
@@ -85,7 +85,7 @@ public final class EditorOriginReviewTest
 			editor.writeOriginReviewScaffold(manifest, output);
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
 			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
-			Files.writeString(reviews, originReviews(scaffold, "output-2"));
+			Files.writeString(reviews, originReviews(scaffold, "output_2"));
 
 			editor.recordOriginReviews(manifest, reviews);
 		}
@@ -144,7 +144,7 @@ public final class EditorOriginReviewTest
 			Files.writeString(reviews, """
 				[{"inventory_id":"%s","predecessors":%s,"classification":"same_unit",
 				"affected_unit":"feature removal","owning_responsibility":"feature",
-				"predecessor_relationship":"reverts_predecessor","destination":"output-1",
+				"predecessor_relationship":"reverts_predecessor","destination":"output_1",
 				"rejected_destinations":[],"evidence":"The later change removes the feature introduced by its predecessor."}]
 				""".formatted(candidate.path("inventory_id").stringValue(), predecessors(candidate.path("candidates"))));
 

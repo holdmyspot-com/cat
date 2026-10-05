@@ -90,7 +90,7 @@ public final class EditorTest
 			}
 			recordCandidateUniverseEvidence(manifest);
 			Files.writeString(reviewerPasses, Files.readString(reviewerPasses).replace("\"new_candidate_ids\":[]",
-				"\"new_candidate_ids\":[\"independent-0\"]"));
+				"\"new_candidate_ids\":[\"independent_0\"]"));
 			try
 			{
 				editor.declareTopicOutputs(manifest, outputs);
@@ -178,8 +178,8 @@ public final class EditorTest
 			}
 			recordSemanticPlacementLedger(manifest, List.of("feature"), Map.of(
 				implementation + ":1", "feature", documentation + ":1", "feature"));
-			write(manifest, "planner", "planner-", 2, "separate");
-			write(manifest, "independent", "independent-", 2, "separate");
+			write(manifest, "planner", "planner_", 2, "separate");
+			write(manifest, "independent", "independent_", 2, "separate");
 			recordIndependentReviewAttestation(manifest);
 			try
 			{
@@ -192,7 +192,7 @@ public final class EditorTest
 			}
 			recordCandidateUniverseEvidence(manifest);
 			Path ledger = manifest.resolveSibling(manifest.getFileName() + ".semantic-placement-ledger.json");
-			Files.writeString(ledger, Files.readString(ledger).replace("\"independent-0\"", "\"unknown-candidate\""));
+			Files.writeString(ledger, Files.readString(ledger).replace("\"independent_0\"", "\"unknown-candidate\""));
 			try
 			{
 				editor.declareTopicOutputs(manifest, outputs);
@@ -237,6 +237,19 @@ public final class EditorTest
 	}
 
 	/**
+	 * Verifies topic-output declarations reject an identifier that is not snake_case and name its snake_case form.
+	 *
+	 * @throws IOException if the identifier is not snake_case
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Topic-output id \"Output-1\" must be snake_case.*such as \"output_1\".*")
+	public void rejectsNonSnakeCaseTopicOutputId() throws IOException
+	{
+		TopicOutputDeclaration.convertDeclarations(new TopicOutputRequest[]{
+			new TopicOutputRequest("Output-1", "feature: add feature")});
+	}
+
+	/**
 	 * Verifies a proposed candidate collapse cannot proceed without its semantic-placement ledger.
 	 *
 	 * @throws IOException if the typed manifest or evidence cannot be written
@@ -250,7 +263,7 @@ public final class EditorTest
 			Path manifest = writeManifest(replay);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay);
 			recordCandidateUniverseEvidence(manifest);
-			write(manifest, "independent", "independent-", 2, "separate");
+			write(manifest, "independent", "independent_", 2, "separate");
 			recordIndependentReviewAttestation(manifest);
 			Path outputs = replay.resolve("topic-outputs.json");
 			Files.writeString(outputs, "[{\"id\":\"feature\",\"subject\":\"feature: add integrations\"}]\n");
@@ -276,10 +289,10 @@ public final class EditorTest
 	public void rejectsSeparateCandidateCollapse() throws IOException
 	{
 		SemanticCandidate candidate = new SemanticCandidate("collapsed", "combined behavior", "discovery",
-			"split assessment", List.of("independent-0", "independent-1"), "feature", List.of(), List.of(),
+			"split assessment", List.of("independent_0", "independent_1"), "feature", List.of(), List.of(),
 			List.of(), List.of(), List.of(), "placement evidence");
-		CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("independent-0", "independent-1"),
-			new ActionResultMatrix(List.of(), List.of(new ActionPairAssessment("independent-0", "independent-1",
+		CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("independent_0", "independent_1"),
+			new ActionResultMatrix(List.of(), List.of(new ActionPairAssessment("independent_0", "independent_1",
 				"separate", "Each behavior remains usable separately.", List.of("feature.txt"), null))));
 
 		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverseLinks(List.of(candidate), evidence,
@@ -344,7 +357,7 @@ public final class EditorTest
 			Path manifestFile = root.resolve("manifest.json");
 			BatchManifest manifest = ReplayManifestInitialization.withFixedPrefix(capturedManifest(), List.of("source-1"));
 			ReplayJson.newMapper().writeValue(manifestFile.toFile(), manifest);
-			List<SourceReview> reviews = List.of(new SourceReview("source-2", "whole", List.of("output-2"), List.of(),
+			List<SourceReview> reviews = List.of(new SourceReview("source-2", "whole", List.of("output_2"), List.of(),
 				"The later commit has no earlier responsibility.", "It introduces the later file."));
 			Path reviewFile = root.resolve("source-review.json");
 			ReplayJson.newMapper().writeValue(reviewFile.toFile(), reviews);
@@ -371,17 +384,17 @@ public final class EditorTest
 	public void rejectsDraftReviewedDestination() throws IOException
 	{
 		BatchRequest batch = new BatchRequest("second", "source-2", "second.patch");
-		SourceReview review = new SourceReview("source-2", "whole", List.of("output-2"), List.of(), "second", "second");
+		SourceReview review = new SourceReview("source-2", "whole", List.of("output_2"), List.of(), "second", "second");
 
 		try
 		{
-			OutputPlanValidation.validateDraftDestination(batch, new Output("output-1", "source-1", "first"), review);
+			OutputPlanValidation.validateDraftDestination(batch, new Output("output_1", "source-1", "first"), review);
 			throw new AssertionError("Expected draft destination validation failure");
 		}
 		catch (IOException failure)
 		{
 			requireThat(failure.getMessage(), "failureMessage").contains("Draft batch").contains("source-2").
-				contains("output-1").contains("output-2").contains("Move the batch");
+				contains("output_1").contains("output_2").contains("Move the batch");
 		}
 	}
 
@@ -510,15 +523,15 @@ public final class EditorTest
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-sealed-suffix-"));
 			Path manifest = replay.resolve("manifest.json");
 			BatchManifest sealed = capturedManifest().withBatches(List.of(
-				new Batch("source", "source-1", "output-1", null, null))).withOutputWitnesses(List.of(
-				new OutputWitness("output-1", "tree-0", "tree-1"))).withOutputPlan(new OutputPlan(List.of(
-				new PlannedOutput("output-1", "retained", List.of(new PlannedBatch("source", "source-1", null))),
-				new PlannedOutput("output-2", "discarded", List.of()))));
+				new Batch("source", "source-1", "output_1", null, null))).withOutputWitnesses(List.of(
+				new OutputWitness("output_1", "tree-0", "tree-1"))).withOutputPlan(new OutputPlan(List.of(
+				new PlannedOutput("output_1", "retained", List.of(new PlannedBatch("source", "source-1", null))),
+				new PlannedOutput("output_2", "discarded", List.of()))));
 			ReplayJson.newMapper().writeValue(manifest.toFile(), sealed);
 
 			try
 			{
-				new GitTopicReplayEditor(replay, replay).invalidateOutputSuffix(manifest, "output-1");
+				new GitTopicReplayEditor(replay, replay).invalidateOutputSuffix(manifest, "output_1");
 				throw new AssertionError("Expected a sealed output plan to reject in-place invalidation");
 			}
 			catch (IOException e)

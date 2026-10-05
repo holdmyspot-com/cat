@@ -54,8 +54,8 @@ public final class RecoveryTest
 				"verifiedPatch").isEqualTo(patch);
 			SealedPrefixRecovery.verifyBatchAfter(manifest.batches().getFirst(), FIRST_TREE);
 			SealedPrefixRecovery.verifyOutputAfter(first, witness, FIRST_TREE);
-			requireThat(new GitTopicReplayEditor(directory).affectedSuffix(manifestFile, "output-1"), "affectedSuffix").
-				containsExactly(List.of("output-1", "output-2"), "expectedSuffix");
+			requireThat(new GitTopicReplayEditor(directory).affectedSuffix(manifestFile, "output_1"), "affectedSuffix").
+				containsExactly(List.of("output_1", "output_2"), "expectedSuffix");
 		}
 	}
 
@@ -91,8 +91,8 @@ public final class RecoveryTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*expects tree.*prefix produced.*")
 	public void rejectsDisconnectedOutput() throws IOException
 	{
-		SealedPrefixRecovery.verifyOutputBefore(new Output("output-1", FIRST_SOURCE, "feat: first"),
-			new OutputWitness("output-1", BASE_TREE, FIRST_TREE), SECOND_TREE);
+		SealedPrefixRecovery.verifyOutputBefore(new Output("output_1", FIRST_SOURCE, "feat: first"),
+			new OutputWitness("output_1", BASE_TREE, FIRST_TREE), SECOND_TREE);
 	}
 
 	/**
@@ -124,7 +124,7 @@ public final class RecoveryTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*sealed batch.*recorded tree.*")
 	public void rejectsChangedBatchResult() throws IOException
 	{
-		Batch batch = new Batch("first", FIRST_SOURCE, "output-1", null, new DestinationWitness(BASE_TREE, FIRST_TREE));
+		Batch batch = new Batch("first", FIRST_SOURCE, "output_1", null, new DestinationWitness(BASE_TREE, FIRST_TREE));
 		SealedPrefixRecovery.verifyBatchAfter(batch, SECOND_TREE);
 	}
 
@@ -136,8 +136,8 @@ public final class RecoveryTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*sealed output.*recorded tree.*")
 	public void rejectsChangedOutputResult() throws IOException
 	{
-		SealedPrefixRecovery.verifyOutputAfter(new Output("output-1", FIRST_SOURCE, "feat: first"),
-			new OutputWitness("output-1", BASE_TREE, FIRST_TREE), SECOND_TREE);
+		SealedPrefixRecovery.verifyOutputAfter(new Output("output_1", FIRST_SOURCE, "feat: first"),
+			new OutputWitness("output_1", BASE_TREE, FIRST_TREE), SECOND_TREE);
 	}
 
 	/**
@@ -151,11 +151,11 @@ public final class RecoveryTest
 		return new BatchManifest(5, "base", SECOND_TREE,
 			List.of(new SourceSnapshot(FIRST_SOURCE, BASE_TREE, FIRST_TREE),
 				new SourceSnapshot(SECOND_SOURCE, FIRST_TREE, SECOND_TREE)),
-			List.of(new Output("output-1", FIRST_SOURCE, "feat: first"),
-				new Output("output-2", SECOND_SOURCE, "docs: second")), List.of(),
-			List.of(new Batch("first", FIRST_SOURCE, "output-1", patch, new DestinationWitness(BASE_TREE, FIRST_TREE))),
+			List.of(new Output("output_1", FIRST_SOURCE, "feat: first"),
+				new Output("output_2", SECOND_SOURCE, "docs: second")), List.of(),
+			List.of(new Batch("first", FIRST_SOURCE, "output_1", patch, new DestinationWitness(BASE_TREE, FIRST_TREE))),
 			List.of(new SourceReconstruction(FIRST_SOURCE, List.of("first"), null, BASE_TREE, FIRST_TREE),
 				new SourceReconstruction(SECOND_SOURCE, List.of(), patch, FIRST_TREE, SECOND_TREE)),
-			List.of(new OutputWitness("output-1", BASE_TREE, FIRST_TREE)), List.of(), List.of(), List.of(), null);
+			List.of(new OutputWitness("output_1", BASE_TREE, FIRST_TREE)), List.of(), List.of(), List.of(), null);
 	}
 }

@@ -56,8 +56,8 @@ final class OriginReviewFixtures
 		BatchManifest manifest = new BatchManifest(5, "base", "tree-2", List.of(
 			new SourceSnapshot("source-1", "tree-0", "tree-1"),
 			new SourceSnapshot("source-2", "tree-1", "tree-2")), List.of(
-			new Output("output-1", "source-1", "feature"),
-			new Output("output-2", "source-2", "correction")), inventory,
+			new Output("output_1", "source-1", "feature"),
+			new Output("output_2", "source-2", "correction")), inventory,
 			List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
 		Path file = directory.resolve("manifest.json");
 		json.writeValue(file.toFile(), manifest);

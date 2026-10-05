@@ -45,7 +45,7 @@ public final class EditorReplayFinalizationTest
 
 			requireThat(readManifest(ReplayJson.newMapper(), manifestFile).outputPlan(), "sealedPlan").
 				isEqualTo(facts.plan().plan());
-			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output_2"));
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1", "source-2"));
 		}
@@ -57,7 +57,7 @@ public final class EditorReplayFinalizationTest
 	 * @throws IOException if the plan conflicts with recorded origin decisions
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		"(?s).*Topic-replay output plan conflicts with recorded origin decisions.*feature.txt.*output-1.*secondary.txt.*")
+		"(?s).*Topic-replay output plan conflicts with recorded origin decisions.*feature.txt.*output_1.*secondary.txt.*")
 	public void rejectsConflictingOriginPlan() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -131,7 +131,7 @@ public final class EditorReplayFinalizationTest
 				isEqualTo(facts.plan().plan());
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1"));
-			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2"));
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output_2"));
 			requireThat(facts.read("tree-2", "feature.txt"), "absorbedState").isEqualTo(
 				facts.read(facts.plan().witnesses().getFirst().afterTree(), "feature.txt"));
 		}
@@ -158,7 +158,7 @@ public final class EditorReplayFinalizationTest
 				isEqualTo(facts.plan().plan());
 			requireThat(facts.plan().batches().stream().map(Batch::source).toList(), "contributingSources").isEqualTo(
 				List.of("source-1"));
-			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output-2", "output-3"));
+			requireThat(facts.plan().discardedOutputs(), "discardedOutputs").isEqualTo(List.of("output_2", "output_3"));
 			requireThat(facts.plan().witnesses().getFirst().afterTree(), "retainedFinalTree").isEqualTo("tree-3");
 			requireThat(facts.read("tree-2", "feature.txt"), "absorbedIntermediateState").isNotEqualTo(
 				facts.read("tree-3", "feature.txt"), "retainedResult");

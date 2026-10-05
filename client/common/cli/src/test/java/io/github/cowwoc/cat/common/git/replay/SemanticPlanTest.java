@@ -82,6 +82,23 @@ public final class SemanticPlanTest
 	}
 
 	/**
+	 * Verifies a reviewer-named semantic candidate identifier must be snake_case.
+	 *
+	 * @throws IOException for the expected identifier rejection
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		"Semantic candidate id \"feature-a\" must be snake_case.*such as \"feature_a\".*semantic-plan\\.json")
+	public void rejectsNonSnakeCaseCandidateId() throws IOException
+	{
+		SemanticCandidate original = SemanticPlanFixtures.candidates().getFirst();
+		SemanticCandidate renamed = new SemanticCandidate("feature-a", original.observableOutcome(),
+			original.candidateDiscovery(), original.splitCounterfactual(), original.candidateUniverseIds(),
+			original.output(), original.units(), original.acceptanceCommand(), original.prerequisites(),
+			original.rejectedEarlierOutputs(), original.combinedCandidateBlockers(), original.evidence());
+		validate(replaceFirst(renamed), evidence());
+	}
+
+	/**
 	 * Verifies a candidate cannot omit its split counterfactual.
 	 *
 	 * @throws IOException for the expected incomplete candidate
@@ -105,7 +122,7 @@ public final class SemanticPlanTest
 	public void rejectsOmittedReviewerCandidate() throws IOException
 	{
 		validate(SemanticPlanFixtures.candidates(), SemanticPlanFixtures.evidence(
-			Set.of("reviewer-a", "reviewer-b", "reviewer-c", "reviewer-omitted")));
+			Set.of("reviewer_a", "reviewer_b", "reviewer_c", "reviewer_omitted")));
 	}
 
 	/**
@@ -186,7 +203,7 @@ public final class SemanticPlanTest
 	 */
 	private static CandidateUniverseEvidence evidence()
 	{
-		return SemanticPlanFixtures.evidence(Set.of("reviewer-a", "reviewer-b", "reviewer-c"));
+		return SemanticPlanFixtures.evidence(Set.of("reviewer_a", "reviewer_b", "reviewer_c"));
 	}
 
 	/**

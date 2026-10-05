@@ -27,18 +27,18 @@ public final class OutputSuffixInvalidationTest
 	@Test
 	public void removesDependentSuffixDecisions() throws IOException
 	{
-		Batch batch = new Batch("batch", "source-2", "output-2", null, null);
+		Batch batch = new Batch("batch", "source-2", "output_2", null, null);
 		BatchManifest manifest = new BatchManifest(5, "base", "tree", List.of(), List.of(
-			new Output("output-1", null, "feat: first"), new Output("output-2", null, "feat: second")), List.of(),
-			List.of(batch), List.of(), List.of(new OutputWitness("output-1", "base-tree", "first-tree")), List.of(),
-			List.of(new SourceReview("source-2", "whole", List.of("output-2"), List.of(), "counterfactual",
+			new Output("output_1", null, "feat: first"), new Output("output_2", null, "feat: second")), List.of(),
+			List.of(batch), List.of(), List.of(new OutputWitness("output_1", "base-tree", "first-tree")), List.of(),
+			List.of(new SourceReview("source-2", "whole", List.of("output_2"), List.of(), "counterfactual",
 				"evidence")), List.of(), null);
 
-		BatchManifest invalidated = new OutputSuffixInvalidation().invalidate(manifest, "output-2");
+		BatchManifest invalidated = new OutputSuffixInvalidation().invalidate(manifest, "output_2");
 
 		requireThat(invalidated.batches(), "remainingBatches").isEmpty();
 		requireThat(invalidated.sourceReviews(), "remainingReviews").isEmpty();
 		requireThat(invalidated.outputWitnesses(), "remainingWitnesses").containsExactly(
-			List.of(new OutputWitness("output-1", "base-tree", "first-tree")), "firstWitness");
+			List.of(new OutputWitness("output_1", "base-tree", "first-tree")), "firstWitness");
 	}
 }

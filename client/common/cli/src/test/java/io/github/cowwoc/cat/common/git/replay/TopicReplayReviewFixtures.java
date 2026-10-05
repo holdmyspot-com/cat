@@ -44,7 +44,7 @@ final class TopicReplayReviewFixtures
 	 */
 	static String originReviews(JsonNode scaffold)
 	{
-		return originReviews(scaffold, "output-1");
+		return originReviews(scaffold, "output_1");
 	}
 
 	/**

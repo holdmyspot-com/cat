@@ -85,17 +85,17 @@ final class OriginPlanFixtures
 			String source = "source-" + (index + 1);
 			String tree = "tree-" + (index + 1);
 			sources.add(new SourceSnapshot(source, "tree-" + index, tree));
-			outputs.add(new Output("output-" + (index + 1), source, contents.get(index)));
+			outputs.add(new Output("output_" + (index + 1), source, contents.get(index)));
 			PathState before = PathState.absent();
 			if (index > 0)
 				before = state(contents.get(index - 1));
 			inventory.add(item(source + ":1", source, "feature.txt", before, state(contents.get(index))));
-			sourceReviews.add(review(source, dispositions.get(index), List.of("output-1"), List.of()));
+			sourceReviews.add(review(source, dispositions.get(index), List.of("output_1"), List.of()));
 			if (index > 0)
 			{
-				origins.add(origin(source + ":1", predecessors, "corrects_predecessor", "output-1"));
-				discarded.add("output-" + (index + 1));
-				plannedOutputs.add(new PlannedOutput("output-" + (index + 1), "discarded", List.of()));
+				origins.add(origin(source + ":1", predecessors, "corrects_predecessor", "output_1"));
+				discarded.add("output_" + (index + 1));
+				plannedOutputs.add(new PlannedOutput("output_" + (index + 1), "discarded", List.of()));
 			}
 			predecessors.add(source);
 		}
@@ -110,14 +110,14 @@ final class OriginPlanFixtures
 			if (contributingSources.size() == 1)
 				afterTree = sources.getLast().tree();
 			PatchArtifact patch = new PatchArtifact(source + ".patch", "0".repeat(64));
-			batches.add(new Batch(source, source, "output-1", patch, new DestinationWitness(currentTree, afterTree)));
+			batches.add(new Batch(source, source, "output_1", patch, new DestinationWitness(currentTree, afterTree)));
 			plannedBatches.add(new PlannedBatch(source, source, patch));
 			currentTree = afterTree;
 		}
-		plannedOutputs.addFirst(new PlannedOutput("output-1", "retained", plannedBatches));
+		plannedOutputs.addFirst(new PlannedOutput("output_1", "retained", plannedBatches));
 		BatchManifest manifest = manifest(sources, outputs, inventory, sourceReviews);
 		ValidatedOutputPlan plan = new ValidatedOutputPlan(new OutputPlan(plannedOutputs), batches,
-			List.of(new OutputWitness("output-1", "tree-0", currentTree)), discarded);
+			List.of(new OutputWitness("output_1", "tree-0", currentTree)), discarded);
 		Map<String, Map<String, PathState>> paths = new HashMap<>();
 		paths.put("tree-0", Map.of("feature.txt", PathState.absent()));
 		for (int index = 0; index < contents.size(); ++index)
@@ -140,17 +140,17 @@ final class OriginPlanFixtures
 			inventory.add(item("source-1:" + path, "source-1", path, PathState.absent(), state("original")));
 			inventory.add(item("source-2:" + path, "source-2", path, state("original"), state("corrected")));
 		}
-		List<Batch> batches = List.of(batch("feature", "source-1", "output-1", "tree-0", "tree-1"),
-			batch("correction", "source-2", "output-2", "tree-1", "tree-2"));
+		List<Batch> batches = List.of(batch("feature", "source-1", "output_1", "tree-0", "tree-1"),
+			batch("correction", "source-2", "output_2", "tree-1", "tree-2"));
 		List<OriginReview> origins = List.of(
-			origin("source-2:feature.txt", List.of("source-1"), "corrects_predecessor", "output-1"),
-			origin("source-2:secondary.txt", List.of("source-1"), "corrects_predecessor", "output-1"));
+			origin("source-2:feature.txt", List.of("source-1"), "corrects_predecessor", "output_1"),
+			origin("source-2:secondary.txt", List.of("source-1"), "corrects_predecessor", "output_1"));
 		BatchManifest manifest = manifest(sources, outputs(), inventory, List.of(
-			review("source-1", "whole", List.of("output-1"), List.of()),
-			review("source-2", "whole", List.of("output-2"), List.of())));
+			review("source-1", "whole", List.of("output_1"), List.of()),
+			review("source-2", "whole", List.of("output_2"), List.of())));
 		ValidatedOutputPlan plan = retainedPlan(batches, List.of(
-			new OutputWitness("output-1", "tree-0", "tree-1"),
-			new OutputWitness("output-2", "tree-1", "tree-2")));
+			new OutputWitness("output_1", "tree-0", "tree-1"),
+			new OutputWitness("output_2", "tree-1", "tree-2")));
 		return new Facts(manifest, plan, origins, Map.of(
 			"tree-1", Map.of("feature.txt", state("original"), "secondary.txt", state("original")),
 			"tree-2", Map.of("feature.txt", state("corrected"), "secondary.txt", state("corrected"))));
@@ -170,18 +170,18 @@ final class OriginPlanFixtures
 			item("source-1:2", "source-1", "structural-test.txt", PathState.absent(), state("invalid-test")),
 			item("source-2:1", "source-2", "runtime-routing.txt", PathState.absent(), state("routing")),
 			item("source-2:2", "source-2", "structural-test.txt", state("invalid-test"), PathState.absent()));
-		List<SourceReview> sourceReviews = List.of(review("source-1", "whole", List.of("output-1"), List.of()),
-			review("source-2", "split", List.of("output-1", "output-2"), List.of(
-				new UnitPlacement("source-2:1", "runtime routing", "routing", "output-2", "Routing is independent."),
-				new UnitPlacement("source-2:2", "invalid test", "feature", "output-1", "Removal completes the feature."))));
-		List<Batch> batches = List.of(batch("feature", "source-1", "output-1", "tree-0", "feature-tree"),
-			batch("removal", "source-2", "output-1", "feature-tree", "clean-tree"),
-			batch("routing", "source-2", "output-2", "clean-tree", "routing-tree"));
+		List<SourceReview> sourceReviews = List.of(review("source-1", "whole", List.of("output_1"), List.of()),
+			review("source-2", "split", List.of("output_1", "output_2"), List.of(
+				new UnitPlacement("source-2:1", "runtime routing", "routing", "output_2", "Routing is independent."),
+				new UnitPlacement("source-2:2", "invalid test", "feature", "output_1", "Removal completes the feature."))));
+		List<Batch> batches = List.of(batch("feature", "source-1", "output_1", "tree-0", "feature-tree"),
+			batch("removal", "source-2", "output_1", "feature-tree", "clean-tree"),
+			batch("routing", "source-2", "output_2", "clean-tree", "routing-tree"));
 		ValidatedOutputPlan plan = retainedPlan(batches, List.of(
-			new OutputWitness("output-1", "tree-0", "clean-tree"),
-			new OutputWitness("output-2", "clean-tree", "routing-tree")));
+			new OutputWitness("output_1", "tree-0", "clean-tree"),
+			new OutputWitness("output_2", "clean-tree", "routing-tree")));
 		return new Facts(manifest(sources, outputs(), inventory, sourceReviews), plan,
-			List.of(origin("source-2:2", List.of("source-1"), "removes_invalid_predecessor", "output-1")),
+			List.of(origin("source-2:2", List.of("source-1"), "removes_invalid_predecessor", "output_1")),
 			Map.of("feature-tree", Map.of("structural-test.txt", state("invalid-test")),
 				"clean-tree", Map.of("structural-test.txt", PathState.absent()),
 				"routing-tree", Map.of("structural-test.txt", PathState.absent())));
@@ -194,8 +194,8 @@ final class OriginPlanFixtures
 	 */
 	private static List<Output> outputs()
 	{
-		return List.of(new Output("output-1", "source-1", "feature"),
-			new Output("output-2", "source-2", "routing"));
+		return List.of(new Output("output_1", "source-1", "feature"),
+			new Output("output_2", "source-2", "routing"));
 	}
 
 	/**

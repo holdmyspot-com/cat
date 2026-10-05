@@ -547,6 +547,7 @@ final class ReviewEvidence
 					"source-neutral discovery evidence, responsibility, acceptance evidence, split counterfactual, and " +
 					"concrete captured units: " + file);
 			}
+			ReplayIdentifiers.requireSnakeCase("Candidate-universe", candidate.id(), file.toString());
 			for (CandidateUniverseUnit unit : candidate.units())
 				coveredInventory.add(unit.inventoryId());
 			validateRootCandidateEvidence(requirements, candidate, file);

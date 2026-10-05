@@ -188,10 +188,10 @@ public final class EditorPatchWorkflowTest
 			editor.captureSourcePatch(manifest, source, replay.resolve("feature.patch"));
 			Path plan = replay.resolve("output-plan.json");
 			Files.writeString(plan, """
-				[{"output_id":"output-1","disposition":"retained","batches":[{"id":"feature","source":"%s",
+				[{"output_id":"output_1","disposition":"retained","batches":[{"id":"feature","source":"%s",
 				"patch":"feature.patch"}]}]
 				""".formatted(source));
-			String tree = editor.writeDraftOutputTree(manifest, plan, "output-1");
+			String tree = editor.writeDraftOutputTree(manifest, plan, "output_1");
 			requireThat(tree, "draftTree").isEqualTo(git.run("rev-parse", source + "^{tree}").trim());
 			requireThat(git.run("rev-parse", "HEAD").trim(), "head").isEqualTo(source);
 		}
@@ -212,7 +212,7 @@ public final class EditorPatchWorkflowTest
 			git.run("rev-parse", source + "^{tree}").trim());
 		BatchManifest manifest = new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base, snapshot.tree(),
 			List.of(snapshot),
-			List.of(new Output("output-1", source, "test: selected source")), List.of(), List.of(), List.of(), List.of(),
+			List.of(new Output("output_1", source, "test: selected source")), List.of(), List.of(), List.of(), List.of(),
 			List.of(), List.of(), List.of(), null);
 		ReplayJson.newMapper().writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), manifest);
 	}

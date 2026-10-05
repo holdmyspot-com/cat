@@ -43,7 +43,7 @@ final class TopicReplayCandidateUniverseFixtures
 				independent.append(',');
 			}
 			String inventoryId = replay.path("inventory").get(index).path("id").stringValue();
-			planner.append("{\"id\":\"planner-").append(index).append("\",\"observable_outcome\":\"fixture ").
+			planner.append("{\"id\":\"planner_").append(index).append("\",\"observable_outcome\":\"fixture ").
 				append(index).append(" outcome\",\"discovery_evidence\":\"fixture raw evidence ").append(index).
 				append("\",\"responsibility\":\"fixture responsibility ").append(index).
 				append("\",\"acceptance_evidence\":\"fixture acceptance evidence ").append(index).
@@ -51,7 +51,7 @@ final class TopicReplayCandidateUniverseFixtures
 				append("\",\"units\":[{\"inventory_id\":\"").append(inventoryId).
 				append("\",\"affected_unit\":\"fixture unit ").append(index).
 				append("\"}],\"exposed_entry_points\":[]}");
-			independent.append("{\"id\":\"independent-").append(index).
+			independent.append("{\"id\":\"independent_").append(index).
 				append("\",\"observable_outcome\":\"fixture ").append(index).
 				append(" outcome\",\"discovery_evidence\":\"independent fixture raw evidence ").append(index).
 				append("\",\"responsibility\":\"independent fixture responsibility ").append(index).
@@ -67,10 +67,10 @@ final class TopicReplayCandidateUniverseFixtures
 			planner.toString());
 		Files.writeString(manifest.resolveSibling(manifest.getFileName() + ".independent-candidate-universe.json"),
 			independent.toString());
-		write(manifest, "planner", "planner-", replay.path("inventory").size());
-		write(manifest, "independent", "independent-", replay.path("inventory").size());
-		recordPasses(manifest, "planner", "planner-", replay.path("inventory").size());
-		recordPasses(manifest, "independent", "independent-", replay.path("inventory").size());
+		write(manifest, "planner", "planner_", replay.path("inventory").size());
+		write(manifest, "independent", "independent_", replay.path("inventory").size());
+		recordPasses(manifest, "planner", "planner_", replay.path("inventory").size());
+		recordPasses(manifest, "independent", "independent_", replay.path("inventory").size());
 		recordIndependentReviewAttestation(manifest);
 	}
 }

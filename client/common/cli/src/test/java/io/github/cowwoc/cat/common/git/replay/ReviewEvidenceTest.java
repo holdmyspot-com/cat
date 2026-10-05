@@ -99,13 +99,13 @@ public final class ReviewEvidenceTest
 			Path evidence = root.resolve("passes.json");
 			Files.writeString(evidence, """
 				{"passes":[
-				  {"number":1,"examined_candidate_ids":["candidate-a"],"new_candidate_ids":["candidate-a"]},
+				  {"number":1,"examined_candidate_ids":["candidate_a"],"new_candidate_ids":["candidate_a"]},
 				  {"number":2,"examined_candidate_ids":[],"new_candidate_ids":[]}
 				]}
 				""");
 
 			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateDiscoveryPasses(evidence,
-				Set.of("candidate-a"), "topic reviewer");
+				Set.of("candidate_a"), "topic reviewer");
 		}
 	}
 
@@ -125,13 +125,13 @@ public final class ReviewEvidenceTest
 			Path matrix = root.resolve("action-result-matrix.json");
 			Files.writeString(matrix, """
 				{"rows":[
-				  {"candidate_id":"candidate-a","observable_behavior":"behavior-a","observable_result":"result-a",
+				  {"candidate_id":"candidate_a","observable_behavior":"behavior-a","observable_result":"result-a",
 				   "acceptance_check":"check-a","required_artifacts":["artifact-a"],"deferred_artifacts":[]}
 				],"pairs":[]}
 				""");
 
 			new ReviewEvidence(ReplayJson.newMapper()).validateActionResultMatrix(matrix,
-				Set.of("candidate-a", "candidate-b"), "topic reviewer");
+				Set.of("candidate_a", "candidate_b"), "topic reviewer");
 		}
 	}
 
@@ -170,9 +170,9 @@ public final class ReviewEvidenceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"topic-replay-review-evidence-"));
-			SemanticCandidate candidate = new SemanticCandidate("candidate-a", "outcome", "discovery", "split",
-				List.of("unknown"), "output-a", List.of(), List.of(), List.of(), List.of(), List.of(), "evidence");
-			CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("reviewer-a"),
+			SemanticCandidate candidate = new SemanticCandidate("candidate_a", "outcome", "discovery", "split",
+				List.of("unknown"), "output_a", List.of(), List.of(), List.of(), List.of(), List.of(), "evidence");
+			CandidateUniverseEvidence evidence = new CandidateUniverseEvidence(Set.of("reviewer_a"),
 				new ActionResultMatrix(List.of(), List.of()));
 
 			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverseLinks(

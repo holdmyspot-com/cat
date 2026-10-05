@@ -191,6 +191,24 @@ public final class EditorInventoryTest
 	}
 
 	/**
+	 * Verifies candidate validation rejects a reviewer-named candidate identifier that is not snake_case.
+	 *
+	 * @throws IOException if the identifier is not snake_case
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		"Candidate-universe id \"agent-review\" must be snake_case.*such as \"agent_review\".*candidate-universe\\.json")
+	public void rejectsNonSnakeCaseCandidateUniverseId() throws IOException
+	{
+		CandidateUniverseRequirements requirements = new CandidateUniverseRequirements(Set.of("agent"),
+			List.of("source"), Set.of(), false);
+		CandidateUniverseEntry candidate = new CandidateUniverseEntry("agent-review", "Architecture review is selectable",
+			"Agent declarations expose architecture review", "Architecture review", "Select architecture review",
+			"Review is usable independently", List.of(new CandidateUniverseUnit("agent", "selectable agent")), List.of());
+		new ReviewEvidence(ReplayJson.newMapper()).validateCandidateUniverse(requirements,
+			new CandidateUniverse("reviewer", List.of(candidate), List.of()), Path.of("candidate-universe.json"));
+	}
+
+	/**
 	 * Verifies CAT normalizes cross-harness skills into one entry point and classifies supported installer flows.
 	 *
 	 * @throws IOException if captured product paths are rejected

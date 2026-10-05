@@ -88,6 +88,7 @@ final class TopicOutputDeclaration
 				throw new IOException("Every topic-output declaration requires a unique non-blank id and a subject in " +
 					"the format type: summary");
 			}
+			ReplayIdentifiers.requireSnakeCase("Topic-output", request.id(), "");
 			outputs.add(new Output(request.id(), null, request.subject()));
 		}
 		return outputs;

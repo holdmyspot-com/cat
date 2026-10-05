@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
+import io.github.cowwoc.cat.common.Identifier;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**

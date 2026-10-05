@@ -106,6 +106,7 @@ final class SemanticPlanValidation
 				"runnable acceptance command, prerequisites, rejected-earlier-output decisions, and combined candidate " +
 				"blockers: " + artifactFile);
 		}
+		ReplayIdentifiers.requireSnakeCase("Semantic candidate", candidate.id(), artifactFile.toString());
 	}
 
 	/**

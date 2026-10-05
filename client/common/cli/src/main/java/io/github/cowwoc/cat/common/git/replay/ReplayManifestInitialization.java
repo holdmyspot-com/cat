@@ -77,7 +77,7 @@ final class ReplayManifestInitialization
 	{
 		List<Output> outputs = new ArrayList<>(sources.size());
 		for (int index = 0; index < sources.size(); ++index)
-			outputs.add(new Output("output-" + (index + 1), sources.get(index).hash(), "Unassigned topic " + (index + 1)));
+			outputs.add(new Output("output_" + (index + 1), sources.get(index).hash(), "Unassigned topic " + (index + 1)));
 		return new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base, tipTree, sources, outputs, inventory,
 			List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
 	}

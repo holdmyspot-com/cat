@@ -45,7 +45,7 @@ public final class OutputGatesTest
 
 			try
 			{
-				gates.run(manifest, "output-build", List.of(new OutputGates.Target("output-1",
+				gates.run(manifest, "output-build", List.of(new OutputGates.Target("output_1",
 					"tree", List.of("true"))));
 				throw new AssertionError("Expected no-op output gate to be rejected");
 			}
@@ -74,7 +74,7 @@ public final class OutputGatesTest
 
 			try
 			{
-				gates.runDraft(manifest, "draft-output-build", new OutputGates.Target("output-1", "tree",
+				gates.runDraft(manifest, "draft-output-build", new OutputGates.Target("output_1", "tree",
 					List.of("true")));
 				throw new AssertionError("Expected no-op draft-output gate to be rejected");
 			}

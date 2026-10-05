@@ -109,14 +109,15 @@ Every reviewer must cite those canonical forms and state the concrete effect obs
 such as `skill:name`, `developer:build`, or an agent responsibility is evidence only when the same record also names its
 canonical selector and explicitly states the alias relationship. Do not reconcile records by similar prose or matching
 counts; reject them until their supported entry points and observable results can be compared directly. Only then write
-the ordered topic outputs as JSON objects with `id` and commit `subject`, and run `git-topic-replay
-declare-topic-outputs MANIFEST OUTPUTS_FILE`. The output list is the reviewer’s topic plan; it may have fewer, the same
-number of, or more entries than the source commits. Only after declaration run `git-topic-replay
+the ordered topic outputs as JSON objects with a snake_case `id`, such as `output_1`, and commit `subject`, and run
+`git-topic-replay declare-topic-outputs MANIFEST OUTPUTS_FILE`. The output list is the reviewer’s topic plan; it may
+have fewer, the same number of, or more entries than the source commits. Only after declaration run `git-topic-replay
 bootstrap-preserved-output-batches MANIFEST` once to capture immutable raw source patches and source reconstructions.
 The command deliberately creates no output batch: a raw source patch proves reconstruction, but cannot decide a topic.
 Write every output batch from the sealed behavior plan. For a safe fixed-prefix extension, run `git-topic-replay
-prepare-fixed-prefix REBASE_BASE FIXED_TIP TIP`, then use its returned `manifest` value to bootstrap the manifest. The command records the fixed
-source hashes; the semantic placement ledger and its mechanical source/origin projections then cover only later sources.
+prepare-fixed-prefix REBASE_BASE FIXED_TIP TIP`, then use its returned `manifest` value to bootstrap the manifest. The
+command records the fixed source hashes; the semantic placement ledger and its mechanical source/origin projections then
+cover only later sources.
 
 If an earlier review artifact cannot be read by the current launcher, stop output planning. Preserve its behavioral
 findings as evidence, then migrate each field with a documented mapping or re-author the affected review; never restart
@@ -435,10 +436,11 @@ snapshot exists.
 
 Before declaring outputs, treat every candidate topic as provisional. First freeze `MANIFEST.candidate-universe.json`,
 written before creating output names, source-review classifications, or a semantic-placement ledger. For each discovered
-behavior, record its observable user or reader outcome, affected responsibility, acceptance evidence, and the units that
-may contribute to it. Discover these behaviors from the raw range and affected responsibilities; do not use a source
-commit, its subject, a path grouping, a component label, or a proposed topic as a candidate or as its discovery basis. A
-phrase such as “the source's contribution”, “native sessions”, or “rule changes” is not a behavior inventory entry.
+behavior, record a stable snake_case `id` and its observable user or reader outcome, affected responsibility, acceptance
+evidence, and the units that may contribute to it. Discover these behaviors from the raw range and affected
+responsibilities; do not use a source commit, its subject, a path grouping, a component label, or a proposed topic as a
+candidate or as its discovery basis. A phrase such as “the source's contribution”, “native sessions”, or “rule changes”
+is not a behavior inventory entry.
 
 Before writing either candidate universe, run `git-topic-replay exposure-inventory MANIFEST`. Map every returned
 selectable entry point to exactly one candidate's `exposed_entry_points` list in both reviewer universes. A candidate
@@ -469,8 +471,9 @@ either reviewer freezes its candidate universe or writes a reconciliation.
 Give one source-neutral topic reviewer the complete immutable inventory and raw diffs, but not a proposed output plan,
 source-review dispositions, planner topic names, or an expected number of candidate topics. Do not exclude an artifact
 class from that handoff. The reviewer writes `MANIFEST.topic-candidate-universe.json`, names its reviewer, and records
-each candidate topic's responsibility, acceptance evidence, discovery evidence, split counterfactual, and contributing
-semantic units. Before accepting it, validate complete inventory-ID coverage and the launcher's exact schema.
+each candidate topic's snake_case `id`, responsibility, acceptance evidence, discovery evidence, split counterfactual,
+and contributing semantic units. Before accepting it, validate complete inventory-ID coverage and the launcher's exact
+schema.
 
 The planner does not write a competing candidate universe. It writes a challenge ledger against the frozen reviewed
 universe. Each challenge must prove either a missing candidate topic or a composite reviewed candidate topic with a
@@ -559,18 +562,19 @@ source order, path, or commit message. Reject a plan whose candidate, responsibi
 generic, ambiguous, duplicated stock rationale, or otherwise not auditable by a reviewer who did not create it.
 
 Before `declare-topic-outputs`, write `MANIFEST.semantic-placement-ledger.json` as a JSON array of behavior candidates.
-Every candidate must provide a stable `id`, an `observable_outcome`, a behavior-first `candidate_discovery` basis that
-names the affected responsibility and observable evidence rather than its source grouping, a `split_counterfactual`, its
-earliest proposed `output`, every reviewer-named `units` entry (`inventory_id` and concrete `affected_unit`) that
-implements it, its `prerequisites`, `rejected_earlier_outputs` with every earlier output and the specific missing
-condition for each rejection, `combined_candidate_blockers`, and behavior-specific `evidence`. Assign every declared
-semantic unit exactly once, ensure every immutable inventory item has one or more declared units, and ensure every
-declared output has at least one candidate. A path may supply units to separate candidates only when their distinct
-`affected_unit` values identify the separate semantic behaviors. For each pair of candidates assigned to one output,
-record exactly one `combined_candidate_blockers` entry naming the other candidate and the specific missing condition
-that prevents the split. `declare-topic-outputs` rejects a missing, incomplete, duplicated, or unauditable ledger. These
-structural checks ensure every declared candidate is reviewable; they cannot prove that the reviewer discovered every
-behavior, so the frozen candidate-universe inventory and its counterfactuals remain mandatory review evidence.
+Every candidate must provide a stable snake_case `id`, an `observable_outcome`, a behavior-first `candidate_discovery`
+basis that names the affected responsibility and observable evidence rather than its source grouping, a
+`split_counterfactual`, its earliest proposed `output`, every reviewer-named `units` entry (`inventory_id` and concrete
+`affected_unit`) that implements it, its `prerequisites`, `rejected_earlier_outputs` with every earlier output and the
+specific missing condition for each rejection, `combined_candidate_blockers`, and behavior-specific `evidence`. Assign
+every declared semantic unit exactly once, ensure every immutable inventory item has one or more declared units, and
+ensure every declared output has at least one candidate. A path may supply units to separate candidates only when their
+distinct `affected_unit` values identify the separate semantic behaviors. For each pair of candidates assigned to one
+output, record exactly one `combined_candidate_blockers` entry naming the other candidate and the specific missing
+condition that prevents the split. `declare-topic-outputs` rejects a missing, incomplete, duplicated, or unauditable
+ledger. These structural checks ensure every declared candidate is reviewable; they cannot prove that the reviewer
+discovered every behavior, so the frozen candidate-universe inventory and its counterfactuals remain mandatory review
+evidence.
 
 Before sealing the output plan, copy that validated candidate inventory exactly into `MANIFEST.semantic-plan.json`.
 `preflight` and `replay` reject a missing, incomplete, duplicated, source-review-incompatible, or ledger-divergent

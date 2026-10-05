@@ -45,16 +45,16 @@ final class SemanticPlanFixtures
 	static List<SemanticCandidate> candidates()
 	{
 		SemanticCandidate feature = new SemanticCandidate("feature", "Feature runs", "Developer action finds feature",
-			"Correction is required by feature", List.of("reviewer-a"), "first",
+			"Correction is required by feature", List.of("reviewer_a"), "first",
 			List.of(new SemanticUnitReference("feature:1", "feature implementation")), List.of("check", "feature"),
 			List.of(), List.of(), List.of(new CombinedCandidateBlocker("correction", "Feature requires corrected state")),
 			"Feature behavior observed");
 		SemanticCandidate correction = new SemanticCandidate("correction", "Feature runs correctly",
-			"Correction is an observable behavior", "Correction cannot work without feature", List.of("reviewer-b"),
+			"Correction is an observable behavior", "Correction cannot work without feature", List.of("reviewer_b"),
 			"first", List.of(new SemanticUnitReference("split:1", "feature correction")), List.of("check", "correction"),
 			List.of(), List.of(), List.of(), "Corrected behavior observed");
 		SemanticCandidate note = new SemanticCandidate("note", "Reader finds independent note", "Reader action finds note",
-			"Note remains separately useful", List.of("reviewer-c"), "second",
+			"Note remains separately useful", List.of("reviewer_c"), "second",
 			List.of(new SemanticUnitReference("split:2", "independent note")), List.of("check", "note"), List.of(),
 			List.of(new RejectedEarlierOutput("first", "First output lacks the independent note")), List.of(),
 			"Independent note observed");
@@ -77,7 +77,7 @@ final class SemanticPlanFixtures
 		{
 			for (int second = first + 1; second < ids.size(); ++second)
 			{
-				boolean combined = ids.get(first).equals("reviewer-a") && ids.get(second).equals("reviewer-b");
+				boolean combined = ids.get(first).equals("reviewer_a") && ids.get(second).equals("reviewer_b");
 				if (combined)
 				{
 					pairs.add(new ActionPairAssessment(ids.get(first), ids.get(second), "combined",
