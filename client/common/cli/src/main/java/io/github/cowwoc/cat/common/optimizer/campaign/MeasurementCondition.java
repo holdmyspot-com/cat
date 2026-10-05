@@ -18,7 +18,8 @@ public enum MeasurementCondition
 	 */
 	GENERATOR,
 	/**
-	 * The judge as observed in its sessions.
+	 * The version of the judge that the harness's sessions run, which stands for the judge's role profile, prompt,
+	 * rubric, decision rule and result schema, and the evidence section rendered for the same harness events.
 	 */
 	JUDGE,
 	/**
@@ -83,7 +84,7 @@ public enum MeasurementCondition
 		{
 			case CONTRACT -> "contract";
 			case GENERATOR -> "generator";
-			case JUDGE -> "judge";
+			case JUDGE -> "judge version";
 			case MODEL -> "trial model";
 			case REASONING -> "trial reasoning";
 			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";

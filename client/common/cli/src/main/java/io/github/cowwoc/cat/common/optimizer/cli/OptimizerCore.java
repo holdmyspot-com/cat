@@ -814,7 +814,7 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns the measurement conditions that the launcher observes before any session runs. The sessions observe
-	 * the model, the reasoning configuration, the judge and the prompt sources.
+	 * the model, the reasoning configuration and the prompt sources.
 	 *
 	 * @param inventory the files recorded at the fork
 	 * @return the conditions
@@ -826,6 +826,7 @@ public final class OptimizerCore implements Core
 		values.put(MeasurementCondition.HARNESS_VERSION, scope.harnessVersion());
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			String.valueOf(scope.sessions().sessionEnvironmentVersion()));
+		values.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(inventory));

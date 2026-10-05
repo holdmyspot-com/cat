@@ -131,14 +131,11 @@ sealed interface InFlight
 	 * @param results the results of the test's deterministic checks
 	 * @param rationale the judge's rationale or, when no judge ran, the record of the failed deterministic checks
 	 * @param failures the requirements that the trial failed, each with its behavior
-	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
-	 *   not name one
 	 * @param attempt the triage attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
 	record Triaging(TrialKey key, TrialInstance instance, SessionResult.Completed evidence, String evidenceSection,
-		List<CheckResult> results, String rationale, List<FailedRequirement> failures, String judgeModel, int attempt,
-		int concurrency)
+		List<CheckResult> results, String rationale, List<FailedRequirement> failures, int attempt, int concurrency)
 	{
 		/**
 		 * Returns the next triage attempt with the same evidence.
@@ -147,8 +144,8 @@ sealed interface InFlight
 		 */
 		Triaging retry()
 		{
-			return new Triaging(key, instance, evidence, evidenceSection, results, rationale, failures, judgeModel,
-				attempt + 1, concurrency);
+			return new Triaging(key, instance, evidence, evidenceSection, results, rationale, failures, attempt + 1,
+				concurrency);
 		}
 	}
 }

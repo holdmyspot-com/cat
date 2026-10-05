@@ -354,6 +354,12 @@ public final class SliceTest
 		}
 
 		@Override
+		public int judgeVersion()
+		{
+			return delegate.judgeVersion();
+		}
+
+		@Override
 		public String renderEvidence(SessionResult.Completed evidence, Path source)
 		{
 			return delegate.renderEvidence(evidence, source);

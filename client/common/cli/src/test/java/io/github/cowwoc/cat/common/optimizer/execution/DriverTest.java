@@ -184,10 +184,10 @@ public final class DriverTest
 					requireThat(inputs.workingMedian(), "workingMedian").isEqualTo(80L);
 					requireThat(inputs.incumbentMedian(), "incumbentMedian").isEqualTo(80L);
 				}
-				requireThat(campaign.identity().values().get(MeasurementCondition.JUDGE), "judge").
-					isEqualTo(DriverHarness.JUDGE_MODEL);
+				String judge = Builder.OBSERVED.values().get(MeasurementCondition.JUDGE);
+				requireThat(campaign.identity().values().get(MeasurementCondition.JUDGE), "judge").isEqualTo(judge);
 				requireThat(campaign.baseline().identity().values().get(MeasurementCondition.JUDGE), "baselineJudge").
-					isEqualTo(DriverHarness.JUDGE_MODEL);
+					isEqualTo(judge);
 				for (String cell : campaign.contract().cellIds())
 				{
 					requireThat(campaign.identity().cells().get(cell).get(MeasurementCondition.MODEL), "model").
@@ -200,25 +200,47 @@ public final class DriverTest
 	}
 
 	/**
-	 * Supplies changed observations that must pause a campaign after its first trial records them.
+	 * A changed trial model pauses after trials first record the same cell's observed conditions.
 	 *
-	 * @return the judge and trial model conditions
-	 */
-	@DataProvider
-	public static Object[][] observedMeasurementChanges()
-	{
-		return new Object[][] {{MeasurementCondition.JUDGE}, {MeasurementCondition.MODEL}};
-	}
-
-	/**
-	 * A changed judge or trial model pauses after trials first record the same cell's observed conditions.
-	 *
-	 * @param condition the observed condition that changes
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-M5
-	@Test(dataProvider = "observedMeasurementChanges")
-	public void firstObservationDetectsChanges(MeasurementCondition condition) throws IOException
+	@Test
+	public void firstObservationDetectsChanges() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("measurement-change")),
+				unobservedProfile());
+			AtomicBoolean changed = new AtomicBoolean();
+			harness.trials(_ ->
+			{
+				String model = DriverHarness.MODEL;
+				if (changed.get())
+					model = "changed-model";
+				return harness.completed("pass", model);
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count("formatting").outcomes() >= 50 &&
+					state.development().count("safety").outcomes() >= 50);
+				changed.set(true);
+				Campaign campaign = harness.runUntil(driver,
+					state -> state.pending() instanceof PendingDecision.MeasurementChanged);
+				PendingDecision.MeasurementChanged pending = (PendingDecision.MeasurementChanged) campaign.pending();
+				requireThat(pending.changed(), "changed").isEqualTo(List.of(MeasurementCondition.MODEL));
+				requireThat(harness.store().listUnadoptedOutcomes(campaign), "unadoptedOutcomes").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns a campaign that has not yet observed its judge, trial model or reasoning configuration, with 49
+	 * development outcomes in each cell.
+	 *
+	 * @return the campaign
+	 */
+	private static Campaign unobservedProfile()
 	{
 		Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
 		conditions.putAll(Builder.confirmedIdentity(DriverHarness.MODEL).values());
@@ -226,23 +248,29 @@ public final class DriverTest
 		conditions.remove(MeasurementCondition.MODEL);
 		conditions.remove(MeasurementCondition.REASONING);
 		MeasurementIdentity initial = new MeasurementIdentity(conditions);
+		return new Builder().confirmed().identity(initial).baselineIdentity(initial).working(1).readyBaseline().
+			development("formatting", 49, 0).development("safety", 49, 0).ceiling(1).build();
+	}
+
+	/**
+	 * The model that a judge session reports is not a measurement condition: the judge version stands for the
+	 * judge, so a changed judge session model neither pauses the campaign nor is recorded.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-M5
+	@Test
+	public void judgeSessionModelIsNotRecorded() throws IOException
+	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("measurement-change")),
-				new Builder().confirmed().identity(initial).baselineIdentity(initial).working(1).readyBaseline().
-					development("formatting", 49, 0).development("safety", 49, 0).ceiling(1).build());
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("judge-model")),
+				unobservedProfile());
 			AtomicBoolean changed = new AtomicBoolean();
-			harness.trials(_ ->
-			{
-				String model = DriverHarness.MODEL;
-				if (changed.get() && condition == MeasurementCondition.MODEL)
-					model = "changed-model";
-				return harness.completed("pass", model);
-			});
 			harness.judges(request ->
 			{
 				SessionResult.Completed judgment = harness.scriptedJudgment(request);
-				if (!changed.get() || condition != MeasurementCondition.JUDGE)
+				if (!changed.get())
 					return judgment;
 				return new SessionResult.Completed(judgment.transcript(), judgment.responses(), judgment.effects(),
 					"changed-judge", judgment.reasoning(), judgment.usage(), judgment.windows(), judgment.promptSources(),
@@ -253,11 +281,38 @@ public final class DriverTest
 				harness.runUntil(driver, state -> state.development().count("formatting").outcomes() >= 50 &&
 					state.development().count("safety").outcomes() >= 50);
 				changed.set(true);
-				Campaign campaign = harness.runUntil(driver,
-					state -> state.pending() instanceof PendingDecision.MeasurementChanged);
-				PendingDecision.MeasurementChanged pending = (PendingDecision.MeasurementChanged) campaign.pending();
-				requireThat(pending.changed(), "changed").isEqualTo(List.of(condition));
-				requireThat(harness.store().listUnadoptedOutcomes(campaign), "unadoptedOutcomes").isEmpty();
+				Campaign campaign = harness.runUntil(driver, state ->
+					state.development().count("formatting").outcomes() >= 51 &&
+						state.development().count("safety").outcomes() >= 51);
+				requireThat(campaign.pending(), "pending").isNull();
+				requireThat(campaign.identity().values().get(MeasurementCondition.JUDGE), "judge").
+					isEqualTo(Builder.OBSERVED.values().get(MeasurementCondition.JUDGE));
+			}
+		}
+	}
+
+	/**
+	 * A new judge version between trials pauses the campaign before the next session starts.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-M5
+	@Test
+	public void judgeVersionChangePauses() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("judge-version")),
+				developing().build());
+			harness.observe(MeasurementCondition.JUDGE, "judge-2");
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.pending(), "pending").isInstanceOf(PendingDecision.MeasurementChanged.class);
+				requireThat(((PendingDecision.MeasurementChanged) campaign.pending()).changed(), "changed").
+					isEqualTo(List.of(MeasurementCondition.JUDGE));
+				requireThat(harness.sessions().sessions(), "sessions").isEmpty();
 			}
 		}
 	}
@@ -3758,6 +3813,12 @@ public final class DriverTest
 			public int sessionEnvironmentVersion()
 			{
 				return delegate.sessionEnvironmentVersion();
+			}
+
+			@Override
+			public int judgeVersion()
+			{
+				return delegate.judgeVersion();
 			}
 
 			@Override

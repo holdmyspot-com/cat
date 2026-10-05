@@ -42,6 +42,12 @@ public final class ClaudeSessions extends RunnerSessions
 	 */
 	private static final int SESSION_ENVIRONMENT_VERSION = 1;
 	/**
+	 * The version of the judge that Claude sessions run. Increment it in every release that changes the judge's role
+	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
+	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
+	 */
+	private static final int JUDGE_VERSION = 1;
+	/**
 	 * The managed settings files that an administrator installs on Linux and on macOS.
 	 */
 	private static final List<Path> MANAGED_SETTINGS = List.of(Path.of("/etc/claude-code/managed-settings.json"),
@@ -95,6 +101,12 @@ public final class ClaudeSessions extends RunnerSessions
 	public int sessionEnvironmentVersion()
 	{
 		return SESSION_ENVIRONMENT_VERSION;
+	}
+
+	@Override
+	public int judgeVersion()
+	{
+		return JUDGE_VERSION;
 	}
 
 	/**

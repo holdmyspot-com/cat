@@ -25,6 +25,10 @@ public final class FakeSessionPort implements SessionPort
 	 * The session environment version that every fake port reports.
 	 */
 	public static final int SESSION_ENVIRONMENT_VERSION = 7;
+	/**
+	 * The judge version that every fake port reports.
+	 */
+	public static final int JUDGE_VERSION = 5;
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final Optional<String> heldOutExposure;
@@ -85,6 +89,12 @@ public final class FakeSessionPort implements SessionPort
 	public int sessionEnvironmentVersion()
 	{
 		return SESSION_ENVIRONMENT_VERSION;
+	}
+
+	@Override
+	public int judgeVersion()
+	{
+		return JUDGE_VERSION;
 	}
 
 	@Override

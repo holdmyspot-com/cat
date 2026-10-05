@@ -1,0 +1,4 @@
+# The judge versions that CodexSessions has declared, one per line, each followed by the SHA-256 hash of the judge
+# profile and rendered evidence section that CodexJudgeVersionTest computes from fixed input. When the hash changes,
+# increment the version in CodexSessions and add a line for the new version.
+1 bd51bf4dd4a9b4cefeda0105a77229cf7f08c19a2e94610c0c0c6b2eeaa3c2a5

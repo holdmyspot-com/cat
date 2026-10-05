@@ -33,6 +33,15 @@ public interface SessionPort
 	int sessionEnvironmentVersion();
 
 	/**
+	 * Returns the version of the judge that this port's sessions run: the judge's role profile, its prompt, rubric,
+	 * decision rule and result schema, and the evidence section that {@link #renderEvidence(SessionResult.Completed,
+	 * Path)} renders for the same harness events. A release of CAT changes it whenever any of them changes.
+	 *
+	 * @return the harness's judge version
+	 */
+	int judgeVersion();
+
+	/**
 	 * Renders a completed trial's recorded activity and file changes for the judge.
 	 *
 	 * @param evidence the trial's retained transcript and effects

@@ -370,6 +370,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public int judgeVersion()
+		{
+			return FakeSessionPort.JUDGE_VERSION;
+		}
+
+		@Override
 		public String renderEvidence(SessionResult.Completed evidence, Path source)
 		{
 			return "No tool or hook activity.\n\nFile changes\nNo file changes.\n";
@@ -653,6 +659,24 @@ public final class OptimizerCoreTest
 			Map<MeasurementCondition, String> values = repository.load(id).identity().values();
 			requireThat(values.get(MeasurementCondition.SESSION_ENVIRONMENT_VERSION), "sessionEnvironmentVersion").
 				isEqualTo(String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
+		}
+	}
+
+	/**
+	 * Verifies that a started campaign records the session port's judge version.
+	 */
+	@Test
+	public void startRecordsJudgeVersion() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-M1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			requireThat(repository.load(id).identity().values().get(MeasurementCondition.JUDGE), "judgeVersion").
+				isEqualTo(String.valueOf(FakeSessionPort.JUDGE_VERSION));
 		}
 	}
 

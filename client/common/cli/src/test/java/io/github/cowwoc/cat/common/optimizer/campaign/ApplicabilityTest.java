@@ -183,6 +183,46 @@ public final class ApplicabilityTest
 	}
 
 	/**
+	 * Returns the current judge version per row, with the applicability of a certification whose recorded judge
+	 * version is {@code judge-1}.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider
+	public static Object[][] judgeVersions()
+	{
+		return new Object[][]
+			{
+				{"judge-1", Applicability.Status.CURRENT},
+				{"judge-2", Applicability.Status.HISTORICAL}
+			};
+	}
+
+	/**
+	 * Verifies that a certification stays current while its judge version is unchanged and is historical under a new
+	 * judge version.
+	 *
+	 * @param currentJudge the current judge version
+	 * @param expected the certification's applicability
+	 */
+	@Test(dataProvider = "judgeVersions")
+	public void judgeVersionDecidesApplicability(String currentJudge, Applicability.Status expected)
+	{
+		// Requirement: R-M2
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
+			certificationAttempt(1).cell("formatting", 100, 0).outcome(Outcome.CERTIFIED).build();
+		CertificationAttempt attempt = campaign.attempt(1);
+		requireThat(attempt.identity().values().get(MeasurementCondition.JUDGE), "recordedJudge").
+			isEqualTo("judge-1");
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(attempt.identity().values());
+		values.put(MeasurementCondition.JUDGE, currentJudge);
+		Applicability applicability = Applicability.of(attempt, attempt.candidate().snapshot(),
+			new MeasurementIdentity(values, attempt.identity().cells()), CertificationParameters.current(1));
+		requireThat(applicability.status(), "status").isEqualTo(expected);
+	}
+
+	/**
 	 * Returns a current required pass rate per row, with whether a certification recorded at
 	 * {@link BettingProcess#REQUIRED_PASS_RATE} stays current under it.
 	 *

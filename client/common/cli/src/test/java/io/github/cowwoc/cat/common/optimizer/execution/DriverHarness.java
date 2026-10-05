@@ -212,7 +212,6 @@ public final class DriverHarness
 		environment.putAll(Builder.OBSERVED.values());
 		environment.remove(MeasurementCondition.MODEL);
 		environment.remove(MeasurementCondition.REASONING);
-		environment.remove(MeasurementCondition.JUDGE);
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,

@@ -616,15 +616,14 @@ public final class Driver implements AutoCloseable
 				toList();
 			if (trial.key().purpose() != Purpose.DEVELOPMENT)
 			{
-				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, failures, null,
-					null);
+				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
 				return;
 			}
 			Optional<String> section = renderEvidence(trial.key(), completed, trial.source(), now);
 			if (section.isPresent())
 			{
 				triageQueue.add(new Triaging(trial.key(), instance, completed, section.get(), results, record, failures,
-					null, 1, trial.concurrency()));
+					1, trial.concurrency()));
 			}
 			return;
 		}
@@ -632,7 +631,7 @@ public final class Driver implements AutoCloseable
 		if (semanticIds.isEmpty())
 		{
 			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.PASS,
-				checkRecord("Passed deterministic checks:", results), List.of(), null, null);
+				checkRecord("Passed deterministic checks:", results), List.of(), null);
 			return;
 		}
 		Map<String, Requirement> requirementById = new HashMap<>();
@@ -762,7 +761,7 @@ public final class Driver implements AutoCloseable
 				Optional<Judgment> judgment = context.judge().judgment(completed, judging.requirements());
 				if (judgment.isPresent())
 				{
-					judged(judging, judgment.get(), completed.model(), now);
+					judged(judging, judgment.get(), now);
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -785,16 +784,15 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param judging the judged trial
 	 * @param judgment the judge's verdict and rationale
-	 * @param judgeModel the model that the judge session observed, or {@code null} if its events did not name one
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void judged(Judging judging, Judgment judgment, String judgeModel, Instant now) throws IOException
+	private void judged(Judging judging, Judgment judgment, Instant now) throws IOException
 	{
 		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
 		{
 			complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(), judgment.verdict(),
-				judgment.rationale(), judgment.failures(), judgeModel, null);
+				judgment.rationale(), judgment.failures(), null);
 			return;
 		}
 		String section = judging.evidenceSection();
@@ -806,7 +804,7 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		triageQueue.add(new Triaging(judging.key(), judging.instance(), judging.evidence(), section, judging.results(),
-			judgment.rationale(), judgment.failures(), judgeModel, 1, judging.concurrency()));
+			judgment.rationale(), judgment.failures(), 1, judging.concurrency()));
 	}
 
 	/**
@@ -936,7 +934,7 @@ public final class Driver implements AutoCloseable
 	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
 	{
 		complete(triaging.key(), triaging.instance(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
-			triaging.rationale(), triaging.failures(), triaging.judgeModel(), triage);
+			triaging.rationale(), triaging.failures(), triage);
 	}
 
 	/**
@@ -951,16 +949,14 @@ public final class Driver implements AutoCloseable
 	 * @param verdict the trial's label
 	 * @param rationale the judge's rationale or, when no judge ran, the record of the trial's deterministic checks
 	 * @param failures the requirements that a failed trial failed, each with its behavior; empty for a pass
-	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
-	 *   not name one
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
 	private void complete(TrialKey key, TrialInstance instance, int concurrency, SessionResult.Completed trial,
-		Verdict verdict, String rationale, List<FailedRequirement> failures, String judgeModel, Triage triage)
+		Verdict verdict, String rationale, List<FailedRequirement> failures, Triage triage)
 		throws IOException
 	{
-		MeasurementIdentity observed = observedIdentity(instance, trial, judgeModel);
+		MeasurementIdentity observed = observedIdentity(instance, trial);
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
 			triage, observed, trialInputTokens(trial), trial.responses());
 		if (campaign.identity().differences(observed).isEmpty())
@@ -978,24 +974,19 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, the judge session's model if a judge ran, and the trial session's model and
-	 * reasoning configuration and, in a cell that limits tool output, the tool-output token limit that the session
-	 * started under, which are recorded for the trial's cell.
+	 * session's loaded prompt sources, and the trial session's model and reasoning configuration and, in a cell that
+	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
+	 * trial's cell.
 	 *
 	 * @param instance the trial's instance
 	 * @param trial the trial session's result
-	 * @param judgeModel the model that the judge session observed, or {@code null} if no judge ran or its events did
-	 *   not name one
 	 * @return the conditions
 	 */
-	private MeasurementIdentity observedIdentity(TrialInstance instance, SessionResult.Completed trial,
-		String judgeModel)
+	private MeasurementIdentity observedIdentity(TrialInstance instance, SessionResult.Completed trial)
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(context.environment().values());
 		values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
-		if (judgeModel != null)
-			values.put(MeasurementCondition.JUDGE, judgeModel);
 		Map<MeasurementCondition, String> cell = new EnumMap<>(MeasurementCondition.class);
 		if (trial.model() != null)
 			cell.put(MeasurementCondition.MODEL, trial.model());

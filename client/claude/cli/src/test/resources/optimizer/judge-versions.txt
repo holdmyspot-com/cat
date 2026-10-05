@@ -1,0 +1,4 @@
+# The judge versions that ClaudeSessions has declared, one per line, each followed by the SHA-256 hash of the judge
+# profile and rendered evidence section that ClaudeJudgeVersionTest computes from fixed input. When the hash changes,
+# increment the version in ClaudeSessions and add a line for the new version.
+1 569c6083358ec4735820d534e25218064aa3d6df16f3a9e08635abf9924b04fa

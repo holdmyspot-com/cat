@@ -138,17 +138,17 @@ public final class ComparabilityTest
 	}
 
 	/**
-	 * Verifies that differing judge observations name both values in words.
+	 * Verifies that differing judge versions name both values in words.
 	 */
 	@Test
 	public void differingJudgeNamesValues()
 	{
 		// Requirement: R-M4
 		MeasurementIdentity first = Builder.confirmedIdentity("model-a").
-			replaceWith(identity(MeasurementCondition.JUDGE, "judge-a"));
-		MeasurementIdentity second = first.replaceWith(identity(MeasurementCondition.JUDGE, "judge-b"));
+			replaceWith(identity(MeasurementCondition.JUDGE, "1"));
+		MeasurementIdentity second = first.replaceWith(identity(MeasurementCondition.JUDGE, "2"));
 		requireThat(Comparability.of(first, second).unavailable(), "unavailable").isEqualTo(
-			"The judge differs: working candidate judge-a; incumbent baseline judge-b.");
+			"The judge version differs: working candidate 1; incumbent baseline 2.");
 	}
 
 	/**
