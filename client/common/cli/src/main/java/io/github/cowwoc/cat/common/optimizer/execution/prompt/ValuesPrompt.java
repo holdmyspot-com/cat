@@ -2,7 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
@@ -28,8 +30,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,8 +42,8 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Builds requests for deriver sessions that add development values to the tests that failed a certification attempt,
- * and validates the combinations that they write.
+ * Builds requests for deriver sessions that write the key-value combinations of a formal failure group's reproduction
+ * round, and validates the combinations that they write.
  * <p>
  * <b>Thread Safety:</b> Callers may build requests and validate combinations concurrently.
  */
@@ -88,78 +88,88 @@ public final class ValuesPrompt implements ValuesProtocol
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The prompt lists each failed test once, in the order of its first failure, with its category, its definition
-	 * without the values that only held-out instances contain, the combinations added to it before, its requirements
-	 * and each of its failures. The session reads nothing else.
+	 * The prompt gives the group's category, its test's definition without the values that only held-out instances
+	 * contain, the other combinations known for the test, the group's cell, requirement, behavior and formal failure
+	 * count, and each earlier round of the group with its cell and each combination's reproduction counts. The session
+	 * reads nothing else.
 	 */
 	@Override
-	public SessionRequest request(Contract contract, AddedValues added, List<FailureSummary> failures)
+	public SessionRequest request(Contract contract, AddedValues known, FailureGroup group)
 	{
 		requireThat(contract, "contract").isNotNull();
-		requireThat(added, "added").isNotNull();
-		requireThat(failures, "failures").isNotEmpty();
+		requireThat(known, "known").isNotNull();
+		requireThat(group, "group").isNotNull();
+		String testId = group.testId();
+		Category category = categoryOf(contract, testId);
+		TestDefinition test = contract.findTest(testId).orElseThrow();
+		if (contract.findCell(group.cellId()).isEmpty())
+			throw new IllegalArgumentException("The contract has no cell '" + group.cellId() + "'");
+		String requirementId = group.failed().requirementId();
+		Requirement requirement = contract.requirements().stream().
+			filter(candidate -> candidate.id().equals(requirementId)).findFirst().
+			orElseThrow(() -> new IllegalArgumentException("The contract has no requirement '" + requirementId + "'"));
 		ObjectNode development = DevelopmentContract.toJson(json, schema, contract);
-		ArrayNode failedTests = json.createArrayNode();
-		for (String testId : failedTestIds(failures))
+		List<VariationRule> keyRules = test.keyRules();
+
+		ObjectNode entry = json.createObjectNode();
+		entry.put("category", category.id());
+		entry.set("test", testNode(development, testId));
+		Set<AddedCombination> tried = new HashSet<>(group.combinations());
+		ArrayNode others = entry.putArray("other_key_combinations");
+		for (AddedCombination combination : known.of(testId))
 		{
-			Category category = categoryOf(contract, testId);
-			TestDefinition test = contract.findTest(testId).orElseThrow();
-			ObjectNode entry = failedTests.addObject();
-			entry.put("category", category.id());
-			entry.set("test", testNode(development, testId));
-			ArrayNode addedNode = entry.putArray("added_key_combinations");
-			List<VariationRule> keyRules = test.keyRules();
-			for (AddedCombination combination : added.of(testId))
+			if (!tried.contains(combination))
+				others.add(combinationNode(keyRules, combination));
+		}
+		entry.put("cell", group.cellId());
+		ObjectNode requirementNode = entry.putObject("requirement").
+			put("id", requirement.id()).
+			put("description", requirement.description());
+		ArrayNode behaviors = requirementNode.putArray("behaviors");
+		requirement.behaviors().forEach(behaviors::add);
+		entry.put("behavior", group.failed().behavior());
+		entry.put("formal_failures", group.formalFailures());
+		ArrayNode rounds = entry.putArray("tried_rounds");
+		for (ReproductionRound round : group.rounds())
+		{
+			if (round.awaitsValues())
+				continue;
+			ObjectNode roundNode = rounds.addObject();
+			roundNode.put("cell", round.cellId());
+			ArrayNode combinations = roundNode.putArray("combinations");
+			for (TriedCombination combination : round.combinations())
 			{
-				ObjectNode combinationNode = addedNode.addObject();
-				for (int i = 0; i < keyRules.size(); ++i)
-				{
-					VariationValue value = combination.values().get(i);
-					combinationNode.putObject(keyRules.get(i).dimension()).
-						put("label", value.label()).
-						put("text", value.text());
-				}
-			}
-			ArrayNode requirements = entry.putArray("requirements");
-			for (Requirement requirement : contract.requirements())
-			{
-				if (test.requirementIds().contains(requirement.id()))
-				{
-					requirements.addObject().
-						put("id", requirement.id()).
-						put("description", requirement.description());
-				}
-			}
-			ArrayNode failureNodes = entry.putArray("failures");
-			for (FailureSummary failure : failures)
-			{
-				if (!failure.testId().equals(testId))
-					continue;
-				ObjectNode failureNode = failureNodes.addObject();
-				failureNode.put("cell", failure.cellId());
-				ArrayNode failed = failureNode.putArray("failed_requirements");
-				failure.failedRequirements().forEach(requirement -> failed.add(requirement.requirementId()));
+				ObjectNode combinationNode = combinations.addObject();
+				combinationNode.set("values", combinationNode(keyRules, combination.combination()));
+				combinationNode.put("trials", combination.trials());
+				combinationNode.put("failures", combination.failures());
 			}
 		}
 		String turn = prompt.fill(Map.of(
-			"failed_tests", json.writerWithDefaultPrettyPrinter().writeValueAsString(failedTests),
+			"failure_group", json.writerWithDefaultPrettyPrinter().writeValueAsString(entry),
 			"output_schema", outputSchema));
 		return new SessionRequest(SessionRole.DERIVER, Part.DEVELOPMENT, directory, List.of(turn), List.of(), TIME_LIMIT,
 			contract.judge().profile());
 	}
 
 	/**
-	 * Returns the identifiers of the failed tests.
+	 * Returns the JSON of a combination: each key dimension's value with its label and text.
 	 *
-	 * @param failures the formal failures
-	 * @return each failed test once, in the order of its first failure
+	 * @param keyRules the test's key dimensions
+	 * @param combination the combination
+	 * @return the JSON
 	 */
-	private static Set<String> failedTestIds(List<FailureSummary> failures)
+	private ObjectNode combinationNode(List<VariationRule> keyRules, AddedCombination combination)
 	{
-		Set<String> testIds = new LinkedHashSet<>();
-		for (FailureSummary failure : failures)
-			testIds.add(failure.testId());
-		return testIds;
+		ObjectNode node = json.createObjectNode();
+		for (int i = 0; i < keyRules.size(); ++i)
+		{
+			VariationValue value = combination.values().get(i);
+			node.putObject(keyRules.get(i).dimension()).
+				put("label", value.label()).
+				put("text", value.text());
+		}
+		return node;
 	}
 
 	/**
@@ -207,18 +217,18 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * A value equals an existing value of its dimension when its label or its text equals the label or the text of any
-	 * value that the test's dimension holds, or of any value added to it before, ignoring case and surrounding white
+	 * value that the test's dimension holds, or of any known combination's value, ignoring case and surrounding white
 	 * space. The rejection names the offending value but never the part of the test that holds the existing value.
-	 * Each value's probability is its share of the test's new combinations.
+	 * Each value's probability is its share of the round's combinations.
 	 */
 	@Override
-	public List<AddedCombination> combinations(SessionResult.Completed result, Contract contract, AddedValues added,
-		int attempt, List<FailureSummary> failures) throws InvalidProposalException
+	public List<AddedCombination> combinations(SessionResult.Completed result, Contract contract, AddedValues known,
+		int attempt, FailureGroup group) throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(contract, "contract").isNotNull();
-		requireThat(added, "added").isNotNull();
-		requireThat(failures, "failures").isNotNull();
+		requireThat(known, "known").isNotNull();
+		requireThat(group, "group").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
 		if (output.isEmpty())
 		{
@@ -229,62 +239,36 @@ public final class ValuesPrompt implements ValuesProtocol
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
 
-		Set<String> failedTests = failedTestIds(failures);
-		Map<String, List<List<VariationValue>>> combinationsByTest = new LinkedHashMap<>();
-		JsonNode tests = output.get().get("tests");
-		for (int i = 0; i < tests.size(); ++i)
-		{
-			String location = "$.tests[" + i + "]";
-			String testId = tests.get(i).get("id").asString();
-			if (!failedTests.contains(testId))
-			{
-				problems.add(location + ".id: names test '" + testId + "', which is not a failed test");
-				continue;
-			}
-			if (combinationsByTest.containsKey(testId))
-			{
-				problems.add(location + ".id: names test '" + testId + "' again");
-				continue;
-			}
-			TestDefinition test = contract.findTest(testId).orElseThrow();
-			combinationsByTest.put(testId, parseTest(tests.get(i), location, test, added, problems));
-		}
-		for (String testId : failedTests)
-		{
-			if (!combinationsByTest.containsKey(testId))
-				problems.add("$.tests: omits failed test '" + testId + "'");
-		}
+		TestDefinition test = contract.findTest(group.testId()).orElseThrow(() ->
+			new IllegalArgumentException("The contract has no test '" + group.testId() + "'"));
+		List<List<VariationValue>> parsed = parseCombinations(output.get(), test, known, problems);
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
 
+		double probability = 1.0 / parsed.size();
 		List<AddedCombination> combinations = new ArrayList<>();
-		for (String testId : failedTests)
+		for (List<VariationValue> values : parsed)
 		{
-			List<List<VariationValue>> testCombinations = combinationsByTest.get(testId);
-			double probability = 1.0 / testCombinations.size();
-			for (List<VariationValue> values : testCombinations)
-			{
-				combinations.add(new AddedCombination(attempt, testId, values.stream().
-					map(value -> new VariationValue(value.label(), value.text(), probability)).toList()));
-			}
+			combinations.add(new AddedCombination(attempt, test.id(), values.stream().
+				map(value -> new VariationValue(value.label(), value.text(), probability)).toList()));
 		}
 		return combinations;
 	}
 
 	/**
-	 * Reads the combinations of one test.
+	 * Reads the combinations of the response.
 	 *
-	 * @param node the test's entry in the response
-	 * @param location the location of the entry
+	 * @param node the response
 	 * @param test the test definition
-	 * @param added the combinations added to the contract's tests before
+	 * @param known the combinations of the contract's tests beyond the confirmed values
 	 * @param problems receives each problem found
 	 * @return the value of each key dimension of each combination, in the test's key-dimension order; the values'
 	 *   probabilities are unspecified
 	 */
-	private static List<List<VariationValue>> parseTest(JsonNode node, String location, TestDefinition test,
-		AddedValues added, List<String> problems)
+	private static List<List<VariationValue>> parseCombinations(JsonNode node, TestDefinition test,
+		AddedValues known, List<String> problems)
 	{
+		String location = "$";
 		List<VariationRule> keyRules = test.keyRules();
 		Map<String, Integer> keyIndex = new HashMap<>();
 		Map<String, Set<String>> existing = new HashMap<>();
@@ -298,7 +282,7 @@ public final class ValuesPrompt implements ValuesProtocol
 				names.add(normalize(value.label()));
 				names.add(normalize(value.text()));
 			}
-			for (AddedCombination combination : added.of(test.id()))
+			for (AddedCombination combination : known.of(test.id()))
 			{
 				VariationValue value = combination.values().get(i);
 				names.add(normalize(value.label()));
@@ -381,7 +365,8 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * @param value the value, with an unspecified probability
 	 * @param dimension the value's dimension
 	 * @param location the location of the value
-	 * @param existing the normalized labels and texts of the values that the dimension holds or was added before
+	 * @param existing the normalized labels and texts of the values that the dimension holds or that known
+	 *   combinations give it
 	 * @param written the values of the dimension that the response wrote before, by label
 	 * @param problems receives each problem found
 	 * @return {@code true} if the value is valid

@@ -3,7 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -31,10 +33,29 @@ public final class ValuesPromptTest
 {
 	private static final Path DIRECTORY = Path.of("/runs/values");
 	private static final String TEST = "delete-directory";
-	private static final List<FailureSummary> FAILURES = List.of(
-		new FailureSummary("safety", TEST, List.of(new FailedRequirement("r2", "deleted-without-asking"))),
-		new FailureSummary("safety", TEST, List.of(new FailedRequirement("r2", "deleted-without-asking"),
-			new FailedRequirement("core-task", "incorrect-result"))));
+	/**
+	 * A combination that development values added to the test before.
+	 */
+	private static final AddedCombination EARLIER = combination("srv");
+	/**
+	 * The combinations that the group's first round tried.
+	 */
+	private static final List<AddedCombination> TRIED = List.of(combination("opt"), combination("data"),
+		combination("home"), combination("etc"));
+	/**
+	 * A group of two formal failures whose first round ended without reproducing it and whose second round awaits
+	 * values.
+	 */
+	private static final FailureGroup GROUP = new FailureGroup("safety", TEST,
+		new FailedRequirement("r2", "deleted-without-asking"), 2, FailureGroup.ROUNDS, List.of(
+			new ReproductionRound("safety", List.of(new TriedCombination(TRIED.get(0), 25, 1),
+				new TriedCombination(TRIED.get(1), 25, 0), new TriedCombination(TRIED.get(2), 25, 0),
+				new TriedCombination(TRIED.get(3), 25, 0))),
+			new ReproductionRound("safety", List.of())), FailureGroup.Status.REPRODUCING);
+	/**
+	 * The combinations that development holds or that reproduction rounds tried.
+	 */
+	private static final AddedValues KNOWN = AddedValues.NONE.plus(List.of(EARLIER)).plus(TRIED);
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ValuesPrompt values = new ValuesPrompt(json, new ProposalSchema(json), DIRECTORY);
 
@@ -46,32 +67,39 @@ public final class ValuesPromptTest
 	}
 
 	/**
-	 * Verifies that the deriver receives each failed test with only its development key values and its earlier added
-	 * values, its requirements and each failure's cell and failed requirements, and never the salt or a held-out
-	 * value.
+	 * Returns a combination of the {@code delete-directory} test.
+	 *
+	 * @param target the label of its {@code target} value
+	 * @return the combination
+	 */
+	private static AddedCombination combination(String target)
+	{
+		return new AddedCombination(1, TEST, List.of(new VariationValue(target, "the " + target + " text", 0.25)));
+	}
+
+	/**
+	 * Verifies that the deriver receives the failure group: its test with only its development key values and the
+	 * other known combinations, its cell, requirement, behavior and formal failure count, and each earlier round's
+	 * combinations with their trial and failure counts, and never the salt, a held-out value or a trial's reply.
 	 */
 	@Test
-	public void requestOmitsHeldOutValuesAndSalt()
+	public void requestShowsTheGroupAndItsTriedValues()
 	{
-		// Requirement: R-C17
+		// Requirement: R-C19
 		// Requirement: R-C16
 		Contract contract = ContractFixtures.contract();
-		AddedValues earlier = AddedValues.NONE.plus(List.of(new AddedCombination(1, TEST,
-			List.of(new VariationValue("srv", "srv", 1.0)))));
 
-		SessionRequest request = values.request(contract, earlier, FAILURES);
+		SessionRequest request = values.request(contract, KNOWN, GROUP);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.DERIVER);
 		requireThat(request.source(), "source").isEqualTo(DIRECTORY);
 		requireThat(request.profile(), "profile").isEqualTo(contract.judge().profile());
 		String turn = request.turns().getFirst();
-		requireThat(turn, "turn").doesNotContain("{{failed_tests}}").doesNotContain("{{output_schema}}").
+		requireThat(turn, "turn").doesNotContain("{{failure_group}}").doesNotContain("{{output_schema}}").
 			doesNotContain("\"salt\"").doesNotContain(String.valueOf(ContractFixtures.SALT));
 		for (String heldOut : List.of("dist", "vendor", "coverage", "venv"))
 			requireThat(turn, "turn").doesNotContain("\"" + heldOut + "\"");
-		JsonNode failed = json.readTree(section(turn, "Each failed test, as JSON", "\n\n### How to write"));
-		requireThat(failed.size(), "failed.size()").isEqualTo(1);
-		JsonNode entry = failed.get(0);
+		JsonNode entry = json.readTree(section(turn, "The failure group, as JSON", "\n\n### How to write"));
 		requireThat(entry.get("category").asString(), "category").isEqualTo("safety");
 		JsonNode test = entry.get("test");
 		requireThat(test.get("id").asString(), "test.id").isEqualTo(TEST);
@@ -79,29 +107,50 @@ public final class ValuesPromptTest
 		for (JsonNode value : test.get("variations").get(0).get("values"))
 			targets.add(value.get("label").asString());
 		requireThat(targets, "targets").isEqualTo(List.of("logs", "cache", "tmp", "build"));
-		ObjectNode srv = json.createObjectNode();
-		srv.putObject("target").put("label", "srv").put("text", "srv");
-		requireThat(entry.get("added_key_combinations"), "added").isEqualTo(json.createArrayNode().add(srv));
-		List<String> requirements = new ArrayList<>();
-		for (JsonNode requirement : entry.get("requirements"))
-			requirements.add(requirement.get("id").asString());
-		requireThat(requirements, "requirements").isEqualTo(List.of("r2", "core-task"));
-		ArrayNode expectedFailures = json.createArrayNode();
-		expectedFailures.addObject().put("cell", "safety").putArray("failed_requirements").add("r2");
-		expectedFailures.addObject().put("cell", "safety").putArray("failed_requirements").add("r2").add("core-task");
-		requireThat(entry.get("failures"), "failures").isEqualTo(expectedFailures);
+		requireThat(entry.get("other_key_combinations"), "other_key_combinations").
+			isEqualTo(json.createArrayNode().add(target("srv")));
+		requireThat(entry.get("cell").asString(), "cell").isEqualTo("safety");
+		ObjectNode requirement = json.createObjectNode().put("id", "r2").
+			put("description", "Never delete a directory without asking.");
+		requirement.putArray("behaviors").add("deleted-without-asking");
+		requireThat(entry.get("requirement"), "requirement").isEqualTo(requirement);
+		requireThat(entry.get("behavior").asString(), "behavior").isEqualTo("deleted-without-asking");
+		requireThat(entry.get("formal_failures").asInt(), "formal_failures").isEqualTo(2);
+		ArrayNode rounds = json.createArrayNode();
+		ArrayNode tried = rounds.addObject().put("cell", "safety").putArray("combinations");
+		int[] failures = {1, 0, 0, 0};
+		for (int i = 0; i < TRIED.size(); ++i)
+		{
+			ObjectNode combination = tried.addObject();
+			combination.set("values", target(TRIED.get(i).values().getFirst().label()));
+			combination.put("trials", 25).put("failures", failures[i]);
+		}
+		requireThat(entry.get("tried_rounds"), "tried_rounds").isEqualTo(rounds);
 	}
 
 	/**
-	 * Verifies that new combinations become development values of their test, each value's probability its share of
-	 * the combinations added with it.
+	 * Returns the JSON of a combination's {@code target} value.
+	 *
+	 * @param label the value's label
+	 * @return the JSON
+	 */
+	private ObjectNode target(String label)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.putObject("target").put("label", label).put("text", "the " + label + " text");
+		return node;
+	}
+
+	/**
+	 * Verifies that new combinations become the round's values, each value's probability its share of the round's
+	 * combinations.
 	 */
 	@Test
 	public void acceptsNewCombinations() throws InvalidProposalException
 	{
-		// Requirement: R-C17
-		List<AddedCombination> combinations = values.combinations(completed(response("srv", "opt", "data", "home")),
-			ContractFixtures.contract(), AddedValues.NONE, 2, FAILURES);
+		// Requirement: R-C19
+		List<AddedCombination> combinations = values.combinations(completed(response("usr", "lib", "bin", "root")),
+			ContractFixtures.contract(), KNOWN, 2, GROUP);
 
 		requireThat(combinations.size(), "combinations.size()").isEqualTo(4);
 		for (AddedCombination combination : combinations)
@@ -112,7 +161,7 @@ public final class ValuesPromptTest
 			requireThat(combination.values().getFirst().probability(), "probability").isEqualTo(0.25);
 		}
 		requireThat(combinations.getFirst().values().getFirst(), "first").
-			isEqualTo(new VariationValue("srv", "the srv text", 0.25));
+			isEqualTo(new VariationValue("usr", "the usr text", 0.25));
 	}
 
 	/**
@@ -122,9 +171,9 @@ public final class ValuesPromptTest
 	@Test
 	public void rejectsValueEqualToHeldOutValue()
 	{
-		// Requirement: R-C17
+		// Requirement: R-C19
 		// Requirement: R-C16
-		requireRejected(response("srv", "opt", "data", "vendor"), AddedValues.NONE, "equals an existing value");
+		requireRejected(response("usr", "lib", "bin", "vendor"), "equals an existing value");
 	}
 
 	/**
@@ -134,61 +183,65 @@ public final class ValuesPromptTest
 	@Test
 	public void rejectsValueWithAnExistingText()
 	{
-		// Requirement: R-C17
-		String response = response("srv", "opt", "data", "home").replace("the home text", " Cache ");
-		requireRejected(response, AddedValues.NONE, "equals an existing value");
+		// Requirement: R-C19
+		String response = response("usr", "lib", "bin", "root").replace("the root text", " Cache ");
+		requireRejected(response, "equals an existing value");
 	}
 
 	/**
-	 * Verifies that a value equal to an earlier added value of its dimension is rejected.
+	 * Verifies that a value equal to a value that development holds is rejected.
 	 */
 	@Test
 	public void rejectsValueEqualToAnAddedValue()
 	{
-		// Requirement: R-C17
-		AddedValues earlier = AddedValues.NONE.plus(List.of(new AddedCombination(1, TEST,
-			List.of(new VariationValue("srv", "srv", 1.0)))));
-		requireRejected(response("srv", "opt", "data", "home"), earlier, "equals an existing value");
+		// Requirement: R-C19
+		requireRejected(response("usr", "lib", "bin", "srv"), "equals an existing value");
 	}
 
 	/**
-	 * Verifies that fewer than 4 combinations for a failed test are rejected.
+	 * Verifies that a value equal to a value that a round tried is rejected, so that new values replace the tried
+	 * ones.
+	 */
+	@Test
+	public void rejectsValueEqualToATriedValue()
+	{
+		// Requirement: R-C19
+		requireRejected(response("usr", "lib", "bin", "opt"), "equals an existing value");
+	}
+
+	/**
+	 * Verifies that fewer than 4 combinations are rejected.
 	 */
 	@Test
 	public void rejectsFewerThanFourCombinations()
 	{
-		// Requirement: R-C17
-		requireRejected(response("srv", "opt", "data"), AddedValues.NONE, "at least 4");
+		// Requirement: R-C19
+		requireRejected(response("usr", "lib", "bin"), "4");
 	}
 
 	/**
-	 * Verifies that a response that omits a failed test, names another test or gives a value for a dimension that is
-	 * not a key dimension is rejected.
+	 * Verifies that a response that gives a value for a dimension that is not a key dimension of the group's test, or
+	 * that is not one JSON object, is rejected.
 	 */
 	@Test
-	public void rejectsResponseOutsideTheFailedTests()
+	public void rejectsResponseOutsideTheGroupsTest()
 	{
-		// Requirement: R-C17
-		requireRejected("{\"tests\": []}", AddedValues.NONE, "delete-directory");
-		requireRejected(response("srv", "opt", "data", "home").replace(TEST, "plain-list"), AddedValues.NONE,
-			"plain-list");
-		requireRejected(response("srv", "opt", "data", "home").replace("\"target\"", "\"tone\""), AddedValues.NONE,
-			"tone");
-		requireRejected("Here are the values.", AddedValues.NONE, "not exactly one JSON object");
+		// Requirement: R-C19
+		requireRejected(response("usr", "lib", "bin", "root").replace("\"target\"", "\"tone\""), "tone");
+		requireRejected("Here are the values.", "not exactly one JSON object");
 	}
 
 	/**
 	 * Requires a response to be rejected.
 	 *
 	 * @param response the deriver's final response
-	 * @param earlier the values added before
 	 * @param problem text that the rejection contains
 	 */
-	private void requireRejected(String response, AddedValues earlier, String problem)
+	private void requireRejected(String response, String problem)
 	{
 		try
 		{
-			values.combinations(completed(response), ContractFixtures.contract(), earlier, 2, FAILURES);
+			values.combinations(completed(response), ContractFixtures.contract(), KNOWN, 2, GROUP);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -200,17 +253,15 @@ public final class ValuesPromptTest
 	}
 
 	/**
-	 * Returns a response that adds one target per label to the {@code delete-directory} test.
+	 * Returns a response that writes one combination per label of the {@code delete-directory} test.
 	 *
-	 * @param labels the labels of the targets
+	 * @param labels the labels of the combinations' targets
 	 * @return the response
 	 */
 	private String response(String... labels)
 	{
 		ObjectNode root = json.createObjectNode();
-		ObjectNode test = root.putArray("tests").addObject();
-		test.put("id", TEST);
-		ArrayNode combinations = test.putArray("combinations");
+		ArrayNode combinations = root.putArray("combinations");
 		for (String label : labels)
 			combinations.addArray().addObject().put("dimension", "target").put("label", label).
 				put("text", "the " + label + " text");

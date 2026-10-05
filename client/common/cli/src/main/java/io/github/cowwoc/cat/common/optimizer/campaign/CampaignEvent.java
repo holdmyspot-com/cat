@@ -385,25 +385,29 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A deriver session added development values to the tests that failed a certification attempt.
+	 * A deriver session wrote the key-value combinations of a formal failure group's current round.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param attempt the index of the attempt whose formal failures the values address
+	 * @param attempt the index of the attempt whose failure group the values address
+	 * @param group the group's 1-based position in the attempt's groups
 	 * @param combinations the new key-value combinations, each recording {@code attempt}
 	 */
-	record AddValues(int attempt, List<AddedCombination> combinations) implements CampaignEvent
+	record ReproductionValues(int attempt, int group, List<AddedCombination> combinations) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
-		 * @param attempt the index of the attempt whose formal failures the values address
+		 * @param attempt the index of the attempt whose failure group the values address
+		 * @param group the group's 1-based position in the attempt's groups
 		 * @param combinations the new key-value combinations, each recording {@code attempt}
 		 * @throws NullPointerException if {@code combinations} is null or contains null
-		 * @throws IllegalArgumentException if {@code combinations} is empty or a combination records another attempt
+		 * @throws IllegalArgumentException if {@code group} is not positive, {@code combinations} is empty or a
+		 *   combination records another attempt
 		 */
-		public AddValues
+		public ReproductionValues
 		{
+			requireThat(group, "group").isPositive();
 			requireThat(combinations, "combinations").isNotEmpty();
 			combinations = List.copyOf(combinations);
 			for (AddedCombination combination : combinations)

@@ -5,16 +5,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.util.List;
 
 /**
- * A key-value combination that CAT added to the development part of a test after a certification attempt ended with
- * formal failures. Every value is new to its dimension, so the combination belongs to no part of the confirmed
- * split.
+ * A key-value combination that a deriver wrote for the development part of a test, to reproduce a formal failure
+ * group of a certification attempt. It joins development once it reproduces the group. Every value is new to its
+ * dimension, so the combination belongs to no part of the confirmed split.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param attempt the index of the certification attempt whose formal failures led to the combination
  * @param testId the identifier of the test definition
  * @param values the value of each key dimension, in the test's key-dimension order; each value's probability is
- *   its share of the combinations added to the test after the same attempt
+ *   its share of the combinations that the deriver wrote for the same round
  */
 public record AddedCombination(int attempt, String testId, List<VariationValue> values)
 {

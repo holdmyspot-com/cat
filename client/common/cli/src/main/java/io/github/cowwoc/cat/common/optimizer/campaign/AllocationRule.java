@@ -7,7 +7,7 @@ public enum AllocationRule
 {
 	/**
 	 * Rule 1: replay a failing instance for diagnosis or to check whether an author's edits replace the working
-	 * candidate.
+	 * candidate, or reproduce a formal failure group on its round's combinations.
 	 */
 	TARGETED,
 	/**
@@ -40,7 +40,7 @@ public enum AllocationRule
 	{
 		return switch (purpose)
 		{
-			case DIAGNOSTIC, PROMOTION -> this == TARGETED;
+			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> this == TARGETED;
 			case DEVELOPMENT -> this == COVERAGE_FLOOR || this == LOWEST_EXPLORATORY_BOUND;
 			case FORMAL -> this == FORMAL;
 			case BASELINE -> this == BASELINE_ARM;

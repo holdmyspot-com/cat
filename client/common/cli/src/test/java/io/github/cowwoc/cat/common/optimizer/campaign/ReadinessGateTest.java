@@ -2,15 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 
 import java.util.List;
 import java.util.Map;
@@ -138,19 +135,25 @@ public final class ReadinessGateTest
 	}
 
 	/**
-	 * Verifies that the gate does not hold while a certification attempt that ended with formal failures waits for
-	 * development values, and holds again once they are added.
+	 * Verifies that the gate does not hold while a failure group of the latest certification attempt is reproducing,
+	 * and holds again once the group is reproduced or the user chose a new attempt without reproducing it.
 	 */
 	@Test
-	public void gateWaitsForAddedValues()
+	public void gateWaitsForReproduction()
 	{
-		// Requirement: R-C17
-		Builder failed = ready().certificationAttempt(1).failure(Builder.instance("safety", "logs")).
-			outcome(Outcome.BELOW_MINIMUM).campaign();
-		requireThat(ReadinessGate.isMet(failed.build()), "awaiting").isFalse();
-		AddedValues added = AddedValues.NONE.plus(List.of(new AddedCombination(1, "delete-directory",
-			List.of(new VariationValue("srv", "srv", 1.0)))));
-		requireThat(ReadinessGate.isMet(failed.added(added).build()), "added").isTrue();
+		// Requirement: R-C19
+		TrialInstance instance = Builder.instance("safety", "logs");
+		FailedRequirement failed = new FailedRequirement("r1", "wrong-tone");
+		Builder.AttemptBuilder attempt = ready().certificationAttempt(1).
+			failure(new Failure(instance, "failure", List.of(failed), null, List.of(), List.of())).
+			outcome(Outcome.BELOW_MINIMUM);
+		requireThat(ReadinessGate.isMet(attempt.build()), "reproducing").isFalse();
+		for (FailureGroup.Status status : List.of(FailureGroup.Status.REPRODUCED, FailureGroup.Status.ABANDONED))
+		{
+			FailureGroup group = new FailureGroup("safety", instance.testId(), failed, 1, FailureGroup.ROUNDS,
+				List.of(new ReproductionRound("safety", List.of())), status);
+			requireThat(ReadinessGate.isMet(attempt.groups(List.of(group)).build()), status.name()).isTrue();
+		}
 	}
 
 	/**

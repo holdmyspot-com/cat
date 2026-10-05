@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.InfrastructureAttempt;
@@ -31,6 +32,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
@@ -38,6 +40,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
@@ -125,16 +128,17 @@ public abstract class CampaignStoreContract
 	/**
 	 * A campaign with every persisted state distinction populated, including each trial's allocation decision and
 	 * infrastructure attempts, the judge's rationale and the failed requirements for each judged trial and each
-	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of
-	 * each development failure, the campaign's evidence revision, a pending authority warning and the authorized
-	 * external targets, survives a reload unchanged.
+	 * failure, the contract's split salt and key dimensions, the diagnostic reruns of each development failure, an
+	 * ended attempt's failure groups with their rounds and counts, a reproduction trial, the campaign's evidence
+	 * revision, a pending authority warning, a pause over unreproduced failures and the authorized external targets,
+	 * survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
 	 */
 	@Test
 	public void populatedCampaignSurvivesReload() throws IOException
 	{
-		// Requirement: R-L5, R-E1, R-D2, R-W4, R-D9, R-C16
+		// Requirement: R-L5, R-E1, R-D2, R-W4, R-D9, R-C16, R-C19
 		try (StoreFixture fixture = open())
 		{
 			Campaign campaign = populated("campaign-full");
@@ -857,6 +861,34 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * Returns failure groups that populate every persisted distinction of a group: a group that a stress round
+	 * reproduced, and a group that the user gave more rounds, whose rounds awaited values, were replaced and
+	 * ran out.
+	 *
+	 * @return the groups
+	 */
+	private static List<FailureGroup> failureGroups()
+	{
+		AddedCombination usb = new AddedCombination(1, "delete-directory",
+			List.of(new VariationValue("usb", "the \"backup\" stick", 0.5)));
+		AddedCombination nas = new AddedCombination(1, "delete-directory",
+			List.of(new VariationValue("nas", "a network\nshare", 0.5)));
+		FailureGroup reproduced = new FailureGroup("formatting", "delete-directory", new FailedRequirement("r1",
+			"wrong-tone"), 3, FailureGroup.ROUNDS, List.of(
+				new ReproductionRound("formatting", List.of(new TriedCombination(usb, 50, 1),
+					new TriedCombination(nas, 50, 0))),
+				new ReproductionRound("safety", List.of(new TriedCombination(usb, 7, 2),
+					new TriedCombination(nas, 6, 0)))),
+			FailureGroup.Status.REPRODUCED);
+		FailureGroup unreproduced = new FailureGroup("safety", "delete-directory", new FailedRequirement("r2",
+			"deleted-without-asking"), 1, 2 * FailureGroup.ROUNDS, List.of(
+				new ReproductionRound("safety", List.of(new TriedCombination(nas, 100, 1))),
+				new ReproductionRound("safety", List.of())),
+			FailureGroup.Status.NOT_REPRODUCED);
+		return List.of(reproduced, unreproduced);
+	}
+
+	/**
 	 * Returns a campaign that populates every persisted state distinction.
 	 *
 	 * @param id the campaign's identifier
@@ -934,6 +966,10 @@ public abstract class CampaignStoreContract
 				"formatting", 3), instance("formatting", "tone", 14, false), identity,
 				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0,
 				List.of(), 0, List.of())).
+			trial(new LogicalTrial(new TrialKey(Purpose.REPRODUCTION, 2, Builder.snapshot("candidate-3"),
+				"safety", 6), instance("safety", "deletion", 16, false), identity,
+				allocation(AllocationRule.TARGETED, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,
+				List.of())).
 			evidenceRevision(41).
 			slowStart(new SlowStart(4, 3)).
 			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3)).
@@ -947,6 +983,7 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.RegressionTradeOff(2)).
 			pending(new PendingDecision.PlateauReached()).
 			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION)).
+			pending(new PendingDecision.FailuresNotReproduced(1)).
 			pending(new PendingDecision.AuthorityWarnings(List.of(
 				new AuthorityWarning("R1", Path.of("rules/shared.md"), Path.of("/external/shared.md"),
 					Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.AUTHORIZE_TARGET,
@@ -969,6 +1006,7 @@ public abstract class CampaignStoreContract
 			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.",
 				List.of(new FailedRequirement("r1", "wrong-tone")), null, List.of(), List.of())).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
+			groups(failureGroups()).
 			campaign().
 			certificationAttempt(2).
 			identity(Builder.confirmedIdentity("model-a")).
@@ -990,7 +1028,7 @@ public abstract class CampaignStoreContract
 			attempts.add(new CertificationAttempt(attempt.index(), attempt.lineage(), attempt.candidate(),
 				attempt.identity(), attempt.procedure(), attempt.counts(), attempt.failures(),
 				new DrawStream.State(DrawStream.Kind.FORMAL, Long.MAX_VALUE - attempt.index(), 23L * attempt.index(),
-					true), attempt.outcome()));
+					true), attempt.outcome(), attempt.groups()));
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
 			built.candidates(), built.authorAttempts(), built.development(), built.baseline(),

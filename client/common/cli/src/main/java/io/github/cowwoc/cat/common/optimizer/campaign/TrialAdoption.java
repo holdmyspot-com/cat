@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
@@ -16,11 +18,11 @@ import java.util.Optional;
 /**
  * Records judged trials in campaign evidence and applies the policies that each adoption triggers.
  * <p>
- * Representative outcomes enter counts in assignment order within each adoption group: trials sharing a purpose,
- * series, snapshot and cell, where a cell tests one category with one model and reasoning effort. Completion order
- * therefore cannot choose which outcomes enter a decision. Diagnostic and promotion outcomes are adopted as soon
- * as they are judged and do not enter representative counts. A trial whose purpose the state no longer serves is
- * stale: its outcome is discarded.
+ * Representative and reproduction outcomes enter counts in assignment order within each adoption group: trials
+ * sharing a purpose, series, snapshot and cell, where a cell tests one category with one model and reasoning effort.
+ * Completion order therefore cannot choose which outcomes enter a decision. Diagnostic and promotion outcomes are
+ * adopted as soon as they are judged and do not enter representative counts. A trial whose purpose the state no
+ * longer serves is stale: its outcome is discarded.
  */
 final class TrialAdoption
 {
@@ -48,6 +50,7 @@ final class TrialAdoption
 			case DEVELOPMENT -> key.series() != draft.series || !key.snapshot().equals(draft.working.snapshot());
 			case BASELINE -> key.series() != draft.baselineIndex;
 			case FORMAL -> isStaleFormal(draft, key);
+			case REPRODUCTION -> isStaleReproduction(draft, trial);
 			case DIAGNOSTIC -> key.series() != draft.series || draft.diagnosis == null ||
 				!key.equals(draft.diagnosis.rerun());
 			case PROMOTION ->
@@ -74,6 +77,32 @@ final class TrialAdoption
 		CertificationAttempt attempt = draft.attempt(key.series());
 		return !attempt.isRunning() || DecisionTable.cellDecision(attempt.procedure().boundaries(),
 			attempt.count(key.cell())) != DecisionTable.CellDecision.UNDECIDED;
+	}
+
+	/**
+	 * Indicates whether a reproduction trial's group no longer runs the trial's round: no attempt is reproducing, the
+	 * group is not reproducing, its current round runs in another cell or lacks the trial's combination, or the
+	 * working candidate changed.
+	 *
+	 * @param draft the state
+	 * @param trial the trial
+	 * @return {@code true} if the trial's outcome must be discarded
+	 */
+	private static boolean isStaleReproduction(Draft draft, LogicalTrial trial)
+	{
+		TrialKey key = trial.key();
+		Optional<CertificationAttempt> reproducing = draft.reproducing();
+		if (reproducing.isEmpty() || !key.snapshot().equals(draft.working.snapshot()))
+			return true;
+		CertificationAttempt attempt = reproducing.get();
+		if (key.series() < 1 || key.series() > attempt.groups().size())
+			return true;
+		FailureGroup group = attempt.group(key.series());
+		ReproductionRound round = group.round();
+		if (group.status() != FailureGroup.Status.REPRODUCING || !round.cellId().equals(key.cell()))
+			return true;
+		TestDefinition test = draft.contract().findTest(group.testId()).orElseThrow();
+		return round.indexOf(test, trial.instance()) < 0;
 	}
 
 	/**
@@ -112,7 +141,7 @@ final class TrialAdoption
 		{
 			if (trial.state() != TrialState.JUDGED)
 				continue;
-			if (!trial.key().purpose().isRepresentative() || !waitsForEarlierTrial(draft, trial))
+			if (!trial.key().purpose().drawsAtAssignment() || !waitsForEarlierTrial(draft, trial))
 				return Optional.of(trial);
 		}
 		return Optional.empty();
@@ -143,18 +172,60 @@ final class TrialAdoption
 	 */
 	private static void adopt(Draft draft, LogicalTrial trial)
 	{
-		if (trial.key().snapshot().equals(draft.working.snapshot()))
+		Purpose purpose = trial.key().purpose();
+		if (purpose != Purpose.REPRODUCTION && trial.key().snapshot().equals(draft.working.snapshot()))
 		{
 			draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, trial.instance(), trial.verdict());
 			recordWorkingVerdict(draft, trial.instance(), trial.verdict());
 		}
-		switch (trial.key().purpose())
+		switch (purpose)
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
 			case BASELINE -> adoptBaseline(draft, trial);
 			case FORMAL -> adoptFormal(draft, trial);
 			case DIAGNOSTIC -> adoptDiagnostic(draft, trial);
 			case PROMOTION -> adoptPromotion(draft, trial);
+			case REPRODUCTION -> adoptReproduction(draft, trial);
+		}
+	}
+
+	/**
+	 * Adopts a reproduction outcome into its failure group's current round. A failure counts toward the group only
+	 * when it failed the group's requirement through the group's behavior. Once the group reproduces, its round's
+	 * combinations join development and the working candidate's development counts restart, because the development
+	 * distribution changed. Once no group is reproducing and some group did not reproduce, the user decides how to
+	 * continue.
+	 *
+	 * @param draft the state
+	 * @param trial the trial
+	 */
+	private static void adoptReproduction(Draft draft, LogicalTrial trial)
+	{
+		int number = trial.key().series();
+		CertificationAttempt attempt = draft.reproducing().orElseThrow();
+		FailureGroup group = attempt.group(number);
+		Contract contract = draft.contract();
+		int index = group.round().indexOf(contract.findTest(group.testId()).orElseThrow(), trial.instance());
+		boolean matched = trial.verdict() == Verdict.FAIL && trial.failedRequirements().contains(group.failed());
+		if (trial.verdict() == Verdict.PASS)
+			draft.slowStart = draft.slowStart.afterPass();
+		else
+			draft.slowStart = draft.slowStart.afterFailure();
+		String stressCellId = CellTier.stressCell(contract, group.cellId()).map(Cell::id).orElse(null);
+		FailureGroup updated = group.adopt(index, matched, stressCellId);
+		CertificationAttempt next = attempt.withGroup(number, updated);
+		draft.replaceAttempt(next);
+
+		if (updated.status() == FailureGroup.Status.REPRODUCED)
+		{
+			draft.added = draft.added.plus(updated.round().added());
+			draft.restartDevelopmentCounts();
+		}
+		List<FailureGroup.Status> statuses = next.groups().stream().map(FailureGroup::status).toList();
+		if (!statuses.contains(FailureGroup.Status.REPRODUCING) &&
+			statuses.contains(FailureGroup.Status.NOT_REPRODUCED))
+		{
+			draft.raise(new PendingDecision.FailuresNotReproduced(attempt.index()));
 		}
 	}
 
@@ -234,7 +305,7 @@ final class TrialAdoption
 			{
 				case DEVELOPMENT -> key.snapshot().equals(draft.working.snapshot());
 				case DIAGNOSTIC -> true;
-				case BASELINE, FORMAL, PROMOTION -> false;
+				case BASELINE, FORMAL, PROMOTION, REPRODUCTION -> false;
 			};
 		});
 		draft.diagnosis = null;
@@ -723,9 +794,8 @@ final class TrialAdoption
 		}
 		else
 			draft.slowStart = draft.slowStart.afterPass();
-		CertificationAttempt updated = new CertificationAttempt(attempt.index(), attempt.lineage(),
-			attempt.candidate(), attempt.identity(), attempt.procedure(), counts, failures, attempt.formalStream(),
-			null);
+		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, failures,
+			attempt.formalStream());
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}

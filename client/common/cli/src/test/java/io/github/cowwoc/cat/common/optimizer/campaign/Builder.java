@@ -730,6 +730,7 @@ public final class Builder
 		private MeasurementIdentity incumbentIdentity;
 		private DecisionBoundaries boundaries;
 		private Outcome attemptOutcome;
+		private List<FailureGroup> attemptGroups;
 
 		/**
 		 * Creates a builder for a running attempt.
@@ -852,6 +853,18 @@ public final class Builder
 		}
 
 		/**
+		 * Sets the attempt's failure groups, overriding the groups that an ended attempt forms from its failures.
+		 *
+		 * @param values the groups
+		 * @return this builder
+		 */
+		public AttemptBuilder groups(List<FailureGroup> values)
+		{
+			this.attemptGroups = values;
+			return this;
+		}
+
+		/**
 		 * Returns the campaign builder.
 		 *
 		 * @return the campaign builder
@@ -897,8 +910,16 @@ public final class Builder
 			CertificationProcedure procedure = new CertificationProcedure(
 				ErrorBudget.improvementLevel(index, cells.size()), baselineIndex, frozenBaselineIdentity,
 				cells, frozen, CertificationProcedure.BETS, CertificationProcedure.ALLOCATION_POLICY);
+			List<FailureGroup> groups = attemptGroups;
+			if (groups == null)
+			{
+				if (attemptOutcome == Outcome.BELOW_MINIMUM || attemptOutcome == Outcome.INCONCLUSIVE)
+					groups = FailureGroup.of(attemptFailures);
+				else
+					groups = List.of();
+			}
 			return new CertificationAttempt(index, number, frozenCandidate, frozenIdentity, procedure, counts,
-				attemptFailures, new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true), attemptOutcome);
+				attemptFailures, new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true), attemptOutcome, groups);
 		}
 	}
 }

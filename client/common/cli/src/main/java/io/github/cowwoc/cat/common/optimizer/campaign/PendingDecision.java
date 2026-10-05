@@ -166,6 +166,28 @@ public sealed interface PendingDecision
 	}
 
 	/**
+	 * Every failure group of an ended certification attempt either reproduced or ran its rounds without reproducing,
+	 * and at least one did not reproduce. No author works on a group that did not reproduce.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param attempt the attempt's certification index
+	 */
+	record FailuresNotReproduced(int attempt) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param attempt the attempt's certification index
+		 * @throws IllegalArgumentException if {@code attempt} is not positive
+		 */
+		public FailuresNotReproduced
+		{
+			requireThat(attempt, "attempt").isPositive();
+		}
+	}
+
+	/**
 	 * A certification attempt certified, but some cell is proven worse than the original prompt system.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.

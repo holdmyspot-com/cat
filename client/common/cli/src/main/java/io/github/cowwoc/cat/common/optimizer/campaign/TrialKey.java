@@ -15,8 +15,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
  *
  * @param purpose why the trial runs
  * @param series the development series for {@link Purpose#DEVELOPMENT} and {@link Purpose#DIAGNOSTIC}, the baseline
- *   index for {@link Purpose#BASELINE}, the certification index for {@link Purpose#FORMAL}, or the author attempt
- *   number for {@link Purpose#PROMOTION}
+ *   index for {@link Purpose#BASELINE}, the certification index for {@link Purpose#FORMAL}, the author attempt
+ *   number for {@link Purpose#PROMOTION}, or the 1-based position of the reproducing attempt's failure group for
+ *   {@link Purpose#REPRODUCTION}
  * @param snapshot the snapshot that the trial runs
  * @param cell the trial's cell identifier
  * @param sequence the trial's number within its sequence group, starting at 1

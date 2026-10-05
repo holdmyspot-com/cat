@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 /**
  * Applies the choices that a campaign offers while it waits for a decision or is cancelled.
@@ -75,6 +76,10 @@ final class UserChoices
 			case AUTHORIZE_TARGET -> authorize(draft, (PendingDecision.AuthorityWarnings) pending, choose.target());
 			case USE_AUTHORIZED_SOURCE -> draft.resolve();
 			case RESOLUTION -> throw new IllegalArgumentException("Choose a numbered resolution of the conflict");
+			case MORE_ROUNDS -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
+				FailureGroup::moreRounds);
+			case NEW_ATTEMPT -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
+				FailureGroup::abandon);
 		}
 	}
 
@@ -215,5 +220,28 @@ final class UserChoices
 			draft.resolve();
 		draft.header = draft.header.withLifecycle(Lifecycle.FINISHED);
 		draft.delivery = delivery;
+	}
+
+	/**
+	 * Applies the user's answer to each failure group of an attempt that did not reproduce, and resolves the decision.
+	 * More rounds resume the groups' reproduction; a new attempt leaves them unreproduced, so development resumes
+	 * with the unchanged candidate and the readiness gate decides when the next attempt starts.
+	 *
+	 * @param draft the state
+	 * @param pending the decision
+	 * @param answer the answer's effect on each group that did not reproduce
+	 */
+	private static void answerNotReproduced(Draft draft, PendingDecision.FailuresNotReproduced pending,
+		UnaryOperator<FailureGroup> answer)
+	{
+		CertificationAttempt attempt = draft.attempt(pending.attempt());
+		for (int number = 1; number <= attempt.groups().size(); ++number)
+		{
+			FailureGroup group = attempt.group(number);
+			if (group.status() == FailureGroup.Status.NOT_REPRODUCED)
+				attempt = attempt.withGroup(number, answer.apply(group));
+		}
+		draft.replaceAttempt(attempt);
+		draft.resolve();
 	}
 }

@@ -58,7 +58,7 @@ final class TransitionSteps
 			case DEVELOPMENT -> AllocationRule.LOWEST_EXPLORATORY_BOUND;
 			case BASELINE -> AllocationRule.BASELINE_ARM;
 			case FORMAL -> AllocationRule.FORMAL;
-			case DIAGNOSTIC, PROMOTION -> AllocationRule.TARGETED;
+			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> AllocationRule.TARGETED;
 		};
 		return new Allocation(rule, campaign.evidenceRevision(), ASSIGNED_AT);
 	}
@@ -86,7 +86,8 @@ final class TransitionSteps
 				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), cell, null,
 					allocation);
 			}
-			case DIAGNOSTIC, PROMOTION -> throw new IllegalArgumentException("Targeted purpose: " + purpose);
+			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> throw new IllegalArgumentException("Targeted purpose: " +
+				purpose);
 		};
 	}
 

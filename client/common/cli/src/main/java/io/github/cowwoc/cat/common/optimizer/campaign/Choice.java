@@ -69,5 +69,14 @@ public enum Choice
 	/**
 	 * Select a numbered resolution of the first unanswered conflict and revise once every conflict has an answer.
 	 */
-	RESOLUTION
+	RESOLUTION,
+	/**
+	 * Run more reproduction rounds for the failure groups that did not reproduce, each with new development values.
+	 */
+	MORE_ROUNDS,
+	/**
+	 * Leave the failure groups that did not reproduce, and start a new certification attempt with the working
+	 * candidate once it meets the readiness gate.
+	 */
+	NEW_ATTEMPT
 }

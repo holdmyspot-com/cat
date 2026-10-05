@@ -28,9 +28,10 @@ import java.util.Set;
  * <p>
  * Formal trials and the incumbent baseline run in the cells of the contract's {@link CertificationScope}. Development
  * runs in each category's development cells: its weakest cell, plus every cell where a certification attempt of the
- * lineage adopted a failure. The weakest cell is the lowest effort of the least capable model by the contract's
- * {@link CapabilityRanking}; the contract lists each category's cells in inventory order, and the inventory lists each
- * model's efforts from the lowest to the highest, so a model's first cell in a category is its lowest effort.
+ * lineage adopted a failure and every cell where a failure group of the lineage reproduced. The weakest cell is the
+ * lowest effort of the least capable model by the contract's {@link CapabilityRanking}; the contract lists each
+ * category's cells in inventory order, and the inventory lists each model's efforts from the lowest to the highest, so
+ * a model's first cell in a category is its lowest effort.
  * <p>
  * A running attempt's formal trials go to its open cells: each category's development cells, and each other scope cell
  * once every development cell of its category and every scope cell of its category below it are certified.
@@ -219,7 +220,8 @@ public final class CellTier
 
 	/**
 	 * Returns the development cells of a lineage: each category's weakest cell, plus every cell in which a
-	 * certification attempt of the lineage adopted a failure.
+	 * certification attempt of the lineage adopted a failure, and every stress cell in which a failure group of the
+	 * lineage reproduced.
 	 *
 	 * @param contract the lineage's confirmed contract
 	 * @param lineage the lineage's number
@@ -241,8 +243,42 @@ public final class CellTier
 				continue;
 			for (Failure failure : attempt.failures())
 				cells.add(failure.instance().cellId());
+			for (FailureGroup group : attempt.groups())
+			{
+				if (group.status() == FailureGroup.Status.REPRODUCED)
+					cells.add(group.round().cellId());
+			}
 		}
 		return contract.cells().stream().filter(cell -> cells.contains(cell.id())).toList();
+	}
+
+	/**
+	 * Returns the stress setting of a cell: the cell of the same category and model at the next lower reasoning
+	 * effort, under which a failure is likelier.
+	 *
+	 * @param contract a confirmed contract
+	 * @param cellId the cell's identifier
+	 * @return the stress cell, or empty if the cell's model has no lower effort in the cell's category
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the contract has no such cell
+	 */
+	public static Optional<Cell> stressCell(Contract contract, String cellId)
+	{
+		requireThat(contract, "contract").isNotNull();
+		requireThat(cellId, "cellId").isNotNull();
+		Cell cell = contract.findCell(cellId).orElseThrow(() -> new IllegalArgumentException("The contract has " +
+			"no cell '" + cellId + "'"));
+		// The contract lists a category's cells in inventory order, and the inventory lists each model's efforts
+		// lowest first, so the model's previous cell is its next lower effort
+		Cell lower = null;
+		for (Cell other : contract.profiles().cellsOf(cell.categoryId()))
+		{
+			if (other.equals(cell))
+				return Optional.ofNullable(lower);
+			if (other.profile().model().equals(cell.profile().model()))
+				lower = other;
+		}
+		return Optional.empty();
 	}
 
 	/**

@@ -80,7 +80,7 @@ public sealed interface Admission
 	 * @param series the series that the trial belongs to, as {@link TrialKey#series()} describes
 	 * @param snapshot the snapshot that the trial runs
 	 * @param cell the trial's cell identifier
-	 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
+	 * @param instance the targeted instance, or {@code null} if the assignment draws the instance
 	 * @param allocation the allocation decision that chose the trial
 	 */
 	record Assign(Purpose purpose, int series, Sha256 snapshot, String cell, TrialInstance instance,
@@ -93,12 +93,12 @@ public sealed interface Admission
 		 * @param series the series that the trial belongs to
 		 * @param snapshot the snapshot that the trial runs
 		 * @param cell the trial's non-blank cell identifier
-		 * @param instance the targeted instance, or {@code null} if the assignment draws a representative instance
+		 * @param instance the targeted instance, or {@code null} if the assignment draws the instance
 		 * @param allocation the allocation decision that chose the trial
 		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code cell} or {@code allocation}
 		 *   are null
 		 * @throws IllegalArgumentException if {@code series} is negative, {@code cell} is blank,
-		 *   {@code instance} is missing for a targeted purpose or supplied for a representative purpose,
+		 *   {@code instance} is missing for a purpose that replays an instance or supplied for one that draws it,
 		 *   {@code instance} is not marked targeted or belongs to another cell, or the allocation rule does not assign
 		 *   the purpose
 		 */
@@ -111,7 +111,7 @@ public sealed interface Admission
 			requireThat(allocation, "allocation").isNotNull();
 			requireThat(allocation.rule().assigns(purpose), "allocation.rule().assigns(purpose)").isTrue();
 			boolean targeted = instance != null;
-			requireThat(targeted, "targeted").isNotEqualTo(purpose.isRepresentative(), "purpose.isRepresentative()");
+			requireThat(targeted, "targeted").isNotEqualTo(purpose.drawsAtAssignment(), "purpose.drawsAtAssignment()");
 			if (instance != null)
 			{
 				requireThat(instance.targeted(), "instance.targeted()").isTrue();

@@ -9,7 +9,6 @@ import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SAFETY
 import static io.github.cowwoc.cat.common.optimizer.contract.TierFixtures.SMALL_HIGH;
 
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -457,42 +456,55 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Returns development values added after certification attempt 1 to the test of a failed instance.
+	 * Returns new key-value combinations of the test of a failed instance, written after certification attempt 1.
 	 *
 	 * @param failure the failed instance
-	 * @return one combination that gives each key dimension of the test a new value
+	 * @return 4 combinations, each of which gives every key dimension of the test a new value
 	 */
-	private static AddedValues addedAfterFirstAttempt(TrialInstance failure)
+	private static List<AddedCombination> reproductionValues(TrialInstance failure)
 	{
 		TestDefinition test = TierFixtures.tieredContract().findTest(failure.testId()).orElseThrow();
-		List<VariationValue> values = test.keyRules().stream().
-			map(rule -> new VariationValue("added-" + rule.dimension(), "added " + rule.dimension(), 1.0)).toList();
-		return AddedValues.NONE.plus(List.of(new AddedCombination(1, test.id(), values)));
+		List<AddedCombination> combinations = new ArrayList<>();
+		for (int i = 1; i <= 4; ++i)
+		{
+			int number = i;
+			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
+				"added-" + rule.dimension() + "-" + number, "added " + rule.dimension() + " " + number, 0.25)).toList();
+			combinations.add(new AddedCombination(1, test.id(), values));
+		}
+		return combinations;
 	}
 
 	/**
-	 * Verifies that development draws nothing while a certification attempt that ended with formal failures waits for
-	 * development values, and resumes once the values are added.
+	 * Verifies that after a certification attempt ends with formal failures, reproduction trials run in the failure
+	 * group's cell before any development trial, so no author works on the failures before they reproduce.
 	 */
 	@Test
-	public void developmentWaitsForAddedValues()
+	public void reproductionRunsBeforeDevelopment()
 	{
-		// Requirement: R-C17
+		// Requirement: R-C19
 		TrialInstance failure = tieredFailure(BIG_MEDIUM);
-		Builder builder = tiered().slowStart(new SlowStart(1, 0)).development(SMALL_HIGH, 60, 0).
-			development(SAFETY, 60, 0).certificationAttempt(1).failure(failure).outcome(Outcome.INCONCLUSIVE).campaign();
-		Campaign awaiting = builder.build();
-		requireThat(awaiting.awaitingValues().map(CertificationAttempt::index), "awaitingValues").
-			isEqualTo(Optional.of(1));
-		requireThat(Scheduler.plan(awaiting, NOW, 8).stream().
-			anyMatch(admission -> admission instanceof Admission.Assign assign &&
-			assign.purpose() == Purpose.DEVELOPMENT), "developmentPlanned").isFalse();
+		Failure formal = new Failure(failure, "", List.of(new FailedRequirement("r1", "wrong-tone")), null, List.of(),
+			List.of());
+		Campaign failed = tiered().slowStart(new SlowStart(4, 0)).development(SMALL_HIGH, 60, 0).
+			development(SAFETY, 60, 0).certificationAttempt(1).failure(formal).outcome(Outcome.INCONCLUSIVE).build();
+		requireThat(failed.reproducing().map(CertificationAttempt::index), "reproducing").isEqualTo(Optional.of(1));
+		requireThat(Scheduler.plan(failed, NOW, 8).stream().anyMatch(admission ->
+			admission instanceof Admission.Assign), "assigned").isFalse();
 
-		Campaign added = builder.added(addedAfterFirstAttempt(failure)).build();
-		requireThat(added.awaitingValues(), "awaitingValues").isEmpty();
-		requireThat(Scheduler.plan(added, NOW, 8).stream().
-			anyMatch(admission -> admission instanceof Admission.Assign assign &&
-			assign.purpose() == Purpose.DEVELOPMENT), "developmentPlanned").isTrue();
+		Campaign campaign = Transitions.apply(failed, new CampaignEvent.ReproductionValues(1, 1,
+			reproductionValues(failure)));
+
+		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
+		requireThat(plan.size(), "plan.size()").isEqualTo(4);
+		for (Admission admission : plan)
+		{
+			requireThat(admission, "admission").isInstanceOf(Admission.Assign.class);
+			Admission.Assign assign = (Admission.Assign) admission;
+			requireThat(assign.purpose(), "purpose").isEqualTo(Purpose.REPRODUCTION);
+			requireThat(assign.cell(), "cell").isEqualTo(BIG_MEDIUM);
+			requireThat(assign.allocation().rule(), "rule").isEqualTo(AllocationRule.TARGETED);
+		}
 	}
 
 	/**
@@ -520,7 +532,7 @@ public final class SchedulerTest
 			certified.development(cell, 100, 0);
 		TrialInstance failure = tieredFailure(BIG_MEDIUM);
 		Campaign campaign = certified.development(BIG_MEDIUM, 60, 0).certificationAttempt(1).failure(failure).
-			outcome(Outcome.INCONCLUSIVE).campaign().added(addedAfterFirstAttempt(failure)).build();
+			outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "certificationFailure").
 			isEqualTo(List.of(development(BIG_MEDIUM)));
 	}
@@ -640,8 +652,7 @@ public final class SchedulerTest
 		TrialInstance failing = new Generator(contract).markTargeted(tieredFailure(BIG_MEDIUM));
 		Campaign campaign = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).
-			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).campaign().
-			added(addedAfterFirstAttempt(tieredFailure(BIG_MEDIUM))).build();
+			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
 		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM, Builder.snapshot("attempt"), List.of());
 		while (Promotion.decide(campaign.development().author(), campaign.lineage().regressionSet(),
 			campaign.development().instanceOutcomes()) == Promotion.Decision.PENDING)

@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
@@ -82,13 +81,13 @@ sealed interface InFlight
 	}
 
 	/**
-	 * A session that adds development values after a certification attempt ended with formal failures.
+	 * A session that writes the key-value combinations of a formal failure group's reproduction round.
 	 *
-	 * @param attempt the certification attempt's index
-	 * @param failures the attempt's failures, as development may learn of them
+	 * @param attempt the index of the certification attempt whose failure group the values address
+	 * @param group the group's 1-based position in the attempt's groups
 	 * @param handle the session
 	 */
-	record Values(int attempt, List<FailureSummary> failures, SessionHandle handle) implements InFlight
+	record Values(int attempt, int group, SessionHandle handle) implements InFlight
 	{
 	}
 

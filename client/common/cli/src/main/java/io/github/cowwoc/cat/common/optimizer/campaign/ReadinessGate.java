@@ -65,8 +65,8 @@ public final class ReadinessGate
 
 	/**
 	 * Indicates whether the working candidate meets the gate: every development cell is ready, no diagnosis, round or
-	 * author attempt is unresolved, no ended attempt awaits development values, no regression instance is known to
-	 * fail for the working candidate, and the incumbent baseline is met.
+	 * author attempt is unresolved, no ended attempt is reproducing its formal failures, no regression instance is
+	 * known to fail for the working candidate, and the incumbent baseline is met.
 	 *
 	 * @param campaign the campaign
 	 * @return {@code true} if the gate is met
@@ -78,7 +78,7 @@ public final class ReadinessGate
 		if (!campaign.isConfirmed())
 			return false;
 		Development development = campaign.development();
-		if (development.isPaused() || campaign.awaitingValues().isPresent())
+		if (development.isPaused() || campaign.reproducing().isPresent())
 			return false;
 		for (String cell : CellTier.developmentCellIds(campaign))
 		{

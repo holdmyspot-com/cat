@@ -2,12 +2,15 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -217,29 +220,68 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	}
 
 	/**
-	 * Returns the certification attempt whose formal failures await development values: the current lineage's latest
-	 * attempt, if it ended {@link Outcome#BELOW_MINIMUM below minimum} or {@link Outcome#INCONCLUSIVE inconclusive}
-	 * with at least one formal failure and no combination was added to the lineage's tests after it. Until the values
-	 * are added, development draws nothing and the readiness gate is not met.
+	 * Returns the certification attempt whose formal failure groups hold back development: the current lineage's latest
+	 * attempt, while one of its groups is reproducing or did not reproduce and waits for the user's choice. Until then,
+	 * development draws nothing, no author works on its failures and the readiness gate is not met.
 	 *
-	 * @return the attempt, or empty if none awaits values
+	 * @return the attempt, or empty if none is reproducing
 	 */
-	public Optional<CertificationAttempt> awaitingValues()
+	public Optional<CertificationAttempt> reproducing()
 	{
-		if (lineages.isEmpty() || attempts.isEmpty())
+		if (lineages.isEmpty())
+			return Optional.empty();
+		return reproducing(lineage().number(), attempts);
+	}
+
+	/**
+	 * Returns the certification attempt whose formal failure groups hold back a lineage's development.
+	 *
+	 * @param lineage the lineage's number
+	 * @param attempts the campaign's certification attempts
+	 * @return the latest attempt if it belongs to the lineage and is reproducing, or empty
+	 */
+	static Optional<CertificationAttempt> reproducing(int lineage, List<CertificationAttempt> attempts)
+	{
+		if (attempts.isEmpty())
 			return Optional.empty();
 		CertificationAttempt last = attempts.getLast();
-		Lineage current = lineage();
-		if (last.lineage() != current.number() || last.failures().isEmpty() ||
-			last.outcome() != Outcome.BELOW_MINIMUM && last.outcome() != Outcome.INCONCLUSIVE)
-		{
-			return Optional.empty();
-		}
-		boolean added = current.added().combinations().stream().
-			anyMatch(combination -> combination.attempt() == last.index());
-		if (added)
+		if (last.lineage() != lineage || !last.isReproducing())
 			return Optional.empty();
 		return Optional.of(last);
+	}
+
+	/**
+	 * Returns the key-value combinations that the current lineage's tests may hold beyond the confirmed contract: the
+	 * values added to development, and every combination that a failure group of the lineage tried or tries.
+	 *
+	 * @return the combinations, each once
+	 * @throws IllegalStateException if no contract has been confirmed
+	 */
+	public AddedValues developmentValues()
+	{
+		Lineage current = lineage();
+		return developmentValues(current.added(), current.number(), attempts);
+	}
+
+	/**
+	 * Returns the key-value combinations that a lineage's tests may hold beyond its confirmed contract.
+	 *
+	 * @param added the values added to the lineage's development
+	 * @param lineage the lineage's number
+	 * @param attempts the campaign's certification attempts
+	 * @return the added values, then every combination that a failure group of the lineage tried or tries, each once
+	 */
+	static AddedValues developmentValues(AddedValues added, int lineage, List<CertificationAttempt> attempts)
+	{
+		Set<AddedCombination> combinations = new LinkedHashSet<>(added.combinations());
+		for (CertificationAttempt attempt : attempts)
+		{
+			if (attempt.lineage() != lineage)
+				continue;
+			for (FailureGroup group : attempt.groups())
+				combinations.addAll(group.combinations());
+		}
+		return new AddedValues(List.copyOf(combinations));
 	}
 
 	/**
@@ -331,6 +373,11 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				choices.add(Choice.TARGETED_OPTIMIZATION);
 				if (offersKeep)
 					choices.add(Choice.KEEP_IMPROVEMENT);
+			}
+			case PendingDecision.FailuresNotReproduced _ ->
+			{
+				choices.add(Choice.MORE_ROUNDS);
+				choices.add(Choice.NEW_ATTEMPT);
 			}
 			case PendingDecision.ImprovementProven _ ->
 			{

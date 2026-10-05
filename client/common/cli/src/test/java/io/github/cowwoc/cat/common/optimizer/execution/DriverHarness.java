@@ -61,7 +61,7 @@ import java.util.function.Predicate;
  * Trial sessions reply with the response that the {@link #trials(Function) trial script} chooses. Judge sessions
  * return scripted judgment JSON that {@link JudgePrompt} parses, triage sessions find every failure
  * self-recovering unless the {@link #triages(Function) triage script} decides otherwise, author sessions write a
- * new {@code CLAUDE.md} into their effects directory, and the sessions that add development values return
+ * new {@code CLAUDE.md} into their effects directory, and the sessions that write reproduction values return
  * {@link #newValues(SessionRequest) new values} unless the {@link #derivers(Function) deriver script} decides
  * otherwise.
  * <p>
@@ -274,7 +274,7 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Replaces the script of the sessions that add development values.
+	 * Replaces the script of the sessions that write reproduction values.
 	 *
 	 * @param script returns each session's result
 	 */
@@ -284,50 +284,54 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Returns the result of a session that adds development values: 4 new combinations for each failed test that
-	 * the request lists, each giving every key dimension a value that no other session of the harness gave.
+	 * Returns the result of a session that writes a failure group's reproduction values: 4 new combinations of the
+	 * group's test, each giving every key dimension a value that no other session of the harness gave.
 	 *
 	 * @param request the session's request
 	 * @return the completed session
 	 */
 	public SessionResult.Completed newValues(SessionRequest request)
 	{
-		String turn = request.turns().getFirst();
-		int start = turn.indexOf("\n[", turn.indexOf("Each failed test, as JSON"));
-		int end = turn.indexOf("\n\n### How to write", start);
-		JsonNode failedTests = json.readTree(turn.substring(start, end));
-		ObjectNode response = json.createObjectNode();
-		ArrayNode tests = response.putArray("tests");
-		for (JsonNode failedTest : failedTests)
+		JsonNode test = failureGroup(request).get("test");
+		List<String> dimensions = new ArrayList<>();
+		for (JsonNode dimension : test.get("key_dimensions"))
+			dimensions.add(dimension.asString());
+		if (dimensions.isEmpty())
 		{
-			JsonNode test = failedTest.get("test");
-			List<String> dimensions = new ArrayList<>();
-			for (JsonNode dimension : test.get("key_dimensions"))
-				dimensions.add(dimension.asString());
-			if (dimensions.isEmpty())
+			for (JsonNode variation : test.get("variations"))
+				dimensions.add(variation.get("dimension").asString());
+		}
+		ObjectNode response = json.createObjectNode();
+		ArrayNode combinations = response.putArray("combinations");
+		for (int i = 0; i < 4; ++i)
+		{
+			ArrayNode combination = combinations.addArray();
+			for (String dimension : dimensions)
 			{
-				for (JsonNode variation : test.get("variations"))
-					dimensions.add(variation.get("dimension").asString());
-			}
-			ObjectNode entry = tests.addObject();
-			entry.put("id", test.get("id").asString());
-			ArrayNode combinations = entry.putArray("combinations");
-			for (int i = 0; i < 4; ++i)
-			{
-				ArrayNode combination = combinations.addArray();
-				for (String dimension : dimensions)
-				{
-					++addedValues;
-					combination.addObject().put("dimension", dimension).put("label", "added-" + addedValues).
-						put("text", "added value " + addedValues);
-				}
+				++addedValues;
+				combination.addObject().put("dimension", dimension).put("label", "added-" + addedValues).
+					put("text", "added value " + addedValues);
 			}
 		}
 		return derived(response.toString());
 	}
 
 	/**
-	 * Returns the result of a session that adds development values.
+	 * Returns the failure group that a values session's request shows.
+	 *
+	 * @param request the session's request
+	 * @return the group's JSON
+	 */
+	public JsonNode failureGroup(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		int start = turn.indexOf("\n{", turn.indexOf("The failure group, as JSON"));
+		int end = turn.indexOf("\n\n### How to write", start);
+		return json.readTree(turn.substring(start, end));
+	}
+
+	/**
+	 * Returns the result of a session that writes reproduction values.
 	 *
 	 * @param response the session's final response
 	 * @return the completed session

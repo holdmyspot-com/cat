@@ -40,9 +40,9 @@ public final class Scheduler
 
 	/**
 	 * Plans admissions without changing the campaign: reruns of assigned trials, then diagnostic and promotion runs,
-	 * then the active candidate's development or formal trials within its concurrency window. Development waits while
-	 * an ended attempt awaits development values. Outside certification, the incumbent's baseline trials use any
-	 * remaining capacity.
+	 * then the active candidate's formal, reproduction or development trials within its concurrency window. While an
+	 * ended attempt's formal failure groups are reproducing, their reproduction trials run instead of development
+	 * trials. Outside certification, the incumbent's baseline trials use any remaining capacity.
 	 * <p>
 	 * Each new assignment carries its {@link Allocation}: the allocation rule that chose it, the campaign's
 	 * {@link Campaign#evidenceRevision() evidence revision}, and {@code now} as its assignment time.
@@ -76,7 +76,10 @@ public final class Scheduler
 			planFormal(campaign, running.get(), plan, freeCapacity, allocations);
 		else
 		{
-			if (!campaign.development().isPaused() && campaign.awaitingValues().isEmpty())
+			Optional<CertificationAttempt> reproducing = campaign.reproducing();
+			if (reproducing.isPresent())
+				planReproduction(campaign, reproducing.get(), plan, freeCapacity, allocations);
+			else if (!campaign.development().isPaused())
 				planDevelopment(campaign, plan, freeCapacity, allocations);
 			planBaseline(campaign, plan, freeCapacity, allocations);
 		}
@@ -269,6 +272,58 @@ public final class Scheduler
 		if (byBound != 0)
 			return byBound < 0;
 		return counts.outcomes() < otherCounts.outcomes();
+	}
+
+	/**
+	 * Plans the reproduction trials of an ended attempt's failure groups, each in its current round's cell, one group
+	 * at a time in turn, until each round's adopted and unadopted trials reach {@value FailureGroup#TRIALS}. A group
+	 * whose round awaits values offers nothing.
+	 *
+	 * @param campaign the campaign
+	 * @param attempt the reproducing attempt
+	 * @param plan the admissions planned so far
+	 * @param freeCapacity the number of sessions that may start now
+	 * @param allocations the allocation decisions of this plan
+	 */
+	private static void planReproduction(Campaign campaign, CertificationAttempt attempt, List<Admission> plan,
+		int freeCapacity, Allocations allocations)
+	{
+		List<FailureGroup> groups = attempt.groups();
+		int[] remaining = new int[groups.size()];
+		int inFlight = 0;
+		for (int i = 0; i < groups.size(); ++i)
+		{
+			FailureGroup group = groups.get(i);
+			if (group.status() == FailureGroup.Status.REPRODUCING && !group.round().awaitsValues())
+				remaining[i] = FailureGroup.TRIALS - group.round().trials();
+		}
+		for (LogicalTrial trial : campaign.trials())
+		{
+			TrialKey key = trial.key();
+			if (key.purpose() != Purpose.REPRODUCTION)
+				continue;
+			++inFlight;
+			int index = key.series() - 1;
+			if (index >= 0 && index < groups.size() && groups.get(index).round().cellId().equals(key.cell()))
+				--remaining[index];
+		}
+		int slots = ConcurrencyPolicy.window(campaign) - inFlight;
+		Sha256 working = campaign.development().working().snapshot();
+		boolean planned = true;
+		while (planned && slots > 0 && plan.size() < freeCapacity)
+		{
+			planned = false;
+			for (int i = 0; i < groups.size() && slots > 0 && plan.size() < freeCapacity; ++i)
+			{
+				if (remaining[i] <= 0)
+					continue;
+				plan.add(new Admission.Assign(Purpose.REPRODUCTION, i + 1, working, groups.get(i).round().cellId(),
+					null, allocations.of(AllocationRule.TARGETED)));
+				--remaining[i];
+				--slots;
+				planned = true;
+			}
+		}
 	}
 
 	/**

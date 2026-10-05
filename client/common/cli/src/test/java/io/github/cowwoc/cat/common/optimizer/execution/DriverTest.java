@@ -23,6 +23,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.contract.Generator;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
@@ -2253,8 +2258,8 @@ public final class DriverTest
 
 	/**
 	 * Under the latest-versions scope, development samples only each category's weakest cell, and the candidate is
-	 * committed once that cell is ready. A formal failure in another scope cell makes that cell a development cell,
-	 * so the next commit waits until it is ready too.
+	 * committed once that cell is ready. A formal failure in another scope cell makes that cell a development cell
+	 * once reproduction trials reproduce it there, so the next commit waits until it is ready too.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -2277,7 +2282,8 @@ public final class DriverTest
 				{
 					boolean firstAttempt = harness.campaign().runningAttempt().
 						map(attempt -> attempt.index() == 1).orElse(false);
-					if (firstAttempt && request.profile().equals(medium))
+					boolean reproduction = runningTrial(harness, request).key().purpose() == Purpose.REPRODUCTION;
+					if ((firstAttempt || reproduction) && request.profile().equals(medium))
 						return harness.failed();
 					return harness.passed();
 				}
@@ -2348,10 +2354,10 @@ public final class DriverTest
 	}
 
 	/**
-	 * Development, diagnostic and promotion trials run development instances and request sessions of the development
-	 * part, and baseline and formal trials run held-out ones and request sessions of the held-out part. After a failed
-	 * attempt, the author brief names each formal failure's cell, test and failed
-	 * requirements, and the author's prompt holds no held-out instance, reply or judge rationale.
+	 * Development, diagnostic, promotion and reproduction trials run development instances, or values that development
+	 * added, and request sessions of the development part; baseline and formal trials run held-out ones and request
+	 * sessions of the held-out part. After a failed attempt, the author brief names each formal failure's cell, test
+	 * and failed requirements, and the author's prompt holds no held-out instance, reply or judge rationale.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -2375,6 +2381,7 @@ public final class DriverTest
 			Map<Purpose, List<TrialInstance>> instancesByPurpose = new EnumMap<>(Purpose.class);
 			Map<Purpose, Set<Part>> requestPartsByPurpose = new EnumMap<>(Purpose.class);
 			AtomicBoolean developmentFailed = new AtomicBoolean();
+			Campaign campaign;
 			harness.trials(request ->
 			{
 				LogicalTrial trial = runningTrial(harness, request);
@@ -2386,7 +2393,7 @@ public final class DriverTest
 					if (purpose == Purpose.FORMAL)
 						return harness.completed(heldOutReply, DriverHarness.MODEL);
 					if (purpose == Purpose.DEVELOPMENT && developmentFailed.compareAndSet(false, true) ||
-						purpose == Purpose.DIAGNOSTIC)
+						purpose == Purpose.DIAGNOSTIC || purpose == Purpose.REPRODUCTION)
 					{
 						return harness.failed();
 					}
@@ -2401,18 +2408,18 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, state -> state.development().working().number() == 2);
+				campaign = harness.runUntil(driver, state -> state.development().working().number() == 2);
 			}
 			requireThat(instancesByPurpose.keySet(), "purposes").isEqualTo(Set.of(Purpose.values()));
 			for (Map.Entry<Purpose, List<TrialInstance>> entry : instancesByPurpose.entrySet())
 			{
 				Part expected = switch (entry.getKey())
 				{
-					case DEVELOPMENT, DIAGNOSTIC, PROMOTION -> Part.DEVELOPMENT;
+					case DEVELOPMENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
 					case BASELINE, FORMAL -> Part.HELD_OUT;
 				};
 				for (TrialInstance instance : entry.getValue())
-					requireThat(partOf(contract, instance), entry.getKey().name()).isEqualTo(expected);
+					requireThat(partOf(campaign, instance), entry.getKey().name()).isEqualTo(expected);
 				requireThat(requestPartsByPurpose.get(entry.getKey()), entry.getKey().name() + ".requestParts").
 					isEqualTo(Set.of(expected));
 			}
@@ -2453,15 +2460,17 @@ public final class DriverTest
 	}
 
 	/**
-	 * When a certification attempt ends with formal failures, one deriver session adds development values to each
-	 * failed test without seeing the salt or a held-out value. Development counts restart and draw the added values,
+	 * When a certification attempt ends with formal failures, a deriver session writes values for each failure group
+	 * without seeing the salt or a held-out value, and reproduction trials run them before any development trial.
+	 * Once each group reproduces, its values join development, development counts restart and draw the added values,
 	 * and the unchanged candidate is committed again only after every development cell is ready on new trials.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedAttemptAddsDevelopmentValues() throws IOException
+	public void failedAttemptReproducesBeforeDevelopment() throws IOException
 	{
+		// Requirement: R-C19
 		// Requirement: R-C17
 		// Requirement: R-C16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2470,13 +2479,17 @@ public final class DriverTest
 				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build());
 			Map<String, Integer> newTrials = new HashMap<>();
 			List<TrialInstance> newInstances = new ArrayList<>();
+			AtomicBoolean developedBeforeReproduction = new AtomicBoolean();
 			harness.trials(request ->
 			{
 				LogicalTrial trial = runningTrial(harness, request);
-				if (trial.key().purpose() == Purpose.FORMAL)
+				Purpose purpose = trial.key().purpose();
+				if (purpose == Purpose.FORMAL || purpose == Purpose.REPRODUCTION)
 					return harness.failed();
-				if (trial.key().purpose() == Purpose.DEVELOPMENT && isFirstAttemptEnded(harness))
+				if (purpose == Purpose.DEVELOPMENT && isFirstAttemptEnded(harness))
 				{
+					if (isReproducing(harness))
+						developedBeforeReproduction.set(true);
 					newTrials.merge(trial.key().cell(), 1, Integer::sum);
 					newInstances.add(trial.instance());
 				}
@@ -2486,30 +2499,36 @@ public final class DriverTest
 			{
 				Campaign ended = harness.runUntil(driver, state -> !state.attempts().isEmpty() &&
 					!state.attempt(1).isRunning());
-				requireThat(ended.attempt(1).failures(), "failures").isNotEmpty();
+				List<FailureGroup> groups = ended.attempt(1).groups();
+				requireThat(groups, "groups").isNotEmpty();
 				Campaign recommitted = harness.runUntil(driver, state -> state.attempts().size() == 2);
+				requireThat(developedBeforeReproduction.get(), "developedBeforeReproduction").isFalse();
 
 				List<SessionRequest> deriverRequests = harness.sessions().sessions().stream().
 					map(FakeSession::request).filter(request -> request.role() == SessionRole.DERIVER).toList();
-				requireThat(deriverRequests.size(), "deriverRequests").isEqualTo(1);
-				String turn = deriverRequests.getFirst().turns().getFirst();
+				requireThat(deriverRequests.size(), "deriverRequests").isEqualTo(groups.size());
 				Contract contract = recommitted.contract();
-				requireThat(turn, "turn").doesNotContain("\"salt\"").
-					doesNotContain(String.valueOf(contract.salt()));
-				for (String label : heldOutOnlyLabels(contract))
-					requireThat(turn, "turn").doesNotContain("\"" + label + "\"");
-
-				Set<String> failedTests = new HashSet<>();
-				for (Failure failure : ended.attempt(1).failures())
-					failedTests.add(failure.instance().testId());
-				AddedValues added = recommitted.lineage().added();
-				for (String testId : failedTests)
-					requireThat(added.of(testId).size(), testId).isGreaterThanOrEqualTo(4);
-				for (AddedCombination combination : added.combinations())
+				for (SessionRequest request : deriverRequests)
 				{
-					requireThat(combination.attempt(), "attempt").isEqualTo(1);
-					requireThat(failedTests, "failedTests").contains(combination.testId());
+					String turn = request.turns().getFirst();
+					requireThat(turn, "turn").doesNotContain("\"salt\"").
+						doesNotContain(String.valueOf(contract.salt()));
+					for (String label : heldOutOnlyLabels(contract))
+						requireThat(turn, "turn").doesNotContain("\"" + label + "\"");
 				}
+
+				AddedValues added = recommitted.lineage().added();
+				List<AddedCombination> reproduced = new ArrayList<>();
+				for (FailureGroup group : recommitted.attempt(1).groups())
+				{
+					requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+					requireThat(group.round().failures(), "failures").isEqualTo(FailureGroup.FAILURES);
+					requireThat(group.round().added().size(), "added").isGreaterThanOrEqualTo(4);
+					reproduced.addAll(group.round().added());
+				}
+				requireThat(added.combinations(), "added").isEqualTo(reproduced);
+				for (AddedCombination combination : added.combinations())
+					requireThat(combination.attempt(), "attempt").isEqualTo(1);
 
 				requireThat(recommitted.development().series(), "series").
 					isGreaterThan(ended.development().series());
@@ -2528,6 +2547,227 @@ public final class DriverTest
 				}
 				requireThat(newInstances.stream().anyMatch(instance -> instance.choices().stream().
 					anyMatch(choice -> addedLabels.contains(choice.label()))), "drewAddedValues").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Returns a campaign whose first certification attempt failed with one formal failure of the
+	 * {@code delete-directory} test in the {@code safety} cell, and whose failure group has given rounds.
+	 *
+	 * @param contract the confirmed contract
+	 * @param cell the cell of the formal failure
+	 * @param failed the requirement that the formal failure failed, with its behavior
+	 * @param rounds the group's rounds
+	 * @return the campaign
+	 */
+	private static Campaign reproducing(Contract contract, String cell, FailedRequirement failed,
+		List<ReproductionRound> rounds)
+	{
+		TrialInstance instance = new Generator(contract).draw(cell, DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		Failure failure = new Failure(instance, "", List.of(failed), null, List.of(), List.of());
+		return new Builder().confirmed(contract, 1).working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(
+				new FailureGroup(cell, instance.testId(), failed, 1, FailureGroup.ROUNDS, rounds,
+					FailureGroup.Status.REPRODUCING))).build();
+	}
+
+	/**
+	 * Returns new combinations of a test, each with a count of trials and no failure.
+	 *
+	 * @param contract the confirmed contract
+	 * @param testId the test's identifier
+	 * @param prefix distinguishes the combinations of different rounds
+	 * @param trials the trials of each combination
+	 * @return the combinations
+	 */
+	private static List<TriedCombination> tried(Contract contract, String testId, String prefix, int... trials)
+	{
+		TestDefinition test = contract.findTest(testId).orElseThrow();
+		List<TriedCombination> tried = new ArrayList<>();
+		for (int i = 0; i < trials.length; ++i)
+		{
+			String suffix = prefix + "-" + (i + 1);
+			List<VariationValue> values = test.keyRules().stream().map(rule -> new VariationValue(
+				rule.dimension() + "-" + suffix, rule.dimension() + " " + suffix, 1.0 / trials.length)).toList();
+			tried.add(new TriedCombination(new AddedCombination(1, testId, values), trials[i], 0));
+		}
+		return tried;
+	}
+
+	/**
+	 * Indicates whether a trial runs a combination of a round.
+	 *
+	 * @param trial the trial
+	 * @param round the round
+	 * @param contract the confirmed contract
+	 * @return {@code true} if the trial's instance holds one of the round's combinations
+	 */
+	private static boolean runs(LogicalTrial trial, ReproductionRound round, Contract contract)
+	{
+		TrialInstance instance = trial.instance();
+		return round.indexOf(contract.findTest(instance.testId()).orElseThrow(), instance) >= 0;
+	}
+
+	/**
+	 * When a round ends without reproducing its group and no stress setting exists, the deriver receives the tried
+	 * values with their trial and failure counts, never a trial's reply, and its new values replace them. Only the
+	 * values that reproduce the group join development.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void unreproducedValuesAreReplaced() throws IOException
+	{
+		// Requirement: R-C19
+		Contract contract = ContractFixtures.contract();
+		FailedRequirement failed = new FailedRequirement("r2", "deleted-without-asking");
+		List<TriedCombination> first = tried(contract, "delete-directory", "first", 24, 24, 24, 24);
+		Campaign campaign = reproducing(contract, "safety", failed,
+			List.of(new ReproductionRound("safety", first)));
+		ReproductionRound firstRound = campaign.attempt(1).group(1).round();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			String reply = "The reproduction reply.";
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				if (trial.key().purpose() == Purpose.REPRODUCTION)
+				{
+					if (runs(trial, firstRound, contract))
+						return harness.completed(reply, DriverHarness.MODEL);
+					return harness.failed();
+				}
+				return harness.passed();
+			});
+			harness.judges(request ->
+			{
+				if (request.turns().getFirst().contains(reply))
+					return harness.judged(request, Verdict.PASS, "The trial met the requirements.");
+				return harness.scriptedJudgment(request);
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign reproduced = harness.runUntil(driver, state -> state.reproducing().isEmpty());
+
+				FailureGroup group = reproduced.attempt(1).group(1);
+				requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+				requireThat(group.rounds().size(), "rounds").isEqualTo(2);
+				requireThat(group.rounds().getFirst().trials(), "first.trials()").isEqualTo(FailureGroup.TRIALS);
+				requireThat(group.round().cellId(), "cellId").isEqualTo("safety");
+				requireThat(reproduced.lineage().added().combinations(), "added").isEqualTo(group.round().added());
+				for (TriedCombination combination : first)
+				{
+					requireThat(reproduced.lineage().added().combinations(), "added").
+						doesNotContain(combination.combination());
+				}
+
+				List<SessionRequest> deriverRequests = harness.sessions().sessions().stream().
+					map(FakeSession::request).filter(request -> request.role() == SessionRole.DERIVER).toList();
+				requireThat(deriverRequests.size(), "deriverRequests").isEqualTo(1);
+				SessionRequest request = deriverRequests.getFirst();
+				requireThat(request.turns().getFirst(), "turn").doesNotContain(reply);
+				JsonNode rounds = harness.failureGroup(request).get("tried_rounds");
+				requireThat(rounds.size(), "rounds.size()").isEqualTo(1);
+				requireThat(rounds.get(0).get("cell").asString(), "cell").isEqualTo("safety");
+				int trials = 0;
+				for (JsonNode combination : rounds.get(0).get("combinations"))
+				{
+					requireThat(new HashSet<>(combination.propertyNames()), "fields").
+						isEqualTo(Set.of("values", "trials", "failures"));
+					requireThat(combination.get("failures").asInt(), "failures").isEqualTo(0);
+					trials += combination.get("trials").asInt();
+				}
+				requireThat(trials, "trials").isEqualTo(FailureGroup.TRIALS);
+			}
+		}
+	}
+
+	/**
+	 * When a round ends without reproducing its group, it repeats with the same values at the next lower reasoning
+	 * effort of the same model, and a reproduction there makes that cell a development cell.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void stressReproductionAddsADevelopmentCell() throws IOException
+	{
+		// Requirement: R-C19
+		Contract contract = TierFixtures.tieredContract();
+		TrialProfile low = new TrialProfile("big", "low");
+		FailedRequirement failed = new FailedRequirement("r1", "wrong-tone");
+		TrialInstance instance = new Generator(contract).draw(TierFixtures.BIG_MEDIUM,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		List<TriedCombination> combinations = tried(contract, instance.testId(), "base", 24, 24, 24, 24);
+		Campaign campaign = reproducing(contract, TierFixtures.BIG_MEDIUM, failed,
+			List.of(new ReproductionRound(TierFixtures.BIG_MEDIUM, combinations)));
+		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").doesNotContain(TierFixtures.BIG_LOW);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				if (trial.key().purpose() == Purpose.REPRODUCTION && request.profile().equals(low))
+					return harness.failed();
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign reproduced = harness.runUntil(driver, state -> state.reproducing().isEmpty());
+
+				FailureGroup group = reproduced.attempt(1).group(1);
+				requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+				requireThat(group.round().cellId(), "cellId").isEqualTo(TierFixtures.BIG_LOW);
+				requireThat(group.round().added(), "round").isEqualTo(campaign.attempt(1).group(1).round().added());
+				requireThat(CellTier.developmentCellIds(reproduced), "developmentCells").
+					contains(TierFixtures.BIG_LOW);
+				requireThat(harness.sessions().sessions().stream().noneMatch(session ->
+					session.request().role() == SessionRole.DERIVER), "noDeriver").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * After {@value FailureGroup#ROUNDS} rounds without reproduction, the group is recorded as not reproduced with
+	 * its formal and reproduction counts, and CAT pauses for the user's choice instead of developing.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void unreproducedGroupPauses() throws IOException
+	{
+		// Requirement: R-C19
+		Contract contract = ContractFixtures.contract();
+		FailedRequirement failed = new FailedRequirement("r2", "deleted-without-asking");
+		Campaign campaign = reproducing(contract, "safety", failed, List.of(
+			new ReproductionRound("safety", tried(contract, "delete-directory", "a", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete-directory", "b", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete-directory", "c", 25, 25, 25, 25)),
+			new ReproductionRound("safety", tried(contract, "delete-directory", "d", 24, 24, 24, 24))));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+
+				Campaign paused = harness.campaign();
+				requireThat(paused.pending(), "pending").isEqualTo(new PendingDecision.FailuresNotReproduced(1));
+				FailureGroup group = paused.attempt(1).group(1);
+				requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.NOT_REPRODUCED);
+				requireThat(group.formalFailures(), "formalFailures").isEqualTo(1);
+				requireThat(group.trials(), "trials").isEqualTo(FailureGroup.ROUNDS * FailureGroup.TRIALS);
+				requireThat(group.failures(), "failures").isEqualTo(0);
+				requireThat(paused.trials().stream().noneMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT),
+					"developmentTrials").isTrue();
+				requireThat(paused.development().series(), "series").isEqualTo(campaign.development().series());
+				requireThat(result.status().pending(), "pending").isEqualTo("formal failures of attempt 1 did not " +
+					"reproduce in development: cell safety, test delete-directory, requirement r2 through " +
+					"deleted-without-asking: 1 formal failures; 0 of 400 reproduction trials in 4 rounds failed that way");
+				requireThat(paused.choices(), "choices").isEqualTo(List.of(Choice.MORE_ROUNDS, Choice.NEW_ATTEMPT,
+					Choice.STOP));
 			}
 		}
 	}
@@ -2570,21 +2810,24 @@ public final class DriverTest
 	}
 
 	/**
-	 * A deriver response that gives a test a value equal to one of its held-out values is rejected without naming the
-	 * held-out part, and the rejection stops the slice with an infrastructure failure before development resumes.
+	 * A deriver response that gives a failure group's test a value equal to one of its held-out values is rejected
+	 * without naming the held-out part, and the rejection stops the slice with an infrastructure failure before any
+	 * reproduction or development trial runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
 	public void rejectedValuesStopTheSlice() throws IOException
 	{
+		// Requirement: R-C19
 		// Requirement: R-C17
 		// Requirement: R-C16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
+			Failure failure = new Failure(Builder.instance("safety", "logs"), "",
+				List.of(new FailedRequirement("r2", "deleted-without-asking")), null, List.of(), List.of());
 			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-				certificationAttempt(1).failure(Builder.instance("safety", "logs")).outcome(Outcome.BELOW_MINIMUM).
-				build();
+				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
 			List<String> combinations = new ArrayList<>();
 			for (String label : List.of("srv", "opt", "data", "vendor"))
@@ -2592,8 +2835,7 @@ public final class DriverTest
 				combinations.add("[{\"dimension\": \"target\", \"label\": \"" + label + "\", \"text\": \"" + label +
 					"\"}]");
 			}
-			String response = "{\"tests\": [{\"id\": \"delete-directory\", \"combinations\": [" +
-				String.join(", ", combinations) + "]}]}";
+			String response = "{\"combinations\": [" + String.join(", ", combinations) + "]}";
 			harness.derivers(_ -> harness.derived(response));
 			try (Driver driver = harness.open())
 			{
@@ -2603,12 +2845,30 @@ public final class DriverTest
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").
 					contains("'vendor' equals an existing value of dimension 'target'").doesNotContain("held");
 				requireThat(campaign.lineage().added().combinations(), "added").isEmpty();
-				requireThat(campaign.awaitingValues().isPresent(), "awaitingValues").isTrue();
+				requireThat(campaign.attempt(1).group(1).awaitsValues(), "awaitsValues").isTrue();
 				requireThat(campaign.development().series(), "series").isEqualTo(failed.development().series());
 				requireThat(campaign.attempts().size(), "attempts").isEqualTo(1);
-				requireThat(campaign.trials().stream().noneMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT),
-					"developmentTrials").isTrue();
+				requireThat(campaign.trials(), "trials").isEmpty();
 			}
+		}
+	}
+
+	/**
+	 * Indicates whether an ended attempt's failure groups are reproducing.
+	 *
+	 * @param harness the test's harness
+	 * @return {@code true} if an attempt is reproducing
+	 * @throws UncheckedIOException if the campaign cannot be read
+	 */
+	private static boolean isReproducing(DriverHarness harness)
+	{
+		try
+		{
+			return harness.campaign().reproducing().isPresent();
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
 		}
 	}
 
@@ -2688,18 +2948,27 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the part of an instance's key values under a contract's split.
+	 * Returns the part of an instance's key values: the development part when they are values that development
+	 * added beyond the contract, otherwise the part that the contract's split assigns.
 	 *
-	 * @param contract the contract
+	 * @param campaign the campaign
 	 * @param instance the instance
 	 * @return the part
 	 */
-	private static Part partOf(Contract contract, TrialInstance instance)
+	private static Part partOf(Campaign campaign, TrialInstance instance)
 	{
 		Map<String, String> labelByDimension = new HashMap<>();
 		for (VariationChoice choice : instance.choices())
 			labelByDimension.put(choice.dimension(), choice.label());
-		return contract.split().partOf(contract.findTest(instance.testId()).orElseThrow(), labelByDimension);
+		Contract contract = campaign.contract();
+		TestDefinition test = contract.findTest(instance.testId()).orElseThrow();
+		List<String> labels = test.keyRules().stream().map(rule -> labelByDimension.get(rule.dimension())).toList();
+		for (AddedCombination combination : campaign.developmentValues().of(test.id()))
+		{
+			if (combination.values().stream().map(VariationValue::label).toList().equals(labels))
+				return Part.DEVELOPMENT;
+		}
+		return contract.split().partOf(test, labelByDimension);
 	}
 
 	/**

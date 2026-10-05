@@ -89,7 +89,7 @@ public final class Transitions
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
 					draft.optimization.tokenUsage());
 			}
-			case CampaignEvent.AddValues add -> addValues(draft, campaign, add);
+			case CampaignEvent.ReproductionValues values -> reproductionValues(draft, values);
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
 			{
@@ -198,28 +198,31 @@ public final class Transitions
 	}
 
 	/**
-	 * Adds development values to the tests that failed the attempt awaiting them, and restarts the working
-	 * candidate's development counts, because the development distribution changed.
+	 * Records the deriver's combinations for a failure group's current round, whose reproduction trials then run.
 	 *
 	 * @param draft the state
-	 * @param campaign the state before the event
-	 * @param add the event
-	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract, or no attempt awaits
-	 *   values
-	 * @throws IllegalArgumentException if another attempt awaits values
+	 * @param values the event
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract, no attempt is
+	 *   reproducing, or the group's current round does not await values
+	 * @throws IllegalArgumentException if another attempt is reproducing or the attempt has no such group
 	 */
-	private static void addValues(Draft draft, Campaign campaign, CampaignEvent.AddValues add)
+	private static void reproductionValues(Draft draft, CampaignEvent.ReproductionValues values)
 	{
 		requireConfirmed(draft);
-		CertificationAttempt awaiting = campaign.awaitingValues().orElseThrow(() ->
-			new IllegalStateException("No certification attempt awaits development values"));
-		if (awaiting.index() != add.attempt())
+		CertificationAttempt attempt = draft.reproducing().orElseThrow(() ->
+			new IllegalStateException("No certification attempt is reproducing its formal failures"));
+		if (attempt.index() != values.attempt())
 		{
-			throw new IllegalArgumentException("Attempt " + awaiting.index() + " awaits development values, not " +
-				"attempt " + add.attempt());
+			throw new IllegalArgumentException("Attempt " + attempt.index() + " is reproducing its formal failures, " +
+				"not attempt " + values.attempt());
 		}
-		draft.added = draft.added.plus(add.combinations());
-		draft.restartDevelopmentCounts();
+		if (values.group() > attempt.groups().size())
+		{
+			throw new IllegalArgumentException("Attempt " + attempt.index() + " has no failure group " +
+				values.group());
+		}
+		FailureGroup group = attempt.group(values.group());
+		draft.replaceAttempt(attempt.withGroup(values.group(), group.withValues(values.combinations())));
 	}
 
 	/**
@@ -308,6 +311,7 @@ public final class Transitions
 			case FORMAL -> assignFormal(draft, admission);
 			case DIAGNOSTIC -> assignDiagnostic(draft, admission, key);
 			case PROMOTION -> assignPromotion(draft, admission, key);
+			case REPRODUCTION -> assignReproduction(draft, admission);
 		};
 		draft.trials.add(LogicalTrial.assigned(key, instance, draft.identity, admission.allocation()));
 	}
@@ -346,9 +350,39 @@ public final class Transitions
 		requireSeriesAndSnapshot(admission, attempt.index(), attempt.candidate());
 		DrawStream stream = DrawStream.resume(attempt.formalStream());
 		TrialInstance drawn = draft.generator().draw(admission.cell(), stream);
-		draft.replaceAttempt(new CertificationAttempt(attempt.index(), attempt.lineage(), attempt.candidate(),
-			attempt.identity(), attempt.procedure(), attempt.counts(), attempt.failures(), stream.state(), null));
+		draft.replaceAttempt(attempt.withEvidence(attempt.identity(), attempt.counts(), attempt.failures(),
+			stream.state()));
 		return drawn;
+	}
+
+	/**
+	 * Draws a reproduction trial of a failure group's current round from the development stream.
+	 *
+	 * @param draft the state
+	 * @param admission the admission, whose series is the group's 1-based position
+	 * @return the instance, marked targeted
+	 * @throws IllegalArgumentException if no attempt is reproducing, or the admission names a group that is not
+	 *   reproducing, a round that awaits values, another cell or another snapshot than the working candidate's
+	 */
+	private static TrialInstance assignReproduction(Draft draft, Admission.Assign admission)
+	{
+		CertificationAttempt attempt = draft.reproducing().orElseThrow(() ->
+			new IllegalArgumentException("No certification attempt is reproducing its formal failures: " + admission));
+		if (admission.series() < 1 || admission.series() > attempt.groups().size())
+			throw new IllegalArgumentException("Attempt " + attempt.index() + " has no failure group: " + admission);
+		FailureGroup group = attempt.group(admission.series());
+		ReproductionRound round = group.round();
+		if (group.status() != FailureGroup.Status.REPRODUCING || round.awaitsValues() ||
+			!round.cellId().equals(admission.cell()) || !admission.snapshot().equals(draft.working.snapshot()))
+		{
+			throw new IllegalArgumentException("The state does not offer " + admission + "; failure group " +
+				admission.series() + " of attempt " + attempt.index() + " is " + group);
+		}
+		Generator generator = draft.reproductionGenerator();
+		DrawStream stream = DrawStream.resume(draft.developmentStream);
+		TrialInstance drawn = generator.drawCombination(round.cellId(), group.testId(), round.added(), stream);
+		draft.developmentStream = stream.state();
+		return generator.markTargeted(drawn);
 	}
 
 	/**
@@ -496,9 +530,8 @@ public final class Transitions
 		if (running.isPresent())
 		{
 			CertificationAttempt attempt = running.get();
-			draft.replaceAttempt(new CertificationAttempt(attempt.index(), attempt.lineage(), attempt.candidate(),
-				attempt.identity().extendWith(observed), attempt.procedure(), attempt.counts(), attempt.failures(),
-				attempt.formalStream(), null));
+			draft.replaceAttempt(attempt.withEvidence(attempt.identity().extendWith(observed), attempt.counts(),
+				attempt.failures(), attempt.formalStream()));
 		}
 	}
 
@@ -721,7 +754,7 @@ public final class Transitions
 		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, commit.formalSeed());
 		formal.open();
 		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working, draft.identity,
-			procedure, Map.of(), List.of(), formal.state(), null));
+			procedure, Map.of(), List.of(), formal.state(), null, List.of()));
 		draft.outcome = null;
 	}
 

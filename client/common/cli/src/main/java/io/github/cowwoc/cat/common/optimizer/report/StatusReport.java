@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.ImprovementOffer;
@@ -397,6 +398,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.CheckpointReached checkpoint ->
 				"review checkpoint reached in cell " + checkpoint.cell() + " after " + checkpoint.outcomes() +
 					" outcomes";
+			case PendingDecision.FailuresNotReproduced notReproduced ->
+				describeNotReproduced(campaign.attempt(notReproduced.attempt()));
 			case PendingDecision.ImprovementProven proven ->
 				"attempt " + proven.attempt() + " proved an improvement without certifying";
 			case PendingDecision.RegressionTradeOff tradeOff ->
@@ -411,6 +414,28 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				yield "an author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
 		};
+	}
+
+	/**
+	 * Describes the failure groups of an ended attempt that did not reproduce in development.
+	 *
+	 * @param attempt the attempt
+	 * @return each such group with its formal failures and reproduction counts
+	 */
+	private static String describeNotReproduced(CertificationAttempt attempt)
+	{
+		List<String> groups = new ArrayList<>();
+		for (FailureGroup group : attempt.groups())
+		{
+			if (group.status() != FailureGroup.Status.NOT_REPRODUCED)
+				continue;
+			groups.add("cell " + group.cellId() + ", test " + group.testId() + ", requirement " +
+				group.failed().requirementId() + " through " + group.failed().behavior() + ": " +
+				group.formalFailures() + " formal failures; " + group.failures() + " of " + group.trials() +
+				" reproduction trials in " + group.rounds().size() + " rounds failed that way");
+		}
+		return "formal failures of attempt " + attempt.index() + " did not reproduce in development: " +
+			String.join("; ", groups);
 	}
 
 	/**

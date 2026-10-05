@@ -311,6 +311,28 @@ final class Draft
 	}
 
 	/**
+	 * Returns a generator for the current contract that also holds every combination that a failure group of the
+	 * current lineage tried or tries, so that it draws and validates reproduction instances.
+	 *
+	 * @return the generator
+	 * @throws IllegalStateException if no contract is confirmed
+	 */
+	Generator reproductionGenerator()
+	{
+		return new Generator(contract(), Campaign.developmentValues(added, lineageNumber(), attempts));
+	}
+
+	/**
+	 * Returns the certification attempt whose formal failure groups hold back development.
+	 *
+	 * @return the current lineage's latest attempt while it is reproducing, or empty
+	 */
+	Optional<CertificationAttempt> reproducing()
+	{
+		return Campaign.reproducing(lineageNumber(), attempts);
+	}
+
+	/**
 	 * Starts a lineage.
 	 *
 	 * @param lineage the new lineage

@@ -41,6 +41,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
@@ -56,6 +57,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.RegressionInstance;
+import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SequenceGroup;
@@ -64,6 +66,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
@@ -733,20 +736,111 @@ final class CampaignJson
 		}
 		ArrayNode added = node.putArray("added_values");
 		for (AddedCombination combination : lineage.added().combinations())
-		{
-			ObjectNode element = added.addObject();
-			element.put("attempt", combination.attempt());
-			element.put("test_id", combination.testId());
-			ArrayNode values = element.putArray("values");
-			for (VariationValue value : combination.values())
-			{
-				values.addObject().
-					put("label", value.label()).
-					put("text", value.text()).
-					put("probability", value.probability());
-			}
-		}
+			added.add(writeCombination(combination));
 		return node;
+	}
+
+	/**
+	 * Converts a key-value combination beyond the confirmed values to a document.
+	 *
+	 * @param combination the combination
+	 * @return the document
+	 */
+	private ObjectNode writeCombination(AddedCombination combination)
+	{
+		ObjectNode element = json.createObjectNode();
+		element.put("attempt", combination.attempt());
+		element.put("test_id", combination.testId());
+		ArrayNode values = element.putArray("values");
+		for (VariationValue value : combination.values())
+		{
+			values.addObject().
+				put("label", value.label()).
+				put("text", value.text()).
+				put("probability", value.probability());
+		}
+		return element;
+	}
+
+	/**
+	 * Converts a document to a key-value combination beyond the confirmed values.
+	 *
+	 * @param element the document
+	 * @return the combination
+	 */
+	private static AddedCombination readCombination(JsonNode element)
+	{
+		List<VariationValue> values = new ArrayList<>();
+		for (JsonNode value : elements(element, "values"))
+			values.add(new VariationValue(text(value, "label"), text(value, "text"), floating(value, "probability")));
+		return new AddedCombination(integer(element, "attempt"), text(element, "test_id"), values);
+	}
+
+	/**
+	 * Converts an attempt's failure groups to a document.
+	 *
+	 * @param groups the groups
+	 * @return the document
+	 */
+	private ArrayNode writeGroups(List<FailureGroup> groups)
+	{
+		ArrayNode array = json.createArrayNode();
+		for (FailureGroup group : groups)
+		{
+			ObjectNode node = array.addObject();
+			node.put("cell", group.cellId());
+			node.put("test_id", group.testId());
+			node.put("requirement_id", group.failed().requirementId());
+			node.put("behavior", group.failed().behavior());
+			node.put("formal_failures", group.formalFailures());
+			node.put("round_limit", group.roundLimit());
+			ArrayNode rounds = node.putArray("rounds");
+			for (ReproductionRound round : group.rounds())
+			{
+				ObjectNode roundNode = rounds.addObject();
+				roundNode.put("cell", round.cellId());
+				ArrayNode combinations = roundNode.putArray("combinations");
+				for (TriedCombination tried : round.combinations())
+				{
+					ObjectNode triedNode = combinations.addObject();
+					triedNode.set("combination", writeCombination(tried.combination()));
+					triedNode.put("trials", tried.trials());
+					triedNode.put("failures", tried.failures());
+				}
+			}
+			putConstant(node, "status", group.status());
+		}
+		return array;
+	}
+
+	/**
+	 * Converts a document to an attempt's failure groups.
+	 *
+	 * @param node the attempt's document
+	 * @return the groups
+	 */
+	private static List<FailureGroup> readGroups(JsonNode node)
+	{
+		List<FailureGroup> groups = new ArrayList<>();
+		for (JsonNode element : elements(node, "groups"))
+		{
+			List<ReproductionRound> rounds = new ArrayList<>();
+			for (JsonNode roundNode : elements(element, "rounds"))
+			{
+				List<TriedCombination> combinations = new ArrayList<>();
+				for (JsonNode tried : elements(roundNode, "combinations"))
+				{
+					combinations.add(new TriedCombination(readCombination(field(tried, "combination")),
+						integer(tried, "trials"), integer(tried, "failures")));
+				}
+				rounds.add(new ReproductionRound(text(roundNode, "cell"), combinations));
+			}
+			groups.add(new FailureGroup(text(element, "cell"), text(element, "test_id"),
+				new FailedRequirement(text(element, "requirement_id"), text(element, "behavior")),
+				integer(element, "formal_failures"), integer(element, "round_limit"), rounds,
+				constant(element, "status", FailureGroup.Status.class)));
+		}
+		return groups;
 	}
 
 	/**
@@ -778,14 +872,7 @@ final class CampaignJson
 			unavailable.add(constantValue(element, "unavailable", Outcome.class));
 		List<AddedCombination> added = new ArrayList<>();
 		for (JsonNode element : elements(node, "added_values"))
-		{
-			List<VariationValue> values = new ArrayList<>();
-			for (JsonNode value : elements(element, "values"))
-			{
-				values.add(new VariationValue(text(value, "label"), text(value, "text"), floating(value, "probability")));
-			}
-			added.add(new AddedCombination(integer(element, "attempt"), text(element, "test_id"), values));
-		}
+			added.add(readCombination(element));
 		return new Lineage(integer(node, "number"), contract, sha256(node, "contract_hash"),
 			readStream(field(node, "development_stream")), readStream(field(node, "baseline_stream")), regressionSet,
 			unavailable, new AddedValues(added));
@@ -1171,6 +1258,7 @@ final class CampaignJson
 		node.set("failures", writeFailures(attempt.failures()));
 		node.set("formal_stream", writeStream(attempt.formalStream()));
 		putConstant(node, "outcome", attempt.outcome());
+		node.set("groups", writeGroups(attempt.groups()));
 		return node;
 	}
 
@@ -1193,7 +1281,8 @@ final class CampaignJson
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
 			readCounts(field(node, "counts")), readFailures(node, "failures"),
-			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class));
+			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class),
+			readGroups(node));
 	}
 
 	/**
@@ -1425,6 +1514,11 @@ final class CampaignJson
 				node.put("cell", checkpoint.cell());
 				node.put("outcomes", checkpoint.outcomes());
 			}
+			case PendingDecision.FailuresNotReproduced notReproduced ->
+			{
+				node.put("type", "FAILURES_NOT_REPRODUCED");
+				node.put("attempt", notReproduced.attempt());
+			}
 			case PendingDecision.ImprovementProven proven ->
 			{
 				node.put("type", "IMPROVEMENT_PROVEN");
@@ -1486,6 +1580,7 @@ final class CampaignJson
 			case "CALIBRATION_FAILURE" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
 			case "CHECKPOINT_REACHED" ->
 				new PendingDecision.CheckpointReached(text(node, "cell"), integer(node, "outcomes"));
+			case "FAILURES_NOT_REPRODUCED" -> new PendingDecision.FailuresNotReproduced(integer(node, "attempt"));
 			case "IMPROVEMENT_PROVEN" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
 			case "REGRESSION_TRADE_OFF" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));
 			case "PLATEAU_REACHED" -> new PendingDecision.PlateauReached();

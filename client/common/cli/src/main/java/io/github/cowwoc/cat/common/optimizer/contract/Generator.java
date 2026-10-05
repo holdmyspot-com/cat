@@ -119,23 +119,88 @@ public final class Generator
 			List<VariationValue> keyValues = selectKeyValues(test, part, combinations, stream.nextDouble());
 			for (int i = 0; i < keyRules.size(); ++i)
 				keyValueByDimension.put(keyRules.get(i).dimension(), keyValues.get(i));
-
-			List<VariationChoice> choices = new ArrayList<>();
-			Map<String, String> textByDimension = new LinkedHashMap<>();
-			for (VariationRule rule : test.variations())
-			{
-				VariationValue value = keyValueByDimension.get(rule.dimension());
-				if (value == null)
-					value = select(rule, stream.nextDouble());
-				choices.add(new VariationChoice(rule.dimension(), value.label(), value.probability()));
-				textByDimension.put(rule.dimension(), value.text());
-			}
-			instance = new TrialInstance(cell.id(), category.id(), test.id(), choices,
-				test.expandTurns(textByDimension), test.expectedBehaviour(), IDENTITY, start.kind(), start.position(),
-				false);
+			instance = instantiate(cell, category, test, keyValueByDimension, stream, start);
 		}
 		validate(instance);
 		return instance;
+	}
+
+	/**
+	 * Draws one instance of a test on given key-value combinations, for a trial that tries whether those combinations
+	 * reproduce a failure. The draw picks one of the combinations with equal probability and each other variation
+	 * value at its probability fixed by the contract.
+	 *
+	 * @param cellId the identifier of the cell that the trial runs in
+	 * @param testId the identifier of a test of the cell's category
+	 * @param combinations the test's combinations that this generator's added values hold
+	 * @param stream the development stream to draw from
+	 * @return the validated instance
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the contract has no such cell, the cell's category has no such test,
+	 *   {@code combinations} is empty or holds a combination of another test, or {@code stream} is not a
+	 *   development stream
+	 * @throws IllegalStateException if {@code stream} is closed
+	 * @throws GeneratorValidationException if the drawn instance is not permitted by its test definition
+	 */
+	public TrialInstance drawCombination(String cellId, String testId, List<AddedCombination> combinations,
+		DrawStream stream)
+	{
+		requireThat(cellId, "cellId").isNotNull();
+		requireThat(testId, "testId").isNotNull();
+		requireThat(combinations, "combinations").isNotEmpty();
+		requireThat(stream, "stream").isNotNull();
+		Cell cell = contract.findCell(cellId).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no cell '" + cellId + "'"));
+		Category category = contract.categoryOf(cell);
+		TestDefinition test = category.tests().stream().filter(candidate -> candidate.id().equals(testId)).
+			findFirst().orElseThrow(() -> new IllegalArgumentException("The category '" + category.id() +
+				"' has no test '" + testId + "'"));
+		for (AddedCombination combination : combinations)
+			requireThat(combination.testId(), "combination.testId()").isEqualTo(testId, "testId");
+
+		TrialInstance instance;
+		synchronized (stream)
+		{
+			DrawStream.State start = stream.state();
+			requireThat(start.kind(), "stream.kind()").isEqualTo(DrawStream.Kind.DEVELOPMENT);
+			int index = Math.min((int) (stream.nextDouble() * combinations.size()), combinations.size() - 1);
+			List<VariationValue> keyValues = combinations.get(index).values();
+			Map<String, VariationValue> keyValueByDimension = new HashMap<>();
+			List<VariationRule> keyRules = test.keyRules();
+			for (int i = 0; i < keyRules.size(); ++i)
+				keyValueByDimension.put(keyRules.get(i).dimension(), keyValues.get(i));
+			instance = instantiate(cell, category, test, keyValueByDimension, stream, start);
+		}
+		validate(instance);
+		return instance;
+	}
+
+	/**
+	 * Picks every variation value that is not a key value and builds the instance.
+	 *
+	 * @param cell the cell that the instance runs in
+	 * @param category the cell's category
+	 * @param test the drawn test definition
+	 * @param keyValueByDimension the chosen value of each key dimension
+	 * @param stream the stream to draw the other values from, whose lock the caller holds
+	 * @param start the stream's state before the draw
+	 * @return the instance, not yet validated
+	 */
+	private static TrialInstance instantiate(Cell cell, Category category, TestDefinition test,
+		Map<String, VariationValue> keyValueByDimension, DrawStream stream, DrawStream.State start)
+	{
+		List<VariationChoice> choices = new ArrayList<>();
+		Map<String, String> textByDimension = new LinkedHashMap<>();
+		for (VariationRule rule : test.variations())
+		{
+			VariationValue value = keyValueByDimension.get(rule.dimension());
+			if (value == null)
+				value = select(rule, stream.nextDouble());
+			choices.add(new VariationChoice(rule.dimension(), value.label(), value.probability()));
+			textByDimension.put(rule.dimension(), value.text());
+		}
+		return new TrialInstance(cell.id(), category.id(), test.id(), choices, test.expandTurns(textByDimension),
+			test.expectedBehaviour(), IDENTITY, start.kind(), start.position(), false);
 	}
 
 	/**

@@ -105,9 +105,10 @@ system impose no test obligation.
 ### The core-task requirement
 
 CAT adds the requirement `core-task`, "Each reply correctly and completely does what the turn asked.", with CAT as its
-source and the behaviors `incorrect-result` and `incomplete-result`, to every test. A test that lists it in `requirement_ids` is accepted; one that does not is given it. It keeps a
-candidate that obeys every rule of the prompt system from doing the user's task worse. It is semantic unless the
-test's expected result is itself mechanical, such as an exact file content; only then give it a check.
+source and the behaviors `incorrect-result` and `incomplete-result`, to every test. A test that lists it in
+`requirement_ids` is accepted; one that does not is given it. It keeps a candidate that obeys every rule of the prompt
+system from doing the user's task worse. It is semantic unless the test's expected result is itself mechanical, such
+as an exact file content; only then give it a check.
 
 ### Deterministic and semantic requirements
 
