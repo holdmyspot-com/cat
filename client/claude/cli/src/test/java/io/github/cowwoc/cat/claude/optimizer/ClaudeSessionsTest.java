@@ -269,14 +269,16 @@ public final class ClaudeSessionsTest
 				"sandbox.allowUnsandboxedCommands"});
 			rows.add(new Object[]{location, "{\"sandbox\": {\"excludedCommands\": [\"cat\"]}}",
 				"sandbox.excludedCommands"});
+			rows.add(new Object[]{location, "{\"sandbox\": {\"filesystem\": {\"allowRead\": [\"/tmp/held-out\"]}}}",
+				"sandbox.filesystem.allowRead"});
 		}
 		return rows.toArray(Object[][]::new);
 	}
 
 	/**
-	 * Verifies that a managed or project settings file that turns off the sandbox, lets commands run outside it, or
-	 * excludes commands from it is reported with the file and the setting, and that the message asks the user to
-	 * remove the setting and run {@code start} again.
+	 * Verifies that a managed or project settings file that turns off the sandbox, lets commands run outside it,
+	 * excludes commands from it, or re-allows reads that it denies is reported with the file and the setting, and
+	 * that the message asks the user to remove the setting and run {@code start} again.
 	 *
 	 * @param location {@code managed} for the managed settings file, or the project-relative path of the file
 	 * @param content the file's content
@@ -312,8 +314,9 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that no exposure is reported when the managed and project settings files are absent, hold no sandbox
-	 * settings, or keep the sandbox on, and that the host's user settings, which CAT's isolated settings replace, are
-	 * not consulted even when they turn the sandbox off.
+	 * settings, keep the sandbox on, or hold an empty or absent {@code sandbox.filesystem.allowRead}, and that the
+	 * host's user settings, which CAT's isolated settings replace, are not consulted even when they turn the sandbox
+	 * off.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 */
@@ -334,9 +337,10 @@ public final class ClaudeSessionsTest
 			Files.writeString(managed, "{\"permissions\": {\"allow\": []}}", UTF_8);
 			Files.createDirectories(project.resolve(".claude"));
 			Files.writeString(project.resolve(".claude/settings.json"),
-				"{\"sandbox\": {\"enabled\": true, \"allowUnsandboxedCommands\": false, \"excludedCommands\": []}}",
-				UTF_8);
-			Files.writeString(project.resolve(".claude/settings.local.json"), "{}", UTF_8);
+				"{\"sandbox\": {\"enabled\": true, \"allowUnsandboxedCommands\": false, \"excludedCommands\": []," +
+					" \"filesystem\": {\"allowRead\": []}}}", UTF_8);
+			Files.writeString(project.resolve(".claude/settings.local.json"),
+				"{\"sandbox\": {\"filesystem\": {\"allowWrite\": [\"/tmp\"]}}}", UTF_8);
 			requireThat(sessions.findHeldOutExposure(project), "sandboxOn").isEmpty();
 		}
 	}

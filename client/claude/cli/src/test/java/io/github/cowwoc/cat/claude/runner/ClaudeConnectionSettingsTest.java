@@ -278,6 +278,43 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that isolated settings drop the host's {@code sandbox.filesystem.allowRead} when reads are denied,
+	 * because it would re-allow the denied reads, and keep it when no read is denied.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void dropsHostAllowReadOnlyWhenReadsAreDenied() throws IOException
+	{
+		// Requirement: R-E24
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-allow-read-"));
+			Path source = root.resolve("settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Files.writeString(source, """
+				{"sandbox": {"filesystem": {"allowRead": ["/shared"], "denyRead": ["/secrets"]}}}
+				""");
+			Path denying = root.resolve("denying/settings.json");
+			Path allowing = root.resolve("allowing/settings.json");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, denying, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(snapshot));
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, allowing, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of());
+
+			JsonNode denied = scope.json().readTree(Files.readString(denying)).path("sandbox").path("filesystem");
+			requireThat(denied.has("allowRead"), "deniedHasAllowRead").isFalse();
+			requireThat(strings(denied.path("denyRead")), "deniedDenyRead").
+				isEqualTo(List.of("/secrets", snapshot.toString()));
+			JsonNode kept = scope.json().readTree(Files.readString(allowing)).path("sandbox").path("filesystem");
+			requireThat(strings(kept.path("allowRead")), "keptAllowRead").isEqualTo(List.of("/shared"));
+		}
+	}
+
+	/**
 	 * Returns the strings of a JSON array.
 	 *
 	 * @param array the array, or a missing node

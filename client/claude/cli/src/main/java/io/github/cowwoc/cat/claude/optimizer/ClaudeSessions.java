@@ -91,8 +91,10 @@ public final class ClaudeSessions extends RunnerSessions
 	 * The runner's settings turn the sandbox on for every session and deny held-out reads through it, but managed
 	 * settings and the project's {@code .claude/settings.json} and {@code .claude/settings.local.json} outrank them.
 	 * This method reports the first of those files that sets {@code sandbox.enabled} to {@code false},
-	 * {@code sandbox.allowUnsandboxedCommands} to {@code true}, or a non-empty {@code sandbox.excludedCommands}, each
-	 * of which lets a command read outside the sandbox. A file that is not a JSON object is reported too, because
+	 * {@code sandbox.allowUnsandboxedCommands} to {@code true}, a non-empty {@code sandbox.excludedCommands}, or a
+	 * non-empty {@code sandbox.filesystem.allowRead}, each of which lets a command read what the sandbox denies. Any
+	 * {@code allowRead} entry is reported, whatever it names, because which entries re-allow a denied path depends on
+	 * how Claude resolves paths. A file that is not a JSON object is reported too, because
 	 * the settings it holds cannot be checked. The host's user settings are not consulted, because the runner's
 	 * settings replace them.
 	 */
@@ -151,6 +153,11 @@ public final class ClaudeSessions extends RunnerSessions
 		}
 		else if (sandbox.path("excludedCommands").isArray() && !sandbox.path("excludedCommands").isEmpty())
 			setting = "sets sandbox.excludedCommands, which runs those commands outside the sandbox";
+		else if (sandbox.path("filesystem").path("allowRead").isArray() &&
+			!sandbox.path("filesystem").path("allowRead").isEmpty())
+		{
+			setting = "sets sandbox.filesystem.allowRead, which re-allows reads that the sandbox denies";
+		}
 		else
 			return Optional.empty();
 		return Optional.of(file + " " + setting + ", so Claude sessions could read the campaign's held-out content. " +

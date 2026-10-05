@@ -67,7 +67,9 @@ final class ClaudeConnectionSettings
 	 * nested Claude instance access to its project and invocation-local home, and CAT-owned environment values.
 	 * Host settings must not control other isolated-instance behavior. It also denies the instance reading each of
 	 * {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
-	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine.
+	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
+	 * {@code deniedReads} is not empty, the host's {@code sandbox.filesystem.allowRead} is not retained, because it
+	 * would re-allow the reads that the sandbox denies.
 	 *
 	 * @param scope services shared for the runner process lifetime
 	 * @param source the host Claude settings file
@@ -143,7 +145,9 @@ final class ClaudeConnectionSettings
 	}
 
 	/**
-	 * Denies the isolated instance reading files and directories, in addition to any reads that the parent denies.
+	 * Denies the isolated instance reading files and directories, in addition to any reads that the parent denies,
+	 * and removes {@code allowRead} from the sandbox filesystem settings so that it cannot re-allow them. Does
+	 * nothing if {@code deniedReads} is empty.
 	 *
 	 * @param settings the isolated settings
 	 * @param filesystem the isolated sandbox filesystem settings
@@ -156,6 +160,7 @@ final class ClaudeConnectionSettings
 		assert deniedReads != null;
 		if (deniedReads.isEmpty())
 			return;
+		filesystem.remove("allowRead");
 		ArrayNode sandboxDenials = array(filesystem, "denyRead");
 		ObjectNode permissions;
 		if (settings.path("permissions").isObject())
