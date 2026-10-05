@@ -81,6 +81,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
@@ -133,7 +135,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 20;
+	private static final int FORMAT_VERSION = 21;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -206,10 +208,7 @@ final class CampaignJson
 		ObjectNode slowStart = root.putObject("slow_start");
 		slowStart.put("size", campaign.slowStart().size());
 		slowStart.put("passes", campaign.slowStart().passes());
-		ObjectNode throttle = root.putObject("throttle");
-		throttle.put("hold_until", campaign.throttle().holdUntil().toString());
-		throttle.put("window_cap", campaign.throttle().windowCap());
-		throttle.put("backoffs", campaign.throttle().backoffs());
+		root.set("throttle", writeThrottle(campaign.throttle()));
 		ArrayNode pending = root.putArray("pending_decisions");
 		for (PendingDecision decision : campaign.pendingDecisions())
 			pending.add(writeDecision(decision));
@@ -265,7 +264,6 @@ final class CampaignJson
 				throw new IllegalArgumentException("sequences: duplicate group " + group);
 		}
 		JsonNode slowStart = field(root, "slow_start");
-		JsonNode throttle = field(root, "throttle");
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
 			pending.add(readDecision(node));
@@ -284,10 +282,8 @@ final class CampaignJson
 			integer(root, "candidates"), integer(root, "author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
-			new Throttle(instant(throttle, "hold_until"), integer(throttle, "window_cap"),
-				integer(throttle, "backoffs")),
-			pending, bool(root, "revision_requested"), nullableConstant(root, "outcome", Outcome.class),
-			delivery, readOptimization(field(root, "optimization")));
+			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
+			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")));
 	}
 
 	/**
@@ -526,7 +522,9 @@ final class CampaignJson
 		root.set("identity", writeIdentity(record.identity()));
 		root.set("allocation", writeAllocation(record.allocation()));
 		root.set("infrastructure_attempts", writeInfrastructureAttempts(record.infrastructureAttempts()));
-		root.set(TOKEN_USAGE, writeUsage(record.tokenUsage()));
+		ArrayNode sessions = root.putArray("sessions");
+		for (TrialSession session : record.sessions())
+			sessions.add(writeSession(session));
 		CampaignEvent.Complete outcome = record.outcome();
 		if (outcome == null)
 			root.putNull("outcome");
@@ -566,9 +564,87 @@ final class CampaignJson
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
 				readResponses(outcomeNode));
 		}
+		List<TrialSession> sessions = new ArrayList<>();
+		for (JsonNode session : elements(root, "sessions"))
+			sessions.add(readSession(session));
 		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
-			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome,
-			readUsage(root, TOKEN_USAGE));
+			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome, sessions);
+	}
+
+	/**
+	 * Writes the record of a finished trial session.
+	 *
+	 * @param session the session's record
+	 * @return the document
+	 */
+	private ObjectNode writeSession(TrialSession session)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("started_at", session.startedAt().toString());
+		node.put("ended_at", session.endedAt().toString());
+		node.put("concurrency", session.concurrency());
+		node.set("throttle", writeThrottle(session.throttle()));
+		ArrayNode windows = node.putArray("rate_limit_windows");
+		for (RateLimitWindow window : session.windows())
+		{
+			ObjectNode element = windows.addObject();
+			element.put("utilization", window.utilization());
+			if (window.resetsAt() == null)
+				element.putNull("resets_at");
+			else
+				element.put("resets_at", window.resetsAt().toString());
+		}
+		putConstant(node, "login", session.login());
+		if (session.usage() == null)
+			node.putNull(TOKEN_USAGE);
+		else
+			node.set(TOKEN_USAGE, writeTokenUsage(session.usage()));
+		return node;
+	}
+
+	/**
+	 * Reads the record of a finished trial session.
+	 *
+	 * @param node the document
+	 * @return the session's record
+	 */
+	private static TrialSession readSession(JsonNode node)
+	{
+		List<RateLimitWindow> windows = new ArrayList<>();
+		for (JsonNode window : elements(node, "rate_limit_windows"))
+			windows.add(new RateLimitWindow(floating(window, "utilization"), nullableInstant(window, "resets_at")));
+		TokenUsage usage = null;
+		JsonNode usageNode = nullable(node, TOKEN_USAGE);
+		if (usageNode != null)
+			usage = readTokenUsage(usageNode);
+		return new TrialSession(instant(node, "started_at"), instant(node, "ended_at"), integer(node, "concurrency"),
+			readThrottle(field(node, "throttle")), windows, constant(node, "login", HostLogin.class), usage);
+	}
+
+	/**
+	 * Writes a throttle state.
+	 *
+	 * @param throttle the state
+	 * @return the document
+	 */
+	private ObjectNode writeThrottle(Throttle throttle)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("hold_until", throttle.holdUntil().toString());
+		node.put("window_cap", throttle.windowCap());
+		node.put("backoffs", throttle.backoffs());
+		return node;
+	}
+
+	/**
+	 * Reads a throttle state.
+	 *
+	 * @param node the document
+	 * @return the state
+	 */
+	private static Throttle readThrottle(JsonNode node)
+	{
+		return new Throttle(instant(node, "hold_until"), integer(node, "window_cap"), integer(node, "backoffs"));
 	}
 
 	/**
@@ -581,14 +657,24 @@ final class CampaignJson
 	{
 		ArrayNode array = json.createArrayNode();
 		for (TokenUsage usage : sessions)
-		{
-			ObjectNode node = array.addObject();
-			node.put("input", usage.input());
-			node.put("cached_input", usage.cachedInput());
-			node.put("output", usage.output());
-			node.put("reasoning_output", usage.reasoningOutput());
-		}
+			array.add(writeTokenUsage(usage));
 		return array;
+	}
+
+	/**
+	 * Writes the full token counts that a harness reported for one session.
+	 *
+	 * @param usage the reported counts
+	 * @return the document
+	 */
+	private ObjectNode writeTokenUsage(TokenUsage usage)
+	{
+		ObjectNode node = json.createObjectNode();
+		node.put("input", usage.input());
+		node.put("cached_input", usage.cachedInput());
+		node.put("output", usage.output());
+		node.put("reasoning_output", usage.reasoningOutput());
+		return node;
 	}
 
 	/**
@@ -620,11 +706,20 @@ final class CampaignJson
 	{
 		List<TokenUsage> sessions = new ArrayList<>();
 		for (JsonNode usage : elements(node, key))
-		{
-			sessions.add(new TokenUsage(longInteger(usage, "input"), longInteger(usage, "cached_input"),
-				longInteger(usage, "output"), longInteger(usage, "reasoning_output")));
-		}
+			sessions.add(readTokenUsage(usage));
 		return sessions;
+	}
+
+	/**
+	 * Reads the full token counts that a harness reported for one session.
+	 *
+	 * @param node the document
+	 * @return the reported counts
+	 */
+	private static TokenUsage readTokenUsage(JsonNode node)
+	{
+		return new TokenUsage(longInteger(node, "input"), longInteger(node, "cached_input"),
+			longInteger(node, "output"), longInteger(node, "reasoning_output"));
 	}
 
 	/**
@@ -2239,6 +2334,21 @@ final class CampaignJson
 		{
 			throw new IllegalArgumentException(name + ": must be an ISO-8601 instant: " + value, e);
 		}
+	}
+
+	/**
+	 * Returns an instant field that must be present but may be null, written in ISO-8601 form.
+	 *
+	 * @param node the object that holds the field
+	 * @param name the field's name
+	 * @return the instant, or null if it is JSON {@code null}
+	 * @throws IllegalArgumentException if the field is missing or its value is not an instant
+	 */
+	private static Instant nullableInstant(JsonNode node, String name)
+	{
+		if (nullable(node, name) == null)
+			return null;
+		return instant(node, name);
 	}
 
 	/**

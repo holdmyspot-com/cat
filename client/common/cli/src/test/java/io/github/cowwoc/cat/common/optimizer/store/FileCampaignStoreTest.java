@@ -336,6 +336,36 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a version 20 trial record, which holds only the token usage of each session, is refused with a
+	 * message that names its version and asks for a new campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-E6
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*version 20 campaign.*[Ss]tart a new campaign.*")
+	public void refusesVersionTwentyTrialRecord() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("cat-campaign-version-20-"));
+			FileCampaignStore store = new FileCampaignStore(base, JSON);
+			store.replaceSnapshot(start());
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment(ID, assigned);
+			Path record = list(heldOutDirectory(base).resolve("trials")).getFirst();
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
+			root.put("format_version", 20);
+			root.remove("sessions");
+			root.putArray("token_usage").addObject().put("input", 100).put("cached_input", 20).put("output", 30).
+				put("reasoning_output", 10);
+			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
+
+			new FileCampaignStore(base, JSON).readRecord(ID, assigned.key());
+		}
+	}
+
+	/**
 	 * Verifies that a stored campaign records no external target as editable and survives a reload unchanged.
 	 *
 	 * @throws IOException if the store fails
@@ -869,10 +899,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(20);
+					"recordVersion").isEqualTo(21);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(20);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(21);
 		}
 	}
 
@@ -1279,7 +1309,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(base).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 21);
+			root.put("format_version", 22);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(base, JSON).load(ID);

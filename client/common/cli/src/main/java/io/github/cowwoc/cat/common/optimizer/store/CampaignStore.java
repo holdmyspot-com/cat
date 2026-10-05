@@ -5,7 +5,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
-import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.io.IOException;
 import java.util.List;
@@ -48,17 +47,17 @@ public interface CampaignStore
 	void writeAssignment(String campaignId, LogicalTrial trial) throws IOException;
 
 	/**
-	 * Appends a finished trial session's reported token counts to its assignment record.
+	 * Appends the record of a finished trial session to the trial's assignment record.
 	 *
 	 * @param campaignId the campaign's identifier
 	 * @param key the trial's key
-	 * @param usage the reported counts
+	 * @param session the session's record
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
 	 * @throws IllegalStateException if the trial has no assignment record
 	 * @throws IOException if the record cannot be read or written
 	 */
-	void writeTrialUsage(String campaignId, TrialKey key, TokenUsage usage) throws IOException;
+	void writeTrialSession(String campaignId, TrialKey key, TrialSession session) throws IOException;
 
 	/**
 	 * Records a trial's outcome before the campaign adopts it. Writing the outcome that the record already holds does

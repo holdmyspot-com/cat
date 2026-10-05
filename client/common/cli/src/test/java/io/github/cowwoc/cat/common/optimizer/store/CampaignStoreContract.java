@@ -9,7 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
@@ -60,6 +59,9 @@ import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -473,46 +475,56 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * Full trial session usage survives assignment retries, outcome writes and store reopening.
+	 * The record of each finished trial session, one with reported usage and rate-limit windows and one with neither,
+	 * survives assignment retries, outcome writes and store reopening, in completion order.
 	 *
 	 * @throws IOException if the store fails
 	 */
+	// Requirement: R-E6
 	// Requirement: R-E12
 	@Test
-	public void trialUsageSurvivesRetries() throws IOException
+	public void trialSessionsSurviveRetries() throws IOException
 	{
 		try (StoreFixture fixture = open())
 		{
 			CampaignStore store = fixture.store();
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment("campaign-1", assigned);
-			List<TokenUsage> usage = List.of(new TokenUsage(100, 20, 30, 10), new TokenUsage(300, 60, 90, 30));
-			store.writeTrialUsage("campaign-1", assigned.key(), usage.getFirst());
+			Instant resetsAt = Instant.parse("2026-10-01T15:00:00Z");
+			List<TrialSession> sessions = List.of(
+				new TrialSession(Instant.parse("2026-10-01T10:00:00Z"), Instant.parse("2026-10-01T10:04:30.125Z"), 3,
+					new Throttle(resetsAt, 1, 2),
+					List.of(new RateLimitWindow(0.97, resetsAt), new RateLimitWindow(0.25, null)),
+					HostLogin.SUBSCRIPTION, new TokenUsage(100, 20, 30, 10)),
+				new TrialSession(Instant.parse("2026-10-01T10:05:00Z"), Instant.parse("2026-10-01T10:05:00Z"), 1,
+					Throttle.NONE, List.of(), HostLogin.API_KEY, null));
+			store.writeTrialSession("campaign-1", assigned.key(), sessions.getFirst());
 			store.writeAssignment("campaign-1", assigned);
-			store.writeTrialUsage("campaign-1", assigned.key(), usage.getLast());
+			store.writeTrialSession("campaign-1", assigned.key(), sessions.getLast());
 			CampaignEvent.Complete outcome = complete(assigned.key(), Verdict.PASS);
 			store.writeOutcome("campaign-1", outcome);
 			store.writeOutcome("campaign-1", outcome);
+
 			AbstractCampaignStore reopened = (AbstractCampaignStore) fixture.reopen();
-			requireThat(reopened.readRecord("campaign-1", assigned.key()).orElseThrow().tokenUsage(), "trialUsage").
-				isEqualTo(usage);
+			requireThat(reopened.readRecord("campaign-1", assigned.key()).orElseThrow().sessions(), "sessions").
+				isEqualTo(sessions);
 		}
 	}
 
 	/**
-	 * A trial record accepts only reported counts, so an absent report cannot become an observation.
+	 * A trial record refuses a missing session record instead of storing an empty entry.
 	 *
 	 * @throws IOException if the store fails
 	 */
-	// Requirement: R-E12
+	// Requirement: R-E6
 	@Test(expectedExceptions = NullPointerException.class)
-	public void trialUsageRejectsAbsentCounts() throws IOException
+	public void trialSessionRejectsAbsentRecord() throws IOException
 	{
 		try (StoreFixture fixture = open())
 		{
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			fixture.store().writeAssignment("campaign-1", assigned);
-			fixture.store().writeTrialUsage("campaign-1", assigned.key(), null);
+			fixture.store().writeTrialSession("campaign-1", assigned.key(), null);
 		}
 	}
 

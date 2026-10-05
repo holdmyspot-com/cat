@@ -142,8 +142,21 @@ public final class DriverHarness
 	 */
 	public DriverHarness(Path directory, Campaign campaign) throws IOException
 	{
+		this(directory, campaign, HostLogin.UNKNOWN);
+	}
+
+	/**
+	 * Creates the ports of a test whose harness reports a host login, and persists a campaign.
+	 *
+	 * @param directory a directory that the test owns
+	 * @param campaign the campaign, whose working candidate is in the optimization worktree
+	 * @param login the login that the session port classifies
+	 * @throws IOException if the campaign cannot be persisted
+	 */
+	public DriverHarness(Path directory, Campaign campaign, HostLogin login) throws IOException
+	{
 		this(directory, campaign, new FileInventory(Path.of("/project"), Map.of(PROMPT, new RegularFile(
-			Sha256.of("fork".getBytes(UTF_8)), PERMISSIONS))));
+			Sha256.of("fork".getBytes(UTF_8)), PERMISSIONS))), null, login);
 	}
 
 	/**
@@ -170,8 +183,24 @@ public final class DriverHarness
 	 */
 	public DriverHarness(Path directory, Campaign campaign, FileInventory fork, Path project) throws IOException
 	{
+		this(directory, campaign, fork, project, HostLogin.UNKNOWN);
+	}
+
+	/**
+	 * Creates ports with recorded project files available to staged-source measurements and a host login.
+	 *
+	 * @param directory the fixture directory
+	 * @param campaign the initial campaign
+	 * @param fork the recorded inventory
+	 * @param project the fixture's project files, or {@code null} for an in-memory workspace
+	 * @param login the login that the session port classifies
+	 * @throws IOException if the campaign cannot be persisted
+	 */
+	private DriverHarness(Path directory, Campaign campaign, FileInventory fork, Path project, HostLogin login)
+		throws IOException
+	{
 		this.directory = directory;
-		this.sessions = new FakeSessionPort(HostLogin.UNKNOWN, Optional.empty(),
+		this.sessions = new FakeSessionPort(login, Optional.empty(),
 			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));

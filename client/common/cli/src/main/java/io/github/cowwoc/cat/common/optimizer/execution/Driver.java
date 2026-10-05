@@ -59,17 +59,20 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
+import io.github.cowwoc.cat.common.optimizer.store.TrialSession;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
 import java.io.Closeable;
@@ -119,6 +122,10 @@ public final class Driver implements AutoCloseable
 	private final Instant sliceStart;
 	private final Instant deadline;
 	private final Instant graceEnd;
+	/**
+	 * How the harness authenticates, classified when the driver opened.
+	 */
+	private final HostLogin login;
 	private final SessionEvents events = new SessionEvents();
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
 	private final List<Judging> judgingQueue = new ArrayList<>();
@@ -144,8 +151,9 @@ public final class Driver implements AutoCloseable
 	 * @param lock the campaign's write lock
 	 * @param campaign the reconciled campaign
 	 * @param sliceStart when the slice started
+	 * @param login how the harness authenticates
 	 */
-	private Driver(DriverContext context, CampaignLock lock, Campaign campaign, Instant sliceStart)
+	private Driver(DriverContext context, CampaignLock lock, Campaign campaign, Instant sliceStart, HostLogin login)
 	{
 		this.context = context;
 		this.lock = lock;
@@ -154,6 +162,7 @@ public final class Driver implements AutoCloseable
 		this.sliceStart = sliceStart;
 		this.deadline = sliceStart.plus(context.settings().budget());
 		this.graceEnd = deadline.plus(context.settings().grace());
+		this.login = login;
 	}
 
 	/**
@@ -165,7 +174,8 @@ public final class Driver implements AutoCloseable
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code campaignId} is blank or the store holds no campaign with that
 	 *   identifier
-	 * @throws IOException if the store, the lock file, the worktree or the run records cannot be read or written
+	 * @throws IOException if the store, the lock file, the worktree or the run records cannot be read or written, or
+	 *   the harness's credential file exists but cannot be read
 	 */
 	public static Optional<Driver> open(DriverContext context, String campaignId) throws IOException
 	{
@@ -187,15 +197,17 @@ public final class Driver implements AutoCloseable
 	 * @param lock the campaign's write lock
 	 * @return the driver
 	 * @throws IllegalArgumentException if the store holds no campaign with that identifier
-	 * @throws IOException if the store, the worktree or the run records cannot be read or written
+	 * @throws IOException if the store, the worktree or the run records cannot be read or written, or the harness's
+	 *   credential file exists but cannot be read
 	 */
 	static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
 	{
 		try
 		{
 			Instant now = context.clock().instant();
+			HostLogin login = context.sessions().hostLogin();
 			Campaign campaign = Reconciler.reconcile(context, load(context, campaignId), now);
-			return new Driver(context, lock, campaign, now);
+			return new Driver(context, lock, campaign, now, login);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -512,6 +524,8 @@ public final class Driver implements AutoCloseable
 
 		if (result != null && !result.windows().isEmpty())
 			record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
+		if (session instanceof InFlight.Trial trial)
+			recordTrialSession(trial, result, now);
 		switch (session)
 		{
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
@@ -523,11 +537,11 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Persists reported counts before a finished session's output is validated or adopted.
+	 * Persists reported counts in the campaign's evidence before a finished session's output is validated or adopted.
 	 *
 	 * @param session the finished session
 	 * @param result the session's result, or {@code null} if it failed with an exception
-	 * @throws IOException if campaign evidence or the trial record cannot be written
+	 * @throws IOException if campaign evidence cannot be written
 	 */
 	private void observeUsage(InFlight session, SessionResult result) throws IOException
 	{
@@ -543,8 +557,27 @@ public final class Driver implements AutoCloseable
 		};
 
 		record(new CampaignEvent.ObserveTokenUsage(role, completed.usage()));
-		if (session instanceof InFlight.Trial trial)
-			context.store().writeTrialUsage(campaign.header().id(), trial.key(), completed.usage());
+	}
+
+	/**
+	 * Appends the record of an ended trial session to its trial's record before the session's output is validated or
+	 * adopted. The record holds the throttle state after the session's reported rate-limit windows were applied.
+	 *
+	 * @param trial the session
+	 * @param result the session's result, or {@code null} if the session failed with an exception
+	 * @param now the current time
+	 * @throws IOException if the trial record cannot be written
+	 */
+	private void recordTrialSession(InFlight.Trial trial, SessionResult result, Instant now) throws IOException
+	{
+		List<RateLimitWindow> windows = List.of();
+		if (result != null)
+			windows = result.windows();
+		TokenUsage usage = null;
+		if (result instanceof SessionResult.Completed completed)
+			usage = completed.usage();
+		context.store().writeTrialSession(campaignId, trial.key(), new TrialSession(trial.startedAt(), now,
+			trial.concurrency(), campaign.throttle(), windows, login, usage));
 	}
 
 	/**

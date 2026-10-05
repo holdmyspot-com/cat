@@ -45,6 +45,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
+import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -86,6 +87,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.port.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -94,6 +96,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
+import io.github.cowwoc.cat.common.optimizer.store.TrialSession;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -1920,6 +1923,93 @@ public final class DriverTest
 				requireThat(rerun.request(), "rerun").isEqualTo(limitedRequest);
 			}
 		}
+	}
+
+	/**
+	 * A completed trial session appends a session record to its trial's record: when the session started and ended,
+	 * how many trial sessions were running when it started, the throttle state after its reported rate-limit windows,
+	 * those windows, the harness's login and the session's token usage.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	// Requirement: R-E6
+	@Test
+	public void completedTrialRecordsSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("trial-session")),
+				developing().slowStart(new SlowStart(2, 0)).build(), HostLogin.SUBSCRIPTION);
+			List<RateLimitWindow> windows = List.of(
+				new RateLimitWindow(0.85, DriverHarness.START.plus(Duration.ofHours(5))),
+				new RateLimitWindow(0.10, null));
+			TokenUsage usage = new TokenUsage(500, 100, 60, 20);
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<FakeSession> started = harness.runningTrials();
+				requireThat(started.size(), "started").isEqualTo(2);
+				harness.clock().advance(Duration.ofMinutes(3));
+				SessionResult.Completed passed = harness.passed();
+				started.getLast().end(new SessionResult.Completed(passed.transcript(), passed.responses(),
+					passed.effects(), passed.model(), passed.reasoning(), usage, windows, passed.promptSources(),
+					passed.toolCalls()));
+				driver.step();
+
+				// The 85% window stops the concurrency window from growing beyond the 2 trials that are running
+				Throttle frozen = new Throttle(Instant.EPOCH, 2, 0);
+				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
+					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(3)), 2, frozen, windows,
+					HostLogin.SUBSCRIPTION, usage)));
+			}
+		}
+	}
+
+	/**
+	 * A rate-limited trial session appends a session record without token usage whose throttle state holds
+	 * admissions until the reported reset.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	// Requirement: R-E6
+	@Test
+	public void rateLimitedTrialRecordsSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("limited-session")),
+				developing().slowStart(new SlowStart(2, 0)).build(), HostLogin.API_KEY);
+			Instant resetsAt = DriverHarness.START.plus(Duration.ofMinutes(30));
+			List<RateLimitWindow> windows = List.of(new RateLimitWindow(1.0, resetsAt));
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<FakeSession> started = harness.runningTrials();
+				requireThat(started.size(), "started").isEqualTo(2);
+				harness.clock().advance(Duration.ofMinutes(1));
+				started.getFirst().end(new SessionResult.RateLimited(resetsAt, windows));
+				driver.step();
+
+				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
+					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(1)), 1,
+					new Throttle(resetsAt, 1, 0), windows, HostLogin.API_KEY, null)));
+			}
+		}
+	}
+
+	/**
+	 * Returns the session records that the driver appended to the records of the campaign's trials.
+	 *
+	 * @param harness the test's ports
+	 * @return the records, grouped by trial in the campaign's trial order
+	 * @throws IOException if the store cannot be read
+	 */
+	private static List<TrialSession> recordedSessions(DriverHarness harness) throws IOException
+	{
+		List<TrialSession> sessions = new ArrayList<>();
+		for (LogicalTrial trial : harness.campaign().trials())
+			sessions.addAll(harness.crashingStore().trialSessions(trial.key()));
+		return sessions;
 	}
 
 	/**

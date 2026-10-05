@@ -7,13 +7,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
-import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
+import io.github.cowwoc.cat.common.optimizer.store.TrialSession;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -29,6 +31,7 @@ public final class CrashingStore implements CampaignStore
 	private boolean written;
 	private boolean crashed;
 	private final List<LogicalTrial> assignments = new ArrayList<>();
+	private final Map<TrialKey, List<TrialSession>> trialSessions = new HashMap<>();
 
 	/**
 	 * Creates a store that does not crash.
@@ -76,6 +79,19 @@ public final class CrashingStore implements CampaignStore
 	}
 
 	/**
+	 * Returns the session records appended to a trial's record.
+	 *
+	 * @param key the trial's key
+	 * @return the records, oldest first; empty if none was appended
+	 * @throws NullPointerException if {@code key} is null
+	 */
+	public List<TrialSession> trialSessions(TrialKey key)
+	{
+		requireThat(key, "key").isNotNull();
+		return List.copyOf(trialSessions.getOrDefault(key, List.of()));
+	}
+
+	/**
 	 * Fails if the store crashed.
 	 *
 	 * @throws IOException if the store crashed
@@ -103,10 +119,11 @@ public final class CrashingStore implements CampaignStore
 	}
 
 	@Override
-	public void writeTrialUsage(String campaignId, TrialKey key, TokenUsage usage) throws IOException
+	public void writeTrialSession(String campaignId, TrialKey key, TrialSession session) throws IOException
 	{
 		requireAlive();
-		delegate.writeTrialUsage(campaignId, key, usage);
+		delegate.writeTrialSession(campaignId, key, session);
+		trialSessions.computeIfAbsent(key, _ -> new ArrayList<>()).add(session);
 	}
 
 	@Override
