@@ -63,6 +63,7 @@ jobs:
         with:
           name: cat-${{ matrix.platform }}
           if-no-files-found: error
+          retention-days: 1
           path: |
             client/common/distribution/target/release/cat-*-*.tar.gz
             client/common/distribution/target/release/SHA256SUMS.txt
