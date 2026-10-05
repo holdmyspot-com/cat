@@ -36,6 +36,9 @@ When defining or changing a skill's frontmatter `description`, lazy load `skill-
 When defining, parsing, reading, or processing JSON or YAML that this project owns, or independently handleable
 unbounded record or binary input, lazy load `../include/data.md`.
 
+When writing, parsing, or displaying a date or time, including in a name or identifier, lazy load
+`../include/dates-and-times.md`.
+
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
 `plugin-data-migration.md`.
 
