@@ -36,6 +36,12 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeSessions extends RunnerSessions
 {
 	/**
+	 * The version of the environment that Claude sessions run in. Increment it in every release that changes what a
+	 * session's model receives or how its actions take effect, and register the new version with the hash of the
+	 * settings that the runner generates.
+	 */
+	private static final int SESSION_ENVIRONMENT_VERSION = 1;
+	/**
 	 * The managed settings files that an administrator installs on Linux and on macOS.
 	 */
 	private static final List<Path> MANAGED_SETTINGS = List.of(Path.of("/etc/claude-code/managed-settings.json"),
@@ -83,6 +89,12 @@ public final class ClaudeSessions extends RunnerSessions
 		super(HARNESS_ID, settings, bridge);
 		requireThat(managedSettings, "managedSettings").isNotNull();
 		this.managedSettings = List.copyOf(managedSettings);
+	}
+
+	@Override
+	public int sessionEnvironmentVersion()
+	{
+		return SESSION_ENVIRONMENT_VERSION;
 	}
 
 	/**

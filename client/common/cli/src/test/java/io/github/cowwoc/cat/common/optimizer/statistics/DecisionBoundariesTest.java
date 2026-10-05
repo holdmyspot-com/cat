@@ -147,7 +147,7 @@ public final class DecisionBoundariesTest
 	@Test
 	public void handwrittenTableAnswersLookups()
 	{
-		DecisionBoundaries boundaries = new DecisionBoundaries(ErrorBudget.certificationLevel(1), 2,
+		DecisionBoundaries boundaries = new DecisionBoundaries(ErrorBudget.certificationLevel(1), REQUIRED_PASS_RATE, 2,
 			List.of(2, 2, 1), List.of(-1, 0, -1), List.of());
 		requireThat(boundaries.certifies(2, 0), "certifies").isTrue();
 		requireThat(boundaries.certifies(1, 0), "notCertified").isFalse();
@@ -170,7 +170,8 @@ public final class DecisionBoundariesTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsShortTable()
 	{
-		new DecisionBoundaries(ErrorBudget.certificationLevel(1), 2, List.of(2, 2), List.of(-1, 0, -1), List.of());
+		new DecisionBoundaries(ErrorBudget.certificationLevel(1), REQUIRED_PASS_RATE, 2, List.of(2, 2),
+			List.of(-1, 0, -1), List.of());
 	}
 
 	/**
@@ -179,6 +180,7 @@ public final class DecisionBoundariesTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsOverlappingDecisions()
 	{
-		new DecisionBoundaries(ErrorBudget.certificationLevel(1), 2, List.of(2, 1, 1), List.of(-1, 1, -1), List.of());
+		new DecisionBoundaries(ErrorBudget.certificationLevel(1), REQUIRED_PASS_RATE, 2, List.of(2, 1, 1),
+			List.of(-1, 1, -1), List.of());
 	}
 }

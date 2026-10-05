@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.REQUIRED_PASS_RATE;
+
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -64,7 +66,7 @@ public final class Boundaries
 		List<ComparisonBoundaries> comparisons)
 	{
 		List<Integer> minimums = minimums(cap, base, step);
-		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), cap, minimums,
+		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), REQUIRED_PASS_RATE, cap, minimums,
 			maximums(cap, minimums, belowFailures), comparisons);
 	}
 

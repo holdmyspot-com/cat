@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
@@ -363,6 +364,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public int sessionEnvironmentVersion()
+		{
+			return FakeSessionPort.SESSION_ENVIRONMENT_VERSION;
+		}
+
+		@Override
 		public String renderEvidence(SessionResult.Completed evidence, Path source)
 		{
 			return "No tool or hook activity.\n\nFile changes\nNo file changes.\n";
@@ -626,6 +633,26 @@ public final class OptimizerCoreTest
 					requireThat(next.store().load(id).orElseThrow().ceiling(), "reloadedCeiling").isEqualTo(ceiling);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a started campaign records the session port's session environment version.
+	 */
+	@Test
+	public void startRecordsSessionEnvironmentVersion()
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-M1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Map<MeasurementCondition, String> values = repository.load(id).identity().values();
+			requireThat(values.get(MeasurementCondition.SESSION_ENVIRONMENT_VERSION), "sessionEnvironmentVersion").
+				isEqualTo(String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
 		}
 	}
 

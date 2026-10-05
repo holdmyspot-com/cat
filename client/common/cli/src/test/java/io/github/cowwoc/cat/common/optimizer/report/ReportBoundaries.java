@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
+import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.REQUIRED_PASS_RATE;
+
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -71,7 +73,7 @@ final class ReportBoundaries
 				worse.add(-1);
 		}
 		ComparisonBoundaries comparison = new ComparisonBoundaries(frozen, better, worse);
-		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), CAP, certify, below,
+		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), REQUIRED_PASS_RATE, CAP, certify, below,
 			Collections.nCopies(cells, comparison));
 	}
 

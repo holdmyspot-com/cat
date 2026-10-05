@@ -1015,7 +1015,7 @@ public abstract class CampaignStoreContract
 			slowStart(new SlowStart(4, 3)).
 			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3)).
 			pending(new PendingDecision.MeasurementChanged(new MeasurementIdentity(otherModel),
-				List.of(MeasurementCondition.MODEL, MeasurementCondition.CAT_VERSION))).
+				List.of(MeasurementCondition.MODEL, MeasurementCondition.SESSION_ENVIRONMENT_VERSION))).
 			pending(new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")).
 			pending(new PendingDecision.TrialFailures(baselineKey)).
 			pending(new PendingDecision.CalibrationFailure("cap exceeds 300")).

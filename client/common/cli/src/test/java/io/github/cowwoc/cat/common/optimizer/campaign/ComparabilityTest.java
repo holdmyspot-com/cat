@@ -188,4 +188,22 @@ public final class ComparabilityTest
 		requireThat(differing.unavailable(), "unavailable").isEqualTo(
 			"The trial model differs in cell reasoning: working candidate model-b; incumbent baseline model-c.");
 	}
+
+	/**
+	 * Verifies that observations with differing CAT versions remain comparable, campaign-wide and for a cell.
+	 */
+	@Test
+	public void differingCatVersionsAreComparable()
+	{
+		// Requirement: R-M4
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
+		MeasurementIdentity second = first.replaceWith(identity(MeasurementCondition.CAT_VERSION, "2.0",
+			MeasurementCondition.RUNNER_VERSION, "2.0"));
+		Comparability comparability = Comparability.of(first, second);
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
+		requireThat(comparability.differing(), "differing").isEmpty();
+		comparability = Comparability.of(first, second, "formatting");
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
+		requireThat(comparability.differing(), "differing").isEmpty();
+	}
 }

@@ -3,8 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 /**
  * A condition that a measurement identity records, other than the candidate snapshot and time.
  * <p>
- * Every condition is material: a known change to any of them makes earlier results historical and pauses the
- * campaign before the next model call.
+ * Every condition other than the runner and CAT versions is material: a known change to any of them makes earlier
+ * results historical and pauses the campaign before the next model call. The runner and CAT versions are recorded and
+ * reported for information only; the session environment version stands for what they can change in a session.
  */
 public enum MeasurementCondition
 {
@@ -42,11 +43,16 @@ public enum MeasurementCondition
 	 */
 	HARNESS_VERSION,
 	/**
-	 * The runner version.
+	 * The session environment version that the harness's session port declares. CAT changes it only in a release
+	 * that changes what a session's model receives or how its actions take effect.
+	 */
+	SESSION_ENVIRONMENT_VERSION,
+	/**
+	 * The runner version, recorded for information only.
 	 */
 	RUNNER_VERSION,
 	/**
-	 * The CAT version.
+	 * The CAT version, recorded for information only.
 	 */
 	CAT_VERSION,
 	/**
@@ -83,12 +89,28 @@ public enum MeasurementCondition
 			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";
 			case PROVIDER -> "model provider";
 			case HARNESS_VERSION -> "harness version";
+			case SESSION_ENVIRONMENT_VERSION -> "session environment version";
 			case RUNNER_VERSION -> "runner version";
 			case CAT_VERSION -> "CAT version";
 			case LOADER_CONFIGURATION -> "loader configuration";
 			case PROMPT_SOURCES -> "prompt sources";
 			case HOST_TOOLS -> "host tools";
 			case EXTERNAL_SOURCES -> "external sources";
+		};
+	}
+
+	/**
+	 * Indicates whether a known change to the condition is material.
+	 *
+	 * @return {@code true} if a change makes earlier results historical and pauses the campaign; {@code false} if the
+	 *   condition is recorded for information only
+	 */
+	public boolean isMaterial()
+	{
+		return switch (this)
+		{
+			case RUNNER_VERSION, CAT_VERSION -> false;
+			default -> true;
 		};
 	}
 }

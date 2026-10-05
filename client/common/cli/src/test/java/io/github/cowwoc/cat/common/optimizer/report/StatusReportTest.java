@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
@@ -49,11 +50,13 @@ import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
+import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.io.IOException;
@@ -1018,6 +1021,24 @@ public final class StatusReportTest
 		AttemptSummary summary = report.attempts().getFirst();
 		requireThat(summary.historical(), "attemptHistorical").isTrue();
 		requireThat(summary.changed(), "changed").contains(MeasurementCondition.MODEL.name());
+	}
+
+	/**
+	 * Verifies that an attempt certified under a lower required pass rate than the current one is reported as
+	 * historical and names the parameter.
+	 */
+	@Test
+	public void weakerParameterMakesAttemptHistorical()
+	{
+		// Requirement: R-M2
+		DecisionBoundaries current = ReportBoundaries.boundaries();
+		DecisionBoundaries weaker = new DecisionBoundaries(current.level(), new BigDecimal("0.90"), current.cap(),
+			current.minimumCertifyingPasses(), current.maximumClearlyBelowPasses(), current.comparisons());
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(weaker).cell("formatting", 120, 0).
+			cell("safety", 120, 0).outcome(Outcome.CERTIFIED).build();
+		AttemptSummary summary = StatusReport.of(campaign, ReportEvidence.NONE).attempts().getFirst();
+		requireThat(summary.historical(), "historical").isTrue();
+		requireThat(summary.changed(), "changed").isEqualTo(List.of(CertificationParameter.REQUIRED_PASS_RATE.name()));
 	}
 
 	/**

@@ -8,6 +8,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -608,13 +610,15 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		List<AttemptSummary> summaries = new ArrayList<>();
 		for (CertificationAttempt attempt : campaign.attempts())
 		{
-			Applicability applicability = Applicability.of(attempt.candidate().snapshot(), attempt.identity(),
-				campaign.development().working().snapshot(), campaign.identity());
+			Applicability applicability = Applicability.of(attempt, campaign.development().working().snapshot(),
+				campaign.identity(), CertificationParameters.current(attempt.index()));
 			List<String> changed = new ArrayList<>();
 			if (applicability.promptContentChanged())
 				changed.add("PROMPT_CONTENT");
 			for (MeasurementCondition condition : applicability.changed())
 				changed.add(condition.name());
+			for (CertificationParameter parameter : applicability.parameters())
+				changed.add(parameter.name());
 			String outcome = null;
 			if (attempt.outcome() != null)
 				outcome = attempt.outcome().label();

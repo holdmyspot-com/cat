@@ -13,7 +13,8 @@ import java.util.TreeSet;
  * <p>
  * Compares campaign-wide values and values for the same cell, the requirement category under a runner profile.
  * A cell uses its recorded value when present, otherwise the campaign-wide value. Conditions absent from both
- * observations have not been observed and do not prevent comparison.
+ * observations have not been observed and do not prevent comparison, and conditions that are recorded for
+ * information only never prevent it.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -92,6 +93,8 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 		cells.addAll(second.cells().keySet());
 		for (MeasurementCondition condition : MeasurementCondition.values())
 		{
+			if (!condition.isMaterial())
+				continue;
 			String firstValue = first.values().get(condition);
 			String secondValue = second.values().get(condition);
 			addReason(reasons, condition, firstValue, secondValue, null);
@@ -126,6 +129,8 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 		List<String> reasons = new ArrayList<>();
 		for (MeasurementCondition condition : MeasurementCondition.values())
 		{
+			if (!condition.isMaterial())
+				continue;
 			String firstValue = first.valueOf(cell, condition);
 			String secondValue = second.valueOf(cell, condition);
 			if ((firstValue == null) != (secondValue == null))

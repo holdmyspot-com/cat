@@ -3,7 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
+import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +44,7 @@ public final class ApplicabilityTest
 				{MeasurementCondition.REASONING},
 				{MeasurementCondition.PROVIDER},
 				{MeasurementCondition.HARNESS_VERSION},
-				{MeasurementCondition.RUNNER_VERSION},
-				{MeasurementCondition.CAT_VERSION},
+				{MeasurementCondition.SESSION_ENVIRONMENT_VERSION},
 				{MeasurementCondition.LOADER_CONFIGURATION},
 				{MeasurementCondition.PROMPT_SOURCES},
 				{MeasurementCondition.HOST_TOOLS},
@@ -145,5 +149,137 @@ public final class ApplicabilityTest
 			campaign.development().working().snapshot(), campaign.identity());
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
 		requireThat(applicability.changed(), "changed").containsExactly(List.of(MeasurementCondition.MODEL));
+	}
+
+	/**
+	 * Returns one information-only condition per row.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider
+	public static Object[][] informationOnly()
+	{
+		return new Object[][]
+			{
+				{MeasurementCondition.RUNNER_VERSION},
+				{MeasurementCondition.CAT_VERSION}
+			};
+	}
+
+	/**
+	 * Verifies that a change to the runner or CAT version alone keeps a result current.
+	 *
+	 * @param condition the condition that changes
+	 */
+	@Test(dataProvider = "informationOnly")
+	public void versionChangeAloneKeepsResultCurrent(MeasurementCondition condition)
+	{
+		// Requirement: R-M2
+		Sha256 snapshot = Builder.snapshot("candidate");
+		Applicability applicability = Applicability.of(snapshot, Builder.confirmedIdentity("model-a"),
+			snapshot, changed(condition));
+		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(applicability.changed(), "changed").isEmpty();
+	}
+
+	/**
+	 * Returns a current required pass rate per row, with whether a certification recorded at
+	 * {@link BettingProcess#REQUIRED_PASS_RATE} stays current under it.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider
+	public static Object[][] currentPassRates()
+	{
+		BigDecimal recorded = BettingProcess.REQUIRED_PASS_RATE;
+		return new Object[][]
+			{
+				// The recorded threshold is above the current one
+				{recorded.subtract(new BigDecimal("0.01")), true},
+				{recorded, true},
+				// The recorded threshold is below the current one
+				{recorded.add(new BigDecimal("0.01")), false}
+			};
+	}
+
+	/**
+	 * Verifies that a certification stays current while its recorded pass-probability threshold is at least the
+	 * current one, and is historical, naming the parameter, otherwise.
+	 *
+	 * @param currentPassRate the current required pass rate
+	 * @param staysCurrent {@code true} if the certification stays current
+	 */
+	@Test(dataProvider = "currentPassRates")
+	public void passRateDecidesApplicability(BigDecimal currentPassRate, boolean staysCurrent)
+	{
+		// Requirement: R-M2
+		SignificanceLevel level = ErrorBudget.certificationLevel(1);
+		assertParameterApplicability(new CertificationParameters(currentPassRate, level), staysCurrent,
+			CertificationParameter.REQUIRED_PASS_RATE);
+	}
+
+	/**
+	 * Returns a current certification level per row, with whether a certification recorded at the level of the
+	 * first attempt stays current under it.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider
+	public static Object[][] currentLevels()
+	{
+		BigInteger recorded = ErrorBudget.certificationLevel(1).threshold();
+		return new Object[][]
+			{
+				// The recorded level is below the current one
+				{new SignificanceLevel(recorded.subtract(BigInteger.ONE)), true},
+				{new SignificanceLevel(recorded), true},
+				// The recorded level is above the current one
+				{new SignificanceLevel(recorded.add(BigInteger.ONE)), false}
+			};
+	}
+
+	/**
+	 * Verifies that a certification stays current while its recorded certification level is at most the current
+	 * level for its attempt index, and is historical, naming the parameter, otherwise.
+	 *
+	 * @param currentLevel the current certification level
+	 * @param staysCurrent {@code true} if the certification stays current
+	 */
+	@Test(dataProvider = "currentLevels")
+	public void levelDecidesApplicability(SignificanceLevel currentLevel, boolean staysCurrent)
+	{
+		// Requirement: R-M2
+		CertificationParameters current = new CertificationParameters(BettingProcess.REQUIRED_PASS_RATE,
+			currentLevel);
+		assertParameterApplicability(current, staysCurrent, CertificationParameter.CERTIFICATION_LEVEL);
+	}
+
+	/**
+	 * Checks the applicability of an unchanged certification of the first attempt under the current parameters.
+	 *
+	 * @param current the current parameters
+	 * @param staysCurrent {@code true} if the certification must stay current
+	 * @param parameter the parameter that must be named if it does not
+	 */
+	private static void assertParameterApplicability(CertificationParameters current, boolean staysCurrent,
+		CertificationParameter parameter)
+	{
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
+			certificationAttempt(1).cell("formatting", 100, 0).outcome(Outcome.CERTIFIED).build();
+		CertificationAttempt attempt = campaign.attempt(1);
+		Applicability applicability = Applicability.of(attempt, attempt.candidate().snapshot(), attempt.identity(),
+			current);
+		requireThat(applicability.changed(), "changed").isEmpty();
+		requireThat(applicability.promptContentChanged(), "promptContentChanged").isFalse();
+		if (staysCurrent)
+		{
+			requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+			requireThat(applicability.parameters(), "parameters").isEmpty();
+		}
+		else
+		{
+			requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
+			requireThat(applicability.parameters(), "parameters").containsExactly(List.of(parameter));
+		}
 	}
 }

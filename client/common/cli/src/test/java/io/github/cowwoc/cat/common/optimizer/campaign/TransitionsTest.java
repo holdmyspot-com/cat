@@ -463,7 +463,28 @@ public final class TransitionsTest
 	}
 
 	/**
-	 * Returns the version conditions.
+	 * Verifies that a trial observed under another session environment version raises a measurement change, because
+	 * the environment can change trial outcomes.
+	 */
+	@Test
+	public void environmentChangeIsMeasurementChange()
+	{
+		// Requirement: R-M5
+		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		MeasurementIdentity observed = changed(campaign, MeasurementCondition.SESSION_ENVIRONMENT_VERSION);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null, observed,
+			null, List.of()));
+
+		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
+			List.of(MeasurementCondition.SESSION_ENVIRONMENT_VERSION)));
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(counts(10, 0));
+	}
+
+	/**
+	 * Returns the conditions that are recorded for information only.
 	 *
 	 * @return one condition per row
 	 */
@@ -478,13 +499,12 @@ public final class TransitionsTest
 	}
 
 	/**
-	 * Verifies that a trial observed under another runner or CAT version raises a measurement change, because either
-	 * version can change trial outcomes.
+	 * Verifies that a trial observed under another runner or CAT version counts without raising a measurement change.
 	 *
 	 * @param condition the version condition that changes
 	 */
 	@Test(dataProvider = "versionConditions")
-	public void versionChangeIsMeasurementChange(MeasurementCondition condition)
+	public void versionChangeIsNotMeasurementChange(MeasurementCondition condition)
 	{
 		// Requirement: R-M5
 		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
@@ -495,9 +515,8 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null, observed,
 			null, List.of()));
 
-		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
-			List.of(condition)));
-		requireThat(campaign.development().count("safety"), "counts").isEqualTo(counts(10, 0));
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(counts(11, 0));
 	}
 
 	/**

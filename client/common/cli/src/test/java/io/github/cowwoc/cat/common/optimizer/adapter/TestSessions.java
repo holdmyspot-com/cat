@@ -31,6 +31,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	public int sessionEnvironmentVersion()
+	{
+		return 1;
+	}
+
+	@Override
 	public HostLogin hostLogin()
 	{
 		return HostLogin.UNKNOWN;

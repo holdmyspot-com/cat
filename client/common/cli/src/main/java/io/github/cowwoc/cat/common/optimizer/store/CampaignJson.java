@@ -134,7 +134,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 17;
+	private static final int FORMAT_VERSION = 18;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -1295,6 +1295,7 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("level", boundaries.level().threshold().toString());
+		node.put("required_pass_rate", boundaries.requiredPassRate().toPlainString());
 		node.put("cap", boundaries.cap());
 		node.set("minimum_certifying_passes", writeIntegers(boundaries.minimumCertifyingPasses()));
 		node.set("maximum_clearly_below_passes", writeIntegers(boundaries.maximumClearlyBelowPasses()));
@@ -1327,7 +1328,7 @@ final class CampaignJson
 			comparisons.add(new ComparisonBoundaries(comparison, readIntegers(element, "minimum_proven_better_passes"),
 				readIntegers(element, "maximum_proven_worse_passes")));
 		}
-		return new DecisionBoundaries(level(node, "level"), integer(node, "cap"),
+		return new DecisionBoundaries(level(node, "level"), decimal(node, "required_pass_rate"), integer(node, "cap"),
 			readIntegers(node, "minimum_certifying_passes"), readIntegers(node, "maximum_clearly_below_passes"),
 			comparisons);
 	}

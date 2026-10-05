@@ -12,7 +12,8 @@ import java.util.List;
  * @param index the certification index
  * @param outcome the attempt's outcome label, or {@code null} while it runs
  * @param historical {@code true} if CAT knows of a material change since the attempt measured its candidate
- * @param changed the names of the changed conditions, including {@code PROMPT_CONTENT} if the snapshot differs
+ * @param changed the names of the changed conditions, including {@code PROMPT_CONTENT} if the snapshot differs,
+ *   followed by the names of the certification parameters whose recorded value does not imply their current value
  */
 public record AttemptSummary(int index, String outcome, boolean historical, List<String> changed)
 {
@@ -22,7 +23,7 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 	 * @param index the certification index
 	 * @param outcome the attempt's outcome label, or {@code null} while it runs
 	 * @param historical {@code true} if CAT knows of a material change since the attempt measured its candidate
-	 * @param changed the names of the changed conditions
+	 * @param changed the names of the changed conditions and certification parameters
 	 * @throws NullPointerException if {@code changed} is null
 	 * @throws IllegalArgumentException if {@code index} is not positive
 	 */

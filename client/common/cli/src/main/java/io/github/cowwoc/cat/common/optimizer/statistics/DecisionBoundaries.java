@@ -5,6 +5,7 @@ import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Si
 import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.BELOW;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,26 +14,30 @@ import java.util.List;
  * that every later decision is a lookup.
  * <p>
  * Element {@code F} of each list describes the states with {@code F} failures, for {@code F} from 0 to the cap
- * {@code n}. A state {@code (S, F)} certifies when {@code E_up(S, F) > 1 / alpha_i} at null rate 0.95, and is
- * clearly below when {@code E_down(S, F) > 1 / alpha_i}. Each cell, one category under one trial profile, has
- * comparison boundaries that use its own frozen incumbent bounds at {@code K / beta_i} (see {@link Comparison}).
+ * {@code n}. A state {@code (S, F)} certifies when {@code E_up(S, F) > 1 / alpha_i} at the null rate
+ * {@code requiredPassRate}, and is clearly below when {@code E_down(S, F) > 1 / alpha_i}. Each cell, one category under
+ * one trial profile, has comparison boundaries that use its own frozen incumbent bounds at {@code K / beta_i} (see
+ * {@link Comparison}).
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param level                     the attempt's certification level {@code alpha_i}
+ * @param requiredPassRate          the pass probability that a certified cell exceeds
  * @param cap                       the attempt's per-cell cap
  * @param minimumCertifyingPasses   for each {@code F}, the fewest passes that certify, or {@code n - F + 1} if no
  *                                  state within the cap does
  * @param maximumClearlyBelowPasses for each {@code F}, the most passes that are clearly below, or -1 if no state is
  * @param comparisons               the comparison boundaries of each cell, in the contract's cell order
  */
-public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer> minimumCertifyingPasses,
+public record DecisionBoundaries(SignificanceLevel level, BigDecimal requiredPassRate, int cap,
+	List<Integer> minimumCertifyingPasses,
 	List<Integer> maximumClearlyBelowPasses, List<ComparisonBoundaries> comparisons)
 {
 	/**
 	 * Creates a table.
 	 *
 	 * @param level                     the attempt's certification level {@code alpha_i}
+	 * @param requiredPassRate          the pass probability that a certified cell exceeds
 	 * @param cap                       the attempt's per-cell cap
 	 * @param minimumCertifyingPasses   for each {@code F}, the fewest passes that certify, or {@code n - F + 1} if no
 	 *                                  state within the cap does
@@ -40,13 +45,15 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 	 *                                  is
 	 * @param comparisons               the comparison boundaries of each cell, in the contract's cell order
 	 * @throws NullPointerException     if any of the arguments are null, or if a list contains null
-	 * @throws IllegalArgumentException if {@code cap} is not positive, if a list does not have {@code cap + 1}
+	 * @throws IllegalArgumentException if {@code requiredPassRate} is not between 0 and 1, exclusive, if {@code cap}
+	 *                                  is not positive, if a list does not have {@code cap + 1}
 	 *                                  elements, if an element is out of range, if a state would both certify and be
 	 *                                  clearly below, or if a cell's boundaries cover a different cap
 	 */
 	public DecisionBoundaries
 	{
 		requireThat(level, "level").isNotNull();
+		requireThat(requiredPassRate, "requiredPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
 		requireThat(cap, "cap").isPositive();
 		BoundaryLists.requireValid(minimumCertifyingPasses, "minimumCertifyingPasses", maximumClearlyBelowPasses,
 			"maximumClearlyBelowPasses", cap);
@@ -82,7 +89,8 @@ public record DecisionBoundaries(SignificanceLevel level, int cap, List<Integer>
 		List<ComparisonBoundaries> comparisonBoundaries = new ArrayList<>(comparisons.size());
 		for (Comparison comparison : comparisons)
 			comparisonBoundaries.add(ComparisonBoundaries.compute(comparison, cap));
-		return new DecisionBoundaries(certificationLevel, cap, minimums, maximums, comparisonBoundaries);
+		return new DecisionBoundaries(certificationLevel, REQUIRED_PASS_RATE, cap, minimums, maximums,
+			comparisonBoundaries);
 	}
 
 	/**

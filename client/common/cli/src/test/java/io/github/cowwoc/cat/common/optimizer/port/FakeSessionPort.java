@@ -21,6 +21,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class FakeSessionPort implements SessionPort
 {
+	/**
+	 * The session environment version that every fake port reports.
+	 */
+	public static final int SESSION_ENVIRONMENT_VERSION = 7;
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final Optional<String> heldOutExposure;
@@ -75,6 +79,12 @@ public final class FakeSessionPort implements SessionPort
 		this.login = login;
 		this.heldOutExposure = heldOutExposure;
 		this.runRoots = List.copyOf(runRoots);
+	}
+
+	@Override
+	public int sessionEnvironmentVersion()
+	{
+		return SESSION_ENVIRONMENT_VERSION;
 	}
 
 	@Override

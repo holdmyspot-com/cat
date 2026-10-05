@@ -24,6 +24,15 @@ public interface SessionPort
 	SessionHandle start(SessionRequest request) throws IOException;
 
 	/**
+	 * Returns the version of the environment in which this port's sessions run: the injected content, the hooks, the
+	 * settings and limits that the runner applies, and the sandbox. A release of CAT changes it only when it changes
+	 * what a session's model receives or how its actions take effect.
+	 *
+	 * @return the harness's session environment version
+	 */
+	int sessionEnvironmentVersion();
+
+	/**
 	 * Renders a completed trial's recorded activity and file changes for the judge.
 	 *
 	 * @param evidence the trial's retained transcript and effects

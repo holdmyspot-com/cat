@@ -824,6 +824,8 @@ public final class OptimizerCore implements Core
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, scope.harness().commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, scope.harnessVersion());
+		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+			String.valueOf(scope.sessions().sessionEnvironmentVersion()));
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(inventory));

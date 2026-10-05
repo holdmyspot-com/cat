@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
@@ -111,6 +112,8 @@ final class DeliveryJson
 		ArrayNode changed = node.putArray("changed");
 		for (MeasurementCondition condition : applicability.changed())
 			changed.add(condition.name());
+		for (CertificationParameter parameter : applicability.parameters())
+			changed.add(parameter.name());
 	}
 
 	/**

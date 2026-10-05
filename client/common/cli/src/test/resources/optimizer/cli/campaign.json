@@ -1,5 +1,5 @@
 {
-  "format_version" : 17,
+  "format_version" : 18,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -229,6 +229,7 @@
       "REASONING" : "reasoning-1",
       "PROVIDER" : "provider-1",
       "HARNESS_VERSION" : "harness_version-1",
+      "SESSION_ENVIRONMENT_VERSION" : "session_environment_version-1",
       "RUNNER_VERSION" : "runner_version-1",
       "CAT_VERSION" : "cat_version-1",
       "LOADER_CONFIGURATION" : "loader_configuration-1",
@@ -279,6 +280,7 @@
         "REASONING" : "reasoning-1",
         "PROVIDER" : "provider-1",
         "HARNESS_VERSION" : "harness_version-1",
+        "SESSION_ENVIRONMENT_VERSION" : "session_environment_version-1",
         "RUNNER_VERSION" : "runner_version-1",
         "CAT_VERSION" : "cat_version-1",
         "LOADER_CONFIGURATION" : "loader_configuration-1",

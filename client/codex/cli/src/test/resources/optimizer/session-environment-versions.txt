@@ -1,0 +1,5 @@
+# The session environment versions that CodexSessions has declared, one per line, each followed by the SHA-256 hash
+# of the configuration and permission profile that the runner writes for the fixed input of
+# CodexSessionEnvironmentVersionTest. When the hash changes, increment the version in CodexSessions and add a line for
+# the new version.
+1 f462e8c93c0cde28e95a5d398fa571af82beb82cee3c4b5fe1c6be5f2ea853be

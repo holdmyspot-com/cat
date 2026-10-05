@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +85,17 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	{
 		requireThat(cell, "category").isNotNull();
 		return counts.getOrDefault(cell, CellCounts.EMPTY);
+	}
+
+	/**
+	 * Returns the parameters of the attempt's claim, which its frozen procedure records.
+	 *
+	 * @return the parameters
+	 */
+	public CertificationParameters parameters()
+	{
+		DecisionBoundaries boundaries = procedure.boundaries();
+		return new CertificationParameters(boundaries.requiredPassRate(), boundaries.level());
 	}
 
 	/**

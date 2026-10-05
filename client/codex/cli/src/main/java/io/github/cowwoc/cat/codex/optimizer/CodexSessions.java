@@ -34,6 +34,13 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexSessions extends RunnerSessions
 {
 	/**
+	 * The version of the environment that Codex sessions run in. Increment it in every release that changes what a
+	 * session's model receives or how its actions take effect, and register the new version with the hash of the
+	 * configuration and permission profile that the runner writes.
+	 */
+	private static final int SESSION_ENVIRONMENT_VERSION = 1;
+
+	/**
 	 * Creates a port that runs sessions through the real Codex runner.
 	 *
 	 * @param settings how the runner is configured
@@ -54,6 +61,12 @@ public final class CodexSessions extends RunnerSessions
 	CodexSessions(Settings settings, Bridge bridge)
 	{
 		super(HARNESS_ID, settings, bridge);
+	}
+
+	@Override
+	public int sessionEnvironmentVersion()
+	{
+		return SESSION_ENVIRONMENT_VERSION;
 	}
 
 	@Override

@@ -263,6 +263,39 @@ public final class DriverTest
 	}
 
 	/**
+	 * A CAT and runner version change between trials neither pauses the campaign nor replaces the recorded versions.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-M5
+	@Test
+	public void catVersionChangeDoesNotPause() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("version-change")),
+				new Builder().confirmed().working(1).readyBaseline().development("formatting", 49, 0).
+					development("safety", 49, 0).ceiling(1).build());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count("formatting").outcomes() >= 50 &&
+					state.development().count("safety").outcomes() >= 50);
+			}
+			harness.observe(MeasurementCondition.CAT_VERSION, "cat_version-2");
+			harness.observe(MeasurementCondition.RUNNER_VERSION, "runner_version-2");
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state ->
+					state.development().count("formatting").outcomes() >= 51 &&
+						state.development().count("safety").outcomes() >= 51);
+				requireThat(campaign.pending(), "pending").isNull();
+				requireThat(campaign.identity().values().get(MeasurementCondition.CAT_VERSION), "catVersion").
+					isEqualTo("cat_version-1");
+			}
+		}
+	}
+
+	/**
 	 * Reloaded status retains trial, judge and author usage, including rejected author outputs.
 	 *
 	 * @throws IOException if the fixture cannot be used
@@ -3721,6 +3754,12 @@ public final class DriverTest
 	{
 		return new SessionPort()
 		{
+			@Override
+			public int sessionEnvironmentVersion()
+			{
+				return delegate.sessionEnvironmentVersion();
+			}
+
 			@Override
 			public String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException
 			{

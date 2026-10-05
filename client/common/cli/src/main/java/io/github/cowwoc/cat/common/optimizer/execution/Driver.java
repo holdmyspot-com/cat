@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
@@ -1596,12 +1597,18 @@ public final class Driver implements AutoCloseable
 		Applicability applicability = null;
 		if (result instanceof DeliveryResult.Delivered delivered)
 		{
-			MeasurementIdentity measured = campaign.identity();
-			if (request.attempt() > 0)
-				measured = campaign.attempt(request.attempt()).identity();
 			Sha256 snapshot = request.candidate().snapshot();
-			applicability = SliceReports.combine(delivered.applicability(), Applicability.of(snapshot, measured,
-				snapshot, campaign.identity().replaceWith(context.environment())));
+			MeasurementIdentity current = campaign.identity().replaceWith(context.environment());
+			Applicability measurement;
+			if (request.attempt() > 0)
+			{
+				CertificationAttempt attempt = campaign.attempt(request.attempt());
+				measurement = Applicability.of(attempt, snapshot, current,
+					CertificationParameters.current(attempt.index()));
+			}
+			else
+				measurement = Applicability.of(snapshot, campaign.identity(), snapshot, current);
+			applicability = SliceReports.combine(delivered.applicability(), measurement);
 		}
 		delivery = new DeliveryReport(result, applicability);
 		return true;

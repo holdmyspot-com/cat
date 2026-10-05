@@ -84,8 +84,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
-	 * Returns the conditions that both identities record with different values, for the whole campaign or for the
-	 * same cell.
+	 * Returns the material conditions that both identities record with different values, for the whole campaign or
+	 * for the same cell.
 	 *
 	 * @param other another identity
 	 * @return the differing conditions, in declaration order
@@ -98,8 +98,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
-	 * Returns the conditions recorded by only one identity, for the whole campaign or for the same cell. Conditions
-	 * absent from both identities are excluded.
+	 * Returns the material conditions recorded by only one identity, for the whole campaign or for the same cell.
+	 * Conditions absent from both identities are excluded.
 	 *
 	 * @param other another identity
 	 * @return the conditions with missing data, in declaration order
@@ -112,7 +112,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
-	 * Returns the conditions whose recorded values are not equal, including those that only one identity records.
+	 * Returns the material conditions whose recorded values are not equal, including those that only one identity
+	 * records.
 	 *
 	 * @param other another identity
 	 * @return the conditions, in declaration order
@@ -125,8 +126,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
-	 * Returns the conditions for which a comparison of the two identities' values holds, for the whole campaign or
-	 * for any cell.
+	 * Returns the material conditions for which a comparison of the two identities' values holds, for the whole
+	 * campaign or for any cell.
 	 *
 	 * @param other another identity
 	 * @param differs compares this identity's value of a condition with {@code other}'s; a value that is not
@@ -140,6 +141,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 		List<MeasurementCondition> conditions = new ArrayList<>();
 		for (MeasurementCondition condition : MeasurementCondition.values())
 		{
+			if (!condition.isMaterial())
+				continue;
 			boolean found = differs.test(values.get(condition), other.values.get(condition));
 			for (String cell : cellIds)
 			{
