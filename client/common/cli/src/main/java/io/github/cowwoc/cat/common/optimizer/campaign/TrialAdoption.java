@@ -317,7 +317,7 @@ final class TrialAdoption
 	/**
 	 * Restores a promoted candidate's predecessor when its Wilson upper bound in an addressed cell is below the
 	 * predecessor's observed representative pass rate. The withdrawn evidence stays available for diagnosis and the
-	 * selected attempt becomes an unproductive round attempt before the plateau policy runs.
+	 * selected attempt becomes an unproductive round attempt before a complete round ends.
 	 *
 	 * @param draft the campaign state after adopting a representative development outcome
 	 * @param cell the outcome's cell
@@ -352,11 +352,8 @@ final class TrialAdoption
 		draft.slowStart = SlowStart.INITIAL;
 		if (draft.round.weak())
 		{
-			if (Plateau.isReached(draft.round))
-			{
-				draft.outcome = Outcome.PLATEAU;
-				draft.raise(new PendingDecision.PlateauReached());
-			}
+			if (Plateau.isComplete(draft.round))
+				endUnproductiveRound(draft);
 		}
 		else
 			rejectAuthorAttempt(draft, predecessor.cell());
@@ -655,7 +652,7 @@ final class TrialAdoption
 				retainAttempt(draft, attempt, accepted, false);
 			}
 		}
-		if (!Plateau.isReached(round))
+		if (!Plateau.isComplete(round))
 			return;
 		Optional<AuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
 			draft.working.snapshot(), draft.regressionSet, draft.instanceOutcomes);
@@ -665,8 +662,28 @@ final class TrialAdoption
 			retainAttempt(draft, draft.author, true, true);
 			return;
 		}
-		draft.outcome = Outcome.PLATEAU;
-		draft.raise(new PendingDecision.PlateauReached());
+		endUnproductiveRound(draft);
+	}
+
+	/**
+	 * Ends a complete round that produced no promotable attempt. While a cell of the working candidate has more than
+	 * {@value EditOrContinue#FAILURE_LIMIT} representative development failures, reports a plateau and keeps the round
+	 * for the user's decision. Otherwise the round ends, the working candidate stays, and its representative trials
+	 * resume with a concurrency window of one; the round's attempts and author diagnoses remain in the optimization
+	 * evidence.
+	 *
+	 * @param draft the state, whose round is complete
+	 */
+	private static void endUnproductiveRound(Draft draft)
+	{
+		if (Plateau.isReached(draft.round, draft.developmentCounts))
+		{
+			draft.outcome = Outcome.PLATEAU;
+			draft.raise(new PendingDecision.PlateauReached());
+			return;
+		}
+		draft.round = null;
+		draft.slowStart = SlowStart.INITIAL;
 	}
 
 	/**
@@ -754,8 +771,8 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Counts a rejected author attempt against its round category and reports a plateau once every category has
-	 * used its attempts.
+	 * Counts a rejected author attempt against its round category and ends the round once every category has used its
+	 * attempts.
 	 *
 	 * @param draft the state
 	 * @param cell the round category
@@ -766,11 +783,8 @@ final class TrialAdoption
 		attempts.put(cell, attempts.get(cell) + 1);
 		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
 			draft.round.validationAttempts());
-		if (Plateau.isReached(draft.round))
-		{
-			draft.outcome = Outcome.PLATEAU;
-			draft.raise(new PendingDecision.PlateauReached());
-		}
+		if (Plateau.isComplete(draft.round))
+			endUnproductiveRound(draft);
 	}
 
 	/**

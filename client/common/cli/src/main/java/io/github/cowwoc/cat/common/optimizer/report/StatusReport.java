@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
+import io.github.cowwoc.cat.common.optimizer.campaign.EditOrContinue;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
@@ -406,7 +407,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				"attempt " + proven.attempt() + " proved an improvement without certifying";
 			case PendingDecision.RegressionTradeOff tradeOff ->
 				"attempt " + tradeOff.attempt() + " certified but is proven worse in a cell";
-			case PendingDecision.PlateauReached _ -> "a full development round produced no stronger candidate";
+			case PendingDecision.PlateauReached _ -> "a full development round produced no stronger candidate while a " +
+				"cell has more than " + EditOrContinue.FAILURE_LIMIT + " failures";
 			case PendingDecision.CertificationUnavailable unavailable -> unavailable.outcome().label();
 			case PendingDecision.AuthorityWarnings warnings ->
 			{

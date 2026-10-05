@@ -23,7 +23,8 @@ public enum Outcome
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
 	/**
-	 * A full development round produced no stronger candidate.
+	 * A full development round produced no stronger candidate while the working candidate has more than
+	 * {@value EditOrContinue#FAILURE_LIMIT} failures in a cell.
 	 */
 	PLATEAU("not certified: plateau"),
 	/**

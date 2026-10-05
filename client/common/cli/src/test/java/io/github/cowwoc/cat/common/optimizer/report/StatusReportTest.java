@@ -31,6 +31,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.EditOrContinue;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -1126,6 +1127,22 @@ public final class StatusReportTest
 			isEqualTo("awaiting_user");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
 			isEqualTo(Phase.UNCONFIRMED);
+	}
+
+	/**
+	 * Verifies that the plateau decision names the failure limit that the working candidate exceeded.
+	 */
+	@Test
+	public void plateauNamesFailureLimit()
+	{
+		Campaign campaign = confirmed().working(1).development("safety", 60, 3).outcome(Outcome.PLATEAU).
+			pending(new PendingDecision.PlateauReached()).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.pending(), "pending").isEqualTo("a full development round produced no stronger " +
+			"candidate while a cell has more than " + EditOrContinue.FAILURE_LIMIT + " failures");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("more than " + EditOrContinue.FAILURE_LIMIT + " failures");
 	}
 
 	/**

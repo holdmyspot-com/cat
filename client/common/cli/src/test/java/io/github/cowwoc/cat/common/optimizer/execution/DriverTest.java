@@ -860,8 +860,7 @@ public final class DriverTest
 								requireThat(run.trial(), "reductionReferenceIdentity").isEqualTo(reference);
 						}
 					}
-					return state.development().working().number() == 2 ||
-						state.pending() instanceof PendingDecision.PlateauReached;
+					return state.development().round() == null;
 				});
 				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
 				for (AttemptResult attempt : decided.optimization().attempts())
@@ -927,8 +926,7 @@ public final class DriverTest
 						harness.snapshot(request).equals(Builder.snapshot("candidate-1"))).count(),
 					"referenceStartsIncludingResume").isEqualTo(2);
 
-				Campaign decided = harness.runUntil(driver, state ->
-					state.pending() instanceof PendingDecision.PlateauReached);
+				Campaign decided = harness.runUntil(driver, state -> state.development().round() == null);
 				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
 				for (AttemptResult attempt : decided.optimization().attempts())
 				{
@@ -1318,7 +1316,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that no-edit classifications survive the round ending at a plateau.
+	 * Verifies that no-edit classifications survive the end of a round without a promotion.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -1337,7 +1335,7 @@ public final class DriverTest
 				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
 			try (Driver driver = harness.open())
 			{
-				Campaign ended = harness.runUntil(driver, state -> state.outcome() == Outcome.PLATEAU);
+				Campaign ended = harness.runUntil(driver, state -> state.development().round() == null);
 				requireThat(ended.candidates(), "candidates").isEqualTo(1);
 				requireThat(ended.optimization().authors().size(), "diagnoses").isEqualTo(2);
 				requireThat(ended.optimization().authors().getFirst().classifications().values(), "classification").
@@ -1347,6 +1345,45 @@ public final class DriverTest
 				requireThat(diagnoses.size(), "reportedDiagnoses").isEqualTo(2);
 				requireThat(diagnoses.toString(), "diagnoses").contains("\"not_guidance\"");
 				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("not guidance");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a campaign whose only round produced no promotable attempt keeps its working candidate and keeps
+	 * admitting that candidate's representative trials while every cell has at most the failure limit.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void failedRoundResumesSampling() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failed-round")),
+				authoring().build());
+			Candidate working = harness.campaign().development().working();
+			harness.trials(request ->
+			{
+				if (harness.snapshot(request).equals(working.snapshot()))
+					return harness.passed();
+				return harness.failed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> state.development().round() == null);
+				requireThat(ended.outcome(), "outcome").isNull();
+				requireThat(ended.pending(), "pending").isNull();
+				requireThat(ended.development().working(), "working").isEqualTo(working);
+				requireThat(ended.optimization().attempts().size(), "retainedAttempts").isEqualTo(2);
+				requireThat(ended.optimization().attempts().stream().noneMatch(AttemptResult::accepted), "accepted").
+					isTrue();
+				int before = developmentOutcomes(ended);
+
+				Campaign sampled = harness.runUntil(driver, state -> developmentOutcomes(state) > before + 1);
+				requireThat(sampled.development().working(), "sampledWorking").isEqualTo(working);
+				requireThat(sampled.outcome(), "sampledOutcome").isNull();
+				requireThat(harness.author().briefs().size(), "authors").isEqualTo(2);
 			}
 		}
 	}

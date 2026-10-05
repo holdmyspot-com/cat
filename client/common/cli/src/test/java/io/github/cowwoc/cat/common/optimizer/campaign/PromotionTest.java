@@ -327,9 +327,11 @@ public final class PromotionTest
 		TrialInstance repeated = new TrialInstance(formal.cellId(), formal.categoryId(), formal.testId(),
 			formal.choices(), formal.turns(), formal.expectedBehaviour(), formal.generator(), formal.streamKind(),
 			formal.streamPosition() + 1, true);
-		Campaign campaign = new Builder().confirmed().working(1).failure(new Failure(logs, "failure", List.of(), null,
-			List.of(new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
+		// Failures above the limit keep a round without a winner, so its contenders remain inspectable
+		Campaign campaign = new Builder().confirmed().working(1).
+			development("safety", 0, EditOrContinue.FAILURE_LIMIT + 1).failure(new Failure(logs, "failure", List.of(),
+				null, List.of(new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
+					new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
 			round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
 		Sha256 working = campaign.development().working().snapshot();
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -398,7 +400,7 @@ public final class PromotionTest
 			campaign.development().instanceOutcomes()), "pendingReference").isEqualTo(Promotion.Decision.PENDING);
 		campaign = TransitionSteps.complete(campaign, reference, Verdict.PASS);
 		requireThat(campaign.development().author(), "regressingAttempt").isNull();
-		requireThat(campaign.outcome(), "plateau").isEqualTo(Outcome.PLATEAU);
+		requireThat(campaign.development().round(), "endedRound").isNull();
 		requireThat(campaign.lineage().regressionSet().getFirst().working(), "sharedVerdict").isEqualTo(Verdict.PASS);
 	}
 

@@ -82,7 +82,8 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that every cell above the threshold keeps the sequential two-attempt policy.
+	 * Verifies that every cell above the threshold keeps the sequential two-attempt policy: two attempts complete the
+	 * round.
 	 */
 	@Test
 	public void strongRoundKeepsSequentialAttempts()
@@ -95,7 +96,7 @@ public final class AttemptSelectionTest
 		for (int attempt = 0; attempt < 2; ++attempt)
 			campaign = TransitionSteps.submit(campaign, "safety",
 				campaign.development().working().snapshot(), List.of());
-		requireThat(campaign.outcome(), "roundOutcome").isEqualTo(Outcome.PLATEAU);
+		requireThat(campaign.development().round(), "endedRound").isNull();
 	}
 
 	/**
@@ -235,7 +236,7 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that no accepted attempt means no winner and a plateau only after the complete round.
+	 * Verifies that no accepted attempt means no winner, and that the round ends only once it is complete.
 	 */
 	// Requirement: R-D3
 	@Test
@@ -252,10 +253,11 @@ public final class AttemptSelectionTest
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
 				Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "logs"), Verdict.PASS);
 			if (attempt < 3)
-				requireThat(campaign.outcome(), "incompleteRound").isNull();
+				requireThat(campaign.development().round(), "incompleteRound").isNotNull();
 		}
 		requireThat(campaign.development().author(), "winner").isNull();
-		requireThat(campaign.outcome(), "completedRound").isEqualTo(Outcome.PLATEAU);
+		requireThat(campaign.development().round(), "completedRound").isNull();
+		requireThat(campaign.development().working().number(), "working").isEqualTo(1);
 	}
 
 	/**

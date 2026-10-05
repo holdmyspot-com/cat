@@ -12,7 +12,6 @@ import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
-import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
@@ -364,8 +363,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign reverted = failDevelopment(reloaded);
 			requireThat(reverted.development().working().number(), "working").isEqualTo(1);
 			requireThat(reverted.development().count("safety"), "counts").isEqualTo(Builder.counts(99, 1));
-			requireThat(reverted.outcome(), "outcome").
-				isEqualTo(Outcome.PLATEAU);
+			requireThat(reverted.development().round(), "endedRound").isNull();
+			requireThat(reverted.outcome(), "outcome").isNull();
 			new FileCampaignStore(base, JSON).replaceSnapshot(reverted);
 			requireThat(new FileCampaignStore(base, JSON).load(ID).orElseThrow(), "reloadedRevert").isEqualTo(reverted);
 		}

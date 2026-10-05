@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -23,11 +24,12 @@ public final class RevertTest
 	}
 
 	/**
-	 * A worse promoted candidate restores the predecessor's retained evidence and completes an unproductive round.
+	 * A worse promoted candidate restores the predecessor's retained evidence and completes an unproductive round,
+	 * after which the predecessor resumes sampling because every cell has at most the failure limit.
 	 */
 	// Requirement: R-D15
 	@Test
-	public void restoresPredecessorAndReachesPlateau()
+	public void restoresPredecessorAndResumesSampling()
 	{
 		Campaign predecessor = predecessor(99, 1, Map.of("safety", 1));
 		Campaign promoted = promote(predecessor);
@@ -44,6 +46,26 @@ public final class RevertTest
 			isEqualTo(Builder.counts(0, 1));
 		requireThat(reverted.development().reverts().getFirst().development().failures().size(), "withdrawnFailures").
 			isEqualTo(1);
+		requireThat(reverted.outcome(), "outcome").isNull();
+		requireThat(reverted.pending(), "pendingDecision").isNull();
+		requireThat(reverted.development().round(), "round").isNull();
+		requireThat(reverted.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
+		requireThat(Scheduler.plan(reverted, Instant.parse("2026-10-01T12:00:00Z"), 8).stream().
+			filter(admission -> admission instanceof Admission.Assign assign &&
+				assign.purpose() == Purpose.DEVELOPMENT).count(), "developmentAdmissions").isEqualTo(1L);
+	}
+
+	/**
+	 * A revert that completes an unproductive round reaches a plateau while the restored predecessor has more than the
+	 * failure limit in a cell.
+	 */
+	@Test
+	public void restoresPredecessorAndReachesPlateau()
+	{
+		Campaign predecessor = predecessor(97, EditOrContinue.FAILURE_LIMIT + 1, Map.of("safety", 1));
+		Campaign reverted = TransitionSteps.adopt(promote(predecessor), Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
+
+		requireThat(reverted.development().working(), "working").isEqualTo(predecessor.development().working());
 		requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
 		requireThat(reverted.pending(), "pendingDecision").
 			isEqualTo(new PendingDecision.PlateauReached());
@@ -52,7 +74,7 @@ public final class RevertTest
 
 	/**
 	 * A blocking failure that makes the promoted candidate worse than its predecessor restores the predecessor and its
-	 * round instead of starting a round for the withdrawn candidate.
+	 * round instead of starting a round for the withdrawn candidate. The restored round is complete, so it ends.
 	 */
 	@Test
 	public void blockingFailureRestoresPredecessor()
@@ -65,8 +87,8 @@ public final class RevertTest
 
 		requireThat(reverted.development().working(), "working").isEqualTo(predecessor.development().working());
 		requireThat(reverted.development().counts(), "counts").isEqualTo(predecessor.development().counts());
-		requireThat(reverted.development().round().attempts(), "attempts").isEqualTo(Map.of("safety", 2));
-		requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
+		requireThat(reverted.development().round(), "round").isNull();
+		requireThat(reverted.outcome(), "outcome").isNull();
 	}
 
 	/**
