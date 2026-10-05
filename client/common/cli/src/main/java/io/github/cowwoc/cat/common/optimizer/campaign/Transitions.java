@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -123,13 +125,7 @@ public final class Transitions
 				draft.raise(new PendingDecision.UnownedChange(change.description()));
 			}
 			case CampaignEvent.ReportUnavailable report -> reportUnavailable(draft, report.outcome());
-			case CampaignEvent.WarnAuthority warn ->
-			{
-				requireConfirmed(draft);
-				if (draft.revisionRequested)
-					throw new IllegalStateException("The campaign waits for a contract revision");
-				draft.raise(new PendingDecision.AuthorityWarnings(warn.warnings()));
-			}
+			case CampaignEvent.WarnAuthority warn -> warnAuthority(draft, warn.warnings());
 		}
 		TrialAdoption.settle(draft);
 		TrialAdoption.checkReviewPoints(draft);
@@ -789,5 +785,43 @@ public final class Transitions
 		draft.unavailable.add(outcome);
 		draft.outcome = outcome;
 		draft.raise(new PendingDecision.CertificationUnavailable(outcome));
+	}
+
+	/**
+	 * Asks the user about reported edits outside the edit authority. Warnings that the user already answered by
+	 * choosing to use an authorized source are dropped; if none remain, nothing is raised. The remaining warnings join
+	 * the pending warning decision in its place, after the warnings it already lists, or else form one new decision.
+	 * Each warning is listed once, in report order.
+	 *
+	 * @param draft the state
+	 * @param warnings the reported warnings, in report order
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or waits for a
+	 *   revision
+	 */
+	private static void warnAuthority(Draft draft, List<AuthorityWarning> warnings)
+	{
+		requireConfirmed(draft);
+		if (draft.revisionRequested)
+			throw new IllegalStateException("The campaign waits for a contract revision");
+		Set<AuthorityWarning> remaining = new LinkedHashSet<>(warnings);
+		draft.answeredWarnings.forEach(remaining::remove);
+		if (remaining.isEmpty())
+			return;
+
+		for (int i = 0; i < draft.pendingDecisions.size(); ++i)
+		{
+			if (draft.pendingDecisions.get(i) instanceof PendingDecision.AuthorityWarnings pending)
+			{
+				List<AuthorityWarning> merged = new ArrayList<>(pending.warnings());
+				for (AuthorityWarning warning : remaining)
+				{
+					if (!merged.contains(warning))
+						merged.add(warning);
+				}
+				draft.pendingDecisions.set(i, new PendingDecision.AuthorityWarnings(merged));
+				return;
+			}
+		}
+		draft.raise(new PendingDecision.AuthorityWarnings(List.copyOf(remaining)));
 	}
 }

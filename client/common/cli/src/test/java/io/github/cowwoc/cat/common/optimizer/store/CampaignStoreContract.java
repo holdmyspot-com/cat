@@ -349,6 +349,34 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * The warnings that the user answered by using an authorized source, including one whose link forms a cycle,
+	 * survive a reload in answer order.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void answeredWarningsSurviveReload() throws IOException
+	{
+		// Requirement: R-W4
+		try (StoreFixture fixture = open())
+		{
+			List<AuthorityWarning.Choice> choices = List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN);
+			Campaign campaign = new Builder().header(header("campaign-answered")).confirmed().working(1).
+				answered(new AuthorityWarning("R1", Path.of("docs/reply-rules.md"), Path.of("/external/reply-rules.md"),
+					Limit.EXTERNAL_TARGET_READ_ONLY, choices)).
+				answered(new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,
+					choices)).
+				build();
+			fixture.store().replaceSnapshot(campaign);
+
+			Campaign loaded = fixture.reopen().load("campaign-answered").orElseThrow();
+
+			requireThat(loaded.answeredWarnings(), "answeredWarnings").isEqualTo(campaign.answeredWarnings());
+		}
+	}
+
+	/**
 	 * Every lifecycle state survives a reload.
 	 *
 	 * @throws IOException if the store fails

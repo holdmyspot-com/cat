@@ -58,19 +58,20 @@ public final class AuthorityWarningsTest
 	}
 
 	/**
-	 * Verifies that using an authorized source answers the decision and leaves the rest of the campaign unchanged.
+	 * Verifies that using an authorized source answers the decision, records its warning as answered and leaves the
+	 * rest of the campaign unchanged.
 	 */
 	@Test
 	public void useAuthorizedSourceContinuesUnchanged()
 	{
 		// Requirement: R-W4
 		Campaign campaign = new Builder().confirmed().working(1).build();
-		Campaign warned = Transitions.apply(campaign,
-			new CampaignEvent.WarnAuthority(List.of(readOnly("shared.md", TARGET))));
+		AuthorityWarning warning = readOnly("shared.md", TARGET);
+		Campaign warned = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(warning)));
 
 		Campaign answered = Transitions.apply(warned, CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 
-		requireThat(answered, "answered").isEqualTo(campaign);
+		requireThat(answered, "answered").isEqualTo(new Builder().confirmed().working(1).answered(warning).build());
 	}
 
 	/**

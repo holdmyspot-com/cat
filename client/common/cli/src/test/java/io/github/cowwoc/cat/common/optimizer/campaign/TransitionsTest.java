@@ -11,6 +11,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
@@ -997,5 +999,91 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "resumed").isFalse();
+	}
+
+	/**
+	 * Returns a warning that requirement {@code R1} needs an edit through a link to a read-only external file.
+	 *
+	 * @param link the link path
+	 * @return the warning
+	 */
+	private static AuthorityWarning externalWarning(String link)
+	{
+		return new AuthorityWarning("R1", Path.of(link), Path.of("/external").resolve(link),
+			Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
+				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
+	}
+
+	/**
+	 * Verifies that warnings reported while a warning decision is pending join that decision at its position in the
+	 * pending list, each warning listed once in report order, instead of raising another decision.
+	 */
+	@Test
+	public void warningsJoinThePendingWarningDecision()
+	{
+		// Requirement: R-W4
+		PendingDecision unowned = new PendingDecision.UnownedChange("edited CLAUDE.md");
+		Campaign campaign = new Builder().confirmed().working(1).pending(unowned).build();
+		AuthorityWarning shared = externalWarning("shared.md");
+		AuthorityWarning other = externalWarning("other.md");
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(shared)));
+		campaign = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(other, shared, other)));
+
+		requireThat(campaign.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(unowned,
+			new PendingDecision.AuthorityWarnings(List.of(shared, other))));
+	}
+
+	/**
+	 * Verifies that once the user answers a warning by using an authorized source, the same warning reported again
+	 * raises no decision.
+	 */
+	@Test
+	public void answeredWarningRaisesNothing()
+	{
+		// Requirement: R-W4
+		AuthorityWarning shared = externalWarning("shared.md");
+		Campaign campaign = Transitions.apply(new Builder().confirmed().working(1).build(),
+			new CampaignEvent.WarnAuthority(List.of(shared)));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
+
+		Campaign warnedAgain = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(shared, shared)));
+
+		requireThat(warnedAgain.pending(), "pending").isNull();
+		requireThat(warnedAgain.answeredWarnings(), "answeredWarnings").isEqualTo(List.of(shared));
+	}
+
+	/**
+	 * Verifies that a report holding an answered warning and a new one raises a decision that lists only the new one.
+	 */
+	@Test
+	public void newWarningAfterAnswerListsOnlyIt()
+	{
+		// Requirement: R-W4
+		AuthorityWarning shared = externalWarning("shared.md");
+		AuthorityWarning other = externalWarning("other.md");
+		Campaign campaign = new Builder().confirmed().working(1).answered(shared).build();
+
+		Campaign warned = Transitions.apply(campaign, new CampaignEvent.WarnAuthority(List.of(shared, other)));
+
+		requireThat(warned.pending(), "pending").
+			isEqualTo(new PendingDecision.AuthorityWarnings(List.of(other)));
+	}
+
+	/**
+	 * Verifies that stopping at a warning decision or revising the contract records no answered warning.
+	 */
+	@Test
+	public void stopAndReviseRecordNoAnsweredWarning()
+	{
+		// Requirement: R-W4
+		Campaign campaign = new Builder().confirmed().working(1).
+			pending(new PendingDecision.AuthorityWarnings(List.of(externalWarning("shared.md")))).build();
+
+		Campaign stopped = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
+		Campaign revised = Transitions.apply(campaign, new CampaignEvent.Revise());
+
+		requireThat(stopped.answeredWarnings(), "stopped.answeredWarnings").isEmpty();
+		requireThat(revised.answeredWarnings(), "revised.answeredWarnings").isEmpty();
 	}
 }

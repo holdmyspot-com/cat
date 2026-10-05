@@ -1920,7 +1920,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code choose use_authorized_source} answers a pending warning about an edit to an external file,
-	 * which is read-only, and records nothing that would let a later author attempt edit the file.
+	 * which is read-only, and records the warning as answered so that a later report of it asks the user nothing.
 	 *
 	 * @throws Exception if the owned repository or store fails
 	 */
@@ -1955,8 +1955,7 @@ public final class OptimizerCoreTest
 			requireThat(result.status().authorityWarnings(), "warnings").isEmpty();
 			Campaign stored = repository.load(id);
 			requireThat(stored.pending(), "pending").isNull();
-			String json = Files.readString(repository.directory(id).resolve("held_out/campaign.json"));
-			requireThat(json, "json").doesNotContain(target.toString());
+			requireThat(stored.answeredWarnings(), "answeredWarnings").isEqualTo(List.of(warning));
 		}
 	}
 

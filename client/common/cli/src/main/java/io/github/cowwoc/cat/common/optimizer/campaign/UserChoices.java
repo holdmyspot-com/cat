@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -70,7 +72,7 @@ final class UserChoices
 				draft.outcome = Outcome.NOT_CERTIFIED;
 				finish(draft, new DeliveryRequest(draft.working, 0, Outcome.NOT_CERTIFIED));
 			}
-			case USE_AUTHORIZED_SOURCE -> draft.resolve();
+			case USE_AUTHORIZED_SOURCE -> useAuthorizedSource(draft, (PendingDecision.AuthorityWarnings) pending);
 			case RESOLUTION -> throw new IllegalArgumentException("Choose a numbered resolution of the conflict");
 			case MORE_ROUNDS -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
 				FailureGroup::moreRounds);
@@ -190,6 +192,23 @@ final class UserChoices
 			draft.resolve();
 		draft.header = draft.header.withLifecycle(Lifecycle.FINISHED);
 		draft.delivery = delivery;
+	}
+
+	/**
+	 * Records the warnings of the answered decision as answered, so that the same warnings reported later raise no
+	 * decision, and resolves the decision. A warning that is already recorded is not recorded again.
+	 *
+	 * @param draft the state
+	 * @param pending the warning decision that the user answered
+	 */
+	private static void useAuthorizedSource(Draft draft, PendingDecision.AuthorityWarnings pending)
+	{
+		for (AuthorityWarning warning : pending.warnings())
+		{
+			if (!draft.answeredWarnings.contains(warning))
+				draft.answeredWarnings.add(warning);
+		}
+		draft.resolve();
 	}
 
 	/**

@@ -135,7 +135,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 21;
+	private static final int FORMAT_VERSION = 22;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -213,6 +213,9 @@ final class CampaignJson
 		for (PendingDecision decision : campaign.pendingDecisions())
 			pending.add(writeDecision(decision));
 		root.put("revision_requested", campaign.revisionRequested());
+		ArrayNode answered = root.putArray("answered_warnings");
+		for (AuthorityWarning warning : campaign.answeredWarnings())
+			writeWarning(answered.addObject(), warning);
 		putConstant(root, "outcome", campaign.outcome());
 		DeliveryRequest delivery = campaign.delivery();
 		if (delivery == null)
@@ -267,6 +270,9 @@ final class CampaignJson
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
 			pending.add(readDecision(node));
+		List<AuthorityWarning> answered = new ArrayList<>();
+		for (JsonNode node : elements(root, "answered_warnings"))
+			answered.add(readWarning(node));
 		DeliveryRequest delivery = null;
 		JsonNode deliveryNode = nullable(root, "delivery");
 		if (deliveryNode != null)
@@ -284,7 +290,7 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
-			List.of());
+			answered);
 	}
 
 	/**
@@ -1629,19 +1635,27 @@ final class CampaignJson
 				node.put("type", "authority_warnings");
 				ArrayNode array = node.putArray("warnings");
 				for (AuthorityWarning warning : warnings.warnings())
-				{
-					ObjectNode element = array.addObject();
-					element.put("requirement", warning.requirement());
-					element.put("path", warning.path().toString());
-					element.put("target", warning.target().toString());
-					element.put("limit", EnumNames.lowerCase(warning.limit()));
-					ArrayNode choices = element.putArray("choices");
-					for (AuthorityWarning.Choice choice : warning.choices())
-						choices.add(EnumNames.lowerCase(choice));
-				}
+					writeWarning(array.addObject(), warning);
 			}
 		}
 		return node;
+	}
+
+	/**
+	 * Writes a warning about an edit outside the edit authority.
+	 *
+	 * @param node the empty object that receives the warning's requirement, path, target, limit and choices
+	 * @param warning the warning
+	 */
+	private static void writeWarning(ObjectNode node, AuthorityWarning warning)
+	{
+		node.put("requirement", warning.requirement());
+		node.put("path", warning.path().toString());
+		node.put("target", warning.target().toString());
+		node.put("limit", EnumNames.lowerCase(warning.limit()));
+		ArrayNode choices = node.putArray("choices");
+		for (AuthorityWarning.Choice choice : warning.choices())
+			choices.add(EnumNames.lowerCase(choice));
 	}
 
 	/**
@@ -1679,18 +1693,26 @@ final class CampaignJson
 			{
 				List<AuthorityWarning> warnings = new ArrayList<>();
 				for (JsonNode element : elements(node, "warnings"))
-				{
-					List<AuthorityWarning.Choice> choices = new ArrayList<>();
-					for (JsonNode choice : elements(element, "choices"))
-						choices.add(constantValue(choice, "choices", AuthorityWarning.Choice.class));
-					warnings.add(new AuthorityWarning(text(element, "requirement"), pathValue(field(element, "path"),
-						"path"), pathValue(field(element, "target"), "target"), constant(element, "limit", Limit.class),
-						choices));
-				}
+					warnings.add(readWarning(element));
 				yield new PendingDecision.AuthorityWarnings(warnings);
 			}
 			default -> throw new IllegalArgumentException("pending_decisions: unknown type " + type);
 		};
+	}
+
+	/**
+	 * Converts a document to a warning about an edit outside the edit authority.
+	 *
+	 * @param node the object that holds the warning's requirement, path, target, limit and choices
+	 * @return the warning
+	 */
+	private static AuthorityWarning readWarning(JsonNode node)
+	{
+		List<AuthorityWarning.Choice> choices = new ArrayList<>();
+		for (JsonNode choice : elements(node, "choices"))
+			choices.add(constantValue(choice, "choices", AuthorityWarning.Choice.class));
+		return new AuthorityWarning(text(node, "requirement"), pathValue(field(node, "path"), "path"),
+			pathValue(field(node, "target"), "target"), constant(node, "limit", Limit.class), choices);
 	}
 
 	/**

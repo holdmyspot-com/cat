@@ -1,5 +1,5 @@
 {
-  "format_version" : 21,
+  "format_version" : 22,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
@@ -307,6 +307,7 @@
   },
   "pending_decisions" : [ ],
   "revision_requested" : false,
+  "answered_warnings" : [ ],
   "outcome" : null,
   "delivery" : null
 }
