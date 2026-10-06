@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -337,6 +338,95 @@ public final class AppServerEventsTest
 		HarnessEvents failed = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\"," +
 			"\"turn\":{\"status\":\"failed\",\"error\":{\"message\":\"secret details\"}}}}"));
 		requireThat(failed.error(), "failed.error").isEqualTo("Codex turn finished with status failed");
+	}
+
+	/**
+	 * Returns the recorded refused turn with the HTTP status of its final error replaced.
+	 *
+	 * @param status the HTTP status that the final error reports
+	 * @return the notification lines
+	 * @throws IOException if the recording cannot be read
+	 */
+	private static List<String> finalErrorWithStatus(int status) throws IOException
+	{
+		List<String> lines = new ArrayList<>();
+		for (String line : recorded("codex-refusal.jsonl"))
+		{
+			if (line.contains("\"willRetry\":false"))
+				line = line.replace("\"httpStatusCode\":403", "\"httpStatusCode\":" + status);
+			lines.add(line);
+		}
+		return lines;
+	}
+
+	/**
+	 * Verifies that an error that Codex does not retry after the provider answered with HTTP status 403 is a refusal,
+	 * not a rate-limit rejection.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void reportsFinalRefusal() throws IOException
+	{
+		// Requirement: R-E6
+		HarnessEvents events = parse(recorded("codex-refusal.jsonl"));
+
+		requireThat(events.refused(), "refused").isTrue();
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * Verifies that errors with HTTP status 403 that Codex retries are not a refusal.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void ignoresRetriedRefusal() throws IOException
+	{
+		// Requirement: R-E6
+		List<String> retried = new ArrayList<>();
+		for (String line : recorded("codex-refusal.jsonl"))
+		{
+			if (!line.contains("\"willRetry\":false"))
+				retried.add(line);
+		}
+		HarnessEvents events = parse(retried);
+
+		requireThat(events.refused(), "refused").isFalse();
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * Verifies that an error that Codex does not retry after the provider answered with HTTP status 429 is a
+	 * rate-limit rejection without a reset time.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void reportsFinalRateLimitErrorAsRejection() throws IOException
+	{
+		// Requirement: R-E6
+		HarnessEvents events = parse(finalErrorWithStatus(429));
+
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new HarnessEvents.Rejection(null)));
+		requireThat(events.refused(), "refused").isFalse();
+	}
+
+	/**
+	 * Verifies that an error that Codex does not retry after the provider answered with HTTP status 500 stays an
+	 * error: neither a refusal nor a rate-limit rejection.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void keepsFinalServerErrorAsError() throws IOException
+	{
+		// Requirement: R-E7
+		HarnessEvents events = parse(finalErrorWithStatus(500));
+
+		requireThat(events.refused(), "refused").isFalse();
+		requireThat(events.rejection(), "rejection").isEqualTo(Optional.empty());
+		requireThat(events.error(), "error").isEqualTo("Codex turn finished with status failed");
 	}
 
 	/**

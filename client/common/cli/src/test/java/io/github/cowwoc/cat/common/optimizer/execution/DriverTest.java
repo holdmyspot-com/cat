@@ -108,6 +108,7 @@ import io.github.cowwoc.cat.common.optimizer.report.CellReport;
 import io.github.cowwoc.cat.common.optimizer.report.OptimizationReport.InputComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -745,7 +746,7 @@ public final class DriverTest
 			harness.triages(_ ->
 			{
 				if (rejections.getAndDecrement() > 0)
-					return new SessionResult.RateLimited(resetsAt.get(), List.of());
+					return new SessionResult.RateLimited(new Hold(resetsAt.get(), 0), List.of());
 				return harness.triaged(Impact.SELF_RECOVERING);
 			});
 			try (Driver driver = harness.open())
@@ -2044,7 +2045,7 @@ public final class DriverTest
 				List<FakeSession> started = harness.runningTrials();
 				requireThat(started.size(), "started").isEqualTo(2);
 				SessionRequest limitedRequest = started.getFirst().request();
-				started.getFirst().end(new SessionResult.RateLimited(resetsAt, List.of()));
+				started.getFirst().end(new SessionResult.RateLimited(new Hold(resetsAt, 0), List.of()));
 				started.getLast().end(harness.passed());
 
 				Step held = driver.step();
@@ -2131,7 +2132,7 @@ public final class DriverTest
 				List<FakeSession> started = harness.runningTrials();
 				requireThat(started.size(), "started").isEqualTo(2);
 				harness.clock().advance(Duration.ofMinutes(1));
-				started.getFirst().end(new SessionResult.RateLimited(resetsAt, windows));
+				started.getFirst().end(new SessionResult.RateLimited(new Hold(resetsAt, 0), windows));
 				driver.step();
 
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
@@ -2176,7 +2177,7 @@ public final class DriverTest
 			harness.judges(request ->
 			{
 				if (rejections.getAndDecrement() > 0)
-					return new SessionResult.RateLimited(resetsAt.get(), List.of());
+					return new SessionResult.RateLimited(new Hold(resetsAt.get(), 0), List.of());
 				return harness.scriptedJudgment(request);
 			});
 			try (Driver driver = harness.open())
@@ -2198,6 +2199,172 @@ public final class DriverTest
 				for (SessionRequest judge : judges)
 					requireThat(judge, "judge").isEqualTo(judges.getFirst());
 				requireThat(developmentOutcomes(harness.campaign()), "outcomes").isEqualTo(101);
+			}
+		}
+	}
+
+	/**
+	 * A provider refusal of a trial session holds admissions until the harness's shared hold ends and then reruns the
+	 * same logical trial. A refusal is not an infrastructure failure, so three refusals in a row do not pause the
+	 * campaign.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void refusedTrialRerunsAfterHold() throws IOException
+	{
+		// Requirement: R-E2
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-trial")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			// The slice outlasts the holds, so that each rerun fits before its deadline
+			harness.settings(new SliceSettings(Duration.ofHours(1), Duration.ofMinutes(1), Duration.ofSeconds(1)));
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				SessionRequest refusedRequest = harness.runningTrials().getFirst().request();
+				for (int refusal = 1; refusal <= 3; ++refusal)
+				{
+					Instant end = harness.clock().instant().plus(Duration.ofMinutes(1L << (refusal - 1)));
+					harness.runningTrials().getFirst().end(
+						new SessionResult.Refused(new Hold(end, refusal), false, List.of()));
+					driver.step();
+					Campaign campaign = harness.campaign();
+					requireThat(campaign.throttle().holdUntil(), "holdUntil").isEqualTo(end);
+					requireThat(campaign.pending(), "pending").isNull();
+					List<LogicalTrial> queued = trials(campaign, TrialState.ASSIGNED);
+					requireThat(queued.size(), "queued").isEqualTo(1);
+					requireThat(queued.getFirst().infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+					requireThat(harness.runningTrials(), "runningBeforeEnd").isEmpty();
+
+					harness.clock().set(end);
+					driver.step();
+					List<FakeSession> rerun = harness.runningTrials();
+					requireThat(rerun.size(), "rerun").isEqualTo(1);
+					requireThat(rerun.getFirst().request(), "rerunRequest").isEqualTo(refusedRequest);
+				}
+			}
+		}
+	}
+
+	/**
+	 * A provider refusal that follows a 30-minute hold stops the slice with a message that names the harness, and
+	 * the refused trial waits in the queue without counting as an infrastructure failure.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void refusalAfterLongestHoldPauses() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-longest")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			harness.trials(_ -> new SessionResult.Refused(
+				new Hold(harness.clock().instant().plus(Duration.ofMinutes(30)), 6), true, List.of()));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "outcomeDetail").
+					isEqualTo("The provider refused claude requests after a 30-minute hold");
+				Campaign campaign = harness.campaign();
+				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);
+				List<LogicalTrial> queued = trials(campaign, TrialState.ASSIGNED);
+				requireThat(queued.size(), "queued").isEqualTo(1);
+				requireThat(queued.getFirst().infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a provider refusal of a judge session holds admissions until the harness's shared hold ends and
+	 * then reruns the judge with the same evidence, without counting the refusal as a failure of the judge or of the
+	 * trial.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void refusedJudgeReruns() throws IOException
+	{
+		// Requirement: R-E2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-judge")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			AtomicInteger refusals = new AtomicInteger(Driver.JUDGE_ATTEMPTS);
+			AtomicReference<Instant> holdEnd = new AtomicReference<>();
+			harness.judges(request ->
+			{
+				if (refusals.getAndDecrement() > 0)
+					return new SessionResult.Refused(new Hold(holdEnd.get(), 1), false, List.of());
+				return harness.scriptedJudgment(request);
+			});
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				requireThat(harness.endSessions(), "trials").isEqualTo(1);
+				for (int refusal = 1; refusal <= Driver.JUDGE_ATTEMPTS; ++refusal)
+				{
+					Instant end = harness.clock().instant().plus(Duration.ofMinutes(1));
+					holdEnd.set(end);
+					harness.settle(driver);
+					requireThat(judgeRequests(harness).size(), "judges").isEqualTo(refusal);
+					requireThat(harness.campaign().throttle().holdUntil(), "holdUntil").isEqualTo(end);
+					harness.clock().set(end);
+				}
+				harness.settle(driver);
+				List<SessionRequest> judges = judgeRequests(harness);
+				requireThat(judges.size(), "judges").isEqualTo(Driver.JUDGE_ATTEMPTS + 1);
+				for (SessionRequest judge : judges)
+					requireThat(judge, "judge").isEqualTo(judges.getFirst());
+				requireThat(developmentOutcomes(harness.campaign()), "outcomes").isEqualTo(101);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a provider refusal of an author session reruns the author with the same brief once the harness's
+	 * shared hold ends, and that refusals do not count toward the author failures that stop the slice.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void refusedAuthorReruns() throws IOException
+	{
+		// Requirement: R-E2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-author")),
+				authoring().build());
+			// The harness ends each author session at the clock time of the step that started it
+			List<Instant> starts = new ArrayList<>();
+			List<Instant> ends = new ArrayList<>();
+			harness.authors(request ->
+			{
+				Instant now = harness.clock().instant();
+				starts.add(now);
+				if (starts.size() > Driver.AUTHOR_FAILURE_LIMIT)
+					return harness.edit(request, DriverHarness.PROMPT, "edited\n");
+				Instant end = now.plus(Duration.ofMinutes(1));
+				ends.add(end);
+				return new SessionResult.Refused(new Hold(end, starts.size()), false, List.of());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> starts.size() > Driver.AUTHOR_FAILURE_LIMIT);
+				List<AuthorBrief> briefs = harness.author().briefs();
+				requireThat(briefs.size(), "briefs").isEqualTo(Driver.AUTHOR_FAILURE_LIMIT + 1);
+				for (AuthorBrief brief : briefs)
+					requireThat(brief, "brief").isEqualTo(briefs.getFirst());
+				for (int refusal = 0; refusal < ends.size(); ++refusal)
+				{
+					requireThat(starts.get(refusal + 1), "rerunStart").
+						isGreaterThanOrEqualTo(ends.get(refusal));
+				}
 			}
 		}
 	}

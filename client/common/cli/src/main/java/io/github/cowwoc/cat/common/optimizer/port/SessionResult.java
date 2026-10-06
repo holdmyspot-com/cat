@@ -3,9 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.port;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 
 /**
@@ -106,27 +106,55 @@ public sealed interface SessionResult
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say
+	 * @param hold the harness's shared hold after the session recorded the rejection
 	 * @param windows the rate-limit windows that the harness reported during the session
 	 */
-	record RateLimited(Instant resetsAt, List<RateLimitWindow> windows) implements SessionResult
+	record RateLimited(Hold hold, List<RateLimitWindow> windows) implements SessionResult
 	{
 		/**
 		 * Creates a rate-limited result.
 		 *
-		 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say
+		 * @param hold the harness's shared hold after the session recorded the rejection
 		 * @param windows the rate-limit windows that the harness reported during the session
-		 * @throws NullPointerException if {@code windows} is null
+		 * @throws NullPointerException if any argument is null
 		 */
 		public RateLimited
 		{
+			requireThat(hold, "hold").isNotNull();
 			requireThat(windows, "windows").isNotNull();
 			windows = List.copyOf(windows);
 		}
 	}
 
 	/**
-	 * The session ended without replying to every turn for a reason other than an interrupt or rate limit.
+	 * The provider refused the session's request with HTTP status 403.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param hold the harness's shared hold after the session recorded the refusal
+	 * @param afterLongestHold {@code true} if the refusal followed the end of a hold of the longest length
+	 * @param windows the rate-limit windows that the harness reported during the session
+	 */
+	record Refused(Hold hold, boolean afterLongestHold, List<RateLimitWindow> windows) implements SessionResult
+	{
+		/**
+		 * Creates a refused result.
+		 *
+		 * @param hold the harness's shared hold after the session recorded the refusal
+		 * @param afterLongestHold {@code true} if the refusal followed the end of a hold of the longest length
+		 * @param windows the rate-limit windows that the harness reported during the session
+		 * @throws NullPointerException if {@code hold} or {@code windows} are null
+		 */
+		public Refused
+		{
+			requireThat(hold, "hold").isNotNull();
+			requireThat(windows, "windows").isNotNull();
+			windows = List.copyOf(windows);
+		}
+	}
+
+	/**
+	 * The session ended without replying to every turn for a reason other than an interrupt, rate limit or refusal.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

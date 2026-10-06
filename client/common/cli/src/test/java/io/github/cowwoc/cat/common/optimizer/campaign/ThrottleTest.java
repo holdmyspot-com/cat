@@ -77,44 +77,38 @@ public final class ThrottleTest
 	}
 
 	/**
-	 * Verifies that rejections without a reset time back off for 1, 2, 4, 8, 16 and then at most 30 minutes, and
-	 * that a completed trial restarts the sequence.
+	 * Verifies that 95% utilization without a reset time drops the window to 1 without holding admissions, because the
+	 * throttle keeps no backoff sequence of its own.
 	 */
 	@Test
-	public void rejectionBacksOffExponentially()
+	public void nearLimitWithoutResetSetsNoHold()
 	{
 		// Requirement: R-E6
-		Throttle throttle = Throttle.NONE;
-		long[] minutes = {1, 2, 4, 8, 16, 30, 30};
-		for (int i = 0; i < minutes.length; ++i)
-		{
-			throttle = throttle.reject(NOW, null);
-			requireThat(throttle.holdUntil(), "holdUntil[" + i + "]").
-				isEqualTo(NOW.plus(Duration.ofMinutes(minutes[i])));
-			requireThat(throttle.limit(16), "limit[" + i + "]").isEqualTo(1);
-		}
-		throttle = throttle.afterCompletion().reject(NOW, null);
-		requireThat(throttle.holdUntil(), "afterCompletion").isEqualTo(NOW.plus(Duration.ofMinutes(1)));
-		requireThat(Throttle.MAXIMUM_BACKOFF, "MAXIMUM_BACKOFF").isEqualTo(Duration.ofMinutes(30));
+		Throttle throttle = Throttle.NONE.observe(List.of(window(0.97)), NOW, 6);
+		requireThat(throttle, "throttle").isEqualTo(new Throttle(Instant.EPOCH, 1, 0));
 	}
 
 	/**
-	 * Verifies that a rejection with a reset time waits until that time.
+	 * Verifies that the harness's shared hold drops the window to 1, holds admissions until it ends, sets the backoff
+	 * count, and never moves the end of a longer hold earlier.
 	 */
 	@Test
-	public void rejectionWaitsForReportedReset()
+	public void sharedHoldHoldsAdmissions()
 	{
 		// Requirement: R-E6
-		Instant reset = NOW.plusSeconds(10);
-		Throttle throttle = Throttle.NONE.reject(NOW, reset);
-		requireThat(throttle.holdUntil(), "holdUntil").isEqualTo(reset);
-		requireThat(throttle.allowsAdmission(reset.minusMillis(1)), "beforeReset").isFalse();
-		requireThat(throttle.allowsAdmission(reset), "atReset").isTrue();
+		Instant end = NOW.plus(Duration.ofMinutes(4));
+		Throttle held = Throttle.NONE.hold(end, 3);
+		requireThat(held, "held").isEqualTo(new Throttle(end, 1, 3));
+		requireThat(held.allowsAdmission(end.minusMillis(1)), "beforeEnd").isFalse();
+		requireThat(held.allowsAdmission(end), "atEnd").isTrue();
+
+		Throttle earlier = held.hold(NOW.plus(Duration.ofMinutes(1)), 4);
+		requireThat(earlier, "earlier").isEqualTo(new Throttle(end, 1, 4));
 	}
 
 	/**
-	 * Verifies that a rate-limited trial reruns as the same logical trial after the wait, without counting as an
-	 * infrastructure failure.
+	 * Verifies that a rate-limited trial reruns as the same logical trial after the shared hold ends, without counting
+	 * as an infrastructure failure.
 	 */
 	@Test
 	public void rejectedTrialRerunsAfterWait()
@@ -124,13 +118,15 @@ public final class ThrottleTest
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-		Instant reset = NOW.plusSeconds(60);
+		Instant reset = NOW.plus(Duration.ofMinutes(5));
+		campaign = Transitions.apply(campaign, new CampaignEvent.HoldAdmissions(reset, 2));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED,
-			"rate limit reached", NOW, reset));
+			"rate limit reached", NOW));
 
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.state(), "state").isEqualTo(TrialState.ASSIGNED);
 		requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+		requireThat(campaign.throttle(), "throttle").isEqualTo(new Throttle(reset, 1, 2));
 		requireThat(campaign.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
 		requireThat(Scheduler.plan(campaign, reset.minusMillis(1), 8), "beforeReset").isEmpty();
 		requireThat(Scheduler.plan(campaign, reset, 8), "atReset").

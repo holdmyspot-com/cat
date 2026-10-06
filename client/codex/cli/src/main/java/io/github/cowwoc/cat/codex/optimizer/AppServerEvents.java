@@ -38,7 +38,11 @@ import tools.jackson.databind.json.JsonMapper;
  *   token usage. A user-message item, a rate-limit update and a thread or turn status are not output. A
  *   {@code hook/started} notification marks a hook as running until its {@code hook/completed} notification;</li>
  *   <li>a {@code turn/completed} notification of the root thread whose status is neither {@code completed} nor
- *   {@code interrupted} reports an error, without Codex's error text.</li>
+ *   {@code interrupted} reports an error, without Codex's error text;</li>
+ *   <li>an {@code error} notification whose {@code willRetry} is {@code false} ends Codex's attempts at a request.
+ *   When its {@code codexErrorInfo} holds {@code httpStatusCode} 403 under any key, the provider refused the request;
+ *   when it holds 429, the provider rejected it because of a rate limit, without a reset time. Codex retries an error
+ *   whose {@code willRetry} is {@code true}, so that error reports nothing.</li>
  * </ul>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -46,6 +50,14 @@ import tools.jackson.databind.json.JsonMapper;
 final class AppServerEvents extends HarnessEvents
 {
 	private static final double PERCENT = 100.0;
+	/**
+	 * The HTTP status of a provider refusal.
+	 */
+	private static final int HTTP_FORBIDDEN = 403;
+	/**
+	 * The HTTP status of a rate-limit rejection.
+	 */
+	private static final int HTTP_TOO_MANY_REQUESTS = 429;
 	/**
 	 * The item types that only the model produces.
 	 */
@@ -80,6 +92,7 @@ final class AppServerEvents extends HarnessEvents
 			case "account/rateLimits/updated" -> readRateLimits(params.path("rateLimits"));
 			case "turn/started" -> readTurnStarted(params);
 			case "turn/completed" -> readTurnCompleted(params);
+			case "error" -> readError(params);
 			case "item/started", "item/completed" -> readItem(params);
 			case "item/agentMessage/delta" -> setOutputProduced();
 			case "hook/started", "hook/completed" ->
@@ -293,6 +306,34 @@ final class AppServerEvents extends HarnessEvents
 		String status = params.path("turn").path("status").asString("");
 		if (!status.equals("completed") && !status.equals("interrupted"))
 			setError("Codex turn finished with status " + status);
+	}
+
+	/**
+	 * Reads an {@code error} notification.
+	 *
+	 * @param params the notification's parameters
+	 */
+	private void readError(JsonNode params)
+	{
+		JsonNode willRetry = params.path("willRetry");
+		if (!willRetry.isBoolean() || willRetry.booleanValue())
+			return;
+		// Codex names the failure kind as the key, such as httpConnectionFailed or responseStreamDisconnected
+		for (JsonNode info : params.path("error").path("codexErrorInfo"))
+		{
+			switch (info.path("httpStatusCode").asInt(0))
+			{
+				case HTTP_FORBIDDEN -> setRefused();
+				case HTTP_TOO_MANY_REQUESTS ->
+				{
+					if (rejection().isEmpty())
+						setRejection(new Rejection(null));
+				}
+				default ->
+				{
+				}
+			}
+		}
 	}
 
 	/**

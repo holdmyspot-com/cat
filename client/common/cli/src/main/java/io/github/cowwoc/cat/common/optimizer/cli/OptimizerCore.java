@@ -70,6 +70,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -786,6 +787,25 @@ public final class OptimizerCore implements Core
 				return report(root, campaign, null, "The deriver session did not complete: " + failed.reason() +
 					". Run `start` again to retry.");
 			}
+			case SessionResult.Refused refused ->
+			{
+				Instant end = refused.hold().endsAt();
+				boolean held = end.isAfter(scope.clock().instant());
+				String retry = "Run `start` again later.";
+				if (held)
+					retry = "Run `start` again after " + end + ".";
+				if (refused.afterLongestHold())
+				{
+					return report(root, campaign, null, "The provider refused " + scope.harness().commandName() +
+						" requests after a 30-minute hold. " + retry);
+				}
+				if (held)
+				{
+					return report(root, campaign, null, "The provider refused the deriver session until " + end +
+						". Run `start` again after that time.");
+				}
+				return report(root, campaign, null, "The provider refused the deriver session. " + retry);
+			}
 			case SessionResult.Interrupted _ ->
 			{
 				return report(root, campaign, null, "The deriver session was interrupted. " +
@@ -795,9 +815,9 @@ public final class OptimizerCore implements Core
 			{
 				String until = "";
 				String retry = "Run `start` again later.";
-				if (limited.resetsAt() != null)
+				if (limited.hold().endsAt().isAfter(scope.clock().instant()))
 				{
-					until = " until " + limited.resetsAt();
+					until = " until " + limited.hold().endsAt();
 					retry = "Run `start` again after that time.";
 				}
 				return report(root, campaign, null, "The provider rejected the deriver session because of a rate limit" +

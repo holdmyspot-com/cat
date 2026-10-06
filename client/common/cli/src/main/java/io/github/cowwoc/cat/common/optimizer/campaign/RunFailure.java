@@ -10,7 +10,8 @@ public enum RunFailure
 	 */
 	INFRASTRUCTURE,
 	/**
-	 * A rate-limit rejection. It throttles admissions and does not count toward the limit.
+	 * A rate-limit rejection, or a refusal of the request by the provider with HTTP status 403, which the attempt's
+	 * detail names. The harness's shared hold throttles admissions, and the run does not count toward the limit.
 	 */
 	RATE_LIMITED,
 	/**

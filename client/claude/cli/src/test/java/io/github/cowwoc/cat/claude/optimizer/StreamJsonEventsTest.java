@@ -171,8 +171,8 @@ public final class StreamJsonEventsTest
 	}
 
 	/**
-	 * Verifies that an error result is a rate-limit rejection when its status is 429, and otherwise an error that
-	 * names the status and terminal reason without including the result text.
+	 * Verifies that an error result is a rate-limit rejection when its status is 429, a refusal when its status is 403,
+	 * and otherwise an error that names the status and terminal reason without including the result text.
 	 *
 	 * @throws IOException if the recorded lines cannot be read
 	 */
@@ -184,12 +184,21 @@ public final class StreamJsonEventsTest
 			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":429," +
 				"\"terminal_reason\":\"completed\",\"result\":\"limit reached\"}"));
 		requireThat(limited.rejection().isPresent(), "limited.rejection.isPresent()").isTrue();
+		requireThat(limited.refused(), "limited.refused").isFalse();
 		requireThat(limited.error(), "limited.error").isNull();
+
+		HarnessEvents refused = parse(List.of(
+			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":403," +
+				"\"terminal_reason\":\"model_error\",\"result\":\"forbidden\"}"));
+		requireThat(refused.refused(), "refused.refused").isTrue();
+		requireThat(refused.rejection().isPresent(), "refused.rejection.isPresent()").isFalse();
+		requireThat(refused.error(), "refused.error").isNull();
 
 		HarnessEvents failed = parse(List.of(
 			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":500," +
 				"\"terminal_reason\":\"model_error\",\"result\":\"secret details\"}"));
 		requireThat(failed.rejection().isPresent(), "failed.rejection.isPresent()").isFalse();
+		requireThat(failed.refused(), "failed.refused").isFalse();
 		requireThat(failed.error(), "failed.error").isEqualTo(
 			"Claude reported an error result (api_error_status=500, terminal_reason=model_error)");
 

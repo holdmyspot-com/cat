@@ -46,6 +46,7 @@ import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
+import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -630,12 +631,18 @@ public final class OptimizerCoreTest
 					"Run `start` again to retry."},
 				{new SessionResult.Interrupted(List.of()),
 					"The deriver session was interrupted. Run `start` again to retry."},
-				{new SessionResult.RateLimited(resetsAt, List.of()),
+				{new SessionResult.RateLimited(new Hold(resetsAt, 0), List.of()),
 					"The provider rejected the deriver session because of a rate limit until " + resetsAt +
 					". Run `start` again after that time."},
-				{new SessionResult.RateLimited(null, List.of()),
+				{new SessionResult.RateLimited(Hold.NONE, List.of()),
 					"The provider rejected the deriver session because of a rate limit. " +
-					"Run `start` again later."}
+					"Run `start` again later."},
+				{new SessionResult.Refused(new Hold(resetsAt, 1), false, List.of()),
+					"The provider refused the deriver session until " + resetsAt +
+					". Run `start` again after that time."},
+				{new SessionResult.Refused(new Hold(resetsAt, 6), true, List.of()),
+					"The provider refused claude requests after a 30-minute hold. Run `start` again after " +
+					resetsAt + "."}
 			};
 	}
 

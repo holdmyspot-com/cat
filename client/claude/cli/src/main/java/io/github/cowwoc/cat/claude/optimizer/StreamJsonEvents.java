@@ -33,6 +33,8 @@ import tools.jackson.databind.json.JsonMapper;
  *   reported in the order that the records first named them;</li>
  *   <li>a {@code result} record's {@code modelUsage} is cumulative over the session and includes the usage of
  *   background children, unlike its per-reply {@code usage} object;</li>
+ *   <li>an error {@code result} record whose {@code api_error_status} is 429 is a rate-limit rejection, one whose
+ *   status is 403 is a refusal of the request by the provider, and any other is an error;</li>
  *   <li>a root {@code user} record answers a {@code Bash} call with a {@code tool_result} and a
  *   {@code tool_use_result}. Claude Code 2.1.287 reports no exit status as a field. A result that is not an error
  *   means exit status 0, except that a {@code returnCodeInterpretation} such as {@code No matches found} means
@@ -52,6 +54,7 @@ final class StreamJsonEvents extends HarnessEvents
 {
 	private static final String RATE_LIMITED_STATUS = "rejected";
 	private static final int RATE_LIMITED_ERROR = 429;
+	private static final int REFUSED_ERROR = 403;
 	private static final Pattern EXIT_CODE = Pattern.compile("Error: Exit code (\\d{1,9})(?:\n|$)");
 	private final Map<String, RateLimitWindow> windows = new LinkedHashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
@@ -490,6 +493,11 @@ final class StreamJsonEvents extends HarnessEvents
 		{
 			if (rejection().isEmpty())
 				setRejection(new Rejection(lastResetsAt));
+			return;
+		}
+		if (status.isNumber() && status.asInt() == REFUSED_ERROR)
+		{
+			setRefused();
 			return;
 		}
 		String statusText = "none";

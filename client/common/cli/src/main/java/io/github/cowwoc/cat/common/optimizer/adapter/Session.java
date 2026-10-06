@@ -42,6 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <ol>
  *   <li>CAT asked for an interrupt: {@link SessionResult.Interrupted}, even if the harness then failed;</li>
  *   <li>the provider rejected a request for a rate limit: {@link SessionResult.RateLimited};</li>
+ *   <li>the provider refused a request with HTTP status 403: {@link SessionResult.Refused};</li>
  *   <li>a deriver, judge, triage or author session exceeded its time limit: {@link SessionResult.Failed}, because
  *   the limit says nothing about the prompt under test and the session must be retried;</li>
  *   <li>a trial session whose turn exceeded the time limit with no model output and no running hook:
@@ -51,6 +52,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   model output or a running hook is completed with the replies it had, because exceeding the time limit is trial
  *   behavior to judge rather than retry.</li>
  * </ol>
+ * <p>
+ * A rejection or a refusal sets the harness's shared hold in its {@link HarnessCapacity}, and a turn that completes
+ * without either resets the length of the next hold.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -175,7 +179,7 @@ final class Session implements SessionHandle
 	 * Runs the session's turns and shuts the runner down.
 	 *
 	 * @return how the session ended
-	 * @throws IOException if the run directory cannot be read or cleaned
+	 * @throws IOException if the run directory cannot be read or cleaned, or the harness's hold cannot be updated
 	 */
 	private SessionResult drive() throws IOException
 	{
@@ -199,6 +203,8 @@ final class Session implements SessionHandle
 				outcome = awaitOutcome(turn);
 				if (outcome != Outcome.TURN_COMPLETED)
 					break;
+				if (events.rejection().isEmpty() && !events.refused() && events.error() == null)
+					settings.capacity().completeTurn();
 			}
 		}
 		stopRunner(runner, outcome);
@@ -362,12 +368,13 @@ final class Session implements SessionHandle
 	/**
 	 * Indicates whether the driver should send no further turn.
 	 *
-	 * @return {@code true} if CAT interrupted the session, the time limit passed, or the provider rejected a request
-	 *   or the harness reported an error
+	 * @return {@code true} if CAT interrupted the session, the time limit passed, the provider rejected or refused a
+	 *   request, or the harness reported an error
 	 */
 	private boolean isStopping()
 	{
-		return interruptRequested.get() || timedOut || events.rejection().isPresent() || events.error() != null;
+		return interruptRequested.get() || timedOut || events.rejection().isPresent() || events.refused() ||
+			events.error() != null;
 	}
 
 	/**
@@ -411,10 +418,12 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Classifies how the session ended and retains its evidence.
+	 * Classifies how the session ended and retains its evidence, recording a rejection or refusal in the harness's
+	 * shared hold.
 	 *
 	 * @return the result
-	 * @throws IOException if the run directory cannot be cleaned or its evidence cannot be recorded
+	 * @throws IOException if the run directory cannot be cleaned, its evidence cannot be recorded, or the hold cannot
+	 *   be updated
 	 */
 	private SessionResult result() throws IOException
 	{
@@ -425,7 +434,12 @@ final class Session implements SessionHandle
 			return new SessionResult.Interrupted(windows);
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();
 		if (rejection.isPresent())
-			return new SessionResult.RateLimited(rejection.get().resetsAt(), windows);
+			return new SessionResult.RateLimited(settings.capacity().reject(rejection.get().resetsAt()), windows);
+		if (events.refused())
+		{
+			HarnessCapacity.Refusal refusal = settings.capacity().refuse();
+			return new SessionResult.Refused(refusal.hold(), refusal.afterLongestHold(), windows);
+		}
 		if (timedOut && request.role() != SessionRole.TRIAL)
 		{
 			return new SessionResult.Failed("The " + request.role().name().toLowerCase(Locale.ROOT) +

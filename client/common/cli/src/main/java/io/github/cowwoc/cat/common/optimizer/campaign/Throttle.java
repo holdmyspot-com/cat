@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -13,14 +12,16 @@ import java.util.List;
  * <p>
  * Utilization is the fraction of a reported rate-limit allowance consumed. At {@value #FREEZE_UTILIZATION} or more
  * of any allowance, the limit on simultaneous candidate trials stops growing. At {@value #HOLD_UTILIZATION} or more,
- * or on a rate-limit rejection, that limit drops to 1 and no trials start until the reported reset time. Without a
- * future reset time, admissions wait for 1, 2, 4, … minutes, up to 30 minutes. The response adds no randomized pacing.
+ * that limit drops to 1 and no trials start until the latest future reset time of the allowances at that level. A
+ * rate-limit rejection or a provider refusal also drops the limit to 1, and no trials start until the harness's shared
+ * hold ends; the shared hold, not this throttle, keeps the sequence of hold lengths. The response adds no randomized
+ * pacing.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param holdUntil the earliest instant at which admissions may start, or {@link Instant#EPOCH} if none is held
  * @param windowCap the largest permitted concurrency window, or 0 if none is imposed
- * @param backoffs the consecutive backoffs without a reset time since the last completed trial
+ * @param backoffs the shared hold's number of doubled holds when it last held admissions, or 0 after a trial completed
  */
 public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 {
@@ -33,14 +34,6 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	 */
 	public static final double HOLD_UTILIZATION = 0.95;
 	/**
-	 * The longest backoff.
-	 */
-	public static final Duration MAXIMUM_BACKOFF = Duration.ofMinutes(30);
-	/**
-	 * The number of doublings after which the backoff exceeds {@link #MAXIMUM_BACKOFF}.
-	 */
-	private static final int BACKOFF_DOUBLINGS = 5;
-	/**
 	 * No throttling.
 	 */
 	public static final Throttle NONE = new Throttle(Instant.EPOCH, 0, 0);
@@ -50,7 +43,8 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	 *
 	 * @param holdUntil the earliest instant at which admissions may start, or {@link Instant#EPOCH} if none is held
 	 * @param windowCap the largest permitted concurrency window, or 0 if none is imposed
-	 * @param backoffs the consecutive backoffs without a reset time since the last completed trial
+	 * @param backoffs the shared hold's number of doubled holds when it last held admissions, or 0 after a trial
+	 *   completed
 	 * @throws NullPointerException if {@code holdUntil} is null
 	 * @throws IllegalArgumentException if {@code windowCap} or {@code backoffs} are negative
 	 */
@@ -83,20 +77,16 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 			utilization = Math.max(utilization, reported.utilization());
 		if (utilization >= HOLD_UTILIZATION)
 		{
-			Instant latestReset = null;
-			boolean unknownReset = false;
+			Instant latestReset = holdUntil;
 			for (RateLimitWindow reported : windows)
 			{
-				if (reported.utilization() < HOLD_UTILIZATION)
-					continue;
 				Instant resetsAt = reported.resetsAt();
-				if (resetsAt == null)
-					unknownReset = true;
-				else if (latestReset == null || resetsAt.isAfter(latestReset))
+				if (reported.utilization() >= HOLD_UTILIZATION && resetsAt != null && resetsAt.isAfter(now) &&
+					resetsAt.isAfter(latestReset))
+				{
 					latestReset = resetsAt;
+				}
 			}
-			if (unknownReset || !latestReset.isAfter(now))
-				return backOff(now);
 			return new Throttle(latestReset, 1, backoffs);
 		}
 		if (utilization >= FREEZE_UTILIZATION)
@@ -109,35 +99,26 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	}
 
 	/**
-	 * Returns the state after the provider rejected a trial because of a rate limit.
+	 * Returns the state after the harness's shared hold stopped admissions.
 	 *
-	 * @param now the current time
-	 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say
-	 * @return the updated state
-	 * @throws NullPointerException if {@code now} is null
+	 * @param until when the shared hold ends
+	 * @param backoffs the shared hold's number of doubled holds
+	 * @return the updated state, which holds admissions until the later of {@code until} and the current hold's end
+	 * @throws NullPointerException if {@code until} is null
+	 * @throws IllegalArgumentException if {@code backoffs} is negative
 	 */
-	public Throttle reject(Instant now, Instant resetsAt)
+	public Throttle hold(Instant until, int backoffs)
 	{
-		requireThat(now, "now").isNotNull();
-		if (resetsAt == null || !resetsAt.isAfter(now))
-			return backOff(now);
-		return new Throttle(resetsAt, 1, backoffs);
+		requireThat(until, "until").isNotNull();
+		requireThat(backoffs, "backoffs").isNotNegative();
+		Instant end = holdUntil;
+		if (until.isAfter(end))
+			end = until;
+		return new Throttle(end, 1, backoffs);
 	}
 
 	/**
-	 * Returns the state after a backoff without a usable reset time.
-	 *
-	 * @param now the current time
-	 * @return the updated state
-	 */
-	private Throttle backOff(Instant now)
-	{
-		long minutes = Math.min(1L << Math.min(backoffs, BACKOFF_DOUBLINGS), MAXIMUM_BACKOFF.toMinutes());
-		return new Throttle(now.plus(Duration.ofMinutes(minutes)), 1, backoffs + 1);
-	}
-
-	/**
-	 * Returns the state after a trial completed, which resets the backoff sequence.
+	 * Returns the state after a trial completed, which the shared hold also records as resetting its hold lengths.
 	 *
 	 * @return the updated state
 	 */

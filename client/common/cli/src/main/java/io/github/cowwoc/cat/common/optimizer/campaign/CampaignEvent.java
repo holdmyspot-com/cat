@@ -197,11 +197,8 @@ public sealed interface CampaignEvent
 	 * @param failure why the run ended
 	 * @param detail what the harness or CAT reported about the failure
 	 * @param at when the run ended
-	 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say or the run was not
-	 *   rate-limited
 	 */
-	record Fail(TrialKey key, RunFailure failure, String detail, Instant at, Instant resetsAt)
-		implements CampaignEvent
+	record Fail(TrialKey key, RunFailure failure, String detail, Instant at) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -210,8 +207,6 @@ public sealed interface CampaignEvent
 		 * @param failure why the run ended
 		 * @param detail what the harness or CAT reported about the failure
 		 * @param at when the run ended
-		 * @param resetsAt when the provider accepts requests again, or {@code null} if it did not say or the run was
-		 *   not rate-limited
 		 * @throws NullPointerException if {@code key}, {@code failure}, {@code detail} or {@code at} are null
 		 * @throws IllegalArgumentException if {@code detail} is blank
 		 */
@@ -221,6 +216,32 @@ public sealed interface CampaignEvent
 			requireThat(failure, "failure").isNotNull();
 			requireThat(detail, "detail").isNotBlank();
 			requireThat(at, "at").isNotNull();
+		}
+	}
+
+	/**
+	 * The harness's shared hold, set by a rate-limit rejection or a provider refusal, stops admissions until it ends
+	 * and drops the concurrency window to 1.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param until when the hold ends
+	 * @param backoffs the shared hold's number of doubled holds since a turn last completed
+	 */
+	record HoldAdmissions(Instant until, int backoffs) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param until when the hold ends
+		 * @param backoffs the shared hold's number of doubled holds since a turn last completed
+		 * @throws NullPointerException if {@code until} is null
+		 * @throws IllegalArgumentException if {@code backoffs} is negative
+		 */
+		public HoldAdmissions
+		{
+			requireThat(until, "until").isNotNull();
+			requireThat(backoffs, "backoffs").isNotNegative();
 		}
 	}
 

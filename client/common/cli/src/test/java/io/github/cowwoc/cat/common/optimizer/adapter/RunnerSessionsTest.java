@@ -336,7 +336,7 @@ public final class RunnerSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
 			{
-			});
+			}, Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			TestSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), arguments,
 				List.of(Turn.replies("never")));
@@ -371,7 +371,7 @@ public final class RunnerSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
 			{
-			});
+			}, Clock.systemUTC());
 			CountDownLatch entered = new CountDownLatch(1);
 			TestSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(),
 				new CopyOnWriteArrayList<>(), List.of(Turn.blocksUntilInterrupted().announcing(entered)));
@@ -666,5 +666,169 @@ public final class RunnerSessionsTest
 
 		requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 			"The trial's turn 2 reached its 5-minute time limit with no model output", List.of()));
+	}
+
+	/**
+	 * Creates a port whose runner plays a script and records the turn requests that reach the harness.
+	 *
+	 * @param runRoot the directory for run directories
+	 * @param capacity the shared capacity
+	 * @param clock the clock for time limits
+	 * @param script what the harness does, turn by turn
+	 * @param requests receives each turn request that reaches the harness
+	 * @return the port
+	 */
+	private static TestSessions recordingPort(Path runRoot, HarnessCapacity capacity, Clock clock, List<Turn> script,
+		List<String> requests)
+	{
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false,
+			Map.of(), runRoot, capacity, clock);
+		return new TestSessions(settings, (options, input, output) ->
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				script, input, output, requests));
+	}
+
+	/**
+	 * Creates a capacity pool over a test-owned directory whose holds follow a test-controlled clock, and that fails
+	 * the test if a session waits for it.
+	 *
+	 * @param directory the directory that holds the slot and hold files
+	 * @param clock the clock that decides whether a hold lasts
+	 * @return the pool
+	 */
+	private static HarnessCapacity heldBy(Path directory, ManualClock clock)
+	{
+		return HarnessCapacity.of(directory, 1, () ->
+		{
+			throw new AssertionError("The session must not wait for capacity");
+		}, clock);
+	}
+
+	/**
+	 * Verifies that a session whose provider refused a request records the refusal in the harness's shared hold,
+	 * reports the session as refused rather than rate-limited, and sends no further turn.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void refusedSessionHoldsTheHarness()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START);
+			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+			List<String> requests = new CopyOnWriteArrayList<>();
+			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
+				List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT), Turn.replies("never")), requests);
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+
+			HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
+			requireThat(result, "result").isEqualTo(new SessionResult.Refused(hold, false, List.of()));
+			requireThat(capacity.hold(), "hold").isEqualTo(hold);
+			requireThat(requests.size(), "requests.size()").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a refused session reports when its refusal followed the end of a 30-minute hold.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void refusalAfterLongestHoldIsReported()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START);
+			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+			// Six refusals reach the 30-minute hold
+			for (int refused = 0; refused < 6; ++refused)
+				clock.set(capacity.refuse().hold().endsAt());
+			Instant now = clock.instant();
+			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
+				List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT)), new CopyOnWriteArrayList<>());
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+
+			requireThat(result, "result").isEqualTo(new SessionResult.Refused(
+				new HarnessCapacity.Hold(now.plus(Duration.ofMinutes(30)), 6), true, List.of()));
+		}
+	}
+
+	/**
+	 * Verifies that a rate-limit rejection without a reset time records the next hold length in the harness's shared
+	 * hold and reports the session as rate-limited.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void rejectionWithoutResetTimeHoldsTheHarness()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START);
+			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
+				List.of(Turn.replies("limit", TestSessions.REJECTED_EVENT)), new CopyOnWriteArrayList<>());
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+
+			HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
+			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(hold, List.of()));
+			requireThat(capacity.hold(), "hold").isEqualTo(hold);
+		}
+	}
+
+	/**
+	 * Verifies that a turn that completes resets the harness's next hold length to 1 minute.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void completedTurnResetsHoldLength()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START.minus(Duration.ofMinutes(10)));
+			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+			HarnessCapacity.Hold ended = capacity.reject(null);
+			clock.set(START);
+			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock, List.of(Turn.replies("done")),
+				new CopyOnWriteArrayList<>());
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(ended.endsAt(), 0));
+		}
 	}
 }

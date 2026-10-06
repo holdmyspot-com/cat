@@ -34,6 +34,7 @@ public abstract class HarnessEvents
 	private TokenUsage usage;
 	private List<RateLimitWindow> windows = List.of();
 	private Rejection rejection;
+	private boolean refused;
 	private String error;
 	private List<ToolCall> toolCalls = List.of();
 	private SessionEvidence evidence = new SessionEvidence(List.of());
@@ -247,7 +248,29 @@ public abstract class HarnessEvents
 	}
 
 	/**
-	 * Returns the error that the events reported, other than a rate-limit rejection.
+	 * Indicates whether the events reported that the provider refused a request with HTTP status 403 and the harness
+	 * gave up on it.
+	 *
+	 * @return {@code true} if a final refusal was reported
+	 */
+	public final boolean refused()
+	{
+		synchronized (lock)
+		{
+			return refused;
+		}
+	}
+
+	/**
+	 * Records that the provider refused a request with HTTP status 403 and the harness gave up on it.
+	 */
+	protected final void setRefused()
+	{
+		this.refused = true;
+	}
+
+	/**
+	 * Returns the error that the events reported, other than a rate-limit rejection or a refusal.
 	 *
 	 * @return a description of the error that omits the harness's error text, or {@code null} if no event reported
 	 *   an error
@@ -261,7 +284,7 @@ public abstract class HarnessEvents
 	}
 
 	/**
-	 * Records an error other than a rate-limit rejection.
+	 * Records an error other than a rate-limit rejection or a refusal.
 	 *
 	 * @param error a description of the error that omits the harness's error text
 	 * @throws NullPointerException if {@code error} is null

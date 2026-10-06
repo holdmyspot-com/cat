@@ -441,7 +441,7 @@ public final class TransitionsTest
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1; ++failure)
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-				"provider error", NOW, null));
+				"provider error", NOW));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		}
 		MeasurementIdentity observed = changed(campaign, MeasurementCondition.MODEL);
@@ -601,7 +601,7 @@ public final class TransitionsTest
 			requireThat(campaign.pending(), "pending[" + failure + "]").isNull();
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-				"provider error", NOW, null));
+				"provider error", NOW));
 		}
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
@@ -661,7 +661,7 @@ public final class TransitionsTest
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-				"provider error", NOW, null));
+				"provider error", NOW));
 		}
 		return campaign;
 	}
@@ -766,7 +766,7 @@ public final class TransitionsTest
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, attempt.failure(),
-				attempt.detail(), attempt.endedAt(), null));
+				attempt.detail(), attempt.endedAt()));
 		}
 		LogicalTrial trial = campaign.trials().getFirst();
 		requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEqualTo(expected);

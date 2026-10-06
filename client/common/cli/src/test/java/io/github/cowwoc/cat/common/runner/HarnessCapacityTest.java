@@ -3,10 +3,17 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.fakes.ManualClock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -17,6 +24,15 @@ import org.testng.annotations.Test;
  */
 public final class HarnessCapacityTest
 {
+	/**
+	 * The clock of tests that do not depend on holds.
+	 */
+	private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-06T12:00:00Z"), ZoneOffset.UTC);
+	/**
+	 * The time at which tests of holds start.
+	 */
+	private static final Instant HOLD_START = Instant.parse("2026-10-06T12:00:00Z");
+
 	/**
 	 * Creates the test fixture.
 	 */
@@ -49,7 +65,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 3, unexpectedPause());
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 3, unexpectedPause(), CLOCK);
 
 			try (HarnessCapacity.Permit first = capacity.acquire();
 				HarnessCapacity.Permit second = capacity.acquire();
@@ -74,7 +90,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 2, unexpectedPause());
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
 
 			Optional<HarnessCapacity.Permit> first = capacity.tryAcquire();
 			Optional<HarnessCapacity.Permit> second = capacity.tryAcquire();
@@ -100,7 +116,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, unexpectedPause());
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, unexpectedPause(), CLOCK);
 			try (HarnessCapacity.Permit held = capacity.tryAcquire().orElseThrow())
 			{
 				requireThat(held, "held").isNotNull();
@@ -127,7 +143,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, unexpectedPause());
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, unexpectedPause(), CLOCK);
 			HarnessCapacity.Permit first = capacity.tryAcquire().orElseThrow();
 			first.close();
 			try (HarnessCapacity.Permit second = capacity.tryAcquire().orElseThrow())
@@ -152,8 +168,8 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity first = HarnessCapacity.of(directory, 1, unexpectedPause());
-			HarnessCapacity second = HarnessCapacity.of(directory, 1, unexpectedPause());
+			HarnessCapacity first = HarnessCapacity.of(directory, 1, unexpectedPause(), CLOCK);
+			HarnessCapacity second = HarnessCapacity.of(directory, 1, unexpectedPause(), CLOCK);
 			try (HarnessCapacity.Permit held = first.tryAcquire().orElseThrow())
 			{
 				requireThat(held, "held").isNotNull();
@@ -179,8 +195,8 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity first = HarnessCapacity.of(root.resolve("first"), 1, unexpectedPause());
-			HarnessCapacity second = HarnessCapacity.of(root.resolve("second"), 1, unexpectedPause());
+			HarnessCapacity first = HarnessCapacity.of(root.resolve("first"), 1, unexpectedPause(), CLOCK);
+			HarnessCapacity second = HarnessCapacity.of(root.resolve("second"), 1, unexpectedPause(), CLOCK);
 
 			try (HarnessCapacity.Permit permit = first.acquire())
 			{
@@ -212,7 +228,7 @@ public final class HarnessCapacityTest
 				if (pauses.incrementAndGet() == 3)
 					held.get().close();
 			};
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, releaseOnThirdPause);
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, releaseOnThirdPause, CLOCK);
 			held.set(capacity.acquire());
 
 			try (HarnessCapacity.Permit permit = capacity.acquire())
@@ -239,7 +255,7 @@ public final class HarnessCapacityTest
 			{
 				throw new IOException("interrupted");
 			};
-			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, failing);
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, failing, CLOCK);
 			try (HarnessCapacity.Permit held = capacity.acquire())
 			{
 				requireThat(held, "held").isNotNull();
@@ -291,7 +307,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity.of(directory, HarnessCapacity.MAXIMUM_CONCURRENCY + 1, unexpectedPause());
+			HarnessCapacity.of(directory, HarnessCapacity.MAXIMUM_CONCURRENCY + 1, unexpectedPause(), CLOCK);
 		}
 	}
 
@@ -307,7 +323,7 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
-			HarnessCapacity.of(directory, 0, unexpectedPause());
+			HarnessCapacity.of(directory, 0, unexpectedPause(), CLOCK);
 		}
 	}
 
@@ -363,6 +379,322 @@ public final class HarnessCapacityTest
 		{
 			// Clear the flag so that the test framework thread is reusable
 			Thread.interrupted();
+		}
+	}
+
+
+	/**
+	 * Creates a capacity pool over a test-owned directory whose holds follow a test-controlled clock.
+	 *
+	 * @param directory the directory that holds the slot and hold files
+	 * @param clock the clock that decides whether a hold lasts
+	 * @return the pool
+	 */
+	private static HarnessCapacity heldBy(Path directory, ManualClock clock)
+	{
+		return HarnessCapacity.of(directory, 1, unexpectedPause(), clock);
+	}
+
+	/**
+	 * Verifies that a hold that one instance records stops a second instance over the same directory from taking a
+	 * permit until the hold ends.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void holdBlocksOtherInstancesUntilItEnds() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity first = heldBy(directory, clock);
+			HarnessCapacity second = heldBy(directory, clock);
+
+			HarnessCapacity.Hold hold = first.reject(null);
+
+			requireThat(hold, "hold").isEqualTo(new HarnessCapacity.Hold(HOLD_START.plus(Duration.ofMinutes(1)), 1));
+			requireThat(second.hold(), "second.hold()").isEqualTo(hold);
+			requireThat(second.tryAcquire().isPresent(), "acquiredDuringHold").isFalse();
+			clock.set(hold.endsAt().minusSeconds(1));
+			requireThat(second.tryAcquire().isPresent(), "acquiredBeforeEnd").isFalse();
+			clock.set(hold.endsAt());
+			try (HarnessCapacity.Permit permit = second.tryAcquire().orElseThrow())
+			{
+				requireThat(permit, "permit").isNotNull();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a rejection with a reset time holds until that time without advancing the sequence of hold
+	 * lengths.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void rejectionWithResetTimeHoldsUntilIt() throws IOException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity capacity = heldBy(directory, clock);
+			Instant resetsAt = HOLD_START.plus(Duration.ofMinutes(45));
+
+			HarnessCapacity.Hold hold = capacity.reject(resetsAt);
+
+			requireThat(hold, "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
+			clock.set(resetsAt);
+			requireThat(capacity.reject(null), "afterReset").isEqualTo(
+				new HarnessCapacity.Hold(resetsAt.plus(Duration.ofMinutes(1)), 1));
+		}
+	}
+
+	/**
+	 * Verifies that a hold that ends earlier never replaces one that ends later, whichever instance records it.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void shorterHoldNeverReplacesLongerOne() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity first = heldBy(directory, clock);
+			HarnessCapacity second = heldBy(directory, clock);
+			Instant later = HOLD_START.plus(Duration.ofMinutes(45));
+			first.reject(later);
+
+			requireThat(second.reject(HOLD_START.plus(Duration.ofMinutes(10))).endsAt(), "earlierReset").
+				isEqualTo(later);
+			requireThat(second.reject(null).endsAt(), "withoutReset").isEqualTo(later);
+			requireThat(second.refuse().hold().endsAt(), "refusal").isEqualTo(later);
+			requireThat(first.hold().endsAt(), "first.hold().endsAt()").isEqualTo(later);
+		}
+	}
+
+	/**
+	 * Verifies that each rejection or refusal that follows the end of a hold doubles the next hold, from 1 minute up
+	 * to 30 minutes.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void holdLengthsDoubleUpToThirtyMinutes() throws IOException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity capacity = heldBy(directory, clock);
+			List<Long> lengths = new ArrayList<>();
+			for (int rejection = 0; rejection < 7; ++rejection)
+			{
+				Instant now = clock.instant();
+				HarnessCapacity.Hold hold;
+				if (rejection % 2 == 0)
+					hold = capacity.reject(null);
+				else
+					hold = capacity.refuse().hold();
+				lengths.add(Duration.between(now, hold.endsAt()).toMinutes());
+				clock.set(hold.endsAt().plusSeconds(5));
+			}
+
+			requireThat(lengths, "lengths").isEqualTo(List.of(1L, 2L, 4L, 8L, 16L, 30L, 30L));
+		}
+	}
+
+	/**
+	 * Verifies that a completed turn resets the next hold to 1 minute without ending the hold that lasts.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void completedTurnResetsHoldLength() throws IOException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity first = heldBy(directory, clock);
+			HarnessCapacity second = heldBy(directory, clock);
+			clock.set(first.reject(null).endsAt());
+			HarnessCapacity.Hold lasting = first.reject(null);
+
+			second.completeTurn();
+
+			requireThat(first.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(lasting.endsAt(), 0));
+			clock.set(lasting.endsAt());
+			requireThat(first.reject(null), "afterReset").isEqualTo(
+				new HarnessCapacity.Hold(lasting.endsAt().plus(Duration.ofMinutes(1)), 1));
+		}
+	}
+
+	/**
+	 * Verifies that a rejection or refusal that arrives while a hold lasts neither extends the hold nor lengthens the
+	 * next one.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void rejectionDuringHoldDoesNotDouble() throws IOException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity capacity = heldBy(directory, clock);
+			HarnessCapacity.Hold first = capacity.reject(null);
+			clock.advance(Duration.ofSeconds(30));
+
+			requireThat(capacity.reject(null), "rejectedDuringHold").isEqualTo(first);
+			requireThat(capacity.refuse(), "refusedDuringHold").isEqualTo(new HarnessCapacity.Refusal(first, false));
+			clock.set(first.endsAt());
+			requireThat(capacity.reject(null), "afterHold").isEqualTo(
+				new HarnessCapacity.Hold(first.endsAt().plus(Duration.ofMinutes(2)), 2));
+		}
+	}
+
+	/**
+	 * Verifies that only a refusal that follows the end of a 30-minute hold reports that it followed the longest hold.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void refusalAfterLongestHoldIsReported() throws IOException
+	{
+		// Requirement: R-E6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity capacity = heldBy(directory, clock);
+			List<Boolean> afterLongestHold = new ArrayList<>();
+			HarnessCapacity.Refusal refusal = null;
+			for (int refused = 0; refused < 6; ++refused)
+			{
+				refusal = capacity.refuse();
+				afterLongestHold.add(refusal.afterLongestHold());
+				clock.set(refusal.hold().endsAt());
+			}
+			requireThat(afterLongestHold, "beforeLongestHold").isEqualTo(Collections.nCopies(6, false));
+			clock.set(refusal.hold().endsAt().minusSeconds(1));
+			requireThat(capacity.refuse().afterLongestHold(), "duringLongestHold").isFalse();
+
+			clock.set(refusal.hold().endsAt());
+			requireThat(capacity.refuse().afterLongestHold(), "afterLongestHold").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that {@code acquire} waits through its pause while a hold lasts and takes a permit once it ends.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void acquireWaitsWhileHoldLasts() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			AtomicInteger pauses = new AtomicInteger();
+			Pause advance = () ->
+			{
+				pauses.incrementAndGet();
+				clock.advance(Duration.ofSeconds(20));
+			};
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, advance, clock);
+			capacity.reject(null);
+
+			try (HarnessCapacity.Permit permit = capacity.acquire())
+			{
+				requireThat(permit, "permit").isNotNull();
+				requireThat(pauses.get(), "pauses").isEqualTo(3);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that holds stay inside their directory: a test-owned directory's hold does not block another directory.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void holdDoesNotCrossDirectories() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			heldBy(root.resolve("first"), clock).reject(null);
+			HarnessCapacity second = heldBy(root.resolve("second"), clock);
+
+			requireThat(second.hold(), "second.hold()").isEqualTo(HarnessCapacity.Hold.NONE);
+			try (HarnessCapacity.Permit permit = second.tryAcquire().orElseThrow())
+			{
+				requireThat(permit, "permit").isNotNull();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an unlimited instance records no hold.
+	 *
+	 * @throws IOException if a permit cannot be closed
+	 */
+	@Test
+	public void unlimitedHasNoHold() throws IOException
+	{
+		// Requirement: R-E8
+		HarnessCapacity capacity = HarnessCapacity.unlimited();
+
+		requireThat(capacity.reject(null), "reject").isEqualTo(HarnessCapacity.Hold.NONE);
+		requireThat(capacity.refuse(), "refuse").isEqualTo(new HarnessCapacity.Refusal(HarnessCapacity.Hold.NONE,
+			false));
+		requireThat(capacity.hold(), "hold").isEqualTo(HarnessCapacity.Hold.NONE);
+		try (HarnessCapacity.Permit permit = capacity.tryAcquire().orElseThrow())
+		{
+			requireThat(permit, "permit").isNotNull();
+		}
+	}
+
+	/**
+	 * Verifies that a hold file that does not match its format is reported with its path instead of being ignored.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void malformedHoldFileIsReported() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			Path file = directory.resolve("hold.json");
+			Files.writeString(file, "{\"format_version\":1,\"ends_at\":\"2026-10-06T12:00:00Z\",\"backoffs\":1," +
+				"\"extra\":true}");
+			HarnessCapacity capacity = heldBy(directory, new ManualClock(HOLD_START));
+			try
+			{
+				capacity.tryAcquire();
+				throw new AssertionError("Expected the malformed hold file to be reported");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(file.toString()).contains("extra");
+			}
 		}
 	}
 }

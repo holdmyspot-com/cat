@@ -116,7 +116,7 @@ final class Reconciler
 		for (TrialKey key : running)
 		{
 			requeued = Transitions.apply(requeued,
-				new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, ABANDONED, now, null));
+				new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, ABANDONED, now));
 		}
 		return requeued;
 	}

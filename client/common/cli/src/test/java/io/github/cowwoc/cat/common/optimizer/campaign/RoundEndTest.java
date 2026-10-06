@@ -366,10 +366,10 @@ public final class RoundEndTest
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
-			"provider error", NOW, null));
+			"provider error", NOW));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED,
-			"slice ended", NOW, null));
+			"slice ended", NOW));
 
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.pending(), "pending").isNull();

@@ -10,8 +10,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs sessions of the generic harness {@value #HARNESS}, whose events report only whether the model produced output
- * and whether a hook is running.
+ * Runs sessions of the generic harness {@value #HARNESS}, whose events report only whether the model produced output,
+ * whether a hook is running, and whether the provider rejected or refused a request.
  */
 final class TestSessions extends RunnerSessions
 {
@@ -31,6 +31,14 @@ final class TestSessions extends RunnerSessions
 	 * An event that reports that the hook {@code hook} completed.
 	 */
 	static final String HOOK_COMPLETED_EVENT = "{\"type\":\"hook_completed\",\"id\":\"hook\"}";
+	/**
+	 * An event that reports a rate-limit rejection without a reset time.
+	 */
+	static final String REJECTED_EVENT = "{\"type\":\"rejected\"}";
+	/**
+	 * An event that reports that the provider refused a request and the harness gave up on it.
+	 */
+	static final String REFUSED_EVENT = "{\"type\":\"refused\"}";
 
 	/**
 	 * Creates a port.
@@ -80,7 +88,7 @@ final class TestSessions extends RunnerSessions
 	}
 
 	/**
-	 * Harness events that report model output and hooks, and nothing else.
+	 * Harness events that report model output, hooks, rejections and refusals, and nothing else.
 	 */
 	static final class Events extends HarnessEvents
 	{
@@ -103,6 +111,8 @@ final class TestSessions extends RunnerSessions
 				case "output" -> setOutputProduced();
 				case "hook_started" -> setHookStarted(id);
 				case "hook_completed" -> setHookCompleted(id);
+				case "rejected" -> setRejection(new Rejection(null));
+				case "refused" -> setRefused();
 				default ->
 				{
 				}

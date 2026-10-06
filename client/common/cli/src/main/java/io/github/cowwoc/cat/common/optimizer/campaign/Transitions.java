@@ -72,6 +72,11 @@ public final class Transitions
 				if (!draft.throttle.allowsAdmission(observe.at()))
 					draft.slowStart = SlowStart.INITIAL;
 			}
+			case CampaignEvent.HoldAdmissions hold ->
+			{
+				draft.throttle = draft.throttle.hold(hold.until(), hold.backoffs());
+				draft.slowStart = SlowStart.INITIAL;
+			}
 			case CampaignEvent.StartAuthorAttempt start -> startAuthorAttempt(draft, start.cell());
 			case CampaignEvent.SubmitAuthorAttempt submit -> submitAuthorAttempt(draft, submit);
 			case CampaignEvent.AdvanceMinimality advance -> advanceMinimality(draft, advance.snapshot());
@@ -556,13 +561,9 @@ public final class Transitions
 				if (infrastructureFailures >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 					draft.raise(new PendingDecision.TrialFailures(trial.key()));
 			}
-			case RATE_LIMITED ->
-			{
-				draft.throttle = draft.throttle.reject(fail.at(), fail.resetsAt());
-				draft.slowStart = SlowStart.INITIAL;
-			}
-			// An interrupted trial is queued unchanged after this switch.
-			case INTERRUPTED ->
+			// A rate-limited, refused or interrupted trial is queued unchanged after this switch. The harness's shared
+			// hold reaches the throttle through HoldAdmissions.
+			case RATE_LIMITED, INTERRUPTED ->
 			{
 			}
 		}

@@ -499,14 +499,12 @@ public final class Driver implements AutoCloseable
 	 * @param failure the kind of failure
 	 * @param detail what happened
 	 * @param now the current time
-	 * @param resetsAt when the provider accepts requests again, or {@code null} if unknown or not rate-limited
 	 * @throws IOException if the store cannot be written
 	 */
-	private void fail(TrialKey key, RunFailure failure, String detail, Instant now, Instant resetsAt)
-		throws IOException
+	private void fail(TrialKey key, RunFailure failure, String detail, Instant now) throws IOException
 	{
 		if (findRunningTrial(key).isPresent())
-			record(new CampaignEvent.Fail(key, failure, detail, now, resetsAt));
+			record(new CampaignEvent.Fail(key, failure, detail, now));
 	}
 
 	/**
@@ -527,15 +525,47 @@ public final class Driver implements AutoCloseable
 
 		if (result != null && !result.windows().isEmpty())
 			record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
+		holdAdmissions(result);
 		if (session instanceof InFlight.Trial trial)
 			recordTrialSession(trial, result, now);
 		switch (session)
 		{
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
-			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure(), now);
-			case InFlight.Author author -> authorEnded(author, result, event.failure(), now);
-			case InFlight.Values values -> valuesEnded(values, result, event.failure(), now);
+			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure());
+			case InFlight.Author author -> authorEnded(author, result, event.failure());
+			case InFlight.Values values -> valuesEnded(values, result, event.failure());
+		}
+	}
+
+	/**
+	 * Holds admissions until the harness's shared hold ends after the provider rejected or refused a session. A refusal
+	 * that followed a 30-minute hold stops the slice.
+	 *
+	 * @param result the session's result, or {@code null} if it failed with an exception
+	 * @throws IOException if the store cannot be written
+	 */
+	private void holdAdmissions(SessionResult result) throws IOException
+	{
+		switch (result)
+		{
+			case null ->
+			{
+			}
+			case SessionResult.Completed _, SessionResult.Interrupted _, SessionResult.Failed _ ->
+			{
+			}
+			case SessionResult.RateLimited limited ->
+				record(new CampaignEvent.HoldAdmissions(limited.hold().endsAt(), limited.hold().backoffs()));
+			case SessionResult.Refused refused ->
+			{
+				record(new CampaignEvent.HoldAdmissions(refused.hold().endsAt(), refused.hold().backoffs()));
+				if (refused.afterLongestHold() && infrastructureFailure == null)
+				{
+					infrastructureFailure = "The provider refused " + campaign.header().harness().commandName() +
+						" requests after a 30-minute hold";
+				}
+			}
 		}
 	}
 
@@ -599,8 +629,7 @@ public final class Driver implements AutoCloseable
 		TrialKey key = trial.key();
 		switch (result)
 		{
-			case null -> fail(key, RunFailure.INFRASTRUCTURE, "The trial session failed: " + describe(failure), now,
-				null);
+			case null -> fail(key, RunFailure.INFRASTRUCTURE, "The trial session failed: " + describe(failure), now);
 			case SessionResult.Completed completed ->
 			{
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
@@ -608,10 +637,13 @@ public final class Driver implements AutoCloseable
 					decideChecks(trial, completed, now);
 			}
 			case SessionResult.Interrupted _ ->
-				fail(key, RunFailure.INTERRUPTED, "The trial session was interrupted", now, null);
-			case SessionResult.RateLimited limited -> fail(key, RunFailure.RATE_LIMITED,
-				"The provider rejected the trial session because of a rate limit", now, limited.resetsAt());
-			case SessionResult.Failed failed -> fail(key, RunFailure.INFRASTRUCTURE, failed.reason(), now, null);
+				fail(key, RunFailure.INTERRUPTED, "The trial session was interrupted", now);
+			// The trial reruns once the harness's shared hold ends
+			case SessionResult.RateLimited _ -> fail(key, RunFailure.RATE_LIMITED,
+				"The provider rejected the trial session because of a rate limit", now);
+			case SessionResult.Refused _ -> fail(key, RunFailure.RATE_LIMITED,
+				"The provider refused the trial session", now);
+			case SessionResult.Failed failed -> fail(key, RunFailure.INFRASTRUCTURE, failed.reason(), now);
 		}
 	}
 
@@ -642,7 +674,7 @@ public final class Driver implements AutoCloseable
 		catch (IOException | UndecidableCheckException e)
 		{
 			fail(trial.key(), RunFailure.INFRASTRUCTURE, "The deterministic checks could not be decided: " +
-				describe(e), now, null);
+				describe(e), now);
 			return;
 		}
 		List<CheckResult> failed = results.stream().filter(result -> !result.passed()).toList();
@@ -718,8 +750,7 @@ public final class Driver implements AutoCloseable
 		}
 		catch (IOException e)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " + describe(e), now,
-				null);
+			fail(key, RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " + describe(e), now);
 			return Optional.empty();
 		}
 	}
@@ -804,10 +835,9 @@ public final class Driver implements AutoCloseable
 				}
 				reason = "The judge's output does not match its result schema";
 			}
-			case SessionResult.RateLimited limited ->
+			case SessionResult.RateLimited _, SessionResult.Refused _ ->
 			{
-				// A rate limit is not a failure of the judge
-				record(new CampaignEvent.ObserveRateLimit(List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+				// A rate limit or a refusal is not a failure of the judge, which reruns once the shared hold ends
 				judgingQueue.add(judging);
 				return;
 			}
@@ -862,7 +892,7 @@ public final class Driver implements AutoCloseable
 			return;
 		}
 		fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
-			"failure: " + reason, now, null);
+			"failure: " + reason, now);
 	}
 
 	/**
@@ -908,10 +938,9 @@ public final class Driver implements AutoCloseable
 	 * @param triaging the failed trial
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param failure the exception, or {@code null}
-	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void triageEnded(Triaging triaging, SessionResult result, Throwable failure, Instant now)
+	private void triageEnded(Triaging triaging, SessionResult result, Throwable failure)
 		throws IOException
 	{
 		if (findRunningTrial(triaging.key()).isEmpty())
@@ -930,10 +959,9 @@ public final class Driver implements AutoCloseable
 				}
 				reason = "The triage's output does not match its result schema";
 			}
-			case SessionResult.RateLimited limited ->
+			case SessionResult.RateLimited _, SessionResult.Refused _ ->
 			{
-				// A rate limit is not a failure of the triage
-				record(new CampaignEvent.ObserveRateLimit(List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+				// A rate limit or a refusal is not a failure of the triage, which reruns once the shared hold ends
 				triageQueue.add(triaging);
 				return;
 			}
@@ -1126,10 +1154,9 @@ public final class Driver implements AutoCloseable
 	 * @param values the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param failure the exception, or {@code null}
-	 * @param now the current time
 	 * @throws IOException if the store cannot be written
 	 */
-	private void valuesEnded(InFlight.Values values, SessionResult result, Throwable failure, Instant now)
+	private void valuesEnded(InFlight.Values values, SessionResult result, Throwable failure)
 		throws IOException
 	{
 		Optional<CertificationAttempt> reproducing = campaign.reproducing();
@@ -1158,9 +1185,10 @@ public final class Driver implements AutoCloseable
 				}
 				record(new CampaignEvent.ReproductionValues(values.attempt(), values.group(), combinations));
 			}
-			// The session starts again once the rate limit allows it
-			case SessionResult.RateLimited limited -> record(new CampaignEvent.ObserveRateLimit(
-				List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+			// The session starts again once the harness's shared hold ends
+			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			{
+			}
 			case SessionResult.Interrupted _ -> infrastructureFailure =
 				"The session that writes reproduction values was interrupted";
 			case SessionResult.Failed failed -> infrastructureFailure =
@@ -1337,10 +1365,9 @@ public final class Driver implements AutoCloseable
 	 * @param author the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param failure the exception, or {@code null}
-	 * @param now the current time
 	 * @throws IOException if the store or the workspace cannot be read or written
 	 */
-	private void authorEnded(InFlight.Author author, SessionResult result, Throwable failure, Instant now)
+	private void authorEnded(InFlight.Author author, SessionResult result, Throwable failure)
 		throws IOException
 	{
 		try
@@ -1352,8 +1379,10 @@ public final class Driver implements AutoCloseable
 				{
 					submit(author, completed);
 				}
-				case SessionResult.RateLimited limited -> record(new CampaignEvent.ObserveRateLimit(
-					List.of(new RateLimitWindow(1.0, limited.resetsAt())), now));
+				// The author starts again with the same brief once the harness's shared hold ends
+				case SessionResult.RateLimited _, SessionResult.Refused _ ->
+				{
+				}
 				case SessionResult.Interrupted _ -> authorFailed("The author session was interrupted");
 				case SessionResult.Failed failed -> authorFailed(failed.reason());
 			}
@@ -1602,7 +1631,7 @@ public final class Driver implements AutoCloseable
 		}
 		catch (IOException e)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, "The trial session could not start: " + describe(e), now, null);
+			fail(key, RunFailure.INFRASTRUCTURE, "The trial session could not start: " + describe(e), now);
 			return;
 		}
 		int concurrency = 1;
@@ -1726,7 +1755,7 @@ public final class Driver implements AutoCloseable
 		{
 			if (findRunningTrial(key).isPresent())
 				campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, reason,
-					now, null));
+					now));
 		}
 		if (campaign != before)
 			context.store().replaceSnapshot(campaign);

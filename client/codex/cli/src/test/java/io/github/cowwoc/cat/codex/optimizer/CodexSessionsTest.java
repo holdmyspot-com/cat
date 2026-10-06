@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -553,8 +554,8 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that a provider rejection for a rate limit is reported with its reset time, and that the session sends
-	 * no further turn.
+	 * Verifies that a provider rejection for a rate limit holds the harness's sessions until the reported reset time,
+	 * and that the session sends no further turn.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -574,13 +575,19 @@ public final class CodexSessionsTest
 				"{\"primary\":{\"usedPercent\":100,\"windowDurationMins\":300,\"resetsAt\":1791000000}," +
 				"\"secondary\":null,\"rateLimitReachedType\":\"primary\"}}}";
 			List<String> requests = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
+			Instant resetsAt = Instant.ofEpochSecond(1_791_000_000L);
+			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+			{
+				throw new AssertionError("The session must not wait for capacity");
+			}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));
+			CodexSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), new CopyOnWriteArrayList<>(),
+				List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
 
 			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(Instant.ofEpochSecond(1_791_000_000L),
-				List.of(new RateLimitWindow(1.0, Instant.ofEpochSecond(1_791_000_000L)))));
+			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(new HarnessCapacity.Hold(resetsAt, 0),
+				List.of(new RateLimitWindow(1.0, resetsAt))));
+			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
 			requireThat(requests, "requests").isEqualTo(List.of("one"));
 		}
 	}
