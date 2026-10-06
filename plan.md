@@ -146,6 +146,10 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-50 | `optimize-medium` | A session-result change for the four role sessions and one message; an error retries a trial that should be judged on its behaviour, or hides the time limit behind a schema message. |
 | WI-51 | `optimize-medium` | An authority change that resolves links through the fork inventory; an error lets an author edit an external file, a loader-configuration file or an unrelated in-project file, or keeps rejecting a prompt-source link's target. |
 | WI-52 | `optimize-medium` | A session-result change for timed-out trials in both harnesses; an error retries a trial whose model answered or ran a hook, or judges a turn the provider never answered as "no reply". |
+| WI-53 | `optimize-xhigh` | A cross-process hold file with locking, refusal detection in both event readers, and driver changes to admission, retry counting and pausing; an error lets one process keep connecting while another is refused, counts a refusal toward the infrastructure limit, or retries a revoked account forever. |
+| WI-54 | `optimize-high` | A runner configuration change that must keep Codex's requests identical apart from retry limits; an error changes the provider identity, transport or authentication the runner presents. |
+| WI-55 | `optimize-high` | An author-input change that renders each failing trial's evidence section into the author prompt; an error gives an author another trial's evidence or drops a failure's commands. |
+| WI-56 | `optimize-high` | Removes an outcome, a pending decision and its stored form with a format bump, and changes when development ends; an error ends development early or loops past the review checkpoint. |
 | WI-45 | `optimize-high` | Removes a user choice, a command option, a stored campaign key with a format bump and a delivery output, and narrows delivery to the project; an error lets an author attempt or a delivery change an external file, or leaves a retired choice reachable. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
@@ -278,6 +282,10 @@ requirement names.
 | WI-50 | Done 2026-10-05 (`1bc655ef9`). A deriver, judge, triage or author session that reaches its time limit now fails with "The <role> session reached its <N>-minute time limit"; a trial still completes and is judged. `start` and `revise` report a deriver that did not complete by its reason, as interrupted, or as rate-limited. Tests failed first: `RunnerSessionsTest.failsAtTheTimeLimitUnlessTrial` (4 roles, `Completed` instead of `Failed`) and `OptimizerCoreTest.startReportsDeriverThatDidNotComplete` (4 rows, record text in the message). Full build after integration: 2170 tests, 0 failures; at or over 1 s under load 6.0 (an E7 deriver was running): `DistributionTest.drawsBalanceTestsWithinCategory` 2.36 s, `GeneratorTest.addedValuesTakeHalfOfDevelopment` 2.25 s and `drawsKeyValuesWithinThePart` 1.14 s, `ProposalSchemaTest.rejectsInvalidScalars` 1.06 s and `rejectsMissingScenarioCitations` 1.05 s. Found by the E7 rerun on 2026-10-05 (campaign `20261005T225952Z-b214e7`): the deriver's output turn was stopped at the 30-minute limit after streaming 18 KB in 698 s (the previous E7 deriver streamed 26 KB in 125 s); codex-lb shows the request cancelled after 698 s with its first token at 66 s. `start` reported a schema problem instead of the time limit. |
 | WI-51 | Done 2026-10-05 (`f4fe2f46d`, `92eb13bc8`). `Authority` takes the fork inventory and treats the in-project target of each link at or below a prompt source, after following the chain, as a prompt file; external, loader-configuration, cycle and outside limits are unchanged. Tests failed first: `AuthorityTest` (link target, edit at the link and the target path, chain, directory link), `LinkReportTest.promptSourceLinkReportsNoLimit`, and `DriverTest.linkTargetEditBecomesCandidate`, which reproduced E7's pause ("The author session failed 3 times ... OUTSIDE_PROMPT_SOURCES"). Full build after integration: 2180 tests, 0 failures; 15 tests took 1.1–1.8 s at load 18 from another project's Rust build, none of them new. Found by the E7 rerun on 2026-10-05 (campaign `20261005T225952Z-b214e7`): after `use_authorized_source` the answered warning was not raised again, but three authors edited `docs/handbook.md`, which the author prompt listed as editable, and each attempt was rejected as `outside_prompt_sources` for its target `shared/handbook.md`; the campaign paused with "The author session failed 3 times". The external file's sha256 is unchanged. E7 resumes after the Codex build is installed. |
 | WI-52 | Done 2026-10-06 (`2bdc11b4b`, Claude `optimize-medium`). Each harness event reader records whether the model produced output in the turn in progress (reasoning, reply or reply delta, tool or command item, streamed record, or reported token usage) and which hooks are running. `Session` starts that record when it sends each turn and keeps its state at the moment the time limit passes, so the interrupt's own events do not count. A trial whose turn reached the limit with no output and no running hook fails with "The trial's turn <N> reached its <M>-minute time limit with no model output". Tests failed first: `RunnerSessionsTest.failsWhenTurnHasNoOutputAtTheLimit` (2 rows) and `failsNamingTheTurnThatHadNoOutput` (`Completed` instead of `Failed`), `AppServerEventsTest` (12 errors) and `StreamJsonEventsTest` (9 errors). Full build after integration: 2222 tests, 0 failures; at or over 1 s at load 18: the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 1.06 s. |
+| WI-53 | Not started. |
+| WI-54 | Not started. |
+| WI-55 | Not started. |
+| WI-56 | Not started. |
 | WI-38 | Done 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18), `560cabcde` (R-C19 with the lower-effort stress setting) and `8e71d2abb` (Codex's 5000-token tool-output limit as the next stress setting, a derived development cell `<cell>/tool-output-5000` that persists, and the limit recorded in the observed identity; full build 2048 tests, 0 failures, none at or over 1 s); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. The 5000-token limit is the value P15 reproduced its failure under. The runner bridge's path to Codex has unit tests only. The reports' gap for development cells outside the scope is WI-44. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
@@ -1302,6 +1310,81 @@ The riskiest pure code, built first.
   kind and each hook start and completion sets the per-turn state, using recorded event shapes.
 - **Exit:** unit tests pass; the full build passes.
 
+### WI-53 — A rejection or a refusal holds every CAT process of the harness (user rulings, 2026-10-06)
+
+- **Change:**
+  - **Refusal detection.** Each event reader recognizes a provider refusal, an HTTP 403 from the provider or its
+    network edge. Codex: an `error` notification with `willRetry` false whose `codexErrorInfo` holds an
+    `httpStatusCode` of 403 under any key (E8 recorded `httpConnectionFailed`; the retried ones carry
+    `responseStreamDisconnected`). Claude: an error `result` with `api_error_status` 403, read where 429 is read today.
+    `Session` reports a refused session as distinct from a rate-limited one, for every role.
+  - **Shared hold.** `HarnessCapacity` keeps the hold in its harness directory: the time the hold ends and the next
+    hold length. Writes are atomic and serialized by a lock file in the same directory, and a write never moves the
+    end earlier. `acquire` waits and `tryAcquire` returns empty while the hold lasts, for the optimizer and both
+    runner CLIs. An unlimited instance has no hold; a test-owned directory has its own.
+  - **Hold rules.** A rate-limit rejection with a reset time holds until that time. A rejection without one, or a
+    refusal, holds for the next length: 1 minute, doubling for each rejection that follows the end of a hold, up to
+    30 minutes. A rejection that arrives while a hold lasts does not lengthen the sequence. A turn that completes
+    resets the next length to 1 minute. The campaign `Throttle` takes its hold end and backoff from the shared hold
+    rather than keeping its own sequence, and still drops `w` to 1; trial records keep recording the throttle state.
+  - **Driver.** A rejected or refused session runs again after the hold: a trial as the same logical trial, any other
+    role as the same request. Neither counts toward the 3-infrastructure-failure limit. A refusal that follows a
+    30-minute hold pauses the campaign with "The provider refused <harness> requests after a 30-minute hold".
+- **Closes:** D57 and the hold half of the §3.5 rejection hold; found by E8 on 2026-10-06, where 403 bursts failed up
+  to 451 of 474 requests a minute while each refused session reran within a minute.
+- **Tests:** `AppServerEventsTest` and `StreamJsonEventsTest` on recorded shapes: a final 403 error is a refusal, a
+  retried one (`willRetry` true) is not, a 429 stays a rate-limit rejection, a 500 stays an error. `HarnessCapacityTest`:
+  a hold set by one instance blocks `tryAcquire` on a second instance over the same directory and ends at its time;
+  a shorter hold never replaces a longer one; the lengths run 1, 2, 4, 8, 16, 30, 30 minutes; a completed turn resets
+  them; a rejection during a hold does not double. `DriverTest`: a refused trial reruns as the same logical trial
+  after the hold and three refusals do not pause; a refusal after a 30-minute hold pauses with the message; a refused
+  judge or author request reruns. All with an injected clock and pause; no test sleeps.
+- **Exit:** unit tests pass; the full build passes.
+
+### WI-54 — The Codex runner limits Codex's own retries to 1 (user ruling, 2026-10-06)
+
+- **Premise check first:** Codex rejects a `model_providers.openai` entry ("Built-in providers cannot be overridden"),
+  so the retry limits need a provider with another id. From the Codex source, establish whether a custom provider with
+  the runner's `openai_base_url`, OpenAI authentication, the Responses API and WebSocket support sends the same
+  requests as the built-in `openai` provider: the same headers and originator, transport, authentication and model
+  metadata. If anything differs, stop and report the differences; do not ship a changed identity.
+- **Change:** if the premise holds, `CodexConnectionConfiguration` writes that provider with `stream_max_retries = 1`
+  and `request_max_retries = 1` into the isolated configuration and selects it, and copies nothing else that changes.
+- **Closes:** D57's retry limit and the harness-retries bullet of §3.5.
+- **Tests:** `CodexConnectionConfigurationTest`: the isolated configuration selects the provider and holds both limits
+  at 1, with the host's base URL and login method; a host configuration without `openai_base_url` keeps the built-in
+  base URL.
+- **Exit:** unit tests pass; the full build passes; one manual Codex runner turn through the load balancer completes
+  and its request log shows the same originator as before.
+
+### WI-55 — Authors receive each failing trial's evidence section (user ruling, 2026-10-06)
+
+- **Change:** `AuthorBrief` carries, for each failure it lists, that trial's evidence section, rendered by the same
+  renderer the judge uses from the trial's retained harness events. `AuthorPrompt` places each section with its
+  failure. A failure whose events are no longer retained says so instead of omitting the section silently.
+- **Closes:** D56 and open item "authors cannot see trial tool calls"; found by E1, where authors could not tell a
+  mistyped `read-file` path (exit 127) from a skipped read.
+- **Tests:** `AuthorPromptTest`: each failure's section appears with that failure and contains its tool call, exit
+  status and output; two failures from different trials each get their own section; a failure without retained
+  events states it. `DriverTest`: an author started after a failed trial is given that trial's section.
+- **Exit:** unit tests pass; the full build passes.
+
+### WI-56 — Development has no plateau (user ruling, 2026-10-06)
+
+- **Change:** remove `Outcome.PLATEAU`, `PendingDecision.PlateauReached` and `Plateau`. A complete round with no
+  promotable attempt always takes the path that `TrialAdoption.endUnproductiveRound` takes today within the limit:
+  keep the working candidate and its retained attempts, resume its representative trials, restart admissions at a
+  window of 1. A later failure edits again under edit-or-continue. The review checkpoint is the bound; it offers
+  `accept without certification` when the working candidate is not the incumbent. Status and report texts lose the
+  plateau. `campaign.json` raises its `format_version`, and a file at the earlier version is refused with the
+  start-a-new-campaign message, because a stored plateau pause has no meaning now.
+- **Closes:** D53 and §2.7 "Rounds"; found by E1 and E7, which ended at a plateau after 15 and 5 rounds.
+- **Tests:** `PlateauTest` becomes a test of the round's end: a complete round without a promotion above the failure
+  limit resumes sampling, and the next failure starts a new round. `DriverTest`: a candidate that keeps failing
+  reaches the review checkpoint and stops there, offering `accept without certification`. `FileCampaignStoreTest`:
+  the earlier version is refused. `StatusReportTest` and `DecisionTableTest` lose the plateau rows.
+- **Exit:** unit tests pass; the full build passes; `grep -ri plateau client/` finds only rejection-test fixtures.
+
 ### WI-49 — An answered authority warning stays answered
 
 - **Change:** `Transitions` merges a `WarnAuthority` into a pending `AuthorityWarnings` decision, listing each distinct
@@ -1660,7 +1743,11 @@ blocks only the part of a work item that it names.
 | WI-50 | WI-8 |
 | WI-51 | WI-45 |
 | WI-52 | WI-50 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50 and WI-51. |
+| WI-53 | WI-48 |
+| WI-54 | WI-8 |
+| WI-55 | WI-49 |
+| WI-56 | WI-46 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-54, WI-55 and WI-56. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
