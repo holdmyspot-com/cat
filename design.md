@@ -334,7 +334,7 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Provider prompt caching | Shared prefixes are cached across sessions. | Caching changes latency and cost, not sampling given the prompt. This is an assumption, recorded as a limitation. |
 | Throttling and load under parallelism | Load could change model behaviour, or turn errors into failures. | Provider errors and rate-limit rejections are infrastructure failures that rerun the same logical trial. Every trial records its concurrency level and throttle state. |
 | Parallel conditions differing from real use | Real use is usually one session at a time. | The test stays valid under the weaker null "every trial's conditional rate is at most 95%", even when conditions vary. The only risk is that parallel conditions are better than serial ones. The report runs a descriptive comparison of pass rates by concurrency level, and the claim names the measured conditions. |
-| Discarding unfavourable outcomes | A retry could hide a failure. | A valid compliance outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same instance. A trial that exceeds its declared time limit is judged on its behaviour, not retried. A logical trial with 3 infrastructure failures, not counting rate-limit rejections, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-readiness-and-edit-or-continue)). |
+| Discarding unfavourable outcomes | A retry could hide a failure. | A valid compliance outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same instance. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 | Certifying on the instances that shaped the candidate | A candidate tuned on the instances that then certify it is measured on its own training data, so the claim overstates how it does on cases it was not tuned for. | Every test is a template whose instances CAT splits before any trial. Development, authors and diagnosis see only development instances; formal trials and the baseline arm draw only held-out instances, and a formal failure reaches development without its instance ([§6.3](#63-generators)). |
 
@@ -643,8 +643,8 @@ or a deterministic check has already failed, CAT records the outcome without sta
 
 A judge or deriver output that does not match its schema is an infrastructure failure. A deriver, judge, triage or author
 session that reaches its time limit is stopped and is an infrastructure failure whose message names the session and
-the limit; only a trial's time limit is behaviour ([§3.2](#32-logical-trials)). A triage output that does not
-match its schema reruns the triage, and a third failure makes the failure blocking
+the limit; a trial's time limit is behaviour unless the provider produced no output ([§3.2](#32-logical-trials)).
+A triage output that does not match its schema reruns the triage, and a third failure makes the failure blocking
 ([§2.7](#27-development-readiness-and-edit-or-continue)). The output is the final response when that response is
 exactly one JSON object, either bare or alone inside one Markdown code fence; any other response is invalid (Claude
 fences its JSON, H23). Candidate and trial content cannot change the judge's rubric, schema or
@@ -695,6 +695,10 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
   cannot be determined, the trial records an observation limit and receives no invented label. Codex trials cannot
   create child worktrees under the runner's sandbox (H18); the judge sees that failure as part of the evidence.
 - Exceeding the test definition's time limit is behaviour: CAT judges the trial on its evidence and does not retry it.
+  The exception is a turn that reaches the limit with no model output (no reasoning, reply or tool call, and no
+  reported token usage) while none of its hooks is still running. The provider never answered, so the run is an
+  infrastructure attempt (user ruling, 2026-10-06). A hook still running at the limit belongs to the prompt system,
+  so that turn stays behaviour.
 
 ### 3.3 Allocation and concurrency
 
@@ -1690,6 +1694,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D52 | Treat every external file as a read-only member of the prompt family: CAT reads, stages and measures it but never edits it (user ruling, 2026-10-05). | Letting the user authorize edits to an external target meant a delivery could change files outside the project that other projects or users share, with a separate preflight and change record for them. | A requirement that needs an external edit must be met through an in-project prompt file, or the campaign stops or is revised. |
 | D53 | Keep sampling the working candidate after a round that promoted no attempt, and report a plateau only when that candidate can no longer meet the readiness gate by the review checkpoint (user ruling, 2026-10-05). | Pausing at every round without a promotion ended development whenever attempts could not be proven better, although the working candidate might already be ready or close to it. | A candidate near the gate spends more development trials before the user is asked; the review checkpoint still bounds them. |
 | D54 | Treat the in-project target of a prompt-source link as a prompt file (user ruling, 2026-10-05). | A prompt source that is a link has its content in the target, so forbidding the target left the prompt source uneditable while the author was told it could edit it; every attempt that edited it was rejected. | CAT may edit an in-project file that the loader reaches only through a link, which other in-project readers of that file also see. |
+| D55 | Treat a trial turn that reaches its time limit with no model output, and no hook still running, as an infrastructure attempt (user ruling, 2026-10-06). | A provider overload left a Codex trial with no event for 60 seconds: the load balancer logged `server_is_overloaded`, the harness reported no error, and the time limit judged the provider's failure as "no reply". That failure counted toward a plateau, although a turn the provider never answered says nothing about the prompt. | A harness-reported provider error is not required, because Codex reported none. A model that thinks past the limit without emitting any item or token usage is indistinguishable from a provider that never answered, so it is also an infrastructure attempt; if it repeats, the third infrastructure failure of that logical trial pauses the campaign instead of hiding it. |
 
 ## 14. Acceptance evidence
 
