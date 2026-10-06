@@ -73,9 +73,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
 import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
+import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -4198,6 +4200,48 @@ public final class DriverTest
 				Campaign campaign = harness.runUntil(driver, state -> state.authorAttempts() == 1);
 				requireThat(campaign.pendingDecisions(), "pendingDecisions").isEmpty();
 				requireThat(campaign.development().author(), "author").isNotNull();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an author attempt that edits the in-project target of a prompt-source link becomes a candidate
+	 * rather than being rejected as a forbidden change.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void linkTargetEditBecomesCandidate() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+			RegularFile content = new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions);
+			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
+				DriverHarness.PROMPT, content,
+				Path.of("docs/handbook.md"), new FileEntry.SymbolicLink(Path.of("../shared/handbook.md")),
+				Path.of("shared/handbook.md"), content));
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				authoring().build(), fork);
+			DriverContext original = harness.context();
+			DriverContext context = new DriverContext(original.store(), original.sessions(), original.workspace(),
+				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
+				original.author(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
+				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
+				original.promptSources(), original.environment(), original.lockFile(), original.random(),
+				original.settings());
+			// The working candidate already changed the handbook, so its bytes come from the overlay
+			Sha256 working = Builder.snapshot("candidate-1");
+			harness.overlays().put(working, harness.candidate("candidate-1").
+				write(Path.of("shared/handbook.md"), new FileContent("working".getBytes(UTF_8)), permissions));
+			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
+			harness.authors(request -> harness.edit(request, Path.of("shared/handbook.md")));
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> state.authorAttempts() == 1);
+				requireThat(campaign.development().author(), "author").isNotNull();
+				requireThat(campaign.pendingDecisions(), "pendingDecisions").isEmpty();
 			}
 		}
 	}

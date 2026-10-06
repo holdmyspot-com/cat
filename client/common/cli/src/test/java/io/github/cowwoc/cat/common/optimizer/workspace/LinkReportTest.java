@@ -57,6 +57,34 @@ public final class LinkReportTest
 	}
 
 	/**
+	 * Verifies that a link at a prompt source whose target lies inside the project but outside the prompt sources
+	 * reports no limit, because the target is a prompt file too, while a link outside every prompt source to the same
+	 * target reports that the target is outside the prompt sources.
+	 */
+	@Test
+	public void promptSourceLinkReportsNoLimit()
+	{
+		// Requirement: R-W6
+		FileInventory prompt = inventory(Map.of(
+			Path.of("prompts/handbook.md"), new SymbolicLink(Path.of("../shared/handbook.md")),
+			Path.of("shared/handbook.md"), file("handbook")));
+		FileInventory unrelated = inventory(Map.of(
+			Path.of("docs/handbook.md"), new SymbolicLink(Path.of("../shared/handbook.md")),
+			Path.of("shared/handbook.md"), file("handbook")));
+		Set<Path> sources = Set.of(Path.of("prompts"));
+
+		LinkReport promptReport = LinkReport.of(prompt, new Authority(sources, Set.of(), prompt));
+		LinkReport unrelatedReport = LinkReport.of(unrelated, new Authority(sources, Set.of(), unrelated));
+
+		requireThat(promptReport.entries(), "promptEntries").isEqualTo(List.of(new Entry(
+			Path.of("prompts/handbook.md"), Optional.of(Path.of("shared/handbook.md")), Status.RESOLVED,
+			Optional.empty())));
+		requireThat(unrelatedReport.entries(), "unrelatedEntries").isEqualTo(List.of(new Entry(
+			Path.of("docs/handbook.md"), Optional.of(Path.of("shared/handbook.md")), Status.RESOLVED,
+			Optional.of(Limit.OUTSIDE_PROMPT_SOURCES))));
+	}
+
+	/**
 	 * Verifies that a link to an external file reports that the target lies outside the project and is read-only.
 	 */
 	@Test

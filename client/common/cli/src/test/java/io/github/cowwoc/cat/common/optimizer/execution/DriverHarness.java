@@ -652,6 +652,7 @@ public final class DriverHarness
 				before = Files.readAllBytes(file);
 			Files.write(effects.resolve("before"), before);
 			Files.writeString(effects.resolve("changed-path"), file.toString(), UTF_8);
+			Files.createDirectories(effects.resolve(file).getParent());
 			Files.write(effects.resolve(file), content);
 		}
 		catch (IOException e)

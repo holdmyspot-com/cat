@@ -199,4 +199,182 @@ public final class AuthorityTest
 
 		requireThat(warning, "warning").isEmpty();
 	}
+
+	/**
+	 * Verifies that the in-project target of a symbolic link at a prompt source is a prompt file: an edit, create or
+	 * delete is authorized at the target's own path and at the link's path, while the target's mode and the link
+	 * itself stay fixed, and an unrelated file next to the target stays outside the prompt sources.
+	 */
+	@Test
+	public void promptSourceLinkTargetIsEditable()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/handbook.md", link("../shared/handbook.md"),
+			"shared/handbook.md", file("handbook"),
+			"shared/other.md", file("other")));
+		Authority authority = promptAuthority(fork);
+		Path target = Path.of("shared/handbook.md");
+
+		for (Operation operation : List.of(Operation.EDIT_CONTENT, Operation.CREATE, Operation.DELETE))
+		{
+			requireThat(authority.limitOf(operation, target), "target." + operation).isEmpty();
+			requireThat(authority.diagnose("R-3", Path.of("prompts/handbook.md"), operation, fork),
+				"link." + operation).isEmpty();
+			requireThat(authority.diagnose("R-3", target, operation, fork), "direct." + operation).isEmpty();
+		}
+		requireThat(authority.limitOf(Operation.CHANGE_MODE, target), "mode").isEqualTo(Optional.of(Limit.MODE_FIXED));
+		requireThat(authority.limitOf(Operation.CHANGE_LINK, target), "retarget").
+			isEqualTo(Optional.of(Limit.LINK_FIXED));
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("shared/other.md")), "unrelated").
+			isEqualTo(Optional.of(Limit.OUTSIDE_PROMPT_SOURCES));
+	}
+
+	/**
+	 * Verifies that an attempt that edits a prompt-source link's in-project target is permitted, whether the edit is
+	 * made at the link path or at the target path.
+	 */
+	@Test
+	public void attemptEditingLinkTargetIsPermitted()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/handbook.md", link("../shared/handbook.md"),
+			"shared/handbook.md", file("handbook")));
+		FileInventory before = inventory(Map.of(
+			"prompts/handbook.md", file("handbook"),
+			"shared/handbook.md", file("handbook")));
+		FileInventory atLink = inventory(Map.of(
+			"prompts/handbook.md", file("edited"),
+			"shared/handbook.md", file("handbook")));
+		FileInventory atTarget = inventory(Map.of(
+			"prompts/handbook.md", file("handbook"),
+			"shared/handbook.md", file("edited")));
+		Authority authority = promptAuthority(fork);
+
+		AttemptReview linkReview = InventoryDiff.between(before, atLink).review(fork, authority);
+		AttemptReview targetReview = InventoryDiff.between(before, atTarget).review(fork, authority);
+
+		requireThat(linkReview.forbidden(), "linkForbidden").isEmpty();
+		requireThat(linkReview.changes(), "linkChanges").isEqualTo(List.of(
+			new TargetWrite(Path.of("shared/handbook.md"), Path.of("prompts/handbook.md"), file("edited"))));
+		requireThat(targetReview.forbidden(), "targetForbidden").isEmpty();
+		requireThat(targetReview.changes(), "targetChanges").isEqualTo(List.of(
+			new TargetWrite(Path.of("shared/handbook.md"), Path.of("shared/handbook.md"), file("edited"))));
+	}
+
+	/**
+	 * Verifies that the final in-project target of a chain of two links at a prompt source is editable.
+	 */
+	@Test
+	public void promptSourceLinkChainTargetIsEditable()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/first.md", link("../middle.md"),
+			"middle.md", link("shared/final.md"),
+			"shared/final.md", file("final")));
+		Authority authority = promptAuthority(fork);
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("shared/final.md")), "edit").isEmpty();
+		requireThat(authority.diagnose("R-3", Path.of("prompts/first.md"), Operation.EDIT_CONTENT, fork), "atLink").
+			isEmpty();
+	}
+
+	/**
+	 * Verifies that every file below the in-project directory that a prompt-source link reaches is editable.
+	 */
+	@Test
+	public void directoryLinkTargetIsEditable()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/shared", link("../shared/rules"),
+			"shared/rules/a.md", file("a"),
+			"shared/rules/nested/b.md", file("b"),
+			"shared/rulesExtra.md", file("extra")));
+		Authority authority = promptAuthority(fork);
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("shared/rules/a.md")), "child").isEmpty();
+		requireThat(authority.limitOf(Operation.CREATE, Path.of("shared/rules/nested/c.md")), "nestedCreate").
+			isEmpty();
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("shared/rulesExtra.md")), "sibling").
+			isEqualTo(Optional.of(Limit.OUTSIDE_PROMPT_SOURCES));
+	}
+
+	/**
+	 * Verifies that a prompt-source link to an external file keeps that file read-only, at the link path and at the
+	 * target path.
+	 */
+	@Test
+	public void externalLinkTargetStaysReadOnly()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/shared.md", link("/external/shared.md"),
+			"/external/shared.md", file("shared")));
+		Authority authority = promptAuthority(fork);
+		Optional<Limit> readOnly = Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("/external/shared.md")), "target").
+			isEqualTo(readOnly);
+		requireThat(authority.diagnose("R-3", Path.of("prompts/shared.md"), Operation.EDIT_CONTENT, fork).
+			map(AuthorityWarning::limit), "atLink").isEqualTo(readOnly);
+	}
+
+	/**
+	 * Verifies that a prompt-source link to loader configuration leaves that file fixed, even though the link makes it
+	 * a prompt file.
+	 */
+	@Test
+	public void loaderLinkTargetStaysFixed()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/loader.md", link("../config/loader.json"),
+			"config/loader.json", file("{}")));
+		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of(Path.of("config/loader.json")), fork);
+		Optional<Limit> fixed = Optional.of(Limit.LOADER_CONFIGURATION_FIXED);
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("config/loader.json")), "target").
+			isEqualTo(fixed);
+		requireThat(authority.diagnose("R-3", Path.of("prompts/loader.md"), Operation.EDIT_CONTENT, fork).
+			map(AuthorityWarning::limit), "atLink").isEqualTo(fixed);
+	}
+
+	/**
+	 * Verifies that a link outside every prompt source does not make its in-project target editable, whether the edit
+	 * names the link path or the target path.
+	 */
+	@Test
+	public void outsideLinkTargetStaysOutside()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"docs/alias.md", link("../shared/handbook.md"),
+			"shared/handbook.md", file("handbook")));
+		Authority authority = promptAuthority(fork);
+		Optional<Limit> outside = Optional.of(Limit.OUTSIDE_PROMPT_SOURCES);
+
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("shared/handbook.md")), "target").
+			isEqualTo(outside);
+		requireThat(authority.diagnose("R-3", Path.of("docs/alias.md"), Operation.EDIT_CONTENT, fork).
+			map(AuthorityWarning::limit), "atLink").isEqualTo(outside);
+	}
+
+	/**
+	 * Verifies that a link cycle at a prompt source makes nothing editable and is still reported as a link cycle.
+	 */
+	@Test
+	public void promptSourceLinkCycleStaysCycle()
+	{
+		// Requirement: R-W4
+		FileInventory fork = inventory(Map.of(
+			"prompts/a.md", link("b.md"),
+			"prompts/b.md", link("a.md")));
+		Authority authority = promptAuthority(fork);
+
+		requireThat(authority.diagnose("R-3", Path.of("prompts/a.md"), Operation.EDIT_CONTENT, fork).
+			map(AuthorityWarning::limit), "limit").isEqualTo(Optional.of(Limit.LINK_CYCLE));
+	}
 }

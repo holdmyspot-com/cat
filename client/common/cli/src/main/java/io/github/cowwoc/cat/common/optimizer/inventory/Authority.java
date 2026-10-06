@@ -3,9 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning.Choice;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 
@@ -14,6 +17,8 @@ import java.util.Set;
  * <ul>
  *   <li>Files at or below an in-project prompt source permit content edits and ordinary-file creates, renames and
  *   deletes.</li>
+ *   <li>An in-project file that a symbolic link at or below a prompt source resolves to is a prompt file too, so the
+ *   same changes are permitted at its own path and at the link's path.</li>
  *   <li>Existing symbolic links, their destinations and existing file modes stay fixed.</li>
  *   <li>Loader configuration stays fixed, even inside a prompt source.</li>
  *   <li>External files, whether reached through links or read directly from outside the project, are read-only: no
@@ -43,6 +48,7 @@ public final class Authority
 
 	private final Set<Path> promptSources;
 	private final Set<Path> loaderConfiguration;
+	private final Set<Path> linkTargets;
 
 	/**
 	 * Creates an authority.
@@ -51,15 +57,14 @@ public final class Authority
 	 *                      ordinary file at or below one may be edited, created or deleted
 	 * @param loaderConfiguration the files and directories, relative to the project directory or absolute, that decide
 	 *                            which prompt files load; nothing at or below one may change
-	 * @param fork the files recorded at the fork, whose symbolic links resolve to the files that the prompt sources
-	 *             reach
+	 * @param fork the files recorded at the fork; the in-project target of each symbolic link at or below a prompt
+	 *             source, after the links on its path are followed, is a prompt file too
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if a path is empty, not normalized or starts with {@code ..}, or if a prompt
 	 *                                  source is absolute
 	 */
 	public Authority(Set<Path> promptSources, Set<Path> loaderConfiguration, FileInventory fork)
 	{
-		requireThat(fork, "fork").isNotNull();
 		for (Path promptSource : promptSources)
 		{
 			FileInventory.requireInventoryPath(promptSource, "promptSource");
@@ -69,6 +74,31 @@ public final class Authority
 			FileInventory.requireInventoryPath(path, "loaderConfiguration");
 		this.promptSources = Set.copyOf(promptSources);
 		this.loaderConfiguration = Set.copyOf(loaderConfiguration);
+		this.linkTargets = promptSourceLinkTargets(fork);
+	}
+
+	/**
+	 * Returns the in-project files that symbolic links at or below a prompt source resolve to.
+	 *
+	 * @param fork the files recorded at the fork
+	 * @return the resolved targets, relative to the project directory; a link that is part of a cycle, that resolves
+	 *   to the project directory itself or to an external file contributes none
+	 * @throws NullPointerException if {@code fork} is null
+	 */
+	private Set<Path> promptSourceLinkTargets(FileInventory fork)
+	{
+		requireThat(fork, "fork").isNotNull();
+		Set<Path> targets = new HashSet<>();
+		for (Entry<Path, FileEntry> entry : fork.entries().entrySet())
+		{
+			Path link = entry.getKey();
+			if (!(entry.getValue() instanceof SymbolicLink) || link.isAbsolute() || !isPromptSource(link))
+				continue;
+			Optional<Path> target = fork.resolve(link);
+			if (target.isPresent() && !isExternal(target.get()) && !target.get().toString().isEmpty())
+				targets.add(target.get());
+		}
+		return Set.copyOf(targets);
 	}
 
 	/**
@@ -106,7 +136,7 @@ public final class Authority
 	{
 		if (isLoaderConfiguration(target))
 			return Optional.of(Limit.LOADER_CONFIGURATION_FIXED);
-		if (isPromptSource(target))
+		if (isPromptSource(target) || isPromptSourceLinkTarget(target))
 			return Optional.empty();
 		return Optional.of(Limit.OUTSIDE_PROMPT_SOURCES);
 	}
@@ -134,6 +164,18 @@ public final class Authority
 	}
 
 	/**
+	 * Indicates whether a resolved target lies at or below an in-project file that a symbolic link at or below a prompt
+	 * source resolves to.
+	 *
+	 * @param target the resolved target
+	 * @return {@code true} if it does
+	 */
+	private boolean isPromptSourceLinkTarget(Path target)
+	{
+		return linkTargets.stream().anyMatch(target::startsWith);
+	}
+
+	/**
 	 * Checks an edit that diagnosis found a requirement needs, and warns the user when the edit lies outside this
 	 * authority. Every warning offers the same choices, none of which widens the authority: continue within it, stop
 	 * the campaign or revise it.
@@ -151,7 +193,6 @@ public final class Authority
 	{
 		requireThat(requirement, "requirement").isNotBlank();
 		requireThat(operation, "operation").isNotNull();
-		requireThat(fork, "fork").isNotNull();
 		Optional<Path> resolved = fork.resolve(path);
 		if (resolved.isEmpty())
 			return Optional.of(new AuthorityWarning(requirement, path, path, Limit.LINK_CYCLE, CHOICES));
