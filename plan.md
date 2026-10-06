@@ -1316,8 +1316,10 @@ The riskiest pure code, built first.
   - **Refusal detection.** Each event reader recognizes a provider refusal, an HTTP 403 from the provider or its
     network edge. Codex: an `error` notification with `willRetry` false whose `codexErrorInfo` holds an
     `httpStatusCode` of 403 under any key (E8 recorded `httpConnectionFailed`; the retried ones carry
-    `responseStreamDisconnected`). Claude: an error `result` with `api_error_status` 403, read where 429 is read today.
-    `Session` reports a refused session as distinct from a rate-limited one, for every role.
+    `responseStreamDisconnected`). Claude: an error `result` with `api_error_status` 403, read where 429 is read
+    today. A final Codex error with an `httpStatusCode` of 429 is a rate-limit rejection without a reset time: the
+    load balancer answers a request it cannot admit under its account caps with a 429 `rate_limit_error`. `Session`
+    reports a refused session as distinct from a rate-limited one, for every role.
   - **Shared hold.** `HarnessCapacity` keeps the hold in its harness directory: the time the hold ends and the next
     hold length. Writes are atomic and serialized by a lock file in the same directory, and a write never moves the
     end earlier. `acquire` waits and `tryAcquire` returns empty while the hold lasts, for the optimizer and both
@@ -1333,10 +1335,10 @@ The riskiest pure code, built first.
 - **Closes:** D57 and the hold half of the §3.5 rejection hold; found by E8 on 2026-10-06, where 403 bursts failed up
   to 451 of 474 requests a minute while each refused session reran within a minute.
 - **Tests:** `AppServerEventsTest` and `StreamJsonEventsTest` on recorded shapes: a final 403 error is a refusal, a
-  retried one (`willRetry` true) is not, a 429 stays a rate-limit rejection, a 500 stays an error. `HarnessCapacityTest`:
-  a hold set by one instance blocks `tryAcquire` on a second instance over the same directory and ends at its time;
-  a shorter hold never replaces a longer one; the lengths run 1, 2, 4, 8, 16, 30, 30 minutes; a completed turn resets
-  them; a rejection during a hold does not double. `DriverTest`: a refused trial reruns as the same logical trial
+  retried one (`willRetry` true) is not, a final Codex 429 and a Claude 429 are rate-limit rejections, a 500 stays an
+  error. `HarnessCapacityTest`: a hold set by one instance blocks `tryAcquire` on a second instance over the same
+  directory and ends at its time; a shorter hold never replaces a longer one; the lengths run 1, 2, 4, 8, 16, 30, 30
+  minutes; a completed turn resets them; a rejection during a hold does not double. `DriverTest`: a refused trial reruns as the same logical trial
   after the hold and three refusals do not pause; a refusal after a 30-minute hold pauses with the message; a refused
   judge or author request reruns. All with an injected clock and pause; no test sleeps.
 - **Exit:** unit tests pass; the full build passes.
