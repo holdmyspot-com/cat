@@ -31,11 +31,11 @@
 		<cat.native.harness></cat.native.harness>
 		<!-- The repository's .cat/work/temp directory, which holds the fixtures that a harness runner consumes -->
 		<cat.work.temp>${maven.multiModuleProjectDirectory}/../.cat/work/temp</cat.work.temp>
-		<checkstyle.version>14.1.0</checkstyle.version>
+		<checkstyle.version>14.3.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
 		<jackson.version>3.2.3</jackson.version>
-		<logback.version>1.6.3</logback.version>
+		<logback.version>1.6.5</logback.version>
 		<maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
 		<maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
 		<maven.compiler.release>27</maven.compiler.release>
@@ -46,7 +46,7 @@
 		<maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
 		<maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
 		<maven.version>3.9.16</maven.version>
-		<pmd.version>7.27.0</pmd.version>
+		<pmd.version>7.28.0</pmd.version>
 		<pouch.version>10.3</pouch.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
