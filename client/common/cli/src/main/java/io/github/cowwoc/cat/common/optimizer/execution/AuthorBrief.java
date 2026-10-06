@@ -37,6 +37,10 @@ import java.nio.charset.StandardCharsets;
  * @param approach the editing approach selected by the reservation's position within its cell's round
  * @param contract the confirmed contract
  * @param developmentFailures the working candidate's development failures, in adoption order
+ * @param evidenceSections the evidence section of each development failure's trial, keyed by the failure's
+ *   {@link #developmentId(int) citation identifier}: the trial's tool calls with their exit statuses and outputs,
+ *   child activity, hook outcomes and file changes, rendered as for a judge session; a failure whose trial's harness
+ *   events are no longer retained has no entry
  * @param developmentCounts the working candidate's development outcomes per cell
  * @param endedAttempts the certification attempts that have ended, in index order
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
@@ -46,8 +50,8 @@ import java.nio.charset.StandardCharsets;
  *   authorized source, in the order they were answered; the author is told not to report them again
  */
 public record AuthorBrief(String cell, AuthorApproach approach, Contract contract, List<Failure> developmentFailures,
-	Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts, Map<Path, Path> links,
-	String campaignEdits, List<AuthorityWarning> answeredWarnings)
+	Map<String, String> evidenceSections, Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts,
+	Map<Path, Path> links, String campaignEdits, List<AuthorityWarning> answeredWarnings)
 {
 	/**
 	 * Creates a brief.
@@ -56,6 +60,8 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param approach the editing approach assigned to the reserved attempt
 	 * @param contract the confirmed contract
 	 * @param developmentFailures the working candidate's development failures, in adoption order
+	 * @param evidenceSections the evidence section of each development failure's trial, keyed by the failure's
+	 *   citation identifier; a failure whose trial's harness events are no longer retained has no entry
 	 * @param developmentCounts the working candidate's development outcomes per cell
 	 * @param endedAttempts the certification attempts that have ended, in index order
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
@@ -72,9 +78,11 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		requireThat(approach, "approach").isNotNull();
 		requireThat(contract, "contract").isNotNull();
 		requireThat(developmentFailures, "developmentFailures").isNotNull();
+		requireThat(evidenceSections, "evidenceSections").isNotNull();
 		requireThat(developmentCounts, "developmentCounts").isNotNull();
 		requireThat(endedAttempts, "endedAttempts").isNotNull();
 		developmentFailures = List.copyOf(developmentFailures);
+		evidenceSections = Map.copyOf(evidenceSections);
 		developmentCounts = Map.copyOf(developmentCounts);
 		endedAttempts = List.copyOf(endedAttempts);
 		links = Map.copyOf(links);
@@ -140,7 +148,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
-			campaign.contract(), development.failures(), development.counts(), ended,
+			campaign.contract(), development.failures(), Map.of(), development.counts(), ended,
 			links, campaignEdits, campaign.answeredWarnings());
 	}
 

@@ -184,7 +184,8 @@ public final class AuthorPrompt implements AuthorProtocol
 		for (int index = 0; index < brief.developmentFailures().size(); ++index)
 		{
 			Failure failure = brief.developmentFailures().get(index);
-			ObjectNode node = encodeFailure(failure, brief.developmentId(index));
+			String id = brief.developmentId(index);
+			ObjectNode node = encodeFailure(failure, id, brief.evidenceSections().get(id));
 			ArrayNode reruns = node.putArray("diagnostic_reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -239,11 +240,13 @@ public final class AuthorPrompt implements AuthorProtocol
 	 *
 	 * @param failure the instance and rationale to show the author
 	 * @param id the scoped identifier of the supplied failure
+	 * @param evidenceSection the failing trial's evidence section, or {@code null} if the trial's harness events are
+	 *   no longer retained
 	 * @return the failing instance with the reason for its failure in {@code rationale}: the judge's rationale, or
-	 *   the record of each failed deterministic check; and the failure's {@code impact}, or {@code null} if no
-	 *   triage decided one
+	 *   the record of each failed deterministic check; the failure's {@code impact}, or {@code null} if no triage
+	 *   decided one; and the trial's {@code evidence_section}, or {@code null} if its events are no longer retained
 	 */
-	private ObjectNode encodeFailure(Failure failure, String id)
+	private ObjectNode encodeFailure(Failure failure, String id, String evidenceSection)
 	{
 		ObjectNode node = InstanceJson.encode(json, failure.instance());
 		node.put("id", id);
@@ -259,6 +262,9 @@ public final class AuthorPrompt implements AuthorProtocol
 			ArrayNode messages = responses.addArray();
 			turn.forEach(messages::add);
 		}
+		// A missing section is written as null rather than left out, so the author reads that the trial's events are
+		// no longer retained instead of assuming that the trial made no tool calls
+		node.put("evidence_section", evidenceSection);
 		return node;
 	}
 

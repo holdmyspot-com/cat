@@ -73,7 +73,10 @@ runs when a check failed; the record then lists only the failed checks. The `imp
 left the user without the turn's correct and complete result, `self_recovering` when the reply still delivered that
 result and the failure cost only extra work, and `null` when no impact was decided. The `responses` array holds
 one ordered array of assistant messages per turn, including interim messages and ending with the final response;
-every message is part of the reply:
+every message is part of the reply. The `evidence_section` holds the failing trial's tool calls, each with its input,
+its exit status when the harness reported one and its complete output, and its child activity and hook outcomes, in
+turn order, followed by every file change against the source the trial started from. The `evidence_section` is `null`
+when CAT no longer retains the trial's harness events, so its tool calls, exit statuses and outputs are unknown:
 
 {{failures}}
 

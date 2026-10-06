@@ -190,7 +190,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), List.of(),
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
 			Map.of(), "", List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
@@ -251,7 +251,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
@@ -330,7 +330,7 @@ public final class AuthorManifestTest
 		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(),
 			List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(failure, failure), Map.of(),
+			ContractFixtures.contract(), List.of(failure, failure), Map.of(), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()))),
 			Map.of(), "", List.of());
 		requireThat(brief.failureIds(), "classifiedFailures").
