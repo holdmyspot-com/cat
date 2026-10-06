@@ -2,22 +2,31 @@ package io.github.cowwoc.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.LockFileOpener;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.ManualClock;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.WRITE;
 
 /**
  * Tests {@link HarnessCapacity}.
@@ -695,6 +704,240 @@ public final class HarnessCapacityTest
 			{
 				requireThat(e.getMessage(), "message").contains(file.toString()).contains("extra");
 			}
+		}
+	}
+
+	/**
+	 * Returns an opener that records the name of every lock file it opens before opening it like production does.
+	 *
+	 * @param opened receives the name of each opened file, in order
+	 * @return the opener
+	 */
+	private static LockFileOpener recording(List<String> opened)
+	{
+		return file ->
+		{
+			opened.add(file.getFileName().toString());
+			return FileChannel.open(file, CREATE, WRITE);
+		};
+	}
+
+	/**
+	 * Verifies that while one instance holds slot 0, a second instance over the same directory takes slot 1 without
+	 * opening slot 0's file. On Linux, closing any channel on a file releases every lock that the process holds on it,
+	 * so opening and closing a held slot's file would free the slot for other processes while its permit stays open.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void secondInstanceDoesNotOpenHeldSlot() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			HarnessCapacity first = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
+			List<String> opened = new CopyOnWriteArrayList<>();
+			HarnessCapacity second = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK, recording(opened));
+
+			try (HarnessCapacity.Permit held = first.tryAcquire().orElseThrow();
+				HarnessCapacity.Permit other = second.tryAcquire().orElseThrow())
+			{
+				requireThat(held, "held").isNotNull();
+				requireThat(other, "other").isNotNull();
+				requireThat(opened, "opened").isEqualTo(List.of("slot-1.lock"));
+			}
+		}
+	}
+
+	/**
+	 * Supplies which of two held slots is released first.
+	 *
+	 * @return the index of the slot whose permit closes first
+	 */
+	@DataProvider
+	public Object[][] releasedSlot()
+	{
+		return new Object[][]
+		{
+			{0},
+			{1}
+		};
+	}
+
+	/**
+	 * Verifies that after one of two held permits closes, a third instance takes the released slot without opening the
+	 * slot that is still held, and opens that slot only once its permit closes.
+	 *
+	 * @param released the slot whose permit closes first
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(dataProvider = "releasedSlot")
+	public void releasedPermitDoesNotExposeHeldSlot(int released) throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			HarnessCapacity first = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
+			HarnessCapacity second = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
+			List<String> opened = new CopyOnWriteArrayList<>();
+			HarnessCapacity third = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK, recording(opened));
+			int kept = 1 - released;
+
+			try (HarnessCapacity.Permit slot0 = first.tryAcquire().orElseThrow();
+				HarnessCapacity.Permit slot1 = second.tryAcquire().orElseThrow())
+			{
+				List<HarnessCapacity.Permit> permits = List.of(slot0, slot1);
+				permits.get(released).close();
+				try (HarnessCapacity.Permit reacquired = third.tryAcquire().orElseThrow())
+				{
+					requireThat(reacquired, "reacquired").isNotNull();
+					requireThat(opened, "openedWhileHeld").isEqualTo(List.of("slot-" + released + ".lock"));
+					requireThat(third.tryAcquire().isPresent(), "acquiredWhileFull").isFalse();
+					requireThat(opened, "openedWhileFull").isEqualTo(List.of("slot-" + released + ".lock"));
+
+					permits.get(kept).close();
+					try (HarnessCapacity.Permit afterRelease = third.tryAcquire().orElseThrow())
+					{
+						requireThat(afterRelease, "afterRelease").isNotNull();
+						requireThat(opened, "openedAfterRelease").isEqualTo(List.of("slot-" + released + ".lock",
+							"slot-" + kept + ".lock"));
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code tryAcquire} at the maximum opens no slot file that this JVM holds, even when the instance
+	 * reaches the directory through a symbolic link.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void tryAcquireAtMaximumOpensNoHeldSlot() throws IOException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			Path directory = Files.createDirectory(root.resolve("slots"));
+			Path alias = Files.createSymbolicLink(root.resolve("alias"), directory);
+			HarnessCapacity holder = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
+			List<String> opened = new CopyOnWriteArrayList<>();
+			HarnessCapacity sameDirectory = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK,
+				recording(opened));
+			HarnessCapacity throughAlias = HarnessCapacity.of(alias, 2, unexpectedPause(), CLOCK, recording(opened));
+
+			try (HarnessCapacity.Permit first = holder.tryAcquire().orElseThrow();
+				HarnessCapacity.Permit second = holder.tryAcquire().orElseThrow())
+			{
+				requireThat(first, "first").isNotNull();
+				requireThat(second, "second").isNotNull();
+				requireThat(sameDirectory.tryAcquire().isPresent(), "acquiredInSameDirectory").isFalse();
+				requireThat(throughAlias.tryAcquire().isPresent(), "acquiredThroughAlias").isFalse();
+				requireThat(opened, "opened").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an instance that reaches the directory through a symbolic link does not open the hold lock file
+	 * while another instance in this JVM holds its lock, but waits and then records its rejection.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 * @throws InterruptedException if the test thread is interrupted while waiting for the rejecting thread
+	 */
+	@Test
+	public void aliasedHoldUpdateWaitsForHoldLock() throws IOException, InterruptedException
+	{
+		// Requirement: R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			Path directory = Files.createDirectory(root.resolve("slots"));
+			Path alias = Files.createSymbolicLink(root.resolve("alias"), directory);
+			List<String> opened = new CopyOnWriteArrayList<>();
+			HarnessCapacity second = HarnessCapacity.of(alias, 1, unexpectedPause(), new ManualClock(HOLD_START),
+				recording(opened));
+			AtomicReference<Throwable> failure = new AtomicReference<>();
+			Thread rejecting = new Thread(() ->
+			{
+				try
+				{
+					second.reject(null);
+				}
+				catch (IOException | RuntimeException e)
+				{
+					failure.set(e);
+				}
+			});
+			AtomicReference<List<String>> openedWhileHeld = new AtomicReference<>();
+			// The first instance reads its clock while it holds the hold lock. At that point the second instance tries
+			// to update the hold from another thread, and the first one waits until that thread either waits for the
+			// lock or has finished.
+			HarnessCapacity first = HarnessCapacity.of(directory, 1, unexpectedPause(), new CallbackClock(HOLD_START,
+				() ->
+				{
+					rejecting.start();
+					while (rejecting.getState() != Thread.State.BLOCKED &&
+						rejecting.getState() != Thread.State.TERMINATED)
+					{
+						Thread.onSpinWait();
+					}
+					openedWhileHeld.set(List.copyOf(opened));
+				}));
+
+			HarnessCapacity.Hold hold = first.reject(null);
+			rejecting.join();
+
+			requireThat(openedWhileHeld.get(), "openedWhileHeld").isEmpty();
+			requireThat(failure.get(), "failure").isNull();
+			requireThat(opened, "opened").isEqualTo(List.of("hold.lock"));
+			requireThat(second.hold(), "second.hold()").isEqualTo(hold);
+		}
+	}
+
+	/**
+	 * A fixed clock that runs an action the first time it is read.
+	 */
+	private static final class CallbackClock extends Clock
+	{
+		private final Instant now;
+		private final Runnable onFirstRead;
+		private final AtomicBoolean read = new AtomicBoolean();
+
+		/**
+		 * Creates a clock.
+		 *
+		 * @param now the time that the clock always reports
+		 * @param onFirstRead the action to run the first time the clock is read
+		 */
+		private CallbackClock(Instant now, Runnable onFirstRead)
+		{
+			this.now = now;
+			this.onFirstRead = onFirstRead;
+		}
+
+		@Override
+		public ZoneId getZone()
+		{
+			return ZoneOffset.UTC;
+		}
+
+		@Override
+		public Clock withZone(ZoneId zone)
+		{
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public Instant instant()
+		{
+			if (read.compareAndSet(false, true))
+				onFirstRead.run();
+			return now;
 		}
 	}
 }

@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import io.github.cowwoc.cat.common.ExclusiveFileLock;
+import io.github.cowwoc.cat.common.LockFileOpener;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -12,7 +14,6 @@ import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -26,14 +27,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Bounds how many harness sessions run at once, across every CAT process that shares one lock directory, and holds
  * every new session of the harness after the provider rejects or refuses a request.
  * <p>
  * Each permit is an exclusive lock on one of {@code maximum} slot files, so the operating system releases a permit when
- * its process dies. Instances over the same directory draw from the same slots, even inside one JVM.
+ * its process dies. Instances over the same directory draw from the same slots, even inside one JVM, and no instance
+ * opens a slot file whose permit this JVM holds, because closing that file would release the permit's lock for other
+ * processes (see {@link ExclusiveFileLock}).
  * <p>
  * The hold lives in {@code hold.json} beside the slot files, so every instance over the directory honours it: no
  * permit is granted until the hold ends. A rate-limit rejection with a future reset time holds until that time. A
@@ -63,16 +65,23 @@ public final class HarnessCapacity
 	private static final Set<String> HOLD_FIELDS = Set.of("format_version", "ends_at", "backoffs");
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/**
-	 * Serializes hold updates inside this JVM, where a second lock on {@code hold.lock} would fail instead of waiting.
+	 * Serializes hold updates inside this JVM, keyed by the real path of the lock directory. A second lock on
+	 * {@code hold.lock} would fail instead of waiting, and closing its channel would release the first lock for other
+	 * processes.
 	 */
 	private static final ConcurrentMap<Path, Object> HOLD_MONITORS = new ConcurrentHashMap<>();
 	private static final Permit UNLIMITED_PERMIT = () ->
 	{
 	};
+	/**
+	 * Opens the slot and hold lock files, creating them if needed.
+	 */
+	private static final LockFileOpener CREATING_OPENER = file -> FileChannel.open(file, CREATE, WRITE);
 	private final Path lockDirectory;
 	private final int maximum;
 	private final Pause pause;
 	private final Clock clock;
+	private final LockFileOpener opener;
 
 	/**
 	 * Creates a capacity pool backed by lock files.
@@ -81,13 +90,15 @@ public final class HarnessCapacity
 	 * @param maximum the number of slots
 	 * @param pause the wait between attempts to acquire a slot
 	 * @param clock the clock that decides whether a hold lasts
+	 * @param opener opens the slot and hold lock files
 	 */
-	private HarnessCapacity(Path lockDirectory, int maximum, Pause pause, Clock clock)
+	private HarnessCapacity(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
 	{
 		this.lockDirectory = lockDirectory;
 		this.maximum = maximum;
 		this.pause = pause;
 		this.clock = clock;
+		this.opener = opener;
 	}
 
 	/**
@@ -103,11 +114,29 @@ public final class HarnessCapacity
 	 */
 	public static HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock)
 	{
+		return of(lockDirectory, maximum, pause, clock, CREATING_OPENER);
+	}
+
+	/**
+	 * Creates a capacity pool whose slots are files in a directory, opening its lock files through a given opener.
+	 *
+	 * @param lockDirectory the directory that holds the slot files. It is created on first use.
+	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
+	 * @param pause the wait that {@link #acquire()} performs between attempts
+	 * @param clock the clock that decides whether a hold lasts
+	 * @param opener opens the slot and hold lock files, creating them if needed
+	 * @return the pool
+	 * @throws NullPointerException if {@code lockDirectory}, {@code pause}, {@code clock} or {@code opener} are null
+	 * @throws IllegalArgumentException if {@code maximum} is out of range
+	 */
+	static HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
+	{
 		requireThat(lockDirectory, "lockDirectory").isNotNull();
 		requireThat(maximum, "maximum").isBetween(1, MAXIMUM_CONCURRENCY + 1);
 		requireThat(pause, "pause").isNotNull();
 		requireThat(clock, "clock").isNotNull();
-		return new HarnessCapacity(lockDirectory.toAbsolutePath().normalize(), maximum, pause, clock);
+		requireThat(opener, "opener").isNotNull();
+		return new HarnessCapacity(lockDirectory.toAbsolutePath().normalize(), maximum, pause, clock, opener);
 	}
 
 	/**
@@ -120,7 +149,7 @@ public final class HarnessCapacity
 		return new HarnessCapacity(null, MAXIMUM_CONCURRENCY, () ->
 		{
 			throw new AssertionError("An unlimited pool never waits");
-		}, Clock.systemUTC());
+		}, Clock.systemUTC(), CREATING_OPENER);
 	}
 
 	/**
@@ -178,23 +207,10 @@ public final class HarnessCapacity
 		Files.createDirectories(lockDirectory);
 		for (int slot = 0; slot < maximum; ++slot)
 		{
-			FileChannel channel = FileChannel.open(lockDirectory.resolve("slot-" + slot + ".lock"), CREATE, WRITE);
-			try
-			{
-				FileLock lock = channel.tryLock();
-				if (lock != null)
-					return Optional.of(new SlotPermit(channel, lock));
-			}
-			catch (OverlappingFileLockException _)
-			{
-				// Another instance in this JVM holds the slot
-			}
-			catch (IOException e)
-			{
-				channel.close();
-				throw e;
-			}
-			channel.close();
+			Optional<ExclusiveFileLock> lock = ExclusiveFileLock.tryLock(lockDirectory.resolve("slot-" + slot + ".lock"),
+				opener);
+			if (lock.isPresent())
+				return Optional.of(lock.get()::close);
 		}
 		return Optional.empty();
 	}
@@ -225,7 +241,7 @@ public final class HarnessCapacity
 			return Hold.NONE;
 		synchronized (holdMonitor())
 		{
-			try (FileChannel channel = FileChannel.open(lockDirectory.resolve(HOLD_LOCK), CREATE, WRITE);
+			try (FileChannel channel = opener.open(lockDirectory.resolve(HOLD_LOCK));
 				FileLock _ = channel.lock())
 			{
 				Hold current = readHold();
@@ -259,7 +275,7 @@ public final class HarnessCapacity
 			return new Refusal(Hold.NONE, false);
 		synchronized (holdMonitor())
 		{
-			try (FileChannel channel = FileChannel.open(lockDirectory.resolve(HOLD_LOCK), CREATE, WRITE);
+			try (FileChannel channel = opener.open(lockDirectory.resolve(HOLD_LOCK));
 				FileLock _ = channel.lock())
 			{
 				Hold current = readHold();
@@ -284,7 +300,7 @@ public final class HarnessCapacity
 			return;
 		synchronized (holdMonitor())
 		{
-			try (FileChannel channel = FileChannel.open(lockDirectory.resolve(HOLD_LOCK), CREATE, WRITE);
+			try (FileChannel channel = opener.open(lockDirectory.resolve(HOLD_LOCK));
 				FileLock _ = channel.lock())
 			{
 				Hold current = readHold();
@@ -297,13 +313,13 @@ public final class HarnessCapacity
 	/**
 	 * Returns the object that serializes this directory's hold updates inside this JVM, creating the directory.
 	 *
-	 * @return the monitor
-	 * @throws IOException if the directory cannot be created
+	 * @return the monitor that every instance over the same directory shares, whatever path it was given
+	 * @throws IOException if the directory cannot be created or resolved
 	 */
 	private Object holdMonitor() throws IOException
 	{
 		Files.createDirectories(lockDirectory);
-		return HOLD_MONITORS.computeIfAbsent(lockDirectory, _ -> new Object());
+		return HOLD_MONITORS.computeIfAbsent(lockDirectory.toRealPath(), _ -> new Object());
 	}
 
 	/**
@@ -481,38 +497,5 @@ public final class HarnessCapacity
 		 */
 		@Override
 		void close() throws IOException;
-	}
-
-	/**
-	 * A permit that holds a lock on one slot file.
-	 */
-	private static final class SlotPermit implements Permit
-	{
-		private final FileChannel channel;
-		private final FileLock lock;
-		private final AtomicBoolean closed = new AtomicBoolean();
-
-		/**
-		 * Creates a permit for a locked slot.
-		 *
-		 * @param channel the open slot file
-		 * @param lock the lock held on {@code channel}
-		 */
-		private SlotPermit(FileChannel channel, FileLock lock)
-		{
-			this.channel = channel;
-			this.lock = lock;
-		}
-
-		@Override
-		public void close() throws IOException
-		{
-			if (!closed.compareAndSet(false, true))
-				return;
-			try (channel)
-			{
-				lock.release();
-			}
-		}
 	}
 }

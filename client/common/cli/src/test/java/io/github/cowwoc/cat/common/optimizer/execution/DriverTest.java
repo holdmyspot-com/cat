@@ -2470,13 +2470,14 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-unlock")),
-				developing().build());
+			Path directory = cleanup.add(Files.createTempDirectory("driver-unlock"));
+			DriverHarness harness = new DriverHarness(directory, developing().build());
 			IOException release = new IOException("release failed");
 			try (FaultingFileChannel channel = new FaultingFileChannel(null, release, null))
 			{
 				// Driver.open takes ownership of the lock and releases it when it fails
-				CampaignLock lock = CampaignLock.tryAcquire(channel).orElseThrow();
+				CampaignLock lock = CampaignLock.tryAcquire(directory.resolve("unlock.lock"), _ -> channel).
+					orElseThrow();
 				try
 				{
 					Driver.open(harness.context(), "missing-campaign", lock).close();

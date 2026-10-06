@@ -1,11 +1,11 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.ExclusiveFileLock;
+import io.github.cowwoc.cat.common.LockFileOpener;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Optional;
 
 import static java.nio.file.StandardOpenOption.WRITE;
 
@@ -14,10 +14,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Keeps an execution's isolated directory locked while its owning runner process is active.
+ * <p>
+ * While this JVM holds a run's lock, another attempt in this JVM does not open the lock file, because closing that file
+ * would release the lock for other processes (see {@link ExclusiveFileLock}).
  */
 public final class HarnessRunLock implements AutoCloseable
 {
-	private static final HarnessRunLock UNLOCKED = new HarnessRunLock(null, null);
+	private static final HarnessRunLock UNLOCKED = new HarnessRunLock(null);
 
 	/**
 	 * Returns a no-op lease for callers that do not own a manager-backed run.
@@ -40,41 +43,38 @@ public final class HarnessRunLock implements AutoCloseable
 	 */
 	public static HarnessRunLock acquire(Path file) throws IOException
 	{
-		requireThat(file, "file").isNotNull();
-		FileChannel channel = FileChannel.open(file, WRITE);
-		try
-		{
-			FileLock lock = channel.tryLock();
-			if (lock == null)
-				throw new IOException("Run is already active: " + file.getParent());
-			return new HarnessRunLock(channel, lock);
-		}
-		catch (OverlappingFileLockException e)
-		{
-			channel.close();
-			throw new IOException("Run is already active: " + file.getParent(), e);
-		}
-		catch (IOException e)
-		{
-			channel.close();
-			throw e;
-		}
+		return acquire(file, lockFile -> FileChannel.open(lockFile, WRITE));
 	}
 
-	private final FileChannel channel;
-	private final FileLock lock;
-	private final AtomicBoolean closed = new AtomicBoolean();
+	/**
+	 * Acquires an exclusive lock on an existing run lock file, opening it through a given opener.
+	 *
+	 * @param file the regular run lock file
+	 * @param opener opens the run lock file
+	 *
+	 * @return the acquired lock
+	 *
+	 * @throws IOException if the file cannot be locked or is already locked
+	 */
+	static HarnessRunLock acquire(Path file, LockFileOpener opener) throws IOException
+	{
+		requireThat(file, "file").isNotNull();
+		requireThat(opener, "opener").isNotNull();
+		Optional<ExclusiveFileLock> lock = ExclusiveFileLock.tryLock(file, opener);
+		if (lock.isEmpty())
+			throw new IOException("Run is already active: " + file.getParent());
+		return new HarnessRunLock(lock.get());
+	}
+
+	private final ExclusiveFileLock lock;
 
 	/**
-	 * Creates a lock lease from an acquired channel lock.
+	 * Creates a lock lease.
 	 *
-	 * @param channel the lock channel
-	 *
-	 * @param lock the acquired lock, or {@code null} for the no-op lease
+	 * @param lock the lock on the run lock file, or {@code null} for the no-op lease
 	 */
-	private HarnessRunLock(FileChannel channel, FileLock lock)
+	private HarnessRunLock(ExclusiveFileLock lock)
 	{
-		this.channel = channel;
 		this.lock = lock;
 	}
 
@@ -85,42 +85,18 @@ public final class HarnessRunLock implements AutoCloseable
 	 */
 	public boolean isHeld()
 	{
-		return lock != null && lock.isValid() && !closed.get();
+		return lock != null && lock.isValid();
 	}
 
 	/**
-	 * Releases the owned lock and closes its channel.
+	 * Releases the owned lock and closes its channel. Closing the lease again has no effect.
 	 *
 	 * @throws IOException if release or closure fails
 	 */
 	@Override
 	public void close() throws IOException
 	{
-		if (!closed.compareAndSet(false, true))
-			return;
-		if (lock == null)
-			return;
-		IOException failure = null;
-		try
-		{
-			lock.release();
-		}
-		catch (IOException e)
-		{
-			failure = e;
-		}
-		try
-		{
-			channel.close();
-		}
-		catch (IOException e)
-		{
-			if (failure == null)
-				failure = e;
-			else
-				failure.addSuppressed(e);
-		}
-		if (failure != null)
-			throw failure;
+		if (lock != null)
+			lock.close();
 	}
 }
