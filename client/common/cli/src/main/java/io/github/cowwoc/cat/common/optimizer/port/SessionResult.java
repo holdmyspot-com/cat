@@ -25,9 +25,9 @@ public sealed interface SessionResult
 	/**
 	 * The session ran to the end of its turns, or to its time limit.
 	 * <p>
-	 * A session that the time limit cut off is completed with the replies it gave so far, because CAT judges the
-	 * timeout evidence instead of retrying the trial. {@code responses} then holds fewer entries than
-	 * the request had turns.
+	 * A trial that the time limit cut off in a turn with model output or a running hook is completed with the replies
+	 * it gave so far, because CAT judges the timeout evidence instead of retrying the trial. {@code responses} then
+	 * holds fewer entries than the request had turns.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
