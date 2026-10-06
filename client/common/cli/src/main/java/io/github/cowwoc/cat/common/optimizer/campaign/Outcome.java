@@ -23,11 +23,6 @@ public enum Outcome
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
 	/**
-	 * A full development round produced no stronger candidate while the working candidate has more than
-	 * {@value EditOrContinue#FAILURE_LIMIT} failures in a cell.
-	 */
-	PLATEAU("not certified: plateau"),
-	/**
 	 * The user stopped a certification attempt to revise the contract.
 	 */
 	STOPPED_FOR_CONTRACT_REVISION("not certified: stopped for contract revision"),
@@ -94,8 +89,8 @@ public enum Outcome
 		{
 			case UNSUPPORTED_INSTRUCTION_SOURCE, INELIGIBLE_TRIAL_EFFECT, UNSUPPORTED_OUTPUT,
 				UNSUPPORTED_TEST_INTERACTION, INVALID_STATISTICAL_ASSUMPTIONS -> true;
-			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, INCONCLUSIVE, PLATEAU,
-				STOPPED_FOR_CONTRACT_REVISION, TESTING_ENVIRONMENT_CHANGED, NOT_CERTIFIED -> false;
+			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, INCONCLUSIVE, STOPPED_FOR_CONTRACT_REVISION,
+				TESTING_ENVIRONMENT_CHANGED, NOT_CERTIFIED -> false;
 		};
 	}
 }

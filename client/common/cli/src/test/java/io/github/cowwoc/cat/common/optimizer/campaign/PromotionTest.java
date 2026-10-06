@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
@@ -327,12 +328,15 @@ public final class PromotionTest
 		TrialInstance repeated = new TrialInstance(formal.cellId(), formal.categoryId(), formal.testId(),
 			formal.choices(), formal.turns(), formal.expectedBehaviour(), formal.generator(), formal.streamKind(),
 			formal.streamPosition() + 1, true);
-		// Failures above the limit keep a round without a winner, so its contenders remain inspectable
+		// A second addressed cell without attempts keeps the round open, so its contenders remain inspectable
+		Map<String, Integer> addressed = new LinkedHashMap<>();
+		addressed.put("safety", 0);
+		addressed.put("formatting", 0);
 		Campaign campaign = new Builder().confirmed().working(1).
 			development("safety", 0, EditOrContinue.FAILURE_LIMIT + 1).failure(new Failure(logs, "failure", List.of(),
 				null, List.of(new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
 					new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(formal, null).
-			round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
+			round(new Round(addressed, true, Map.of(), List.of())).build();
 		Sha256 working = campaign.development().working().snapshot();
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, 1, working, repeated);

@@ -130,8 +130,8 @@ public final class KeepImprovementTest
 	public void requiresUncertifiedEndedAttempt()
 	{
 		// Requirement: R-F6
-		for (Outcome outcome : List.of(Outcome.BELOW_MINIMUM, Outcome.INCONCLUSIVE, Outcome.PLATEAU,
-			Outcome.TESTING_ENVIRONMENT_CHANGED, Outcome.STOPPED_FOR_CONTRACT_REVISION, Outcome.UNSUPPORTED_OUTPUT))
+		for (Outcome outcome : List.of(Outcome.BELOW_MINIMUM, Outcome.INCONCLUSIVE, Outcome.TESTING_ENVIRONMENT_CHANGED,
+			Outcome.STOPPED_FOR_CONTRACT_REVISION, Outcome.UNSUPPORTED_OUTPUT))
 		{
 			CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
 				boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).outcome(outcome).
@@ -252,7 +252,7 @@ public final class KeepImprovementTest
 			outcome(Outcome.BELOW_MINIMUM).campaign().development("formatting", 198, List.of(0, 0, 0, 2)).
 			pending(new PendingDecision.CheckpointReached("formatting", 200)).build();
 		requireThat(checkpoint.choices(), "checkpointChoices").containsExactly(List.of(Choice.MORE_EVIDENCE,
-			Choice.TARGETED_OPTIMIZATION, Choice.STOP, Choice.KEEP_IMPROVEMENT));
+			Choice.TARGETED_OPTIMIZATION, Choice.STOP, Choice.KEEP_IMPROVEMENT, Choice.ACCEPT_WITHOUT_CERTIFICATION));
 	}
 
 	/**
@@ -266,10 +266,10 @@ public final class KeepImprovementTest
 		Candidate frozen = new Candidate(1, Builder.snapshot("candidate-1"));
 		Campaign campaign = new Builder().confirmed().working(2).certificationAttempt(1).candidate(frozen).
 			boundaries(boundaries()).cell("formatting", 60, 0).cell("safety", 100, 0).
-			outcome(Outcome.INCONCLUSIVE).campaign().pending(new PendingDecision.PlateauReached()).
-			outcome(Outcome.PLATEAU).build();
-		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.KEEP_IMPROVEMENT,
-			Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
+			outcome(Outcome.INCONCLUSIVE).campaign().pending(new PendingDecision.CheckpointReached("safety", 200)).
+			build();
+		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.MORE_EVIDENCE,
+			Choice.TARGETED_OPTIMIZATION, Choice.KEEP_IMPROVEMENT, Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.keep(1));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
@@ -287,7 +287,7 @@ public final class KeepImprovementTest
 	{
 		// Requirement: R-F6
 		Campaign campaign = twoAttempts(new int[]{80, 100}, new int[]{60, 100}).
-			pending(new PendingDecision.PlateauReached()).build();
+			pending(new PendingDecision.CheckpointReached("safety", 200)).build();
 		Transitions.apply(campaign, CampaignEvent.Choose.keep(2));
 	}
 }

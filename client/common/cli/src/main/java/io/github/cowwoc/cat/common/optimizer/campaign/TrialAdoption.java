@@ -352,7 +352,7 @@ final class TrialAdoption
 		draft.slowStart = SlowStart.INITIAL;
 		if (draft.round.weak())
 		{
-			if (Plateau.isComplete(draft.round))
+			if (draft.round.isComplete())
 				endUnproductiveRound(draft);
 		}
 		else
@@ -654,7 +654,7 @@ final class TrialAdoption
 				retainAttempt(draft, attempt, accepted, false);
 			}
 		}
-		if (!Plateau.isComplete(round))
+		if (!round.isComplete())
 			return;
 		Optional<AuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
 			draft.working.snapshot(), draft.regressionSet, draft.instanceOutcomes);
@@ -668,23 +668,17 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Ends a complete round that produced no promotable attempt. While a cell of the working candidate has more than
-	 * {@value EditOrContinue#FAILURE_LIMIT} representative development failures, reports a plateau and keeps the round
-	 * for the user's decision. Otherwise the round ends, the working candidate stays, and its representative trials
-	 * resume with a concurrency window of one; the round's attempts and author diagnoses remain in the optimization
-	 * evidence. Every regression instance that the working candidate failed last becomes settled, so that failure no
-	 * longer blocks the readiness gate until the working candidate runs the instance again.
+	 * Ends a complete round that produced no promotable attempt, however many failures the working candidate has. The
+	 * working candidate stays, and its representative trials resume with a concurrency window of one; the round's
+	 * attempts and author diagnoses remain in the optimization evidence. A later failure goes through edit-or-continue
+	 * and can start a new round with new failure evidence. Every regression instance that the working candidate failed
+	 * last becomes settled, so that failure no longer blocks the readiness gate until the working candidate runs the
+	 * instance again.
 	 *
 	 * @param draft the state, whose round is complete
 	 */
 	private static void endUnproductiveRound(Draft draft)
 	{
-		if (Plateau.isReached(draft.round, draft.developmentCounts))
-		{
-			draft.outcome = Outcome.PLATEAU;
-			draft.raise(new PendingDecision.PlateauReached());
-			return;
-		}
 		draft.round = null;
 		draft.slowStart = SlowStart.INITIAL;
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
@@ -792,7 +786,7 @@ final class TrialAdoption
 		attempts.put(cell, attempts.get(cell) + 1);
 		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
 			draft.round.validationAttempts());
-		if (Plateau.isComplete(draft.round))
+		if (draft.round.isComplete())
 			endUnproductiveRound(draft);
 	}
 

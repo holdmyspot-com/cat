@@ -15,9 +15,10 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link Plateau} and the development rounds that lead to it.
+ * Tests how a development round ends: a promotion, or a complete round without one, which always resumes the working
+ * candidate's representative trials.
  */
-public final class PlateauTest
+public final class RoundEndTest
 {
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
 	private static final Sha256 ATTEMPT = Builder.snapshot("attempt");
@@ -29,7 +30,7 @@ public final class PlateauTest
 	/**
 	 * Creates the test.
 	 */
-	public PlateauTest()
+	public RoundEndTest()
 	{
 	}
 
@@ -55,25 +56,10 @@ public final class PlateauTest
 	public void roundCompletesAfterEveryAttempt()
 	{
 		// Requirement: R-D6
-		requireThat(Plateau.isComplete(round(2, 2)), "complete").isTrue();
-		requireThat(Plateau.isComplete(round(2, 1)), "safetyShort").isFalse();
-		requireThat(Plateau.isComplete(round(1, 2)), "formattingShort").isFalse();
-		requireThat(Plateau.isComplete(new Round(Map.of("safety", 0))), "fresh").isFalse();
-	}
-
-	/**
-	 * Verifies that a plateau requires a complete round while a cell has more than the failure limit.
-	 */
-	@Test
-	public void plateauRequiresFailuresAboveLimit()
-	{
-		Map<String, CellCounts> atLimit = Map.of("safety", Builder.counts(60, EditOrContinue.FAILURE_LIMIT),
-			"formatting", Builder.counts(60, 1));
-		Map<String, CellCounts> aboveLimit = Map.of("safety", Builder.counts(60, EditOrContinue.FAILURE_LIMIT + 1),
-			"formatting", Builder.counts(60, 0));
-		requireThat(Plateau.isReached(round(2, 2), atLimit), "atLimit").isFalse();
-		requireThat(Plateau.isReached(round(2, 2), aboveLimit), "aboveLimit").isTrue();
-		requireThat(Plateau.isReached(round(2, 1), aboveLimit), "incomplete").isFalse();
+		requireThat(round(2, 2).isComplete(), "complete").isTrue();
+		requireThat(round(2, 1).isComplete(), "safetyShort").isFalse();
+		requireThat(round(1, 2).isComplete(), "formattingShort").isFalse();
+		requireThat(new Round(Map.of("safety", 0)).isComplete(), "fresh").isFalse();
 	}
 
 	/**
@@ -105,20 +91,18 @@ public final class PlateauTest
 	}
 
 	/**
-	 * Verifies that a complete sequential round without a promotion establishes a plateau while a cell has more than
-	 * the failure limit.
+	 * Verifies that a complete sequential round without a promotion keeps the working candidate and resumes its
+	 * representative trials one at a time while a cell has more than the failure limit.
 	 */
 	@Test
-	public void completeRoundAboveLimitIsPlateau()
+	public void sequentialRoundAboveLimitResumes()
 	{
 		// Requirement: R-D6
-		Campaign campaign = rejectLastAttempt(lastAttempt(EditOrContinue.FAILURE_LIMIT + 1));
+		Campaign before = lastAttempt(EditOrContinue.FAILURE_LIMIT + 1);
+		Campaign campaign = rejectLastAttempt(before);
 
-		requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
-		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.PlateauReached());
-		requireThat(campaign.choices(), "choices").
-			containsExactly(List.of(Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
-		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
+		requireResumed(campaign, before);
+		requireThat(campaign.choices(), "choices").isEmpty();
 	}
 
 	/**
@@ -136,7 +120,8 @@ public final class PlateauTest
 	}
 
 	/**
-	 * Requires that a round ended without a plateau and that the unchanged working candidate resumed sampling.
+	 * Requires that a round ended without a pending decision and that the unchanged working candidate resumed
+	 * sampling.
 	 *
 	 * @param campaign the campaign after the round
 	 * @param before the campaign before the round's last decision
@@ -169,6 +154,23 @@ public final class PlateauTest
 
 		requireThat(campaign.outcome(), "outcome").isNull();
 		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
+		requireThat(campaign.development().round().attempts(), "round").
+			isEqualTo(Map.of("safety", 0, "formatting", 0));
+	}
+
+	/**
+	 * Verifies that the next failure after a complete round above the failure limit starts a new round, so that each
+	 * round has new failure evidence.
+	 */
+	@Test
+	public void laterFailureAboveLimitStartsNewRound()
+	{
+		// Requirement: R-D6
+		Campaign campaign = rejectLastAttempt(lastAttempt(EditOrContinue.FAILURE_LIMIT + 1));
+		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
+
+		requireThat(campaign.outcome(), "outcome").isNull();
+		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.development().round().attempts(), "round").
 			isEqualTo(Map.of("safety", 0, "formatting", 0));
 	}
@@ -219,17 +221,17 @@ public final class PlateauTest
 	}
 
 	/**
-	 * Verifies that a weak round in which no attempt was accepted establishes a plateau while a cell has more than the
+	 * Verifies that a weak round in which no attempt was accepted resumes sampling while a cell has more than the
 	 * failure limit.
 	 */
 	@Test
-	public void weakRoundAboveLimitIsPlateau()
+	public void weakRoundAboveLimitResumes()
 	{
-		Campaign campaign = submitUnacceptedAttempts(weakRound(EditOrContinue.FAILURE_LIMIT + 1));
+		Campaign before = weakRound(EditOrContinue.FAILURE_LIMIT + 1);
+		Campaign campaign = submitUnacceptedAttempts(before);
 
-		requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
-		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.PlateauReached());
-		requireThat(campaign.development().round(), "round").isNotNull();
+		requireResumed(campaign, before);
+		requireThat(campaign.optimization().attempts().size(), "retainedAttempts").isEqualTo(3);
 	}
 
 	/**
@@ -350,7 +352,7 @@ public final class PlateauTest
 	 * round.
 	 */
 	@Test
-	public void interruptionNeverEstablishesPlateau()
+	public void interruptionNeverCompletesRound()
 	{
 		// Requirement: R-D6
 		Campaign campaign = TransitionSteps.submit(lastAttempt(EditOrContinue.FAILURE_LIMIT + 1), "safety", ATTEMPT,
@@ -375,11 +377,11 @@ public final class PlateauTest
 	}
 
 	/**
-	 * Verifies that a promotion ends the round without a plateau.
+	 * Verifies that a promotion ends the round without a pending decision.
 	 */
 	// Requirement: R-D3
 	@Test
-	public void promotionEndsRoundWithoutPlateau()
+	public void promotionEndsRound()
 	{
 		// Requirement: R-D6
 		Campaign campaign = TransitionSteps.submit(lastAttempt(EditOrContinue.FAILURE_LIMIT + 1), "safety", ATTEMPT,

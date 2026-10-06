@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
+import io.github.cowwoc.cat.common.optimizer.campaign.EditOrContinue;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
@@ -1051,8 +1052,7 @@ public final class DriverTest
 
 			try (Driver driver = harness.open())
 			{
-				Campaign result = harness.runUntil(driver, state -> state.development().working().number() == 2 ||
-					state.pending() instanceof PendingDecision.PlateauReached);
+				Campaign result = harness.runUntil(driver, state -> state.development().working().number() == 2);
 				requireThat(result.development().working().number(), "workingCandidate").isEqualTo(2);
 				Write entry = (Write) harness.overlays().require(result.development().working().snapshot()).
 					entries().get(DriverHarness.PROMPT);
@@ -1116,13 +1116,14 @@ public final class DriverTest
 
 	/**
 	 * A partial fix is withdrawn after its representative estimate falls below its predecessor, restoring the
-	 * predecessor's counts and worktree and pausing the unproductive round at a plateau.
+	 * predecessor's counts and worktree, ending the unproductive round and resuming the predecessor's representative
+	 * trials without waiting for the user.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-D15
 	@Test
-	public void partialFixRevertsAtPlateau() throws IOException
+	public void partialFixRevertsAndResumes() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1163,20 +1164,59 @@ public final class DriverTest
 			{
 				harness.runUntil(driver, state -> state.development().working().number() == 2);
 				Campaign reverted = harness.runUntil(driver,
-					state -> state.pending() instanceof PendingDecision.PlateauReached);
+					state -> !state.development().reverts().isEmpty());
 
 				requireThat(reverted.development().working(), "restoredCandidate").isEqualTo(predecessor);
 				requireThat(reverted.development().counts(), "restoredCounts").isEqualTo(counts);
 				requireThat(harness.workspace().scanWorktree(), "restoredWorktree").
 					isEqualTo(harness.overlays().require(predecessor.snapshot()).snapshot());
-				requireThat(harness.author().briefs().size(), "authorsBeforePause").isEqualTo(1);
-				requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
-				requireThat(StatusReport.of(reverted, ReportEvidence.NONE).status().label(), "status").
-					isEqualTo("awaiting_user");
+				requireThat(harness.author().briefs().size(), "authorsBeforeRevert").isEqualTo(1);
+				requireThat(reverted.development().round(), "round").isNull();
+				requireThat(reverted.outcome(), "outcome").isNull();
+				requireThat(reverted.pending(), "pending").isNull();
+				requireThat(reverted.trials().stream().map(LogicalTrial::key).filter(key ->
+					key.purpose() == Purpose.DEVELOPMENT && key.snapshot().equals(predecessor.snapshot())).count(),
+					"resumedDevelopmentTrials").isEqualTo(1L);
 			}
 		}
 	}
 
+
+	/**
+	 * A working candidate that keeps failing goes through one round after another, each ending without a promotion,
+	 * until its category reaches the review checkpoint. Development stops there and offers to accept the candidate
+	 * without certification.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void failingCandidateStopsAtReviewCheckpoint() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("review-checkpoint")),
+				new Builder().confirmed().working(1).readyBaseline().ceiling(1).development("formatting", 100, 0).
+					development("safety", 195, EditOrContinue.FAILURE_LIMIT + 1).build());
+			Candidate working = harness.campaign().development().working();
+			harness.trials(_ -> harness.failed());
+
+			try (Driver driver = harness.open())
+			{
+				Campaign checkpoint = harness.runUntil(driver,
+					state -> state.pending() instanceof PendingDecision.CheckpointReached);
+
+				requireThat(checkpoint.pending(), "pending").
+					isEqualTo(new PendingDecision.CheckpointReached("safety", Development.DEFAULT_REVIEW_POINT));
+				requireThat(checkpoint.outcome(), "outcome").isNull();
+				requireThat(checkpoint.development().working(), "working").isEqualTo(working);
+				requireThat(checkpoint.development().round(), "round").isNull();
+				requireThat(checkpoint.optimization().attempts().stream().map(AttemptResult::round).distinct().
+					count(), "rounds").isGreaterThan(1L);
+				requireThat(checkpoint.choices(), "choices").contains(Choice.ACCEPT_WITHOUT_CERTIFICATION);
+				requireThat(driver.step(), "step").isInstanceOf(Step.Stopped.class);
+			}
+		}
+	}
 
 	/**
 	 * Verifies that promotion removes an unneeded hunk and keeps targeted runs outside the evidence counts.

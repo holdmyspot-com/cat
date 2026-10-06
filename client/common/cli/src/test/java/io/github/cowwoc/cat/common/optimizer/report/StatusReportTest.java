@@ -31,7 +31,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
-import io.github.cowwoc.cat.common.optimizer.campaign.EditOrContinue;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -873,8 +872,8 @@ public final class StatusReportTest
 		// Requirement: R-P3
 		// The campaign outcome labels, in declaration order
 		List<String> expected = List.of("certified", "improved, not certified", "not certified: below minimum",
-			"not certified: inconclusive", "not certified: plateau",
-			"not certified: stopped for contract revision", "not certified: testing environment changed",
+			"not certified: inconclusive", "not certified: stopped for contract revision",
+			"not certified: testing environment changed",
 			"certification unavailable: unsupported instruction source",
 			"certification unavailable: ineligible trial effect", "certification unavailable: unsupported output",
 			"certification unavailable: unsupported test interaction",
@@ -1118,8 +1117,8 @@ public final class StatusReportTest
 		requireThat(more.choice(), "choice").isEqualTo(Choice.MORE_EVIDENCE);
 		requireThat(more.reviewPointAbove(), "reviewPointAbove").isEqualTo(200);
 		requireThat(StatusReport.of(confirmed().readyDevelopment().lifecycle(Lifecycle.CLOSED).
-			outcome(Outcome.PLATEAU).build(),
-			ReportEvidence.NONE).status().label(), "closed").isEqualTo("not certified: plateau");
+			outcome(Outcome.INCONCLUSIVE).build(),
+			ReportEvidence.NONE).status().label(), "closed").isEqualTo("not certified: inconclusive");
 		requireThat(StatusReport.of(confirmed().readyDevelopment().lifecycle(Lifecycle.CANCELLED).build(),
 			ReportEvidence.NONE).status().label(), "cancelled").isEqualTo("interrupted");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).status().label(),
@@ -1130,54 +1129,42 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that the plateau decision names the failure limit that the working candidate exceeded.
+	 * Verifies that a review checkpoint offers to accept a working candidate that is not the incumbent without
+	 * certification, and that stopping there keeps that choice while clearing the report's pending decision.
 	 */
 	@Test
-	public void plateauNamesFailureLimit()
-	{
-		Campaign campaign = confirmed().working(1).development("safety", 60, 3).outcome(Outcome.PLATEAU).
-			pending(new PendingDecision.PlateauReached()).build();
-		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-
-		requireThat(report.pending(), "pending").isEqualTo("a full development round produced no stronger " +
-			"candidate while a cell has more than " + EditOrContinue.FAILURE_LIMIT + " failures");
-		requireThat(report.summary(ZoneOffset.UTC), "summary").
-			contains("more than " + EditOrContinue.FAILURE_LIMIT + " failures");
-	}
-
-	/**
-	 * Stopping at a plateau preserves its outcome and choices while clearing the report's pending decision.
-	 */
-	@Test
-	public void reportsStoppedPlateau()
+	public void reportsStoppedCheckpoint()
 	{
 		// Requirement: R-P1
-		Campaign campaign = confirmed().working(1).readyDevelopment().outcome(Outcome.PLATEAU).
-			pending(new PendingDecision.PlateauReached()).build();
+		Campaign campaign = confirmed().working(1).development("safety", 195, 5).
+			pending(new PendingDecision.CheckpointReached("safety", 200)).build();
 		StatusReport waiting = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(waiting.status().label(), "waitingStatus").isEqualTo("awaiting_user");
-		requireThat(waiting.summary(ZoneOffset.UTC), "waitingSummary").contains("Waiting for: a full development round");
+		requireThat(waiting.summary(ZoneOffset.UTC), "waitingSummary").
+			contains("Waiting for: review checkpoint reached").contains("accept without certification");
+		requireThat(waiting.choices().stream().map(ChoiceItem::choice).toList(), "waitingChoices").
+			containsExactly(List.of(Choice.MORE_EVIDENCE, Choice.TARGETED_OPTIMIZATION,
+				Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.STOP));
 		StatusReport stopped = StatusReport.of(campaign, ReportEvidence.NONE);
 		JsonNode json = stopped.toJson(JsonMapper.builder().build());
 
-		requireThat(json.path("status").asString(), "stoppedStatus").isEqualTo("not certified: plateau");
+		requireThat(json.path("status").asString(), "stoppedStatus").isEqualTo("interrupted");
 		requireThat(json.path("lifecycle").asString(), "lifecycle").isEqualTo("cancelled");
-		requireThat(json.path("outcome").asString(), "outcome").isEqualTo("not certified: plateau");
 		requireThat(stopped.pending(), "pending").isNull();
 		requireThat(json.path("pending").isNull(), "jsonPending").isTrue();
 		requireThat(stopped.choices().stream().map(ChoiceItem::choice).toList(), "choices").
 			containsExactly(List.of(Choice.RESUME, Choice.ACCEPT_WITHOUT_CERTIFICATION));
 		requireThat(stopped.summary(ZoneOffset.UTC), "summary").contains("The user stopped the campaign.").
-			contains("Outcome: not certified: plateau").contains("resume").contains("accept without certification").
-			doesNotContain("Waiting for:").doesNotContain("a full development round produced no stronger candidate");
-		requireThat(campaign.pending(), "retainedDecision").isEqualTo(new PendingDecision.PlateauReached());
+			contains("resume").contains("accept without certification").doesNotContain("Waiting for:");
+		requireThat(campaign.pending(), "retainedDecision").
+			isEqualTo(new PendingDecision.CheckpointReached("safety", 200));
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESUME));
 		StatusReport resumed = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(resumed.status().label(), "resumedStatus").isEqualTo("awaiting_user");
-		requireThat(resumed.summary(ZoneOffset.UTC), "resumedSummary").contains("Waiting for: a full development round").
-			doesNotContain("The user stopped the campaign.");
+		requireThat(resumed.summary(ZoneOffset.UTC), "resumedSummary").
+			contains("Waiting for: review checkpoint reached").doesNotContain("The user stopped the campaign.");
 	}
 
 	/**
@@ -1187,7 +1174,8 @@ public final class StatusReportTest
 	public void statusDomainIsConstrained()
 	{
 		// Requirement: R-P1
-		requireThat(new ReportStatus.Ended(Outcome.PLATEAU).label(), "accepted").isEqualTo("not certified: plateau");
+		requireThat(new ReportStatus.Ended(Outcome.INCONCLUSIVE).label(), "accepted").
+			isEqualTo("not certified: inconclusive");
 		requireThat(new ReportStatus.Active(Status.BUSY).label(), "busy").isEqualTo("busy");
 		// Excluded: no arbitrary text, such as "finished", can be constructed; the only invalid value is null.
 		try

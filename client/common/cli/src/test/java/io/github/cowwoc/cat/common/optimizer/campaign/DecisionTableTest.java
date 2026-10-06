@@ -365,15 +365,16 @@ public final class DecisionTableTest
 	}
 
 	/**
-	 * Verifies that explicitly accepting a working candidate without certification finishes the campaign with
-	 * {@link Outcome#NOT_CERTIFIED} and a delivery request carrying that label.
+	 * Verifies that a review checkpoint offers to accept a working candidate that is not the incumbent without
+	 * certification, and that the explicit choice finishes the campaign with {@link Outcome#NOT_CERTIFIED} and a
+	 * delivery request carrying that label.
 	 */
 	@Test
 	public void acceptanceWithoutCertificationIsExplicit()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new Builder().confirmed().working(2).pending(new PendingDecision.PlateauReached()).
-			outcome(Outcome.PLATEAU).build();
+		Campaign campaign = new Builder().confirmed().working(2).
+			pending(new PendingDecision.CheckpointReached("safety", 200)).build();
 		requireThat(campaign.choices().contains(Choice.ACCEPT_WITHOUT_CERTIFICATION), "offered").isTrue();
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
@@ -389,8 +390,8 @@ public final class DecisionTableTest
 	public void incumbentCannotBeAccepted()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new Builder().confirmed().pending(new PendingDecision.PlateauReached()).
-			outcome(Outcome.PLATEAU).build();
+		Campaign campaign = new Builder().confirmed().
+			pending(new PendingDecision.CheckpointReached("safety", 200)).build();
 		Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
 	}
 

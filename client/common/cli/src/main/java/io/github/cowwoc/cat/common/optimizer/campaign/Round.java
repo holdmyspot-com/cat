@@ -97,6 +97,24 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	}
 
 	/**
+	 * Indicates whether this round is complete. A complete round that promoted no attempt ends, and the working
+	 * candidate resumes its representative trials.
+	 *
+	 * @return {@code true} if every addressed cell received all of its author attempts and, in a weak round, every
+	 *   received attempt has finished its promotion runs
+	 */
+	public boolean isComplete()
+	{
+		for (int received : attempts.values())
+		{
+			if (received < maxAttempts())
+				return false;
+		}
+		return !weak || pendingAuthorAttempts().isEmpty() && validationAttempts.stream().
+			allMatch(attempt -> attempt.runs().stream().allMatch(run -> run.verdict() != null));
+	}
+
+	/**
 	 * Returns the first addressed cell with an unreserved attempt slot.
 	 *
 	 * @return the cell identifier, or empty once all slots are reserved

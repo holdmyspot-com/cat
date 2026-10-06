@@ -58,20 +58,21 @@ public final class RevertTest
 	}
 
 	/**
-	 * A revert that completes an unproductive round reaches a plateau while the restored predecessor has more than the
-	 * failure limit in a cell.
+	 * A revert that completes an unproductive round resumes the restored predecessor's representative trials even
+	 * while it has more than the failure limit in a cell.
 	 */
 	@Test
-	public void restoresPredecessorAndReachesPlateau()
+	public void resumesRestoredPredecessorAboveLimit()
 	{
 		Campaign predecessor = predecessor(97, EditOrContinue.FAILURE_LIMIT + 1, Map.of("safety", 1));
 		Campaign reverted = TransitionSteps.adopt(promote(predecessor), Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 
 		requireThat(reverted.development().working(), "working").isEqualTo(predecessor.development().working());
-		requireThat(reverted.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
-		requireThat(reverted.pending(), "pendingDecision").
-			isEqualTo(new PendingDecision.PlateauReached());
-		requireThat(reverted.development().round().attempts(), "attempts").isEqualTo(Map.of("safety", 2));
+		requireThat(reverted.development().counts(), "counts").isEqualTo(predecessor.development().counts());
+		requireThat(reverted.outcome(), "outcome").isNull();
+		requireThat(reverted.pending(), "pendingDecision").isNull();
+		requireThat(reverted.development().round(), "round").isNull();
+		requireThat(reverted.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
 	}
 
 	/**
@@ -169,8 +170,8 @@ public final class RevertTest
 		requireThat(campaign.development().working(), "working").isEqualTo(predecessor.development().working());
 		requireThat(campaign.development().diagnosis(), "diagnosis").isNull();
 		requireThat(campaign.development().author(), "author").isNull();
-		requireThat(campaign.development().round().attempts(), "round").isEqualTo(Map.of("safety", 2));
-		requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.PLATEAU);
+		requireThat(campaign.development().round(), "round").isNull();
+		requireThat(campaign.outcome(), "outcome").isNull();
 	}
 
 	/**

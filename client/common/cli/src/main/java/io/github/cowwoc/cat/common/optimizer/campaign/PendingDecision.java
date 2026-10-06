@@ -209,16 +209,6 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * Every failing cell exhausted its author attempts without producing edits that passed promotion checks, while the
-	 * working candidate has more than {@value EditOrContinue#FAILURE_LIMIT} failures in a cell.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
-	 */
-	record PlateauReached() implements PendingDecision
-	{
-	}
-
-	/**
 	 * A condition makes certification unavailable under the current confirmed contract.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.

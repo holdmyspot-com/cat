@@ -55,7 +55,7 @@ public final class AttemptSelectionTest
 					Builder.snapshot("attempt" + attempt), instance, Verdict.PASS);
 		}
 		requireThat(campaign.development().author(), "pendingWinner").isNull();
-		requireThat(campaign.outcome(), "pendingPlateau").isNull();
+		requireThat(campaign.outcome(), "pendingOutcome").isNull();
 		for (int attempt = 1; attempt <= 3; ++attempt)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
 				Builder.snapshot("attempt" + attempt), instance, Verdict.PASS);

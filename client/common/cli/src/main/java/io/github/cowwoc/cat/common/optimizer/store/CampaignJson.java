@@ -135,7 +135,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 22;
+	private static final int FORMAT_VERSION = 23;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -1624,7 +1624,6 @@ final class CampaignJson
 				node.put("type", "regression_trade_off");
 				node.put("attempt", tradeOff.attempt());
 			}
-			case PendingDecision.PlateauReached _ -> node.put("type", "plateau_reached");
 			case PendingDecision.CertificationUnavailable unavailable ->
 			{
 				node.put("type", "certification_unavailable");
@@ -1686,7 +1685,6 @@ final class CampaignJson
 			case "failures_not_reproduced" -> new PendingDecision.FailuresNotReproduced(integer(node, "attempt"));
 			case "improvement_proven" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
 			case "regression_trade_off" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));
-			case "plateau_reached" -> new PendingDecision.PlateauReached();
 			case "certification_unavailable" ->
 				new PendingDecision.CertificationUnavailable(constant(node, "outcome", Outcome.class));
 			case "authority_warnings" ->

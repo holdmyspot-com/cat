@@ -1063,7 +1063,6 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.CheckpointReached("safety", 200)).
 			pending(new PendingDecision.ImprovementProven(1)).
 			pending(new PendingDecision.RegressionTradeOff(2)).
-			pending(new PendingDecision.PlateauReached()).
 			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION)).
 			pending(new PendingDecision.FailuresNotReproduced(1)).
 			pending(new PendingDecision.AuthorityWarnings(List.of(

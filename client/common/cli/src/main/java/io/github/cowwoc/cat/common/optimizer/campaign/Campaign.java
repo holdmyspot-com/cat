@@ -368,6 +368,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				choices.add(Choice.TARGETED_OPTIMIZATION);
 				if (offersKeep)
 					choices.add(Choice.KEEP_IMPROVEMENT);
+				if (acceptable)
+					choices.add(Choice.ACCEPT_WITHOUT_CERTIFICATION);
 			}
 			case PendingDecision.FailuresNotReproduced _ ->
 			{
@@ -385,7 +387,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				choices.add(Choice.RETAIN_INCUMBENT);
 				return choices;
 			}
-			case PendingDecision.PlateauReached _, PendingDecision.CertificationUnavailable _ ->
+			case PendingDecision.CertificationUnavailable _ ->
 			{
 				if (offersKeep)
 					choices.add(Choice.KEEP_IMPROVEMENT);
