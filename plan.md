@@ -471,7 +471,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D9 | Authors, triage and diagnosis receive development instances and outcomes only; from a formal failure they receive its cell, test definition and failed requirements, never a held-out instance, reply or judge rationale. | §3.1, §6.3 | WI-9, WI-33 | U: `DriverTest` (author input during a formal attempt and after a failed one) |
 | R-D4 | A new candidate starts new counts; earlier outcomes are retained for diagnosis. | §2.7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-D5 | Review checkpoint at 200 unresolved trials: stop the category, offer choices, record the next review point. | §2.7 | WI-3 | U: `ReviewCheckpointTest` |
-| R-D6 | Rounds and plateau: a round gives each failing category a diagnosis and up to 2 author attempts. A complete round without promotion keeps the working candidate and resumes its representative trials; a plateau requires such a round while the working candidate has more than 2 failures in a category. Interruption, infrastructure failure or time never cause a plateau. | §2.7 | WI-3, WI-46 | U: `PlateauTest`, `DriverTest` |
+| R-D6 | Rounds: a round gives each failing category a diagnosis and up to 2 author attempts. A complete round without promotion keeps the working candidate and resumes its representative trials; development has no plateau and ends only at the readiness gate, a review checkpoint or a user stop. | §2.7 | WI-3, WI-46, WI-56 | U: `RoundEndTest`, `DriverTest` |
 | R-D7 | Incumbent baseline arm of held-out instances: 50 in every certification-scope cell, plus 50 in a scope cell below 95% not yet proven deficient. The incumbent's development trials never count toward it. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3, WI-32, WI-33 | U: `BaselineTest`, `AdmissionTest`, `SchedulerTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Author manifest: each failure's classification (routing, guidance, not guidance) and, for each changed hunk, the cited failing instances and its analogous and dissimilar cases. An attempt with an uncovered hunk or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review or plateau report. | §2.7, D25, D30 | WI-18 | U: `AuthorManifestTest`, `DriverTest`, `StatusReportTest` |
@@ -1652,7 +1652,7 @@ The riskiest pure code, built first.
     retired native tests.
   - **E2:** ESC mid-slice, then resume with no lost or duplicated outcomes, the certification index kept, and Codex
     stopping within 15 seconds.
-  - **E3:** a plateau or explicit stop leaves the base unchanged; explicit uncertified acceptance is labelled
+  - **E3:** an explicit stop leaves the base unchanged; explicit uncertified acceptance is labelled
     `not certified` and delivered through the same choose-and-deliver path that keeping an improvement uses. Keeping
     an improvement is covered by `DriverTest` traces 12 and 13 and `DeliveryTest`, because a certification attempt
     ends uncertified only after hundreds of trials.
