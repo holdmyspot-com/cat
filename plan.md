@@ -147,7 +147,6 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-51 | `optimize-medium` | An authority change that resolves links through the fork inventory; an error lets an author edit an external file, a loader-configuration file or an unrelated in-project file, or keeps rejecting a prompt-source link's target. |
 | WI-52 | `optimize-medium` | A session-result change for timed-out trials in both harnesses; an error retries a trial whose model answered or ran a hook, or judges a turn the provider never answered as "no reply". |
 | WI-53 | `optimize-xhigh` | A cross-process hold file with locking, refusal detection in both event readers, and driver changes to admission, retry counting and pausing; an error lets one process keep connecting while another is refused, counts a refusal toward the infrastructure limit, or retries a revoked account forever. |
-| WI-54 | `optimize-high` | A runner configuration change that must keep Codex's requests identical apart from retry limits; an error changes the provider identity, transport or authentication the runner presents. |
 | WI-55 | `optimize-high` | An author-input change that renders each failing trial's evidence section into the author prompt; an error gives an author another trial's evidence or drops a failure's commands. |
 | WI-56 | `optimize-high` | Removes an outcome, a pending decision and its stored form with a format bump, and changes when development ends; an error ends development early or loops past the review checkpoint. |
 | WI-45 | `optimize-high` | Removes a user choice, a command option, a stored campaign key with a format bump and a delivery output, and narrows delivery to the project; an error lets an author attempt or a delivery change an external file, or leaves a retired choice reachable. |
@@ -283,7 +282,7 @@ requirement names.
 | WI-51 | Done 2026-10-05 (`f4fe2f46d`, `92eb13bc8`). `Authority` takes the fork inventory and treats the in-project target of each link at or below a prompt source, after following the chain, as a prompt file; external, loader-configuration, cycle and outside limits are unchanged. Tests failed first: `AuthorityTest` (link target, edit at the link and the target path, chain, directory link), `LinkReportTest.promptSourceLinkReportsNoLimit`, and `DriverTest.linkTargetEditBecomesCandidate`, which reproduced E7's pause ("The author session failed 3 times ... OUTSIDE_PROMPT_SOURCES"). Full build after integration: 2180 tests, 0 failures; 15 tests took 1.1–1.8 s at load 18 from another project's Rust build, none of them new. Found by the E7 rerun on 2026-10-05 (campaign `20261005T225952Z-b214e7`): after `use_authorized_source` the answered warning was not raised again, but three authors edited `docs/handbook.md`, which the author prompt listed as editable, and each attempt was rejected as `outside_prompt_sources` for its target `shared/handbook.md`; the campaign paused with "The author session failed 3 times". The external file's sha256 is unchanged. E7 resumes after the Codex build is installed. |
 | WI-52 | Done 2026-10-06 (`2bdc11b4b`, Claude `optimize-medium`). Each harness event reader records whether the model produced output in the turn in progress (reasoning, reply or reply delta, tool or command item, streamed record, or reported token usage) and which hooks are running. `Session` starts that record when it sends each turn and keeps its state at the moment the time limit passes, so the interrupt's own events do not count. A trial whose turn reached the limit with no output and no running hook fails with "The trial's turn <N> reached its <M>-minute time limit with no model output". Tests failed first: `RunnerSessionsTest.failsWhenTurnHasNoOutputAtTheLimit` (2 rows) and `failsNamingTheTurnThatHadNoOutput` (`Completed` instead of `Failed`), `AppServerEventsTest` (12 errors) and `StreamJsonEventsTest` (9 errors). Full build after integration: 2222 tests, 0 failures; at or over 1 s at load 18: the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 1.06 s. |
 | WI-53 | Not started. |
-| WI-54 | Not started. |
+| WI-54 | Withdrawn 2026-10-06 (user ruling). Codex rejects retry limits for its built-in `openai` provider, and a provider under another id changes what Codex sends: its `version` header (the Codex version, `model-provider-info/src/lib.rs:388`), the behaviour keyed to the provider name "OpenAI", and the provider id in Codex's turn analytics. Codex keeps its default retries; the shared hold of WI-53 paces new sessions. |
 | WI-55 | Not started. |
 | WI-56 | Not started. |
 | WI-38 | Done 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18), `560cabcde` (R-C19 with the lower-effort stress setting) and `8e71d2abb` (Codex's 5000-token tool-output limit as the next stress setting, a derived development cell `<cell>/tool-output-5000` that persists, and the limit recorded in the observed identity; full build 2048 tests, 0 failures, none at or over 1 s); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. The 5000-token limit is the value P15 reproduced its failure under. The runner bridge's path to Codex has unit tests only. The reports' gap for development cells outside the scope is WI-44. |
@@ -1332,7 +1331,7 @@ The riskiest pure code, built first.
   - **Driver.** A rejected or refused session runs again after the hold: a trial as the same logical trial, any other
     role as the same request. Neither counts toward the 3-infrastructure-failure limit. A refusal that follows a
     30-minute hold pauses the campaign with "The provider refused <harness> requests after a 30-minute hold".
-- **Closes:** D57 and the hold half of the §3.5 rejection hold; found by E8 on 2026-10-06, where 403 bursts failed up
+- **Closes:** D57 and the §3.5 rejection hold; found by E8 on 2026-10-06, where 403 bursts failed up
   to 451 of 474 requests a minute while each refused session reran within a minute.
 - **Tests:** `AppServerEventsTest` and `StreamJsonEventsTest` on recorded shapes: a final 403 error is a refusal, a
   retried one (`willRetry` true) is not, a final Codex 429 and a Claude 429 are rate-limit rejections, a 500 stays an
@@ -1342,22 +1341,6 @@ The riskiest pure code, built first.
   after the hold and three refusals do not pause; a refusal after a 30-minute hold pauses with the message; a refused
   judge or author request reruns. All with an injected clock and pause; no test sleeps.
 - **Exit:** unit tests pass; the full build passes.
-
-### WI-54 — The Codex runner limits Codex's own retries to 1 (user ruling, 2026-10-06)
-
-- **Premise check first:** Codex rejects a `model_providers.openai` entry ("Built-in providers cannot be overridden"),
-  so the retry limits need a provider with another id. From the Codex source, establish whether a custom provider with
-  the runner's `openai_base_url`, OpenAI authentication, the Responses API and WebSocket support sends the same
-  requests as the built-in `openai` provider: the same headers and originator, transport, authentication and model
-  metadata. If anything differs, stop and report the differences; do not ship a changed identity.
-- **Change:** if the premise holds, `CodexConnectionConfiguration` writes that provider with `stream_max_retries = 1`
-  and `request_max_retries = 1` into the isolated configuration and selects it, and copies nothing else that changes.
-- **Closes:** D57's retry limit and the harness-retries bullet of §3.5.
-- **Tests:** `CodexConnectionConfigurationTest`: the isolated configuration selects the provider and holds both limits
-  at 1, with the host's base URL and login method; a host configuration without `openai_base_url` keeps the built-in
-  base URL.
-- **Exit:** unit tests pass; the full build passes; one manual Codex runner turn through the load balancer completes
-  and its request log shows the same originator as before.
 
 ### WI-55 — Authors receive each failing trial's evidence section (user ruling, 2026-10-06)
 
@@ -1746,10 +1729,9 @@ blocks only the part of a work item that it names.
 | WI-51 | WI-45 |
 | WI-52 | WI-50 |
 | WI-53 | WI-48 |
-| WI-54 | WI-8 |
 | WI-55 | WI-49 |
 | WI-56 | WI-46 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-54, WI-55 and WI-56. |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55 and WI-56. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
