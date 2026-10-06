@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -33,6 +34,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>{@code item/started} records an activity's position, and {@code item/completed} updates that same item;
  *   root and child tools retain their complete input and output, while root-call accounting excludes child calls;</li>
  *   <li>hook notifications retain only their status, and root assistant items retain only response positions;</li>
+ *   <li>model output in a turn is a reasoning, reply or tool item, an {@code item/agentMessage/delta}, or reported
+ *   token usage. A user-message item, a rate-limit update and a thread or turn status are not output. A
+ *   {@code hook/started} notification marks a hook as running until its {@code hook/completed} notification;</li>
  *   <li>a {@code turn/completed} notification of the root thread whose status is neither {@code completed} nor
  *   {@code interrupted} reports an error, without Codex's error text.</li>
  * </ul>
@@ -42,6 +46,12 @@ import tools.jackson.databind.json.JsonMapper;
 final class AppServerEvents extends HarnessEvents
 {
 	private static final double PERCENT = 100.0;
+	/**
+	 * The item types that only the model produces.
+	 */
+	private static final Set<String> MODEL_ITEMS = Set.of("reasoning", "agentMessage", "plan", "commandExecution",
+		"collabAgentToolCall", "dynamicToolCall", "mcpToolCall", "fileChange", "webSearch", "imageView", "sleep",
+		"imageGeneration");
 	private final Map<String, TokenUsage> totals = new HashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
 	private final AppServerEvidence evidence = new AppServerEvidence();
@@ -71,8 +81,10 @@ final class AppServerEvents extends HarnessEvents
 			case "turn/started" -> readTurnStarted(params);
 			case "turn/completed" -> readTurnCompleted(params);
 			case "item/started", "item/completed" -> readItem(params);
+			case "item/agentMessage/delta" -> setOutputProduced();
 			case "hook/started", "hook/completed" ->
 			{
+				readHookRunning(event.path("method").asString("").equals("hook/started"), params.path("run"));
 				evidence.readHook(params, rootThread);
 				setEvidence(evidence.snapshot());
 			}
@@ -90,6 +102,8 @@ final class AppServerEvents extends HarnessEvents
 	 */
 	private void readItem(JsonNode params)
 	{
+		if (MODEL_ITEMS.contains(params.path("item").path("type").asString("")))
+			setOutputProduced();
 		if (rootThread == null || text(params.path("threadId")) == null)
 			return;
 		JsonNode item = params.path("item");
@@ -125,6 +139,26 @@ final class AppServerEvents extends HarnessEvents
 			calls.put(id, call);
 			setToolCalls(new ArrayList<>(calls.values()));
 		}
+	}
+
+	/**
+	 * Records that a hook started or completed.
+	 *
+	 * @param started {@code true} for a {@code hook/started} notification, {@code false} for a
+	 *   {@code hook/completed} notification
+	 * @param run the notification's {@code run} object
+	 */
+	private void readHookRunning(boolean started, JsonNode run)
+	{
+		String id = text(run.path("id"));
+		if (id == null)
+			id = text(run.path("eventName"));
+		if (id == null)
+			return;
+		if (started)
+			setHookStarted(id);
+		else
+			setHookCompleted(id);
 	}
 
 	/**
@@ -204,6 +238,7 @@ final class AppServerEvents extends HarnessEvents
 		JsonNode total = params.path("tokenUsage").path("total");
 		if (!total.isObject() || !params.path("threadId").isString())
 			return;
+		setOutputProduced();
 		totals.put(params.path("threadId").stringValue(), new TokenUsage(total.path("inputTokens").asLong(0),
 			total.path("cachedInputTokens").asLong(0), total.path("outputTokens").asLong(0),
 			total.path("reasoningOutputTokens").asLong(0)));

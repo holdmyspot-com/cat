@@ -25,6 +25,8 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -448,7 +450,8 @@ public final class RunnerSessionsTest
 
 	/**
 	 * Verifies that CAT classifies an expired trial session as Completed and excludes the late terminal response supplied
-	 * after its stop request, retaining only replies observed before the limit.
+	 * after its stop request, retaining only replies observed before the limit. The turn that reaches the limit has
+	 * produced model output.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -466,7 +469,8 @@ public final class RunnerSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			ManualClock clock = new ManualClock(START);
 			CountDownLatch entered = new CountDownLatch(1);
-			List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
+			List<Turn> script = List.of(Turn.replies("first"),
+				Turn.blocksUntilInterrupted(TestSessions.OUTPUT_EVENT).announcing(entered));
 			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
 				new CopyOnWriteArrayList<>(), script);
 			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two", "three"));
@@ -533,5 +537,134 @@ public final class RunnerSessionsTest
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed("The " + word +
 				" session reached its 5-minute time limit", List.of()));
 		}
+	}
+
+	/**
+	 * Runs a trial whose last turn blocks until the time limit and returns how the session ended.
+	 *
+	 * @param earlier the turns that end before the last one
+	 * @param lastEvents the harness events that the last turn prints before it blocks
+	 * @return the result
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	private static SessionResult timeOutTrial(List<Turn> earlier, String... lastEvents)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			ManualClock clock = new ManualClock(START);
+			CountDownLatch entered = new CountDownLatch(1);
+			List<Turn> script = new ArrayList<>(earlier);
+			script.add(Turn.blocksUntilInterrupted(lastEvents).announcing(entered));
+			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+				new CopyOnWriteArrayList<>(), script);
+			String[] turns = new String[script.size()];
+			Arrays.fill(turns, "turn");
+			SessionHandle handle = sessions.start(request(source, List.of(), turns));
+			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+
+			clock.advance(LIMIT.plusSeconds(1));
+
+			return await(handle);
+		}
+	}
+
+	/**
+	 * Returns the events that leave a trial's turn without model output at its time limit.
+	 *
+	 * @return the events that the turn prints
+	 */
+	@DataProvider
+	public Object[][] turnsWithoutOutput()
+	{
+		return new Object[][]
+			{
+				{new String[0]},
+				{new String[]{TestSessions.HOOK_STARTED_EVENT, TestSessions.HOOK_COMPLETED_EVENT}}
+			};
+	}
+
+	/**
+	 * Verifies that a trial whose turn reaches its time limit with no model output, and with no hook still running,
+	 * fails, so that the driver records an infrastructure attempt instead of judging a turn that the provider never
+	 * answered.
+	 *
+	 * @param events the events that the turn prints
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "turnsWithoutOutput", timeOut = 120_000)
+	public void failsWhenTurnHasNoOutputAtTheLimit(String[] events)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		SessionResult result = timeOutTrial(List.of(), events);
+
+		requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+			"The trial's turn 1 reached its 5-minute time limit with no model output", List.of()));
+	}
+
+	/**
+	 * Returns the events of a turn that the model or a hook was working on at its time limit.
+	 *
+	 * @return the events that the turn prints
+	 */
+	@DataProvider
+	public Object[][] turnsWithActivity()
+	{
+		return new Object[][]
+			{
+				{new String[]{TestSessions.OUTPUT_EVENT}},
+				{new String[]{TestSessions.HOOK_STARTED_EVENT}},
+				{new String[]{TestSessions.HOOK_STARTED_EVENT, TestSessions.OUTPUT_EVENT,
+					TestSessions.HOOK_COMPLETED_EVENT}}
+			};
+	}
+
+	/**
+	 * Verifies that a trial whose turn reaches its time limit after the model produced output, or while a hook is
+	 * still running, completes and is judged on its behavior.
+	 *
+	 * @param events the events that the turn prints
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "turnsWithActivity", timeOut = 120_000)
+	public void completesWhenTurnHasActivityAtLimit(String[] events)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		SessionResult result = timeOutTrial(List.of(), events);
+
+		requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+	}
+
+	/**
+	 * Verifies that output in an earlier turn does not count for the turn that reaches the time limit, and that the
+	 * reason names that turn.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void failsNamingTheTurnThatHadNoOutput()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		SessionResult result = timeOutTrial(List.of(Turn.replies("first", TestSessions.OUTPUT_EVENT)));
+
+		requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+			"The trial's turn 2 reached its 5-minute time limit with no model output", List.of()));
 	}
 }

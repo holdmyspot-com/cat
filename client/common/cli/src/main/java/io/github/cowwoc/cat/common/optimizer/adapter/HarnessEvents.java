@@ -8,14 +8,17 @@ import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's harness events say about the model, token usage, rate limits, errors and root tool calls.
+ * Reads what a session's harness events say about the model, token usage, rate limits, errors, root tool calls,
+ * and whether the model has answered the turn in progress.
  * <p>
  * A subclass reads one harness's event format and records each observation through the protected setters.
  * Unrecognized lines are ignored.
@@ -34,6 +37,8 @@ public abstract class HarnessEvents
 	private String error;
 	private List<ToolCall> toolCalls = List.of();
 	private SessionEvidence evidence = new SessionEvidence(List.of());
+	private boolean outputProduced;
+	private final Set<String> runningHooks = new HashSet<>();
 
 	/**
 	 * Creates a parser that has seen no events.
@@ -265,6 +270,77 @@ public abstract class HarnessEvents
 	{
 		requireThat(error, "error").isNotNull();
 		this.error = error;
+	}
+
+	/**
+	 * Starts a new turn: the model has produced no output in it yet. A hook that is still running stays running.
+	 */
+	public final void startTurn()
+	{
+		synchronized (lock)
+		{
+			outputProduced = false;
+		}
+	}
+
+	/**
+	 * Indicates whether the model produced any output since the latest {@link #startTurn()}. Output is a reasoning
+	 * item, a reply or a part of one, a tool or command item, or reported token usage. A user message, a thread or
+	 * turn status and a rate-limit update are not output.
+	 *
+	 * @return {@code true} if the model produced output
+	 */
+	public final boolean outputProduced()
+	{
+		synchronized (lock)
+		{
+			return outputProduced;
+		}
+	}
+
+	/**
+	 * Records that the model produced output in the turn in progress.
+	 */
+	protected final void setOutputProduced()
+	{
+		this.outputProduced = true;
+	}
+
+	/**
+	 * Indicates whether a hook has started and not yet completed.
+	 *
+	 * @return {@code true} if a hook is running
+	 */
+	public final boolean hookRunning()
+	{
+		synchronized (lock)
+		{
+			return !runningHooks.isEmpty();
+		}
+	}
+
+	/**
+	 * Records that a hook started.
+	 *
+	 * @param id the hook's identifier, which its completion repeats
+	 * @throws NullPointerException if {@code id} is null
+	 */
+	protected final void setHookStarted(String id)
+	{
+		requireThat(id, "id").isNotNull();
+		runningHooks.add(id);
+	}
+
+	/**
+	 * Records that a hook completed.
+	 *
+	 * @param id the identifier that the hook's start reported
+	 * @throws NullPointerException if {@code id} is null
+	 */
+	protected final void setHookCompleted(String id)
+	{
+		requireThat(id, "id").isNotNull();
+		runningHooks.remove(id);
 	}
 
 	/**

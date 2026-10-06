@@ -44,9 +44,12 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>the provider rejected a request for a rate limit: {@link SessionResult.RateLimited};</li>
  *   <li>a deriver, judge, triage or author session exceeded its time limit: {@link SessionResult.Failed}, because
  *   the limit says nothing about the prompt under test and the session must be retried;</li>
+ *   <li>a trial session whose turn exceeded the time limit with no model output and no running hook:
+ *   {@link SessionResult.Failed}, because the provider never answered the turn and the trial must be retried;</li>
  *   <li>the harness failed or ended early: {@link SessionResult.Failed};</li>
- *   <li>otherwise {@link SessionResult.Completed}. A trial session that exceeded its time limit is completed with
- *   the replies it had, because exceeding the time limit is trial behavior to judge rather than retry.</li>
+ *   <li>otherwise {@link SessionResult.Completed}. A trial session that exceeded its time limit in a turn that had
+ *   model output or a running hook is completed with the replies it had, because exceeding the time limit is trial
+ *   behavior to judge rather than retry.</li>
  * </ol>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -80,6 +83,8 @@ final class Session implements SessionHandle
 	private String runId;
 	private Message.Ended ended;
 	private boolean timedOut;
+	private boolean timedOutWithoutOutput;
+	private int timedOutTurn;
 	private boolean interruptSent;
 	private boolean failureSuspected;
 	private String failure;
@@ -189,6 +194,7 @@ final class Session implements SessionHandle
 				String prompt = request.turns().get(turn - 1);
 				if (turn == 1)
 					prompt = brief;
+				events.startTurn();
 				feed.send(turnRequest(prompt));
 				outcome = awaitOutcome(turn);
 				if (outcome != Outcome.TURN_COMPLETED)
@@ -302,6 +308,8 @@ final class Session implements SessionHandle
 			if (turn > 0 && !timedOut && now.isAfter(limitDeadline))
 			{
 				timedOut = true;
+				timedOutTurn = turn;
+				timedOutWithoutOutput = !events.outputProduced() && !events.hookRunning();
 				requestStop(now, turn);
 			}
 			if (graceDeadline != null && now.isAfter(graceDeadline))
@@ -422,6 +430,11 @@ final class Session implements SessionHandle
 		{
 			return new SessionResult.Failed("The " + request.role().name().toLowerCase(Locale.ROOT) +
 				" session reached its " + request.timeLimit().toMinutes() + "-minute time limit", windows);
+		}
+		if (timedOut && timedOutWithoutOutput)
+		{
+			return new SessionResult.Failed("The trial's turn " + timedOutTurn + " reached its " +
+				request.timeLimit().toMinutes() + "-minute time limit with no model output", windows);
 		}
 		if (!timedOut)
 		{

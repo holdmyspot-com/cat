@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -303,5 +304,150 @@ public final class StreamJsonEventsTest
 		HarnessEvents events = parse(recorded("claude-child-tool-calls.jsonl"));
 
 		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("Agent", null, null)));
+	}
+
+	/**
+	 * Returns a hook record.
+	 *
+	 * @param subtype {@code hook_started} or {@code hook_response}
+	 * @param id the hook's identifier
+	 * @return the record line
+	 */
+	private static String hook(String subtype, String id)
+	{
+		return "{\"type\":\"system\",\"subtype\":\"" + subtype + "\",\"hook_id\":\"" + id +
+			"\",\"hook_name\":\"UserPromptSubmit:check\",\"hook_event\":\"UserPromptSubmit\"}";
+	}
+
+	/**
+	 * Returns the records that show the model working on a turn.
+	 *
+	 * @return the record line
+	 */
+	@DataProvider
+	public Object[][] outputRecords()
+	{
+		return new Object[][]
+			{
+				{"{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"msg_1\",\"content\":" +
+					"[{\"type\":\"text\",\"text\":\"Hello\"}]}}"},
+				{"{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"msg_1\",\"content\":" +
+					"[{\"type\":\"thinking\",\"thinking\":\"Hmm\"}]}}"},
+				{"{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"msg_1\",\"content\":" +
+					"[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}"},
+				{"{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"msg_1\",\"content\":[]," +
+					"\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}"},
+				{"{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":" +
+					"{\"type\":\"text_delta\",\"text\":\"Hel\"}}}"},
+				{"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"modelUsage\":" +
+					"{\"claude-haiku-4-5-20251001\":{\"inputTokens\":10,\"outputTokens\":2}}}"}
+			};
+	}
+
+	/**
+	 * Verifies that each kind of model output sets the turn's output state.
+	 *
+	 * @param line the record
+	 */
+	@Test(dataProvider = "outputRecords")
+	public void recordsModelOutput(String line)
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of());
+		requireThat(events.outputProduced(), "before").isFalse();
+
+		events.accept(line);
+
+		requireThat(events.outputProduced(), "after").isTrue();
+	}
+
+	/**
+	 * Returns the records that the model did not produce.
+	 *
+	 * @return the record line
+	 */
+	@DataProvider
+	public Object[][] recordsWithoutOutput()
+	{
+		return new Object[][]
+			{
+				{"{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"role\":\"user\",\"content\":" +
+					"[{\"type\":\"text\",\"text\":\"Do the task\"}]}}"},
+				{"{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":1790851200}}"},
+				{"{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-haiku-4-5-20251001\"}"},
+				{"{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"modelUsage\":{}}"},
+				{hook("hook_started", "hook-1")},
+				{hook("hook_response", "hook-1")}
+			};
+	}
+
+	/**
+	 * Verifies that a user message, a rate-limit update, a status record and a hook are not model output.
+	 *
+	 * @param line the record
+	 */
+	@Test(dataProvider = "recordsWithoutOutput")
+	public void ignoresNonModelRecords(String line)
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of(line));
+
+		requireThat(events.outputProduced(), "outputProduced").isFalse();
+	}
+
+	/**
+	 * Verifies that a new turn starts with no model output while an earlier turn's output stays out of it.
+	 */
+	@Test
+	public void clearsOutputWhenATurnBegins()
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of("{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":" +
+			"{\"id\":\"msg_1\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}"));
+		requireThat(events.outputProduced(), "first").isTrue();
+
+		events.startTurn();
+
+		requireThat(events.outputProduced(), "second").isFalse();
+	}
+
+	/**
+	 * Verifies that a hook is running from its start until its response, and that one hook's response leaves another
+	 * running.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void tracksRunningHooks() throws IOException
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of());
+		requireThat(events.hookRunning(), "initial").isFalse();
+
+		events.accept(hook("hook_started", "first"));
+		requireThat(events.hookRunning(), "firstStarted").isTrue();
+
+		events.accept(hook("hook_started", "second"));
+		events.accept(hook("hook_response", "first"));
+		requireThat(events.hookRunning(), "firstResponded").isTrue();
+
+		events.accept(hook("hook_response", "second"));
+		requireThat(events.hookRunning(), "secondResponded").isFalse();
+
+		requireThat(parse(recorded("claude-single-turn.jsonl")).hookRunning(), "recorded").isFalse();
+	}
+
+	/**
+	 * Verifies that a hook that is still running when a new turn begins is still running.
+	 */
+	@Test
+	public void keepsRunningHookAcrossTurns()
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of(hook("hook_started", "slow")));
+
+		events.startTurn();
+
+		requireThat(events.hookRunning(), "hookRunning").isTrue();
 	}
 }

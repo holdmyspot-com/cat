@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -336,5 +337,164 @@ public final class AppServerEventsTest
 		HarnessEvents failed = parse(List.of(started, "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\"," +
 			"\"turn\":{\"status\":\"failed\",\"error\":{\"message\":\"secret details\"}}}}"));
 		requireThat(failed.error(), "failed.error").isEqualTo("Codex turn finished with status failed");
+	}
+
+	/**
+	 * Returns an item notification.
+	 *
+	 * @param method the notification's method
+	 * @param itemType the item's type
+	 * @return the notification line
+	 */
+	private static String item(String method, String itemType)
+	{
+		return "{\"method\":\"" + method + "\",\"params\":{\"threadId\":\"root\",\"turnId\":\"turn\",\"item\":" +
+			"{\"type\":\"" + itemType + "\",\"id\":\"item-1\"}}}";
+	}
+
+	/**
+	 * Returns a hook notification.
+	 *
+	 * @param method the notification's method
+	 * @param id the hook run's identifier
+	 * @return the notification line
+	 */
+	private static String hook(String method, String id)
+	{
+		return "{\"method\":\"" + method + "\",\"params\":{\"threadId\":\"root\",\"turnId\":\"turn\",\"run\":" +
+			"{\"id\":\"" + id + "\",\"eventName\":\"userPromptSubmit\",\"status\":\"running\"}}}";
+	}
+
+	/**
+	 * Returns the notifications that show the model working on a turn.
+	 *
+	 * @return the notification line
+	 */
+	@DataProvider
+	public Object[][] outputNotifications()
+	{
+		return new Object[][]
+			{
+				{item("item/started", "reasoning")},
+				{"{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\"}}}"},
+				{item("item/completed", "reasoning")},
+				{item("item/started", "agentMessage")},
+				{item("item/completed", "agentMessage")},
+				{item("item/started", "commandExecution")},
+				{item("item/completed", "mcpToolCall")},
+				{"{\"method\":\"item/agentMessage/delta\",\"params\":{\"threadId\":\"root\",\"turnId\":\"turn\"," +
+					"\"itemId\":\"item-1\",\"delta\":\"Hel\"}}"},
+				{"{\"method\":\"thread/tokenUsage/updated\",\"params\":{\"threadId\":\"root\",\"turnId\":\"turn\"," +
+					"\"tokenUsage\":{\"total\":{\"inputTokens\":10,\"cachedInputTokens\":0,\"outputTokens\":1," +
+					"\"reasoningOutputTokens\":0}}}}"}
+			};
+	}
+
+	/**
+	 * Verifies that each kind of model output sets the turn's output state.
+	 *
+	 * @param line the notification
+	 */
+	@Test(dataProvider = "outputNotifications")
+	public void recordsModelOutput(String line)
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of());
+		requireThat(events.outputProduced(), "before").isFalse();
+
+		events.accept(line);
+
+		requireThat(events.outputProduced(), "after").isTrue();
+	}
+
+	/**
+	 * Returns the notifications that the model did not produce.
+	 *
+	 * @return the notification line
+	 */
+	@DataProvider
+	public Object[][] notificationsWithoutOutput()
+	{
+		return new Object[][]
+			{
+				{item("item/started", "userMessage")},
+				{item("item/completed", "userMessage")},
+				{"{\"method\":\"item/started\",\"params\":{\"item\":{\"type\":\"userMessage\",\"id\":\"u1\"," +
+					"\"content\":[{\"type\":\"text\",\"text\":\"Do the task\"}]}}}"},
+				{"{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":{\"primary\":" +
+					"{\"usedPercent\":12.0,\"resetsAt\":1790851200},\"secondary\":null,\"rateLimitReachedType\":null}}}"},
+				{"{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"root\",\"model\":\"gpt-6-luna\"," +
+					"\"reasoningEffort\":\"low\"}}}"},
+				{"{\"method\":\"turn/started\",\"params\":{\"threadId\":\"root\",\"turn\":{\"id\":\"turn\"}}}"},
+				{"{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\",\"turn\":" +
+					"{\"status\":\"interrupted\",\"items\":[]}}}"},
+				{hook("hook/started", "hook-1")},
+				{hook("hook/completed", "hook-1")}
+			};
+	}
+
+	/**
+	 * Verifies that a user message, a status notification, a rate-limit update and a hook are not model output.
+	 *
+	 * @param line the notification
+	 */
+	@Test(dataProvider = "notificationsWithoutOutput")
+	public void ignoresNonModelNotifications(String line)
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of(line));
+
+		requireThat(events.outputProduced(), "outputProduced").isFalse();
+	}
+
+	/**
+	 * Verifies that a new turn starts with no model output while an earlier turn's output stays out of it.
+	 */
+	@Test
+	public void clearsOutputWhenATurnBegins()
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of(item("item/started", "reasoning")));
+		requireThat(events.outputProduced(), "first").isTrue();
+
+		events.startTurn();
+
+		requireThat(events.outputProduced(), "second").isFalse();
+	}
+
+	/**
+	 * Verifies that a hook is running from its start until its completion, and that one hook's completion leaves
+	 * another running.
+	 */
+	@Test
+	public void tracksRunningHooks()
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of());
+		requireThat(events.hookRunning(), "initial").isFalse();
+
+		events.accept(hook("hook/started", "first"));
+		requireThat(events.hookRunning(), "firstStarted").isTrue();
+
+		events.accept(hook("hook/started", "second"));
+		events.accept(hook("hook/completed", "first"));
+		requireThat(events.hookRunning(), "firstCompleted").isTrue();
+
+		events.accept(hook("hook/completed", "second"));
+		requireThat(events.hookRunning(), "secondCompleted").isFalse();
+	}
+
+	/**
+	 * Verifies that a hook that is still running when a new turn begins is still running.
+	 */
+	@Test
+	public void keepsRunningHookAcrossTurns()
+	{
+		// Requirement: R-E13
+		HarnessEvents events = parse(List.of(hook("hook/started", "slow")));
+
+		events.startTurn();
+
+		requireThat(events.hookRunning(), "hookRunning").isTrue();
 	}
 }

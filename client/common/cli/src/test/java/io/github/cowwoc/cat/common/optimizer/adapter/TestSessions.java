@@ -10,7 +10,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs sessions of the generic harness {@value #HARNESS}, whose events report nothing.
+ * Runs sessions of the generic harness {@value #HARNESS}, whose events report only whether the model produced output
+ * and whether a hook is running.
  */
 final class TestSessions extends RunnerSessions
 {
@@ -18,6 +19,18 @@ final class TestSessions extends RunnerSessions
 	 * The harness's identifier.
 	 */
 	static final String HARNESS = "harness";
+	/**
+	 * An event that reports model output.
+	 */
+	static final String OUTPUT_EVENT = "{\"type\":\"output\"}";
+	/**
+	 * An event that reports that the hook {@code hook} started.
+	 */
+	static final String HOOK_STARTED_EVENT = "{\"type\":\"hook_started\",\"id\":\"hook\"}";
+	/**
+	 * An event that reports that the hook {@code hook} completed.
+	 */
+	static final String HOOK_COMPLETED_EVENT = "{\"type\":\"hook_completed\",\"id\":\"hook\"}";
 
 	/**
 	 * Creates a port.
@@ -67,7 +80,7 @@ final class TestSessions extends RunnerSessions
 	}
 
 	/**
-	 * Harness events that report nothing.
+	 * Harness events that report model output and hooks, and nothing else.
 	 */
 	static final class Events extends HarnessEvents
 	{
@@ -84,6 +97,16 @@ final class TestSessions extends RunnerSessions
 		@Override
 		protected void read(JsonNode event)
 		{
+			String id = event.path("id").asString("");
+			switch (event.path("type").asString(""))
+			{
+				case "output" -> setOutputProduced();
+				case "hook_started" -> setHookStarted(id);
+				case "hook_completed" -> setHookCompleted(id);
+				default ->
+				{
+				}
+			}
 		}
 	}
 

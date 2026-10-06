@@ -39,7 +39,11 @@ import tools.jackson.databind.json.JsonMapper;
  *   exit status 1, which Claude treats as success for commands such as {@code grep} and {@code diff}. An error
  *   result's {@code tool_use_result} starts with {@code Error: Exit code N} when the command ran. A background
  *   command, an interrupted command, or an error in any other form, such as a command that Claude never ran, has no
- *   exit status.</li>
+ *   exit status;</li>
+ *   <li>model output in a turn is an {@code assistant} record, a {@code stream_event} record, or a {@code result}
+ *   record that reports usage. A {@code user} record, a {@code rate_limit_event} record and a {@code system} record
+ *   other than a hook are not output. A {@code hook_started} record marks a hook as running until its
+ *   {@code hook_response} record.</li>
  * </ul>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -90,7 +94,12 @@ final class StreamJsonEvents extends HarnessEvents
 					}
 				}
 			}
-			case "assistant" -> readToolCalls(event);
+			case "assistant" ->
+			{
+				setOutputProduced();
+				readToolCalls(event);
+			}
+			case "stream_event" -> setOutputProduced();
 			case "user" -> readToolResults(event);
 			case "rate_limit_event" -> readRateLimit(event.path("rate_limit_info"));
 			case "result" -> readResult(event);
@@ -295,6 +304,14 @@ final class StreamJsonEvents extends HarnessEvents
 	private void readHook(JsonNode event)
 	{
 		String hook = event.path("hook_name").asString("");
+		String runningId = event.path("hook_id").asString(hook);
+		if (!runningId.isBlank())
+		{
+			if (event.path("subtype").asString("").equals("hook_started"))
+				setHookStarted(runningId);
+			else
+				setHookCompleted(runningId);
+		}
 		if (hook.isBlank())
 			return;
 		String agent = agent(event);
@@ -450,6 +467,7 @@ final class StreamJsonEvents extends HarnessEvents
 		JsonNode models = event.path("modelUsage");
 		if (models.isObject() && !models.isEmpty())
 		{
+			setOutputProduced();
 			long input = 0;
 			long cached = 0;
 			long output = 0;
