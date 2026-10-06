@@ -149,6 +149,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-53 | `optimize-xhigh` | A cross-process hold file with locking, refusal detection in both event readers, and driver changes to admission, retry counting and pausing; an error lets one process keep connecting while another is refused, counts a refusal toward the infrastructure limit, or retries a revoked account forever. |
 | WI-55 | `optimize-high` | An author-input change that renders each failing trial's evidence section into the author prompt; an error gives an author another trial's evidence or drops a failure's commands. |
 | WI-56 | `optimize-high` | Removes an outcome, a pending decision and its stored form with a format bump, and changes when development ends; an error ends development early or loops past the review checkpoint. |
+| WI-57 | `optimize-high` | Cross-process file locking whose failure is silent: an error lets processes exceed the shared bound while each one stays within it. |
 | WI-45 | `optimize-high` | Removes a user choice, a command option, a stored campaign key with a format bump and a delivery output, and narrows delivery to the project; an error lets an author attempt or a delivery change an external file, or leaves a retired choice reachable. |
 | WI-37 | `optimize-high` | A storage layout change with a campaign format bump, a second run root, and a refusal; an error loses campaigns, leaves held-out content readable, or denies a trial its own run. |
 | WI-36 | `optimize-high` | Session settings in both runners, one of them through Codex's permission configuration; an error lets a session read held-out content or stops trials from reading their own files. |
@@ -285,6 +286,7 @@ requirement names.
 | WI-54 | Withdrawn 2026-10-06 (user ruling). Codex rejects retry limits for its built-in `openai` provider, and a provider under another id changes what Codex sends: its `version` header (the Codex version, `model-provider-info/src/lib.rs:388`), the behaviour keyed to the provider name "OpenAI", and the provider id in Codex's turn analytics. Codex keeps its default retries; the shared hold of WI-53 paces new sessions. |
 | WI-55 | Done 2026-10-06 (commits `9df965f1c`, `b034e2129`). Each development failure persists its trial's transcript and effects paths (`TrialFiles` on `CampaignEvent.Complete`, `LogicalTrial` and `Failure`); `campaign.json` and trial records are at `format_version` 24 and version 23 is refused. At author start the `Driver` stages the working snapshot and renders each failure's section through `SessionPort.renderEvidence(transcript, effects, source)`; the judge-version hashes are unchanged. `AuthorPrompt` gives each failure an `evidence_section`, `null` when the transcript or effects are gone, and `author.md` explains that case. Red-then-green: `AuthorTest.eachFailureCarriesItsTrialEvidence` and `failureWithoutRetainedEventsStatesIt`, `DriverTest.authorIsGivenTheFailedTrialSection`, `FileCampaignStoreTest.refusesVersionTwentyThreeCampaign` and `refusesVersionTwentyThreeTrialRecord`; `DriverTest.authorIsGivenNoSectionForUnretainedTrial` checked by mutation. Full build on the integrated tree 2229 tests, 0 failures; at or over 1 s under load: `TestabilityAuditTest` (2.14, 1.81, 1.72 s), `OutputGatesTest.retainedOutputWorktreeLifecycle` 1.66 s, `EditorPatchWorkflowTest.capturesPatchForEarlierFileVersion` 1.06 s, none changed by WI-55. |
 | WI-56 | Done 2026-10-06 (commit `5a368be06`). `Plateau`, `Outcome.PLATEAU` and `PendingDecision.PlateauReached` are gone; a complete round with no promotable attempt always ends with the working candidate kept, a window of 1 and its failing regression instances settled. The review checkpoint offers `accept without certification` when the working candidate is not the incumbent. `campaign.json` is at `format_version` 23 and a version-22 file is refused. Red-then-green: `RoundEndTest` (rounds above the limit resume; a later failure starts a new round), `RevertTest.resumesRestoredPredecessorAboveLimit`, `DecisionTableTest.acceptanceWithoutCertificationIsExplicit`, `KeepImprovementTest`, `DriverTest.partialFixRevertsAndResumes` and `failingCandidateStopsAtReviewCheckpoint`, `StatusReportTest.reportsStoppedCheckpoint`, `FileCampaignStoreTest.refusesVersionTwentyTwoCampaign`. `grep -ri plateau client/` finds only that refusal fixture and an unrelated implementation-planning rules scenario. Full build on the integrated tree 2223 tests, 0 failures, none at or over 1 s. |
+| WI-57 | In progress (`optimize-high`). Found by the E8 rerun of 2026-10-06 (`~/cat-client/worktrees/e8-codex4-b/receipts/slot-lock-evidence.txt`). |
 | WI-38 | Done 2026-10-04 (Claude `optimize-xhigh`). Integrated `f7100f7db` (R-C18), `560cabcde` (R-C19 with the lower-effort stress setting) and `8e71d2abb` (Codex's 5000-token tool-output limit as the next stress setting, a derived development cell `<cell>/tool-output-5000` that persists, and the limit recorded in the observed identity; full build 2048 tests, 0 failures, none at or over 1 s); full build 2032 tests, 0 failures; at or over 1 s at load about 4: `DriverTest.heldOutInstancesStayOutOfDevelopment` 2.5 s and `DriverTest.developmentCellsGrowOnFormalFailure` 1.9 s, which now also run reproduction rounds, `DriverTest.certify` 1.0 s, and the unchanged `BettingProcessTest.shortcutAgreesWithExactArithmetic` 2.1 s, `CapCalibrationTest.alternativeBudgetCapsMatchReference` 1.6 s and `DecisionBoundariesTest.comparisonBoundariesAgreeWithComparisons` 1.4 s. Reproduction trials are targeted and stay out of representative counts. The 5000-token limit is the value P15 reproduced its failure under. The runner bridge's path to Codex has unit tests only. The reports' gap for development cells outside the scope is WI-44. |
 | WI-35 | Done 2026-10-04 (Claude `optimize-high`; integrated as `159c329fe`; full build 1955 tests, 0 failures, none at or over 1 s). `CellTier.openCells` gives each contract category's development cells and each other scope cell whose development cells and lower cells are certified; an effort is higher when some model lists it later in the inventory and none earlier, and an unranked model or unordered effort is neither below nor above. `Scheduler.planFormal` takes from each contract category its open cell with the fewest adopted outcomes, then ranks the offered cells as before; baseline planning is unchanged. Two existing tests' fixtures certify the lower cells so the cells they test open. `design.md` §3.3 rule 4 now says "contract category", defined in §2.1, because §2 and §3 call one cell a category. User ruling (`design.md` §3.3 rule 4, D45, 2026-10-04). |
 | Campaign ceiling option (WI-15 E8 finding) | Done 2026-10-02. The campaign ceiling was always 8, so two campaigns never reached the shared capacity of 16 and E8 could not observe the bound. `start <target> [--max-concurrency <1..16>]` sets it (default 8; 0, 17, a non-integer or a repeated option are refused before a campaign exists); the stored `ceiling` field is optional on read (absent means 8, format 11 unchanged); status shows it. Full build 1767 tests, 0 failures; bats 32/32. Pre-existing tests over 1 s: `TestabilityAuditTest` `productionReferencesNoTestSupport` 1.2 s, `coreReferencesNoHarness` 1.3 s, `onlyMainReadsEnvironment` 1.5 s. The skill's `start` step does not yet mention the option (a prompt change, awaiting the user). E8 reruns with two campaigns at 16. |
@@ -1377,6 +1379,28 @@ The riskiest pure code, built first.
   the earlier version is refused. `StatusReportTest` and `DecisionTableTest` lose the plateau rows.
 - **Exit:** unit tests pass; the full build passes; `grep -ri plateau client/` finds only rejection-test fixtures.
 
+### WI-57 — A capacity slot stays locked while its permit is open
+
+- **Change:** on Linux, closing any channel on a file releases every POSIX lock that the process holds on that file.
+  `HarnessCapacity.tryAcquire` opens each slot file in turn and closes the channel when the slot is taken; when another
+  permit in the same JVM holds that slot, the close releases that permit's kernel lock while `FileLock.isValid()` stays
+  true. The JVM's own lock table still keeps its sessions apart, so each process stays within the maximum, but other
+  processes see the slots as free and the total across processes is unbounded. `tryAcquire` must never open or close a
+  channel on a slot file that a permit in this JVM holds: a JVM-wide registry of held slots, keyed by the lock
+  directory's real path and guarded like the hold monitor, is consulted before a slot file is opened, and a permit
+  leaves it when it closes. Every other `FileChannel` lock in `client/` (`CampaignLock`, `HarnessRunLock`, the hold
+  lock and any other) is audited for the same open-and-close pattern and fixed the same way where a second channel on
+  a locked file can be opened in the same JVM.
+- **Closes:** R-E8 across processes; found by E8 on 2026-10-06, where campaign b's JVM held 16 open slot permits with
+  12 live sessions while the kernel listed locks on 1 or 2 slot files, and two campaigns never showed more than 7
+  locked slots at once.
+- **Tests:** `HarnessCapacityTest`, through an injected slot-file opener: with a permit held on slot 0, a second
+  instance over the same directory takes slot 1 without opening slot 0's file; after either permit closes, the other
+  slot is still never opened by a third instance until its permit closes; at the maximum, `tryAcquire` opens no held
+  slot file. Tests for each other lock the audit fixes. No test starts a process or sleeps.
+- **Exit:** unit tests pass; the full build passes; during the E8 rerun, the kernel lists a lock for every open
+  permit.
+
 ### WI-49 — An answered authority warning stays answered
 
 - **Change:** `Transitions` merges a `WarnAuthority` into a pending `AuthorityWarnings` decision, listing each distinct
@@ -1738,7 +1762,8 @@ blocks only the part of a work item that it names.
 | WI-53 | WI-48 |
 | WI-55 | WI-49 |
 | WI-56 | WI-46 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55 and WI-56. |
+| WI-57 | WI-53 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56 and WI-57. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
