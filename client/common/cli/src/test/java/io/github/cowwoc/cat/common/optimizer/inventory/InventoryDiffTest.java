@@ -38,11 +38,12 @@ public final class InventoryDiffTest
 	 * Returns an authority whose only prompt source is {@code prompts} and whose loader configuration is
 	 * {@code prompts/loader.json}.
 	 *
+	 * @param fork the files recorded at the fork
 	 * @return the authority
 	 */
-	private static Authority promptAuthority()
+	private static Authority promptAuthority(FileInventory fork)
 	{
-		return new Authority(Set.of(Path.of("prompts")), Set.of(Path.of("prompts/loader.json")));
+		return new Authority(Set.of(Path.of("prompts")), Set.of(Path.of("prompts/loader.json")), fork);
 	}
 
 	/**
@@ -105,7 +106,7 @@ public final class InventoryDiffTest
 		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "prompts/old.md", file("old")));
 		FileInventory after = inventory(Map.of("prompts/a.md", file("A"), "prompts/new.md", file("old")));
 
-		AttemptReview review = InventoryDiff.between(fork, after).review(fork, promptAuthority());
+		AttemptReview review = InventoryDiff.between(fork, after).review(fork, promptAuthority(fork));
 
 		requireThat(review.isPermitted(), "isPermitted").isTrue();
 		requireThat(review.changes(), "changes").isEqualTo(List.of(
@@ -135,7 +136,7 @@ public final class InventoryDiffTest
 			"prompts/pipe", new SpecialFile(),
 			"src/Main.java", file("changed")));
 
-		AttemptReview review = InventoryDiff.between(fork, after).review(fork, promptAuthority());
+		AttemptReview review = InventoryDiff.between(fork, after).review(fork, promptAuthority(fork));
 
 		requireThat(review.isPermitted(), "isPermitted").isFalse();
 		requireThat(review.forbidden(), "forbidden").isEqualTo(List.of(
@@ -180,7 +181,7 @@ public final class InventoryDiffTest
 			"prompts/library/y.md", file("y"),
 			"prompts/loop/z.md", file("z")));
 
-		AttemptReview review = InventoryDiff.between(before, after).review(fork, promptAuthority());
+		AttemptReview review = InventoryDiff.between(before, after).review(fork, promptAuthority(fork));
 
 		requireThat(review.forbidden(), "forbidden").isEqualTo(List.of(
 			new ForbiddenOperation(Path.of("prompts/alias.md"), Path.of("prompts/a.md"), Operation.CHANGE_LINK,

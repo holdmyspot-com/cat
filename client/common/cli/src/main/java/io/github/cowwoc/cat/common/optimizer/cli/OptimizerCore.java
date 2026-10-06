@@ -862,7 +862,7 @@ public final class OptimizerCore implements Core
 	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
 	{
 		FileInventory inventory = fork.inventory();
-		LinkReport links = LinkReport.of(inventory, authority(root, campaign));
+		LinkReport links = LinkReport.of(inventory, authority(root, campaign, inventory));
 		Optional<CertificationStatus> incumbent = Optional.empty();
 		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
 		if (record.isPresent())
@@ -949,7 +949,8 @@ public final class OptimizerCore implements Core
 		if (scope.forks().exists(directory))
 		{
 			ForkView fork = scope.forks().open(root, directory);
-			links = !LinkReport.of(fork.inventory(), authority(root, campaign)).entries().isEmpty();
+			FileInventory inventory = fork.inventory();
+			links = !LinkReport.of(inventory, authority(root, campaign, inventory)).entries().isEmpty();
 		}
 		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null);
 		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
@@ -1014,7 +1015,7 @@ public final class OptimizerCore implements Core
 		ForkView fork = openFork(root, campaign);
 		FileInventory inventory = fork.inventory();
 		CampaignStore store = scope.store();
-		Authority authority = authority(root, campaign);
+		Authority authority = authority(root, campaign, inventory);
 		Path judgeDirectory = directory.resolve("judge");
 		Files.createDirectories(judgeDirectory);
 		Path triageDirectory = directory.resolve("triage");
@@ -1040,11 +1041,13 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
+	 * @param inventory the campaign fork's inventory
 	 * @return the authority
+	 * @throws IOException if the stored proposal cannot be read
 	 */
-	private Authority authority(Path root, Campaign campaign) throws IOException
+	private Authority authority(Path root, Campaign campaign, FileInventory inventory) throws IOException
 	{
-		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()));
+		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()), inventory);
 	}
 
 	/**

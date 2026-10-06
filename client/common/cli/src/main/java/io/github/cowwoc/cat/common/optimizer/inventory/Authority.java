@@ -51,12 +51,15 @@ public final class Authority
 	 *                      ordinary file at or below one may be edited, created or deleted
 	 * @param loaderConfiguration the files and directories, relative to the project directory or absolute, that decide
 	 *                            which prompt files load; nothing at or below one may change
+	 * @param fork the files recorded at the fork, whose symbolic links resolve to the files that the prompt sources
+	 *             reach
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if a path is empty, not normalized or starts with {@code ..}, or if a prompt
 	 *                                  source is absolute
 	 */
-	public Authority(Set<Path> promptSources, Set<Path> loaderConfiguration)
+	public Authority(Set<Path> promptSources, Set<Path> loaderConfiguration, FileInventory fork)
 	{
+		requireThat(fork, "fork").isNotNull();
 		for (Path promptSource : promptSources)
 		{
 			FileInventory.requireInventoryPath(promptSource, "promptSource");

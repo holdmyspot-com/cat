@@ -101,7 +101,8 @@ public final class AuthoringCopyTest
 			InventoryDiff diff = InventoryDiff.between(before, after);
 			requireThat(diff.changes().stream().map(PathChange::path).toList(), "changedPaths").
 				isEqualTo(List.of(Path.of("docs/a.md"), Path.of("rules/c.md")));
-			Authority authority = new Authority(Set.of(Path.of("rules"), Path.of("prompt.md")), Set.of());
+			Authority authority = new Authority(Set.of(Path.of("rules"), Path.of("prompt.md")), Set.of(),
+				project.tree().inventory());
 			AttemptReview review = diff.review(project.tree().inventory(), authority);
 			requireThat(review.isPermitted(), "isPermitted").isTrue();
 			requireThat(review.changes().stream().anyMatch(change ->

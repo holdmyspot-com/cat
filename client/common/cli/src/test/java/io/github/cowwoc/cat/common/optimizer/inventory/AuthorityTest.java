@@ -21,6 +21,8 @@ import org.testng.annotations.Test;
  */
 public final class AuthorityTest
 {
+	private static final FileInventory NO_LINKS = inventory(Map.of());
+
 	/**
 	 * Creates the test.
 	 */
@@ -32,11 +34,13 @@ public final class AuthorityTest
 	 * Returns the authority used by most tests: prompt sources {@code prompts} and {@code .claude}, loader configuration
 	 * {@code .claude/settings.json}.
 	 *
+	 * @param fork the files recorded at the fork
 	 * @return the authority
 	 */
-	private static Authority promptAuthority()
+	private static Authority promptAuthority(FileInventory fork)
 	{
-		return new Authority(Set.of(Path.of("prompts"), Path.of(".claude")), Set.of(Path.of(".claude/settings.json")));
+		return new Authority(Set.of(Path.of("prompts"), Path.of(".claude")), Set.of(Path.of(".claude/settings.json")),
+			fork);
 	}
 
 	/**
@@ -47,7 +51,7 @@ public final class AuthorityTest
 	public void promptFilesPermitOrdinaryChanges()
 	{
 		// Requirement: R-W4
-		Authority authority = promptAuthority();
+		Authority authority = promptAuthority(NO_LINKS);
 		Path prompt = Path.of("prompts/a.md");
 
 		requireThat(authority.limitOf(Operation.EDIT_CONTENT, prompt), "edit").isEmpty();
@@ -64,7 +68,7 @@ public final class AuthorityTest
 	public void loaderConfigurationAndOtherFilesAreFixed()
 	{
 		// Requirement: R-W4
-		Authority authority = promptAuthority();
+		Authority authority = promptAuthority(NO_LINKS);
 
 		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("src/Main.java")), "otherEdit").
 			isEqualTo(Optional.of(Limit.OUTSIDE_PROMPT_SOURCES));
@@ -84,7 +88,7 @@ public final class AuthorityTest
 	public void externalFilesAreReadOnly()
 	{
 		// Requirement: R-W4
-		Authority authority = promptAuthority();
+		Authority authority = promptAuthority(NO_LINKS);
 		Path shared = Path.of("/external/shared.md");
 		Optional<Limit> readOnly = Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 
@@ -106,7 +110,7 @@ public final class AuthorityTest
 		FileInventory fork = inventory(Map.of(
 			"prompts/shared.md", link("/external/shared.md"),
 			"/external/shared.md", file("shared")));
-		Authority authority = promptAuthority();
+		Authority authority = promptAuthority(fork);
 		List<Choice> withoutEdit = List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP_CAMPAIGN, Choice.REVISE_CAMPAIGN);
 
 		for (Operation operation : Operation.values())
@@ -132,7 +136,7 @@ public final class AuthorityTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*/project/prompts.*")
 	public void rejectsAbsolutePromptSource()
 	{
-		new Authority(Set.of(Path.of("/project/prompts")), Set.of());
+		new Authority(Set.of(Path.of("/project/prompts")), Set.of(), NO_LINKS);
 	}
 
 	/**
@@ -147,7 +151,7 @@ public final class AuthorityTest
 		FileInventory before = inventory(Map.of("prompts/a.md", file("a"), "prompts/alias.md", file("a")));
 		FileInventory after = inventory(Map.of("prompts/a.md", file("x"), "prompts/alias.md", file("y")));
 
-		AttemptReview review = InventoryDiff.between(before, after).review(fork, promptAuthority());
+		AttemptReview review = InventoryDiff.between(before, after).review(fork, promptAuthority(fork));
 
 		requireThat(review.isPermitted(), "isPermitted").isFalse();
 		requireThat(review.forbidden(), "forbidden").isEqualTo(List.of(
@@ -170,8 +174,8 @@ public final class AuthorityTest
 		FileInventory linkEdit = inventory(Map.of("prompts/a.md", file("a"), "prompts/alias.md", file("x")));
 		FileInventory sameEdit = inventory(Map.of("prompts/a.md", file("x"), "prompts/alias.md", file("x")));
 
-		AttemptReview linkReview = InventoryDiff.between(before, linkEdit).review(fork, promptAuthority());
-		AttemptReview sameReview = InventoryDiff.between(before, sameEdit).review(fork, promptAuthority());
+		AttemptReview linkReview = InventoryDiff.between(before, linkEdit).review(fork, promptAuthority(fork));
+		AttemptReview sameReview = InventoryDiff.between(before, sameEdit).review(fork, promptAuthority(fork));
 
 		requireThat(linkReview.forbidden(), "linkForbidden").isEmpty();
 		requireThat(linkReview.changes(), "linkChanges").isEqualTo(List.of(
@@ -190,7 +194,7 @@ public final class AuthorityTest
 		// Requirement: R-W4
 		FileInventory fork = inventory(Map.of("prompts/a.md", file("a")));
 
-		Optional<AuthorityWarning> warning = promptAuthority().diagnose("R-5", Path.of("prompts/a.md"),
+		Optional<AuthorityWarning> warning = promptAuthority(fork).diagnose("R-5", Path.of("prompts/a.md"),
 			Operation.EDIT_CONTENT, fork);
 
 		requireThat(warning, "warning").isEmpty();

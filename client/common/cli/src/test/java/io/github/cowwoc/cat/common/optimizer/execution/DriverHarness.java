@@ -246,7 +246,7 @@ public final class DriverHarness
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, author, values, deliverer, calibrator, terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
-			new Authority(Set.of(PROMPT), Set.of()), Set.of(PROMPT),
+			new Authority(Set.of(PROMPT), Set.of(), fork), Set.of(PROMPT),
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
 	}
 

@@ -46,7 +46,7 @@ public final class LinkReportTest
 		FileInventory inventory = inventory(Map.of(
 			Path.of("prompts/main.md"), file("main"),
 			Path.of("alias.md"), new SymbolicLink(Path.of("prompts/main.md"))));
-		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of());
+		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of(), inventory);
 
 		LinkReport report = LinkReport.of(inventory, authority);
 
@@ -67,7 +67,7 @@ public final class LinkReportTest
 			Path.of("rules.md"), new SymbolicLink(EXTERNAL),
 			EXTERNAL, file("rules")));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of(), inventory));
 
 		Entry entry = report.entries().getFirst();
 		requireThat(entry.target(), "target").isEqualTo(Optional.of(EXTERNAL));
@@ -87,7 +87,7 @@ public final class LinkReportTest
 			Path.of("notes/n.md"), file("notes"),
 			Path.of("alias.md"), new SymbolicLink(Path.of("notes/n.md"))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of(), inventory));
 
 		requireThat(report.entries().getFirst().editLimit(), "editLimit").
 			isEqualTo(Optional.of(Limit.OUTSIDE_PROMPT_SOURCES));
@@ -105,7 +105,7 @@ public final class LinkReportTest
 			Path.of("middle.md"), new SymbolicLink(Path.of("final.md")),
 			Path.of("first.md"), new SymbolicLink(Path.of("middle.md"))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("final.md")), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(Path.of("final.md")), Set.of(), inventory));
 
 		requireThat(report.entries().stream().map(Entry::link).toList(), "links").
 			isEqualTo(List.of(Path.of("first.md"), Path.of("middle.md")));
@@ -124,7 +124,7 @@ public final class LinkReportTest
 			Path.of("a"), new SymbolicLink(Path.of("b")),
 			Path.of("b"), new SymbolicLink(Path.of("a"))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
 		requireThat(report.blocking().stream().map(Entry::link).toList(), "blockingLinks").
 			isEqualTo(List.of(Path.of("a"), Path.of("b")));
@@ -147,7 +147,7 @@ public final class LinkReportTest
 			Path.of("docs/a.md"), file("a"),
 			Path.of("docs/self"), new SymbolicLink(Path.of("."))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
 		Entry entry = report.entries().getFirst();
 		requireThat(entry.link(), "link").isEqualTo(Path.of("docs/self"));
@@ -168,7 +168,7 @@ public final class LinkReportTest
 			Path.of("right/r.md"), file("r"),
 			Path.of("right/to-left"), new SymbolicLink(Path.of("../left"))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
 		requireThat(report.blocking(), "blocking").isNotEmpty();
 		requireThat(report.blocking().stream().map(Entry::status).distinct().toList(), "statuses").
@@ -187,7 +187,7 @@ public final class LinkReportTest
 			Path.of("gone.md"), new SymbolicLink(Path.of("nowhere.md")),
 			Path.of("outside.md"), new SymbolicLink(Path.of("/not/recorded.md"))));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
 		requireThat(report.blocking().stream().map(Entry::status).toList(), "statuses").
 			isEqualTo(List.of(Status.MISSING_TARGET, Status.MISSING_TARGET));
@@ -206,7 +206,7 @@ public final class LinkReportTest
 		// Requirement: R-W6
 		FileInventory inventory = inventory(Map.of(Path.of("main.md"), file("main")));
 
-		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of()));
+		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
 		requireThat(report.entries(), "entries").isEmpty();
 		requireThat(LinkReport.STAGING_CONSEQUENCE, "consequence").contains("regular copy").contains("link metadata").
