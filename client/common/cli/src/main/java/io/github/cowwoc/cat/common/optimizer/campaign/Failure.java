@@ -22,9 +22,10 @@ import java.util.List;
  *   failure that a build without impacts recorded
  * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
  * @param responses each turn's assistant messages in order, ending with its final response
+ * @param files where the failing trial session's harness events and file changes were retained
  */
 public record Failure(TrialInstance instance, String rationale, List<FailedRequirement> failedRequirements,
-	Triage triage, List<DiagnosticRerun> reruns, List<List<String>> responses)
+	Triage triage, List<DiagnosticRerun> reruns, List<List<String>> responses, TrialFiles files)
 {
 	/**
 	 * Creates a failure.
@@ -38,6 +39,7 @@ public record Failure(TrialInstance instance, String rationale, List<FailedRequi
 	 *   failure that a build without impacts recorded
 	 * @param reruns the targeted diagnostic reruns of the instance, in the order they were adopted; empty if none ran
 	 * @param responses each turn's assistant messages in order, ending with its final response
+	 * @param files where the failing trial session's harness events and file changes were retained
 	 * @throws NullPointerException if an argument other than {@code triage}, a failed requirement, a rerun, a
 	 *   turn's messages or an assistant message is null
 	 */
@@ -48,6 +50,7 @@ public record Failure(TrialInstance instance, String rationale, List<FailedRequi
 		requireThat(failedRequirements, "failedRequirements").isNotNull();
 		requireThat(reruns, "reruns").isNotNull();
 		requireThat(responses, "responses").isNotNull();
+		requireThat(files, "files").isNotNull();
 
 		failedRequirements = List.copyOf(failedRequirements);
 		reruns = List.copyOf(reruns);
@@ -66,7 +69,7 @@ public record Failure(TrialInstance instance, String rationale, List<FailedRequi
 		requireThat(rerun, "rerun").isNotNull();
 		List<DiagnosticRerun> updated = new ArrayList<>(reruns);
 		updated.add(rerun);
-		return new Failure(instance, rationale, failedRequirements, triage, updated, responses);
+		return new Failure(instance, rationale, failedRequirements, triage, updated, responses, files);
 	}
 
 	/**

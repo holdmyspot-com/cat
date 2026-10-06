@@ -34,7 +34,7 @@ public interface SessionPort
 
 	/**
 	 * Returns the version of the judge that this port's sessions run: the judge's role profile, its prompt, rubric,
-	 * decision rule and result schema, and the evidence section that {@link #renderEvidence(SessionResult.Completed,
+	 * decision rule and result schema, and the evidence section that {@link #renderEvidence(Path, Path,
 	 * Path)} renders for the same harness events. A release of CAT changes it whenever any of them changes.
 	 *
 	 * @return the harness's judge version
@@ -44,13 +44,14 @@ public interface SessionPort
 	/**
 	 * Renders a completed trial's recorded activity and file changes for the judge.
 	 *
-	 * @param evidence the trial's retained transcript and effects
+	 * @param transcript the trial's retained harness events
+	 * @param effects the directory that holds the files that the trial changed
 	 * @param source the staged source copied at the start of the trial
 	 * @return the complete evidence section, without injected instructions, streaming fragments or telemetry
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the transcript, source or effects cannot be read
 	 */
-	String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException;
+	String renderEvidence(Path transcript, Path effects, Path source) throws IOException;
 
 	/**
 	 * Classifies the host's login for this harness, so that the confirmation step can warn about a subscription before

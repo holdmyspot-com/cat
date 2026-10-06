@@ -159,7 +159,7 @@ public final class ReadinessGateTest
 		TrialInstance instance = Builder.instance("safety", "logs");
 		FailedRequirement failed = new FailedRequirement("r1", "wrong_tone");
 		Builder.AttemptBuilder attempt = ready().certificationAttempt(1).
-			failure(new Failure(instance, "failure", List.of(failed), null, List.of(), List.of())).
+			failure(new Failure(instance, "failure", List.of(failed), null, List.of(), List.of(), Builder.FILES)).
 			outcome(Outcome.BELOW_MINIMUM);
 		requireThat(ReadinessGate.isMet(attempt.build()), "reproducing").isFalse();
 		for (FailureGroup.Status status : List.of(FailureGroup.Status.REPRODUCED, FailureGroup.Status.ABANDONED))

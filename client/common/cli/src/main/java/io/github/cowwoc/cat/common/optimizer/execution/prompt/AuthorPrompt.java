@@ -262,8 +262,8 @@ public final class AuthorPrompt implements AuthorProtocol
 			ArrayNode messages = responses.addArray();
 			turn.forEach(messages::add);
 		}
-		// A missing section is written as null rather than left out, so the author reads that the trial's events are
-		// no longer retained instead of assuming that the trial made no tool calls
+		// A missing section is written as null rather than left out, so the author reads that the trial's events or
+		// file changes are no longer retained instead of assuming that the trial made no tool calls
 		node.put("evidence_section", evidenceSection);
 		return node;
 	}

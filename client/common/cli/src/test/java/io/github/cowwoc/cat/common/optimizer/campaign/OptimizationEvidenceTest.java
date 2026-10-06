@@ -105,7 +105,7 @@ public final class OptimizationEvidenceTest
 		TrialKey key = TransitionSteps.last(assigned);
 		Campaign started = Transitions.apply(assigned, new CampaignEvent.Start(key));
 		return Transitions.apply(started, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
-			started.identity(), tokens, List.of()));
+			started.identity(), tokens, List.of(), Builder.FILES));
 	}
 
 	/**

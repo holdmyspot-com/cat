@@ -485,7 +485,7 @@ public final class SchedulerTest
 		// Requirement: R-C19
 		TrialInstance failure = tieredFailure(BIG_MEDIUM);
 		Failure formal = new Failure(failure, "", List.of(new FailedRequirement("r1", "wrong_tone")), null, List.of(),
-			List.of());
+			List.of(), Builder.FILES);
 		Campaign failed = tiered().slowStart(new SlowStart(4, 0)).development(SMALL_HIGH, 60, 0).
 			development(SAFETY, 60, 0).certificationAttempt(1).failure(formal).outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(failed.reproducing().map(CertificationAttempt::index), "reproducing").isEqualTo(Optional.of(1));

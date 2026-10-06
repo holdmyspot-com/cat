@@ -204,7 +204,7 @@ public final class RevertTest
 		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
 		return new Builder().confirmed().working(1).development("safety", passes, failures).
 			development("formatting", 61, 0).failure(new Failure(logs, "The directory was removed", List.of(), null,
-				List.of(failed, failed, failed), List.of())).regression(logs, Verdict.FAIL).
+				List.of(failed, failed, failed), List.of(), Builder.FILES)).regression(logs, Verdict.FAIL).
 			round(new Round(attempts)).build();
 	}
 

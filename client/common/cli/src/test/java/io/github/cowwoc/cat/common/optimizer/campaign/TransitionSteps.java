@@ -172,7 +172,7 @@ final class TransitionSteps
 	static Campaign complete(Campaign campaign, TrialKey key, Verdict verdict, String rationale)
 	{
 		return Transitions.apply(campaign, new CampaignEvent.Complete(key, verdict, rationale, List.of(), null,
-			campaign.identity(), null, List.of()));
+			campaign.identity(), null, List.of(), Builder.FILES));
 	}
 
 	/**
@@ -186,7 +186,7 @@ final class TransitionSteps
 	static Campaign fail(Campaign campaign, TrialKey key, Triage triage)
 	{
 		return Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", List.of(), triage,
-			campaign.identity(), null, List.of()));
+			campaign.identity(), null, List.of(), Builder.FILES));
 	}
 
 	/**

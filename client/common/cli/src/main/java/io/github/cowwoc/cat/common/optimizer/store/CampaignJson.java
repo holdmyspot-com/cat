@@ -64,6 +64,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SequenceGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
@@ -135,7 +136,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 23;
+	private static final int FORMAT_VERSION = 24;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -545,6 +546,7 @@ final class CampaignJson
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
 			node.set("responses", writeResponses(outcome.responses()));
+			node.set("files", writeFiles(outcome.files()));
 		}
 		return root;
 	}
@@ -569,7 +571,7 @@ final class CampaignJson
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
 				text(outcomeNode, "rationale"), readFailedRequirements(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
-				readResponses(outcomeNode));
+				readResponses(outcomeNode), readFiles(outcomeNode));
 		}
 		List<TrialSession> sessions = new ArrayList<>();
 		for (JsonNode session : elements(root, "sessions"))
@@ -768,6 +770,36 @@ final class CampaignJson
 			responses.add(List.copyOf(messages));
 		}
 		return List.copyOf(responses);
+	}
+
+	/**
+	 * Converts where a trial session's harness events and file changes were retained to a document.
+	 *
+	 * @param files the paths, or {@code null} if the trial is not judged
+	 * @return the document, or a JSON null if {@code files} is null
+	 */
+	private JsonNode writeFiles(TrialFiles files)
+	{
+		if (files == null)
+			return json.nullNode();
+		ObjectNode node = json.createObjectNode();
+		node.put("transcript", files.transcript().toString());
+		node.put("effects", files.effects().toString());
+		return node;
+	}
+
+	/**
+	 * Reads where a trial session's harness events and file changes were retained.
+	 *
+	 * @param node the object that holds the {@code files} field
+	 * @return the paths, or {@code null} if the trial is not judged
+	 */
+	private static TrialFiles readFiles(JsonNode node)
+	{
+		JsonNode files = nullable(node, "files");
+		if (files == null)
+			return null;
+		return new TrialFiles(Path.of(text(files, "transcript")), Path.of(text(files, "effects")));
 	}
 
 	/**
@@ -1449,6 +1481,7 @@ final class CampaignJson
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
 		node.put("observations", trial.observations());
 		node.set("responses", writeResponses(trial.responses()));
+		node.set("files", writeFiles(trial.files()));
 		return node;
 	}
 
@@ -1467,7 +1500,7 @@ final class CampaignJson
 			constant(node, "state", TrialState.class), verdict, rationale, readFailedRequirements(node),
 			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
-			readResponses(node));
+			readResponses(node), readFiles(node));
 	}
 
 	/**
@@ -1930,6 +1963,7 @@ final class CampaignJson
 			putFailedRequirements(element, failure.failedRequirements());
 			element.set("triage", writeTriage(failure.triage()));
 			element.set("responses", writeResponses(failure.responses()));
+			element.set("files", writeFiles(failure.files()));
 			ArrayNode reruns = element.putArray("reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -1958,7 +1992,7 @@ final class CampaignJson
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
 			failures.add(new Failure(readInstance(element), text(element, "rationale"),
-				readFailedRequirements(element), readTriage(element), reruns, readResponses(element)));
+				readFailedRequirements(element), readTriage(element), reruns, readResponses(element), readFiles(element)));
 		}
 		return failures;
 	}

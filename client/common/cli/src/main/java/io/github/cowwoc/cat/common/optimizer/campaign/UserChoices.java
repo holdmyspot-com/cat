@@ -128,7 +128,7 @@ final class UserChoices
 				draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
 					trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedRequirements(),
 					trial.triage(), 0,
-					trial.infrastructureAttempts(), trial.observations(), trial.responses()));
+					trial.infrastructureAttempts(), trial.observations(), trial.responses(), trial.files()));
 			}
 		}
 		draft.pendingDecisions.removeIf(decision -> decision instanceof PendingDecision.TrialFailures);

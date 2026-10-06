@@ -119,7 +119,7 @@ public final class ReproductionTest
 	 */
 	private static Builder.AttemptBuilder failed(Harness harness, TrialInstance instance)
 	{
-		Failure failure = new Failure(instance, "", List.of(WRONG_TONE), null, List.of(), List.of());
+		Failure failure = new Failure(instance, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES);
 		Header header = new Header("campaign-1", Path.of("/project"), Path.of("/project/AGENTS.md"), harness,
 			Lifecycle.ACTIVE);
 		return new Builder().header(header).confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline().
@@ -178,7 +178,7 @@ public final class ReproductionTest
 		TrialKey key = TransitionSteps.last(assigned);
 		Campaign started = Transitions.apply(assigned, new CampaignEvent.Start(key));
 		return Transitions.apply(started, new CampaignEvent.Complete(key, verdict, "", List.of(failed), null,
-			started.identity(), null, List.of()));
+			started.identity(), null, List.of(), Builder.FILES));
 	}
 
 	/**
@@ -192,10 +192,10 @@ public final class ReproductionTest
 		TrialInstance other = new Generator(TierFixtures.tieredContract()).draw(BIG_LOW,
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 		List<Failure> failures = List.of(
-			new Failure(FAILED, "", List.of(WRONG_TONE, INCORRECT_RESULT), null, List.of(), List.of()),
-			new Failure(FAILED, "", List.of(WRONG_TONE), null, List.of(), List.of()),
-			new Failure(other, "", List.of(WRONG_TONE), null, List.of(), List.of()),
-			new Failure(other, "", List.of(), null, List.of(), List.of()));
+			new Failure(FAILED, "", List.of(WRONG_TONE, INCORRECT_RESULT), null, List.of(), List.of(), Builder.FILES),
+			new Failure(FAILED, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES),
+			new Failure(other, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES),
+			new Failure(other, "", List.of(), null, List.of(), List.of(), Builder.FILES));
 
 		List<FailureGroup> groups = FailureGroup.of(failures);
 
@@ -341,7 +341,7 @@ public final class ReproductionTest
 		for (TrialKey key : keys)
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "",
-				List.of(WRONG_TONE), null, campaign.identity(), null, List.of()));
+				List.of(WRONG_TONE), null, campaign.identity(), null, List.of(), Builder.FILES));
 		}
 
 		FailureGroup group = campaign.attempt(1).group(1);

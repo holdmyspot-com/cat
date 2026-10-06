@@ -43,7 +43,7 @@ public final class AttemptSelectionTest
 		TrialInstance instance = Builder.targeted("safety", "logs");
 		Failure failure = new Failure(instance, "representative failure", List.of(), null, List.of(
 			new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
+			new DiagnosticRerun(Verdict.FAIL, "fail")), List.of(), Builder.FILES);
 		Campaign campaign = new Builder().confirmed().working(1).failure(failure).
 			round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
 		for (int attempt = 1; attempt <= 3; ++attempt)
@@ -302,8 +302,8 @@ public final class AttemptSelectionTest
 		campaign = new Builder().confirmed().working(1).development("safety", 0, 1).
 			failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of())).regression(Builder.targeted("safety", "logs"),
-				Verdict.FAIL).round(campaign.development().round()).build();
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of(), Builder.FILES)).
+			regression(Builder.targeted("safety", "logs"), Verdict.FAIL).round(campaign.development().round()).build();
 		for (int index = 0; index < sizes.size(); ++index)
 		{
 			String original = "old\n".repeat(sizes.get(index));

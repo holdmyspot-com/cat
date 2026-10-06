@@ -138,9 +138,10 @@ public sealed interface CampaignEvent
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
+	 * @param files where the trial session's harness events and file changes were retained
 	 */
 	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements,
-		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses)
+		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files)
 		implements CampaignEvent
 	{
 		/**
@@ -156,9 +157,10 @@ public sealed interface CampaignEvent
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
+		 * @param files where the trial session's harness events and file changes were retained
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
-		 *   {@code failedRequirements}, {@code observed}, {@code responses}, a failed requirement, a turn's
-		 *   messages or an assistant message are null
+		 *   {@code failedRequirements}, {@code observed}, {@code responses}, {@code files}, a failed requirement, a
+		 *   turn's messages or an assistant message are null
 		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed requirements, or a
 		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial
 		 */
@@ -172,6 +174,7 @@ public sealed interface CampaignEvent
 				requireThat(failedRequirements, "failedRequirements").isEmpty();
 			requireThat(observed, "observed").isNotNull();
 			requireThat(responses, "responses").isNotNull();
+			requireThat(files, "files").isNotNull();
 			if (inputTokens != null)
 				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
 			if (triage != null)

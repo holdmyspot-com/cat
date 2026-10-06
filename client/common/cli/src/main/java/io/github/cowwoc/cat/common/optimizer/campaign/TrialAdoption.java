@@ -252,7 +252,7 @@ final class TrialAdoption
 			draft.slowStart = draft.slowStart.afterFailure();
 			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
 			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.failedRequirements(),
-				trial.triage(), List.of(), trial.responses()));
+				trial.triage(), List.of(), trial.responses(), trial.files()));
 			addRegression(draft, targeted, Verdict.FAIL);
 			if (isBlocking(trial))
 			{
@@ -807,7 +807,7 @@ final class TrialAdoption
 		if (trial.verdict() == Verdict.FAIL)
 		{
 			failures.add(new Failure(trial.instance(), trial.rationale(), trial.failedRequirements(), null, List.of(),
-				trial.responses()));
+				trial.responses(), trial.files()));
 			draft.slowStart = draft.slowStart.afterFailure();
 		}
 		else

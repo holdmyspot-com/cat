@@ -328,7 +328,7 @@ public final class AuthorManifestTest
 		// Requirement: R-D10
 		// Requirement: R-D9
 		Failure failure = new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(),
-			List.of());
+			List.of(), Builder.FILES);
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure, failure), Map.of(), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()))),

@@ -76,7 +76,8 @@ one ordered array of assistant messages per turn, including interim messages and
 every message is part of the reply. The `evidence_section` holds the failing trial's tool calls, each with its input,
 its exit status when the harness reported one and its complete output, and its child activity and hook outcomes, in
 turn order, followed by every file change against the source the trial started from. The `evidence_section` is `null`
-when CAT no longer retains the trial's harness events, so its tool calls, exit statuses and outputs are unknown:
+when CAT no longer retains the trial's harness events or file changes, so its tool calls, exit statuses, outputs and
+file changes are unknown:
 
 {{failures}}
 

@@ -5,7 +5,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
-import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.contract.JudgeVersionContent;
 import io.github.cowwoc.cat.common.optimizer.port.contract.VersionRegistry;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
@@ -70,10 +69,8 @@ public final class CodexJudgeVersionTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			CodexSessions sessions = new CodexSessions(settings);
-			SessionResult.Completed evidence = new SessionResult.Completed(EVENTS, List.of(), effects, null, null, null,
-				List.of(), "prompt-sources", List.of());
 			// Run directories differ per run, so the hash covers the section with their root replaced
-			String section = sessions.renderEvidence(evidence, source).replace(root.toString(), "<root>");
+			String section = sessions.renderEvidence(EVENTS, effects, source).replace(root.toString(), "<root>");
 			CodexProfileInventory inventory = new CodexProfileInventory(ARTIFACT.toAbsolutePath().normalize(), "codex",
 				_ ->
 				{

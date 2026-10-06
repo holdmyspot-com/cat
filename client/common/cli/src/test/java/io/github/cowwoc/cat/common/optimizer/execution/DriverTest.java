@@ -584,6 +584,107 @@ public final class DriverTest
 	}
 
 	/**
+	 * An author started after a failed trial is given that trial's section, rendered from the trial's retained
+	 * transcript and effects against a staged copy of the working candidate.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void authorIsGivenTheFailedTrialSection() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failure-section")),
+				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
+					slowStart(new SlowStart(1, 0)).build());
+			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
+			String section = """
+				Turn 1
+				Tool: shell
+				Input:
+				read-file docs/handbok.md
+				Exit status: 127
+				Output:
+				bash: read-file: command not found
+
+				File changes
+				No file changes.
+				""";
+			AtomicReference<SessionResult.Completed> failed = new AtomicReference<>();
+			AtomicReference<Path> source = new AtomicReference<>();
+			harness.trials(request ->
+			{
+				SessionResult.Completed completed = harness.failed();
+				try
+				{
+					Files.createDirectories(completed.transcript().getParent());
+					Files.writeString(completed.transcript(), "", UTF_8);
+					Files.createDirectories(completed.effects());
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+				harness.sessions().supplyEvidence(completed.transcript(), section);
+				failed.set(completed);
+				source.set(request.source());
+				return completed;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !harness.author().briefs().isEmpty());
+
+				AuthorBrief brief = harness.author().briefs().getFirst();
+				requireThat(brief.evidenceSections(), "evidenceSections").
+					isEqualTo(Map.of(brief.developmentId(0), section));
+				requireThat(harness.sessions().evidenceSources().get(failed.get().transcript()), "renderedSource").
+					isEqualTo(source.get());
+			}
+		}
+	}
+
+	/**
+	 * An author started after a failed trial whose transcript or effects are no longer retained is given no section
+	 * for that failure.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void authorIsGivenNoSectionForUnretainedTrial() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failure-section")),
+				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
+					slowStart(new SlowStart(1, 0)).build());
+			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
+			harness.trials(_ ->
+			{
+				SessionResult.Completed completed = harness.failed();
+				try
+				{
+					Files.createDirectories(completed.transcript().getParent());
+					Files.writeString(completed.transcript(), "", UTF_8);
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+				harness.sessions().supplyEvidence(completed.transcript(), "Turn 1\n");
+				return completed;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !harness.author().briefs().isEmpty());
+
+				AuthorBrief brief = harness.author().briefs().getFirst();
+				requireThat(brief.developmentFailures().size(), "failures").isEqualTo(1);
+				requireThat(brief.evidenceSections(), "evidenceSections").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * A triage whose output never matches its schema reruns with the same evidence, and its third invalid output
 	 * records the failure as blocking.
 	 *
@@ -956,7 +1057,7 @@ public final class DriverTest
 	private static DriverHarness workingReferenceHarness(Path directory, Verdict referenceVerdict) throws IOException
 	{
 		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(), null,
-			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of());
+			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of(), Builder.FILES);
 		DriverHarness harness = new DriverHarness(directory,
 			new Builder().confirmed().working(1).readyBaseline().ceiling(16).slowStart(new SlowStart(16, 0)).
 				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).failure(failure).
@@ -1081,7 +1182,7 @@ public final class DriverTest
 		{
 			Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(), null,
 				List.of(new DiagnosticRerun(Verdict.PASS, "pass"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-					new DiagnosticRerun(Verdict.FAIL, "fail")), List.of());
+					new DiagnosticRerun(Verdict.FAIL, "fail")), List.of(), Builder.FILES);
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("extended-resume")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(1).development("safety", 60, 1).
 					round(new Round(Map.of("safety", 0))).failure(failure).build());
@@ -1262,7 +1363,8 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
-					failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(), List.of())).
+					failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(), List.of(),
+						Builder.FILES)).
 					build());
 			harness.authors(request ->
 			{
@@ -2614,7 +2716,7 @@ public final class DriverTest
 			tried.add(new TriedCombination(new AddedCombination(1, test.id(), values), trials, 0));
 		}
 		FailedRequirement wrongTone = new FailedRequirement("r1", "wrong_tone");
-		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of());
+		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of(), Builder.FILES);
 		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
 			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
 		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, Path.of("/project"),
@@ -2907,7 +3009,7 @@ public final class DriverTest
 		List<ReproductionRound> rounds)
 	{
 		TrialInstance instance = new Generator(contract).draw(cell, DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
-		Failure failure = new Failure(instance, "", List.of(failed), null, List.of(), List.of());
+		Failure failure = new Failure(instance, "", List.of(failed), null, List.of(), List.of(), Builder.FILES);
 		return new Builder().confirmed(contract, 1).working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(
 				new FailureGroup(cell, instance.testId(), failed, 1, FailureGroup.ROUNDS, rounds,
@@ -3167,7 +3269,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Failure failure = new Failure(Builder.instance("safety", "logs"), "",
-				List.of(new FailedRequirement("r2", "deleted_without_asking")), null, List.of(), List.of());
+				List.of(new FailedRequirement("r2", "deleted_without_asking")), null, List.of(), List.of(), Builder.FILES);
 			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
@@ -3862,7 +3964,7 @@ public final class DriverTest
 				requireThat(harness.author().briefs().size(), "briefs").isEqualTo(1);
 				AuthorBrief brief = harness.author().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
-					isEqualTo(List.of(new Failure(developmentFailure, "", List.of(), null, List.of(), List.of())));
+					isEqualTo(List.of(new Failure(developmentFailure, "", List.of(), null, List.of(), List.of(), Builder.FILES)));
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
@@ -4000,9 +4102,9 @@ public final class DriverTest
 			}
 
 			@Override
-			public String renderEvidence(SessionResult.Completed evidence, Path source) throws IOException
+			public String renderEvidence(Path transcript, Path effects, Path source) throws IOException
 			{
-				return delegate.renderEvidence(evidence, source);
+				return delegate.renderEvidence(transcript, effects, source);
 			}
 
 			@Override

@@ -18,7 +18,6 @@ import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
-import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -360,9 +359,9 @@ public final class SliceTest
 		}
 
 		@Override
-		public String renderEvidence(SessionResult.Completed evidence, Path source)
+		public String renderEvidence(Path transcript, Path effects, Path source)
 		{
-			return delegate.renderEvidence(evidence, source);
+			return delegate.renderEvidence(transcript, effects, source);
 		}
 
 		@Override

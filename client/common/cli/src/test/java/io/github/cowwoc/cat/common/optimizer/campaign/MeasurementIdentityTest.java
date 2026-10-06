@@ -139,7 +139,7 @@ public final class MeasurementIdentityTest
 		MeasurementIdentity observed = identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.REASONING,
 			"high");
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", List.of(), null,
-			observed, null, List.of()));
+			observed, null, List.of(), Builder.FILES));
 		requireThat(campaign.identity(), "campaign.identity()").isEqualTo(observed);
 	}
 

@@ -387,7 +387,7 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
-		public String renderEvidence(SessionResult.Completed evidence, Path source)
+		public String renderEvidence(Path transcript, Path effects, Path source)
 		{
 			return "No tool or hook activity.\n\nFile changes\nNo file changes.\n";
 		}

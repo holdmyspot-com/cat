@@ -490,7 +490,7 @@ public final class Transitions
 		{
 			draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
 				trial.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, trial.infrastructureFailures(),
-				trial.infrastructureAttempts(), trial.observations() + 1, List.of()));
+				trial.infrastructureAttempts(), trial.observations() + 1, List.of(), null));
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
@@ -510,7 +510,7 @@ public final class Transitions
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), measured,
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedRequirements(),
 			complete.triage(), trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(),
-			complete.responses()));
+			complete.responses(), complete.files()));
 	}
 
 	/**
@@ -570,7 +570,7 @@ public final class Transitions
 		attempts.add(new InfrastructureAttempt(fail.at(), fail.failure(), fail.detail()));
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
 			TrialState.ASSIGNED, null, null, List.of(), null, infrastructureFailures, attempts, trial.observations(),
-			List.of()));
+			List.of(), null));
 	}
 
 	/**

@@ -186,7 +186,8 @@ public final class RoundEndTest
 		TrialInstance logs = targeted("safety", "logs");
 		DiagnosticRerun reproduced = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
 		return new Builder().confirmed().working(1).development("safety", 0, failures).
-			failure(new Failure(logs, "The directory was removed", List.of(), null, List.of(reproduced), List.of())).
+			failure(new Failure(logs, "The directory was removed", List.of(), null, List.of(reproduced), List.of(),
+				Builder.FILES)).
 			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).
 			slowStart(GROWN).build();
 	}

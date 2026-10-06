@@ -29,11 +29,13 @@ import java.util.List;
  * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
  * @param observations the runs that ended under conditions that differ from the trial's identity
  * @param responses each completed turn's assistant messages in order; empty before the trial is judged
+ * @param files where the trial session's harness events and file changes were retained, or {@code null} if the trial
+ *   is not judged
  */
 public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
 	TrialState state, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements, Triage triage,
-	int infrastructureFailures,
-	List<InfrastructureAttempt> infrastructureAttempts, int observations, List<List<String>> responses)
+	int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
+	List<List<String>> responses, TrialFiles files)
 {
 	/**
 	 * Creates a trial.
@@ -56,12 +58,14 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
 	 * @param observations the runs that ended under conditions that differ from the trial's identity
 	 * @param responses each completed turn's assistant messages in order; empty before the trial is judged
+	 * @param files where the trial session's harness events and file changes were retained, or {@code null} if the
+	 *   trial is not judged
 	 * @throws NullPointerException if {@code key}, {@code instance}, {@code identity}, {@code allocation},
 	 *   {@code state}, {@code failedRequirements}, {@code infrastructureAttempts} or {@code responses} are null, or a
 	 *   failed requirement, a turn's messages or an assistant message is null
 	 * @throws IllegalArgumentException if a count is negative, the instance's cell differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
-	 *   or that state lacks a verdict, only one of {@code rationale} and {@code verdict} has a value,
+	 *   or that state lacks a verdict, only one of {@code rationale}, {@code files} and {@code verdict} has a value,
 	 *   {@code failedRequirements} is not empty for a trial that did not fail, a
 	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial, or
 	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
@@ -82,6 +86,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
 		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");
+		requireThat(files != null, "hasFiles").isEqualTo(verdict != null, "hasVerdict");
 		if (verdict != Verdict.FAIL)
 			requireThat(failedRequirements, "failedRequirements").isEmpty();
 		if (triage != null)
@@ -115,7 +120,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 		Allocation allocation)
 	{
 		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, null, List.of(), null,
-			0, List.of(), 0, List.of());
+			0, List.of(), 0, List.of(), null);
 	}
 
 	/**
@@ -129,6 +134,6 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	LogicalTrial withState(TrialState newState)
 	{
 		return new LogicalTrial(key, instance, identity, allocation, newState, null, null, List.of(), null,
-			infrastructureFailures, infrastructureAttempts, observations, List.of());
+			infrastructureFailures, infrastructureAttempts, observations, List.of(), null);
 	}
 }

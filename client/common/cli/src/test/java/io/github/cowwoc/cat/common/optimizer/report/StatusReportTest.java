@@ -165,7 +165,7 @@ public final class StatusReportTest
 			TrialKey key = campaign.trials().getLast().key();
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
-				campaign.identity(), null, List.of()));
+				campaign.identity(), null, List.of(), Builder.FILES));
 		}
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(snapshot));
 		Allocation allocation = new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND,
@@ -175,7 +175,7 @@ public final class StatusReportTest
 		TrialKey key = campaign.trials().getLast().key();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "poor outcome", List.of(),
-			null, campaign.identity(), null, List.of()));
+			null, campaign.identity(), null, List.of(), Builder.FILES));
 
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		JsonNode reverted = report.toJson(JsonMapper.builder().build()).path("reverts").path(0);

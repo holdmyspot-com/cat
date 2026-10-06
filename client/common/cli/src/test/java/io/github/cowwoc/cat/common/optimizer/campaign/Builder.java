@@ -43,6 +43,12 @@ public final class Builder
 	 * The default measurement conditions observed before the first confirmation.
 	 */
 	public static final MeasurementIdentity OBSERVED = observed("model-a");
+	/**
+	 * Where a judged trial's harness events and file changes were retained, for trials whose evidence a test does not
+	 * read.
+	 */
+	public static final TrialFiles FILES = new TrialFiles(Path.of("/runs/trial/transcript.jsonl"),
+		Path.of("/runs/trial/effects"));
 
 	private Header header = new Header("campaign-1", Path.of("/project"),
 		Path.of("/project/CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE);
@@ -350,7 +356,7 @@ public final class Builder
 	 */
 	public Builder failure(TrialInstance instance)
 	{
-		return failure(new Failure(instance, "", List.of(), null, List.of(), List.of()));
+		return failure(new Failure(instance, "", List.of(), null, List.of(), List.of(), FILES));
 	}
 
 	/**
@@ -779,7 +785,7 @@ public final class Builder
 		 */
 		public AttemptBuilder failure(TrialInstance instance)
 		{
-			return failure(new Failure(instance, "", List.of(), null, List.of(), List.of()));
+			return failure(new Failure(instance, "", List.of(), null, List.of(), List.of(), FILES));
 		}
 
 		/**

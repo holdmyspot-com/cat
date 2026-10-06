@@ -35,7 +35,7 @@ public final class FailureSummaryTest
 		List<FailedRequirement> failed = List.of(new FailedRequirement("r2", "deleted_without_asking"),
 			new FailedRequirement("core_task", "other"));
 		Failure failure = new Failure(heldOut, "The held-out rationale.", failed, null, List.of(),
-			List.of(List.of("The held-out reply.")));
+			List.of(List.of("The held-out reply.")), Builder.FILES);
 
 		requireThat(failure.summary(), "summary").
 			isEqualTo(new FailureSummary("big-medium", "delete_directory", failed));

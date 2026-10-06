@@ -39,8 +39,8 @@ import java.nio.charset.StandardCharsets;
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param evidenceSections the evidence section of each development failure's trial, keyed by the failure's
  *   {@link #developmentId(int) citation identifier}: the trial's tool calls with their exit statuses and outputs,
- *   child activity, hook outcomes and file changes, rendered as for a judge session; a failure whose trial's harness
- *   events are no longer retained has no entry
+ *   child activity, hook outcomes and file changes, rendered as for a judge session; a failure whose trial's
+ *   transcript or effects are no longer retained has no entry
  * @param developmentCounts the working candidate's development outcomes per cell
  * @param endedAttempts the certification attempts that have ended, in index order
  * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
@@ -61,7 +61,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param contract the confirmed contract
 	 * @param developmentFailures the working candidate's development failures, in adoption order
 	 * @param evidenceSections the evidence section of each development failure's trial, keyed by the failure's
-	 *   citation identifier; a failure whose trial's harness events are no longer retained has no entry
+	 *   citation identifier; a failure whose trial's transcript or effects are no longer retained has no entry
 	 * @param developmentCounts the working candidate's development outcomes per cell
 	 * @param endedAttempts the certification attempts that have ended, in index order
 	 * @param links the resolved target of each symbolic link recorded when the campaign copied the base project,
@@ -114,7 +114,18 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 */
 	public String developmentId(int occurrence)
 	{
-		Failure failure = developmentFailures.get(occurrence);
+		return developmentId(occurrence, developmentFailures.get(occurrence));
+	}
+
+	/**
+	 * Identifies one supplied development failure.
+	 *
+	 * @param occurrence the failure's list index, from zero
+	 * @param failure the failure at that index
+	 * @return its scoped citation identifier
+	 */
+	private static String developmentId(int occurrence, Failure failure)
+	{
 		// The occurrence keeps repeated instances distinct supplied failures
 		return Sha256.of(("development\n" + occurrence + "\n" + AuthorManifest.instanceId(failure.instance())).
 			getBytes(StandardCharsets.UTF_8)).hex();
@@ -127,11 +138,21 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param number the attempt reserved in the campaign's round, which determines its cell and approach
 	 * @param campaignEdits the unified diff since confirmation, restricted to prompt files
 	 * @param fork the files recorded at the fork, whose symbolic links the author is told about
+	 * @param evidenceSections the evidence section of each development failure's trial, keyed by the failure's index in
+	 *   the working candidate's development failures; a failure whose trial's transcript or effects are no longer
+	 *   retained has no entry
 	 * @return the brief
 	 */
-	static AuthorBrief of(Campaign campaign, int number, FileInventory fork, String campaignEdits)
+	static AuthorBrief of(Campaign campaign, int number, FileInventory fork, String campaignEdits,
+		Map<Integer, String> evidenceSections)
 	{
 		Development development = campaign.development();
+		Map<String, String> sections = new HashMap<>();
+		for (Map.Entry<Integer, String> entry : evidenceSections.entrySet())
+		{
+			int index = entry.getKey();
+			sections.put(developmentId(index, development.failures().get(index)), entry.getValue());
+		}
 		List<EndedAttempt> ended = new ArrayList<>();
 		for (CertificationAttempt attempt : campaign.attempts())
 		{
@@ -148,7 +169,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
-			campaign.contract(), development.failures(), Map.of(), development.counts(), ended,
+			campaign.contract(), development.failures(), sections, development.counts(), ended,
 			links, campaignEdits, campaign.answeredWarnings());
 	}
 

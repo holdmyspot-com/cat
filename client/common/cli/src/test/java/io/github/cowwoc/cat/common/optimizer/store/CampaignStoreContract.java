@@ -37,6 +37,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
@@ -258,7 +259,7 @@ public abstract class CampaignStoreContract
 			MeasurementIdentity identity = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "judge-model"),
 				Map.of(limited, Map.of(MeasurementCondition.MODEL, "big", MeasurementCondition.REASONING, "low",
 					MeasurementCondition.TOOL_OUTPUT_LIMIT, "5000")));
-			Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of());
+			Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of(), Builder.FILES);
 			Campaign campaign = new Builder().header(header("campaign-tool-output")).identity(identity).
 				confirmed(contract, 1).working(1).development(limited, 40, 1).
 				certificationAttempt(1).failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM).
@@ -490,7 +491,7 @@ public abstract class CampaignStoreContract
 				new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.25Z"), RunFailure.RATE_LIMITED,
 					"rate limit reached"));
 			LogicalTrial retried = new LogicalTrial(assigned.key(), assigned.instance(), assigned.identity(),
-				assigned.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, 1, attempts, 0, List.of());
+				assigned.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, 1, attempts, 0, List.of(), null);
 			store.writeAssignment("campaign-1", retried);
 			CampaignEvent.Complete outcome = complete(assigned.key(), Verdict.PASS);
 			store.writeOutcome("campaign-1", outcome);
@@ -856,14 +857,16 @@ public abstract class CampaignStoreContract
 			sequence);
 		Verdict verdict = null;
 		String rationale = null;
+		TrialFiles files = null;
 		if (state == TrialState.JUDGED)
 		{
 			verdict = Verdict.PASS;
 			rationale = "The reply answered without deleting files.";
+			files = Builder.FILES;
 		}
 		return new LogicalTrial(key, instance("safety", "test-" + sequence, sequence, false),
 			Builder.confirmedIdentity("model-a"), allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, sequence),
-			state, verdict, rationale, List.of(), null, 0, List.of(), 0, List.of());
+			state, verdict, rationale, List.of(), null, 0, List.of(), 0, List.of(), files);
 	}
 
 	/**
@@ -905,7 +908,7 @@ public abstract class CampaignStoreContract
 		else
 			failedRequirements = List.of();
 		return new CampaignEvent.Complete(key, verdict, "The judge's rationale for " + verdict + ".",
-			failedRequirements, null, Builder.confirmedIdentity("model-a"), null, List.of());
+			failedRequirements, null, Builder.confirmedIdentity("model-a"), null, List.of(), Builder.FILES);
 	}
 
 	/**
@@ -1003,7 +1006,7 @@ public abstract class CampaignStoreContract
 				List.of(new FailedRequirement("r2", "deleted_without_asking")),
 				new Triage(Impact.SELF_RECOVERING, "The reply restored the directory."),
 				List.of(new DiagnosticRerun(Verdict.PASS, "The rerun asked first."),
-					new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of())).
+					new DiagnosticRerun(Verdict.FAIL, "The rerun deleted the directory too.")), List.of(), Builder.FILES)).
 			failure(instance("safety", "deletion", 15, true)).
 			diagnosis(new Diagnosis(List.of(instance("safety", "deletion", 4, false)), 2, diagnostic, true)).
 			round(new Round(roundAttempts)).
@@ -1034,24 +1037,24 @@ public abstract class CampaignStoreContract
 					new InfrastructureAttempt(Instant.parse("2026-10-01T10:02:00Z"), RunFailure.INTERRUPTED,
 						"slice ended"),
 					new InfrastructureAttempt(Instant.parse("2026-10-01T10:03:00Z"), RunFailure.INFRASTRUCTURE,
-						"runner crashed")), 1, List.of())).
+						"runner crashed")), 1, List.of(), null)).
 			trial(new LogicalTrial(formalKey, instance("safety", "deletion", 12, false), identity,
 				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, "The reply deleted the file.",
 				List.of(new FailedRequirement("r1", "wrong_tone"), new FailedRequirement("r2", "deleted_without_asking")),
 				null, 1,
 				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
-						"invalid judge result")), 0, List.of())).
+						"invalid judge result")), 0, List.of(), Builder.FILES)).
 			trial(new LogicalTrial(diagnostic, instance("safety", "deletion", 4, true), identity,
 				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,
-				List.of())).
+				List.of(), null)).
 			trial(new LogicalTrial(new TrialKey(Purpose.DEVELOPMENT, 4, Builder.snapshot("candidate-3"),
 				"formatting", 3), instance("formatting", "tone", 14, false), identity,
 				allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0,
-				List.of(), 0, List.of())).
+				List.of(), 0, List.of(), null)).
 			trial(new LogicalTrial(new TrialKey(Purpose.REPRODUCTION, 2, Builder.snapshot("candidate-3"),
 				"safety", 6), instance("safety", "deletion", 16, false), identity,
 				allocation(AllocationRule.TARGETED, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,
-				List.of())).
+				List.of(), null)).
 			evidenceRevision(41).
 			slowStart(new SlowStart(4, 3)).
 			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3)).
@@ -1082,7 +1085,7 @@ public abstract class CampaignStoreContract
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
 			failure(new Failure(instance("formatting", "tone", 13, true), "The reply was rude.",
-				List.of(new FailedRequirement("r1", "wrong_tone")), null, List.of(), List.of())).
+				List.of(new FailedRequirement("r1", "wrong_tone")), null, List.of(), List.of(), Builder.FILES)).
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			groups(failureGroups()).
 			campaign().

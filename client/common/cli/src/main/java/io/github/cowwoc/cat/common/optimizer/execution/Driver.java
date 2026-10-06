@@ -19,6 +19,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -31,6 +32,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
@@ -77,6 +79,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -711,7 +714,7 @@ public final class Driver implements AutoCloseable
 	{
 		try
 		{
-			return Optional.of(context.sessions().renderEvidence(completed, source));
+			return Optional.of(context.sessions().renderEvidence(completed.transcript(), completed.effects(), source));
 		}
 		catch (IOException e)
 		{
@@ -992,8 +995,9 @@ public final class Driver implements AutoCloseable
 		throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(instance, trial);
+		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
-			triage, observed, trialInputTokens(trial), trial.responses());
+			triage, observed, trialInputTokens(trial), trial.responses(), files);
 		if (campaign.identity().differences(observed).isEmpty())
 		{
 			context.store().writeOutcome(campaignId, complete);
@@ -1247,7 +1251,8 @@ public final class Driver implements AutoCloseable
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
 			Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 			String edits = CampaignEdits.of(context.workspace(), incumbent, overlay, context.promptSources());
-			AuthorBrief brief = AuthorBrief.of(campaign, number, overlay.fork(), edits);
+			Map<Integer, String> sections = renderFailureSections(working, overlay);
+			AuthorBrief brief = AuthorBrief.of(campaign, number, overlay.fork(), edits, sections);
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
 			register(new InFlight.Author(number, cell, working, overlay, copy, before, brief, handle));
@@ -1257,6 +1262,37 @@ public final class Driver implements AutoCloseable
 			context.workspace().deleteAuthoringCopy(copy);
 			authorFailed("The author session could not start: " + describe(e));
 		}
+	}
+
+	/**
+	 * Renders the evidence section of each of the working candidate's development failures, as a judge receives it,
+	 * against the staged source that the failure's trial started from. A failure whose trial's transcript or effects
+	 * are no longer retained has no section.
+	 *
+	 * @param working the working candidate, whose development failures are rendered
+	 * @param overlay the working candidate's overlay
+	 * @return each rendered section, keyed by the failure's index in the working candidate's development failures
+	 * @throws IOException if the working candidate cannot be staged or a retained trial's evidence cannot be read
+	 */
+	private Map<Integer, String> renderFailureSections(Candidate working, Overlay overlay) throws IOException
+	{
+		List<Failure> failures = campaign.development().failures();
+		Map<Integer, String> sections = new HashMap<>();
+		if (failures.isEmpty())
+			return sections;
+		// Development failures belong to the working candidate, so its staged source is the one each trial started from
+		Path source = context.workspace().stage(overlay);
+		staged.put(working.snapshot(), overlay.identity());
+		for (int index = 0; index < failures.size(); ++index)
+		{
+			TrialFiles files = failures.get(index).files();
+			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()))
+			{
+				sections.put(index, context.sessions().renderEvidence(files.transcript(), files.effects(),
+					source));
+			}
+		}
+		return sections;
 	}
 
 	/**

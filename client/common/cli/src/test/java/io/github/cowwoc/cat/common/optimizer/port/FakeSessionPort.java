@@ -117,14 +117,15 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
-	public String renderEvidence(SessionResult.Completed result, Path source)
+	public String renderEvidence(Path transcript, Path effects, Path source)
 	{
-		requireThat(result, "result").isNotNull();
+		requireThat(transcript, "transcript").isNotNull();
+		requireThat(effects, "effects").isNotNull();
 		requireThat(source, "source").isNotNull();
 		synchronized (sessions)
 		{
-			evidenceSources.put(result.transcript(), source);
-			return evidence.getOrDefault(result.transcript(), new SessionEvidence(List.of()).render() +
+			evidenceSources.put(transcript, source);
+			return evidence.getOrDefault(transcript, new SessionEvidence(List.of()).render() +
 				"\nFile changes\nNo file changes.\n");
 		}
 	}
