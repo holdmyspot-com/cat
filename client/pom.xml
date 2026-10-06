@@ -45,7 +45,7 @@
 		<maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
 		<maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
 		<maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
-		<maven.version>3.9.16</maven.version>
+		<maven.version>3.10.0</maven.version>
 		<pmd.version>7.28.0</pmd.version>
 		<pouch.version>10.3</pouch.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -344,10 +344,10 @@
 							<ruleset>${cat.config.directory}/pmd.xml</ruleset>
 						</rulesets>
 						<!--
-							BUG: https://github.com/pmd/pmd/issues/7056
-							PMD 7.27 warns because maven-pmd-plugin 3.28 does not add the target JDK to its
-							analysis classpath. This single warning is intentionally accepted until the merged
-							plugin fix is released: https://github.com/apache/maven-pmd-plugin/pull/726
+							BUG: https://github.com/apache/maven-pmd-plugin/pull/726
+							PMD warns that it adds the current platform's jrt-fs.jar to auxClasspath because
+							maven-pmd-plugin 3.28 does not add the target JDK to its analysis classpath. This
+							single warning is intentionally accepted until the merged plugin fix is released.
 						-->
 						<targetJdk>27</targetJdk>
 					</configuration>
