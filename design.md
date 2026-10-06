@@ -898,7 +898,8 @@ A candidate is an exact snapshot: the fork's prompt system plus an **overlay** o
 creates, renames and deletes. Its identity is a hash of the overlay and the fork identity. Authority comes from the
 confirmed contract:
 
-- In-project prompt files: content edits and ordinary-file create, rename and delete.
+- In-project prompt files: content edits and ordinary-file create, rename and delete. An in-project file that a link
+  at or below a prompt source resolves to is a prompt file too, editable through the link or at its own path.
 - Existing symbolic-link entries, their destinations and existing file modes stay fixed.
 - Loader configuration, meaning whatever decides which prompt files load, is fixed for the campaign. A needed loader
   change is prepared by the user before a new campaign.
@@ -1688,6 +1689,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D51 | Remove a certified campaign's files from `.cat/work/` once its candidate is delivered or the user keeps the incumbent, and keep a certification record of a few kilobytes in the project (user rulings, 2026-10-04). | A campaign's run directories take about 1.7 MB per trial, and a finished certification needs none of them. Without a record, deleting the snapshot would leave nothing from which to report whether the delivered prompt's certification is current. A record under `.cat/work/` would be local to one clone, and committing trial results would put megabytes into the repository. | The record is a committed project file that changes with each certified delivery. After cleanup, a certified campaign cannot be resumed or diagnosed, and its evidence cannot be re-examined. A campaign that ends any other way keeps its files until the user removes them. |
 | D52 | Treat every external file as a read-only member of the prompt family: CAT reads, stages and measures it but never edits it (user ruling, 2026-10-05). | Letting the user authorize edits to an external target meant a delivery could change files outside the project that other projects or users share, with a separate preflight and change record for them. | A requirement that needs an external edit must be met through an in-project prompt file, or the campaign stops or is revised. |
 | D53 | Keep sampling the working candidate after a round that promoted no attempt, and report a plateau only when that candidate can no longer meet the readiness gate by the review checkpoint (user ruling, 2026-10-05). | Pausing at every round without a promotion ended development whenever attempts could not be proven better, although the working candidate might already be ready or close to it. | A candidate near the gate spends more development trials before the user is asked; the review checkpoint still bounds them. |
+| D54 | Treat the in-project target of a prompt-source link as a prompt file (user ruling, 2026-10-05). | A prompt source that is a link has its content in the target, so forbidding the target left the prompt source uneditable while the author was told it could edit it; every attempt that edited it was rejected. | CAT may edit an in-project file that the loader reaches only through a link, which other in-project readers of that file also see. |
 
 ## 14. Acceptance evidence
 
