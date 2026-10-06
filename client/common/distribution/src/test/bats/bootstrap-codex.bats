@@ -108,6 +108,7 @@ SCRIPT
 	printf 'cat agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"
 	printf 'user agent\n' > "${CODEX_HOME}/agents/reviewer.toml"
 	printf 'cat-reviewer.toml\n' > "${CODEX_HOME}/plugins/data/cat-cat/codex-agent-files"
+	printf '0.9\n' > "${CODEX_HOME}/plugins/data/cat-cat/migration-version"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
 		sh "${INSTALL_DIRECTORY}/uninstall-codex.sh"
@@ -116,8 +117,52 @@ SCRIPT
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "codex plugin remove cat@cat" ]
 	[ ! -e "${CODEX_HOME}/agents/cat-reviewer.toml" ]
 	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
+	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat/codex-agent-files" ]
+	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "0.9" ]
+	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+}
+
+@test "Codex uninstall deletes CAT's data only when asked to" {
+	create_fake_engine_command codex
+	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat"
+	printf '0.9\n' > "${CODEX_HOME}/plugins/data/cat-cat/migration-version"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		sh "${INSTALL_DIRECTORY}/uninstall-codex.sh" --delete-data
+
+	[ "${status}" -eq 0 ]
 	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+}
+
+@test "Codex uninstall rejects an unknown argument before removing anything" {
+	create_fake_engine_command codex
+	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		sh "${INSTALL_DIRECTORY}/uninstall-codex.sh" --delete
+
+	[ "${status}" -eq 2 ]
+	[[ "${output}" == *"Usage:"*"[--delete-data]"* ]]
+	[ -d "${CODEX_HOME}/plugins/data/cat-cat" ]
+	[ -d "${CODEX_HOME}/plugins/cat-marketplace" ]
+	[ ! -s "${COMMAND_LOG}" ]
+}
+
+@test "release uninstall bootstrap passes --delete-data to the Codex uninstaller" {
+	create_fake_engine_command codex
+	create_fake_release codex > /dev/null
+	cp "${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/uninstall-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
+	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat"
+	printf '0.9\n' > "${CODEX_HOME}/plugins/data/cat-cat/migration-version"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		FAKE_RELEASE_DIRECTORY="${FAKE_RELEASE_DIRECTORY}" \
+		sh "${INSTALL_DIRECTORY}/bootstrap-uninstall-codex.sh" --delete-data
+
+	[ "${status}" -eq 0 ]
+	grep -Fx "codex plugin remove cat@cat" "${COMMAND_LOG}"
+	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
 }
 
 @test "Codex upgrade replaces recorded agents without overwriting unrelated agents" {

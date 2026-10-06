@@ -1,12 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-CAT_HARNESS="${1:?Usage: bootstrap-uninstall.sh HARNESS}"
+CAT_HARNESS="${1:?Usage: bootstrap-uninstall.sh HARNESS [UNINSTALLER-OPTION]...}"
 shift
-[ "$#" -eq 0 ] || {
-	echo "Usage: $0 HARNESS" >&2
-	exit 2
-}
 CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-cowwoc/cat}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
@@ -16,4 +12,4 @@ CAT_COMMON_SOURCE_URL="https://raw.githubusercontent.com/${CAT_REPOSITORY}/main/
 CAT_HARNESS_SOURCE_URL="https://raw.githubusercontent.com/${CAT_REPOSITORY}/main/client/${CAT_HARNESS}/lifecycle/src/main/resources/install"
 curl -fsSL "${CAT_COMMON_SOURCE_URL}/common.sh" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/common.sh"
 curl -fsSL "${CAT_HARNESS_SOURCE_URL}/uninstall-${CAT_HARNESS}.sh" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/uninstall-${CAT_HARNESS}.sh"
-sh "${CAT_DOWNLOAD_TEMP_DIRECTORY}/uninstall-${CAT_HARNESS}.sh"
+sh "${CAT_DOWNLOAD_TEMP_DIRECTORY}/uninstall-${CAT_HARNESS}.sh" "$@"
