@@ -397,19 +397,27 @@ The failure's diagnosis and impact are retained either way.
 **Candidate generation and promotion.** An author session edits a copy of the working candidate inside the confirmed
 authority ([§4.3](#43-candidates-and-edit-authority)). It receives the failing instances, each failing trial's evidence
 section ([§6.4](#64-judge)) with its tool calls, their exit statuses and outputs, the judge rationales and
-deterministic-check results, the diagnoses and the contract (D56). The author works as follows:
+deterministic-check results, the diagnoses and the contract (D56). It also receives the manifests of the lineage's
+earlier attempts with their promotion results, so it can tell which kinds of failure an earlier correction already
+targeted (D58). The author works as follows:
 
-1. **Classify each failure** before editing:
+1. **Group and classify the failures** before editing. Failures whose evidence first departs from the contract at the
+   same action, such as the same mistyped path, the same skipped part of a file or the same answer given without a
+   required read, form one *kind*. The author names each kind, lists its failing instances and classifies it:
    - *routing*: an existing instruction was not loaded or not applied, so the author fixes how the prompt system
      reaches or triggers it;
    - *guidance*: an instruction is missing, ambiguous or contradicts another, so the author amends it;
-   - *not guidance*: a model limitation, a test or contract defect, or an infrastructure fault, so the author makes no
-     prompt edit for it;
+   - *not guidance*: a test or contract defect, or an infrastructure fault, which no prompt edit can correct, so the
+     author makes no prompt edit for it;
    - *conflict*: two requirements of the contract cannot both be satisfied, and the prompt system confirmed with the
      contract already held the text that causes it. The author quotes that text, offers at least two resolutions and
      recommends one, and makes no edit for it. CAT checks each quotation against the confirmed snapshot and rejects
      the report if one is absent, because a conflict that a campaign edit introduced is a *guidance* failure that the
      author resolves (D32).
+
+   A kind that looks like a model limitation, such as a mistyped command, an action that nothing in the prompt
+   asked for, or a step that the model skipped although the prompt states it, is *routing* or *guidance*, never *not
+   guidance*: what the model sees where it makes that decision can still make the failure less likely (D58).
 
    An interim message belongs to the reply (D29). Whether a prompt can stop a harness from posting one is not yet
    known, but the prompt can shape its wording, so a failure in an interim message is *routing* or *guidance*, and the
@@ -421,18 +429,25 @@ deterministic-check results, the diagnoses and the contract (D56). The author wo
    edit must not contradict another instruction of the prompt system; the author resolves any contradiction that its
    own edit or an earlier candidate's edit introduced.
    Capitals, "important" markers and repeated instructions are not corrections.
-3. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
+3. **Address every kind.** Each attempt corrects every *routing* and *guidance* kind it receives. No kind waits for a
+   later round because it is rare, looks random or looks like a model limitation (D58). When the earlier manifests
+   show a correction that already targeted a kind, and the kind failed again, the attempt does not restate or
+   strengthen that instruction: it explains why the instruction must be followed, by stating, where the model makes
+   the decision, the consequence that violating it has for the result.
+4. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
    dissimilar case that must not receive the new guidance, and word the change for the shared invariant. The
    dissimilar case is a contract test, so the trials measure it: an edit that broadens a requirement's trigger passes
    every test where the trigger is present and fails only where it is absent (D40).
-4. **Cite evidence.** The attempt carries a manifest:
+5. **Cite evidence.** The attempt carries a manifest:
    - every changed hunk lists the failing instances that motivate it, together with its analogous case and the contract
      test that is its dissimilar case;
-   - every failure lists its classification.
+   - every kind lists its failing instances, its classification and, when it is *routing* or *guidance*, the hunks that
+     address it.
 
-CAT rejects an attempt whose manifest omits a changed hunk, cites an instance that is not among the failures it
-received, or names a dissimilar case that is not a test of the contract. A rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
-([§4.6](#46-inventory-validation)). An attempt that classifies every failure as *not guidance* makes no edit and
+CAT rejects an attempt whose manifest omits a changed hunk, leaves a received failure out of every kind, leaves a
+*routing* or *guidance* kind without a hunk, cites an instance that is not among the failures it received, or names a
+dissimilar case that is not a test of the contract. A rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
+([§4.6](#46-inventory-validation)). An attempt that classifies every kind as *not guidance* makes no edit and
 produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review checkpoint,
 so the user can revise the contract when a test is at fault.
 
@@ -1705,6 +1720,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D55 | Treat a trial turn that reaches its time limit with no model output, and no hook still running, as an infrastructure attempt (user ruling, 2026-10-06). | A provider overload left a Codex trial with no event for 60 seconds: the load balancer logged `server_is_overloaded`, the harness reported no error, and the time limit judged the provider's failure as "no reply". That failure counted toward a plateau, although a turn the provider never answered says nothing about the prompt. | A harness-reported provider error is not required, because Codex reported none. A model that thinks past the limit without emitting any item or token usage is indistinguishable from a provider that never answered, so it is also an infrastructure attempt; if it repeats, the third infrastructure failure of that logical trial pauses the campaign instead of hiding it. |
 | D56 | Give each author the evidence section of every failing trial it receives, with its tool calls, exit statuses and outputs (user ruling, 2026-10-06). | Authors received replies and check results but not commands. In E1 under `gpt-6-luna`/low, authors wrote that the records "do not establish whether handbook access was attempted", so they could not tell a mistyped `read-file` path (exit 127) from a skipped read, and rounds kept targeting the wrong cause. | The author's input grows by one evidence section per failing trial. |
 | D57 | Treat a provider refusal like a rate-limit rejection, through one hold per harness that every CAT process and nested runner honours (user rulings, 2026-10-06). | In E8 at concurrency 16, bursts of HTTP 403s from OpenAI's edge failed up to 451 of 474 requests a minute. A 403 was an ordinary infrastructure failure, so each failed session freed its slot at once and its trial reran within a minute, while Codex retried each failing turn about 10 times in 12 seconds, so requests rose to about 500 a minute. 403s tracked new connections: a minute after one with 10 or more new connections had a 403 52% of the time, against 6% below 10. A per-process backoff leaves other campaigns and runners connecting. Codex's own retries stay at its defaults: it accepts no retry limits for its built-in `openai` provider, and a provider under another id changes the requests Codex sends, such as its `version` header. | Every CAT process of a harness waits while one of them is refused. A refusal that persists past a 30-minute hold pauses the campaign instead of retrying forever. Sessions already running when a hold starts still make Codex's own retries, at most about 11 requests each. |
+| D58 | Have each author attempt correct every kind of failure it receives, other than a test or contract defect, an infrastructure fault or a conflict; when a kind fails again after an earlier attempt targeted it, explain why its instruction must be followed instead of restating it (user request, 2026-10-07). | In P15's development of the Codex read rule under `gpt-6-luna`/low with a 5,000-token output limit, 8 of 13 failures in 1,200 lazy-load runs began with a mistyped or invented command path, and they went on to give up, skip the rules or list a whole directory; no edit had targeted them because they looked like model limitations. An edit that restated the instruction behind a recurring failure, finishing every part of a file, did not change its rate over 500 runs. | The author's manifest groups the failures into kinds and names the hunks for each, and CAT rejects a manifest that leaves a correctable kind without a hunk. The author also receives the lineage's earlier manifests. An attempt grows with the number of kinds; the minimality pass still removes hunks that the promotion runs do not need, so a kind whose hunk is removed returns through a later round. |
 
 ## 14. Acceptance evidence
 
