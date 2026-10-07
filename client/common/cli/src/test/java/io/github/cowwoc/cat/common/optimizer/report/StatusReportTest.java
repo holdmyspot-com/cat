@@ -18,6 +18,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -94,6 +98,42 @@ public final class StatusReportTest
 
 		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(16);
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Concurrency: window 1 of ceiling 16");
+	}
+
+	/**
+	 * The JSON and the human summary report each retained author manifest's kinds with their classifications, failing
+	 * instances and the hunks that address them, together with the manifest's rejections.
+	 */
+	@Test
+	public void reportsAuthorKinds()
+	{
+		// Requirement: R-D10
+		AuthorDiagnosis diagnosis = new AuthorDiagnosis(3, 1, "safety", Builder.snapshot("candidate-1"),
+			List.of(new AuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1")),
+				new AuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of())),
+			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 1, 2, 1, 3, List.of("f1", "f2"),
+				"Overwriting a file", "plain_list")),
+			List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/runs/author-3/transcript.jsonl"),
+			Path.of("/runs/author-3/effects"));
+		Campaign campaign = Transitions.apply(new Builder().confirmed().working(1).build(),
+			new CampaignEvent.RetainAuthorDiagnosis(diagnosis));
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode author = report.toJson(JsonMapper.builder().build()).path("author_diagnoses").get(0);
+
+		requireThat(author.path("attempt").asInt(), "attempt").isEqualTo(3);
+		JsonNode kind = author.path("kinds").get(0);
+		requireThat(kind.path("name").asString(), "name").isEqualTo("skipped confirmation");
+		requireThat(kind.path("classification").asString(), "classification").isEqualTo("guidance");
+		requireThat(kind.path("instances").size(), "instances").isEqualTo(2);
+		requireThat(kind.path("hunks").get(0).asString(), "hunk").isEqualTo("h1");
+		requireThat(author.path("kinds").get(1).path("classification").asString(), "notGuidance").
+			isEqualTo("not_guidance");
+		requireThat(author.path("rejections").get(0).asString(), "rejection").
+			isEqualTo("Uncited changed hunk: CLAUDE.md#2");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Author diagnosis of attempt 3 in cell " +
+			"safety: skipped confirmation (guidance), judge outage (not guidance); evidence " +
+			"/runs/author-3/transcript.jsonl\n  Rejected: Uncited changed hunk: CLAUDE.md#2");
 	}
 
 	/**

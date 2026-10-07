@@ -9,7 +9,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -56,7 +58,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		String response = """
-			{"needed_edits": [], "classifications": [], "hunks": [], "conflicts": []}
+			{"needed_edits": [], "kinds": [], "hunks": [], "conflicts": []}
 			""";
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
@@ -73,7 +75,8 @@ public final class AuthorManifestTest
 		JsonMapper json = JsonMapper.builder().build();
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
 		String response = """
-			{"needed_edits":[],"classifications":[{"instance":"f","classification":"conflict"}],"hunks":[],
+			{"needed_edits":[],"kinds":[{"name":"contradictory permission","instances":["f"],"classification":"conflict",
+			 "hunks":[]}],"hunks":[],
 			 "conflicts":[{"instances":["f"],"requirement_ids":["r1","r2"],
 			 "quotations":[{"path":"CLAUDE.md","text":"Ask first."}],
 			 "resolutions":["Keep asking","Allow deletion"],"recommended":1,"reason":"Keeps permission."}]}
@@ -119,7 +122,7 @@ public final class AuthorManifestTest
 		JsonMapper json = JsonMapper.builder().build();
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
 		JsonNode report = json.readTree("""
-			{"needed_edits":[],"classifications":[],"hunks":[],"conflicts":[
+			{"needed_edits":[],"kinds":[],"hunks":[],"conflicts":[
 			 {"instances":["f"],"requirement_ids":["r1","r2"],"quotations":[{"path":"CLAUDE.md","text":"Ask"}],
 			 "resolutions":["First","Second"],"recommended":1,"reason":"Reason"}]}
 			""");
@@ -144,7 +147,8 @@ public final class AuthorManifestTest
 		AuthorConflict conflict = new AuthorConflict(List.of("f"), List.of("r1", "r2"),
 			List.of(new AuthorConflict.Quotation(path, "Ask first.")), List.of("Keep asking", "Allow deletion"),
 			1, "Keeps permission.");
-		AuthorManifest manifest = new AuthorManifest(Map.of("f", FailureKind.CONFLICT), List.of());
+		AuthorManifest manifest = new AuthorManifest(List.of(new AuthorKind("contradictory permission", List.of("f"),
+			FailureKind.CONFLICT, List.of())), List.of());
 		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
 			Map.of(path, content), List.of(conflict)), "confirmed").isEmpty();
 		FileContent edited = new FileContent("Delete immediately.".getBytes(StandardCharsets.UTF_8));
@@ -168,12 +172,14 @@ public final class AuthorManifestTest
 		AuthorConflict conflict = new AuthorConflict(List.of("f"), List.of("r1", "unknown"),
 			List.of(new AuthorConflict.Quotation(Path.of("missing.md"), "Missing text")),
 			List.of("First", "Second"), 3, "Reason");
-		AuthorManifest guidance = new AuthorManifest(Map.of("f", FailureKind.GUIDANCE), List.of());
+		AuthorManifest guidance = new AuthorManifest(List.of(new AuthorKind("deletion", List.of("f"), FailureKind.GUIDANCE,
+			List.of())), List.of());
 		List<String> violations = guidance.violations(Set.of("f"), List.of(), ContractFixtures.contract(),
 			incumbent, Map.of(), List.of(conflict));
 		requireThat(violations.toString(), "violations").contains("not classified conflict").contains("unknown").
 			contains("recommended").contains("missing.md");
-		AuthorManifest classified = new AuthorManifest(Map.of("f", FailureKind.CONFLICT), List.of());
+		AuthorManifest classified = new AuthorManifest(List.of(new AuthorKind("deletion", List.of("f"),
+			FailureKind.CONFLICT, List.of())), List.of());
 		requireThat(classified.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
 			Map.of(), List.of()).toString(), "uncited").contains("no conflict");
 	}
@@ -191,7 +197,7 @@ public final class AuthorManifestTest
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(), "", List.of());
+			Map.of(), "", List.of(), List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
@@ -224,8 +230,9 @@ public final class AuthorManifestTest
 		// Requirement: R-D17
 		Path path = Path.of("rules/safety.md");
 		Hunk hunk = new Hunk(path, 1, 2, 3, 2, 4);
-		AuthorManifest manifest = new AuthorManifest(Map.of("f", FailureKind.GUIDANCE), List.of(
-			new AuthorManifest.Evidence(path, 2, 3, 2, 4, List.of("f"), "Another deletion request", dissimilar)));
+		AuthorManifest manifest = new AuthorManifest(List.of(new AuthorKind("deletion", List.of("f"),
+			FailureKind.GUIDANCE, List.of("h1"))), List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"),
+			"Another deletion request", dissimilar)));
 
 		List<String> violations = manifest.violations(Set.of("f"), List.of(hunk), ContractFixtures.contract(),
 			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of());
@@ -241,6 +248,127 @@ public final class AuthorManifestTest
 	}
 
 	/**
+	 * Verifies that a manifest whose kinds leave out a received failure is rejected, and that the rejection names the
+	 * failure.
+	 */
+	@Test
+	public void rejectsFailureOutsideEveryKind()
+	{
+		// Requirement: R-D10
+		Path path = Path.of("rules/safety.md");
+		AuthorManifest manifest = new AuthorManifest(List.of(
+				new AuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1"))),
+			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
+
+		List<String> violations = violations(manifest, Set.of("f", "g"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
+
+		requireThat(violations, "violations").isEqualTo(List.of("Failure g is outside every kind"));
+	}
+
+	/**
+	 * Verifies that a manifest that puts one received failure into two kinds is rejected, because a failure's trial
+	 * first departs from the contract at one action.
+	 */
+	@Test
+	public void rejectsFailureInTwoKinds()
+	{
+		// Requirement: R-D10
+		Path path = Path.of("rules/safety.md");
+		AuthorManifest manifest = new AuthorManifest(List.of(
+				new AuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1")),
+				new AuthorKind("skipped part", List.of("f"), FailureKind.ROUTING, List.of("h1"))),
+			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
+
+		List<String> violations = violations(manifest, Set.of("f"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
+
+		requireThat(violations, "violations").isEqualTo(List.of("Failure f is in more than one kind"));
+	}
+
+	/**
+	 * Verifies that a guidance kind that names no hunk is rejected, even when the attempt edits nothing.
+	 */
+	@Test
+	public void rejectsGuidanceKindWithoutHunk()
+	{
+		// Requirement: R-D10
+		AuthorManifest manifest = new AuthorManifest(List.of(
+			new AuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of())), List.of());
+
+		List<String> violations = violations(manifest, Set.of("f"), List.of());
+
+		requireThat(violations, "violations").isEqualTo(List.of("Kind 'mistyped path' is classified guidance but " +
+			"names no hunk that addresses it"));
+	}
+
+	/**
+	 * Verifies that a kind that names a hunk absent from the manifest's hunks is rejected.
+	 */
+	@Test
+	public void rejectsKindNamingUnknownHunk()
+	{
+		// Requirement: R-D10
+		Path path = Path.of("rules/safety.md");
+		AuthorManifest manifest = new AuthorManifest(List.of(
+				new AuthorKind("mistyped path", List.of("f"), FailureKind.ROUTING, List.of("h1", "h2"))),
+			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
+
+		List<String> violations = violations(manifest, Set.of("f"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
+
+		requireThat(violations, "violations").isEqualTo(List.of("Kind 'mistyped path' names an unknown hunk: h2"));
+	}
+
+	/**
+	 * Verifies that a manifest that groups every received failure into a kind, addresses each guidance kind with a
+	 * hunk and cites every changed hunk is accepted and offers a candidate.
+	 */
+	@Test
+	public void acceptsCompleteManifest()
+	{
+		// Requirement: R-D10
+		Path path = Path.of("rules/safety.md");
+		Hunk changed = new Hunk(path, 1, 2, 3, 2, 4);
+		AuthorManifest manifest = new AuthorManifest(List.of(
+				new AuthorKind("mistyped path", List.of("f", "g"), FailureKind.GUIDANCE, List.of("h1")),
+				new AuthorKind("judge outage", List.of("h"), FailureKind.NOT_GUIDANCE, List.of())),
+			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f", "g"), "Another read", "plain_list")));
+
+		requireThat(violations(manifest, Set.of("f", "g", "h"), List.of(changed)), "violations").isEmpty();
+		requireThat(manifest.producesCandidate(List.of(changed)), "producesCandidate").isTrue();
+	}
+
+	/**
+	 * Verifies that a valid manifest whose kinds are all classified not guidance offers no candidate, even when the
+	 * attempt changed a file.
+	 */
+	@Test
+	public void notGuidanceKindsProduceNoCandidate()
+	{
+		// Requirement: R-D10
+		Path path = Path.of("rules/safety.md");
+		Hunk changed = new Hunk(path, 1, 2, 3, 2, 4);
+		AuthorManifest manifest = new AuthorManifest(List.of(
+				new AuthorKind("judge outage", List.of("f"), FailureKind.NOT_GUIDANCE, List.of())),
+			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
+
+		requireThat(violations(manifest, Set.of("f"), List.of(changed)), "violations").isEmpty();
+		requireThat(manifest.producesCandidate(List.of(changed)), "producesCandidate").isFalse();
+	}
+
+	/**
+	 * Returns the rejection reasons of a manifest that reports no conflict, against the fixture contract.
+	 *
+	 * @param manifest the manifest
+	 * @param received the supplied failure identifiers
+	 * @param changed the actual changed hunks
+	 * @return the rejection reasons
+	 */
+	private static List<String> violations(AuthorManifest manifest, Set<String> received, List<Hunk> changed)
+	{
+		return manifest.violations(received, changed, ContractFixtures.contract(),
+			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of());
+	}
+
+	/**
 	 * Verifies that the author is asked to name, as each change's dissimilar case, a test of the confirmed contract.
 	 */
 	@Test
@@ -251,7 +379,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
@@ -288,7 +416,7 @@ public final class AuthorManifestTest
 		AuthorPrompt prompt = new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
 		String response = """
 			{"needed_edits":[{"requirement":"R1","path":"%s","operation":"create"}],
-			 "classifications":[],"hunks":[],"conflicts":[]}
+			 "kinds":[],"hunks":[],"conflicts":[]}
 			""".formatted(path);
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
 			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
@@ -332,7 +460,7 @@ public final class AuthorManifestTest
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure, failure), Map.of(), Map.of(),
 			List.of(new AuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()))),
-			Map.of(), "", List.of());
+			Map.of(), "", List.of(), List.of());
 		requireThat(brief.failureIds(), "classifiedFailures").
 			isEqualTo(Set.of(brief.developmentId(0), brief.developmentId(1)));
 		requireThat(brief.developmentId(0), "firstOccurrence").isNotEqualTo(brief.developmentId(1));

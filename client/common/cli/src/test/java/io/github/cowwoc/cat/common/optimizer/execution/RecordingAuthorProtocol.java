@@ -2,7 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunks;
 import io.github.cowwoc.cat.common.optimizer.inventory.Hunk;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
@@ -18,8 +20,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.Optional;
 import java.util.function.Function;
@@ -73,16 +74,17 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 			JsonMapper json = JsonMapper.builder().build();
 			if (!result.responses().getLast().getLast().equals("done"))
 				return new AuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of()).report(result);
-			Map<String, FailureKind> classifications = new HashMap<>();
-			for (String identifier : briefs.getLast().failureIds())
-				classifications.put(identifier, FailureKind.GUIDANCE);
 			List<AuthorConflict> reportedConflicts = conflicts.apply(briefs.getLast());
+			Set<String> conflicting = new HashSet<>();
 			for (AuthorConflict conflict : reportedConflicts)
+				conflicting.addAll(conflict.instances());
+			List<String> guidance = new ArrayList<>();
+			for (String identifier : briefs.getLast().failureIds())
 			{
-				for (String identifier : conflict.instances())
-					classifications.put(identifier, FailureKind.CONFLICT);
+				if (!conflicting.contains(identifier))
+					guidance.add(identifier);
 			}
-			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
+			List<HunkEvidence> evidence = new ArrayList<>();
 			String dissimilar = briefs.getLast().contract().categories().getFirst().tests().getFirst().id();
 			try
 			{
@@ -92,8 +94,8 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 					PosixFilePermissions.fromString("rw-r--r--"));
 				for (Hunk hunk : Hunks.between(delta))
 				{
-					evidence.add(new AuthorManifest.Evidence(file, hunk.beforeStart(), hunk.beforeEnd(),
-						hunk.afterStart(), hunk.afterEnd(), List.copyOf(classifications.keySet()),
+					evidence.add(new HunkEvidence("hunk-" + (evidence.size() + 1), file, hunk.beforeStart(),
+						hunk.beforeEnd(), hunk.afterStart(), hunk.afterEnd(), List.copyOf(briefs.getLast().failureIds()),
 						"Another use requiring the same instruction", dissimilar));
 				}
 			}
@@ -101,8 +103,19 @@ public final class RecordingAuthorProtocol implements AuthorProtocol
 			{
 				throw new UncheckedIOException(e);
 			}
-			return reports.apply(result).map(edits -> new AuthorReport(edits, new AuthorManifest(classifications,
-				evidence), reportedConflicts));
+			List<AuthorKind> kinds = new ArrayList<>();
+			if (!guidance.isEmpty())
+			{
+				kinds.add(new AuthorKind("missing instruction", guidance, FailureKind.GUIDANCE,
+					evidence.stream().map(HunkEvidence::id).toList()));
+			}
+			if (!conflicting.isEmpty())
+			{
+				kinds.add(new AuthorKind("conflicting requirements", List.copyOf(conflicting), FailureKind.CONFLICT,
+					List.of()));
+			}
+			return reports.apply(result).map(edits -> new AuthorReport(edits, new AuthorManifest(kinds, evidence),
+				reportedConflicts));
 		}
 	}
 

@@ -5,7 +5,7 @@
 	"additionalProperties": false,
 	"required": [
 		"needed_edits",
-		"classifications",
+		"kinds",
 		"hunks",
 		"conflicts"
 	],
@@ -17,20 +17,32 @@
 		}
 	},
 	"properties": {
-		"classifications": {
-			"description": "Classify every failure supplied in development failures and ended attempts, using its id, exactly once.",
+		"kinds": {
+			"description": "The kinds into which you grouped the supplied development failures. A kind holds the failures whose trials first depart from the contract at the same action. Every supplied failure belongs to exactly one kind.",
 			"type": "array",
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
 				"required": [
-					"instance",
-					"classification"
+					"name",
+					"instances",
+					"classification",
+					"hunks"
 				],
 				"properties": {
-					"instance": {
+					"name": {
+						"description": "A short name for the action at which the kind's trials depart from the contract.",
 						"type": "string",
 						"pattern": "\\S"
+					},
+					"instances": {
+						"description": "The ids of the supplied failures that belong to the kind.",
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
 					},
 					"classification": {
 						"enum": [
@@ -39,6 +51,14 @@
 							"not_guidance",
 							"conflict"
 						]
+					},
+					"hunks": {
+						"description": "The ids of the hunks that address the kind. At least one for a routing or guidance kind; empty for a not_guidance or conflict kind.",
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "\\S"
+						}
 					}
 				}
 			}
@@ -50,6 +70,7 @@
 				"type": "object",
 				"additionalProperties": false,
 				"required": [
+					"id",
 					"path",
 					"before_start",
 					"before_end",
@@ -60,6 +81,11 @@
 					"dissimilar"
 				],
 				"properties": {
+					"id": {
+						"description": "Your id for the hunk, unique in this report, which the kinds that it addresses name.",
+						"type": "string",
+						"pattern": "\\S"
+					},
 					"path": {
 						"$ref": "#/$defs/path"
 					},
@@ -135,7 +161,7 @@
 			}
 		},
 		"conflicts": {
-			"description": "Conflicts already held by the confirmed prompt system. Empty when no supplied failure is classified conflict.",
+			"description": "Conflicts already held by the confirmed prompt system. Empty when no kind is classified conflict.",
 			"type": "array",
 			"items": {
 				"type": "object",

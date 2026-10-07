@@ -2,16 +2,20 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief;
+import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EarlierManifest;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.execution.AuthorManifest;
@@ -33,7 +37,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -59,6 +62,7 @@ public final class AuthorPrompt implements AuthorProtocol
 	private static final String PROMPT_RESOURCE = "/optimizer/author/author.md";
 	private static final String REPORT_SCHEMA_RESOURCE = "/optimizer/author/report.schema.json";
 	private static final String NEEDED_EDITS = "needed_edits";
+	private static final String KINDS = "kinds";
 	private static final Set<String> REQUIRED_EDIT_PROPERTIES = Set.of("requirement", "path", "operation");
 	private static final String TARGET = "target";
 	private final JsonMapper json;
@@ -173,7 +177,8 @@ public final class AuthorPrompt implements AuthorProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The prompt lists the editable prompt sources, leaving out each one whose path is a link to a file outside the
-	 * project, and the edits outside the edit authority that the user declined.
+	 * project, the edits outside the edit authority that the user declined, and the manifests of the earlier author
+	 * attempts under the confirmed contract with their promotion results.
 	 */
 	@Override
 	public SessionRequest request(AuthorBrief brief, Path copy)
@@ -230,6 +235,7 @@ public final class AuthorPrompt implements AuthorProtocol
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
 			Map.entry("ended_attempts", pretty(ended)),
+			Map.entry("earlier_manifests", pretty(encodeEarlierManifests(brief.earlierManifests()))),
 			Map.entry("report_schema", reportSchema)));
 		return new SessionRequest(SessionRole.AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(), TIME_LIMIT,
 			brief.contract().judge().profile());
@@ -266,6 +272,55 @@ public final class AuthorPrompt implements AuthorProtocol
 		// file changes are no longer retained instead of assuming that the trial made no tool calls
 		node.put("evidence_section", evidenceSection);
 		return node;
+	}
+
+	/**
+	 * Writes the manifests of the earlier author attempts under the confirmed contract.
+	 *
+	 * @param manifests the earlier manifests in the order CAT retained them
+	 * @return one object per manifest with its {@code attempt} number, {@code cell}, promotion {@code result}, the
+	 *   {@code rejections} that CAT gave it, its {@code kinds} with each kind's {@code name}, {@code classification},
+	 *   number of {@code failures} and the {@code hunks} that address it, and its {@code hunks} with each hunk's
+	 *   {@code id}, {@code path}, line ranges, {@code analogous} case and {@code dissimilar} case
+	 */
+	private ArrayNode encodeEarlierManifests(List<EarlierManifest> manifests)
+	{
+		ArrayNode nodes = json.createArrayNode();
+		for (EarlierManifest manifest : manifests)
+		{
+			AuthorDiagnosis diagnosis = manifest.diagnosis();
+			ObjectNode node = nodes.addObject();
+			node.put("attempt", diagnosis.number());
+			node.put("cell", diagnosis.cell());
+			node.put("result", manifest.result().name().toLowerCase(Locale.ROOT));
+			ArrayNode rejections = node.putArray("rejections");
+			diagnosis.rejections().forEach(rejections::add);
+
+			ArrayNode kinds = node.putArray(KINDS);
+			for (AuthorKind kind : diagnosis.kinds())
+			{
+				ObjectNode kindNode = kinds.addObject();
+				kindNode.put("name", kind.name());
+				kindNode.put("classification", kind.classification().name().toLowerCase(Locale.ROOT));
+				kindNode.put("failures", kind.instances().size());
+				ArrayNode hunks = kindNode.putArray("hunks");
+				kind.hunks().forEach(hunks::add);
+			}
+
+			ArrayNode hunks = node.putArray("hunks");
+			for (HunkEvidence hunk : diagnosis.hunks())
+			{
+				hunks.addObject().put("id", hunk.id()).
+					put("path", hunk.path().toString()).
+					put("before_start", hunk.beforeStart()).
+					put("before_end", hunk.beforeEnd()).
+					put("after_start", hunk.afterStart()).
+					put("after_end", hunk.afterEnd()).
+					put("analogous", hunk.analogous()).
+					put("dissimilar", hunk.dissimilar());
+			}
+		}
+		return nodes;
 	}
 
 	/**
@@ -312,7 +367,7 @@ public final class AuthorPrompt implements AuthorProtocol
 		requireThat(result, "result").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
 		if (output.isEmpty() ||
-			!properties(output.get()).equals(Set.of(NEEDED_EDITS, "classifications", "hunks", "conflicts")))
+			!properties(output.get()).equals(Set.of(NEEDED_EDITS, KINDS, "hunks", "conflicts")))
 			return Optional.empty();
 		JsonNode edits = output.get().get(NEEDED_EDITS);
 		if (edits == null || !edits.isArray())
@@ -327,33 +382,23 @@ public final class AuthorPrompt implements AuthorProtocol
 		}
 		try
 		{
-			Map<String, FailureKind> classifications = new LinkedHashMap<>();
-			JsonNode diagnoses = output.get().get("classifications");
+			JsonNode kindNodes = output.get().get(KINDS);
 			JsonNode hunks = output.get().get("hunks");
-			if (!diagnoses.isArray() || !hunks.isArray())
+			if (!kindNodes.isArray() || !hunks.isArray())
 				return Optional.empty();
-			for (JsonNode diagnosis : diagnoses)
+			List<AuthorKind> kinds = new ArrayList<>();
+			for (JsonNode kind : kindNodes)
 			{
-				if (!properties(diagnosis).equals(Set.of("instance", "classification")))
+				if (!properties(kind).equals(Set.of("name", "instances", "classification", "hunks")))
 					return Optional.empty();
-				String id = text(diagnosis, "instance");
-				FailureKind kind;
-				try
-				{
-					kind = EnumNames.parse(text(diagnosis, "classification"), FailureKind.class);
-				}
-				catch (IllegalArgumentException _)
-				{
-					return Optional.empty();
-				}
-				if (classifications.put(id, kind) != null)
-					return Optional.empty();
+				kinds.add(new AuthorKind(text(kind, "name"), texts(kind, "instances"),
+					EnumNames.parse(text(kind, "classification"), FailureKind.class), texts(kind, "hunks")));
 			}
-			List<AuthorManifest.Evidence> evidence = new ArrayList<>();
+			List<HunkEvidence> evidence = new ArrayList<>();
 			for (JsonNode hunk : hunks)
 			{
-				if (!properties(hunk).equals(Set.of("path", "before_start", "before_end", "after_start", "after_end",
-					"instances", "analogous", "dissimilar")) ||
+				if (!properties(hunk).equals(Set.of("id", "path", "before_start", "before_end", "after_start",
+					"after_end", "instances", "analogous", "dissimilar")) ||
 					!hunk.get("path").isString() || !isRangeInteger(hunk, "before_start") ||
 					!isRangeInteger(hunk, "before_end") ||
 					!isRangeInteger(hunk, "after_start") || !isRangeInteger(hunk, "after_end") ||
@@ -368,16 +413,16 @@ public final class AuthorPrompt implements AuthorProtocol
 						return Optional.empty();
 					instances.add(instance.asString());
 				}
-				evidence.add(new AuthorManifest.Evidence(Path.of(hunk.get("path").asString()), hunk.get("before_start").asInt(),
-					hunk.get("before_end").asInt(), hunk.get("after_start").asInt(), hunk.get("after_end").asInt(),
-					instances, text(hunk, "analogous"), text(hunk, "dissimilar")));
+				evidence.add(new HunkEvidence(text(hunk, "id"), Path.of(hunk.get("path").asString()),
+					hunk.get("before_start").asInt(), hunk.get("before_end").asInt(), hunk.get("after_start").asInt(),
+					hunk.get("after_end").asInt(), instances, text(hunk, "analogous"), text(hunk, "dissimilar")));
 			}
 			List<AuthorConflict> conflicts = new ArrayList<>();
 			if (!output.get().get("conflicts").isArray())
 				return Optional.empty();
 			for (JsonNode conflict : output.get().get("conflicts"))
 				conflicts.add(parseConflict(conflict));
-			return Optional.of(new AuthorReport(neededEdits, new AuthorManifest(classifications, evidence), conflicts));
+			return Optional.of(new AuthorReport(neededEdits, new AuthorManifest(kinds, evidence), conflicts));
 		}
 		catch (IllegalArgumentException _)
 		{

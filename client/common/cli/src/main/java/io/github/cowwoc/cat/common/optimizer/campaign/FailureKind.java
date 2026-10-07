@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The author's diagnosis of the boundary that caused a failure.
+ * The author's classification of a kind of failure: the boundary that caused it.
  */
 public enum FailureKind
 {
@@ -14,7 +14,7 @@ public enum FailureKind
 	 */
 	GUIDANCE,
 	/**
-	 * A model, test, contract or infrastructure issue needs no prompt edit.
+	 * A test or contract defect, or an infrastructure fault, that no prompt edit can correct.
 	 */
 	NOT_GUIDANCE,
 	/**

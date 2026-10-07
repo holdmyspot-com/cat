@@ -3,11 +3,15 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
@@ -72,7 +76,7 @@ public final class AuthorTest
 	{
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", approach, ContractFixtures.contract(), List.of(), Map.of(),
-			Map.of(), List.of(), Map.of(), "", List.of());
+			Map.of(), List.of(), Map.of(), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -114,7 +118,7 @@ public final class AuthorTest
 	public void briefRejectsMissingApproach()
 	{
 		new AuthorBrief("safety", null, ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "",
-			List.of());
+			List.of(), List.of());
 	}
 
 	/**
@@ -128,7 +132,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(), "", List.of());
+			Map.of(), "", List.of(), List.of());
 		requireThat(prompt.request(brief, COPY).turns().getFirst(), "editingInstructions").
 			contains("When the failing replies\n" +
 				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
@@ -165,7 +169,7 @@ public final class AuthorTest
 			Map.of(), Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
 				List.of(failure().summary()))), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "",
-			List.of());
+			List.of(), List.of());
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -203,7 +207,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(),
-			List.of(), Map.of(), "", List.of());
+			List.of(), Map.of(), "", List.of(), List.of());
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
@@ -229,11 +233,11 @@ public final class AuthorTest
 		String deleted = new SessionEvidence(List.of(new SessionEvidence.Tool(1, SessionEvidence.ROOT_AGENT, "Bash",
 			"rm -r logs", 0, ""))).render();
 		AuthorBrief identified = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), failures, Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), failures, Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), failures,
 			Map.of(identified.developmentId(0), mistyped, identified.developmentId(1), deleted), Map.of(), List.of(),
-			Map.of(), "", List.of());
+			Map.of(), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -255,7 +259,8 @@ public final class AuthorTest
 	{
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(),
+			List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -286,14 +291,14 @@ public final class AuthorTest
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(),
 			List.of(new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(formal.summary()))), Map.of(), "",
-			List.of());
+			List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		requireThat(turn, "turn").doesNotContain("The held-out rationale.").doesNotContain("The held-out reply.").
 			doesNotContain(heldOut.turns().getFirst());
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\n### Your approach"));
+			"\n\nThe manifests of the earlier"));
 		ObjectNode expected = json.createObjectNode().put("cell", heldOut.cellId()).put("test", heldOut.testId());
 		expected.putArray("failed_requirements").addObject().put("requirement_id", "r2").
 			put("behavior", "deleted_without_asking");
@@ -312,7 +317,8 @@ public final class AuthorTest
 		// Requirement: R-C16
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(),
+			List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -377,7 +383,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(), "", List.of());
+			Map.of(), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -404,7 +410,7 @@ public final class AuthorTest
 				Limit.LOADER_CONFIGURATION_FIXED, choices));
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", declined);
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", declined, List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -423,7 +429,7 @@ public final class AuthorTest
 		// Requirement: R-W4
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -442,7 +448,7 @@ public final class AuthorTest
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of());
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -461,7 +467,7 @@ public final class AuthorTest
 		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("shared.md")), Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of());
+			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -479,7 +485,7 @@ public final class AuthorTest
 			Set.of());
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("AGENTS.md"), Path.of("CLAUDE.md")), "", List.of());
+			Map.of(Path.of("AGENTS.md"), Path.of("CLAUDE.md")), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -509,7 +515,7 @@ public final class AuthorTest
 			Builder.FILES);
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(development, checked), Map.of(), Map.of(), List.of(), Map.of(), "",
-			List.of());
+			List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -542,7 +548,7 @@ public final class AuthorTest
 			List.of(), Builder.FILES);
 		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(blocking, recovered, untriaged), Map.of(), Map.of(),
-			List.of(), Map.of(), "", List.of());
+			List.of(), Map.of(), "", List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -567,10 +573,50 @@ public final class AuthorTest
 		{
 			AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION,
 				ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-				Map.of(), diff, List.of());
+				Map.of(), diff, List.of(), List.of());
 			String turn = prompt.request(brief, COPY).turns().getFirst();
 			requireThat(turn, "diff").contains("It is empty when there are none:\n\n" + diff + "\n");
 		}
+	}
+
+	/**
+	 * Verifies that the author receives the earlier manifests under the confirmed contract with their promotion results,
+	 * and is told to correct every routing and guidance kind and, for a kind that recurs after an earlier hunk targeted
+	 * it, to state the consequence of violating the instruction rather than restating it.
+	 */
+	@Test
+	public void statesEarlierManifestsAndKindRule()
+	{
+		// Requirement: R-D10
+		AuthorPrompt prompt = new AuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		AuthorDiagnosis earlier = new AuthorDiagnosis(4, 1, "safety", Builder.snapshot("candidate-1"),
+			List.of(new AuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1")),
+				new AuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of())),
+			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 2, 3, 2, 5, List.of("f1", "f2"),
+				"Overwriting a file", "plain_list")),
+			List.of(), Path.of("/runs/author-4/transcript.jsonl"), Path.of("/runs/author-4/effects"));
+		AuthorBrief brief = new AuthorBrief("safety", AuthorApproach.CORRECT_INSTRUCTION, ContractFixtures.contract(),
+			List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(),
+			List.of(new AuthorBrief.EarlierManifest(earlier, AuthorBrief.PromotionResult.NOT_PROMOTED)));
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").doesNotContain("{{earlier_manifests}}").
+			contains("Correct every `routing` and `guidance` kind").
+			contains("instead of restating the instruction");
+		JsonNode manifests = json.readTree(section(turn, "earlier author attempts", "\n\n### Your approach"));
+		requireThat(manifests.size(), "manifests").isEqualTo(1);
+		JsonNode manifest = manifests.get(0);
+		requireThat(manifest.path("attempt").asInt(), "attempt").isEqualTo(4);
+		requireThat(manifest.path("result").asString(), "result").isEqualTo("not_promoted");
+		requireThat(manifest.path("kinds").get(0).path("name").asString(), "kind").isEqualTo("skipped confirmation");
+		requireThat(manifest.path("kinds").get(0).path("classification").asString(), "classification").
+			isEqualTo("guidance");
+		requireThat(manifest.path("kinds").get(0).path("failures").asInt(), "failures").isEqualTo(2);
+		requireThat(manifest.path("kinds").get(0).path("hunks").get(0).asString(), "kindHunk").isEqualTo("h1");
+		requireThat(manifest.path("hunks").get(0).path("path").asString(), "path").isEqualTo("rules/safety.md");
+		requireThat(manifest.path("hunks").get(0).path("analogous").asString(), "analogous").
+			isEqualTo("Overwriting a file");
 	}
 
 	/**
@@ -582,7 +628,7 @@ public final class AuthorTest
 	private static SessionResult.Completed completed(String response)
 	{
 		String report = response.replace("{\"needed_edits\":",
-			"{\"classifications\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
+			"{\"kinds\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
 		return new SessionResult.Completed(Path.of("/runs/author-3/artifacts/transcript.jsonl"),
 			List.of(List.of("working", report)), COPY, "author-model", null, null, List.of(), "none", List.of());
 	}

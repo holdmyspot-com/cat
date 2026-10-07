@@ -1,11 +1,9 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 
-import java.util.Map;
-import java.util.TreeMap;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -53,13 +51,22 @@ final class OptimizationJson
 		for (AuthorDiagnosis diagnosis : report.authors())
 		{
 			ObjectNode author = authors.addObject();
+			author.put("attempt", diagnosis.number());
 			author.put("cell", diagnosis.cell());
 			author.put("snapshot", diagnosis.snapshot().hex());
 			author.put("transcript", diagnosis.transcript().toString());
 			author.put("effects", diagnosis.effects().toString());
-			ObjectNode classifications = author.putObject("classifications");
-			for (Map.Entry<String, FailureKind> entry : new TreeMap<>(diagnosis.classifications()).entrySet())
-				classifications.put(entry.getKey(), EnumNames.lowerCase(entry.getValue()));
+			ArrayNode kinds = author.putArray("kinds");
+			for (AuthorKind kind : diagnosis.kinds())
+			{
+				ObjectNode element = kinds.addObject();
+				element.put("name", kind.name());
+				element.put("classification", EnumNames.lowerCase(kind.classification()));
+				ArrayNode instances = element.putArray("instances");
+				kind.instances().forEach(instances::add);
+				ArrayNode hunks = element.putArray("hunks");
+				kind.hunks().forEach(hunks::add);
+			}
 			ArrayNode rejections = author.putArray("rejections");
 			for (String rejection : diagnosis.rejections())
 				rejections.add(rejection);

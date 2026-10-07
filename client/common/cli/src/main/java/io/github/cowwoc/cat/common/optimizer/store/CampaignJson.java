@@ -18,6 +18,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
@@ -136,7 +138,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 24;
+	private static final int FORMAT_VERSION = 25;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_REQUIREMENTS = "failed_requirements";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -315,13 +317,35 @@ final class CampaignJson
 		for (AuthorDiagnosis diagnosis : evidence.authors())
 		{
 			ObjectNode author = authors.addObject();
+			author.put("number", diagnosis.number());
+			author.put("lineage", diagnosis.lineage());
 			author.put("cell", diagnosis.cell());
 			author.put("snapshot", diagnosis.snapshot().hex());
 			author.put("transcript", diagnosis.transcript().toString());
 			author.put("effects", diagnosis.effects().toString());
-			ObjectNode classifications = author.putObject("classifications");
-			for (Entry<String, FailureKind> entry : new TreeMap<>(diagnosis.classifications()).entrySet())
-				classifications.put(entry.getKey(), EnumNames.lowerCase(entry.getValue()));
+			ArrayNode kinds = author.putArray("kinds");
+			for (AuthorKind kind : diagnosis.kinds())
+			{
+				ObjectNode element = kinds.addObject();
+				element.put("name", kind.name());
+				writeStrings(element.putArray("instances"), kind.instances());
+				element.put("classification", EnumNames.lowerCase(kind.classification()));
+				writeStrings(element.putArray("hunks"), kind.hunks());
+			}
+			ArrayNode hunks = author.putArray("hunks");
+			for (HunkEvidence hunk : diagnosis.hunks())
+			{
+				ObjectNode element = hunks.addObject();
+				element.put("id", hunk.id());
+				element.put("path", hunk.path().toString());
+				element.put("before_start", hunk.beforeStart());
+				element.put("before_end", hunk.beforeEnd());
+				element.put("after_start", hunk.afterStart());
+				element.put("after_end", hunk.afterEnd());
+				writeStrings(element.putArray("instances"), hunk.instances());
+				element.put("analogous", hunk.analogous());
+				element.put("dissimilar", hunk.dissimilar());
+			}
 			ArrayNode rejections = author.putArray("rejections");
 			for (String reason : diagnosis.rejections())
 				rejections.add(reason);
@@ -385,11 +409,24 @@ final class CampaignJson
 		List<AuthorDiagnosis> authors = new ArrayList<>();
 		for (JsonNode author : elements(node, "authors"))
 		{
-			Map<String, FailureKind> classifications = new HashMap<>();
-			for (Entry<String, JsonNode> entry : object(author, "classifications").properties())
-				classifications.put(entry.getKey(), constantValue(entry.getValue(), "classification", FailureKind.class));
-			authors.add(new AuthorDiagnosis(text(author, "cell"), sha256(author, "snapshot"), classifications,
-				readStrings(author, "rejections"), Path.of(text(author, "transcript")), Path.of(text(author, "effects"))));
+			List<AuthorKind> kinds = new ArrayList<>();
+			for (JsonNode kind : elements(author, "kinds"))
+			{
+				kinds.add(new AuthorKind(text(kind, "name"), readStrings(kind, "instances"),
+					constantValue(field(kind, "classification"), "classification", FailureKind.class),
+					readStrings(kind, "hunks")));
+			}
+			List<HunkEvidence> hunks = new ArrayList<>();
+			for (JsonNode hunk : elements(author, "hunks"))
+			{
+				hunks.add(new HunkEvidence(text(hunk, "id"), pathValue(field(hunk, "path"), "path"),
+					integer(hunk, "before_start"), integer(hunk, "before_end"), integer(hunk, "after_start"),
+					integer(hunk, "after_end"), readStrings(hunk, "instances"), text(hunk, "analogous"),
+					text(hunk, "dissimilar")));
+			}
+			authors.add(new AuthorDiagnosis(integer(author, "number"), integer(author, "lineage"), text(author, "cell"),
+				sha256(author, "snapshot"), kinds, hunks, readStrings(author, "rejections"),
+				Path.of(text(author, "transcript")), Path.of(text(author, "effects"))));
 		}
 		Map<Sha256, PromptSize> sizes = new HashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "prompt_sizes").properties())
@@ -471,6 +508,18 @@ final class CampaignJson
 		for (JsonNode element : elements(node, name))
 			values.add(stringValue(element, name));
 		return List.copyOf(values);
+	}
+
+	/**
+	 * Appends strings to an array.
+	 *
+	 * @param array the array
+	 * @param values the strings, in order
+	 */
+	private static void writeStrings(ArrayNode array, List<String> values)
+	{
+		for (String value : values)
+			array.add(value);
 	}
 
 	/**

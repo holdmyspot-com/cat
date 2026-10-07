@@ -7,6 +7,11 @@
   weakening any other requirement. A category is a group of uses needing its own compliance claim.
 - Keep every change inside the confirmed edit authority below. CAT rejects the whole attempt when any change falls
   outside it.
+- Address every kind of supplied failure: group the failures by the first action where each failing trial departs from
+  the contract, and correct every kind that a prompt edit can correct. CAT rejects an attempt whose manifest leaves a
+  supplied failure outside every kind or names no hunk for such a kind.
+- When a kind fails again after an earlier attempt's hunk targeted it, make the model weigh the instruction differently
+  rather than read it again.
 - Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
   Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
   failures, then measures the attempt itself.
@@ -88,9 +93,21 @@ The development counts of the working candidate per cell, as JSON:
 The formal outcomes of the certification attempts that have ended, as JSON. Certification instances are held out
 from you, so each formal failure gives only its `cell`, its `test` and, in `failed_requirements`, the
 `requirement_id` of each requirement it failed with the `behavior` through which it failed. They show which
-requirements still fail in certification, and how; they are not supplied failures, so do not classify or cite them:
+requirements still fail in certification, and how; they are not supplied failures, so do not group or cite them:
 
 {{ended_attempts}}
+
+The manifests of the earlier author attempts under the confirmed contract, as JSON, oldest first. Each one gives the
+`attempt` number, its `cell`, its `kinds` (each with its `name`, `classification`, number of `failures` and the ids of
+the `hunks` that addressed it), its `hunks` (each with its `id`, `path`, the working lines `before_start` to
+`before_end` that it replaced, the author lines `after_start` to `after_end` that it wrote, and its `analogous` and
+`dissimilar` cases), the `rejections` that CAT gave it, and its `result`: `rejected` when CAT rejected the manifest,
+`no_candidate` when the attempt changed no prompt file or classified no kind `routing` or `guidance`, `not_measured`
+when no promotion result exists yet, `not_promoted` when its promotion runs did not make it the working candidate, and
+`promoted` when it became the working candidate. The campaign edits above hold what CAT kept of each promoted
+attempt's hunks. The array is empty when no earlier attempt exists:
+
+{{earlier_manifests}}
 
 ### Your approach
 
@@ -100,17 +117,27 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 
 ### How to edit
 
-1. Classify every supplied failure before editing: `routing` when an existing instruction was not loaded or applied;
-   `guidance` when an instruction is missing, ambiguous or contradictory; `not_guidance` for a model limitation,
-   a test or contract defect, or infrastructure failure. Make no prompt edit for a failure classified `not_guidance`.
-   An interim message, such as a progress note before a tool call, is part of the turn's reply. Whether a prompt can
-   stop the agent from sending one is not known, but the prompt can shape its wording. Classify a failure in an
-   interim message as `routing` or `guidance`, and correct the prompt so that every message of the reply complies.
-   Classify a failure as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
+1. Group the supplied failures into kinds before editing. For each failure, find the first action in its trial (a
+   tool call, a file change or a message) that departs from the contract; failures whose first departures are the
+   same mistake form one kind. Put every supplied failure in exactly one kind, and classify each kind: `routing` when
+   an existing instruction was not loaded or applied; `guidance` when an instruction is missing, ambiguous or
+   contradictory; `not_guidance` only for a test or contract defect or an infrastructure fault, which no prompt edit
+   can correct. A departure that looks like a model limitation, such as a mistyped command or a skipped step, is
+   `routing` or `guidance`: the prompt decides how reliably the model avoids it. An interim message, such as a progress
+   note before a tool call, is part of the turn's reply. Whether a prompt can stop the agent from sending one is not
+   known, but the prompt can shape its wording. Classify a kind of failure in an interim message as `routing` or
+   `guidance`, and correct the prompt so that every message of the reply complies.
+   Classify a kind as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
    confirmed with the contract already held the text that causes it: quote that text with its file, give at least two
    resolutions, recommend one with its reason, and make no edit for it. CAT pauses the campaign for the user's choice. A
    contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
    resolve it.
+   Correct every `routing` and `guidance` kind, not only the most frequent one: a kind left uncorrected keeps failing
+   in every later measurement. Make no prompt edit for a `not_guidance` kind.
+   When an earlier manifest shows a hunk that targeted the same kind and that kind failed again, the model read the
+   instruction and did not follow it, so stating it again or more strongly will not change the decision. Explain why
+   it must be followed instead of restating the instruction: at the point where the model makes that decision, state
+   what goes wrong for the user when the instruction is violated.
 2. Make the smallest correction supported by the evidence in the file that owns the decision. When the failing replies
    violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
    guidance added elsewhere leaves that instruction in force. Put new guidance in a prompt file other than
@@ -122,11 +149,14 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 3. For each change, name an analogous case that needs the same path and, as the dissimilar case,
    the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Word the correction for
    the invariant shared by the failing and analogous cases.
-4. Emit the manifest: every supplied failure's classification, every changed hunk's motivating failure ids,
-   analogous case and dissimilar case, and each conflict with the failure ids it explains, its requirement ids,
-   quotations, resolutions and recommended one. CAT rejects an uncited hunk, a citation to a failure you did not receive
-   or a dissimilar case that names no test of the confirmed contract.
-   When no edit is needed, report the classifications with an empty `hunks` array; the attempt produces no candidate.
+4. Emit the manifest: every kind with its name, its failure ids, its classification and the ids of the hunks that
+   address it; every changed hunk with an id of your choice, its motivating failure ids, analogous case and dissimilar
+   case; and each conflict with the failure ids it explains, its requirement ids, quotations, resolutions and
+   recommended one. CAT rejects the attempt for a supplied failure outside every kind or in two kinds, a `routing` or
+   `guidance` kind that names no hunk, a kind that names a hunk id absent from `hunks`, an uncited hunk, a citation to
+   a failure you did not receive, or a dissimilar case that names no test of the confirmed contract.
+   When every kind is `not_guidance` or `conflict`, report the kinds with an empty `hunks` array; the attempt produces
+   no candidate.
 
 - Diagnose why the failing instances failed by comparing each one's turns with its expected behaviour, with the
   requirement text and with the rationales. Reruns that passed show the failure is intermittent; reruns that

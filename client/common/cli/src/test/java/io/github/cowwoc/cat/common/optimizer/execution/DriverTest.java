@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
 import io.github.cowwoc.cat.common.optimizer.execution.fixture.FaultingFileChannel;
 import io.github.cowwoc.cat.common.optimizer.campaign.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -1371,8 +1372,8 @@ public final class DriverTest
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of("""
-					{"needed_edits": [], "classifications": [
-					  {"instance":"%s","classification":"guidance"}], "hunks": [], "conflicts": []}
+					{"needed_edits": [], "kinds": [{"name":"missing instruction","instances":["%s"],
+					  "classification":"guidance","hunks":[]}], "hunks": [], "conflicts": []}
 					""".formatted(harness.author().briefs().getLast().developmentId(0)))), edited.effects(), edited.model(),
 					edited.reasoning(), edited.usage(), edited.windows(),
 					edited.promptSources(), edited.toolCalls());
@@ -1444,8 +1445,9 @@ public final class DriverTest
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
 				String response = """
-					{"needed_edits":[],"classifications":[{"instance":"%s","classification":"guidance"}],
-					 "hunks":[{"path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					{"needed_edits":[],"kinds":[{"name":"missing instruction","instances":["%s"],
+					 "classification":"guidance","hunks":["h1"]}],
+					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
 					 "instances":["unknown"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
 					""".formatted(harness.author().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
@@ -1459,6 +1461,89 @@ public final class DriverTest
 				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
 				requireThat(harness.campaign().optimization().authors().getFirst().rejections(), "rejections").
 					isEqualTo(List.of("Unknown failing instance unknown cited at CLAUDE.md"));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an attempt whose guidance kind names no hunk is rejected, is retained with its rejection,
+	 * contributes no candidate, and reaches the next author of the lineage as a rejected earlier manifest.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void rejectedAttemptRetainedWithoutCandidate() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "cache")).build());
+			harness.authors(request ->
+			{
+				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String response = """
+					{"needed_edits":[],"kinds":[{"name":"skipped step","instances":["%s"],
+					 "classification":"guidance","hunks":[]}],
+					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "instances":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
+					""".formatted(harness.author().briefs().getLast().developmentId(0));
+				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
+					edited.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> harness.author().briefs().size() == 2);
+				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
+				AuthorDiagnosis retained = harness.campaign().optimization().authors().getFirst();
+				requireThat(retained.rejections(), "rejections").isEqualTo(List.of(
+					"Kind 'skipped step' is classified guidance but names no hunk that addresses it"));
+				List<AuthorBrief.EarlierManifest> earlier = harness.author().briefs().getLast().earlierManifests();
+				requireThat(earlier.size(), "earlier").isEqualTo(1);
+				requireThat(earlier.getFirst().diagnosis(), "earlierDiagnosis").isEqualTo(retained);
+				requireThat(earlier.getFirst().result(), "earlierResult").
+					isEqualTo(AuthorBrief.PromotionResult.REJECTED);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that an attempt that edits a file but classifies every kind not guidance contributes no candidate.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void notGuidanceEditProducesNoCandidate() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "cache")).build());
+			Sha256 working = harness.campaign().development().working().snapshot();
+			harness.authors(request ->
+			{
+				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String response = """
+					{"needed_edits":[],"kinds":[{"name":"judge outage","instances":["%s"],
+					 "classification":"not_guidance","hunks":[]}],
+					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "instances":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
+					""".formatted(harness.author().briefs().getLast().developmentId(0));
+				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
+					edited.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> state.development().round() == null);
+				requireThat(ended.candidates(), "candidates").isEqualTo(1);
+				requireThat(ended.optimization().authors().getFirst().rejections(), "rejections").isEmpty();
+				requireThat(ended.optimization().attempts().stream().allMatch(attempt ->
+					attempt.snapshot().equals(working)), "noCandidate").isTrue();
 			}
 		}
 	}
@@ -1478,16 +1563,16 @@ public final class DriverTest
 				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
 					failure(Builder.targeted("safety", "cache")).build());
 			harness.authors(_ -> harness.completed("""
-				{"needed_edits":[],"classifications":[{"instance":"%s","classification":"not_guidance"}],
-				 "hunks":[],"conflicts":[]}
+				{"needed_edits":[],"kinds":[{"name":"flaky harness","instances":["%s"],
+				 "classification":"not_guidance","hunks":[]}],"hunks":[],"conflicts":[]}
 				""".formatted(harness.author().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
 			try (Driver driver = harness.open())
 			{
 				Campaign ended = harness.runUntil(driver, state -> state.development().round() == null);
 				requireThat(ended.candidates(), "candidates").isEqualTo(1);
 				requireThat(ended.optimization().authors().size(), "diagnoses").isEqualTo(2);
-				requireThat(ended.optimization().authors().getFirst().classifications().values(), "classification").
-					contains(FailureKind.NOT_GUIDANCE);
+				requireThat(ended.optimization().authors().getFirst().kinds().getFirst().classification(),
+					"classification").isEqualTo(FailureKind.NOT_GUIDANCE);
 				StatusReport report = StatusReport.of(ended, ReportEvidence.NONE);
 				JsonNode diagnoses = report.toJson(JsonMapper.builder().build()).path("author_diagnoses");
 				requireThat(diagnoses.size(), "reportedDiagnoses").isEqualTo(2);
@@ -3048,7 +3133,7 @@ public final class DriverTest
 					requireThat(turn, "turn").doesNotContain(formalTurn);
 			}
 			String endedSection = turn.substring(turn.indexOf("certification attempts that have ended"),
-				turn.indexOf("\n\n### Your approach"));
+				turn.indexOf("\n\nThe manifests of the earlier"));
 			JsonNode ended = JsonMapper.builder().build().readTree(endedSection.substring(endedSection.indexOf('[')));
 			requireThat(ended.size(), "ended.size()").isEqualTo(1);
 			JsonNode failures = ended.get(0).get("failures");

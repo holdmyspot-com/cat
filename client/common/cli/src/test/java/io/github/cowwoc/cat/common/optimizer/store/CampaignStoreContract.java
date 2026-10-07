@@ -6,7 +6,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
+import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Minimality;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Builder;
@@ -271,6 +276,34 @@ public abstract class CampaignStoreContract
 			requireThat(loaded.identity().cells().get(limited).get(MeasurementCondition.TOOL_OUTPUT_LIMIT),
 				"toolOutputLimit").isEqualTo("5000");
 			requireThat(CellTier.developmentCellIds(loaded), "developmentCells").contains(limited);
+		}
+	}
+
+	/**
+	 * A retained author manifest keeps its attempt number, lineage, kinds with their classifications and hunks, hunk
+	 * evidence and rejections across a reload.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void authorManifestSurvivesReload() throws IOException
+	{
+		// Requirement: R-D10
+		try (StoreFixture fixture = open())
+		{
+			AuthorDiagnosis diagnosis = new AuthorDiagnosis(3, 2, "safety", Builder.snapshot("candidate-1"),
+				List.of(new AuthorKind("mistyped path", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1")),
+					new AuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of())),
+				List.of(new HunkEvidence("h1", Path.of("CLAUDE.md"), 1, 2, 1, 3, List.of("f1", "f2"), "Another read",
+					"plain_list")),
+				List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/transcripts/author-3.jsonl"),
+				Path.of("/effects/author-3"));
+			Campaign campaign = Transitions.apply(new Builder().header(header("campaign-author")).confirmed().
+				working(1).build(), new CampaignEvent.RetainAuthorDiagnosis(diagnosis));
+			fixture.store().replaceSnapshot(campaign);
+
+			Campaign loaded = fixture.reopen().load("campaign-author").orElseThrow();
+			requireThat(loaded.optimization().authors(), "authors").isEqualTo(List.of(diagnosis));
 		}
 	}
 

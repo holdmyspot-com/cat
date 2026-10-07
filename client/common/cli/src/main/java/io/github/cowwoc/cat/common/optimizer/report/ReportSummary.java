@@ -373,11 +373,11 @@ final class ReportSummary
 		}
 		for (AuthorDiagnosis author : report.authors())
 		{
-			List<String> classifications = author.classifications().values().stream().
-				map(kind -> EnumNames.lowerCase(kind).replace('_', ' ')).
-				distinct().sorted().toList();
-			lines.add("Author diagnosis in cell " + author.cell() + ": " + String.join(", ", classifications) +
-				"; evidence " + author.transcript());
+			List<String> kinds = author.kinds().stream().
+				map(kind -> kind.name() + " (" + EnumNames.lowerCase(kind.classification()).replace('_', ' ') + ")").
+				toList();
+			lines.add("Author diagnosis of attempt " + author.number() + " in cell " + author.cell() + ": " +
+				String.join(", ", kinds) + "; evidence " + author.transcript());
 			for (String rejection : author.rejections())
 				lines.add("  Rejected: " + rejection);
 		}

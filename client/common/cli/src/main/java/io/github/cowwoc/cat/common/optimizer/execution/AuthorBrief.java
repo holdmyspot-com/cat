@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.AuthorApproach;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
@@ -48,10 +50,13 @@ import java.nio.charset.StandardCharsets;
  * @param campaignEdits the unified diff of prompt files from confirmation to the working candidate
  * @param answeredWarnings the needed edits outside the edit authority that the user declined by choosing to use an
  *   authorized source, in the order they were answered; the author is told not to report them again
+ * @param earlierManifests the manifests of the lineage's earlier author attempts with their promotion results, in the
+ *   order CAT retained them
  */
 public record AuthorBrief(String cell, AuthorApproach approach, Contract contract, List<Failure> developmentFailures,
 	Map<String, String> evidenceSections, Map<String, CellCounts> developmentCounts, List<EndedAttempt> endedAttempts,
-	Map<Path, Path> links, String campaignEdits, List<AuthorityWarning> answeredWarnings)
+	Map<Path, Path> links, String campaignEdits, List<AuthorityWarning> answeredWarnings,
+	List<EarlierManifest> earlierManifests)
 {
 	/**
 	 * Creates a brief.
@@ -69,6 +74,8 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 	 * @param campaignEdits the unified diff since confirmation, empty if there are no prompt edits
 	 * @param answeredWarnings the needed edits outside the edit authority that the user declined by choosing to use
 	 *   an authorized source, in the order they were answered
+	 * @param earlierManifests the manifests of the lineage's earlier author attempts with their promotion results, in
+	 *   the order CAT retained them
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
@@ -88,6 +95,7 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 		links = Map.copyOf(links);
 		requireThat(campaignEdits, "campaignEdits").isNotNull();
 		answeredWarnings = List.copyOf(answeredWarnings);
+		earlierManifests = List.copyOf(earlierManifests);
 	}
 
 	/**
@@ -168,9 +176,93 @@ public record AuthorBrief(String cell, AuthorApproach approach, Contract contrac
 			if (entry.getValue() instanceof FileEntry.SymbolicLink)
 				fork.resolve(entry.getKey()).ifPresent(target -> links.put(entry.getKey(), target));
 		}
+		List<EarlierManifest> earlier = new ArrayList<>();
+		int lineage = campaign.lineage().number();
+		for (AuthorDiagnosis diagnosis : campaign.optimization().authors())
+		{
+			if (diagnosis.lineage() == lineage)
+				earlier.add(new EarlierManifest(diagnosis, result(diagnosis, campaign.optimization().attempts())));
+		}
 		return new AuthorBrief(development.round().reservations().get(number), development.round().approach(number),
 			campaign.contract(), development.failures(), sections, development.counts(), ended,
-			links, campaignEdits, campaign.answeredWarnings());
+			links, campaignEdits, campaign.answeredWarnings(), earlier);
+	}
+
+	/**
+	 * Returns what became of an earlier author attempt.
+	 *
+	 * @param diagnosis the attempt's retained manifest
+	 * @param attempts the retained promotion results of the campaign's author attempts
+	 * @return {@link PromotionResult#REJECTED} if CAT rejected the manifest; otherwise the attempt's promotion result,
+	 *   or {@link PromotionResult#NOT_MEASURED} if none is retained
+	 */
+	private static PromotionResult result(AuthorDiagnosis diagnosis, List<AttemptResult> attempts)
+	{
+		if (!diagnosis.rejections().isEmpty())
+			return PromotionResult.REJECTED;
+		for (AttemptResult attempt : attempts)
+		{
+			if (attempt.number() != diagnosis.number())
+				continue;
+			if (attempt.snapshot().equals(attempt.working()))
+				return PromotionResult.NO_CANDIDATE;
+			if (attempt.winner())
+				return PromotionResult.PROMOTED;
+			return PromotionResult.NOT_PROMOTED;
+		}
+		return PromotionResult.NOT_MEASURED;
+	}
+
+	/**
+	 * What became of an earlier author attempt.
+	 */
+	public enum PromotionResult
+	{
+		/**
+		 * CAT rejected the attempt's manifest, so the attempt contributed no candidate.
+		 */
+		REJECTED,
+		/**
+		 * The attempt changed no prompt file or classified no kind routing or guidance, so it produced no candidate.
+		 */
+		NO_CANDIDATE,
+		/**
+		 * CAT holds no promotion result for the attempt: its promotion runs have not decided it, or it reported a
+		 * conflict.
+		 */
+		NOT_MEASURED,
+		/**
+		 * The attempt's promotion runs did not make it the working candidate.
+		 */
+		NOT_PROMOTED,
+		/**
+		 * The attempt became the working candidate.
+		 */
+		PROMOTED
+	}
+
+	/**
+	 * The manifest of an earlier author attempt of the same lineage, with what became of the attempt.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param diagnosis the attempt's retained manifest
+	 * @param result what became of the attempt
+	 */
+	public record EarlierManifest(AuthorDiagnosis diagnosis, PromotionResult result)
+	{
+		/**
+		 * Creates an earlier manifest.
+		 *
+		 * @param diagnosis the attempt's retained manifest
+		 * @param result what became of the attempt
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public EarlierManifest
+		{
+			requireThat(diagnosis, "diagnosis").isNotNull();
+			requireThat(result, "result").isNotNull();
+		}
 	}
 
 	/**

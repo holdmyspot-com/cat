@@ -1283,7 +1283,8 @@ public final class Driver implements AutoCloseable
 			AuthorBrief brief = AuthorBrief.of(campaign, number, overlay.fork(), edits, sections);
 			SessionRequest request = context.author().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
-			register(new InFlight.Author(number, cell, working, overlay, copy, before, brief, handle));
+			register(new InFlight.Author(number, campaign.lineage().number(), cell, working, overlay, copy, before, brief,
+				handle));
 		}
 		catch (IOException e)
 		{
@@ -1396,7 +1397,9 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
 	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
-	 * malformed report contributes no candidate and counts as an infrastructure failure. A needed
+	 * malformed report contributes no candidate and counts as an infrastructure failure. A rejected manifest is
+	 * retained and contributes no candidate. An attempt that classifies no kind routing or guidance offers its working
+	 * snapshot, which is no candidate. A needed
 	 * edit outside the authority raises an {@code awaiting_user} decision that holds the warnings. A valid conflict
 	 * report discards the candidate and pauses for the user's resolution.
 	 *
@@ -1444,9 +1447,10 @@ public final class Driver implements AutoCloseable
 		Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 		List<String> violations = report.get().manifest().violations(received, hunks, campaign.contract(),
 			incumbent.snapshot(), confirmedContents(incumbent, report.get().conflicts()), report.get().conflicts());
-		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.cell(),
-			author.working().snapshot(), report.get().manifest().classifications(), violations, completed.transcript(),
-			completed.effects())));
+		AuthorManifest manifest = report.get().manifest();
+		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.number(), author.lineage(),
+			author.cell(), author.working().snapshot(), manifest.kinds(), manifest.hunks(), violations,
+			completed.transcript(), completed.effects())));
 		if (!violations.isEmpty())
 		{
 			authorFailed("The author manifest is invalid: " + violations);
@@ -1460,13 +1464,17 @@ public final class Driver implements AutoCloseable
 		}
 		if (offersAuthorAttempt(author))
 		{
+			// An attempt that classified no kind routing or guidance offers its working snapshot, which is no candidate
 			Sha256 snapshot = author.working().snapshot();
-			if (!candidate.get().identity().equals(author.overlay().identity()))
+			List<FileDelta> submitted = List.of();
+			if (manifest.producesCandidate(hunks) &&
+				!candidate.get().identity().equals(author.overlay().identity()))
 			{
 				context.overlays().save(candidate.get());
 				snapshot = candidate.get().identity();
+				submitted = changes.get();
 			}
-			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.cell(), snapshot, changes.get()));
+			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.cell(), snapshot, submitted));
 		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
