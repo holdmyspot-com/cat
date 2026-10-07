@@ -43,7 +43,7 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
     governs it: no Java test starts a runner, a harness process or a model (user ruling, 2026-10-01).
   - **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
     systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
-    in each harness. Fixtures consumed by a runner live under the directory that `workflow-temp root` prints
+    in each harness. Fixtures consumed by a runner live under the project's CAT_TEMP directory
     (`.cat/work/temp`), not the system temp directory. Each run records a receipt: commands, versions, outcome, and
     paths to retained evidence.
 - **Build check:** `./mvnw verify` from `client/` is the unrestricted build. A work item is not done until it passes,
@@ -873,8 +873,7 @@ The riskiest pure code, built first.
 - **Rules:** apply D13 to `failure-regression-promotion.md` and `default-rules.md`, keeping the route's rule that a
   subagent reports a confirmed failure to the agent that delegated its work instead of correcting the guidance.
   Update the test resources that cite the old skill (`check-assumptions/existing_route_before_new_wrapper/scenario.md`,
-  `limitations-and-workarounds/verification.md`) and `InvocationDirectoryTest`'s directory label if it no longer
-  describes a real consumer. Follow `contract-retirement.md`.
+  `limitations-and-workarounds/verification.md`). Follow `contract-retirement.md`.
 - **Native tier retirement:** delete the Java tests that start a runner, a harness process or a model
   (`ClaudeRunnerCliNativeTest`, `ClaudeSessionsNativeTest`, `CodexRunnerCliNativeTest`, `CodexSessionsNativeTest`);
   make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
