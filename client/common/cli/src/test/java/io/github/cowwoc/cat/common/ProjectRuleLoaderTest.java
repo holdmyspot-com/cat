@@ -171,6 +171,32 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies the harness skill environment, which states the plugin directory, precedes every other rule so the
+	 * directory is known before a rule refers to it.
+	 */
+	@Test
+	public void loadsSkillEnvironmentFirst() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/harnessa/skill-env.md", "# Skill environment\n\nPlugin directory guidance\n");
+			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
+
+			String context;
+			try (ToolScope scope = new ToolScope())
+			{
+				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+			}
+
+			requireThat(context, "context").startsWith("# Skill environment").contains("# Routes").
+				contains("# Project");
+		}
+	}
+
+	/**
 	 * Verifies declared prerequisite rules are injected first and YAML metadata remains out of the context.
 	 */
 	@Test

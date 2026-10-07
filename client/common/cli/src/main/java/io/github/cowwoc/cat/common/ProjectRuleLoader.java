@@ -26,7 +26,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * Loads CAT project rules for a harness, placing each declared prerequisite before the rule that needs it.
  * <p>
  * In the context of a bundled rule, each {@link #PLUGIN_ROOT_DIRECTIVE} becomes the absolute, normalized CAT
- * installation directory that the caller supplied.
+ * installation directory that the caller supplied. The harness skill environment, which states that directory,
+ * precedes every other rule.
  */
 public final class ProjectRuleLoader
 {
@@ -42,6 +43,11 @@ public final class ProjectRuleLoader
 	 * The directive replaced by the absolute project directory in injected path-routing context.
 	 */
 	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
+	/**
+	 * The filename of the bundled harness rule that states CAT's installation directory. The loader injects it before
+	 * every other rule, so the directory is known before a rule refers to {@code ${CAT_PLUGIN_ROOT}}.
+	 */
+	private static final String SKILL_ENVIRONMENT_RULE = "skill-env.md";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -229,7 +235,11 @@ public final class ProjectRuleLoader
 			audience, rules);
 		loadDirectory(projectRoot, projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT,
 			audience, rules);
-		List<String> context = new ArrayList<>(ordered(rules).stream().map(Rule::context).toList());
+		List<Rule> ordered = ordered(rules);
+		String skillEnvironment = "rules/" + harness + "/" + SKILL_ENVIRONMENT_RULE;
+		ordered.sort(Comparator.comparing(rule -> rule.root() != RuleRoot.PLUGIN ||
+			!rule.path().equals(skillEnvironment)));
+		List<String> context = new ArrayList<>(ordered.stream().map(Rule::context).toList());
 		if (userRulesRoot != null)
 		{
 			String userLazyDependencies = lazyDependencies(userRulesRoot, userRulesRoot, RuleRoot.USER, audience);
