@@ -1485,7 +1485,7 @@ The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `statu
 the user and any choices. The skill never interprets statistics itself.
 
 Agents locate CAT's installed files without shell variables that the harness does not define. The session hooks
-render the plugin root into the injected skill-environment rule, and CAT derives the harness home from `CODEX_HOME` or
+render the plugin root into the injected CAT environment rule, and CAT derives the harness home from `CODEX_HOME` or
 `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`.
 
 **Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
