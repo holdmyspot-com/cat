@@ -341,7 +341,7 @@ public final class DistributionMain
 
 	/**
 	 * Returns the layer of the Codex plugin's own resources, including the {@code client/bin/read-file} script that the
-	 * Codex complete-file-reads rule tells agents to run.
+	 * Codex read-file rule tells agents to run.
 	 *
 	 * @param jar the Codex plugin resource JAR
 	 * @return the layer

@@ -68,7 +68,7 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
-	 * Verifies Codex agents receive the complete-file-reads rule at startup with its script command naming the
+	 * Verifies Codex agents receive the read-file rule at startup with its script command naming the
 	 * installed plugin's {@code client/bin/read-file}, while Claude agents, which do not ship that script, do not receive
 	 * the rule.
 	 *
@@ -76,7 +76,7 @@ public final class BundledRuleAudienceTest
 	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
 	@Test
-	public void codexAgentsGetCompleteFileReads() throws IOException, URISyntaxException
+	public void codexAgentsGetReadFileRule() throws IOException, URISyntaxException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
@@ -91,11 +91,11 @@ public final class BundledRuleAudienceTest
 			for (String codex : List.of(loader.loadForMainAgent(plugin, project, "codex"),
 				loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
 			{
-				requireThat(codex, "codex").contains("# Complete File Reads").contains(command).
+				requireThat(codex, "codex").contains("# Reading Files").contains(command).
 					doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/client/bin/read-file");
 			}
 			requireThat(loader.loadForMainAgent(plugin, project, "claude"), "claude").
-				doesNotContain("# Complete File Reads");
+				doesNotContain("# Reading Files");
 		}
 	}
 
