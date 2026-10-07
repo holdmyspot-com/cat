@@ -9,7 +9,9 @@
 setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
-	TEST_ROOT="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create prompt-optimizer)"
+	cat_temp="$(realpath "${BATS_TEST_DIRNAME}/../../../../../..")/.cat/work/temp"
+	mkdir -p "${cat_temp}"
+	TEST_ROOT="$(mktemp -d -p "${cat_temp}" prompt-optimizer-XXXXXX)"
 	export TEST_ROOT
 	export HOST_HOME="${TEST_ROOT}/host-home"
 	export PROJECT="${TEST_ROOT}/project"
@@ -26,7 +28,7 @@ setup()
 teardown()
 {
 	if [ -n "${TEST_ROOT:-}" ]; then
-		"${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" delete "${TEST_ROOT}"
+		rm -rf -- "${TEST_ROOT}"
 	fi
 }
 

@@ -14,7 +14,9 @@ setup()
 {
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
 	READ_FILE="${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/read-file"
-	TEST_ROOT="$("${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" create read-file)"
+	cat_temp="$(realpath "${BATS_TEST_DIRNAME}/../../../../../..")/.cat/work/temp"
+	mkdir -p "${cat_temp}"
+	TEST_ROOT="$(mktemp -d -p "${cat_temp}" read-file-XXXXXX)"
 	export TEST_ROOT
 	export TMPDIR="${TEST_ROOT}/tmp"
 	mkdir "${TMPDIR}"
@@ -28,7 +30,7 @@ setup()
 teardown()
 {
 	if [ -n "${TEST_ROOT:-}" ]; then
-		"${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/workflow-temp" delete "${TEST_ROOT}"
+		rm -rf -- "${TEST_ROOT}"
 	fi
 }
 

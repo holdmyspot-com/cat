@@ -51,6 +51,7 @@ final class CodexRuleInjectionHook
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
 			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = scope.projectDir(event, workingDirectory);
+			scope.createCatTemp(projectDir);
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());

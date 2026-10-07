@@ -407,8 +407,6 @@ public final class DistributionMain
 		return List.of(
 			new JlinkImageBuilder.Launcher("git-topic-replay", "io.github.cowwoc.cat.common.cli",
 				"io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor"),
-			new JlinkImageBuilder.Launcher("workflow-temp", "io.github.cowwoc.cat.common.cli",
-				"io.github.cowwoc.cat.common.InvocationDirectory"),
 			new JlinkImageBuilder.Launcher("session-analyzer", "io.github.cowwoc.cat.common.cli",
 				"io.github.cowwoc.cat.common.history.SessionHistory"));
 	}

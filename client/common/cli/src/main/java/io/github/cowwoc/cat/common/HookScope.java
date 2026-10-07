@@ -212,6 +212,24 @@ public final class HookScope implements AutoCloseable
 	}
 
 	/**
+	 * Creates the project's CAT temporary directory if it is missing. The injected rules name it
+	 * {@code ${CAT_TEMP}}, {@code .cat/work/temp} below {@code ${CAT_PROJECT_ROOT}}, and the agent creates its temporary
+	 * directories inside it.
+	 *
+	 * @param projectDir the session's project directory
+	 * @return the CAT temporary directory
+	 * @throws NullPointerException if {@code projectDir} is null
+	 * @throws IOException if the directory cannot be created
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public Path createCatTemp(Path projectDir) throws IOException
+	{
+		ensureOpen();
+		requireThat(projectDir, "projectDir").isNotNull();
+		return Files.createDirectories(projectDir.resolve(".cat/work/temp"));
+	}
+
+	/**
 	 * Prevents further service access.
 	 */
 	@Override

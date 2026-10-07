@@ -116,7 +116,7 @@ public final class BundledRuleAudienceTest
 			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "codex");
 
 			requireThat(context, "context").contains("Load `" + plugin.resolve("rules/include/common/path.md") +
-				"` only when you read or edit a file inside the project `" + project +
+				"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 				"` whose path relative to it matches [**/rules/**/*.md].").doesNotContain("Bundled rule body");
 			requireThat(Files.readString(plugin.resolve("rules/include/common/path.md")), "lazyRule").
 				isEqualTo("Bundled rule body");

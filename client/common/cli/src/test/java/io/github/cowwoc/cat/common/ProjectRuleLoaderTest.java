@@ -48,7 +48,7 @@ public final class ProjectRuleLoaderTest
 			requireThat(context, "context").contains("plugin common").contains("plugin harnessa").
 				contains("project common").contains("project harnessa").
 				contains("Load `" + project.resolve(".cat/rules/harnessa/path.md") +
-					"` only when you read or edit a file inside the project `" + project +
+					"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 					"` whose path relative to it matches [*.java].").
 				doesNotContain("## Design Goals").doesNotContain("### CAT rule:").
 				doesNotContain("### CAT path-scoped rule:").doesNotContain("plugin harnessb").
@@ -74,7 +74,7 @@ public final class ProjectRuleLoaderTest
 			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 
 			requireThat(context, "context").isEqualTo("Load `" + plugin.resolve("rules/common/path.md") +
-				"` only when you read or edit a file inside the project `" + project +
+				"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 				"` whose path relative to it matches [**/rules/**/*.md].");
 		}
 	}
@@ -171,18 +171,18 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
-	 * Verifies the harness skill environment, which states the plugin directory, precedes every other rule so the
-	 * directory is known before a rule refers to it.
+	 * Verifies the harness CAT environment, which defines the {@code CAT_} names, precedes every other rule so each
+	 * name is defined before a rule refers to it.
 	 */
 	@Test
-	public void loadsSkillEnvironmentFirst() throws IOException
+	public void loadsCatEnvironmentFirst() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
-			write(plugin, "rules/harnessa/skill-env.md", "# Skill environment\n\nPlugin directory guidance\n");
+			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
 			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
 
 			String context;
@@ -191,7 +191,7 @@ public final class ProjectRuleLoaderTest
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
 
-			requireThat(context, "context").startsWith("# Skill environment").contains("# Routes").
+			requireThat(context, "context").startsWith("# CAT environment").contains("# Routes").
 				contains("# Project");
 		}
 	}

@@ -14,15 +14,16 @@ runs when later setup, normal work, validation, or error handling fails. Use the
 management when available; otherwise use a bounded cleanup block or equivalent reliable cleanup path. Recursively remove
 only the root created by that operation.
 
-For CAT-controlled workflow state, derive CAT_TEMP through the active harness scope and create a fresh child directory
-there. This includes runner homes, workspaces, staged inputs or outputs, diagnostic records, and native scratch space
-configured for a nested harness. Do not use `/tmp`, the operating system's default temporary directory, or another
-shared location for that state: those locations break CAT's isolation, cleanup, and retained-evidence ownership. Pass
-the fresh CAT_TEMP child to a nested native process through its supported temporary-directory setting before it starts,
-and grant write authority only to that child. A test-only fixture that is not CAT workflow state may use the test
-framework's isolated temporary directory, provided its test owns and cleans it up. Classify by the resource's consumer,
-not by the source file that creates it: a unit-test fixture may use the test framework's directory, while a test that
-starts a CAT runner, evaluator, nested harness, or other CAT workflow must give that workflow a fresh CAT_TEMP child.
+For CAT-controlled workflow state, create a fresh child directory of CAT_TEMP with
+`mktemp -d -p ${CAT_TEMP} <workflow-name>-XXXXXX`. This includes runner homes, workspaces, staged inputs or
+outputs, diagnostic records, and native scratch space configured for a nested harness. Do not use `/tmp`, the operating
+system's default temporary directory, or another shared location for that state: those locations break CAT's isolation,
+cleanup, and retained-evidence ownership. Pass the fresh CAT_TEMP child to a nested native process through its supported
+temporary-directory setting before it starts, and grant write authority only to that child. A test-only fixture that is
+not CAT workflow state may use the test framework's isolated temporary directory, provided its test owns and cleans it
+up. Classify by the resource's consumer, not by the source file that creates it: a unit-test fixture may use the test
+framework's directory, while a test that starts a CAT runner, evaluator, nested harness, or other CAT workflow must give
+that workflow a fresh CAT_TEMP child.
 
 Each test must create, use, and clean up its own fixtures within that test. Tests may run in parallel, so they may
 access only test-local state or state that is safe for concurrent use; they must not share mutable fixtures.

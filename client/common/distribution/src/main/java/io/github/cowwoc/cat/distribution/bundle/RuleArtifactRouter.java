@@ -221,7 +221,7 @@ public final class RuleArtifactRouter
 		result.append("# CAT Path-Scoped Rules\n\n");
 		for (Route route : routes)
 			result.append(ProjectRuleLoader.pathScopedInstruction(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + '/' +
-				route.path(), ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE, route.paths())).append('\n');
+				route.path(), route.paths())).append('\n');
 		return result.toString();
 	}
 

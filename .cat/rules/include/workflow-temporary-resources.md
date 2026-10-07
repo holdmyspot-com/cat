@@ -25,11 +25,9 @@ has recorded a terminal result and no retained artifact still refers to it; its 
 A live owner or a recorded recovery workflow may retain it only until its own terminal cleanup. Do not leave
 uncommitted evidence merely because the workflow finished, and do not delete it merely because one invocation finished.
 
-Use the selected harness's `workflow-temp create <workflow-name>` launcher to create a CLI-owned invocation directory.
-It prints the new directory's absolute path on one line with no prefix; use that output as the directory. At the
-terminal boundary, invoke `workflow-temp delete <directory>` for work with no remaining consumer; it prints nothing. To
-retain uncommitted evidence, invoke `workflow-temp handoff <directory> <retained-directory-under-cat-temp>`, which
-prints the retained directory's absolute path, and record that path and the cleanup owner. On failure, each command
-prints a diagnostic to standard error, prints nothing to standard output, and exits with status 1.
-`workflow-temp --help` lists every command and its output. Do not delete or hand off a directory that a live process
-still owns.
+Create an invocation directory with `mktemp -d -p ${CAT_TEMP} <workflow-name>-XXXXXX`. It prints the new directory's
+absolute path on one line; use that output as the directory. At the terminal boundary, remove work with no remaining
+consumer with `rm -rf -- <directory>`. To retain uncommitted evidence, move the directory with
+`mv -- <directory> <retained-directory-under-cat-temp>`, where the retained path does not exist yet, and record that
+path and the cleanup owner. Remove or move only a directory below CAT_TEMP that the workflow created, and not one that a
+live process still owns.

@@ -224,7 +224,7 @@ public final class ClaudeSessionStartHookTest
 
 			requireThat(context, "context").contains("harness project").
 				contains("Load `" + harnessProject.resolve(".cat/rules/claude/path.md") +
-					"` only when you read or edit a file inside the project `" + harnessProject +
+					"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 					"` whose path relative to it matches [*.java].").
 				doesNotContain("configured project").
 				doesNotContain("project Java rule");
@@ -281,6 +281,28 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies the hook creates {@code .cat/work/temp} in the session's own directory, which the injected rules name
+	 * as the project directory, even when an enclosing directory is a CAT project.
+	 */
+	@Test
+	public void createsCatTempInSessionDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path parent = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.createDirectories(parent.resolve(".cat"));
+			Path session = Files.createDirectories(parent.resolve("module"));
+
+			HookResult result = invoke("{\"cwd\":\"" + session + "\"}",
+				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), session);
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(Files.isDirectory(session.resolve(".cat/work/temp")), "catTempExists").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies Claude receives the hook's plugin root wherever a bundled rule writes the plugin-root directive, while
 	 * the {@code ${CAT_PLUGIN_ROOT}} notation stays as written.
 	 */
@@ -292,7 +314,7 @@ public final class ClaudeSessionStartHookTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
-			write(plugin, "rules/claude/skill-env.md", "The plugin directory is `" +
+			write(plugin, "rules/claude/cat-env.md", "The plugin directory is `" +
 				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "`. Replace `${CAT_PLUGIN_ROOT}` with it.\n");
 
 			String context = completeContext(invoke("{\"cwd\":\"" + project + "\"}",

@@ -40,14 +40,15 @@ public final class ProjectRuleLoader
 	public static final String PLUGIN_ROOT_DIRECTIVE = "<!-- cat:plugin-root -->";
 
 	/**
-	 * The directive replaced by the absolute project directory in injected path-routing context.
+	 * The notation that path-routing context writes for the project directory. The injected CAT environment rule
+	 * tells the agent which directory it stands for.
 	 */
-	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
+	private static final String PROJECT_ROOT_REFERENCE = "${CAT_PROJECT_ROOT}";
 	/**
-	 * The filename of the bundled harness rule that states CAT's installation directory. The loader injects it before
-	 * every other rule, so the directory is known before a rule refers to {@code ${CAT_PLUGIN_ROOT}}.
+	 * The filename of the bundled harness rule that defines the {@code CAT_} names, such as CAT's installation
+	 * directory. The loader injects it before every other rule, so each name is defined before a rule refers to it.
 	 */
-	private static final String SKILL_ENVIRONMENT_RULE = "skill-env.md";
+	private static final String ENVIRONMENT_RULE = "cat-env.md";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -82,21 +83,19 @@ public final class ProjectRuleLoader
 	}
 
 	/**
-	 * Renders a path trigger whose globs apply only within the named project.
+	 * Renders a path trigger whose globs apply only within the project that {@code ${CAT_PROJECT_ROOT}} names.
 	 *
 	 * @param rule the rule path, absolute or containing an installation directive
-	 * @param projectRoot the project path, absolute or containing a project directive
 	 * @param globs the project-relative path patterns
 	 * @return the one-sentence lazy-loading instruction
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if either path is blank
+	 * @throws IllegalArgumentException if {@code rule} is blank
 	 */
-	public static String pathScopedInstruction(String rule, String projectRoot, List<String> globs)
+	public static String pathScopedInstruction(String rule, List<String> globs)
 	{
 		requireThat(rule, "rule").isNotBlank();
-		requireThat(projectRoot, "projectRoot").isNotBlank();
 		requireThat(globs, "globs").isNotNull();
-		return "Load `" + rule + "` only when you read or edit a file inside the project `" + projectRoot +
+		return "Load `" + rule + "` only when you read or edit a file inside the project `" + PROJECT_ROOT_REFERENCE +
 			"` whose path relative to it matches " + globs + ".";
 	}
 
@@ -219,26 +218,26 @@ public final class ProjectRuleLoader
 			throw new IllegalArgumentException("Invalid CAT harness: " + harness);
 		List<Rule> rules = new ArrayList<>();
 		Path pluginRules = pluginRoot.resolve("rules");
-		loadDirectory(projectRoot, pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
+		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
 			rules);
-		loadDirectory(projectRoot, pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN,
+		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN,
 			audience, rules);
 		if (userRulesRoot != null)
 		{
-			loadDirectory(projectRoot, userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
+			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
 				audience, rules);
-			loadDirectory(projectRoot, userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER,
+			loadDirectory(userRulesRoot, userRulesRoot.resolve(harness), userRulesRoot, RuleRoot.USER,
 				audience, rules);
 		}
 		Path projectRules = rulesDirectory(projectRoot);
-		loadDirectory(projectRoot, projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT,
+		loadDirectory(projectRoot, projectRules.resolve("common"), projectRules, RuleRoot.PROJECT,
 			audience, rules);
-		loadDirectory(projectRoot, projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT,
+		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT,
 			audience, rules);
 		List<Rule> ordered = ordered(rules);
-		String skillEnvironment = "rules/" + harness + "/" + SKILL_ENVIRONMENT_RULE;
+		String environment = "rules/" + harness + "/" + ENVIRONMENT_RULE;
 		ordered.sort(Comparator.comparing(rule -> rule.root() != RuleRoot.PLUGIN ||
-			!rule.path().equals(skillEnvironment)));
+			!rule.path().equals(environment)));
 		List<String> context = new ArrayList<>(ordered.stream().map(Rule::context).toList());
 		if (userRulesRoot != null)
 		{
@@ -303,7 +302,6 @@ public final class ProjectRuleLoader
 	/**
 	 * Loads one direct rule directory.
 	 *
-	 * @param projectRoot the project directory that bounds path-trigger matching
 	 * @param ownerRoot a non-null rule-source owner directory
 	 * @param directory a non-null rule directory
 	 * @param ruleRoot the source root that bounds included rules
@@ -312,7 +310,7 @@ public final class ProjectRuleLoader
 	 * @param rules a non-null list of discovered rules
 	 * @throws IOException if the directory is not a real directory or one of its rules is invalid
 	 */
-	private void loadDirectory(Path projectRoot, Path ownerRoot, Path directory, Path ruleRoot, RuleRoot root,
+	private void loadDirectory(Path ownerRoot, Path directory, Path ruleRoot, RuleRoot root,
 		RuleAudience audience, List<Rule> rules)
 		throws IOException
 	{
@@ -333,7 +331,7 @@ public final class ProjectRuleLoader
 			for (Path file : entries.filter(path -> path.getFileName().toString().endsWith(".md")).sorted(
 				Comparator.comparing(this::ruleOrder).thenComparing(path -> path.getFileName().toString())).toList())
 			{
-				Rule rule = render(projectRoot, ownerRoot, file, ruleRoot, root, audience);
+				Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
 				if (rule != null)
 					rules.add(rule);
 			}
@@ -357,7 +355,6 @@ public final class ProjectRuleLoader
 	/**
 	 * Renders one rule as immediate or lazy context.
 	 *
-	 * @param projectRoot the project directory that bounds path-trigger matching
 	 * @param ownerRoot a non-null rule-source owner directory. For a bundled rule, it is the CAT installation directory
 	 *   that replaces each {@link #PLUGIN_ROOT_DIRECTIVE} in the rule's context.
 	 * @param file a non-null rule file
@@ -367,8 +364,7 @@ public final class ProjectRuleLoader
 	 * @return the rule's dependency metadata and context block
 	 * @throws IOException if the rule is not a regular file, is too large, or has invalid content
 	 */
-	private Rule render(Path projectRoot, Path ownerRoot, Path file, Path ruleRoot, RuleRoot root,
-		RuleAudience audience)
+	private Rule render(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root, RuleAudience audience)
 		throws IOException
 	{
 		String content = readRule(ownerRoot, file, root);
@@ -381,8 +377,7 @@ public final class ProjectRuleLoader
 			paths = frontmatter.metadata().get("paths");
 		if (paths == null)
 		{
-			String injected = renderBody(ownerRoot, file, ruleRoot, root, frontmatter, content).
-				replace(PROJECT_ROOT_DIRECTIVE, projectRoot.toAbsolutePath().normalize().toString());
+			String injected = renderBody(ownerRoot, file, ruleRoot, root, frontmatter, content);
 			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
 				injected);
 		}
@@ -398,7 +393,7 @@ public final class ProjectRuleLoader
 			globs.add(glob.asString());
 		}
 		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), pathScopedInstruction(
-			file.toAbsolutePath().normalize().toString(), projectRoot.toAbsolutePath().normalize().toString(), globs));
+			file.toAbsolutePath().normalize().toString(), globs));
 	}
 
 	/**

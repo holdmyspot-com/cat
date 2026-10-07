@@ -40,7 +40,7 @@ public final class CodexSessionStartHookTest
 			String context = context(result);
 			requireThat(context, "context").contains("z rule").
 				contains("Load `" + rules.resolve("a.md") +
-					"` only when you read or edit a file inside the project `" + project +
+					"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 					"` whose path relative to it matches [*.java].").
 				doesNotContain("java rule");
 			requireThat(result.error(), "error").isEmpty();
@@ -141,7 +141,7 @@ public final class CodexSessionStartHookTest
 			String context = context(invoke("{\"cwd\":\"" + project + "\"}",
 				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
 			requireThat(context, "context").contains("Load `" + plugin.resolve("rules/common/path.md") +
-				"` only when you read or edit a file inside the project `" + project +
+				"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 				"` whose path relative to it matches [*.java].").doesNotContain("bundled java rule");
 		}
 	}
@@ -183,7 +183,7 @@ public final class CodexSessionStartHookTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
-			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("skill-env.md"),
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
 				"The plugin directory is `" + ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "`. Replace " +
 				"`${CAT_PLUGIN_ROOT}` with it.\n");
 
@@ -192,6 +192,26 @@ public final class CodexSessionStartHookTest
 
 			requireThat(context, "context").contains("The plugin directory is `" + plugin + "`.").
 				contains("`${CAT_PLUGIN_ROOT}`").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+		}
+	}
+
+	/**
+	 * Verifies the hook creates {@code .cat/work/temp} in the session's project directory, so the agent can create a
+	 * child directory there without first creating its parent.
+	 */
+	@Test
+	public void createsCatTemp() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT", plugin.toString()),
+				Path.of("."));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(Files.isDirectory(project.resolve(".cat/work/temp")), "catTempExists").isTrue();
 		}
 	}
 
