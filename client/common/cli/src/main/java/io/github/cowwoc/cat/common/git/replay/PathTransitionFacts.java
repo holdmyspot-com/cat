@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 /**
  * Captures raw additions, deletions, and Git-reported renames from replay source transitions.
  */
-final class PathTransitionFacts
+public final class PathTransitionFacts
 {
 	private final Git git;
 
@@ -56,7 +56,7 @@ final class PathTransitionFacts
 	 * @param lines the tab-separated Git name-status records
 	 * @return additions, deletions, and rename candidates with their original record positions
 	 */
-	static List<PathTransitionFact> parse(String source, String outputId, List<String> lines)
+	public static List<PathTransitionFact> parse(String source, String outputId, List<String> lines)
 	{
 		List<PathTransitionFact> facts = new ArrayList<>();
 		int index = 0;

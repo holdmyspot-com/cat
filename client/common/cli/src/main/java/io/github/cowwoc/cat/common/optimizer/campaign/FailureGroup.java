@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -12,29 +12,29 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The formal failures of an ended certification attempt that share a cell, a test, a failed requirement and the
+ * The formal failures of an ended certification attempt that share a cell, a test, a failed assertion and the
  * behavior through which it failed, and their reproduction in development.
  * <p>
- * Before any author works on a group, CAT reproduces it: a deriver writes development combinations aimed at the
- * behavior, and reproduction trials of the working candidate run them in the round's cell. A round ends once
- * {@value #FAILURES} trials fail the requirement through the behavior, which reproduces the group, or after
+ * Before any prompt author works on a group, CAT reproduces it: a contract author writes development test cases aimed
+ * at the behavior, and reproduction trials of the working candidate run them in the round's cell. A round ends once
+ * {@value #FAILURES} trials fail the assertion through the behavior, which reproduces the group, or after
  * {@value #TRIALS} trials. A round in the group's cell that does not reproduce the group is repeated with the same
- * combinations under each stress setting that the harness offers for the cell, one round per setting, until one
+ * test cases under each stress setting that the harness offers for the cell, one round per setting, until one
  * reproduces it; after the last setting, or when the harness offers none, the next round in the group's cell replaces
- * the combinations. Stress rounds count toward the group's round limit. After the round limit, the group is not
+ * the test cases. Stress rounds count toward the group's round limit. After the round limit, the group is not
  * reproduced until the user asks for more rounds.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param cellId the cell in which the formal failures occurred
- * @param testId the identifier of the test definition that the failed instances instantiate
- * @param failed the failed requirement and the behavior through which it failed
+ * @param testId the identifier of the prompt test that the failed test cases belong to
+ * @param failed the failed assertion and the behavior through which it failed
  * @param formalFailures the attempt's formal failures in the group
  * @param roundLimit the most rounds that the group runs before it is not reproduced
  * @param rounds the group's rounds, in the order they ran; the last one is the current round
  * @param status the group's reproduction status
  */
-public record FailureGroup(String cellId, String testId, FailedRequirement failed, int formalFailures,
+public record FailureGroup(String cellId, String testId, FailedAssertion failed, int formalFailures,
 	int roundLimit, List<ReproductionRound> rounds, Status status)
 {
 	/**
@@ -54,8 +54,8 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	 * Creates a group.
 	 *
 	 * @param cellId the cell in which the formal failures occurred
-	 * @param testId the identifier of the test definition that the failed instances instantiate
-	 * @param failed the failed requirement and the behavior through which it failed
+	 * @param testId the identifier of the prompt test that the failed test cases belong to
+	 * @param failed the failed assertion and the behavior through which it failed
 	 * @param formalFailures the attempt's formal failures in the group
 	 * @param roundLimit the most rounds that the group runs before it is not reproduced
 	 * @param rounds the group's rounds, in the order they ran
@@ -81,8 +81,8 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	}
 
 	/**
-	 * Groups an ended attempt's formal failures. A failure that failed several requirements belongs to one group per
-	 * failed requirement.
+	 * Groups an ended attempt's formal failures. A failure that failed several assertions belongs to one group per
+	 * failed assertion.
 	 *
 	 * @param failures the formal failures, in adoption order
 	 * @return the groups, in the order of their first failure, each with one round in its cell that awaits values
@@ -94,17 +94,17 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 		Map<List<Object>, Integer> counts = new LinkedHashMap<>();
 		for (Failure failure : failures)
 		{
-			String cellId = failure.instance().cellId();
-			String testId = failure.instance().testId();
-			for (FailedRequirement requirement : new LinkedHashSet<>(failure.failedRequirements()))
-				counts.merge(List.of(cellId, testId, requirement), 1, Integer::sum);
+			String cellId = failure.testCase().cellId();
+			String testId = failure.testCase().testId();
+			for (FailedAssertion assertion : new LinkedHashSet<>(failure.failedAssertions()))
+				counts.merge(List.of(cellId, testId, assertion), 1, Integer::sum);
 		}
 		List<FailureGroup> groups = new ArrayList<>();
 		for (Map.Entry<List<Object>, Integer> entry : counts.entrySet())
 		{
 			List<Object> key = entry.getKey();
 			String cellId = (String) key.get(0);
-			groups.add(new FailureGroup(cellId, (String) key.get(1), (FailedRequirement) key.get(2), entry.getValue(),
+			groups.add(new FailureGroup(cellId, (String) key.get(1), (FailedAssertion) key.get(2), entry.getValue(),
 				ROUNDS, List.of(new ReproductionRound(cellId, List.of())), Status.REPRODUCING));
 		}
 		return groups;
@@ -121,9 +121,9 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	}
 
 	/**
-	 * Indicates whether the group's current round awaits the deriver's combinations.
+	 * Indicates whether the group's current round awaits the contract author's test cases.
 	 *
-	 * @return {@code true} if the group is reproducing and its current round has no combination
+	 * @return {@code true} if the group is reproducing and its current round has no test case
 	 */
 	public boolean awaitsValues()
 	{
@@ -144,7 +144,7 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	}
 
 	/**
-	 * Returns the reproduction trials of every round that failed the requirement through the group's behavior.
+	 * Returns the reproduction trials of every round that failed the assertion through the group's behavior.
 	 *
 	 * @return the failures
 	 */
@@ -157,44 +157,43 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 	}
 
 	/**
-	 * Returns every combination that the group's rounds tried or try, each once.
+	 * Returns every test case that the group's rounds tried or try, each once.
 	 *
-	 * @return the combinations, in the order they were first tried
+	 * @return the test cases, in the order they were first tried
 	 */
-	public List<AddedCombination> combinations()
+	public List<AddedTestCase> testCases()
 	{
-		Set<AddedCombination> combinations = new LinkedHashSet<>();
+		Set<AddedTestCase> testCases = new LinkedHashSet<>();
 		for (ReproductionRound round : rounds)
-			combinations.addAll(round.added());
-		return List.copyOf(combinations);
+			testCases.addAll(round.added());
+		return List.copyOf(testCases);
 	}
 
 	/**
-	 * Returns this group with the deriver's combinations in its current round.
+	 * Returns this group with the contract author's test cases in its current round.
 	 *
-	 * @param combinations the combinations
+	 * @param testCases the test cases
 	 * @return the updated group
-	 * @throws NullPointerException if {@code combinations} is null or contains null
-	 * @throws IllegalArgumentException if {@code combinations} is empty or a combination is of another test
+	 * @throws NullPointerException if {@code testCases} is null or contains null
+	 * @throws IllegalArgumentException if {@code testCases} is empty or a test case is of another test
 	 * @throws IllegalStateException if the group's current round does not await values
 	 */
-	FailureGroup withValues(List<AddedCombination> combinations)
+	FailureGroup withValues(List<AddedTestCase> testCases)
 	{
-		requireThat(combinations, "combinations").isNotEmpty();
+		requireThat(testCases, "testCases").isNotEmpty();
 		if (!awaitsValues())
 			throw new IllegalStateException("The failure group does not await values: " + this);
-		for (AddedCombination combination : combinations)
-			requireThat(combination.testId(), "combination.testId()").isEqualTo(testId, "testId");
-		List<TriedCombination> tried = combinations.stream().map(combination ->
-			new TriedCombination(combination, 0, 0)).toList();
+		for (AddedTestCase testCase : testCases)
+			requireThat(testCase.testId(), "testCase.testId()").isEqualTo(testId, "testId");
+		List<TriedTestCase> tried = testCases.stream().map(testCase -> new TriedTestCase(testCase, 0, 0)).toList();
 		return withRound(new ReproductionRound(round().cellId(), tried), status);
 	}
 
 	/**
 	 * Returns this group after one more reproduction trial of its current round.
 	 *
-	 * @param index the position of the trial's combination in the current round
-	 * @param matched {@code true} if the trial failed the requirement through the group's behavior
+	 * @param index the position of the trial's test case in the current round
+	 * @param matched {@code true} if the trial failed the assertion through the group's behavior
 	 * @param stressCellIds the cells of the stress settings that the harness offers for the group's cell, in the
 	 *   order that rounds try them
 	 * @return the updated group
@@ -207,9 +206,9 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 		if (status != Status.REPRODUCING)
 			throw new IllegalStateException("The failure group is " + status + ": " + this);
 		ReproductionRound round = round();
-		List<TriedCombination> combinations = new ArrayList<>(round.combinations());
-		combinations.set(index, combinations.get(index).add(matched));
-		ReproductionRound updated = new ReproductionRound(round.cellId(), combinations);
+		List<TriedTestCase> testCases = new ArrayList<>(round.testCases());
+		testCases.set(index, testCases.get(index).add(matched));
+		ReproductionRound updated = new ReproductionRound(round.cellId(), testCases);
 		if (updated.failures() >= FAILURES)
 			return withRound(updated, Status.REPRODUCED);
 		FailureGroup counted = withRound(updated, status);
@@ -232,8 +231,8 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 		ReproductionRound next;
 		if (nextSetting < stressCellIds.size())
 		{
-			next = new ReproductionRound(stressCellIds.get(nextSetting), updated.combinations().stream().
-				map(combination -> new TriedCombination(combination.combination(), 0, 0)).toList());
+			next = new ReproductionRound(stressCellIds.get(nextSetting), updated.testCases().stream().
+				map(testCase -> new TriedTestCase(testCase.testCase(), 0, 0)).toList());
 		}
 		else
 			next = new ReproductionRound(cellId, List.of());
@@ -317,7 +316,7 @@ public record FailureGroup(String cellId, String testId, FailedRequirement faile
 		 */
 		REPRODUCING,
 		/**
-		 * A round reproduced it: its combinations joined development.
+		 * A round reproduced it: its test cases joined development.
 		 */
 		REPRODUCED,
 		/**

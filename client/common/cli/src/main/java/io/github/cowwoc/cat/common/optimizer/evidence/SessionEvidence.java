@@ -58,11 +58,12 @@ public record SessionEvidence(List<Entry> entries)
 	 * @param agent the root name or child identity
 	 * @param tool the tool name
 	 * @param input the command or tool arguments
+	 * @param command {@code true} if the call ran {@code input} as a shell command
 	 * @param exitStatus the reported exit status, or {@code null} when absent
 	 * @param output the complete output
 	 */
-	public record Tool(int turn, String agent, String tool, String input, Integer exitStatus, String output)
-		implements Entry
+	public record Tool(int turn, String agent, String tool, String input, boolean command, Integer exitStatus,
+		String output) implements Entry
 	{
 		/**
 		 * Creates a tool call.
@@ -71,6 +72,7 @@ public record SessionEvidence(List<Entry> entries)
 		 * @param agent the root name or child identity
 		 * @param tool the tool name
 		 * @param input the command or tool arguments
+		 * @param command {@code true} if the call ran {@code input} as a shell command
 		 * @param exitStatus the reported exit status, or {@code null} when absent
 		 * @param output the complete output
 		 * @throws NullPointerException if {@code agent}, {@code tool}, {@code input} or {@code output} are null

@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Supplies allow-listed Claude connection variables from the parent process and its settings file.
  */
-final class ClaudeConnectionSettings
+public final class ClaudeConnectionSettings
 {
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
@@ -30,7 +30,7 @@ final class ClaudeConnectionSettings
 	 * @param source the parent process environment
 	 * @param destination the mutable isolated process environment
 	 */
-	static void copyProcessEnvironment(Map<String, String> source, Map<String, String> destination)
+	public static void copyProcessEnvironment(Map<String, String> source, Map<String, String> destination)
 	{
 		HarnessEnvironment.copyAllowed(source, destination, CONNECTION_VARIABLES);
 	}
@@ -43,7 +43,7 @@ final class ClaudeConnectionSettings
 	 * @param environment the mutable isolated process environment
 	 * @throws IOException if the settings file cannot be read
 	 */
-	static void copy(HarnessRunnerScope scope, Path source, Map<String, String> environment) throws IOException
+	public static void copy(HarnessRunnerScope scope, Path source, Map<String, String> environment) throws IOException
 	{
 		if (!Files.isRegularFile(source))
 			return;
@@ -79,7 +79,7 @@ final class ClaudeConnectionSettings
 	 * @param deniedReads the existing files and directories that the isolated instance must not read
 	 * @throws IOException if settings I/O fails
 	 */
-	static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> deniedReads) throws IOException
 	{
 		JsonMapper mapper = scope.json();

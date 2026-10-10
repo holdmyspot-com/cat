@@ -7,7 +7,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Creates the mapper for topic-replay manifests, review evidence, receipts and command output.
  */
-final class ReplayJson
+public final class ReplayJson
 {
 	/**
 	 * Prevents instantiation.
@@ -21,7 +21,7 @@ final class ReplayJson
 	 *
 	 * @return a new mapper
 	 */
-	static JsonMapper newMapper()
+	public static JsonMapper newMapper()
 	{
 		return JsonMapper.builder().
 			propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE).

@@ -3,12 +3,12 @@ package io.github.cowwoc.cat.claude.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.ToolScope;
-import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.claude.ClaudeSessionEndHook;
 import io.github.cowwoc.cat.claude.ClaudeSessionStartHook;
 import io.github.cowwoc.cat.claude.ClaudeSubagentStartHook;
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

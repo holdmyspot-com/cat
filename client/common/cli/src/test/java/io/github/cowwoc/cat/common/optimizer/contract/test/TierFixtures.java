@@ -1,0 +1,170 @@
+package io.github.cowwoc.cat.common.optimizer.contract.test;
+
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Builds contracts with several reasoning efforts per model for tests of trial scheduling during development. Each
+ * contract holds the {@code formatting} and {@code safety} tests of {@link ContractFixtures#contract()}.
+ */
+public final class TierFixtures
+{
+	/**
+	 * The cell of the {@code formatting} test under {@code big/low} in {@link #tieredContract()}: the lowest
+	 * effort of model {@code big}.
+	 */
+	public static final String BIG_LOW = "formatting@big/low";
+	/**
+	 * The cell of the {@code formatting} test under {@code big/medium} in {@link #tieredContract()}: neither the
+	 * lowest nor the highest effort of model {@code big}.
+	 */
+	public static final String BIG_MEDIUM = "formatting@big/medium";
+	/**
+	 * The cell of the {@code formatting} test under {@code big/high} in {@link #tieredContract()}: neither the
+	 * lowest nor the highest effort of model {@code big}.
+	 */
+	public static final String BIG_HIGH = "formatting@big/high";
+	/**
+	 * The cell of the {@code formatting} test under {@code big/xhigh} in {@link #tieredContract()}: the highest
+	 * effort of model {@code big}.
+	 */
+	public static final String BIG_XHIGH = "formatting@big/xhigh";
+	/**
+	 * The cell of the {@code formatting} test under {@code small/high} in {@link #tieredContract()}: the only
+	 * effort of model {@code small}, so both its lowest and its highest.
+	 */
+	public static final String SMALL_HIGH = "formatting@small/high";
+	/**
+	 * The only cell of the {@code safety} test in {@link #tieredContract()}, whose requirement's file binds
+	 * {@code big/high}.
+	 */
+	public static final String SAFETY = "safety";
+	/**
+	 * An inventory that lists model {@code big} under four efforts, lowest first, and model {@code small} under one.
+	 */
+	public static final ProfileCatalog TIERED_PROFILES = new ProfileCatalog("test inventory of five profiles",
+		List.of(new TrialProfile("big", "low"), new TrialProfile("big", "medium"), new TrialProfile("big", "high"),
+			new TrialProfile("big", "xhigh"), new TrialProfile("small", "high")));
+	/**
+	 * The reasoning efforts that each model of the recorded Codex inventory lists, in listing order. The map and
+	 * lists cannot be changed by tests that share the fixture.
+	 * <p>
+	 * This copies the inventory that {@code CodexProfileInventoryTest.keepsListedModelsWithTheirEfforts} reads from
+	 * the recorded output of {@code codex debug models} of codex-cli 0.159.1, which the common module cannot read.
+	 */
+	public static final Map<String, List<String>> CODEX_EFFORTS = codexEfforts();
+	/**
+	 * The Codex inventory of 20 profiles that CAT reads from the recorded model list, in listing order.
+	 */
+	public static final ProfileCatalog CODEX_PROFILES = new ProfileCatalog("`codex debug models` of " +
+		"codex-cli 0.159.1+23", profiles(CODEX_EFFORTS));
+	/**
+	 * The capability ranking that CAT ships for Codex.
+	 */
+	public static final CapabilityRanking CODEX_RANKING = new CapabilityRanking(List.of("astra", "sol", "luna"),
+		"https://developers.openai.com/api/docs/models, read 2026-10-04");
+
+	/**
+	 * Returns the efforts of each model of the recorded Codex inventory.
+	 *
+	 * @return an unmodifiable map of efforts, in listing order
+	 */
+	private static Map<String, List<String>> codexEfforts()
+	{
+		List<String> max = List.of("low", "medium", "high", "xhigh", "max");
+		Map<String, List<String>> efforts = new LinkedHashMap<>();
+		efforts.put("gpt-6-astra", max);
+		efforts.put("gpt-6.1-sol", max);
+		efforts.put("gpt-6-sol", max);
+		efforts.put("gpt-6-luna", max);
+		return Collections.unmodifiableMap(efforts);
+	}
+
+	/**
+	 * Returns the profiles of each model's efforts.
+	 *
+	 * @param efforts the efforts of each model
+	 * @return the profiles, model by model in listing order
+	 */
+	private static List<TrialProfile> profiles(Map<String, List<String>> efforts)
+	{
+		List<TrialProfile> profiles = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : efforts.entrySet())
+		{
+			for (String effort : entry.getValue())
+				profiles.add(new TrialProfile(entry.getKey(), effort));
+		}
+		return profiles;
+	}
+
+	/**
+	 * Returns the {@code formatting} and {@code safety} tests of {@link ContractFixtures#contract()} under
+	 * {@link #TIERED_PROFILES}, where the {@code safety} requirement's file binds {@code big/high}. The
+	 * {@code formatting} test has the cells {@link #BIG_LOW}, {@link #BIG_MEDIUM}, {@link #BIG_HIGH},
+	 * {@link #BIG_XHIGH} and {@link #SMALL_HIGH}, in that order, and the {@code safety} test has the one cell
+	 * {@link #SAFETY}.
+	 *
+	 * @return the contract
+	 */
+	public static Contract tieredContract()
+	{
+		return contract(TIERED_PROFILES, new TrialProfile("big", "high"));
+	}
+
+	/**
+	 * Returns the {@code formatting} and {@code safety} tests of {@link ContractFixtures#contract()} under an
+	 * inventory, where the {@code formatting} test binds nothing, so it has one cell per inventory profile, and the
+	 * {@code safety} requirement's file binds a complete profile, so that test has one cell.
+	 *
+	 * @param inventory the profile inventory
+	 * @param safety the profile that the {@code safety} requirement's file binds
+	 * @return the contract
+	 */
+	public static Contract contract(ProfileCatalog inventory, TrialProfile safety)
+	{
+		return contract(inventory, ContractFixtures.ranking(inventory), List.of(), safety);
+	}
+
+	/**
+	 * Returns the {@code formatting} and {@code safety} tests of {@link ContractFixtures#contract()} under an
+	 * inventory, where the {@code formatting} test binds nothing, so it has one cell per inventory profile, and the
+	 * {@code safety} requirement's file binds a complete profile, so that test has one cell.
+	 *
+	 * @param inventory the profile inventory
+	 * @param ranking the capability ranking
+	 * @param described the profiles that the user described as the certification scope, or empty
+	 * @param safety the profile that the {@code safety} requirement's file binds
+	 * @return the contract, without a certification scope
+	 */
+	public static Contract contract(ProfileCatalog inventory, CapabilityRanking ranking,
+		List<TrialProfile> described, TrialProfile safety)
+	{
+		Contract fixture = ContractFixtures.contract();
+		String safetySource = fixture.requirements().stream().filter(requirement -> requirement.id().equals("r2")).
+			findFirst().orElseThrow().source();
+		// plain_list is left out: its cells would repeat those of formatting, which already covers requirement r1
+		List<PromptTest> tests = List.of(fixture.findTest("formatting").orElseThrow(),
+			fixture.findTest("safety").orElseThrow());
+		TrialProfiles profiles = TrialProfiles.compute(inventory, ranking,
+			List.of(new ProfileBinding(safetySource, safety)), List.of(), described, fixture.requirements(), tests);
+		return new Contract(fixture.requirements(), tests, profiles, fixture.judge(), fixture.fixtures(),
+			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+	}
+
+	/**
+	 * Prevents instantiation.
+	 */
+	private TierFixtures()
+	{
+	}
+}

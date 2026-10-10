@@ -6,6 +6,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param candidateId the other behavior candidate retained in the same output
  * @param reason the missing condition that prevents the split
  */
-record CombinedCandidateBlocker(String candidateId, String reason)
+public record CombinedCandidateBlocker(String candidateId, String reason)
 {
 }

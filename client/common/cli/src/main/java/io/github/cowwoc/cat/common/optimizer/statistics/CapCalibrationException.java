@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.statistics;
 import java.io.Serial;
 
 /**
- * Thrown when no cap up to {@link CapCalibration#MAXIMUM_CAP} gives a cell, one category under one trial profile, at
+ * Thrown when no cap up to {@link CapCalibration#MAXIMUM_CAP} gives a cell, one prompt test under one trial profile, at
  * the planning pass rate the required power to certify. A certification attempt without a cap must not be admitted.
  */
 public final class CapCalibrationException extends Exception

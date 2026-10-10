@@ -3,12 +3,11 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * The model, effort and instructions of the judge that decides whether a trial meets requirements without a
- * validated deterministic check. These requirements are called semantic requirements.
+ * The model, effort and instructions of the judge that decides a test's assertions that no built-in tool decides,
+ * including the expected-outcome assertion that CAT adds to every test.
  * <p>
- * The judge decides only a test's semantic requirements. Deterministic checks decide the mechanical requirements
- * first; the judge receives their results as evidence but cannot override them, and no judge runs when a check failed
- * or no semantic requirement remains.
+ * Built-in tools decide their assertions first; the judge receives their results as evidence but cannot override
+ * them, and no judge runs when a tool failed.
  *
  * @param profile the role profile that the judge session runs under
  * @param prompt the instructions that the judge session receives

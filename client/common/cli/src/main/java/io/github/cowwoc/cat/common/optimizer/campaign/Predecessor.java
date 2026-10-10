@@ -9,22 +9,22 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param development the predecessor's counts and instance evidence without pending work or another predecessor
+ * @param development the predecessor's counts and test case evidence without pending work or another predecessor
  * @param round the round that promoted the current working candidate
  * @param cell the selected attempt's addressed cell
- * @param regressionSet the predecessor's recorded verdicts on the lineage's regression instances
+ * @param regressionSet the predecessor's recorded verdicts on the lineage's regression test cases
  */
 public record Predecessor(Development development, Round round, String cell,
-	List<RegressionInstance> regressionSet)
+	List<RegressionTestCase> regressionSet)
 {
 	/**
 	 * Creates retained promotion state.
 	 *
-	 * @param development the predecessor's counts and instance evidence without pending work or another predecessor
+	 * @param development the predecessor's counts and test case evidence without pending work or another predecessor
 	 * @param round the promoting round
 	 * @param cell the selected attempt's addressed cell
 	 * @param regressionSet the predecessor's recorded regression verdicts
-	 * @throws NullPointerException if a required argument or regression instance is null
+	 * @throws NullPointerException if a required argument or regression test case is null
 	 * @throws IllegalArgumentException if {@code cell} is blank or absent from {@code round}, or development contains
 	 *   pending work, a predecessor or revert history
 	 */

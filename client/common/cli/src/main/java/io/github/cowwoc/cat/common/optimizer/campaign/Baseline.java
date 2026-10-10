@@ -7,14 +7,16 @@ import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
  * Determines how many representative trials of the incumbent each cell needs before certification can start.
  * <p>
- * A cell is a requirement category under one runner profile. Each cell of the certification scope needs
- * {@value #TARGET} trials. After that many outcomes, a cell whose observed pass rate is below 95% and is not proven
- * deficient needs {@value #EXTENDED_TARGET}. The target is evaluated on the current counts.
+ * A cell is a prompt test under one runner profile. Each cell of the certification scope needs
+ * {@value #TARGET} trials. After that many outcomes, a cell whose observed pass rate is below the campaign's minimum
+ * pass rate {@code p_min} and is not proven deficient needs {@value #EXTENDED_TARGET}. The target is evaluated on the
+ * current counts.
  */
 public final class Baseline
 {
@@ -23,14 +25,10 @@ public final class Baseline
 	 */
 	public static final int TARGET = 50;
 	/**
-	 * Require this many trials in a cell below 95% observed passes that is not proven deficient.
+	 * Require this many trials in a cell whose observed pass rate is below the minimum pass rate and that is not proven
+	 * deficient.
 	 */
 	public static final int EXTENDED_TARGET = 100;
-	/**
-	 * The test that the incumbent's pass rate is below the required rate.
-	 */
-	private static final BettingProcess DEFICIENCY = new BettingProcess(BettingProcess.Side.BELOW,
-		BettingProcess.REQUIRED_PASS_RATE);
 
 	/**
 	 * Prevents instantiation.
@@ -40,24 +38,28 @@ public final class Baseline
 	}
 
 	/**
-	 * Indicates whether the incumbent's pass rate in a cell is proven below 95%: the below-minimum e-value exceeds
-	 * {@code K/γ_b}, where {@code K} is the number of cells in the certification scope and {@code γ_b} is baseline
-	 * {@code b}'s error allowance.
+	 * Indicates whether the incumbent's pass rate in a cell is proven below the minimum pass rate: the below-minimum
+	 * e-value exceeds {@code K/γ_b}, where {@code K} is the number of cells in the certification scope and {@code γ_b} is
+	 * baseline {@code b}'s error allowance.
 	 *
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
 	 * @param cells the number of cells in the certification scope, {@code K}
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return {@code true} if the incumbent is proven deficient
-	 * @throws NullPointerException if {@code counts} is null
-	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
+	 * @throws NullPointerException if {@code counts} or {@code minimumPassRate} are null
+	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive, or if
+	 *   {@code minimumPassRate} is not strictly between 0 and 1
 	 */
-	public static boolean isProvenDeficient(CellCounts counts, int baselineIndex, int cells)
+	public static boolean isProvenDeficient(CellCounts counts, int baselineIndex, int cells,
+		BigDecimal minimumPassRate)
 	{
 		requireThat(counts, "counts").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
-		requireThat(cells, "categories").isPositive();
+		requireThat(cells, "cells").isPositive();
 		SignificanceLevel level = ErrorBudget.incumbentLevel(baselineIndex, cells);
-		return DEFICIENCY.exceeds(counts.passes(), counts.failures(), level);
+		return BettingProcess.below(minimumPassRate, minimumPassRate).
+			exceeds(counts.passes(), counts.failures(), level);
 	}
 
 	/**
@@ -66,19 +68,23 @@ public final class Baseline
 	 * @param counts the cell's baseline counts
 	 * @param baselineIndex the baseline's index {@code b}
 	 * @param cells the number of cells in the certification scope, {@code K}
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return {@value #TARGET} or {@value #EXTENDED_TARGET}
-	 * @throws NullPointerException if {@code counts} is null
-	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive
+	 * @throws NullPointerException if {@code counts} or {@code minimumPassRate} are null
+	 * @throws IllegalArgumentException if {@code baselineIndex} or {@code cells} are not positive, or if
+	 *   {@code minimumPassRate} is not strictly between 0 and 1
 	 */
-	public static int target(CellCounts counts, int baselineIndex, int cells)
+	public static int target(CellCounts counts, int baselineIndex, int cells, BigDecimal minimumPassRate)
 	{
 		requireThat(counts, "counts").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
-		requireThat(cells, "categories").isPositive();
+		requireThat(cells, "cells").isPositive();
 		int outcomes = counts.outcomes();
 		if (outcomes < TARGET)
 			return TARGET;
-		if (20L * counts.passes() >= 19L * outcomes || isProvenDeficient(counts, baselineIndex, cells))
+		boolean meetsMinimum = BigDecimal.valueOf(counts.passes()).
+			compareTo(minimumPassRate.multiply(BigDecimal.valueOf(outcomes))) >= 0;
+		if (meetsMinimum || isProvenDeficient(counts, baselineIndex, cells, minimumPassRate))
 			return TARGET;
 		return EXTENDED_TARGET;
 	}
@@ -100,7 +106,7 @@ public final class Baseline
 		for (String cell : cells)
 		{
 			CellCounts counts = baseline.count(cell);
-			if (counts.outcomes() < target(counts, baseline.index(), cells.size()))
+			if (counts.outcomes() < target(counts, baseline.index(), cells.size(), contract.minimumPassRate()))
 				return false;
 		}
 		return true;

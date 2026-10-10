@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import java.util.List;
 
 /**
- * The validation of one author attempt's changes against its edit authority.
+ * The validation of one prompt author attempt's changes against its edit authority.
  * <p>
  * The attempt is admitted only if no operation is forbidden. Any forbidden operation rejects the whole attempt: it
  * contributes no candidate, even if some of its changes are permitted.

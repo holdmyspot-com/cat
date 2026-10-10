@@ -6,6 +6,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param id the manifest-local output identifier
  * @param subject the replacement commit subject in the format {@code type: summary}
  */
-record TopicOutputRequest(String id, String subject)
+public record TopicOutputRequest(String id, String subject)
 {
 }

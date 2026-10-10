@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.secrets.RoundAccess;
+import io.github.cowwoc.cat.common.secrets.RoundSecrets;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -12,8 +15,8 @@ import java.util.Map.Entry;
 import java.util.Optional;
 
 /**
- * A round's frozen author policy, reserved sessions and received edits. Weak rounds address each failing category
- * once and validate all contenders before selecting one winner.
+ * A round's frozen prompt author policy, reserved sessions and received edits. Weak rounds address each failing
+ * test once and validate all contenders before selecting one winner.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -23,8 +26,26 @@ import java.util.Optional;
  * @param validationAttempts the received attempts, in launch order; an unchanged snapshot denotes no edit
  */
 public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, String> reservations,
-	List<AuthorAttempt> validationAttempts)
+	List<PromptAuthorAttempt> validationAttempts)
 {
+	static
+	{
+		RoundSecrets.setAccess(new RoundAccess()
+		{
+			@Override
+			public Round reserve(Round round, int number, String cell)
+			{
+				return round.reserve(number, cell);
+			}
+
+			@Override
+			public Round withAttempt(Round round, PromptAuthorAttempt attempt)
+			{
+				return round.withAttempt(attempt);
+			}
+		});
+	}
+
 	/**
 	 * The maximum attempts of a sequential round for each failing cell.
 	 */
@@ -66,7 +87,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 		}
 		validationAttempts = List.copyOf(validationAttempts);
 		previous = 0;
-		for (AuthorAttempt attempt : validationAttempts)
+		for (PromptAuthorAttempt attempt : validationAttempts)
 		{
 			requireThat(attempt.number(), "attemptNumber").isGreaterThan(previous);
 			requireThat(attempt.cell(), "cell").isEqualTo(reservations.get(attempt.number()));
@@ -100,8 +121,8 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 * Indicates whether this round is complete. A complete round that promoted no attempt ends, and the working
 	 * candidate resumes its representative trials.
 	 *
-	 * @return {@code true} if every addressed cell received all of its author attempts and, in a weak round, every
-	 *   received attempt has finished its promotion runs
+	 * @return {@code true} if every addressed cell received all of its prompt author attempts and, in a weak round,
+	 *   every received attempt has finished its promotion runs
 	 */
 	public boolean isComplete()
 	{
@@ -110,7 +131,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 			if (received < maxAttempts())
 				return false;
 		}
-		return !weak || pendingAuthorAttempts().isEmpty() && validationAttempts.stream().
+		return !weak || pendingPromptAuthorAttempts().isEmpty() && validationAttempts.stream().
 			allMatch(attempt -> attempt.runs().stream().allMatch(run -> run.verdict() != null));
 	}
 
@@ -121,7 +142,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 */
 	public Optional<String> nextCell()
 	{
-		if (!weak && !pendingAuthorAttempts().isEmpty())
+		if (!weak && !pendingPromptAuthorAttempts().isEmpty())
 		{
 			return Optional.empty();
 		}
@@ -141,10 +162,10 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 *
 	 * @return the pending attempt numbers and cells
 	 */
-	public Map<Integer, String> pendingAuthorAttempts()
+	public Map<Integer, String> pendingPromptAuthorAttempts()
 	{
 		Map<Integer, String> pending = new LinkedHashMap<>(reservations);
-		for (AuthorAttempt attempt : validationAttempts)
+		for (PromptAuthorAttempt attempt : validationAttempts)
 			pending.remove(attempt.number());
 		return Collections.unmodifiableMap(pending);
 	}
@@ -160,26 +181,30 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	}
 
 	/**
-	 * Returns the editing approach for a reserved attempt. The first, second and third reservations for its cell
-	 * correct the instruction, rewrite existing instructions and add missing guidance, respectively.
+	 * Returns the editing approach for a reserved attempt. A cell's attempts take the approaches in
+	 * {@link PromptAuthorApproach} order, continuing where its earlier rounds stopped and wrapping to the first
+	 * approach after the last.
 	 *
 	 * @param number the reserved attempt number
+	 * @param earlier the number of prompt author attempts that addressed the same cell in earlier rounds
 	 * @return the approach derived from durable reservation order, including for a resumed session
-	 * @throws IllegalArgumentException if {@code number} is not reserved in this round
+	 * @throws IllegalArgumentException if {@code number} is not reserved in this round or {@code earlier} is negative
 	 */
-	public AuthorApproach approach(int number)
+	public PromptAuthorApproach approach(int number, int earlier)
 	{
 		requireThat(reservations.containsKey(number), "reservedAttempt").isTrue();
+		requireThat(earlier, "earlier").isNotNegative();
 		String cell = reservations.get(number);
 		long position = reservations.entrySet().stream().
 			filter(entry -> entry.getKey() <= number && entry.getValue().equals(cell)).count();
-		return AuthorApproach.values()[Math.toIntExact(position) - 1];
+		PromptAuthorApproach[] approaches = PromptAuthorApproach.values();
+		return approaches[Math.toIntExact((earlier + position - 1) % approaches.length)];
 	}
 
 	/**
 	 * Reserves a session before the driver launches it.
 	 *
-	 * @param number the campaign's next author attempt number
+	 * @param number the campaign's next prompt author attempt number
 	 * @param cell the addressed cell
 	 * @return the updated round
 	 */
@@ -196,12 +221,12 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 * @param attempt the received or updated attempt
 	 * @return the updated round
 	 */
-	Round withAttempt(AuthorAttempt attempt)
+	Round withAttempt(PromptAuthorAttempt attempt)
 	{
-		List<AuthorAttempt> updated = new ArrayList<>(validationAttempts);
+		List<PromptAuthorAttempt> updated = new ArrayList<>(validationAttempts);
 		boolean received = updated.removeIf(existing -> existing.number() == attempt.number());
 		updated.add(attempt);
-		updated.sort(Comparator.comparingInt(AuthorAttempt::number));
+		updated.sort(Comparator.comparingInt(PromptAuthorAttempt::number));
 		Map<String, Integer> counts = new LinkedHashMap<>(attempts);
 		if (weak && !received)
 			counts.merge(attempt.cell(), 1, Integer::sum);

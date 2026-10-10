@@ -9,6 +9,6 @@ import java.util.List;
  * @param kind the supported entry-point kind
  * @param paths the changed manifests that expose it
  */
-record ExposedEntryPoint(String id, String kind, List<String> paths)
+public record ExposedEntryPoint(String id, String kind, List<String> paths)
 {
 }

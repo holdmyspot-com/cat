@@ -41,7 +41,9 @@ final class DeliveryJson
 			case DeliveryResult.Delivered delivered ->
 			{
 				root.put("result", "delivered");
-				root.put("label", delivered.label().label());
+				// The delivery of a kept incumbent's prompt tests carries no label
+				if (delivered.label() != null)
+					root.put("label", delivered.label().label());
 				applicability(root.putObject("applicability"), delivered.applicability());
 				paths(root.putArray("changed_prompt_sources"), delivered.changedPromptSources());
 				paths(root.putArray("base_only_changes"), delivered.baseOnlyChanges());

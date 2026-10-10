@@ -44,7 +44,7 @@ public final class SchemaValidator
 	 *
 	 * @param value the value to check
 	 * @return one message per violation, each beginning with the location of the offending value, such as
-	 *   {@code $.categories[0].risk_rank}. Empty if the value is valid.
+	 *   {@code $.tests[0].risk_rank}. Empty if the value is valid.
 	 * @throws IllegalArgumentException if the schema uses a keyword outside the supported subset
 	 */
 	public List<String> violations(JsonNode value)

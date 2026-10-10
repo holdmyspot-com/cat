@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Runs and retains the ordinary quality gates owned by a topic replay.
  */
-final class Gates
+public final class Gates
 {
 	private final CommandRunner commands;
 
@@ -19,7 +19,7 @@ final class Gates
 	 *
 	 * @param commands the command boundary for the replay repository
 	 */
-	Gates(CommandRunner commands)
+	public Gates(CommandRunner commands)
 	{
 		requireThat(commands, "commands").isNotNull();
 		this.commands = commands;
@@ -33,7 +33,7 @@ final class Gates
 	 * @param command the exact command and arguments selected for the gate
 	 * @throws IOException if the gate name is unsafe, the command cannot run, or the gate fails
 	 */
-	void run(Path manifestFile, String gateName, List<String> command) throws IOException
+	public void run(Path manifestFile, String gateName, List<String> command) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(gateName, "gateName").isNotBlank();

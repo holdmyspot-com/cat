@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.inventory;
 
 /**
- * A kind of change that an author attempt or a needed edit makes to one path.
+ * A kind of change that a prompt author attempt or a needed edit makes to one path.
  * <p>
  * A rename is a {@link #DELETE} of the old path and a {@link #CREATE} of the new one.
  */

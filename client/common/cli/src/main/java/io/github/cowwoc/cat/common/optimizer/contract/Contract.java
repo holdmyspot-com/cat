@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -11,51 +11,76 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The requirements and test definitions used to measure trial compliance. Categories group the tests; each cell
- * pairs a category with a model and reasoning-effort profile and keeps its trial counts and decisions separate.
+ * The requirements and prompt tests used to decide whether each trial passes. Each cell pairs a prompt test with a
+ * model and reasoning-effort profile and keeps its trial counts and decisions separate.
  *
- * @param requirements every requirement and its source, including CAT's {@link Requirement#CORE_TASK}
- * @param categories the category order used to break otherwise equal allocation choices
+ * @param requirements every requirement and its source
+ * @param tests every prompt test, in the order used to break otherwise equal allocation choices
  * @param profiles the trial profiles and the cells, which are the statistical units
  * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
  * @param fixtures the ignored files that trials need
  * @param limitations the material interactions and conditions that the contract does not cover
- * @param salt the random value, frozen at confirmation, under which each test's key-value combinations are split
+ * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is proven
+ *   to exceed it
+ * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are split
  *   into the development part and the held-out part
  */
-public record Contract(List<Requirement> requirements, List<Category> categories, TrialProfiles profiles,
-	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, long salt)
+public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
+	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt)
 {
+	/**
+	 * The minimum pass rate when the contract author proposes none.
+	 */
+	public static final BigDecimal DEFAULT_MINIMUM_PASS_RATE = new BigDecimal("0.95");
+	/**
+	 * The lowest minimum pass rate that a contract accepts.
+	 */
+	public static final BigDecimal LOWEST_MINIMUM_PASS_RATE = new BigDecimal("0.80");
+	/**
+	 * The highest minimum pass rate that a contract accepts.
+	 */
+	public static final BigDecimal HIGHEST_MINIMUM_PASS_RATE = new BigDecimal("0.99");
+	/**
+	 * The most decimal places that a minimum pass rate may have.
+	 */
+	public static final int MINIMUM_PASS_RATE_DECIMALS = 2;
+
 	/**
 	 * Creates a contract.
 	 *
 	 * @param requirements every requirement and its source
-	 * @param categories the category order used to break otherwise equal allocation choices
+	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
 	 * @param profiles the trial profiles and the cells, which are the statistical units
 	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
 	 * @param fixtures the ignored files that trials need
 	 * @param limitations the material interactions and conditions that the contract does not cover
-	 * @param salt the random value, frozen at confirmation, under which each test's key-value combinations are split
-	 *   into the development part and the held-out part
+	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
+	 *   proven to exceed it
+	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
+	 *   split into the development part and the held-out part
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code requirements} or {@code categories} are empty, two requirements or two
-	 *   categories share an identifier, a test shares an identifier with a test of another category, or a test names a
-	 *   requirement that the contract does not list, a check detects a behavior that its requirement does not list,
-	 *   the contract does not list {@link Requirement#CORE_TASK} or a
-	 *   test does not check it, a test leaves absent the trigger of a requirement that the contract does not list or
-	 *   that always applies, a requirement with a trigger is left absent by no test, a category has no cell, or a cell
-	 *   names a category that the contract does not list
+	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, two requirements or two tests
+	 *   share an identifier, a test names a requirement that the contract does not list, {@code minimumPassRate} is
+	 *   outside
+	 *   [{@link #LOWEST_MINIMUM_PASS_RATE}, {@link #HIGHEST_MINIMUM_PASS_RATE}] or has more than
+	 *   {@value #MINIMUM_PASS_RATE_DECIMALS} decimal places, a test leaves absent the trigger of a requirement that the
+	 *   contract does not list or that always applies, a requirement with a trigger is left absent by no test, a
+	 *   test has no cell, or a cell names a test that the contract does not list
 	 */
 	public Contract
 	{
 		requireThat(requirements, "requirements").isNotEmpty();
-		requireThat(categories, "categories").isNotEmpty();
+		requireThat(tests, "tests").isNotEmpty();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(fixtures, "fixtures").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
+		requireThat(minimumPassRate, "minimumPassRate").
+			isBetween(LOWEST_MINIMUM_PASS_RATE, true, HIGHEST_MINIMUM_PASS_RATE, true);
+		requireThat(minimumPassRate.stripTrailingZeros().scale(), "minimumPassRate.stripTrailingZeros().scale()").
+			isLessThanOrEqualTo(MINIMUM_PASS_RATE_DECIMALS);
 		requirements = List.copyOf(requirements);
-		categories = List.copyOf(categories);
+		tests = List.copyOf(tests);
 		limitations = List.copyOf(limitations);
 		for (String limitation : limitations)
 			requireThat(limitation, "limitation").isNotBlank();
@@ -67,72 +92,38 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' is listed twice");
 		}
 		Set<String> requirementIds = requirementById.keySet();
-		String coreTask = Requirement.CORE_TASK.id();
-		if (!requirements.contains(Requirement.CORE_TASK))
-		{
-			throw new IllegalArgumentException("The contract must list CAT's requirement '" + coreTask + "' as " +
-				Requirement.CORE_TASK + ", but it lists " + requirements);
-		}
-		Set<String> categoryIds = new HashSet<>();
 		Set<String> testIds = new HashSet<>();
 		Set<String> absentTriggers = new HashSet<>();
-		for (Category category : categories)
+		for (PromptTest test : tests)
 		{
-			if (!categoryIds.add(category.id()))
-				throw new IllegalArgumentException("The category '" + category.id() + "' is listed twice");
-			for (TestDefinition test : category.tests())
+			if (!testIds.add(test.id()))
+				throw new IllegalArgumentException("The test '" + test.id() + "' is listed twice");
+			for (String requirementId : test.requirementIds())
 			{
-				if (!testIds.add(test.id()))
+				if (!requirementIds.contains(requirementId))
 				{
-					throw new IllegalArgumentException("The test '" + test.id() + "' appears more than once, but a " +
-						"test belongs to one category");
-				}
-				for (String requirementId : test.requirementIds())
-				{
-					if (!requirementIds.contains(requirementId))
-					{
-						throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
-							requirementId + "', which the contract does not list. Listed requirements: " +
-							requirementIds);
-					}
-				}
-				List<DeterministicCheck> proposed = new ArrayList<>(test.checks());
-				for (DiscardedCheck discarded : test.discardedChecks())
-					proposed.add(discarded.check());
-				for (DeterministicCheck check : proposed)
-				{
-					Requirement requirement = requirementById.get(check.requirementId());
-					if (requirement != null && !requirement.behaviors().contains(check.behavior()))
-					{
-						throw new IllegalArgumentException("The test '" + test.id() + "' has a check for the requirement '" +
-							requirement.id() + "' that detects the behavior '" + check.behavior() + "', which the " +
-							"requirement does not list. Listed behaviors: " + requirement.behaviors());
-					}
-				}
-				if (!test.requirementIds().contains(coreTask))
-				{
-					throw new IllegalArgumentException("The test '" + test.id() + "' does not check the requirement '" +
-						coreTask + "', which every test checks");
-				}
-				for (String absentTrigger : test.absentTriggers())
-				{
-					Requirement requirement = requirementById.get(absentTrigger);
-					if (requirement == null)
-					{
-						throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
-							"requirement '" + absentTrigger + "', which the contract does not list. Listed requirements: " +
-							requirementIds);
-					}
-					if (requirement.trigger() == null)
-					{
-						throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
-							"requirement '" + absentTrigger + "', which has no trigger because it always applies");
-					}
-					absentTriggers.add(absentTrigger);
+					throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
+						requirementId + "', which the contract does not list. Listed requirements: " + requirementIds);
 				}
 			}
-			if (profiles.cellsOf(category.id()).isEmpty())
-				throw new IllegalArgumentException("The category '" + category.id() + "' has no cell");
+			for (String absentTrigger : test.absentTriggers())
+			{
+				Requirement requirement = requirementById.get(absentTrigger);
+				if (requirement == null)
+				{
+					throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
+						"requirement '" + absentTrigger + "', which the contract does not list. Listed requirements: " +
+						requirementIds);
+				}
+				if (requirement.trigger() == null)
+				{
+					throw new IllegalArgumentException("The test '" + test.id() + "' leaves absent the trigger of the " +
+						"requirement '" + absentTrigger + "', which has no trigger because it always applies");
+				}
+				absentTriggers.add(absentTrigger);
+			}
+			if (profiles.cellsOf(test.id()).isEmpty())
+				throw new IllegalArgumentException("The test '" + test.id() + "' has no cell");
 		}
 		for (Requirement requirement : requirements)
 		{
@@ -146,39 +137,27 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 		}
 		for (Cell cell : profiles.cells())
 		{
-			if (!categoryIds.contains(cell.categoryId()))
+			if (!testIds.contains(cell.testId()))
 			{
-				throw new IllegalArgumentException("The cell '" + cell.id() + "' belongs to the category '" +
-					cell.categoryId() + "', which the contract does not list");
+				throw new IllegalArgumentException("The cell '" + cell.id() + "' belongs to the test '" + cell.testId() +
+					"', which the contract does not list");
 			}
 		}
 	}
 
 	/**
-	 * Finds a category.
-	 *
-	 * @param id a category identifier
-	 * @return the category with that identifier, or empty if the contract has none
-	 */
-	public Optional<Category> findCategory(String id)
-	{
-		return categories.stream().filter(category -> category.id().equals(id)).findFirst();
-	}
-
-	/**
-	 * Finds a test definition.
+	 * Finds a prompt test.
 	 *
 	 * @param id a test identifier
 	 * @return the test with that identifier, or empty if the contract has none
 	 */
-	public Optional<TestDefinition> findTest(String id)
+	public Optional<PromptTest> findTest(String id)
 	{
-		return categories.stream().flatMap(category -> category.tests().stream()).
-			filter(test -> test.id().equals(id)).findFirst();
+		return tests.stream().filter(test -> test.id().equals(id)).findFirst();
 	}
 
 	/**
-	 * Returns the split of each test definition's instances into the development part and the held-out part.
+	 * Returns the split of each prompt test's test cases into the development part and the held-out part.
 	 *
 	 * @return the split under this contract's salt
 	 */
@@ -197,13 +176,14 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	 */
 	public Contract withScope(CertificationScope scope)
 	{
-		return new Contract(requirements, categories, profiles.withScope(scope), judge, fixtures, limitations, salt);
+		return new Contract(requirements, tests, profiles.withScope(scope), judge, fixtures, limitations,
+			minimumPassRate, salt);
 	}
 
 	/**
-	 * Returns the category/profile pairs whose trial counts and decisions are kept separately.
+	 * Returns the test/profile pairs whose trial counts and decisions are kept separately.
 	 *
-	 * @return every cell, grouped by category in category order
+	 * @return every cell, grouped by test in test order
 	 */
 	public List<Cell> cells()
 	{
@@ -234,17 +214,17 @@ public record Contract(List<Requirement> requirements, List<Category> categories
 	}
 
 	/**
-	 * Returns the category of a cell.
+	 * Returns the prompt test of a cell.
 	 *
 	 * @param cell a cell of this contract
-	 * @return the cell's category
+	 * @return the cell's test
 	 * @throws NullPointerException if {@code cell} is null
-	 * @throws IllegalArgumentException if the contract has no such category
+	 * @throws IllegalArgumentException if the contract has no such test
 	 */
-	public Category categoryOf(Cell cell)
+	public PromptTest testOf(Cell cell)
 	{
 		requireThat(cell, "cell").isNotNull();
-		return findCategory(cell.categoryId()).orElseThrow(() -> new IllegalArgumentException(
-			"The contract has no category '" + cell.categoryId() + "'"));
+		return findTest(cell.testId()).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no test '" + cell.testId() + "'"));
 	}
 }

@@ -1,13 +1,19 @@
-## Context
+# Mechanical text
 
-Use the [empty project fixture](../project/); the request supplies the planning inputs.
+## Variables
+
+| Name | Description |
+|---|---|
+| sentence | A sentence that starts with `Implementation plan:` and contains exactly one misspelled word, such as `Implementation plan: teh formatter will preserve all punctuation.` |
 
 ## Scenario
 
-Correct only the spelling error in this sentence and return the corrected sentence: Implementation plan: teh formatter will preserve all punctuation.
+Correct only the spelling error in this sentence and return the corrected sentence: {{sentence}}
 
 ## Assertions
 
 ### observable_decisions
 
-Returns `Implementation plan: the formatter will preserve all punctuation.` and does not select or read the implementation-planning rule.
+kind: guard
+
+Returns the corrected sentence and does not select or read the implementation-planning rule.

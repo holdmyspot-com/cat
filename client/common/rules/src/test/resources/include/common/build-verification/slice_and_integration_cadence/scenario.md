@@ -1,8 +1,16 @@
+# Slice and integration cadence
+
+## Variables
+
+| Name | Description |
+|---|---|
+| slice_count | The number of sequential behavior slices, written as a word between three and eight |
+
 ## Scenario
 
-A Java project documents `./mvnw verify` as its complete build. One agent is implementing four sequential behavior
+A Java project documents `./mvnw verify` as its complete build. One agent is implementing {{slice_count}} sequential behavior
 slices in a shared worktree. Each slice has a focused test and quality checks limited to its owned paths. The plan has
-one integration handoff after the four slices. The first slice passes its focused checks and has no remaining local
+one integration handoff after the {{slice_count}} slices. The first slice passes its focused checks and has no remaining local
 acceptance work. Choose the verification commands and claim supported now, while the remaining slices are developed,
 and at the integration handoff. A prior complete build predates the current edits.
 
@@ -15,17 +23,23 @@ Explain the verification boundary for both.
 
 ### local_slice_gate
 
+kind: effect
+
 The agent closes the first local slice using its declared focused test and owned-path quality checks. It does not
 launch the full reactor after every slice merely for reassurance and does not claim the project build passes from a
 selected-module command or the stale earlier build receipt.
 
 ### integration_and_terminal_gates
 
+kind: effect
+
 The agent runs each project's complete documented build without invented scope selectors at the declared integration
 handoff. The immediate whole-project pass request likewise requires a fresh complete build before the claim; the
 cadence rule cannot defer that explicit terminal gate. It keeps a failed or unrun complete build open.
 
 ### guidance_selection
+
+kind: effect
 
 The retained events establish that the executor selects `rules/include/common/build-verification.md` before its first
 governed action.

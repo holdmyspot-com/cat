@@ -9,24 +9,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One side of an anytime-valid betting test of the pass probability {@code p} of a cell, one category under one
- * trial profile, against a null rate {@code t}, with the fixed bets and weights.
+ * One side of an anytime-valid betting test of the pass probability {@code p} of a cell, one prompt test under one
+ * trial profile, against a null rate {@code p_0}, with the fixed bets and weights.
  * <p>
  * With {@code S} adopted passes and {@code F} adopted failures:
  * <ul>
- *   <li>{@link Side#ABOVE} tests the null {@code p <= t} with
- *     {@code E_up(S, F) = sum_m w_m (1 - c_m + c_m / t)^S (1 - c_m)^F}, where
+ *   <li>{@link Side#ABOVE} tests the null {@code p <= p_0} with
+ *     {@code E_up(S, F) = sum_m w_m (1 - c_m + c_m / p_0)^S (1 - c_m)^F}, where
  *     {@code (c, w) = (0.4, 0.1), (0.6, 0.2), (0.8, 0.5), (1.0, 0.2)}. The {@code c = 1} term vanishes after the
  *     first failure.</li>
- *   <li>{@link Side#BELOW} tests the null {@code p >= t} with
- *     {@code E_down(S, F) = sum_m (1 / 3) (1 - lambda_m)^S (1 + lambda_m t / (1 - t))^F}, where
- *     {@code lambda = 9 / 19, 3 / 19, 1 / 19}.</li>
+ *   <li>{@link Side#BELOW} tests the null {@code p >= p_0} with
+ *     {@code E_down(S, F) = sum_m (1 / 3) (1 - lambda_m)^S (1 + lambda_m p_0 / (1 - p_0))^F}. For the campaign's
+ *     minimum pass rate {@code p_min}, let {@code n_short = 9, 3, 1} be the number of shortfalls {@code 1 - p_min}
+ *     that an alternative pass rate lies below {@code p_min}. Each bet {@code lambda_m = min(1, n_short (1 - p_min)
+ *     / p_min)} is growth-optimal against the pass rate {@code p_min - n_short (1 - p_min)}. A bet of 1 makes its
+ *     term vanish after the first pass.</li>
  * </ul>
  * Under its null, each e-value is a nonnegative supermartingale with initial value 1, so by Ville's inequality it
  * exceeds a threshold {@code T} with probability at most {@code 1 / T} under every stopping rule. {@code E_up}
- * increases with {@code S} and decreases with {@code F} and {@code t}; {@code E_down} does the opposite. By Jensen's
- * inequality, {@code E_up <= 1} whenever {@code S / (S + F) <= t}, and {@code E_down <= 1} whenever
- * {@code S / (S + F) >= t}, so the two sides never both exceed a threshold above 1.
+ * increases with {@code S} and decreases with {@code F} and {@code p_0}; {@code E_down} does the opposite. By Jensen's
+ * inequality, {@code E_up <= 1} whenever {@code S / (S + F) <= p_0}, and {@code E_down <= 1} whenever
+ * {@code S / (S + F) >= p_0}, so the two sides never both exceed a threshold above 1.
  *
  * <p><b>Exact decisions and the floating-point shortcut</b>
  * <p>
@@ -69,10 +72,6 @@ import java.util.List;
 public final class BettingProcess
 {
 	/**
-	 * The pass rate that certification must exceed and that the below-minimum test rejects.
-	 */
-	public static final BigDecimal REQUIRED_PASS_RATE = new BigDecimal("0.95");
-	/**
 	 * The largest bit length of an integer that a {@code double} represents exactly.
 	 */
 	private static final int EXACT_DOUBLE_BITS = 53;
@@ -93,13 +92,11 @@ public final class BettingProcess
 	 */
 	private static final long[][] ABOVE_WEIGHTS = {{1, 10}, {1, 5}, {1, 2}, {1, 5}};
 	/**
-	 * The numerators of the below-minimum bets {@code lambda_m}, whose denominators are 19.
+	 * The number of shortfalls {@code 1 - p_min} that each below-minimum bet's alternative pass rate lies below the
+	 * minimum pass rate {@code p_min}. The bet against that alternative is
+	 * {@code min(1, n_short (1 - p_min) / p_min)}, where {@code n_short} is that number.
 	 */
-	private static final long[] BELOW_BET_NUMERATORS = {9, 3, 1};
-	/**
-	 * The common denominator of the below-minimum bets.
-	 */
-	private static final long BELOW_BET_DENOMINATOR = 19;
+	private static final long[] SHORTFALL_MULTIPLES = {9, 3, 1};
 
 	private final Side side;
 	private final BigDecimal nullRate;
@@ -115,26 +112,49 @@ public final class BettingProcess
 	private final double logMagnitude;
 
 	/**
-	 * Creates a process.
+	 * Returns the certification process, which tests the null {@code p <= nullRate}.
 	 *
-	 * @param side     the side of the null hypothesis that the process tests
-	 * @param nullRate the null pass rate {@code t}
-	 * @throws NullPointerException     if any of the arguments are null
+	 * @param nullRate the null pass rate
+	 * @return the process
+	 * @throws NullPointerException     if {@code nullRate} is null
 	 * @throws IllegalArgumentException if {@code nullRate} is not strictly between 0 and 1
 	 */
-	public BettingProcess(Side side, BigDecimal nullRate)
+	public static BettingProcess above(BigDecimal nullRate)
 	{
-		requireThat(side, "side").isNotNull();
 		requireThat(nullRate, "nullRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
+		return new BettingProcess(Side.ABOVE, nullRate, aboveTerms(Fraction.of(nullRate)));
+	}
 
+	/**
+	 * Returns the below-minimum process, which tests the null {@code p >= nullRate} with the bets of a minimum pass
+	 * rate.
+	 *
+	 * @param nullRate        the null pass rate
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}, which selects the bets
+	 * @return the process
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code nullRate} or {@code minimumPassRate} are not strictly between 0 and 1
+	 */
+	public static BettingProcess below(BigDecimal nullRate, BigDecimal minimumPassRate)
+	{
+		requireThat(nullRate, "nullRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
+		return new BettingProcess(Side.BELOW, nullRate,
+			belowTerms(Fraction.of(nullRate), Fraction.of(minimumPassRate)));
+	}
+
+	/**
+	 * Creates a process.
+	 *
+	 * @param side       the side of the null hypothesis that the process tests
+	 * @param nullRate   the null pass rate
+	 * @param exactTerms the terms of the e-value
+	 */
+	private BettingProcess(Side side, BigDecimal nullRate, List<ExactTerm> exactTerms)
+	{
 		this.side = side;
 		this.nullRate = nullRate;
-		Fraction rate = Fraction.of(nullRate);
-		this.exactTerms = switch (side)
-		{
-			case ABOVE -> aboveTerms(rate);
-			case BELOW -> belowTerms(rate);
-		};
+		this.exactTerms = exactTerms;
 		List<LogTerm> logs = new ArrayList<>(exactTerms.size());
 		boolean eligible = true;
 		double largestLog = 0;
@@ -151,9 +171,9 @@ public final class BettingProcess
 	}
 
 	/**
-	 * Returns the certification terms for the null rate {@code t = a / b}.
+	 * Returns the certification terms for the null rate {@code p_0 = a / b}.
 	 * <p>
-	 * The pass factor {@code 1 - c + c / t} equals {@code (a (q - p) + p b) / (q a)} for {@code c = p / q}.
+	 * The pass factor {@code 1 - c + c / p_0} equals {@code (a (q - p) + p b) / (q a)} for {@code c = p / q}.
 	 *
 	 * @param rate the null rate
 	 * @return the terms
@@ -177,30 +197,55 @@ public final class BettingProcess
 	}
 
 	/**
-	 * Returns the below-minimum terms for the null rate {@code t = a / b}.
+	 * Returns the below-minimum terms for the null rate {@code p_0 = a / b}.
 	 * <p>
-	 * The failure factor {@code 1 + lambda t / (1 - t)} equals {@code (19 (b - a) + l a) / (19 (b - a))} for
-	 * {@code lambda = l / 19}.
+	 * The failure factor {@code 1 + lambda p_0 / (1 - p_0)} equals {@code (q (b - a) + p a) / (q (b - a))} for
+	 * {@code lambda = p / q}.
 	 *
-	 * @param rate the null rate
+	 * @param rate            the null rate
+	 * @param minimumPassRate the minimum pass rate, which selects the bets
 	 * @return the terms
 	 */
-	private static List<ExactTerm> belowTerms(Fraction rate)
+	private static List<ExactTerm> belowTerms(Fraction rate, Fraction minimumPassRate)
 	{
 		BigInteger a = rate.numerator();
 		BigInteger complement = rate.denominator().subtract(a);
-		BigInteger denominator = BigInteger.valueOf(BELOW_BET_DENOMINATOR);
-		Fraction weight = Fraction.of(BigInteger.ONE, BigInteger.valueOf(BELOW_BET_NUMERATORS.length));
-		List<ExactTerm> terms = new ArrayList<>(BELOW_BET_NUMERATORS.length);
-		for (long betNumerator : BELOW_BET_NUMERATORS)
+		List<Fraction> bets = belowBets(minimumPassRate);
+		Fraction weight = Fraction.of(BigInteger.ONE, BigInteger.valueOf(bets.size()));
+		List<ExactTerm> terms = new ArrayList<>(bets.size());
+		for (Fraction bet : bets)
 		{
-			BigInteger l = BigInteger.valueOf(betNumerator);
-			Fraction pass = Fraction.of(denominator.subtract(l), denominator);
-			Fraction failure = Fraction.of(denominator.multiply(complement).add(l.multiply(a)),
-				denominator.multiply(complement));
+			BigInteger p = bet.numerator();
+			BigInteger q = bet.denominator();
+			Fraction pass = Fraction.of(q.subtract(p), q);
+			Fraction failure = Fraction.of(q.multiply(complement).add(p.multiply(a)), q.multiply(complement));
 			terms.add(new ExactTerm(weight, pass, failure));
 		}
 		return List.copyOf(terms);
+	}
+
+	/**
+	 * Returns the below-minimum bets of a minimum pass rate {@code p_min = a / b}:
+	 * {@code min(1, n_short (1 - p_min) / p_min)} for each number of shortfalls {@code n_short}, which equal
+	 * {@code min(1, n_short (b - a) / a)}.
+	 *
+	 * @param minimumPassRate the minimum pass rate
+	 * @return the bets, each in {@code (0, 1]}
+	 */
+	private static List<Fraction> belowBets(Fraction minimumPassRate)
+	{
+		BigInteger a = minimumPassRate.numerator();
+		BigInteger complement = minimumPassRate.denominator().subtract(a);
+		List<Fraction> bets = new ArrayList<>(SHORTFALL_MULTIPLES.length);
+		for (long shortfallMultiple : SHORTFALL_MULTIPLES)
+		{
+			BigInteger numerator = complement.multiply(BigInteger.valueOf(shortfallMultiple));
+			if (numerator.compareTo(a) >= 0)
+				bets.add(Fraction.of(BigInteger.ONE, BigInteger.ONE));
+			else
+				bets.add(Fraction.of(numerator, a));
+		}
+		return bets;
 	}
 
 	/**
@@ -237,40 +282,47 @@ public final class BettingProcess
 	}
 
 	/**
-	 * Returns the natural logarithm of an e-value at a floating-point null rate, for display bounds.
+	 * Returns the natural logarithm of the certification e-value at a floating-point null rate, for display bounds.
 	 *
-	 * @param side     the side of the null hypothesis
-	 * @param nullRate the null rate {@code t}, strictly between 0 and 1
+	 * @param nullRate the null rate, strictly between 0 and 1
 	 * @param passes   the number of adopted passes {@code S}
 	 * @param failures the number of adopted failures {@code F}
 	 * @return the logarithm
 	 */
-	static double logValue(Side side, double nullRate, int passes, int failures)
+	static double logAboveValue(double nullRate, int passes, int failures)
 	{
 		assert that(nullRate, "nullRate").isBetween(0.0, false, 1.0, false).elseThrow();
+		double odds = (1 - nullRate) / nullRate;
 		List<LogTerm> terms = new ArrayList<>(ABOVE_BETS.length);
-		switch (side)
+		for (int m = 0; m < ABOVE_BETS.length; ++m)
 		{
-			case ABOVE ->
-			{
-				double odds = (1 - nullRate) / nullRate;
-				for (int m = 0; m < ABOVE_BETS.length; ++m)
-				{
-					double bet = (double) ABOVE_BETS[m][0] / ABOVE_BETS[m][1];
-					double weight = (double) ABOVE_WEIGHTS[m][0] / ABOVE_WEIGHTS[m][1];
-					terms.add(new LogTerm(Math.log(weight), Math.log1p(bet * odds), Math.log1p(-bet)));
-				}
-			}
-			case BELOW ->
-			{
-				double odds = nullRate / (1 - nullRate);
-				double weight = 1.0 / BELOW_BET_NUMERATORS.length;
-				for (long betNumerator : BELOW_BET_NUMERATORS)
-				{
-					double bet = (double) betNumerator / BELOW_BET_DENOMINATOR;
-					terms.add(new LogTerm(Math.log(weight), Math.log1p(-bet), Math.log1p(bet * odds)));
-				}
-			}
+			double bet = (double) ABOVE_BETS[m][0] / ABOVE_BETS[m][1];
+			double weight = (double) ABOVE_WEIGHTS[m][0] / ABOVE_WEIGHTS[m][1];
+			terms.add(new LogTerm(Math.log(weight), Math.log1p(bet * odds), Math.log1p(-bet)));
+		}
+		return logSum(terms, passes, failures);
+	}
+
+	/**
+	 * Returns the natural logarithm of the below-minimum e-value at a floating-point null rate, for display bounds.
+	 *
+	 * @param nullRate        the null rate, strictly between 0 and 1
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}, which selects the bets
+	 * @param passes          the number of adopted passes {@code S}
+	 * @param failures        the number of adopted failures {@code F}
+	 * @return the logarithm
+	 */
+	static double logBelowValue(double nullRate, BigDecimal minimumPassRate, int passes, int failures)
+	{
+		assert that(nullRate, "nullRate").isBetween(0.0, false, 1.0, false).elseThrow();
+		double odds = nullRate / (1 - nullRate);
+		List<Fraction> bets = belowBets(Fraction.of(minimumPassRate));
+		double weight = 1.0 / bets.size();
+		List<LogTerm> terms = new ArrayList<>(bets.size());
+		for (Fraction fraction : bets)
+		{
+			double bet = fraction.numerator().doubleValue() / fraction.denominator().doubleValue();
+			terms.add(new LogTerm(Math.log(weight), Math.log1p(-bet), Math.log1p(bet * odds)));
 		}
 		return logSum(terms, passes, failures);
 	}
@@ -290,8 +342,10 @@ public final class BettingProcess
 		for (int m = 0; m < exponents.length; ++m)
 		{
 			LogTerm term = terms.get(m);
-			double exponent = term.weight() + passes * term.pass();
-			// A zero failure factor has a logarithm of negative infinity, which must not meet a zero count
+			// A zero factor has a logarithm of negative infinity, which must not meet a zero count
+			double exponent = term.weight();
+			if (passes > 0)
+				exponent += passes * term.pass();
 			if (failures > 0)
 				exponent += failures * term.failure();
 			exponents[m] = exponent;
@@ -315,7 +369,7 @@ public final class BettingProcess
 	 * @return a negative number, zero or a positive number as {@code E} is less than, equal to or greater than
 	 *   {@code threshold}
 	 */
-	int compare(int passes, int failures, BigInteger threshold)
+	public int compare(int passes, int failures, BigInteger threshold)
 	{
 		if (shortcutEligible)
 		{
@@ -339,7 +393,7 @@ public final class BettingProcess
 	 * @return a negative number, zero or a positive number as {@code E} is less than, equal to or greater than
 	 *   {@code threshold}
 	 */
-	int compareExactly(int passes, int failures, BigInteger threshold)
+	public int compareExactly(int passes, int failures, BigInteger threshold)
 	{
 		BigInteger numerator = BigInteger.ZERO;
 		BigInteger denominator = BigInteger.ONE;
@@ -434,11 +488,13 @@ public final class BettingProcess
 	public enum Side
 	{
 		/**
-		 * Tests the null {@code p <= t}; exceeding a threshold shows that the pass probability is above {@code t}.
+		 * For a null rate {@code p_0}, tests the null {@code p <= p_0}; exceeding a threshold shows that the pass
+		 * probability is above {@code p_0}.
 		 */
 		ABOVE,
 		/**
-		 * Tests the null {@code p >= t}; exceeding a threshold shows that the pass probability is below {@code t}.
+		 * For a null rate {@code p_0}, tests the null {@code p >= p_0}; exceeding a threshold shows that the pass
+		 * probability is below {@code p_0}.
 		 */
 		BELOW
 	}
@@ -519,7 +575,7 @@ public final class BettingProcess
 	 * The natural logarithms of one term's weight and factors.
 	 *
 	 * @param weight  the logarithm of the weight
-	 * @param pass    the logarithm of the factor applied for each pass
+	 * @param pass    the logarithm of the factor applied for each pass, negative infinity for a zero factor
 	 * @param failure the logarithm of the factor applied for each failure, negative infinity for a zero factor
 	 */
 	private record LogTerm(double weight, double pass, double failure)
@@ -531,7 +587,9 @@ public final class BettingProcess
 		 */
 		double largestFiniteMagnitude()
 		{
-			double largest = Math.max(Math.abs(weight), Math.abs(pass));
+			double largest = Math.abs(weight);
+			if (Double.isFinite(pass))
+				largest = Math.max(largest, Math.abs(pass));
 			if (Double.isFinite(failure))
 				largest = Math.max(largest, Math.abs(failure));
 			return largest;

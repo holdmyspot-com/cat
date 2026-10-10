@@ -1,0 +1,25 @@
+{
+	"requirements": {
+		"count": 2,
+		"summary": "Tone and deletion safety."
+	},
+	"tests": {
+		"count": 3,
+		"summary": "Formatting, plain lists and safety."
+	},
+	"judge": {
+		"rubric": "The response follows the requirement.",
+		"decision_rule": "Pass only if every rubric item holds."
+	},
+	"fixtures": {
+		"ignored_paths": []
+	},
+	"minimum_pass_rate": 0.95,
+	"limitations": [],
+	"profile_restriction": [],
+	"capability_ranking": [],
+	"certification_profiles": [],
+	"derived_sources": [],
+	"conflicts": [],
+	"scope_conditions": []
+}

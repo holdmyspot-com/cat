@@ -2,14 +2,18 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -17,12 +21,16 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
+import tools.jackson.databind.json.JsonMapper;
+
 /**
- * Recorded regression scenarios available to a deriver, associated with the guidance each scenario exercises.
+ * Recorded regression scenarios available to a contract author, associated with the guidance each scenario exercises.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -31,26 +39,77 @@ import java.util.stream.Stream;
  */
 public record RegressionScenarios(Path project, List<Scenario> scenarios)
 {
-	private static final String SCENARIO = "scenario.md";
+	private static final String SCENARIO = PromptTestFiles.SCENARIO;
 	private static final Path TEST_RESOURCES = Path.of("src/test/resources");
 	private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
 
 	/**
+	 * The format of a recorded scenario.
+	 */
+	public sealed interface Format
+	{
+	}
+
+	/**
+	 * A prompt test directory in the current format.
+	 *
+	 * @param files        the prompt test's scenario, fixtures and committed test cases
+	 * @param textFixtures the content of each fixture that is UTF-8 text, in path order
+	 */
+	public record Current(PromptTestFiles files, List<FixtureFile> textFixtures) implements Format
+	{
+		/**
+		 * Creates a current-format scenario.
+		 *
+		 * @param files        the prompt test's scenario, fixtures and committed test cases
+		 * @param textFixtures the content of each fixture that is UTF-8 text, in path order
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public Current
+		{
+			requireThat(files, "files").isNotNull();
+			textFixtures = List.copyOf(textFixtures);
+		}
+	}
+
+	/**
+	 * A scenario written before the current format, which the contract author converts.
+	 *
+	 * @param problem why the scenario does not follow the current format
+	 */
+	public record Earlier(String problem) implements Format
+	{
+		/**
+		 * Creates an earlier-format scenario.
+		 *
+		 * @param problem why the scenario does not follow the current format
+		 * @throws NullPointerException     if {@code problem} is null
+		 * @throws IllegalArgumentException if {@code problem} is blank
+		 */
+		public Earlier
+		{
+			requireThat(problem, "problem").isNotBlank();
+		}
+	}
+
+	/**
 	 * One recorded scenario and the guidance whose contract requires it.
 	 *
-	 * @param source the absolute guidance path
-	 * @param citation the path a test definition must cite
-	 * @param content the complete Markdown content
+	 * @param source   the absolute guidance path
+	 * @param citation the path a prompt test must cite
+	 * @param content  the complete Markdown content
+	 * @param format   the scenario's format
 	 */
-	public record Scenario(Path source, String citation, String content)
+	public record Scenario(Path source, String citation, String content, Format format)
 	{
 		/**
 		 * Creates a recorded scenario.
 		 *
-		 * @param source the absolute guidance path
+		 * @param source   the absolute guidance path
 		 * @param citation the non-blank citation path
-		 * @param content the complete Markdown content
-		 * @throws NullPointerException if any argument is null
+		 * @param content  the complete Markdown content
+		 * @param format   the scenario's format
+		 * @throws NullPointerException     if any argument is null
 		 * @throws IllegalArgumentException if {@code source} is relative or {@code citation} is blank
 		 */
 		public Scenario
@@ -59,6 +118,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 			requireThat(source.isAbsolute(), "source.isAbsolute()").isTrue();
 			requireThat(citation, "citation").isNotBlank();
 			requireThat(content, "content").isNotNull();
+			requireThat(format, "format").isNotNull();
 			source = source.normalize();
 		}
 	}
@@ -84,24 +144,29 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * {@code scenario.md} files in its child directories. Guidance packaged as a module resource,
 	 * {@code <module>/src/main/resources/<top>/<path>.md}, keeps its scenarios in
 	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold fixtures.
+	 * <p>
+	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its fixtures
+	 * and values file. Any other scenario is in an earlier format, kept with the reason for its conversion.
 	 *
+	 * @param json    the JSON mapper that reads values files
 	 * @param project the project root
 	 * @param home the user home resolved at the environment boundary
 	 * @return the available scenarios, sorted by citation
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if an existing scenario tree cannot be read
 	 */
-	public static RegressionScenarios read(Path project, Path home) throws IOException
+	public static RegressionScenarios read(JsonMapper json, Path project, Path home) throws IOException
 	{
+		requireThat(json, "json").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
 		Path user = home.toAbsolutePath().normalize();
 		List<Scenario> scenarios = new ArrayList<>();
-		readRoot(root, root, true, scenarios);
-		readModules(root, scenarios);
+		readRoot(json, root, root, true, scenarios);
+		readModules(json, root, scenarios);
 		if (!user.equals(root))
-			readRoot(root, user, false, scenarios);
+			readRoot(json, root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
 		return new RegressionScenarios(root, scenarios);
 	}
@@ -109,13 +174,15 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	/**
 	 * Reads the Markdown scenarios in directories that map to existing guidance.
 	 *
+	 * @param json the JSON mapper that reads values files
 	 * @param project the project used to render citations
 	 * @param root the root of the scenario and rules trees
 	 * @param otherGuidance whether project-relative guidance outside the rules tree is supported
 	 * @param scenarios receives the discovered scenarios
 	 * @throws IOException if a scenario tree or file cannot be read
 	 */
-	private static void readRoot(Path project, Path root, boolean otherGuidance, List<Scenario> scenarios)
+	private static void readRoot(JsonMapper json, Path project, Path root, boolean otherGuidance,
+		List<Scenario> scenarios)
 		throws IOException
 	{
 		Path tests = root.resolve(".cat/tests");
@@ -131,7 +198,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 					source = root.resolve(relative + ".md");
 				if (!Files.isRegularFile(source))
 					continue;
-				readDirectory(project, directory, source, scenarios);
+				readDirectory(json, project, directory, source, scenarios);
 			}
 		}
 	}
@@ -139,13 +206,15 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	/**
 	 * Reads direct Markdown scenarios and nested {@code scenario.md} files for one guidance.
 	 *
+	 * @param json the JSON mapper that reads values files
 	 * @param project the project used to render citations
 	 * @param directory the guidance's scenario directory
 	 * @param source the guidance file
 	 * @param scenarios receives the discovered scenarios
 	 * @throws IOException if the directory or a scenario cannot be read
 	 */
-	private static void readDirectory(Path project, Path directory, Path source, List<Scenario> scenarios)
+	private static void readDirectory(JsonMapper json, Path project, Path directory, Path source,
+		List<Scenario> scenarios)
 		throws IOException
 	{
 		try (Stream<Path> children = Files.walk(directory))
@@ -156,7 +225,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 					(path.getParent().equals(directory) || isCaseScenario(directory, path))).
 				sorted().toList())
 			{
-				addScenario(project, source, file, scenarios);
+				addScenario(json, project, source, file, scenarios);
 			}
 		}
 	}
@@ -165,11 +234,12 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * Reads the scenarios of guidance packaged as a module resource from each module's test resources. Hidden
 	 * directories, such as {@code .git} and {@code .cat}, hold no modules.
 	 *
+	 * @param json the JSON mapper that reads values files
 	 * @param project the project root
 	 * @param scenarios receives the discovered scenarios
 	 * @throws IOException if a module tree cannot be read
 	 */
-	private static void readModules(Path project, List<Scenario> scenarios) throws IOException
+	private static void readModules(JsonMapper json, Path project, List<Scenario> scenarios) throws IOException
 	{
 		List<Path> testResources = new ArrayList<>();
 		Files.walkFileTree(project, new SimpleFileVisitor<>()
@@ -185,6 +255,16 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 					return FileVisitResult.SKIP_SUBTREE;
 				}
 				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
+			{
+				// A build writing into the tree, such as a test runner replacing its reports, can delete an entry
+				// after its directory was listed; a deleted entry holds no scenario
+				if (failure instanceof NoSuchFileException)
+					return FileVisitResult.CONTINUE;
+				throw failure;
 			}
 		});
 		for (Path tests : testResources)
@@ -210,7 +290,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 						Path source = top.resolve(relative + ".md");
 						if (Files.isRegularFile(source))
 						{
-							addScenario(project, source, file, scenarios);
+							addScenario(json, project, source, file, scenarios);
 							break;
 						}
 					}
@@ -234,13 +314,14 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	/**
 	 * Adds one scenario, cited relative to the project when it lies inside it.
 	 *
-	 * @param project the project used to render citations
-	 * @param source the guidance file
-	 * @param file the scenario file
+	 * @param json      the JSON mapper that reads values files
+	 * @param project   the project used to render citations
+	 * @param source    the guidance file
+	 * @param file      the scenario file
 	 * @param scenarios receives the scenario
-	 * @throws IOException if the scenario cannot be read
+	 * @throws IOException if the scenario, its fixtures or its values file cannot be read
 	 */
-	private static void addScenario(Path project, Path source, Path file, List<Scenario> scenarios)
+	private static void addScenario(JsonMapper json, Path project, Path source, Path file, List<Scenario> scenarios)
 		throws IOException
 	{
 		String citation;
@@ -248,12 +329,40 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 			citation = project.relativize(file).toString();
 		else
 			citation = file.toString();
+		Format format;
+		if (file.getFileName().toString().equals(SCENARIO))
+		{
+			try
+			{
+				PromptTestFiles files = PromptTestFiles.read(json, file.getParent());
+				List<FixtureFile> textFixtures = new ArrayList<>();
+				for (PromptTestFiles.Fixture fixture : files.fixtures())
+				{
+					if (fixture.text())
+					{
+						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(
+							files.directory().resolve(PromptTestFiles.FIXTURES).resolve(fixture.path()))));
+					}
+				}
+				format = new Current(files, textFixtures);
+			}
+			catch (ScenarioFormatException e)
+			{
+				format = new Earlier(e.getMessage());
+			}
+		}
+		else
+		{
+			format = new Earlier(citation + ": a prompt test is a directory that holds " + SCENARIO +
+				", but this scenario is a file of its guidance's scenario directory");
+		}
 		// The complete scenario is needed together to construct its fixed turns and expected behaviour.
-		scenarios.add(new Scenario(source, citation, Files.readString(file)));
+		scenarios.add(new Scenario(source, citation, Files.readString(file), format));
 	}
 
 	/**
-	 * Returns every scenario's source, exact citation and complete content for the deriver.
+	 * Returns every scenario's source, exact citation, format and complete content for the contract author, with the
+	 * content of each text fixture and each committed test case of a scenario in the current format.
 	 *
 	 * @return the scenario material, or {@code none} when no scenario is recorded
 	 */
@@ -264,10 +373,97 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		StringJoiner text = new StringJoiner("\n\n");
 		for (Scenario scenario : scenarios)
 		{
-			text.add("Guidance source: " + scenario.source() + "\nCitation: " + scenario.citation() +
-				"\n\n" + scenario.content());
+			StringBuilder entry = new StringBuilder(scenario.content().length() + 256);
+			entry.append("Guidance source: ").append(scenario.source()).append("\nCitation: ").
+				append(scenario.citation()).append("\nFormat: ");
+			switch (scenario.format())
+			{
+				case Current current ->
+				{
+					entry.append("current\n\n").append(scenario.content());
+					for (FixtureFile fixture : current.textFixtures())
+					{
+						String fence = "`".repeat(Math.max(3, longestBacktickRun(fixture.content()) + 1));
+						entry.append("\n\nFixture `").append(fixture.path()).append("`:\n\n").append(fence).
+							append('\n').append(fixture.content());
+						if (!fixture.content().endsWith("\n"))
+							entry.append('\n');
+						entry.append(fence).append('\n');
+					}
+					appendCommitted(entry, current.files().testCases());
+				}
+				case Earlier earlier -> entry.append("earlier, which you convert: ").append(earlier.problem()).
+					append("\n\n").append(scenario.content());
+			}
+			text.add(entry);
 		}
 		return text.toString();
+	}
+
+	/**
+	 * Appends the test cases that earlier campaigns committed to a scenario's values file, if any.
+	 *
+	 * @param entry     the scenario's entry
+	 * @param committed the committed test cases
+	 */
+	private static void appendCommitted(StringBuilder entry, List<TestCase> committed)
+	{
+		if (committed.isEmpty())
+			return;
+		entry.append("\n\nCommitted test cases, which CAT adds to the test that cites this scenario:\n");
+		for (TestCase testCase : committed)
+		{
+			StringJoiner values = new StringJoiner("; ");
+			for (Map.Entry<String, String> value : new TreeMap<>(testCase.describedValues()).entrySet())
+				values.add("`" + value.getKey() + "`: " + value.getValue());
+			entry.append("\n- ").append(values).append("; expected outcome: ").append(testCase.expectedOutcome());
+		}
+		entry.append('\n');
+	}
+
+	/**
+	 * Returns the length of the longest run of backticks in text.
+	 *
+	 * @param value the text
+	 * @return the number of backticks in the longest run, or {@code 0} if there are none
+	 */
+	private static int longestBacktickRun(String value)
+	{
+		int longest = 0;
+		int run = 0;
+		for (int i = 0; i < value.length(); ++i)
+		{
+			if (value.charAt(i) == '`')
+			{
+				++run;
+				longest = Math.max(longest, run);
+			}
+			else
+				run = 0;
+		}
+		return longest;
+	}
+
+	/**
+	 * Returns the test cases that earlier campaigns committed to the values files of the cited scenarios.
+	 *
+	 * @param citations the citations of the scenarios that one prompt test covers
+	 * @return the committed test cases, in citation order, each once
+	 * @throws NullPointerException if {@code citations} is null
+	 */
+	public List<TestCase> committedTestCases(List<String> citations)
+	{
+		requireThat(citations, "citations").isNotNull();
+		Set<TestCase> testCases = new LinkedHashSet<>();
+		for (String citation : citations)
+		{
+			for (Scenario scenario : scenarios)
+			{
+				if (scenario.citation().equals(citation) && scenario.format() instanceof Current current)
+					testCases.addAll(current.files().testCases());
+			}
+		}
+		return List.copyOf(testCases);
 	}
 
 	/**
@@ -288,11 +484,8 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		for (DerivedSource source : sources)
 			addSources(paths, source.path());
 		Set<String> cited = new LinkedHashSet<>();
-		for (Category category : contract.categories())
-		{
-			for (TestDefinition test : category.tests())
-				cited.addAll(test.regressionScenarios());
-		}
+		for (PromptTest test : contract.tests())
+			cited.addAll(test.regressionScenarios());
 		List<String> problems = new ArrayList<>();
 		for (Scenario scenario : scenarios)
 		{

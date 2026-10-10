@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter;
 /**
  * Creates, verifies, and removes the recorded recovery branch for one topic replay.
  */
-final class Backup
+public final class Backup
 {
 	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").
 		withZone(ZoneOffset.UTC);
@@ -28,7 +28,7 @@ final class Backup
 	 * @param git the repository access boundary
 	 * @param clock the clock that supplies the time, which each backup branch name shows in UTC
 	 */
-	Backup(Git git, Clock clock)
+	public Backup(Git git, Clock clock)
 	{
 		this.git = git;
 		this.clock = clock;
@@ -41,7 +41,7 @@ final class Backup
 	 * @return the created backup branch name
 	 * @throws IOException if a backup was already recorded or Git cannot create the branch
 	 */
-	String create(Path manifestFile) throws IOException
+	public String create(Path manifestFile) throws IOException
 	{
 		Path inventory = inventory(manifestFile);
 		if (Files.exists(inventory))
@@ -63,7 +63,7 @@ final class Backup
 	 * @param manifestFile the replay manifest
 	 * @return whether a backup inventory is present
 	 */
-	boolean hasInventory(Path manifestFile)
+	public boolean hasInventory(Path manifestFile)
 	{
 		return Files.exists(inventory(manifestFile));
 	}
@@ -75,7 +75,7 @@ final class Backup
 	 * @return the existing backup branch
 	 * @throws IOException if the recorded backup is absent or malformed
 	 */
-	String verify(Path manifestFile) throws IOException
+	public String verify(Path manifestFile) throws IOException
 	{
 		Path inventory = inventory(manifestFile);
 		String[] fields = record(inventory).split(" ", 2);
@@ -94,7 +94,7 @@ final class Backup
 	 * @return the deleted backup branch
 	 * @throws IOException if the inventory is missing, malformed, or its branch cannot be removed
 	 */
-	String delete(Path manifestFile) throws IOException
+	public String delete(Path manifestFile) throws IOException
 	{
 		Path inventory = inventory(manifestFile);
 		if (!Files.isRegularFile(inventory))

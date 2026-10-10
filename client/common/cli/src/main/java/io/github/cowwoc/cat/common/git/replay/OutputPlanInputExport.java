@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Exports decisions from a completed review as editable output-plan input for a compatible replacement manifest.
  */
-final class OutputPlanInputExport
+public final class OutputPlanInputExport
 {
 	private final JsonMapper json;
 	private final PatchArtifactTransfer patchArtifactTransfer;
@@ -26,7 +26,7 @@ final class OutputPlanInputExport
 	 * @param json the mapper that writes reviewer plan input
 	 * @param patchArtifactTransfer the owner of imported patch transfer
 	 */
-	OutputPlanInputExport(JsonMapper json, PatchArtifactTransfer patchArtifactTransfer)
+	public OutputPlanInputExport(JsonMapper json, PatchArtifactTransfer patchArtifactTransfer)
 	{
 		this.json = json;
 		this.patchArtifactTransfer = patchArtifactTransfer;
@@ -43,7 +43,7 @@ final class OutputPlanInputExport
 	 * @param planFile the new replacement-manifest-local plan-input file
 	 * @throws IOException if manifest states are incompatible, a patch cannot be copied, or the target is unsafe
 	 */
-	void export(Path previousManifestFile, BatchManifest previous, Path manifestFile, BatchManifest replacement,
+	public void export(Path previousManifestFile, BatchManifest previous, Path manifestFile, BatchManifest replacement,
 		Path planFile) throws IOException
 	{
 		if (previous.batches().isEmpty() || previous.sourceReviews().isEmpty())

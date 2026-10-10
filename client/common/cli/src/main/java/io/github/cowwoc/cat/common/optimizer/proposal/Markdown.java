@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.proposal;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
@@ -7,84 +9,101 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.ControlEvidence;
-import io.github.cowwoc.cat.common.optimizer.contract.DeterministicCheck;
-import io.github.cowwoc.cat.common.optimizer.contract.DiscardedCheck;
-import io.github.cowwoc.cat.common.optimizer.contract.EvidenceFile;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
-import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
+import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
+import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
+import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
+import io.github.cowwoc.cat.common.optimizer.inventory.UnifiedDiff;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.report.RemainingWork;
-import io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedSet;
 import java.util.stream.Collectors;
 
 /**
  * Writes a {@link Proposal} as Markdown, listing its requirements, tests, measurement procedure and
  * confirmation conditions.
  */
-final class Markdown
+public final class Markdown
 {
 	private static final MathContext PERCENT_DIGITS = new MathContext(3);
 	/**
-	 * The initial capacity of the text, which fits a proposal with a few categories without growing.
+	 * The initial capacity of the text, which fits a proposal with a few tests without growing.
 	 */
 	private static final int INITIAL_CAPACITY = 16 * 1024;
 	private final DerivedProposal derived;
 	private final Contract contract;
 	private final LinkReport links;
+	private final SortedSet<Path> controlFiles;
 	private final HostLogin login;
 	private final int ceiling;
 	private final Map<CertificationScope, Campaign> previews;
 	private final List<String> caps;
 	private final CertificationStatus incumbent;
+	private final Map<String, PilotResult> pilots;
+	private final Map<String, DeliveredTest> delivered;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
 	/**
 	 * Creates a writer.
 	 *
-	 * @param derived the deriver's proposal
+	 * @param derived the contract author's proposal
 	 * @param contract the contract that confirmation freezes
 	 * @param links the symbolic links
+	 * @param controlFiles the target prompt files that the control source empties, in path order
 	 * @param login how the host's harness account is billed
 	 * @param ceiling the campaign's concurrency ceiling
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
 	 *   may choose, in choice order; empty while an inventory model is unranked
 	 * @param caps the level and cap of each of the first attempts, as text
 	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
+	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
+	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 */
-	Markdown(DerivedProposal derived, Contract contract, LinkReport links, HostLogin login, int ceiling,
-		Map<CertificationScope, Campaign> previews, List<String> caps, CertificationStatus incumbent)
+	Markdown(DerivedProposal derived, Contract contract, LinkReport links, SortedSet<Path> controlFiles,
+		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
+		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered)
 	{
 		this.derived = derived;
 		this.contract = contract;
 		this.links = links;
+		this.controlFiles = controlFiles;
 		this.login = login;
 		this.ceiling = ceiling;
 		this.previews = previews;
 		this.caps = caps;
 		this.incumbent = incumbent;
+		this.pilots = pilots;
+		this.delivered = delivered;
 	}
 
 	/**
@@ -113,9 +132,11 @@ final class Markdown
 		incumbent();
 		requirements();
 		loading();
-		categories();
+		tests();
 		trialProfiles();
 		judge();
+		controlSource();
+		guardPilot();
 		fixtures();
 		procedure();
 		symbolicLinks();
@@ -158,12 +179,12 @@ final class Markdown
 	}
 
 	/**
-	 * Lists the prompt loading that the deriver session observed and the loading that was derived.
+	 * Lists the prompt loading that the contract author session observed and the loading that was derived.
 	 */
 	private void loading()
 	{
 		heading("Prompt loading");
-		text.append("Observed in the deriver session's harness events:\n\n");
+		text.append("Observed in the contract author session's harness events:\n\n");
 		for (String line : derived.observedSources().lines().toList())
 			text.append("- ").append(line).append('\n');
 		text.append("\nDerived from documented loading rules:\n\n");
@@ -175,39 +196,35 @@ final class Markdown
 	}
 
 	/**
-	 * Lists every category and test definition.
+	 * Lists every prompt test.
 	 */
-	private void categories()
+	private void tests()
 	{
-		heading("Categories and tests");
-		text.append("This is a balanced benchmark: every test in a category has equal weight, and the variation " +
-			"probabilities are chosen for coverage. They are testing assumptions, not usage frequencies; actual " +
-			"future usage frequencies are unknown.\n\n" +
-			"A test's key dimensions carry its content. Each combination of their values belongs to the development " +
-			"part or the held-out part, each with probability 1/2, under a random value that confirmation freezes. " +
-			"Development trials and every session that edits the prompts use development instances only; formal " +
-			"trials and the incumbent's baseline draw held-out instances only. Confirmation needs at least 2 " +
-			"key-value combinations in each part of every test.\n");
-		for (Category category : contract.categories())
-		{
-			text.append("\n### Category `").append(category.id()).append("`\n\n").
-				append("Risk rank: ").append(category.riskRank().position()).append(" (1 is the riskiest)\n").
-				append("Why this category is measured separately: ").append(category.rationale()).append('\n');
-			for (TestDefinition test : category.tests())
-				test(test, category.tests().size());
-		}
+		heading("Prompt tests");
+		text.append("Each prompt test is certified on its own, in its own cells. This is a balanced benchmark: a " +
+			"trial draws each test case of its part with equal probability. These weights are testing assumptions, " +
+			"not usage frequencies; actual future usage frequencies are unknown.\n\n" +
+			"Each distinct expected outcome of a test belongs to the development part or the held-out part, each " +
+			"with probability 1/2, under a random value that confirmation freezes. Test cases whose expected " +
+			"outcomes differ only in case or spacing share a part, and test cases that an earlier campaign " +
+			"committed belong to the development part. Development trials and every session that edits the " +
+			"prompts use development test cases only; formal trials and the incumbent's baseline draw held-out " +
+			"test cases only. Confirmation needs at least " + Proposal.MINIMUM_OUTCOMES + " distinct expected " +
+			"outcomes in each part of every test.\n");
+		for (PromptTest test : contract.tests())
+			test(test);
 	}
 
 	/**
-	 * Lists the trial profiles: the inventory and its source, the bindings, the restriction and each category's cells.
+	 * Lists the trial profiles: the inventory and its source, the bindings, the restriction and each test's cells.
 	 */
 	private void trialProfiles()
 	{
 		heading("Trial profiles");
 		text.append("A trial profile records model and effort choices; an unspecified choice uses the harness default. " +
-			"A cell pairs a category with one allowed trial " +
-			"profile. A file's binding selects a model, an effort, or both. CAT computes each category's profiles " +
-			"from the bindings of its requirements' source files, excluding CAT's core-task requirement. When those " +
+			"A cell pairs a test with one allowed trial " +
+			"profile. A file's binding selects a model, an effort, or both. CAT computes each test's profiles " +
+			"from the bindings of its requirements' source files. When those " +
 			"files share a complete profile, CAT uses it as written. Otherwise, CAT selects inventory profiles " +
 			"matching their shared bound dimensions, or uses those bindings as written if none match. Every cell " +
 			"needs its own readiness " +
@@ -219,14 +236,14 @@ final class Markdown
 	}
 
 	/**
-	 * Lists one test definition.
+	 * Lists one prompt test.
 	 *
-	 * @param test the test definition
-	 * @param tests the number of tests in its category
+	 * @param test the prompt test
 	 */
-	private void test(TestDefinition test, int tests)
+	private void test(PromptTest test)
 	{
-		text.append("\n#### Test `").append(test.id()).append("`\n\n");
+		text.append("\n### Test `").append(test.id()).append("`\n\n").
+			append("- Risk rank: ").append(test.riskRank().position()).append(" (1 is the riskiest)\n");
 		requirements(test);
 		if (!test.absentTriggers().isEmpty())
 		{
@@ -235,36 +252,22 @@ final class Markdown
 				append('\n');
 		}
 		text.append("- Applies when: ").append(test.applicability()).append('\n').
-			append("- Weight within the category: 1/").append(tests).append('\n').
 			append("- Time limit: ").append(test.timeLimit().toSeconds()).append(" seconds\n").
 			append("- Turns:\n");
 		for (int i = 0; i < test.turns().size(); ++i)
 			text.append("  ").append(i + 1).append(". ").append(test.turns().get(i)).append('\n');
 		text.append("- Expected behaviour: ").append(test.expectedBehaviour()).append('\n');
-		if (!test.regressionScenarios().isEmpty())
-		{
-			text.append("- Recorded regression scenarios:\n");
-			for (String citation : test.regressionScenarios())
-				text.append("  - ").append(citation).append('\n');
-		}
-		if (test.variations().isEmpty())
-			text.append("- Variations: none\n");
+		scenario(test);
+		if (test.variables().isEmpty())
+			text.append("- Variables: none\n");
 		else
 		{
-			text.append("- Variations:\n");
-			for (VariationRule rule : test.variations())
-			{
-				text.append("  - `").append(rule.dimension()).append("`:\n");
-				for (VariationValue value : rule.values())
-				{
-					text.append("    - `").append(value.label()).append("`: \"").append(value.text()).
-						append("\", probability ").
-						append(BigDecimal.valueOf(value.probability()).stripTrailingZeros().toPlainString()).
-						append('\n');
-				}
-			}
+			text.append("- Variables:\n");
+			for (VariableDeclaration variable : test.variables())
+				text.append("  - `").append(variable.name()).append("`: ").append(variable.description()).append('\n');
 		}
-		keyDimensions(test);
+		fixtures(test);
+		testCases(test);
 		if (test.uncoveredInteractions().isEmpty())
 			text.append("- Interactions this test cannot cover: none\n");
 		else
@@ -276,114 +279,203 @@ final class Markdown
 	}
 
 	/**
-	 * Lists a test's key dimensions and the number of its key-value combinations in each part.
+	 * Shows how a test's {@value PromptTestFiles#SCENARIO} arises: written by the contract author, or derived from each
+	 * recorded regression scenario that the test cites, with any change shown as a difference from the recorded file.
 	 *
-	 * @param test the test definition
+	 * @param test the prompt test
 	 */
-	private void keyDimensions(TestDefinition test)
+	private void scenario(PromptTest test)
 	{
-		String names = test.keyRules().stream().map(rule -> "`" + rule.dimension() + "`").
-			collect(Collectors.joining(", "));
-		text.append("- Key dimensions: ");
-		if (test.keyDimensions().isEmpty())
+		DeliveredTest deliveredTest = delivered.get(test.id());
+		Path file = deliveredTest.location().directory().resolve(PromptTestFiles.SCENARIO);
+		if (test.regressionScenarios().isEmpty())
 		{
-			if (names.isEmpty())
-				text.append("none, so the test has one key-value combination");
-			else
-				text.append("every dimension (").append(names).append(')');
-		}
-		else
-			text.append(names);
-		Split split = contract.split();
-		int development = split.combinations(test, Part.DEVELOPMENT).size();
-		int heldOut = split.combinations(test, Part.HELD_OUT).size();
-		text.append("\n- Key-value combinations: ").append(development).append(" in the development part, ").
-			append(heldOut).append(" in the held-out part\n");
-		if (development < Proposal.MINIMUM_COMBINATIONS || heldOut < Proposal.MINIMUM_COMBINATIONS)
-		{
-			text.append("  Confirmation is refused until each part holds at least ").
-				append(Proposal.MINIMUM_COMBINATIONS).append(". Ask for more key values in revision feedback.\n");
-		}
-	}
-
-	/**
-	 * Marks each requirement of a test as deterministic, with its check and controls, or semantic, and lists the
-	 * checks that CAT discarded with the reason.
-	 *
-	 * @param test the test definition
-	 */
-	private void requirements(TestDefinition test)
-	{
-		Map<String, DeterministicCheck> checkByRequirement = new HashMap<>();
-		for (DeterministicCheck check : test.checks())
-			checkByRequirement.put(check.requirementId(), check);
-		text.append("- Requirements:\n");
-		for (String requirementId : test.requirementIds())
-		{
-			text.append("  - `").append(requirementId).append("`: ");
-			DeterministicCheck check = checkByRequirement.get(requirementId);
-			if (check == null)
-			{
-				text.append("semantic; the judge decides it\n");
-				continue;
-			}
-			text.append("deterministic; a ").append(check.criterion().kind()).append(" check decides it: ").
-				append(check.criterion().describe()).append(". A failure is the behavior `").append(check.behavior()).
-				append("`.\n").
-				append("    - Known-good control, which the check must accept:\n");
-			control(check.knownGood());
-			text.append("    - Known-bad control, which the check must reject:\n");
-			control(check.knownBad());
-		}
-		if (test.discardedChecks().isEmpty())
-		{
-			text.append("- Discarded checks: none\n");
+			text.append("- Scenario: written by the contract author; delivery creates `").append(file).append("`\n");
 			return;
 		}
-		text.append("- Discarded checks:\n");
-		for (DiscardedCheck discarded : test.discardedChecks())
+		for (String citation : test.regressionScenarios())
 		{
-			DeterministicCheck check = discarded.check();
-			text.append("  - `").append(check.requirementId()).append("`, ").append(check.criterion().kind()).
-				append(" check (").append(check.criterion().describe()).append("): ").append(discarded.reason()).
-				append(" The judge decides `").append(check.requirementId()).append("` instead.\n");
+			String recorded = derived.citedScenarios().get(citation);
+			if (recorded == null)
+			{
+				text.append("- Scenario: converted from the recorded scenario `").append(citation).append("`\n");
+				continue;
+			}
+			boolean edited = !deliveredTest.location().created();
+			Optional<String> recordedFile;
+			if (edited)
+				recordedFile = Optional.of(recorded);
+			else
+				recordedFile = Optional.empty();
+			String written = deliveredTest.scenarioFile(recordedFile);
+			if (written.equals(recorded))
+			{
+				text.append("- Scenario: recorded at `").append(citation).append("`, unchanged\n");
+				continue;
+			}
+			if (edited)
+			{
+				text.append("- Scenario: recorded at `").append(citation).append("` and edited; delivery rewrites it " +
+					"with these changes:\n");
+			}
+			else
+			{
+				text.append("- Scenario: converted from the recorded scenario `").append(citation).
+					append("`; delivery creates `").append(file).append("`, which differs from it by:\n");
+			}
+			String diff = UnifiedDiff.of(List.of(new FileDelta(file, new FileContent(recorded.getBytes(UTF_8)),
+				new FileContent(written.getBytes(UTF_8)), Set.of())));
+			String fence = "`".repeat(Math.max(3, longestBacktickRun(diff) + 1));
+			text.append("\n    ").append(fence).append("diff\n");
+			for (String line : diff.substring(0, diff.length() - 1).split("\n", -1))
+				text.append("    ").append(line).append('\n');
+			text.append("    ").append(fence).append("\n\n");
 		}
 	}
 
 	/**
-	 * Lists the evidence of a check's control.
+	 * Shows the files that a test writes into each trial's workspace, as the contract author wrote them.
 	 *
-	 * @param control the control
+	 * @param test the prompt test
 	 */
-	private void control(ControlEvidence control)
+	private void fixtures(PromptTest test)
 	{
-		String indent = "      - ";
-		for (int i = 0; i < control.replies().size(); ++i)
+		if (test.fixtures().isEmpty())
 		{
-			text.append(indent).append("Reply to turn ").append(i + 1).append(": ").
-				append(quote(String.join("\n", control.replies().get(i)))).append('\n');
+			text.append("- Fixtures: none\n");
+			return;
 		}
-		for (EvidenceFile file : control.files())
+		text.append("- Fixtures, written into each trial's workspace with each test case's values:\n");
+		for (FixtureFile fixture : test.fixtures())
 		{
-			text.append(indent).append("File `").append(file.path()).append("`: ").append(quote(file.content())).
-				append('\n');
+			String fence = "`".repeat(Math.max(3, longestBacktickRun(fixture.content()) + 1));
+			text.append("  - `").append(fixture.path()).append("`:\n\n    ").append(fence).append('\n');
+			String content = fixture.content();
+			if (content.endsWith("\n"))
+				content = content.substring(0, content.length() - 1);
+			for (String line : content.split("\n", -1))
+				text.append("    ").append(line).append('\n');
+			text.append("    ").append(fence).append("\n\n");
 		}
-		for (ToolCall call : control.calls())
+	}
+
+	/**
+	 * Returns a test case's value as the proposal shows it.
+	 *
+	 * @param value the value
+	 * @return the quoted text of a text value, or the call of a generated value
+	 */
+	private static String value(TestValue value)
+	{
+		return switch (value)
 		{
-			text.append(indent).append("Tool call: `").append(call.tool()).append('`');
-			if (call.command() != null)
-				text.append(" running `").append(call.command()).append('`');
-			if (call.exitStatus() != null)
-				text.append(", exit status ").append(call.exitStatus());
-			text.append('\n');
-		}
-		for (Map.Entry<String, String> choice : control.choices().entrySet())
+			case TestValue.Text text -> quote(text.text());
+			case TestValue.Generated generated -> generated.describe();
+		};
+	}
+
+	/**
+	 * Returns the length of the longest run of backticks in text.
+	 *
+	 * @param value the text
+	 * @return the number of backticks in the longest run, or {@code 0} if there are none
+	 */
+	private static int longestBacktickRun(String value)
+	{
+		int longest = 0;
+		int run = 0;
+		for (int i = 0; i < value.length(); ++i)
 		{
-			text.append(indent).append("Variation value of `").append(choice.getKey()).append("`: `").
-				append(choice.getValue()).append("`\n");
+			if (value.charAt(i) == '`')
+			{
+				++run;
+				longest = Math.max(longest, run);
+			}
+			else
+				run = 0;
 		}
-		if (control.replies().isEmpty() && control.files().isEmpty() && control.calls().isEmpty())
-			text.append(indent).append("no replies, files or tool calls\n");
+		return longest;
+	}
+
+	/**
+	 * Lists a test's test cases with the part of each, and the number of distinct expected outcomes in each part.
+	 *
+	 * @param test the prompt test
+	 */
+	private void testCases(PromptTest test)
+	{
+		Split split = contract.split();
+		if (test.allTestCases().isEmpty())
+			text.append("- Test cases: none\n");
+		else
+		{
+			text.append("- Test cases:\n");
+			for (TestCase testCase : test.allTestCases())
+			{
+				String values = testCase.values().entrySet().stream().
+					map(value -> "`" + value.getKey() + "` = " + value(value.getValue())).
+					collect(Collectors.joining(", "));
+				text.append("  - ").append(values).append("; expected outcome ").
+					append(quote(testCase.expectedOutcome())).append("; ").
+					append(split.partOf(test, testCase)).append(" part");
+				if (test.committedTestCases().contains(testCase))
+					text.append(", committed");
+				text.append('\n');
+			}
+		}
+		int development = split.outcomeCount(test, Part.DEVELOPMENT);
+		int heldOut = split.outcomeCount(test, Part.HELD_OUT);
+		text.append("- Distinct expected outcomes: ").append(development).append(" in the development part, ").
+			append(heldOut).append(" in the held-out part\n");
+		if (development < Proposal.MINIMUM_OUTCOMES || heldOut < Proposal.MINIMUM_OUTCOMES)
+		{
+			text.append("  Confirmation is refused until each part holds at least ").
+				append(Proposal.MINIMUM_OUTCOMES).
+				append(". Ask for test cases with more expected outcomes in revision feedback.\n");
+		}
+	}
+
+	/**
+	 * Lists a test's requirements and its assertions: each declared one with its kind, the requirement it checks and
+	 * the built-in tool that decides it or the judge, then the assertion that CAT adds.
+	 *
+	 * @param test the prompt test
+	 */
+	private void requirements(PromptTest test)
+	{
+		text.append("- Requirements: ").
+			append(test.requirementIds().stream().map(id -> "`" + id + "`").collect(Collectors.joining(", "))).
+			append('\n').
+			append("- Assertions, each of which a trial must pass:\n");
+		for (MappedAssertion mapped : test.assertions())
+		{
+			Assertion assertion = mapped.assertion();
+			text.append("  - `").append(assertion.id()).append("` (").append(EnumNames.lowerCase(assertion.kind())).
+				append(", requirement `").append(mapped.requirementId()).append("`): ").
+				append(assertion.statement()).append(' ');
+			decider(assertion);
+		}
+		Assertion expectedOutcome = test.expectedOutcome();
+		text.append("  - `").append(expectedOutcome.id()).append("` (").
+			append(EnumNames.lowerCase(expectedOutcome.kind())).append(", added by CAT): ").
+			append(expectedOutcome.statement()).append(' ');
+		decider(expectedOutcome);
+	}
+
+	/**
+	 * Ends an assertion's line with what decides it.
+	 *
+	 * @param assertion the assertion
+	 */
+	private void decider(Assertion assertion)
+	{
+		if (assertion.tool() == null)
+		{
+			text.append("The judge decides it.\n");
+			return;
+		}
+		text.append("The built-in tool `").append(assertion.tool()).append("` decides it; a failure is the " +
+			"behavior `").append(assertion.builtInTool().orElseThrow().behavior()).append("`.\n");
 	}
 
 	/**
@@ -405,8 +497,8 @@ final class Markdown
 	{
 		heading("Judge");
 		JudgeProfile judge = contract.judge();
-		text.append("- Role profile: ").append(judge.profile().label()).append(" (used by the deriver, judge and " +
-			"author sessions)\n").
+		text.append("- Role profile: ").append(judge.profile().label()).
+			append(" (used by the contract author, judge and " + "prompt author sessions)\n").
 			append("- Prompt: CAT's judge prompt, which states the judge's authority and output rules; the prompt " +
 				"system cannot change it\n").
 			append("- Rubric: ").append(judge.rubric()).append('\n').
@@ -433,19 +525,25 @@ final class Markdown
 	private void procedure()
 	{
 		heading("Statistical procedure");
-		String requiredRate = BettingProcess.REQUIRED_PASS_RATE.movePointRight(2).stripTrailingZeros().
-			toPlainString() + "%";
+		BigDecimal minimumPassRate = contract.minimumPassRate();
+		String minimumRate = percent(minimumPassRate);
+		int batchFailureLimit = ReadinessGate.batchFailureLimit(minimumPassRate);
+		String batchFailures = "failures";
+		if (batchFailureLimit == 1)
+			batchFailures = "failure";
 		text.append("- Joint error budget: 0.05, split into 0.04 for certification, 0.005 for improvement claims " +
 			"and 0.005 for the incumbent's bounds. Certification attempt i uses α_i = 0.04/(i(i + 1)).\n").
-			append("- Certification: every cell must show a pass rate above ").append(requiredRate).
+			append("- Certification: every cell must show a pass rate above ").append(minimumRate).
 			append(". Bets: ").append(CertificationProcedure.BETS).append(".\n").
 			append("- Caps of the first attempts, in formal trials per cell:\n");
 		for (String cap : caps)
 			text.append("  - ").append(cap).append('\n');
 		text.append("- Readiness gate: a cell is ready for a certification attempt after at least ").
 			append(ReadinessGate.MINIMUM_TRIALS).
-			append(" representative development trials with at least 99% observed passes, at most ").
-			append(ReadinessGate.BATCH_FAILURE_LIMIT).append(" failure in each of the latest two complete batches of ").
+			append(" representative development trials with at least ").
+			append(percent(ReadinessGate.minimumObservedPassRate(minimumPassRate))).
+			append(" observed passes, at most ").append(batchFailureLimit).append(' ').append(batchFailures).
+			append(" in each of the latest two complete batches of ").
 			append(CellCounts.BATCH_SIZE).
 			append(" trials, and no unresolved reproducible defect or known regression.\n").
 			append("- Review checkpoint: at ").append(Development.DEFAULT_REVIEW_POINT).
@@ -454,8 +552,45 @@ final class Markdown
 			append("- Baseline targets: the incumbent runs ").append(Baseline.TARGET).
 			append(" representative trials in every cell, and ").
 			append(Baseline.EXTENDED_TARGET - Baseline.TARGET).
-			append(" more in a cell whose observed rate is below 95% but not yet proven deficient, ending at ").
-			append(Baseline.EXTENDED_TARGET).append(". A commit requires these targets.\n");
+			append(" more in a cell whose observed rate is below ").append(minimumRate).
+			append(" but not yet proven deficient, ending at ").append(Baseline.EXTENDED_TARGET).
+			append(". A commit requires these targets.\n");
+	}
+
+	/**
+	 * Formats a rate as a percentage.
+	 *
+	 * @param rate a rate between 0 and 1
+	 * @return the percentage, without trailing zeros
+	 */
+	private static String percent(BigDecimal rate)
+	{
+		return rate.movePointRight(2).stripTrailingZeros().toPlainString() + "%";
+	}
+
+	/**
+	 * Lists the target prompt files that the control source empties.
+	 */
+	private void controlSource()
+	{
+		heading("Control source");
+		if (controlFiles.isEmpty())
+		{
+			text.append("No target prompt file was found, so control trials run the unchanged incumbent.\n");
+			return;
+		}
+		text.append("Control trials run the incumbent with these target prompt files emptied to zero bytes:\n\n");
+		for (Path path : controlFiles)
+			text.append("- `").append(path).append("`\n");
+	}
+
+	/**
+	 * Shows how often each assertion passed in the guard pilot's control trials.
+	 */
+	private void guardPilot()
+	{
+		heading("Guard pilot");
+		text.append(PilotReport.render(contract, pilots));
 	}
 
 	/**
@@ -517,8 +652,8 @@ final class Markdown
 			case API_KEY -> text.append("The harness signs in with an API key.\n");
 		}
 		text.append("\nAt most ").append(ceiling).append(" nested sessions run at once, including " +
-			"judges and authors, within the harness capacity that every CAT process shares. Concurrency starts at 1 " +
-			"and grows gradually.\n");
+			"judges and prompt authors, within the harness capacity that every CAT process shares. Concurrency " +
+			"starts at 1 and grows gradually.\n");
 	}
 
 	/**
@@ -540,17 +675,17 @@ final class Markdown
 	}
 
 	/**
-	 * Shows the capability ranking's outcome and each certification scope choice: its cells, each category's weakest
+	 * Shows the capability ranking's outcome and each certification scope choice: its cells, each test's weakest
 	 * cell and its minimum session count.
 	 */
 	private void certificationScope()
 	{
 		heading("Certification scope");
 		text.append("Confirm with `confirm <campaign> <choice>`, choosing the cells that certification covers. " +
-			"Development always runs in each category's weakest cell, the lowest effort of the least capable model " +
+			"Development always runs in each test's weakest cell, the lowest effort of the least capable model " +
 			"that the choice covers, and in every cell where a certification attempt fails. The choice sets the " +
 			"cells that the incumbent baseline and every certification attempt run in, and the cells that the " +
-			"claim covers. A category with one cell is certified in that cell under every choice. To certify " +
+			"claim covers. A test with one cell is certified in that cell under every choice. To certify " +
 			"other cells, describe them in revision feedback; the next proposal shows them as the `described` " +
 			"choice.\n");
 		if (previews.isEmpty())
@@ -577,14 +712,14 @@ final class Markdown
 		text.append("\n### `").append(scope.id()).append("`: ").append(scope.summary()).append("\n\n").
 			append("Cells: ").append(describeCells(CellTier.scopeCells(scoped))).append('\n');
 		List<String> weakest = new ArrayList<>();
-		for (Category category : scoped.categories())
-			weakest.add("`" + category.id() + "`: `" + CellTier.weakestCell(scoped, category.id()).id() + "`");
+		for (PromptTest test : scoped.tests())
+			weakest.add("`" + test.id() + "`: `" + CellTier.weakestCell(scoped, test.id()).id() + "`");
 		text.append("Weakest cells: ").append(String.join("; ", weakest)).append("\n\n");
 		RemainingWork remaining = RemainingWork.of(preview);
 		int trials = remaining.total();
 		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
 			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
-				"reruns, author sessions and promotion runs.\n\n").
+				"reruns, prompt author sessions and promotion runs.\n\n").
 			append("Minimum trials by cell:\n\n");
 		Map<String, List<Cell>> byTrials = new LinkedHashMap<>();
 		for (Cell cell : CellTier.scopeCells(scoped))
@@ -605,7 +740,7 @@ final class Markdown
 	}
 
 	/**
-	 * Names cells compactly: a category with several cells, all of them present, as every cell of the category, and
+	 * Names cells compactly: a test with several cells, all of them present, as every cell of the test, and
 	 * each other cell by its identifier, with the cell count when there is more than one cell.
 	 *
 	 * @param group the cells
@@ -613,18 +748,18 @@ final class Markdown
 	 */
 	private String describeCells(List<Cell> group)
 	{
-		Map<String, Integer> cellsByCategory = new HashMap<>();
+		Map<String, Integer> cellsByTest = new HashMap<>();
 		for (Cell cell : contract.cells())
-			cellsByCategory.merge(cell.categoryId(), 1, Integer::sum);
-		Map<String, List<Cell>> groupByCategory = new LinkedHashMap<>();
+			cellsByTest.merge(cell.testId(), 1, Integer::sum);
+		Map<String, List<Cell>> groupByTest = new LinkedHashMap<>();
 		for (Cell cell : group)
-			groupByCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell);
+			groupByTest.computeIfAbsent(cell.testId(), _ -> new ArrayList<>()).add(cell);
 		List<String> whole = new ArrayList<>();
 		List<String> single = new ArrayList<>();
-		for (Map.Entry<String, List<Cell>> entry : groupByCategory.entrySet())
+		for (Map.Entry<String, List<Cell>> entry : groupByTest.entrySet())
 		{
 			int size = entry.getValue().size();
-			if (size > 1 && size == cellsByCategory.get(entry.getKey()))
+			if (size > 1 && size == cellsByTest.get(entry.getKey()))
 				whole.add("`" + entry.getKey() + "`");
 			else
 			{
@@ -634,9 +769,9 @@ final class Markdown
 		}
 		List<String> names = new ArrayList<>();
 		if (whole.size() == 1)
-			names.add("every cell of category " + whole.getFirst());
+			names.add("every cell of test " + whole.getFirst());
 		else if (whole.size() > 1)
-			names.add("every cell of categories " + String.join(", ", whole));
+			names.add("every cell of tests " + String.join(", ", whole));
 		names.addAll(single);
 		String description = String.join(", ", names);
 		if (group.size() > 1)
@@ -652,7 +787,7 @@ final class Markdown
 		heading("Conflicts");
 		if (derived.conflicts().isEmpty())
 		{
-			text.append("The deriver found no requirements that conflict.\n");
+			text.append("The contract author found no requirements that conflict.\n");
 			return;
 		}
 		text.append("No reply can satisfy each group of requirements below together. Confirmation is refused " +
@@ -679,7 +814,7 @@ final class Markdown
 		heading("Certifiable scope");
 		if (derived.scopeConditions().isEmpty())
 		{
-			text.append("The deriver found no condition that makes certification unavailable.\n");
+			text.append("The contract author found no condition that makes certification unavailable.\n");
 			return;
 		}
 		text.append("Confirming records these outcomes, and no certification attempt can commit while they hold:\n\n");

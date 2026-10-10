@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common;
 import java.util.regex.Pattern;
 
 /**
- * The spelling of an identifier that CAT, its users or its models name, such as a requirement, behavior, category,
+ * The spelling of an identifier that CAT, its users or its models name, such as a requirement, behavior,
  * test, dimension, value label, topic output or review candidate.
  */
 public final class Identifier

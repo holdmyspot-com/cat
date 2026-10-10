@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 /**
  * Seeds an isolated Codex home with the parent's verified curated-plugin snapshot.
  */
-final class CodexCuratedPluginCache
+public final class CodexCuratedPluginCache
 {
 	private static final int MAXIMUM_REVISION_BYTES = 128;
 	private static final Pattern GIT_REVISION = Pattern.compile("[0-9a-f]{40}");
@@ -36,7 +36,7 @@ final class CodexCuratedPluginCache
 	 * @return {@code true} if an isolated snapshot was created, or {@code false} when ordinary Codex synchronization
 	 *         must proceed
 	 */
-	static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment)
+	public static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment)
 	{
 		requireThat(parentHome, "parentHome").isNotNull();
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
@@ -89,7 +89,7 @@ final class CodexCuratedPluginCache
 	 * @param childRepository the child's repository, which must not exist yet
 	 * @return the clone command
 	 */
-	static List<String> cloneCommand(Path parentRepository, Path childRepository)
+	public static List<String> cloneCommand(Path parentRepository, Path childRepository)
 	{
 		return List.of("git", "clone", "--quiet", "--shared", "--no-checkout", parentRepository.toString(),
 			childRepository.toString());
@@ -101,7 +101,7 @@ final class CodexCuratedPluginCache
 	 * @param revision the verified revision
 	 * @return the checkout command
 	 */
-	static List<String> checkoutCommand(String revision)
+	public static List<String> checkoutCommand(String revision)
 	{
 		return List.of("git", "checkout", "--quiet", "--detach", revision);
 	}

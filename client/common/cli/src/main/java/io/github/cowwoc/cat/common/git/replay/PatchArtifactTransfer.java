@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * Copies immutable patch artifacts between compatible replay manifests.
  */
-final class PatchArtifactTransfer
+public final class PatchArtifactTransfer
 {
 	private final PatchArtifacts patches;
 
@@ -20,7 +20,7 @@ final class PatchArtifactTransfer
 	 *
 	 * @param patches the owner of manifest-local patch identity and path validation
 	 */
-	PatchArtifactTransfer(PatchArtifacts patches)
+	public PatchArtifactTransfer(PatchArtifacts patches)
 	{
 		this.patches = patches;
 	}
@@ -35,7 +35,7 @@ final class PatchArtifactTransfer
 	 * @return the old-path-to-new-artifact map
 	 * @throws IOException if an artifact cannot be verified or copied safely
 	 */
-	Map<String, PatchArtifact> copy(Path previousManifestFile, Path newManifestFile, BatchManifest previous,
+	public Map<String, PatchArtifact> copy(Path previousManifestFile, Path newManifestFile, BatchManifest previous,
 		List<Batch> importedBatches) throws IOException
 	{
 		Map<String, PatchArtifact> result = new HashMap<>();

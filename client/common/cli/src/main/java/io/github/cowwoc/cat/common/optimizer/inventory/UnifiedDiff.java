@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import java.util.List;
 
 /**
- * Renders file changes as unified diffs using the same line comparison that defines author hunks.
+ * Renders file changes as unified diffs using the same line comparison that defines prompt author hunks.
  */
 public final class UnifiedDiff
 {

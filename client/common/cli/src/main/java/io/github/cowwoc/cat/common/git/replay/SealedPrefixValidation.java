@@ -10,7 +10,7 @@ import java.util.Set;
 /**
  * Validates the contiguous replay prefix that may be imported into an extended review.
  */
-final class SealedPrefixValidation
+public final class SealedPrefixValidation
 {
 	/**
 	 * Returns the number of output positions in a complete mechanically verified prefix.
@@ -19,7 +19,7 @@ final class SealedPrefixValidation
 	 * @return the number of sealed output positions
 	 * @throws IOException if the prefix is missing, gapped, or mechanically inconsistent
 	 */
-	int length(BatchManifest manifest) throws IOException
+	public int length(BatchManifest manifest) throws IOException
 	{
 		if (manifest.outputs() == null || manifest.outputs().isEmpty() || manifest.batches() == null ||
 			manifest.sourceReconstructions() == null || manifest.outputWitnesses() == null)

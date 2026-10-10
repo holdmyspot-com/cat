@@ -12,7 +12,7 @@ import java.util.List;
  * @param splitEnablingArtifacts the smallest artifacts used to test the split
  * @param missingPrerequisite the exact final-state condition that blocks a combined pair's split, or {@code null}
  */
-record ActionPairAssessment(String firstCandidateId, String secondCandidateId, String disposition,
+public record ActionPairAssessment(String firstCandidateId, String secondCandidateId, String disposition,
 	String removalResult, List<String> splitEnablingArtifacts, String missingPrerequisite)
 {
 }

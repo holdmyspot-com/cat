@@ -7,4 +7,8 @@ module io.github.cowwoc.cat.distribution
 	requires tools.jackson.dataformat.yaml;
 
 	exports io.github.cowwoc.cat.distribution;
+	exports io.github.cowwoc.cat.distribution.bundle to io.github.cowwoc.cat.distribution.test;
+	exports io.github.cowwoc.cat.distribution.bundle.secrets to io.github.cowwoc.cat.distribution.test;
+	exports io.github.cowwoc.cat.distribution.license to io.github.cowwoc.cat.distribution.test;
+	exports io.github.cowwoc.cat.distribution.secrets to io.github.cowwoc.cat.distribution.test;
 }

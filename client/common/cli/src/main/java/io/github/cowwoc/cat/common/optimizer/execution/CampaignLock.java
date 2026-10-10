@@ -19,7 +19,7 @@ import java.util.Optional;
  * a driver in this JVM holds it, another attempt in this JVM does not open the lock file, because closing that file
  * would release the lock for other processes (see {@link ExclusiveFileLock}).
  */
-final class CampaignLock implements AutoCloseable
+public final class CampaignLock implements AutoCloseable
 {
 	private final ExclusiveFileLock lock;
 
@@ -41,7 +41,7 @@ final class CampaignLock implements AutoCloseable
 	 * @throws NullPointerException if {@code file} is null
 	 * @throws IOException if the lock directory cannot be created, the file cannot be opened, or locking fails
 	 */
-	static Optional<CampaignLock> tryAcquire(Path file) throws IOException
+	public static Optional<CampaignLock> tryAcquire(Path file) throws IOException
 	{
 		return tryAcquire(file, lockFile -> FileChannel.open(lockFile, CREATE, WRITE));
 	}
@@ -58,7 +58,7 @@ final class CampaignLock implements AutoCloseable
 	 * @throws IOException if the lock directory cannot be created, the file cannot be opened, or locking or closing the
 	 *   channel fails
 	 */
-	static Optional<CampaignLock> tryAcquire(Path file, LockFileOpener opener) throws IOException
+	public static Optional<CampaignLock> tryAcquire(Path file, LockFileOpener opener) throws IOException
 	{
 		requireThat(file, "file").isNotNull();
 		requireThat(opener, "opener").isNotNull();

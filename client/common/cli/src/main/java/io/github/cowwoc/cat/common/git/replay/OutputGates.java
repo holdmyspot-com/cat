@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * Runs retained-output quality gates in isolated Git worktrees.
  */
-final class OutputGates
+public final class OutputGates
 {
 	private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
 	private enum TreeSource
@@ -31,7 +31,7 @@ final class OutputGates
 	 * @param git the repository Git boundary
 	 * @param directories the manifest-local temporary-directory owner
 	 */
-	OutputGates(Git git, DirectoryCreator directories)
+	public OutputGates(Git git, DirectoryCreator directories)
 	{
 		requireThat(git, "git").isNotNull();
 		requireThat(directories, "directories").isNotNull();
@@ -47,7 +47,7 @@ final class OutputGates
 	 * @param targets the selected output trees and their commands
 	 * @throws IOException if a target is invalid, cannot be materialized, or its command fails
 	 */
-	void run(Path manifestFile, String gateName, List<Target> targets) throws IOException
+	public void run(Path manifestFile, String gateName, List<Target> targets) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(gateName, "gateName").isNotBlank();
@@ -69,7 +69,7 @@ final class OutputGates
 	 * @param target the proposed output tree and its acceptance command
 	 * @throws IOException if the target is invalid, cannot be materialized, or its command fails
 	 */
-	void runDraft(Path manifestFile, String gateName, Target target) throws IOException
+	public void runDraft(Path manifestFile, String gateName, Target target) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(gateName, "gateName").isNotBlank();
@@ -181,7 +181,7 @@ final class OutputGates
 	 * @param tree the sealed output tree
 	 * @param command the output command
 	 */
-	record Target(String outputId, String tree, List<String> command)
+	public record Target(String outputId, String tree, List<String> command)
 	{
 	}
 
@@ -189,7 +189,7 @@ final class OutputGates
 	 * Creates a manifest-local directory that the caller retains when a gate fails.
 	 */
 	@FunctionalInterface
-	interface DirectoryCreator
+	public interface DirectoryCreator
 	{
 		/**
 		 * Creates one temporary directory.

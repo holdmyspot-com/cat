@@ -17,8 +17,11 @@ When a test exceeds that target, state its behavioral claim and identify the ope
 Measure setup, repeated operations, persistence, waits, and external calls. Reduce work that the claim does not need;
 use controlled inputs at the tested boundary instead of replaying predecessor workflows already verified elsewhere.
 For each costly fixture, choose the smallest number of inputs, records, transitions, and external events that can make
-the asserted behavior fail when it is wrong. Check each larger count or repeated step against a specific assertion:
-retain a required policy threshold or boundary, but remove repetitions that cannot change what that test proves.
+the asserted behavior fail when it is wrong. Check each larger count or repeated step against a specific assertion of
+that test, and remove repetitions that cannot change what it proves. Retain a policy threshold or boundary only when one
+of the test's own assertions would fail if that threshold's value were wrong. A threshold that the exercised flow merely
+passes through on the way to the claimed behavior does not require its production count: start from controlled state at
+that threshold, or configure the smallest valid parameter, and leave the threshold's value to the test that claims it.
 When a slow test makes several claims, identify each claim's smallest proving boundary, how many inputs must be present,
 and how many must be read, validated, or processed. A batch-size claim may need many lightweight inputs but no
 per-input processing; an outcome-processing claim may need only one processed outcome. Separate these claims when doing so
@@ -45,5 +48,6 @@ each input. Rerun the same behavioral check to verify its result and runtime.
 Do not move, relabel, exclude, or disable a slow test, raise its timeout, or drop assertions to avoid fixing unnecessary
 work. If further speed would sacrifice the behavior under test, and production code cannot be optimized further
 without violating applicable quality or readability rules, accept the measured runtime. Record the work that requires
-the time and why a faster check would lose coverage or harm code quality. Keep the test in its required verification
-gate.
+the time and why a faster check would lose coverage or harm code quality, naming the assertion of that test that needs
+the work; a production threshold that the test passes through does not justify it. Keep the test in its required
+verification gate.

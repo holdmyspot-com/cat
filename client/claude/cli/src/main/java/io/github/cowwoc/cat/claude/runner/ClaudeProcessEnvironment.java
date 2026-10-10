@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 /**
  * Prepares the environment inherited by a sandboxed Claude process.
  */
-final class ClaudeProcessEnvironment
+public final class ClaudeProcessEnvironment
 {
 	/**
 	 * Removes unavailable and duplicate path directories before Claude constructs its sandbox.
@@ -24,7 +24,7 @@ final class ClaudeProcessEnvironment
 	 *
 	 * @param environment the mutable nested-process environment
 	 */
-	static void removeUnavailablePathEntries(Map<String, String> environment)
+	public static void removeUnavailablePathEntries(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		String path = environment.get("PATH");
@@ -49,7 +49,7 @@ final class ClaudeProcessEnvironment
 	 *
 	 * @param environment the mutable nested-process environment
 	 */
-	static void requestSessionStateEvents(Map<String, String> environment)
+	public static void requestSessionStateEvents(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		environment.put("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");

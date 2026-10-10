@@ -14,6 +14,8 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.secrets.HarnessRunManagerAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessRunManagerSecrets;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -40,6 +42,24 @@ import java.util.regex.Pattern;
  */
 public final class HarnessRunManager
 {
+	static
+	{
+		HarnessRunManagerSecrets.setAccess(new HarnessRunManagerAccess()
+		{
+			@Override
+			public int maximumManifestBytes()
+			{
+				return MAXIMUM_MANIFEST_BYTES;
+			}
+
+			@Override
+			public HarnessRunManager newHarnessRunManager(Path root, Clock clock, HarnessProcessLiveness processLiveness)
+			{
+				return new HarnessRunManager(root, clock, processLiveness);
+			}
+		});
+	}
+
 	/**
 	 * Default retention period for terminal diagnostic runs.
 	 */
@@ -377,6 +397,52 @@ public final class HarnessRunManager
 				Path relative = normalized.relativize(file);
 				if (!relative.startsWith(".git"))
 					Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
+				return CONTINUE;
+			}
+		});
+	}
+
+	/**
+	 * Copies fixture files into the project of an owned run, on top of the files that
+	 * {@link #copyProject(Path, HarnessRun)} copied. Nothing is replaced: a fixture whose path exists in the project
+	 * already is refused.
+	 *
+	 * @param source the directory that holds the fixtures at their paths relative to the project root
+	 * @param run the owned run
+	 * @throws IOException if the source is not a real directory, contains symbolic links, a fixture's path exists in the
+	 *   project already, or copying fails
+	 */
+	public void copyFixtures(Path source, HarnessRun run) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(run, "run").isNotNull();
+		Path normalized = source.toAbsolutePath().normalize();
+		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
+			throw new IOException("Fixture source is not a real directory");
+		Path destination = run.directory().resolve("project");
+		Files.walkFileTree(normalized, new SimpleFileVisitor<>()
+		{
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+				throws IOException
+			{
+				if (Files.isSymbolicLink(directory))
+					throw new IOException("Fixtures contain a symbolic-link directory");
+				Path target = destination.resolve(normalized.relativize(directory));
+				if (Files.isSymbolicLink(target))
+					throw new IOException("The project holds a symbolic link where a fixture directory goes: " + target);
+				Files.createDirectories(target);
+				return CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+				throws IOException
+			{
+				if (Files.isSymbolicLink(file))
+					throw new IOException("Fixtures contain a symbolic-link file");
+				// Without REPLACE_EXISTING, a fixture that collides with a project file is refused
+				Files.copy(file, destination.resolve(normalized.relativize(file)));
 				return CONTINUE;
 			}
 		});

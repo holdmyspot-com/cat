@@ -1,13 +1,13 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The scheduler rule that chose a new trial's cell: a category tested under one model and reasoning profile.
+ * The scheduler rule that chose a new trial's cell: a prompt test under one model and reasoning profile.
  */
 public enum AllocationRule
 {
 	/**
-	 * Rule 1: replay a failing instance for diagnosis or to check whether an author's edits replace the working
-	 * candidate, or reproduce a formal failure group on its round's combinations.
+	 * Rule 1: replay a failing test case for diagnosis or to check whether a prompt author's edits replace the working
+	 * candidate, or reproduce a formal failure group on its round's test cases.
 	 */
 	TARGETED,
 	/**
@@ -25,9 +25,14 @@ public enum AllocationRule
 	 */
 	FORMAL,
 	/**
-	 * Rule 5: sample a trial to measure the original prompt system, called the incumbent.
+	 * Rule 5: in a cell whose minimum-pass-rate part certified, pair a candidate formal trial with a control trial,
+	 * then add the further candidate formal trials that the cell's control comparisons need.
 	 */
-	BASELINE_ARM;
+	CONTROL,
+	/**
+	 * Rule 6: sample a trial to measure the original prompt system, called the incumbent.
+	 */
+	BASELINE;
 
 	/**
 	 * Indicates whether this rule assigns trials of a purpose.
@@ -42,8 +47,9 @@ public enum AllocationRule
 		{
 			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> this == TARGETED;
 			case DEVELOPMENT -> this == COVERAGE_FLOOR || this == LOWEST_EXPLORATORY_BOUND;
-			case FORMAL -> this == FORMAL;
-			case BASELINE -> this == BASELINE_ARM;
+			case FORMAL -> this == FORMAL || this == CONTROL;
+			case CONTROL -> this == CONTROL;
+			case BASELINE -> this == BASELINE;
 		};
 	}
 }

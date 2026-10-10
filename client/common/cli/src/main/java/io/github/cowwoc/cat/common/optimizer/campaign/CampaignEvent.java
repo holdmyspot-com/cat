@@ -2,9 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
@@ -40,6 +40,34 @@ public sealed interface CampaignEvent
 		{
 			requireThat(role, "role").isNotNull();
 			requireThat(usage, "usage").isNotNull();
+		}
+	}
+
+	/**
+	 * A revision that waits for confirmation moved the campaign onto a fork that holds the files the revised contract
+	 * needs. The incumbent and the working candidate keep their numbers and edits; their snapshots on the larger fork
+	 * replace their earlier ones, which stay in the earlier lineages' evidence.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param incumbent the incumbent's snapshot on the larger fork
+	 * @param working the working candidate's snapshot on the larger fork, which equals {@code incumbent} while the
+	 *   incumbent is the working candidate
+	 */
+	record ExtendFork(Sha256 incumbent, Sha256 working) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param incumbent the incumbent's snapshot on the larger fork
+		 * @param working the working candidate's snapshot on the larger fork, which equals {@code incumbent} while the
+		 *   incumbent is the working candidate
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public ExtendFork
+		{
+			requireThat(incumbent, "incumbent").isNotNull();
+			requireThat(working, "working").isNotNull();
 		}
 	}
 
@@ -124,23 +152,23 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A running logical trial was labelled by its deterministic checks or by its judge.
+	 * A running logical trial was labelled by its built-in tools or by its judge.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param key the trial
 	 * @param verdict the trial's label
 	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
-	 *   deterministic checks
-	 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
-	 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty for a pass
+	 *   built-in tools
+	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
+	 *   failed built-in tools or, when its judge failed it, those that the judge named; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 * @param files where the trial session's harness events and file changes were retained
 	 */
-	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements,
+	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
 		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files)
 		implements CampaignEvent
 	{
@@ -150,18 +178,18 @@ public sealed interface CampaignEvent
 		 * @param key the trial
 		 * @param verdict the trial's label
 		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
-		 *   deterministic checks
-		 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
-		 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty for a pass
+		 *   built-in tools
+		 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
+		 *   failed built-in tools or, when its judge failed it, those that the judge named; empty for a pass
 		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
 		 * @param files where the trial session's harness events and file changes were retained
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
-		 *   {@code failedRequirements}, {@code observed}, {@code responses}, {@code files}, a failed requirement, a
+		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, a failed assertion, a
 		 *   turn's messages or an assistant message are null
-		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed requirements, or a
+		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed assertions, or a
 		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial
 		 */
 		public Complete
@@ -169,9 +197,9 @@ public sealed interface CampaignEvent
 			requireThat(key, "key").isNotNull();
 			requireThat(verdict, "verdict").isNotNull();
 			requireThat(rationale, "rationale").isNotNull();
-			requireThat(failedRequirements, "failedRequirements").isNotNull();
+			requireThat(failedAssertions, "failedAssertions").isNotNull();
 			if (verdict == Verdict.PASS)
-				requireThat(failedRequirements, "failedRequirements").isEmpty();
+				requireThat(failedAssertions, "failedAssertions").isEmpty();
 			requireThat(observed, "observed").isNotNull();
 			requireThat(responses, "responses").isNotNull();
 			requireThat(files, "files").isNotNull();
@@ -183,7 +211,7 @@ public sealed interface CampaignEvent
 				requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
 			}
 
-			failedRequirements = List.copyOf(failedRequirements);
+			failedAssertions = List.copyOf(failedAssertions);
 			responses = responses.stream().map(List::copyOf).toList();
 		}
 	}
@@ -271,27 +299,27 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * Reserves an author session's stable number before it starts.
+	 * Reserves a prompt author session's stable number before it starts.
 	 *
 	 * @param cell the optimization round's addressed cell
 	 */
-	record StartAuthorAttempt(String cell) implements CampaignEvent
+	record StartPromptAuthorAttempt(String cell) implements CampaignEvent
 	{
 		/**
 		 * Creates a reservation request.
 		 *
 		 * @param cell the addressed cell
-		 * @throws NullPointerException if category is null
-		 * @throws IllegalArgumentException if category is blank
+		 * @throws NullPointerException if test is null
+		 * @throws IllegalArgumentException if test is blank
 		 */
-		public StartAuthorAttempt
+		public StartPromptAuthorAttempt
 		{
-			requireThat(cell, "category").isNotBlank();
+			requireThat(cell, "cell").isNotBlank();
 		}
 	}
 
 	/**
-	 * An author's proposed file changes passed inventory validation, so checks that decide whether to promote
+	 * A prompt author's proposed file changes passed inventory validation, so checks that decide whether to promote
 	 * the snapshot can start.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
@@ -301,7 +329,7 @@ public sealed interface CampaignEvent
 	 * @param snapshot the attempt's snapshot
 	 * @param changes the captured original file changes
 	 */
-	record SubmitAuthorAttempt(int number, String cell, Sha256 snapshot, List<FileDelta> changes)
+	record SubmitPromptAuthorAttempt(int number, String cell, Sha256 snapshot, List<FileDelta> changes)
 		implements CampaignEvent
 	{
 		/**
@@ -312,12 +340,12 @@ public sealed interface CampaignEvent
 		 * @param snapshot the attempt's snapshot
 		 * @param changes the captured original file changes
 		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if number is not positive or category is blank
+		 * @throws IllegalArgumentException if number is not positive or test is blank
 		 */
-		public SubmitAuthorAttempt
+		public SubmitPromptAuthorAttempt
 		{
 			requireThat(number, "number").isPositive();
-			requireThat(cell, "category").isNotBlank();
+			requireThat(cell, "cell").isNotBlank();
 			requireThat(snapshot, "snapshot").isNotNull();
 			changes = List.copyOf(changes);
 		}
@@ -365,11 +393,11 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * Retains a completed author session's diagnosis independently of whether it contributes a candidate.
+	 * Retains a completed prompt author session's diagnosis independently of whether it contributes a candidate.
 	 *
-	 * @param diagnosis the author's retained evidence
+	 * @param diagnosis the prompt author's retained evidence
 	 */
-	record RetainAuthorDiagnosis(AuthorDiagnosis diagnosis) implements CampaignEvent
+	record RetainPromptAuthorDiagnosis(PromptAuthorDiagnosis diagnosis) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -377,7 +405,7 @@ public sealed interface CampaignEvent
 		 * @param diagnosis the retained evidence
 		 * @throws NullPointerException if the diagnosis is null
 		 */
-		public RetainAuthorDiagnosis
+		public RetainPromptAuthorDiagnosis
 		{
 			requireThat(diagnosis, "diagnosis").isNotNull();
 		}
@@ -390,50 +418,55 @@ public sealed interface CampaignEvent
 	 *
 	 * @param calibration the cap calibrated for the attempt's certification level
 	 * @param formalSeed the seed of the attempt's formal draw stream
+	 * @param control the snapshot that the attempt's control trials run: the incumbent with every target prompt file
+	 *   emptied
 	 */
-	record Commit(CapCalibration calibration, long formalSeed) implements CampaignEvent
+	record Commit(CapCalibration calibration, long formalSeed, Sha256 control) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param calibration the cap calibrated for the attempt's certification level
 		 * @param formalSeed the seed of the attempt's formal draw stream
-		 * @throws NullPointerException if {@code calibration} is null
+		 * @param control the snapshot that the attempt's control trials run: the incumbent with every target prompt
+		 *   file emptied
+		 * @throws NullPointerException if {@code calibration} or {@code control} are null
 		 */
 		public Commit
 		{
 			requireThat(calibration, "calibration").isNotNull();
+			requireThat(control, "control").isNotNull();
 		}
 	}
 
 	/**
-	 * A deriver session wrote the key-value combinations of a formal failure group's current round.
+	 * A contract author session wrote the test cases of a formal failure group's current round.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param attempt the index of the attempt whose failure group the values address
+	 * @param attempt the index of the attempt whose failure group the test cases address
 	 * @param group the group's 1-based position in the attempt's groups
-	 * @param combinations the new key-value combinations, each recording {@code attempt}
+	 * @param testCases the new test cases, each recording {@code attempt}
 	 */
-	record ReproductionValues(int attempt, int group, List<AddedCombination> combinations) implements CampaignEvent
+	record ReproductionValues(int attempt, int group, List<AddedTestCase> testCases) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
-		 * @param attempt the index of the attempt whose failure group the values address
+		 * @param attempt the index of the attempt whose failure group the test cases address
 		 * @param group the group's 1-based position in the attempt's groups
-		 * @param combinations the new key-value combinations, each recording {@code attempt}
-		 * @throws NullPointerException if {@code combinations} is null or contains null
-		 * @throws IllegalArgumentException if {@code group} is not positive, {@code combinations} is empty or a
-		 *   combination records another attempt
+		 * @param testCases the new test cases, each recording {@code attempt}
+		 * @throws NullPointerException if {@code testCases} is null or contains null
+		 * @throws IllegalArgumentException if {@code group} is not positive, {@code testCases} is empty or a test case
+		 *   records another attempt
 		 */
 		public ReproductionValues
 		{
 			requireThat(group, "group").isPositive();
-			requireThat(combinations, "combinations").isNotEmpty();
-			combinations = List.copyOf(combinations);
-			for (AddedCombination combination : combinations)
-				requireThat(combination.attempt(), "combination.attempt()").isEqualTo(attempt, "attempt");
+			requireThat(testCases, "testCases").isNotEmpty();
+			testCases = List.copyOf(testCases);
+			for (AddedTestCase testCase : testCases)
+				requireThat(testCase.attempt(), "testCase.attempt()").isEqualTo(attempt, "attempt");
 		}
 	}
 
@@ -460,11 +493,11 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A valid author report found conflicts in confirmed requirements.
+	 * A valid prompt author report found conflicts in confirmed requirements.
 	 *
 	 * @param conflicts the conflicts, in report order
 	 */
-	record FindConflict(List<AuthorConflict> conflicts) implements CampaignEvent
+	record FindConflict(List<PromptAuthorConflict> conflicts) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -576,7 +609,7 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * Reports required edits outside the author's permitted files and asks the user how to continue. Only the
+	 * Reports required edits outside the prompt author's permitted files and asks the user how to continue. Only the
 	 * driver applies this event.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.

@@ -2,119 +2,103 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationRule;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * One round of a failure group's reproduction: trials of the working candidate on the round's key-value combinations
- * in one cell.
+ * One round of a failure group's reproduction: trials of the working candidate on the round's test cases in one cell.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param cellId the cell that the round's trials run in
- * @param combinations the combinations that the round tries, with their counts; empty while the round awaits the
- *   deriver's combinations
+ * @param testCases the test cases that the round tries, with their counts; empty while the round awaits the contract
+ *   author's test cases
  */
-public record ReproductionRound(String cellId, List<TriedCombination> combinations)
+public record ReproductionRound(String cellId, List<TriedTestCase> testCases)
 {
 	/**
 	 * Creates a round.
 	 *
 	 * @param cellId the cell that the round's trials run in
-	 * @param combinations the combinations that the round tries, with their counts; empty while the round awaits
-	 *   the deriver's combinations
-	 * @throws NullPointerException if any of the arguments are null or {@code combinations} contains null
+	 * @param testCases the test cases that the round tries, with their counts; empty while the round awaits the
+	 *   contract author's test cases
+	 * @throws NullPointerException if any of the arguments are null or {@code testCases} contains null
 	 * @throws IllegalArgumentException if {@code cellId} is blank
 	 */
 	public ReproductionRound
 	{
 		requireThat(cellId, "cellId").isNotBlank();
-		combinations = List.copyOf(combinations);
+		testCases = List.copyOf(testCases);
 	}
 
 	/**
-	 * Indicates whether the round awaits the deriver's combinations.
+	 * Indicates whether the round awaits the contract author's test cases.
 	 *
-	 * @return {@code true} if the round has no combination
+	 * @return {@code true} if the round has no test case
 	 */
 	public boolean awaitsValues()
 	{
-		return combinations.isEmpty();
+		return testCases.isEmpty();
 	}
 
 	/**
 	 * Returns the round's adopted trials.
 	 *
-	 * @return the trials of every combination
+	 * @return the trials of every test case
 	 */
 	public int trials()
 	{
 		int trials = 0;
-		for (TriedCombination combination : combinations)
-			trials += combination.trials();
+		for (TriedTestCase testCase : testCases)
+			trials += testCase.trials();
 		return trials;
 	}
 
 	/**
 	 * Returns the round's trials that failed the group's requirement through the group's behavior.
 	 *
-	 * @return the failures of every combination
+	 * @return the failures of every test case
 	 */
 	public int failures()
 	{
 		int failures = 0;
-		for (TriedCombination combination : combinations)
-			failures += combination.failures();
+		for (TriedTestCase testCase : testCases)
+			failures += testCase.failures();
 		return failures;
 	}
 
 	/**
-	 * Returns the combinations that the round tries, without their counts.
+	 * Returns the test cases that the round tries, without their counts.
 	 *
-	 * @return the combinations
+	 * @return the test cases
 	 */
-	public List<AddedCombination> added()
+	public List<AddedTestCase> added()
 	{
-		return combinations.stream().map(TriedCombination::combination).toList();
+		return testCases.stream().map(TriedTestCase::testCase).toList();
 	}
 
 	/**
-	 * Finds the combination whose key values an instance holds.
+	 * Finds the round's test case that a trial ran.
 	 *
-	 * @param test the definition of the instance's test
-	 * @param instance the instance
-	 * @return the combination's position in {@link #combinations()}, or {@code -1} if the instance holds none of the
-	 *   round's combinations
+	 * @param test the definition of the trial's test
+	 * @param drawn the trial
+	 * @return the test case's position in {@link #testCases()}, or {@code -1} if the trial ran none of the round's test
+	 *   cases
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public int indexOf(TestDefinition test, TrialInstance instance)
+	public int indexOf(PromptTest test, DrawnTestCase drawn)
 	{
 		requireThat(test, "test").isNotNull();
-		requireThat(instance, "instance").isNotNull();
-		if (!test.id().equals(instance.testId()))
+		requireThat(drawn, "drawn").isNotNull();
+		if (!test.id().equals(drawn.testId()))
 			return -1;
-		Map<String, String> labelByDimension = new HashMap<>();
-		for (VariationChoice choice : instance.choices())
-			labelByDimension.put(choice.dimension(), choice.label());
-		List<VariationRule> keyRules = test.keyRules();
-		for (int i = 0; i < combinations.size(); ++i)
+		for (int i = 0; i < testCases.size(); ++i)
 		{
-			AddedCombination combination = combinations.get(i).combination();
-			if (!combination.testId().equals(test.id()))
-				continue;
-			List<VariationValue> values = combination.values();
-			boolean matches = true;
-			for (int j = 0; j < keyRules.size() && matches; ++j)
-				matches = values.get(j).label().equals(labelByDimension.get(keyRules.get(j).dimension()));
-			if (matches)
+			AddedTestCase added = testCases.get(i).testCase();
+			if (added.testId().equals(test.id()) && added.testCase().equals(drawn.testCase()))
 				return i;
 		}
 		return -1;

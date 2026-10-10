@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 /**
  * Validates a proposed output plan and runs each candidate's acceptance command against its draft output tree.
  */
-final class DraftOutputAcceptance
+public final class DraftOutputAcceptance
 {
 	private final JsonMapper json;
 	private final OutputPlanValidation outputPlan;
@@ -77,7 +77,7 @@ final class DraftOutputAcceptance
 	 * @return the command and its proposed result tree
 	 * @throws IOException if the behavior has no proposed retained tree
 	 */
-	static OutputGates.Target target(SemanticCandidate candidate, Map<String, String> trees) throws IOException
+	public static OutputGates.Target target(SemanticCandidate candidate, Map<String, String> trees) throws IOException
 	{
 		String tree = trees.get(candidate.output());
 		if (tree == null)

@@ -4,9 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.BuiltInToolResult;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.execution.TriageProtocol;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -68,15 +69,15 @@ public final class TriagePrompt implements TriageProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The prompt defines both impacts and gives the result schema, then the evidence as data: the failure record, the
-	 * instance, every message of the reply and the deterministic results as JSON, and the rendered trial activity and
+	 * test case, every message of the reply and the built-in tool results as JSON, and the rendered trial activity and
 	 * file changes. The effects directory is readable.
 	 */
 	@Override
-	public SessionRequest request(TrialProfile profile, TrialInstance instance, SessionResult.Completed evidence,
-		List<CheckResult> results, String evidenceSection, String failure)
+	public SessionRequest request(TrialProfile profile, DrawnTestCase testCase, SessionResult.Completed evidence,
+		List<BuiltInToolResult> results, String evidenceSection, String failure)
 	{
 		requireThat(profile, "profile").isNotNull();
-		requireThat(instance, "instance").isNotNull();
+		requireThat(testCase, "testCase").isNotNull();
 		requireThat(evidence, "evidence").isNotNull();
 		requireThat(results, "results").isNotNull();
 		requireThat(evidenceSection, "evidenceSection").isNotNull();
@@ -87,23 +88,24 @@ public final class TriagePrompt implements TriageProtocol
 			ArrayNode messages = responseArray.addArray();
 			turn.forEach(messages::add);
 		}
+		Map<String, String> textByName = PromptTest.textByName(testCase.testCase());
 		ArrayNode resultArray = json.createArrayNode();
-		for (CheckResult result : results)
+		for (BuiltInToolResult result : results)
 		{
 			resultArray.addObject().
-				put("requirement_id", result.check().requirementId()).
-				put("kind", result.check().criterion().kind()).
-				put("check", result.check().criterion().describe()).
+				put("assertion_id", result.assertion().id()).
+				put("statement", result.assertion().statement(textByName)).
+				put("tool", result.assertion().tool()).
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
 		String turn = prompt.fill(Map.of(
 			"failure", failure,
-			"instance", pretty(InstanceJson.encode(json, instance)),
+			"test_case", pretty(TestCaseJson.encode(json, testCase)),
 			"responses", pretty(responseArray),
 			"evidence", evidenceSection,
 			"effects", evidence.effects().toString(),
-			"deterministic_results", pretty(resultArray),
+			"tool_results", pretty(resultArray),
 			"result_schema", resultSchema));
 		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn),
 			List.of(evidence.effects()), TIME_LIMIT, profile);

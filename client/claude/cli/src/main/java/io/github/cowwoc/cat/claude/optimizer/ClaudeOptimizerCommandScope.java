@@ -14,6 +14,8 @@ import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.claude.secrets.ClaudeOptimizerCommandScopeAccess;
+import io.github.cowwoc.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -27,8 +29,27 @@ import java.util.Optional;
  * environment and the home directory, and supplies the Claude sessions, the host interrupt signal and the Claude
  * profile inventory.
  */
-final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
+public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 {
+	static
+	{
+		ClaudeOptimizerCommandScopeSecrets.setAccess(new ClaudeOptimizerCommandScopeAccess()
+		{
+			@Override
+			public ClaudeOptimizerCommandScope newClaudeOptimizerCommandScope(Map<String, String> environment, Path home,
+				Path directory, Path artifact)
+			{
+				return new ClaudeOptimizerCommandScope(environment, home, directory, artifact);
+			}
+
+			@Override
+			public HostInterruptSignal interrupts(Map<String, String> environment, Path configurationDirectory, Clock clock)
+			{
+				return ClaudeOptimizerCommandScope.interrupts(environment, configurationDirectory, clock);
+			}
+		});
+	}
+
 	private static final String SESSION_ID = "CLAUDE_CODE_SESSION_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".claude/settings.json"),
 		Path.of(".claude/settings.local.json"), Path.of(".mcp.json"));

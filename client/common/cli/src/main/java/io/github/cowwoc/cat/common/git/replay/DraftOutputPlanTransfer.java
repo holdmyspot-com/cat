@@ -12,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Transfers an unsealed reviewer output plan and its verified patch artifacts between compatible manifests.
  */
-final class DraftOutputPlanTransfer
+public final class DraftOutputPlanTransfer
 {
 	private final JsonMapper json;
 	private final PatchArtifacts patches;
@@ -23,7 +23,7 @@ final class DraftOutputPlanTransfer
 	 * @param json the mapper that reads and writes reviewer plan input
 	 * @param patches the owner of manifest-local patch identity
 	 */
-	DraftOutputPlanTransfer(JsonMapper json, PatchArtifacts patches)
+	public DraftOutputPlanTransfer(JsonMapper json, PatchArtifacts patches)
 	{
 		this.json = json;
 		this.patches = patches;
@@ -41,7 +41,7 @@ final class DraftOutputPlanTransfer
 	 * @param planFile the new replacement-manifest-local draft plan
 	 * @throws IOException if either manifest state, a plan path, or a patch artifact is unsafe or incompatible
 	 */
-	void transfer(Path previousManifestFile, Path previousPlanFile, BatchManifest previous, Path manifestFile,
+	public void transfer(Path previousManifestFile, Path previousPlanFile, BatchManifest previous, Path manifestFile,
 		BatchManifest replacement, Path planFile) throws IOException
 	{
 		if (previous.sourceReviews().isEmpty())

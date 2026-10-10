@@ -2,13 +2,15 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.BuiltInToolResult;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.execution.JudgeProtocol;
 import io.github.cowwoc.cat.common.optimizer.execution.Judgment;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -65,22 +67,22 @@ public final class JudgePrompt implements JudgeProtocol
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The profile's prompt receives the rubric, the decision rule, the semantic requirements to decide and the result
-	 * schema, then the evidence as data: the instance, the responses and the deterministic results as JSON, and the
-	 * rendered trial activity and file changes. The effects directory is readable. A template that names the effects
-	 * or transcript placeholders receives those paths, and naming the transcript grants read-only access to its
-	 * directory.
+	 * The profile's prompt receives the rubric, the decision rule, the assertions to decide and the result schema, then
+	 * the evidence as data: the test case, the responses and the built-in tool results as JSON, and the rendered
+	 * trial activity and file changes. Each assertion's statement has the test case's values in place of its
+	 * placeholders. The effects directory is readable. A template that names the effects or transcript placeholders
+	 * receives those paths, and naming the transcript grants read-only access to its directory.
 	 *
-	 * @throws IllegalArgumentException if {@code requirements} is empty
+	 * @throws IllegalArgumentException if {@code assertions} is empty
 	 */
 	@Override
-	public SessionRequest request(JudgeProfile profile, TrialInstance instance, SessionResult.Completed evidence,
-		List<Requirement> requirements, List<CheckResult> results, String evidenceSection)
+	public SessionRequest request(JudgeProfile profile, DrawnTestCase testCase, SessionResult.Completed evidence,
+		List<JudgedAssertion> assertions, List<BuiltInToolResult> results, String evidenceSection)
 	{
 		requireThat(profile, "profile").isNotNull();
-		requireThat(instance, "instance").isNotNull();
+		requireThat(testCase, "testCase").isNotNull();
 		requireThat(evidence, "evidence").isNotNull();
-		requireThat(requirements, "requirements").isNotEmpty();
+		requireThat(assertions, "assertions").isNotEmpty();
 		requireThat(results, "results").isNotNull();
 		requireThat(evidenceSection, "evidenceSection").isNotNull();
 		ArrayNode responseArray = json.createArrayNode();
@@ -89,35 +91,45 @@ public final class JudgePrompt implements JudgeProtocol
 			ArrayNode messages = responseArray.addArray();
 			turn.forEach(messages::add);
 		}
-		ArrayNode requirementArray = json.createArrayNode();
-		for (Requirement requirement : requirements)
+		Map<String, String> textByName = PromptTest.textByName(testCase.testCase());
+		ArrayNode assertionArray = json.createArrayNode();
+		for (JudgedAssertion judged : assertions)
 		{
-			requirementArray.addObject().
-				put("id", requirement.id()).
-				put("description", requirement.description()).
-				put("source", requirement.source()).
-				set("behaviors", json.valueToTree(requirement.behaviors()));
+			ObjectNode node = assertionArray.addObject().
+				put("id", judged.assertion().id()).
+				put("statement", judged.assertion().statement(textByName));
+			Requirement requirement = judged.requirement();
+			if (requirement == null)
+				node.putNull("requirement");
+			else
+			{
+				node.putObject("requirement").
+					put("id", requirement.id()).
+					put("description", requirement.description()).
+					put("source", requirement.source());
+			}
+			node.set("behaviors", json.valueToTree(judged.behaviors()));
 		}
 		ArrayNode resultArray = json.createArrayNode();
-		for (CheckResult result : results)
+		for (BuiltInToolResult result : results)
 		{
 			resultArray.addObject().
-				put("requirement_id", result.check().requirementId()).
-				put("kind", result.check().criterion().kind()).
-				put("check", result.check().criterion().describe()).
+				put("assertion_id", result.assertion().id()).
+				put("statement", result.assertion().statement(textByName)).
+				put("tool", result.assertion().tool()).
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
 		Map<String, String> values = new HashMap<>(Map.of(
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
-			"requirements", pretty(requirementArray),
-			"instance", pretty(InstanceJson.encode(json, instance)),
+			"assertions", pretty(assertionArray),
+			"test_case", pretty(TestCaseJson.encode(json, testCase)),
 			"responses", pretty(responseArray),
 			"effects", evidence.effects().toString(),
 			"transcript", evidence.transcript().toString(),
 			"evidence", evidenceSection,
-			"deterministic_results", pretty(resultArray),
+			"tool_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
 		values.keySet().removeIf(name -> !profile.prompt().contains("{{" + name + "}}"));
 		String turn = new PromptTemplate(profile.prompt()).fill(values);
@@ -147,72 +159,104 @@ public final class JudgePrompt implements JudgeProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The output is the final response when it is exactly one JSON object, bare or alone inside one Markdown code
-	 * fence, that holds exactly a {@code verdict} of {@code pass} or {@code fail}, a non-blank {@code rationale} and
-	 * {@code failures}, as CAT's result schema requires. A failed verdict names at least one failure and a passing
-	 * verdict none. Each failure names a decided requirement, at most once, and a behavior that the requirement lists
-	 * or {@code other}. The judgment keeps the rationale as the judge wrote it.
+	 * fence, that holds exactly {@code assertions}, as CAT's result schema requires. It holds one item per decided
+	 * assertion, each with exactly its {@code id}, a {@code verdict} of {@code pass} or {@code fail}, a non-blank
+	 * {@code rationale} and a {@code behavior}: {@code null} for a pass, and for a failure one of the behaviors that the
+	 * assertion admits. The rationale lists each assertion's verdict and rationale as the judge wrote it.
 	 */
 	@Override
-	public Optional<Judgment> judgment(SessionResult.Completed result, List<Requirement> decided)
+	public Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(decided, "decided").isNotNull();
 		Optional<ObjectNode> output = responses.parseFinalResponse(result);
-		if (output.isEmpty() || output.get().size() != 3)
+		if (output.isEmpty() || output.get().size() != 1)
 			return Optional.empty();
-		JsonNode verdictNode = output.get().get("verdict");
-		JsonNode rationale = output.get().get("rationale");
-		if (verdictNode == null || !verdictNode.isString() || rationale == null || !rationale.isString() ||
-			rationale.asString().isBlank())
+		JsonNode items = output.get().get("assertions");
+		if (items == null || !items.isArray() || items.size() != decided.size())
+			return Optional.empty();
+		Map<String, JudgedAssertion> assertionById = new HashMap<>();
+		for (JudgedAssertion judged : decided)
+			assertionById.put(judged.assertion().id(), judged);
+		Set<String> named = new HashSet<>();
+		List<FailedAssertion> failures = new ArrayList<>();
+		StringBuilder rationale = new StringBuilder();
+		for (JsonNode item : items)
 		{
-			return Optional.empty();
+			Optional<Decided> decision = decision(item, assertionById);
+			if (decision.isEmpty() || !named.add(decision.get().id()))
+				return Optional.empty();
+			Decided assertion = decision.get();
+			if (!rationale.isEmpty())
+				rationale.append('\n');
+			rationale.append("- `").append(assertion.id()).append("`: ");
+			if (assertion.behavior() == null)
+				rationale.append("pass. ");
+			else
+			{
+				rationale.append("fail (").append(assertion.behavior()).append("). ");
+				failures.add(new FailedAssertion(assertion.id(), assertion.behavior()));
+			}
+			rationale.append(assertion.rationale());
 		}
 		Verdict verdict;
-		switch (verdictNode.asString())
-		{
-			case "pass" -> verdict = Verdict.PASS;
-			case "fail" -> verdict = Verdict.FAIL;
-			default ->
-			{
-				return Optional.empty();
-			}
-		}
-		Optional<List<FailedRequirement>> failures = failures(output.get().get("failures"), decided);
-		if (failures.isEmpty() || failures.get().isEmpty() == (verdict == Verdict.FAIL))
-			return Optional.empty();
-		return Optional.of(new Judgment(verdict, rationale.asString(), failures.get()));
+		if (failures.isEmpty())
+			verdict = Verdict.PASS;
+		else
+			verdict = Verdict.FAIL;
+		return Optional.of(new Judgment(verdict, rationale.toString(), failures));
 	}
 
 	/**
-	 * Returns the failures that a judge named.
+	 * The judge's decision of one assertion.
 	 *
-	 * @param node the judge's {@code failures} value, or {@code null} if it is absent
-	 * @param decided the requirements that the judge decided
-	 * @return the failures, or empty if a failure does not match the result schema, names a requirement outside
-	 *   {@code decided} or more than once, or names a behavior that its requirement does not admit
+	 * @param id the assertion's identifier
+	 * @param rationale the evidence that decided it
+	 * @param behavior the behavior through which the trial failed it, or {@code null} if the trial passed it
 	 */
-	private static Optional<List<FailedRequirement>> failures(JsonNode node, List<Requirement> decided)
+	private record Decided(String id, String rationale, String behavior)
 	{
-		if (node == null || !node.isArray())
+	}
+
+	/**
+	 * Reads the judge's decision of one assertion.
+	 *
+	 * @param item one item of the judge's {@code assertions}
+	 * @param assertionById the decided assertions, by identifier
+	 * @return the decision, or empty if the item does not match the result schema, names an assertion outside
+	 *   {@code assertionById}, or names a behavior that its assertion does not admit
+	 */
+	private static Optional<Decided> decision(JsonNode item, Map<String, JudgedAssertion> assertionById)
+	{
+		if (!item.isObject() || item.size() != 4)
 			return Optional.empty();
-		Map<String, Requirement> requirementById = new HashMap<>();
-		for (Requirement requirement : decided)
-			requirementById.put(requirement.id(), requirement);
-		List<FailedRequirement> failures = new ArrayList<>();
-		Set<String> named = new HashSet<>();
-		for (JsonNode element : node)
+		JsonNode id = item.get("id");
+		JsonNode verdict = item.get("verdict");
+		JsonNode rationale = item.get("rationale");
+		JsonNode behavior = item.get("behavior");
+		if (id == null || !id.isString() || verdict == null || !verdict.isString() || rationale == null ||
+			!rationale.isString() || rationale.asString().isBlank() || behavior == null)
 		{
-			if (!element.isObject() || element.size() != 2)
-				return Optional.empty();
-			JsonNode requirementId = element.get("requirement_id");
-			JsonNode behavior = element.get("behavior");
-			if (requirementId == null || !requirementId.isString() || behavior == null || !behavior.isString())
-				return Optional.empty();
-			Requirement requirement = requirementById.get(requirementId.asString());
-			if (requirement == null || !requirement.admits(behavior.asString()) || !named.add(requirement.id()))
-				return Optional.empty();
-			failures.add(new FailedRequirement(requirement.id(), behavior.asString()));
+			return Optional.empty();
 		}
-		return Optional.of(failures);
+		JudgedAssertion assertion = assertionById.get(id.asString());
+		if (assertion == null)
+			return Optional.empty();
+		return switch (verdict.asString())
+		{
+			case "pass" ->
+			{
+				if (!behavior.isNull())
+					yield Optional.empty();
+				yield Optional.of(new Decided(id.asString(), rationale.asString(), null));
+			}
+			case "fail" ->
+			{
+				if (!behavior.isString() || !assertion.admits(behavior.asString()))
+					yield Optional.empty();
+				yield Optional.of(new Decided(id.asString(), rationale.asString(), behavior.asString()));
+			}
+			default -> Optional.empty();
+		};
 	}
 }

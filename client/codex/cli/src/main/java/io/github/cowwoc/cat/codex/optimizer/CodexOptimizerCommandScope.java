@@ -13,6 +13,8 @@ import io.github.cowwoc.cat.common.optimizer.port.HostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
+import io.github.cowwoc.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -26,8 +28,27 @@ import java.util.Optional;
  * environment and the home directory, and supplies the Codex sessions, the host interrupt signal and the Codex
  * profile inventory.
  */
-final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
+public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 {
+	static
+	{
+		CodexOptimizerCommandScopeSecrets.setAccess(new CodexOptimizerCommandScopeAccess()
+		{
+			@Override
+			public CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,
+				Path directory, Path artifact)
+			{
+				return new CodexOptimizerCommandScope(environment, home, directory, artifact);
+			}
+
+			@Override
+			public HostInterruptSignal interrupts(Map<String, String> environment, Path configurationDirectory, Clock clock)
+			{
+				return CodexOptimizerCommandScope.interrupts(environment, configurationDirectory, clock);
+			}
+		});
+	}
+
 	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".codex/config.toml"));

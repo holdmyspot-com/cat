@@ -1,14 +1,12 @@
 package io.github.cowwoc.cat.common.optimizer.statistics;
 
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.ABOVE;
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.BELOW;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * The precomputed proven-better and proven-worse boundaries of one cell, one category under one trial profile, in a
+ * The precomputed proven-better and proven-worse boundaries of one cell, one prompt test under one trial profile, in a
  * certification attempt, so that each decision is a lookup.
  * <p>
  * Element {@code F} of each list describes the states with {@code F} failures, up to the attempt's cap {@code n}.
@@ -59,7 +57,7 @@ public record ComparisonBoundaries(Comparison comparison, List<Integer> minimumP
 			minimums = BoundaryLists.unreachableMinimums(cap);
 		else
 		{
-			minimums = BoundaryLists.computeMinimums(new BettingProcess(ABOVE, comparison.incumbentUpper()),
+			minimums = BoundaryLists.computeMinimums(BettingProcess.above(comparison.incumbentUpper()),
 				comparison.level(), cap);
 		}
 		List<Integer> maximums;
@@ -67,8 +65,8 @@ public record ComparisonBoundaries(Comparison comparison, List<Integer> minimumP
 			maximums = BoundaryLists.unreachableMaximums(cap);
 		else
 		{
-			maximums = BoundaryLists.computeMaximums(new BettingProcess(BELOW, comparison.incumbentLower()),
-				comparison.level(), cap);
+			maximums = BoundaryLists.computeMaximums(BettingProcess.below(comparison.incumbentLower(),
+				comparison.minimumPassRate()), comparison.level(), cap);
 		}
 		return new ComparisonBoundaries(comparison, minimums, maximums);
 	}

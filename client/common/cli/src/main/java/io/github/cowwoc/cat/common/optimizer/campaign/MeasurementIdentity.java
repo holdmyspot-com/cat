@@ -20,7 +20,7 @@ import java.util.function.BiPredicate;
  * A condition without a value has not been observed. An observation that found nothing to record, such as no host
  * tools, is recorded as an explicit value, so that a missing value always means missing data.
  * <p>
- * A cell tests one category under one model and reasoning profile. Its observed trial model and reasoning
+ * A cell tests one prompt test under one model and reasoning profile. Its observed trial model and reasoning
  * configuration are compared with observations of the same cell; different cells can use different profiles.
  * A condition that is recorded for the whole campaign applies to every cell that does not record its own value, so a
  * cell's value that equals the campaign-wide value is redundant and is not kept. Equal identities therefore record

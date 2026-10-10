@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.secrets.HarnessProjectRepositoryAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessProjectRepositorySecrets;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +17,24 @@ import java.util.Map;
  */
 public final class HarnessProjectRepository
 {
+	static
+	{
+		HarnessProjectRepositorySecrets.setAccess(new HarnessProjectRepositoryAccess()
+		{
+			@Override
+			public List<List<String>> commands()
+			{
+				return COMMANDS;
+			}
+
+			@Override
+			public Map<String, String> environment(Map<String, String> parentEnvironment, Path gitHome)
+			{
+				return HarnessProjectRepository.environment(parentEnvironment, gitHome);
+			}
+		});
+	}
+
 	/**
 	 * The commands that create the baseline, in order.
 	 */

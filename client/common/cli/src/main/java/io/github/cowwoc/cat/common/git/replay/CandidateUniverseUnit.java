@@ -6,6 +6,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param inventoryId the immutable changed artifact
  * @param affectedUnit the behavior, contract, test, or documentation unit in that artifact
  */
-record CandidateUniverseUnit(String inventoryId, String affectedUnit)
+public record CandidateUniverseUnit(String inventoryId, String affectedUnit)
 {
 }

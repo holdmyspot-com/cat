@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptSelection;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
@@ -15,15 +15,15 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * One reserved author's original promotion progress, retained after winner minimality.
+ * One reserved prompt author's original promotion progress, retained after winner minimality.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param round the round's position in the campaign, starting at one
- * @param number the author's launch-order attempt number
+ * @param number the prompt author's launch-order attempt number
  * @param working the starting working snapshot
  * @param cell the representative addressed cell
- * @param snapshot the original author snapshot, or {@code null} before the author submits
+ * @param snapshot the original prompt author snapshot, or {@code null} before the prompt author submits
  * @param passingRuns the attempt's own passing promotion runs, excluding working reference runs
  * @param totalRuns the attempt's own planned promotion runs, excluding working reference runs
  * @param accepted whether promotion accepted the attempt, or {@code null} while pending
@@ -85,7 +85,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 			{
 				if (progress.containsKey(entry.getKey()))
 					continue;
-				AuthorAttempt attempt = findAttempt(campaign, entry.getKey());
+				PromptAuthorAttempt attempt = findAttempt(campaign, entry.getKey());
 				Sha256 working = campaign.development().working().snapshot();
 				if (attempt == null)
 				{
@@ -99,7 +99,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 				else
 				{
 					accepted = switch (Promotion.decide(attempt, campaign.lineage().regressionSet(),
-						campaign.development().instanceOutcomes()))
+						campaign.development().testCaseOutcomes()))
 					{
 						case PENDING -> null;
 						case PROMOTE -> true;
@@ -144,9 +144,9 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param number the reserved identity
 	 * @return the validation attempt, or {@code null} while authoring
 	 */
-	private static AuthorAttempt findAttempt(Campaign campaign, int number)
+	private static PromptAuthorAttempt findAttempt(Campaign campaign, int number)
 	{
-		AuthorAttempt selected = campaign.development().author();
+		PromptAuthorAttempt selected = campaign.development().promptAuthor();
 		if (selected != null && selected.number() == number)
 			return selected;
 		return campaign.development().round().validationAttempts().stream().

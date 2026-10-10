@@ -3,14 +3,13 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
-import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,18 +22,18 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Selects the cells of the certification scope and the development cells. A cell tests one category under one model
+ * Selects the cells of the certification scope and the development cells. A cell tests one prompt test under one model
  * and reasoning profile.
  * <p>
  * Formal trials and the incumbent baseline run in the cells of the contract's {@link CertificationScope}. Development
- * runs in each category's development cells: its weakest cell, plus every cell where a certification attempt of the
+ * runs in each test's development cells: its weakest cell, plus every cell where a certification attempt of the
  * lineage adopted a failure and every cell where a failure group of the lineage reproduced. The weakest cell is the
  * lowest effort of the least capable model by the contract's {@link CapabilityRanking}; the contract lists each
- * category's cells in inventory order, and the inventory lists each model's efforts from the lowest to the highest, so
- * a model's first cell in a category is its lowest effort.
+ * test's cells in inventory order, and the inventory lists each model's efforts from the lowest to the highest, so
+ * a model's first cell in a test is its lowest effort.
  * <p>
- * A running attempt's formal trials go to its open cells: each category's development cells, and each other scope cell
- * once every development cell of its category and every scope cell of its category below it are certified.
+ * A running attempt's formal trials go to its open cells: each test's development cells, and each other scope cell
+ * once every development cell of its test and every scope cell of its test below it are certified.
  */
 public final class CellTier
 {
@@ -57,7 +56,7 @@ public final class CellTier
 	 * @param scope a certification scope
 	 * @return the cells, in contract order
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code scope} is {@link CertificationScope#WEAKEST_CELL} and a category's
+	 * @throws IllegalArgumentException if {@code scope} is {@link CertificationScope#WEAKEST_CELL} and a test's
 	 *   weakest cell depends on a model whose family is unranked
 	 */
 	public static List<Cell> scopeCells(TrialProfiles profiles, CertificationScope scope)
@@ -65,17 +64,17 @@ public final class CellTier
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(scope, "scope").isNotNull();
 		List<Cell> scopeCells = new ArrayList<>();
-		for (List<Cell> categoryCells : byCategory(profiles.cells()))
+		for (List<Cell> testCells : byTest(profiles.cells()))
 		{
 			if (scope == CertificationScope.WEAKEST_CELL)
 			{
-				String categoryId = categoryCells.getFirst().categoryId();
-				scopeCells.add(weakestCell(profiles, scope, categoryId).orElseThrow(() ->
-					new IllegalArgumentException("The weakest cell of the category '" + categoryId + "' depends on " +
+				String testId = testCells.getFirst().testId();
+				scopeCells.add(weakestCell(profiles, scope, testId).orElseThrow(() ->
+					new IllegalArgumentException("The weakest cell of the test '" + testId + "' depends on " +
 						"a model whose family the capability ranking does not list")));
 			}
 			else
-				scopeCells.addAll(candidates(profiles, scope, categoryCells));
+				scopeCells.addAll(candidates(profiles, scope, testCells));
 		}
 		return scopeCells;
 	}
@@ -123,26 +122,26 @@ public final class CellTier
 	}
 
 	/**
-	 * Returns a category's weakest cell under a certification scope: among the category's cells that the scope
+	 * Returns a test's weakest cell under a certification scope: among the test's cells that the scope
 	 * allows, the lowest effort of the least capable model. For {@link CertificationScope#WEAKEST_CELL} and
 	 * {@link CertificationScope#LATEST_VERSIONS} those are the cells of each model family's latest version, and for
-	 * {@link CertificationScope#DESCRIBED} the described cells. A category with one cell uses it.
+	 * {@link CertificationScope#DESCRIBED} the described cells. A test with one cell uses it.
 	 *
 	 * @param profiles the trial profiles
 	 * @param scope a certification scope
-	 * @param categoryId the category
+	 * @param testId the test
 	 * @return the cell, or empty if it depends on a model whose family is unranked
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the category has no cell
+	 * @throws IllegalArgumentException if the test has no cell
 	 */
-	public static Optional<Cell> weakestCell(TrialProfiles profiles, CertificationScope scope, String categoryId)
+	public static Optional<Cell> weakestCell(TrialProfiles profiles, CertificationScope scope, String testId)
 	{
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(scope, "scope").isNotNull();
-		List<Cell> categoryCells = profiles.cellsOf(categoryId);
-		if (categoryCells.isEmpty())
-			throw new IllegalArgumentException("The category '" + categoryId + "' has no cell");
-		List<Cell> candidates = candidates(profiles, scope, categoryCells);
+		List<Cell> testCells = profiles.cellsOf(testId);
+		if (testCells.isEmpty())
+			throw new IllegalArgumentException("The test '" + testId + "' has no cell");
+		List<Cell> candidates = candidates(profiles, scope, testCells);
 		if (candidates.size() == 1)
 			return Optional.of(candidates.getFirst());
 		CapabilityRanking ranking = profiles.ranking();
@@ -160,39 +159,39 @@ public final class CellTier
 	}
 
 	/**
-	 * Returns a category's weakest cell under a contract's certification scope.
+	 * Returns a test's weakest cell under a contract's certification scope.
 	 *
 	 * @param contract a confirmed contract
-	 * @param categoryId the category
+	 * @param testId the test
 	 * @return the cell
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the contract has no certification scope or the category has no cell
+	 * @throws IllegalArgumentException if the contract has no certification scope or the test has no cell
 	 */
-	public static Cell weakestCell(Contract contract, String categoryId)
+	public static Cell weakestCell(Contract contract, String testId)
 	{
 		requireThat(contract, "contract").isNotNull();
 		CertificationScope scope = scope(contract);
 		// A confirmed contract ranks every inventory model, so the weakest cell is known
-		return weakestCell(contract.profiles(), scope, categoryId).orElseThrow();
+		return weakestCell(contract.profiles(), scope, testId).orElseThrow();
 	}
 
 	/**
-	 * Returns the cells of a category that a certification scope allows.
+	 * Returns the cells of a test that a certification scope allows.
 	 *
 	 * @param profiles the trial profiles
 	 * @param scope a certification scope
-	 * @param categoryCells the category's cells, in contract order
-	 * @return the category's only cell; the described cells for {@link CertificationScope#DESCRIBED}; otherwise the
-	 *   cells of each model family's latest version among the category's cells
+	 * @param testCells the test's cells, in contract order
+	 * @return the test's only cell; the described cells for {@link CertificationScope#DESCRIBED}; otherwise the
+	 *   cells of each model family's latest version among the test's cells
 	 */
-	private static List<Cell> candidates(TrialProfiles profiles, CertificationScope scope, List<Cell> categoryCells)
+	private static List<Cell> candidates(TrialProfiles profiles, CertificationScope scope, List<Cell> testCells)
 	{
-		if (categoryCells.size() == 1)
-			return categoryCells;
+		if (testCells.size() == 1)
+			return testCells;
 		if (scope == CertificationScope.DESCRIBED)
-			return categoryCells.stream().filter(profiles::isDescribed).toList();
+			return testCells.stream().filter(profiles::isDescribed).toList();
 		Map<String, String> latest = new HashMap<>();
-		for (Cell cell : categoryCells)
+		for (Cell cell : testCells)
 		{
 			String model = cell.profile().model();
 			latest.merge(CapabilityRanking.family(model), model, (current, candidate) ->
@@ -202,7 +201,7 @@ public final class CellTier
 				return current;
 			});
 		}
-		return categoryCells.stream().filter(cell ->
+		return testCells.stream().filter(cell ->
 		{
 			String model = cell.profile().model();
 			return CapabilityRanking.compareVersions(model, latest.get(CapabilityRanking.family(model))) == 0;
@@ -210,23 +209,23 @@ public final class CellTier
 	}
 
 	/**
-	 * Groups cells by category.
+	 * Groups cells by test.
 	 *
-	 * @param cells cells grouped by category
-	 * @return each category's cells, in contract order
+	 * @param cells cells grouped by test
+	 * @return each test's cells, in contract order
 	 */
-	private static Collection<List<Cell>> byCategory(List<Cell> cells)
+	private static Collection<List<Cell>> byTest(List<Cell> cells)
 	{
-		Map<String, List<Cell>> byCategory = new LinkedHashMap<>();
+		Map<String, List<Cell>> byTest = new LinkedHashMap<>();
 		for (Cell cell : cells)
-			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell);
-		return byCategory.values();
+			byTest.computeIfAbsent(cell.testId(), _ -> new ArrayList<>()).add(cell);
+		return byTest.values();
 	}
 
 	/**
-	 * Returns the development cells of a lineage: each category's weakest cell, plus every cell in which a
-	 * certification attempt of the lineage adopted a failure, and every stress cell in which a failure group of the
-	 * lineage reproduced.
+	 * Returns the development cells of a lineage: each test's weakest cell, plus every cell in which a
+	 * certification attempt of the lineage adopted a failure, every cell that ended an attempt of the lineage below
+	 * control, and every stress cell in which a failure group of the lineage reproduced.
 	 *
 	 * @param contract the lineage's confirmed contract
 	 * @param lineage the lineage's number
@@ -240,14 +239,22 @@ public final class CellTier
 		requireThat(contract, "contract").isNotNull();
 		requireThat(attempts, "attempts").isNotNull();
 		Set<String> cells = new HashSet<>();
-		for (Category category : contract.categories())
-			cells.add(weakestCell(contract, category.id()).id());
+		for (PromptTest test : contract.tests())
+			cells.add(weakestCell(contract, test.id()).id());
 		for (CertificationAttempt attempt : attempts)
 		{
 			if (attempt.lineage() != lineage)
 				continue;
 			for (Failure failure : attempt.failures())
-				cells.add(failure.instance().cellId());
+				cells.add(failure.testCase().cellId());
+			if (attempt.outcome() == Outcome.BELOW_CONTROL)
+			{
+				for (String cell : attempt.procedure().cells())
+				{
+					if (DecisionTable.cellDecision(attempt, cell) == DecisionTable.CellDecision.BELOW_CONTROL)
+						cells.add(cell);
+				}
+			}
 			for (FailureGroup group : attempt.groups())
 			{
 				if (group.status() == FailureGroup.Status.REPRODUCED)
@@ -280,7 +287,7 @@ public final class CellTier
 
 	/**
 	 * Returns the stress settings that a harness offers for a cell, in the order that reproduction rounds try them:
-	 * the cell of the same category and model at the next lower reasoning effort, when one exists, and then, in
+	 * the cell of the same test and model at the next lower reasoning effort, when one exists, and then, in
 	 * Codex, the cell itself under a tool-output token limit of 5000. A failure is likelier under each.
 	 *
 	 * @param contract a confirmed contract
@@ -299,10 +306,10 @@ public final class CellTier
 			orElseThrow(() -> new IllegalArgumentException("The contract has no cell '" + cellId + "'"));
 
 		List<Cell> stress = new ArrayList<>();
-		// The contract lists a category's cells in inventory order, and the inventory lists each model's efforts
+		// The contract lists a test's cells in inventory order, and the inventory lists each model's efforts
 		// lowest first, so the model's previous cell is its next lower effort
 		Cell lower = null;
-		for (Cell other : contract.profiles().cellsOf(cell.categoryId()))
+		for (Cell other : contract.profiles().cellsOf(cell.testId()))
 		{
 			if (other.equals(cell))
 				break;
@@ -369,8 +376,8 @@ public final class CellTier
 	}
 
 	/**
-	 * Returns the open cells of a running certification attempt: in each category, its development cells, and each
-	 * other cell of the attempt once every development cell of the category and every cell of the category below it
+	 * Returns the open cells of a running certification attempt: in each test, its development cells, and each
+	 * other cell of the attempt once every development cell of the test and every cell of the test below it
 	 * are certified.
 	 * <p>
 	 * A cell is below another when its model ranks no higher by the contract's {@link CapabilityRanking}, its effort
@@ -390,14 +397,13 @@ public final class CellTier
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(attempt, "attempt").isNotNull();
 		TrialProfiles profiles = campaign.contract().profiles();
-		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Cell> cells = new ArrayList<>();
 		Set<String> certified = new HashSet<>();
 		for (String id : attempt.procedure().cells())
 		{
 			cells.add(profiles.findCell(id).orElseThrow(() -> new IllegalArgumentException("The contract lacks " +
 				"the cell '" + id + "' of certification attempt " + attempt.index())));
-			if (DecisionTable.cellDecision(boundaries, attempt.count(id)) == DecisionTable.CellDecision.CERTIFIED)
+			if (DecisionTable.cellDecision(attempt, id) == DecisionTable.CellDecision.CERTIFIED)
 				certified.add(id);
 		}
 		Set<String> development = new HashSet<>(developmentCellIds(campaign));
@@ -406,7 +412,7 @@ public final class CellTier
 		for (Cell cell : cells)
 		{
 			if (development.contains(cell.id()) ||
-				cells.stream().noneMatch(other -> other.categoryId().equals(cell.categoryId()) &&
+				cells.stream().noneMatch(other -> other.testId().equals(cell.testId()) &&
 					!other.equals(cell) && !certified.contains(other.id()) && (development.contains(other.id()) ||
 					isBelow(profiles.ranking(), higherEfforts, other.profile(), cell.profile()))))
 			{

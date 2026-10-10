@@ -5,21 +5,28 @@
 - Prove that the complete-read rule does not make an agent run a command for a general-knowledge question whose
   subject the workspace does not change, even in a project whose instructions name files to load for other work.
 
-## Context
+## Variables
 
-Use the [lazy-load project fixture](../lazy-project/).
+| Name | Description |
+|---|---|
+| status | A standard HTTP status code, such as 404 or 503 |
 
 ## Scenario
 
-This is an application test. What does HTTP status 404 mean?
+What does HTTP status {{status}} mean?
 
 ## Assertions
 
 ### no_command
 
-The retained events contain no tool call: no `exec` call, no `read-file` call, and no command such as `pwd`, `ls`, `rg`
-or `printf`.
+kind: guard
+tool: no-tool-call
+
+The agent runs no command and calls no tool: no `exec` call, no `read-file` call, and no command such as `pwd`, `ls`,
+`rg` or `printf`.
 
 ### direct_answer
 
-The final response says that the server could not find the requested resource, and asks the user no question.
+kind: guard
+
+The final response answers the question directly and asks the user no question.

@@ -11,9 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A resumable delta-debugging search over one author's original hunks. A passing reduction replaces the retained
+ * A resumable delta-debugging search over one prompt author's original hunks. A passing reduction replaces the retained
  * set; failed reductions split into progressively smaller groups until each retained hunk has been tested alone.
- * Promotion judges each reduction against every triggering instance fixed by the last accepted runs.
+ * Promotion judges each reduction against every triggering test case fixed by the last accepted runs.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -23,7 +23,7 @@ import java.util.List;
  * @param group the group currently being removed, from zero
  * @param testing the remaining hunks being tested, or {@code null} before the first pass or when finished
  * @param accepted the last passing snapshot
- * @param acceptedRuns its promotion evidence, whose fixed triggering instances reductions must preserve; empty before
+ * @param acceptedRuns its promotion evidence, whose fixed triggering test cases reductions must preserve; empty before
  *   the original attempt passes
  */
 public record Minimality(List<FileDelta> files, List<String> retained, int groups, int group,
@@ -58,7 +58,7 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 	 * Starts a search before the original attempt's promotion decision.
 	 *
 	 * @param files the original changes
-	 * @param snapshot the author's snapshot
+	 * @param snapshot the prompt author's snapshot
 	 * @return the initial state
 	 */
 	public static Minimality start(List<FileDelta> files, Sha256 snapshot)

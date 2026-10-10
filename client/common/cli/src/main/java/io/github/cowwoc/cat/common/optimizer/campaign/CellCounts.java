@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The outcomes included in campaign evidence for one cell, snapshot and trial purpose. A cell tests one category
+ * The outcomes included in campaign evidence for one cell, snapshot and trial purpose. A cell tests one prompt test
  * under one model and reasoning profile.
  * <p>
  * The batches split the outcomes, in adoption order, into consecutive groups of {@value #BATCH_SIZE}. The last batch

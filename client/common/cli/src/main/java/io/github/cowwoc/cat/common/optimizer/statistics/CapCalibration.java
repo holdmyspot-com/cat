@@ -2,30 +2,28 @@ package io.github.cowwoc.cat.common.optimizer.statistics;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
  * A certification attempt's per-cell cap, calibrated once before admission and persisted with the attempt. A cell is
- * one category under one trial profile.
+ * one prompt test under one trial profile.
  * <p>
- * The cap is the smallest number of adopted outcomes at which a cell whose true pass rate is
- * {@link #PLANNING_PASS_RATE} certifies with probability at least {@link #POWER}. A cell stops early when it
- * certifies or is clearly below, so the probability comes from an exact absorbing-state calculation over the states
- * {@code (S, F)}: after each outcome, the mass of every certifying state is absorbed as certified and the mass of every
- * clearly-below state is discarded.
+ * The cap is the smallest number of adopted outcomes at which a cell whose true pass rate is the planning rate for the
+ * minimum pass rate {@code p_min}, {@code 1 - (1 - p_min) / 5}, certifies with probability at least {@link #POWER}.
+ * A cell stops early when it certifies or is clearly below, so the probability comes from an exact absorbing-state
+ * calculation over the states {@code (S, F)}: after each outcome, the mass of every certifying state is absorbed as
+ * certified and the mass of every clearly-below state is discarded.
  * <p>
  * The calculation sums probabilities in {@code double}. The decisions that bound the absorbing states are exact
  * {@link DecisionBoundaries}.
  *
- * @param level the attempt's certification level {@code alpha_i}
- * @param cap   the per-cell cap, in {@code [1, MAXIMUM_CAP]}
+ * @param level           the attempt's certification level {@code alpha_i}
+ * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
+ * @param cap             the per-cell cap, in {@code [1, MAXIMUM_CAP]}
  */
-public record CapCalibration(SignificanceLevel level, int cap)
+public record CapCalibration(SignificanceLevel level, BigDecimal minimumPassRate, int cap)
 {
-	/**
-	 * The true pass rate at which a cell must certify with the required power.
-	 */
-	public static final double PLANNING_PASS_RATE = 0.99;
 	/**
 	 * The probability with which a cell at the planning pass rate must certify within the cap.
 	 */
@@ -41,40 +39,61 @@ public record CapCalibration(SignificanceLevel level, int cap)
 	/**
 	 * Creates a calibration.
 	 *
-	 * @param level the attempt's certification level {@code alpha_i}
-	 * @param cap   the per-cell cap
-	 * @throws NullPointerException     if {@code level} is null
-	 * @throws IllegalArgumentException if {@code cap} is not in {@code [1, MAXIMUM_CAP]}
+	 * @param level           the attempt's certification level {@code alpha_i}
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
+	 * @param cap             the per-cell cap
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code minimumPassRate} is not strictly between 0 and 1, or if {@code cap}
+	 *                                  is not in {@code [1, MAXIMUM_CAP]}
 	 */
 	public CapCalibration
 	{
 		requireThat(level, "level").isNotNull();
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
 		requireThat(cap, "cap").isBetween(1, true, MAXIMUM_CAP, true);
 	}
 
 	/**
 	 * Calibrates the cap of an attempt.
 	 *
-	 * @param level the attempt's certification level {@code alpha_i}
+	 * @param level           the attempt's certification level {@code alpha_i}
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the calibration
-	 * @throws NullPointerException    if {@code level} is null
-	 * @throws CapCalibrationException if no cap up to {@link #MAXIMUM_CAP} reaches the required power
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code minimumPassRate} is not strictly between 0 and 1
+	 * @throws CapCalibrationException  if no cap up to {@link #MAXIMUM_CAP} reaches the required power
 	 */
-	public static CapCalibration calibrate(SignificanceLevel level) throws CapCalibrationException
+	public static CapCalibration calibrate(SignificanceLevel level, BigDecimal minimumPassRate)
+		throws CapCalibrationException
 	{
 		requireThat(level, "level").isNotNull();
-		Walk walk = new Walk(DecisionBoundaries.compute(level, MAXIMUM_CAP, List.of()), PLANNING_PASS_RATE);
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
+		double planningPassRate = planningPassRate(minimumPassRate);
+		Walk walk = new Walk(DecisionBoundaries.compute(level, minimumPassRate, MAXIMUM_CAP, List.of()),
+			planningPassRate);
 		double certified = 0;
 		for (int outcomes = 1; outcomes <= MAXIMUM_CAP; ++outcomes)
 		{
 			certified = walk.advance();
 			if (certified >= POWER)
-				return new CapCalibration(level, outcomes);
+				return new CapCalibration(level, minimumPassRate, outcomes);
 		}
-		throw new CapCalibrationException("A cell whose true pass rate is " + PLANNING_PASS_RATE +
+		throw new CapCalibrationException("A cell whose true pass rate is " + planningPassRate +
 			" certifies at level 1/" + level.threshold() + " within " + MAXIMUM_CAP +
 			" adopted outcomes with probability " + certified + ", which is below the required power of " + POWER +
 			". No cap up to " + MAXIMUM_CAP + " exists for this level, so an attempt at this level cannot be admitted.");
+	}
+
+	/**
+	 * Returns the true pass rate at which a cell must certify with the required power, for the minimum pass rate
+	 * {@code p_min}: {@code 1 - (1 - p_min) / 5}, which leaves one fifth of the allowed failure rate.
+	 *
+	 * @param minimumPassRate the minimum pass rate {@code p_min}
+	 * @return the planning pass rate
+	 */
+	public static double planningPassRate(BigDecimal minimumPassRate)
+	{
+		return 1 - (1 - minimumPassRate.doubleValue()) / 5;
 	}
 
 	/**
@@ -85,7 +104,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
-	static final class Walk
+	public static final class Walk
 	{
 		/**
 		 * The fewest passes that certify, indexed by failures.
@@ -109,7 +128,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 		 * @param boundaries the decisions, whose cap bounds the number of outcomes
 		 * @param passRate   the cell's true pass rate
 		 */
-		Walk(DecisionBoundaries boundaries, double passRate)
+		public Walk(DecisionBoundaries boundaries, double passRate)
 		{
 			// Unboxed copies keep the quadratic number of lookups cheap
 			this.minimumCertifyingPasses = boundaries.minimumCertifyingPasses().stream().
@@ -126,7 +145,7 @@ public record CapCalibration(SignificanceLevel level, int cap)
 		 *
 		 * @return the probability of having certified within the outcomes so far
 		 */
-		double advance()
+		public double advance()
 		{
 			++outcomes;
 			double failureRate = 1 - passRate;

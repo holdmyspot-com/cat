@@ -11,7 +11,7 @@ import java.util.List;
  * @param sharedPurpose the stated purpose shared by every member
  * @param acceptanceCheck the check that proves the complete set is selectable
  */
-record EntryPointFamily(String candidateId, List<String> members, String selectionSurface, String sharedPurpose,
+public record EntryPointFamily(String candidateId, List<String> members, String selectionSurface, String sharedPurpose,
 	String acceptanceCheck)
 {
 }

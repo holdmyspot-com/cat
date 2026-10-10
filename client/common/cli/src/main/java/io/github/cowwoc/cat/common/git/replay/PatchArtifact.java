@@ -6,6 +6,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param path the patch path relative to the manifest directory
  * @param sha256 the lowercase SHA-256 hash of the patch bytes
  */
-record PatchArtifact(String path, String sha256)
+public record PatchArtifact(String path, String sha256)
 {
 }

@@ -7,6 +7,6 @@ import java.util.List;
  *
  * @param outputs every logical output disposition in chronological order
  */
-record OutputPlan(List<PlannedOutput> outputs)
+public record OutputPlan(List<PlannedOutput> outputs)
 {
 }

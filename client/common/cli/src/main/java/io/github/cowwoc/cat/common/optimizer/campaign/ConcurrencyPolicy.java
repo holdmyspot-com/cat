@@ -96,7 +96,7 @@ public final class ConcurrencyPolicy
 	}
 
 	/**
-	 * Returns the most certification trials of a cell (category and trial profile) that may await inclusion in
+	 * Returns the most certification trials of a cell (prompt test and trial profile) that may await inclusion in
 	 * evidence at once: the passes still required to certify it, at least 1, and never more than its remaining cap.
 	 *
 	 * @param boundaries the attempt's boundaries

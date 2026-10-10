@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
-import io.github.cowwoc.cat.common.optimizer.evidence.FileChanges;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 
 import java.io.BufferedReader;
@@ -75,11 +75,9 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	@Override
-	public final String renderEvidence(Path transcript, Path effects, Path source) throws IOException
+	public final SessionEvidence readEvidence(Path transcript) throws IOException
 	{
 		requireThat(transcript, "transcript").isNotNull();
-		requireThat(effects, "effects").isNotNull();
-		requireThat(source, "source").isNotNull();
 		HarnessEvents events = newEvents(JsonMapper.builder().build());
 		try (BufferedReader reader = Files.newBufferedReader(transcript))
 		{
@@ -90,8 +88,7 @@ public abstract class RunnerSessions implements SessionPort
 				line = reader.readLine();
 			}
 		}
-		return "Effects directory: " + effects + "\n\n" + events.evidence().render() +
-			"\nFile changes\n" + FileChanges.render(source, effects);
+		return events.evidence();
 	}
 
 	/**

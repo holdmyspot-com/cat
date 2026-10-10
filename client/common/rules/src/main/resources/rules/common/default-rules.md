@@ -60,11 +60,19 @@ Before defining or changing a method that represents, accepts, returns, validate
 including a price, charge, balance, fee, payment, tax, or discount—first lazy load `../include/common/money.md`. Do
 not choose its representation, signature, or implementation until that rule is available.
 
+Before choosing the numeric representation of a calculation, or of a numeric parameter or result, that is not money,
+lazy load `../include/common/numeric-precision.md`.
+
+When writing or changing a boolean expression that contains a negation, lazy load
+`../include/common/boolean-negation.md`.
+
 When defining, changing, or auditing function and method names across a source language, lazy load
 `../include/common/function-naming.md`.
 
 When defining, changing, or auditing terminology used for a shared concept across source code, configuration,
-documentation, commands, or rules, lazy load `../include/common/consistent-terminology.md`.
+documentation, commands, or rules, lazy load `../include/common/consistent-terminology.md`. This includes naming a
+shared concept while designing a format, interface, workflow, or proposal, and noticing during any other work that two
+terms may denote one shared concept.
 
 When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
 `../include/common/parameter-validation.md`.

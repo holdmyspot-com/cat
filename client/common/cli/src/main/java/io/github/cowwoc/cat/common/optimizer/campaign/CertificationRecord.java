@@ -10,9 +10,11 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
+import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -23,10 +25,10 @@ import java.util.TreeMap;
  * What a delivered certification claims and the conditions it was measured under, kept in the project after the
  * campaign's files are removed.
  * <p>
- * The record holds the certification's index, scope, parameters and per-cell counts, the content hash of each
- * delivered prompt file, and every measurement condition that the attempt recorded, which names the prompt sources and
- * the contract by hash. It holds no trial, so its size depends only on the number of cells, prompt files and
- * conditions.
+ * The record holds the certification's index, scope, parameters, per-cell counts and per-assertion control pairs, the
+ * content hash of each delivered prompt file, and every measurement condition that the attempt recorded, which names
+ * the prompt sources and the contract by hash. It holds no trial, so its size depends only on the number of cells,
+ * assertions, prompt files and conditions.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -105,10 +107,11 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		for (Entry<String, CellCounts> entry : new TreeMap<>(attempt.counts()).entrySet())
 		{
 			String cell = entry.getKey();
-			String category = contract.findCell(cell).map(Cell::categoryId).orElseThrow(() ->
+			String test = contract.findCell(cell).map(Cell::testId).orElseThrow(() ->
 				new IllegalArgumentException("The contract of lineage " + attempt.lineage() + " has no cell " + cell));
 			CellCounts counts = entry.getValue();
-			cells.add(new CellResult(category, cell, counts.passes(), counts.failures()));
+			cells.add(new CellResult(test, cell, counts.passes(), counts.failures(),
+				attempt.pairing(cell).comparisons()));
 		}
 
 		Map<Path, Sha256> promptFiles = new TreeMap<>();
@@ -170,12 +173,14 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param currentPromptFiles the content hash of each recorded prompt file that exists now, keyed by its path
 	 *   relative to the project
 	 * @param known the conditions that CAT knows now
+	 * @param minimumPassRate the minimum pass rate {@code p_min} that a certification must prove now
 	 * @return the applicability, naming each known change and each recorded condition that {@code known} lacks. If
 	 *   {@code known} records another provider than the record, the harness-specific conditions are unchecked rather
 	 *   than changed.
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Applicability applicability(Map<Path, Sha256> currentPromptFiles, MeasurementIdentity known)
+	public Applicability applicability(Map<Path, Sha256> currentPromptFiles, MeasurementIdentity known,
+		BigDecimal minimumPassRate)
 	{
 		requireThat(currentPromptFiles, "currentPromptFiles").isNotNull();
 		requireThat(known, "known").isNotNull();
@@ -188,7 +193,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		List<MeasurementCondition> changed = identity.differences(known);
 		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
 		List<CertificationParameter> notImplied = parameters.notImplying(
-			CertificationParameters.current(certificationIndex));
+			CertificationParameters.current(certificationIndex, minimumPassRate));
 		Applicability.Status status = Applicability.Status.CURRENT;
 		if (promptContentChanged || !changed.isEmpty() || !notImplied.isEmpty())
 			status = Applicability.Status.HISTORICAL;
@@ -200,30 +205,41 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param category the cell's requirement category
+	 * @param test the cell's prompt test
 	 * @param cell the cell's identifier
 	 * @param passes the passing outcomes in certification evidence
 	 * @param failures the failing outcomes in certification evidence
+	 * @param comparisons the pairs of each assertion's control comparison, keyed by the assertion's identifier in
+	 *   contract order
 	 */
-	public record CellResult(String category, String cell, int passes, int failures)
+	public record CellResult(String test, String cell, int passes, int failures, Map<String, PairCounts> comparisons)
 	{
 		/**
 		 * Creates a cell's counts.
 		 *
-		 * @param category the cell's requirement category
+		 * @param test the cell's prompt test
 		 * @param cell the cell's identifier
 		 * @param passes the passing outcomes in certification evidence
 		 * @param failures the failing outcomes in certification evidence
-		 * @throws NullPointerException if {@code category} or {@code cell} are null
-		 * @throws IllegalArgumentException if {@code category} or {@code cell} are blank, or {@code passes} or
+		 * @param comparisons the pairs of each assertion's control comparison, keyed by the assertion's identifier in
+		 *   contract order
+		 * @throws NullPointerException if any of the arguments are null, or {@code comparisons} contains null
+		 * @throws IllegalArgumentException if {@code test} or {@code cell} are blank, or {@code passes} or
 		 *   {@code failures} are negative
 		 */
 		public CellResult
 		{
-			requireThat(category, "category").isNotBlank();
+			requireThat(test, "test").isNotBlank();
 			requireThat(cell, "cell").isNotBlank();
 			requireThat(passes, "passes").isNotNegative();
 			requireThat(failures, "failures").isNotNegative();
+			requireThat(comparisons, "comparisons").isNotNull();
+			comparisons = Collections.unmodifiableMap(new LinkedHashMap<>(comparisons));
+			for (Entry<String, PairCounts> comparison : comparisons.entrySet())
+			{
+				requireThat(comparison.getKey(), "comparisons.key").isNotNull();
+				requireThat(comparison.getValue(), "comparisons.value").isNotNull();
+			}
 		}
 	}
 }

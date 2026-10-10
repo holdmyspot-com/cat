@@ -48,7 +48,7 @@ public final class ClaudeRunner
 	 * @param claudeTemporaryDirectory the run-owned Claude temporary directory
 	 * @return the required launch configuration path
 	 */
-	static Path launchConfigurationPath(Path claudeTemporaryDirectory)
+	public static Path launchConfigurationPath(Path claudeTemporaryDirectory)
 	{
 		requireThat(claudeTemporaryDirectory, "claudeTemporaryDirectory").isNotNull();
 		Path parent = claudeTemporaryDirectory.toAbsolutePath().normalize().getParent();
@@ -97,8 +97,8 @@ public final class ClaudeRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, "", installCat, true, null, List.of(),
-			List.of());
+		return start(artifact, project, null, manager, executable, environment, model, "", installCat, true, null,
+			List.of(), List.of());
 	}
 
 	/**
@@ -106,6 +106,7 @@ public final class ClaudeRunner
 	 *
 	 * @param artifact the complete Claude artifact
 	 * @param project the validator project
+	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
 	 * @param manager the run manager
 	 * @param executable the Claude executable
 	 * @param environment the isolated environment
@@ -119,7 +120,7 @@ public final class ClaudeRunner
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
+	HarnessRunSession start(Path artifact, Path project, Path fixtures, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, boolean includeUserRules,
 		ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
 	{
@@ -140,6 +141,8 @@ public final class ClaudeRunner
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
 			manager.copyProject(project, run);
+			if (fixtures != null)
+				manager.copyFixtures(fixtures, run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
@@ -242,7 +245,7 @@ public final class ClaudeRunner
 	 * @return the directory containing spilled hook context
 	 * @throws IOException if the directory or its narrowly scoped Claude path alias cannot be created
 	 */
-	static Path createHookResultsDirectory(Path isolatedHome, HarnessRun run) throws IOException
+	public static Path createHookResultsDirectory(Path isolatedHome, HarnessRun run) throws IOException
 	{
 		assert isolatedHome != null;
 		assert run != null;
@@ -336,7 +339,7 @@ public final class ClaudeRunner
 	 * @param environment the parent process environment
 	 * @return {@code true} if no usable Claude authentication variable is present
 	 */
-	static boolean requiresCredentialFiles(Map<String, String> environment)
+	public static boolean requiresCredentialFiles(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		return AUTHENTICATION_VARIABLES.stream().map(environment::get).noneMatch(value ->
@@ -353,7 +356,7 @@ public final class ClaudeRunner
 	 * @param hookResults the hook context directory
 	 * @return the complete harness command
 	 */
-	static List<String> command(String executable, String model, Path marketplace, boolean installCat,
+	public static List<String> command(String executable, String model, Path marketplace, boolean installCat,
 		Path hookResults)
 	{
 		return command(executable, model, "", "", marketplace, installCat, hookResults, List.of());
@@ -370,7 +373,7 @@ public final class ClaudeRunner
 	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @return the complete harness command
 	 */
-	static List<String> command(String executable, String model, Path marketplace, boolean installCat,
+	public static List<String> command(String executable, String model, Path marketplace, boolean installCat,
 		Path hookResults, List<Path> readOnlyEvidence)
 	{
 		return command(executable, model, "", "", marketplace, installCat, hookResults, readOnlyEvidence);
@@ -389,7 +392,7 @@ public final class ClaudeRunner
 	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @return the complete harness command
 	 */
-	static List<String> command(String executable, String model, String effort, String agent, Path marketplace,
+	public static List<String> command(String executable, String model, String effort, String agent, Path marketplace,
 		boolean installCat, Path hookResults, List<Path> readOnlyEvidence)
 	{
 		requireThat(executable, "executable").isNotBlank();

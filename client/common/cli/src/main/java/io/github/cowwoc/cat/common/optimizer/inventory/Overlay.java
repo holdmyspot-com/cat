@@ -72,6 +72,39 @@ public final class Overlay
 	}
 
 	/**
+	 * Returns this candidate's edits on a fork that holds every file of this overlay's fork, and possibly more. A
+	 * confirmed revision that records more files moves the campaign's candidates onto such a fork.
+	 *
+	 * @param larger the larger fork's files
+	 * @return the overlay on {@code larger}
+	 * @throws NullPointerException if {@code larger} is null
+	 * @throws IllegalArgumentException if {@code larger} lacks a file of this overlay's fork or records it differently,
+	 *   or an edit is not valid on {@code larger} (see {@link #write(Path, FileContent, Set)})
+	 */
+	public Overlay onto(FileInventory larger)
+	{
+		requireThat(larger, "larger").isNotNull();
+		for (Entry<Path, FileEntry> entry : fork.entries().entrySet())
+		{
+			if (!larger.entry(entry.getKey()).equals(Optional.of(entry.getValue())))
+			{
+				throw new IllegalArgumentException("The larger fork does not hold " + entry.getKey() + " as this " +
+					"overlay's fork records it.");
+			}
+		}
+		Overlay moved = of(larger);
+		for (Entry<Path, OverlayEntry> entry : entries.entrySet())
+		{
+			moved = switch (entry.getValue())
+			{
+				case Write write -> moved.write(entry.getKey(), write.content(), write.permissions());
+				case Delete _ -> moved.delete(entry.getKey());
+			};
+		}
+		return moved;
+	}
+
+	/**
 	 * Returns a candidate in which an ordinary file has the given content and mode.
 	 *
 	 * @param target the file's resolved path: relative to the project directory, or absolute for an external target

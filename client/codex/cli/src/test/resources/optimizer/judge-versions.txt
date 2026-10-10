@@ -2,3 +2,8 @@
 # profile and rendered evidence section that CodexJudgeVersionTest computes from fixed input. When the hash changes,
 # increment the version in CodexSessions and add a line for the new version.
 1 bd51bf4dd4a9b4cefeda0105a77229cf7f08c19a2e94610c0c0c6b2eeaa3c2a5
+2 6849560d6c116f60535bc9cbe39be14b29ab0877aaebd28efb722e0524154c0c
+3 6125ec51455c516c0afc2dd158d88f6bf3c58ac7241080fc820b65ef2cf03315
+4 6aa2ca83997feec8541fdb903684dededd7cd7d5f09b43fa9b40234d95ec7a72
+5 76c26dcb732fb76fe11f6c6af7d748eea07d50dae63d5e0901d8743234622a87
+6 d05a84220fe065aae77600f09ba66f9ac3f7323ed7e453ef740032161a8383c5

@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 /**
  * Validates every prerequisite of an output plan and publishes its sealed decisions without recording an output.
  */
-final class OutputPlanSealing
+public final class OutputPlanSealing
 {
 	private final JsonMapper json;
 	private final ManifestStore<BatchManifest> manifests;
@@ -32,7 +32,7 @@ final class OutputPlanSealing
 	 * @param outputPlan the owner of output-plan validation
 	 * @param reviewEvidence the owner of manifest-local origin-review evidence
 	 */
-	OutputPlanSealing(JsonMapper json, ManifestStore<BatchManifest> manifests,
+	public OutputPlanSealing(JsonMapper json, ManifestStore<BatchManifest> manifests,
 		SourceReviewValidation sourceReviewValidation, OriginCandidates originCandidates,
 		OriginReviewValidation originReviewValidation, OutputPlanValidation outputPlan, ReviewEvidence reviewEvidence)
 	{
@@ -79,7 +79,7 @@ final class OutputPlanSealing
 	 * @throws IOException if origin decisions contradict the projected state or the manifest cannot be written;
 	 *         an origin-validation failure leaves the stored manifest unchanged
 	 */
-	void sealValidatedPlan(Path manifestFile, BatchManifest manifest, ValidatedOutputPlan validated)
+	public void sealValidatedPlan(Path manifestFile, BatchManifest manifest, ValidatedOutputPlan validated)
 		throws IOException
 	{
 		BatchManifest projected = manifest.withBatches(validated.batches()).withOutputWitnesses(validated.witnesses()).

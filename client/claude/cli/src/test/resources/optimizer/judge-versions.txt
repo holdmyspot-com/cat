@@ -2,3 +2,8 @@
 # profile and rendered evidence section that ClaudeJudgeVersionTest computes from fixed input. When the hash changes,
 # increment the version in ClaudeSessions and add a line for the new version.
 1 569c6083358ec4735820d534e25218064aa3d6df16f3a9e08635abf9924b04fa
+2 be6cec353d2b55afa1a1726c30f6d1aa1250ad26dc099ce1ff9be1c5e3f93e01
+3 a84eb79ca323443adac8997857ae464e528df95098b1d27c7d263c8b979cb50a
+4 2548fbe321400530093a365c1c6a47cacf469ccd7a5499642d86bc1f8ace1786
+5 d19735c3b9e26bbeb177ada6fef5addd4b55e2a9d850e114e1c5f913e3503bdb
+6 613c8e918fb9b6f7ac241764f74135993dfaa23b177a086e41b5dd50483af4ea

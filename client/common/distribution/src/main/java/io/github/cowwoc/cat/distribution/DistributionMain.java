@@ -15,6 +15,8 @@ import io.github.cowwoc.cat.distribution.bundle.ReleasePackager;
 import io.github.cowwoc.cat.distribution.bundle.RuleArtifactRouter;
 import io.github.cowwoc.cat.distribution.license.LegalMaterialsBuilder;
 import io.github.cowwoc.cat.distribution.license.ThirdPartyComponent;
+import io.github.cowwoc.cat.distribution.secrets.DistributionMainAccess;
+import io.github.cowwoc.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +31,36 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class DistributionMain
 {
+	static
+	{
+		DistributionMainSecrets.setAccess(new DistributionMainAccess()
+		{
+			@Override
+			public List<JlinkImageBuilder.Launcher> claudeLaunchers()
+			{
+				return DistributionMain.claudeLaunchers();
+			}
+
+			@Override
+			public List<JlinkImageBuilder.Launcher> codexLaunchers()
+			{
+				return DistributionMain.codexLaunchers();
+			}
+
+			@Override
+			public ArtifactLayer codexPluginLayer(Path jar)
+			{
+				return DistributionMain.codexPluginLayer(jar);
+			}
+
+			@Override
+			public String dependencyCoordinates(String groupId, String artifactId, Path path)
+			{
+				return new DependencyJar(groupId, artifactId, path).coordinates();
+			}
+		});
+	}
+
 	/**
 	 * Builds distributions for the current platform.
 	 *

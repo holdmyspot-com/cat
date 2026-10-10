@@ -6,45 +6,30 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
+import java.text.Normalizer;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * Assigns each combination of a test definition's key values to the development part or the held-out part.
+ * Assigns each test case of a prompt test to the development part or the held-out part by its expected outcome.
  * <p>
- * The part is the lowest bit of a SHA-256 hash of the salt, the test's identifier and each key dimension with its
- * chosen label, so each combination lands in either part with probability ½, independently of the others, and
- * instances that share key values share a part.
+ * The part of an expected outcome is the lowest bit of a SHA-256 hash of the salt and the outcome's normalized form, so
+ * each distinct outcome lands in either part with probability ½, independently of the others, and test cases that
+ * share an expected outcome share a part. A committed test case, and a new one that shares a committed test case's
+ * expected outcome, belong to the development part, because an earlier campaign already showed them to the prompt
+ * author.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
 public final class Split
 {
 	/**
-	 * One combination of a test definition's key values.
-	 *
-	 * @param values the value of each key dimension, in the test's dimension order
-	 * @param probability the product of the values' frozen probabilities
+	 * A run of Unicode whitespace.
 	 */
-	public record KeyCombination(List<VariationValue> values, double probability)
-	{
-		/**
-		 * Creates a combination.
-		 *
-		 * @param values the value of each key dimension, in the test's dimension order
-		 * @param probability the product of the values' frozen probabilities
-		 * @throws NullPointerException if {@code values} is null
-		 * @throws IllegalArgumentException if {@code probability} is outside (0, 1]
-		 */
-		public KeyCombination
-		{
-			requireThat(values, "values").isNotNull();
-			values = List.copyOf(values);
-			VariationValue.requireProbability(probability);
-		}
-	}
-
+	private static final Pattern WHITESPACE = Pattern.compile("\\p{IsWhite_Space}+");
 	private final long salt;
 
 	/**
@@ -58,43 +43,27 @@ public final class Split
 	}
 
 	/**
-	 * Returns the part of an instance's key values.
+	 * Returns the form under which two expected outcomes are the same: Unicode canonical composition, each run of
+	 * whitespace replaced by one space, no leading or trailing whitespace, and lower case.
 	 *
-	 * @param test the test definition
-	 * @param labelByDimension the label of the value chosen for each of the test's dimensions; only key dimensions
-	 *   are read
-	 * @return the part
-	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code labelByDimension} has no label for a key dimension
+	 * @param expectedOutcome an expected outcome
+	 * @return the normalized outcome
+	 * @throws NullPointerException if {@code expectedOutcome} is null
 	 */
-	public Part partOf(TestDefinition test, Map<String, String> labelByDimension)
+	public static String normalize(String expectedOutcome)
 	{
-		requireThat(test, "test").isNotNull();
-		requireThat(labelByDimension, "labelByDimension").isNotNull();
-		List<VariationRule> keyRules = test.keyRules();
-		List<String> labels = new ArrayList<>(keyRules.size());
-		for (VariationRule rule : keyRules)
-		{
-			String label = labelByDimension.get(rule.dimension());
-			if (label == null)
-			{
-				throw new IllegalArgumentException("The test '" + test.id() + "' has the key dimension '" +
-					rule.dimension() + "', but no label was chosen for it. Labels: " + labelByDimension);
-			}
-			labels.add(label);
-		}
-		return partOf(test, keyRules, labels);
+		String composed = Normalizer.normalize(expectedOutcome, Normalizer.Form.NFC);
+		return WHITESPACE.matcher(composed).replaceAll(" ").strip().toLowerCase(Locale.ROOT);
 	}
 
 	/**
-	 * Returns the part of one combination of key values.
+	 * Returns the part that the salted hash assigns to an expected outcome, ignoring committed test cases.
 	 *
-	 * @param test     the test definition
-	 * @param keyRules the test's key rules
-	 * @param labels   the label chosen for each key rule, in the same order
+	 * @param expectedOutcome an expected outcome
 	 * @return the part
+	 * @throws NullPointerException if {@code expectedOutcome} is null
 	 */
-	private Part partOf(TestDefinition test, List<VariationRule> keyRules, List<String> labels)
+	public Part partOf(String expectedOutcome)
 	{
 		MessageDigest digest;
 		try
@@ -107,70 +76,79 @@ public final class Split
 			throw new AssertionError(e);
 		}
 		digest.update(ByteBuffer.allocate(Long.BYTES).putLong(salt).array());
-		update(digest, test.id());
-		for (int i = 0; i < keyRules.size(); ++i)
-		{
-			update(digest, keyRules.get(i).dimension());
-			update(digest, labels.get(i));
-		}
+		digest.update(normalize(expectedOutcome).getBytes(StandardCharsets.UTF_8));
 		if ((digest.digest()[0] & 1) == 0)
 			return Part.DEVELOPMENT;
 		return Part.HELD_OUT;
 	}
 
 	/**
-	 * Adds a text to a digest, preceded by its length so that consecutive texts cannot run together.
+	 * Returns the part of a test case of a prompt test.
 	 *
-	 * @param digest the digest
-	 * @param text   the text
+	 * @param test     the prompt test
+	 * @param testCase a test case of the prompt test
+	 * @return {@code DEVELOPMENT} if the test case is committed or shares a committed test case's expected outcome;
+	 *   otherwise the part of its expected outcome
+	 * @throws NullPointerException if any argument is null
 	 */
-	private static void update(MessageDigest digest, String text)
+	public Part partOf(PromptTest test, TestCase testCase)
 	{
-		byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-		digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
-		digest.update(bytes);
+		requireThat(test, "test").isNotNull();
+		requireThat(testCase, "testCase").isNotNull();
+		if (committedOutcomes(test).contains(normalize(testCase.expectedOutcome())))
+			return Part.DEVELOPMENT;
+		return partOf(testCase.expectedOutcome());
 	}
 
 	/**
-	 * Returns the combinations of a test definition's key values that belong to a part.
+	 * Returns the normalized expected outcomes of a test's committed test cases.
 	 *
-	 * @param test the test definition
+	 * @param test the prompt test
+	 * @return the outcomes
+	 */
+	private static Set<String> committedOutcomes(PromptTest test)
+	{
+		Set<String> outcomes = new HashSet<>();
+		for (TestCase committed : test.committedTestCases())
+			outcomes.add(normalize(committed.expectedOutcome()));
+		return outcomes;
+	}
+
+	/**
+	 * Returns the test cases of a prompt test that belong to a part.
+	 *
+	 * @param test the prompt test
 	 * @param part the part
-	 * @return the combinations, in the order that varies the last key dimension fastest
+	 * @return the test cases, committed ones first, each in the test's order
 	 * @throws NullPointerException if any argument is null
 	 */
-	public List<KeyCombination> combinations(TestDefinition test, Part part)
+	public List<TestCase> testCases(PromptTest test, Part part)
 	{
 		requireThat(test, "test").isNotNull();
 		requireThat(part, "part").isNotNull();
-		List<VariationRule> keyRules = test.keyRules();
-		List<KeyCombination> combinations = new ArrayList<>();
-		// The index of the chosen value of each key rule, advanced like an odometer whose last digit turns fastest
-		int[] indices = new int[keyRules.size()];
-		while (true)
+		Set<String> committed = committedOutcomes(test);
+		return test.allTestCases().stream().filter(testCase ->
 		{
-			List<VariationValue> values = new ArrayList<>(keyRules.size());
-			List<String> labels = new ArrayList<>(keyRules.size());
-			double probability = 1;
-			for (int i = 0; i < keyRules.size(); ++i)
-			{
-				VariationValue value = keyRules.get(i).values().get(indices[i]);
-				values.add(value);
-				labels.add(value.label());
-				probability *= value.probability();
-			}
-			if (partOf(test, keyRules, labels) == part)
-				combinations.add(new KeyCombination(values, probability));
+			String outcome = normalize(testCase.expectedOutcome());
+			if (committed.contains(outcome))
+				return part == Part.DEVELOPMENT;
+			return partOf(outcome) == part;
+		}).toList();
+	}
 
-			int digit = keyRules.size() - 1;
-			while (digit >= 0 && indices[digit] == keyRules.get(digit).values().size() - 1)
-			{
-				indices[digit] = 0;
-				--digit;
-			}
-			if (digit < 0)
-				return combinations;
-			++indices[digit];
-		}
+	/**
+	 * Returns the number of distinct normalized expected outcomes among a prompt test's test cases in a part.
+	 *
+	 * @param test the prompt test
+	 * @param part the part
+	 * @return the number of distinct outcomes
+	 * @throws NullPointerException if any argument is null
+	 */
+	public int outcomeCount(PromptTest test, Part part)
+	{
+		Set<String> outcomes = new HashSet<>();
+		for (TestCase testCase : testCases(test, part))
+			outcomes.add(normalize(testCase.expectedOutcome()));
+		return outcomes.size();
 	}
 }

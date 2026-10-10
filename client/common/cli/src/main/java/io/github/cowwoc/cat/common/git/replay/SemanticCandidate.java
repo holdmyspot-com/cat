@@ -18,7 +18,7 @@ import java.util.List;
  * @param combinedCandidateBlockers reasons this behavior remains with other behavior candidates in one output
  * @param evidence the behavior-specific placement evidence
  */
-record SemanticCandidate(String id, String observableOutcome, String candidateDiscovery,
+public record SemanticCandidate(String id, String observableOutcome, String candidateDiscovery,
 	String splitCounterfactual, List<String> candidateUniverseIds, String output,
 	List<SemanticUnitReference> units, List<String> acceptanceCommand,
 	List<String> prerequisites, List<RejectedEarlierOutput> rejectedEarlierOutputs,

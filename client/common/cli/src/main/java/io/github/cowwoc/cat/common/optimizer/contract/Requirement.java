@@ -24,13 +24,6 @@ public record Requirement(String id, String description, String source, String t
 	 * The behavior that a judge names when a reply fails a requirement in a way that the requirement does not list.
 	 */
 	public static final String OTHER_BEHAVIOR = "other";
-	/**
-	 * The requirement, present in every contract and checked by every test, that each reply correctly and completely
-	 * does what the turn asked. CAT adds it, so its source is CAT. It always applies.
-	 */
-	public static final Requirement CORE_TASK = new Requirement("core_task",
-		"Each reply correctly and completely does what the turn asked.", "CAT", null,
-		List.of("incorrect_result", "incomplete_result"));
 
 	/**
 	 * Creates a requirement.

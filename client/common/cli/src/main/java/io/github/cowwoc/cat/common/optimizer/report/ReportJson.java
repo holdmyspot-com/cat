@@ -69,7 +69,7 @@ final class ReportJson
 		tokens(root.putObject("tokens"), report.tokens());
 		OptimizationJson.write(root, report.optimization());
 		reverts(root.putArray("reverts"), report.reverts());
-		addedValues(root.putArray("added_values"), report.addedValues());
+		addedTestCases(root.putArray("added_test_cases"), report.addedTestCases());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
@@ -124,21 +124,22 @@ final class ReportJson
 	}
 
 	/**
-	 * Adds the key-value combinations added to the development part of the tests.
+	 * Adds the test cases added to the development part of the tests.
 	 *
-	 * @param array the report's array of added combinations
-	 * @param combinations the combinations, in the order they were added
+	 * @param array the report's array of added test cases
+	 * @param testCases the test cases, in the order they were added
 	 */
-	private static void addedValues(ArrayNode array, List<AddedCombinationReport> combinations)
+	private static void addedTestCases(ArrayNode array, List<AddedTestCaseReport> testCases)
 	{
-		for (AddedCombinationReport combination : combinations)
+		for (AddedTestCaseReport testCase : testCases)
 		{
 			ObjectNode node = array.addObject();
-			node.put("attempt", combination.attempt());
-			node.put("test", combination.testId());
+			node.put("attempt", testCase.attempt());
+			node.put("test", testCase.testId());
 			ArrayNode values = node.putArray("values");
-			for (AddedCombinationReport.KeyValue value : combination.values())
-				values.addObject().put("dimension", value.dimension()).put("label", value.label()).put("text", value.text());
+			for (Map.Entry<String, String> value : testCase.values().entrySet())
+				values.addObject().put("variable", value.getKey()).put("text", value.getValue());
+			node.put("expected_outcome", testCase.expectedOutcome());
 		}
 	}
 
@@ -248,11 +249,25 @@ final class ReportJson
 		CellReport.Threshold comparison = report.comparison();
 		ObjectNode comparisonNode = node.putObject("comparison");
 		comparisonNode.put("state", comparison.state());
+		comparisonNode.put("minimum_pass_rate", comparison.minimumPassRate());
 		putText(comparisonNode, "readiness", comparison.readiness());
 		strings(comparisonNode.putArray("reasons"), comparison.reasons());
 		putNumber(comparisonNode, "lower_bound", comparison.lowerBound());
 		putNumber(comparisonNode, "upper_bound", comparison.upperBound());
 		putNumber(comparisonNode, "alpha", comparison.alpha());
+		ArrayNode controls = comparisonNode.putArray("controls");
+		for (CellReport.ControlReport control : comparison.controls())
+		{
+			ObjectNode controlNode = controls.addObject();
+			controlNode.put("assertion_id", control.assertionId());
+			controlNode.put("state", control.state());
+			controlNode.put("pairs", control.pairs());
+			controlNode.put("candidate_passes", control.candidatePasses());
+			controlNode.put("control_passes", control.controlPasses());
+			putNumber(controlNode, "candidate_rate", control.candidateRate());
+			putNumber(controlNode, "control_rate", control.controlRate());
+		}
+		putText(comparisonNode, "cell_state", comparison.cellState());
 
 		ArrayNode bars = node.putArray("error_bars");
 		for (CellReport.ErrorBar bar : report.errorBars())
@@ -285,8 +300,8 @@ final class ReportJson
 		{
 			ObjectNode node = array.addObject();
 			node.put("cell", weights.cell());
-			node.put("tests", weights.tests());
-			node.put("test_weight", weights.testWeight());
+			node.put("test_cases", weights.testCases());
+			node.put("test_case_weight", weights.testCaseWeight());
 		}
 	}
 
@@ -324,13 +339,13 @@ final class ReportJson
 		{
 			ObjectNode cellNode = cells.addObject();
 			cellNode.put("id", cell.id());
-			cellNode.put("category", cell.categoryId());
+			cellNode.put("test", cell.testId());
 			profile(cellNode, cell.profile());
 		}
 	}
 
 	/**
-	 * Adds the certification scope and each category's weakest cell and development cells.
+	 * Adds the certification scope and each test's weakest cell and development cells.
 	 *
 	 * @param root the root
 	 * @param tier the cells, or {@code null} before a contract is confirmed
@@ -345,13 +360,13 @@ final class ReportJson
 		ObjectNode node = root.putObject("cell_tier");
 		node.put("scope", EnumNames.lowerCase(tier.scope()));
 		node.put("scope_cells", tier.scopeCells());
-		ArrayNode categories = node.putArray("categories");
-		for (CellTierReport.CategoryCells cells : tier.categories())
+		ArrayNode tests = node.putArray("tests");
+		for (CellTierReport.TestCells cells : tier.tests())
 		{
-			ObjectNode category = categories.addObject();
-			category.put("category", cells.category());
-			category.put("weakest_cell", cells.weakestCell());
-			ArrayNode development = category.putArray("development_cells");
+			ObjectNode test = tests.addObject();
+			test.put("test", cells.test());
+			test.put("weakest_cell", cells.weakestCell());
+			ArrayNode development = test.putArray("development_cells");
 			for (String cell : cells.developmentCells())
 				development.add(cell);
 		}

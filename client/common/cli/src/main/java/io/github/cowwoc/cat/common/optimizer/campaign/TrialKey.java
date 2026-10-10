@@ -5,17 +5,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 /**
- * The identity of one assigned test instance. Retries keep it.
+ * The identity of one assigned trial. Retries keep it.
  * <p>
- * Trials that share a cell (category and trial profile), purpose and snapshot are numbered 1, 2, … in assignment order
- * within their {@link SequenceGroup}. Trials that also share a series form an adoption group: their outcomes enter
- * campaign evidence in sequence order.
+ * Trials that share a cell (prompt test and trial profile), purpose and snapshot are numbered 1, 2, … in assignment
+ * order within their {@link SequenceGroup}. Trials that also share a series form an adoption group: their outcomes
+ * enter campaign evidence in sequence order.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param purpose why the trial runs
  * @param series the development series for {@link Purpose#DEVELOPMENT} and {@link Purpose#DIAGNOSTIC}, the baseline
- *   index for {@link Purpose#BASELINE}, the certification index for {@link Purpose#FORMAL}, the author attempt
+ *   index for {@link Purpose#BASELINE}, the certification index for {@link Purpose#FORMAL}, the prompt author attempt
  *   number for {@link Purpose#PROMOTION}, or the 1-based position of the reproducing attempt's failure group for
  *   {@link Purpose#REPRODUCTION}
  * @param snapshot the snapshot that the trial runs
@@ -41,7 +41,7 @@ public record TrialKey(Purpose purpose, int series, Sha256 snapshot, String cell
 		requireThat(purpose, "purpose").isNotNull();
 		requireThat(series, "series").isNotNegative();
 		requireThat(snapshot, "snapshot").isNotNull();
-		requireThat(cell, "category").isNotBlank();
+		requireThat(cell, "cell").isNotBlank();
 		requireThat(sequence, "sequence").isPositive();
 	}
 

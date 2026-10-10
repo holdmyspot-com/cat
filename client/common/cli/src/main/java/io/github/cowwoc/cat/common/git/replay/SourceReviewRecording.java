@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Records one complete reviewer-authored source-review transaction in an unfinalized replay manifest.
  */
-final class SourceReviewRecording
+public final class SourceReviewRecording
 {
 	private final Git git;
 	private final JsonMapper json;
@@ -30,7 +30,7 @@ final class SourceReviewRecording
 	 * @param validation the semantic source-review validator
 	 * @param manifests the owner of unfinalized manifest persistence
 	 */
-	SourceReviewRecording(Git git, JsonMapper json, SourceReviewValidation validation,
+	public SourceReviewRecording(Git git, JsonMapper json, SourceReviewValidation validation,
 		ManifestStore<BatchManifest> manifests)
 	{
 		requireThat(git, "git").isNotNull();
@@ -78,7 +78,7 @@ final class SourceReviewRecording
 	 * @param reviewFiles non-empty manifest-local review files
 	 * @throws IOException if a file is unsafe, a review is invalid, or the combined state cannot be published
 	 */
-	void recordBatches(Path manifestFile, List<Path> reviewFiles) throws IOException
+	public void recordBatches(Path manifestFile, List<Path> reviewFiles) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(reviewFiles, "reviewFiles").isNotEmpty();

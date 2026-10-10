@@ -3,7 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
+import io.github.cowwoc.cat.common.secrets.CertificationAttemptAccess;
+import io.github.cowwoc.cat.common.secrets.CertificationAttemptSecrets;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +22,11 @@ import java.util.Map;
  * @param candidate the frozen candidate
  * @param identity the measurement conditions that the attempt was measured under
  * @param procedure the frozen procedure
- * @param counts the certification outcomes included in evidence per cell (category and trial profile)
+ * @param control the snapshot that the attempt's control trials run: the incumbent with every target prompt file
+ *   emptied
+ * @param counts the certification outcomes included in evidence per cell (prompt test and trial profile)
+ * @param pairings the pairing of candidate formal trials with control trials per cell; a cell without an entry has
+ *   {@link ControlPairing#EMPTY no formal trials and no comparisons}
  * @param failures the formal failures, in adoption order
  * @param formalStream the attempt's formal draw stream
  * @param outcome the attempt's outcome, or {@code null} while it runs
@@ -28,9 +35,22 @@ import java.util.Map;
  *   failures
  */
 public record CertificationAttempt(int index, int lineage, Candidate candidate, MeasurementIdentity identity,
-	CertificationProcedure procedure, Map<String, CellCounts> counts, List<Failure> failures,
-	DrawStream.State formalStream, Outcome outcome, List<FailureGroup> groups)
+	CertificationProcedure procedure, Sha256 control, Map<String, CellCounts> counts,
+	Map<String, ControlPairing> pairings, List<Failure> failures, DrawStream.State formalStream, Outcome outcome,
+	List<FailureGroup> groups)
 {
+	static
+	{
+		CertificationAttemptSecrets.setAccess(new CertificationAttemptAccess()
+		{
+			@Override
+			public CertificationAttempt end(CertificationAttempt attempt, Outcome ending)
+			{
+				return attempt.end(ending);
+			}
+		});
+	}
+
 	/**
 	 * Creates an attempt.
 	 *
@@ -39,14 +59,18 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 * @param candidate the frozen candidate
 	 * @param identity the measurement conditions that the attempt was measured under
 	 * @param procedure the frozen procedure
-	 * @param counts the certification outcomes included in evidence per cell (category and trial profile)
+	 * @param control the snapshot that the attempt's control trials run: the incumbent with every target prompt file
+	 *   emptied
+	 * @param counts the certification outcomes included in evidence per cell (prompt test and trial profile)
+	 * @param pairings the pairing of candidate formal trials with control trials per cell
 	 * @param failures the formal failures, in adoption order
 	 * @param formalStream the attempt's formal draw stream
 	 * @param outcome the attempt's outcome, or {@code null} while it runs
 	 * @param groups the groups of the formal failures and their reproduction in development
 	 * @throws NullPointerException if any argument other than {@code outcome} is null
 	 * @throws IllegalArgumentException if {@code formalStream} is not an open formal stream, {@code index} or
-	 *   {@code lineage} are not positive, a cell's counts exceed the cap, or a running attempt has groups
+	 *   {@code lineage} are not positive, a cell's counts exceed the cap, a cell's paired and unpaired candidate
+	 *   formal trials exceed its counted outcomes, or a running attempt has groups
 	 */
 	public CertificationAttempt
 	{
@@ -55,7 +79,9 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 		requireThat(candidate, "candidate").isNotNull();
 		requireThat(identity, "identity").isNotNull();
 		requireThat(procedure, "procedure").isNotNull();
+		requireThat(control, "control").isNotNull();
 		requireThat(counts, "counts").isNotNull();
+		requireThat(pairings, "pairings").isNotNull();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(formalStream, "formalStream").isNotNull();
 		requireThat(formalStream.kind(), "formalStream.kind()").isEqualTo(DrawStream.Kind.FORMAL);
@@ -66,10 +92,18 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 			requireThat(entry.getValue().outcomes(), "counts[" + entry.getKey() + "].outcomes()").
 				isLessThanOrEqualTo(cap, "cap");
 		}
+		for (Map.Entry<String, ControlPairing> entry : pairings.entrySet())
+		{
+			ControlPairing pairing = entry.getValue();
+			int outcomes = counts.getOrDefault(entry.getKey(), CellCounts.EMPTY).outcomes();
+			requireThat(pairing.pairs() + pairing.unpaired().size(), "pairings[" + entry.getKey() +
+				"].candidateTrials").isLessThanOrEqualTo(outcomes, "outcomes");
+		}
 		requireThat(groups, "groups").isNotNull();
 		if (outcome == null)
 			requireThat(groups, "groups").isEmpty();
 		counts = Map.copyOf(counts);
+		pairings = Map.copyOf(pairings);
 		failures = List.copyOf(failures);
 		groups = List.copyOf(groups);
 	}
@@ -83,8 +117,21 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 */
 	public CellCounts count(String cell)
 	{
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		return counts.getOrDefault(cell, CellCounts.EMPTY);
+	}
+
+	/**
+	 * Returns the pairing of a cell's candidate formal trials with its control trials.
+	 *
+	 * @param cell the cell's identifier
+	 * @return the pairing, {@link ControlPairing#EMPTY empty} if the cell has no candidate formal trials
+	 * @throws NullPointerException if {@code cell} is null
+	 */
+	public ControlPairing pairing(String cell)
+	{
+		requireThat(cell, "cell").isNotNull();
+		return pairings.getOrDefault(cell, ControlPairing.EMPTY);
 	}
 
 	/**
@@ -95,7 +142,7 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	public CertificationParameters parameters()
 	{
 		DecisionBoundaries boundaries = procedure.boundaries();
-		return new CertificationParameters(boundaries.requiredPassRate(), boundaries.level());
+		return new CertificationParameters(boundaries.minimumPassRate(), boundaries.level());
 	}
 
 	/**
@@ -127,8 +174,8 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 		List<FailureGroup> ended = List.of();
 		if (ending == Outcome.BELOW_MINIMUM || ending == Outcome.INCONCLUSIVE)
 			ended = FailureGroup.of(failures);
-		return new CertificationAttempt(index, lineage, candidate, identity, procedure, counts, failures,
-			formalStream, ending, ended);
+		return new CertificationAttempt(index, lineage, candidate, identity, procedure, control, counts, pairings,
+			failures, formalStream, ending, ended);
 	}
 
 	/**
@@ -166,8 +213,8 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	{
 		List<FailureGroup> updated = new ArrayList<>(groups);
 		updated.set(number - 1, group);
-		return new CertificationAttempt(index, lineage, candidate, identity, procedure, counts, failures,
-			formalStream, outcome, updated);
+		return new CertificationAttempt(index, lineage, candidate, identity, procedure, control, counts, pairings,
+			failures, formalStream, outcome, updated);
 	}
 
 	/**
@@ -175,14 +222,15 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	 *
 	 * @param identity the measurement conditions that the attempt was measured under
 	 * @param counts the certification outcomes included in evidence per cell
+	 * @param pairings the pairing of candidate formal trials with control trials per cell
 	 * @param failures the formal failures, in adoption order
 	 * @param formalStream the attempt's formal draw stream
 	 * @return the updated attempt
 	 */
 	CertificationAttempt withEvidence(MeasurementIdentity identity, Map<String, CellCounts> counts,
-		List<Failure> failures, DrawStream.State formalStream)
+		Map<String, ControlPairing> pairings, List<Failure> failures, DrawStream.State formalStream)
 	{
-		return new CertificationAttempt(index, lineage, candidate, identity, procedure, counts, failures,
-			formalStream, outcome, groups);
+		return new CertificationAttempt(index, lineage, candidate, identity, procedure, control, counts, pairings,
+			failures, formalStream, outcome, groups);
 	}
 }

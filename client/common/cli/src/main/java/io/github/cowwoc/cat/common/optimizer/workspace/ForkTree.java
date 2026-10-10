@@ -12,16 +12,21 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
+import io.github.cowwoc.cat.common.secrets.ForkTreeAccess;
+import io.github.cowwoc.cat.common.secrets.ForkTreeSecrets;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -37,6 +42,18 @@ import java.util.stream.Collectors;
  */
 public final class ForkTree
 {
+	static
+	{
+		ForkTreeSecrets.setAccess(new ForkTreeAccess()
+		{
+			@Override
+			public Path physical(ForkTree tree, Path key)
+			{
+				return tree.physical(key);
+			}
+		});
+	}
+
 	private static final String FORK = "fork";
 	private final Path directory;
 	private final Path project;
@@ -96,7 +113,9 @@ public final class ForkTree
 			Predicate<Path> omitted = omittedSources(normalizedBase, normalizedCampaign);
 			empty.copyPaths(normalizedBase, paths, omitted);
 			ForkTree recorded = new ForkTree(directory, FileTree.scan(normalizedBase, empty.project, empty.external));
-			return recorded.recordLinkTargets(normalizedBase, absolutePaths(paths), Set.of(), omitted);
+			return recorded.recordLinkTargets(normalizedBase, absolutePaths(paths), Set.of(), omitted, _ ->
+			{
+			});
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -119,24 +138,118 @@ public final class ForkTree
 	 *
 	 * @param base the project directory that the tree was recorded from
 	 * @param paths the paths to record, named as in {@link #record(Path, Path, Set)}
+	 * @param targets is told each target outside the project before it is copied
 	 * @return the tree, rescanned
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a path cannot be recorded
 	 * @throws WorkspaceException if a path does not exist
 	 * @throws IOException if the files cannot be copied
 	 */
-	ForkTree extend(Path base, Set<Path> paths) throws IOException
+	ForkTree extend(Path base, Set<Path> paths, TargetListener targets) throws IOException
+	{
+		requireExtensible(base, paths);
+		Path normalizedBase = base.toAbsolutePath().normalize();
+		Predicate<Path> omitted = omittedSources(normalizedBase, directory.getParent());
+		copyPaths(normalizedBase, paths.stream().filter(path -> !inventory.holds(path)).collect(Collectors.toSet()),
+			omitted);
+		ForkTree extended = new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
+		return extended.recordLinkTargets(normalizedBase, absolutePaths(paths), inventory.entries().keySet(), omitted,
+			targets);
+	}
+
+	/**
+	 * Requires that {@link #extend(Path, Set)} can record paths: each must be a recordable path, and each that the tree
+	 * does not hold yet must exist.
+	 *
+	 * @param base the project directory that the tree was recorded from
+	 * @param paths the paths to record, named as in {@link #record(Path, Path, Set)}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if a path cannot be recorded
+	 * @throws WorkspaceException if a path that the tree does not hold does not exist
+	 */
+	void requireExtensible(Path base, Set<Path> paths) throws WorkspaceException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(paths, "paths").isNotNull();
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		for (Path path : paths)
+		{
 			requireRecordable(normalizedBase, path);
-		Predicate<Path> omitted = omittedSources(normalizedBase, directory.getParent());
-		copyPaths(normalizedBase, paths.stream().filter(path -> !inventory.holds(path)).collect(Collectors.toSet()),
-			omitted);
-		ForkTree extended = new ForkTree(directory, FileTree.scan(normalizedBase, project, external));
-		return extended.recordLinkTargets(normalizedBase, absolutePaths(paths), inventory.entries().keySet(), omitted);
+			if (!inventory.holds(path))
+				requireExists(normalizedBase, path);
+		}
+	}
+
+	/**
+	 * Returns this tree with only some of its entries. Storage stays unchanged, so a later {@link #extend} still sees
+	 * every copied path.
+	 *
+	 * @param kept accepts the keys of the entries to keep
+	 * @return the restricted tree
+	 */
+	ForkTree restrict(Predicate<Path> kept)
+	{
+		Map<Path, FileEntry> entries = new TreeMap<>();
+		for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
+		{
+			if (kept.test(entry.getKey()))
+				entries.put(entry.getKey(), entry.getValue());
+		}
+		return new ForkTree(directory, new FileInventory(inventory.root(), entries));
+	}
+
+	/**
+	 * Returns this tree with only the entries that a predicate keeps and the entries that their symbolic links reach,
+	 * in turn. Storage stays unchanged.
+	 *
+	 * @param kept accepts the keys of the entries to keep
+	 * @return the restricted tree
+	 */
+	ForkTree reachableFrom(Predicate<Path> kept)
+	{
+		Map<Path, FileEntry> entries = new TreeMap<>();
+		Deque<Path> links = new ArrayDeque<>();
+		for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
+		{
+			if (kept.test(entry.getKey()))
+				hold(entry, entries, links);
+		}
+		while (!links.isEmpty())
+		{
+			Path link = links.removeFirst();
+			SymbolicLink value = (SymbolicLink) entries.get(link);
+			Path root = inventory.root();
+			Path destination = root.resolve(link).getParent().resolve(value.target()).normalize();
+			if (destination.startsWith(root))
+				destination = root.relativize(destination);
+			for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
+			{
+				Path key = entry.getKey();
+				if (entries.containsKey(key))
+					continue;
+				// The links on the destination's path, and every entry at or below it, are needed to reach it
+				if (key.startsWith(destination) ||
+					(destination.startsWith(key) && entry.getValue() instanceof SymbolicLink))
+				{
+					hold(entry, entries, links);
+				}
+			}
+		}
+		return new ForkTree(directory, new FileInventory(inventory.root(), entries));
+	}
+
+	/**
+	 * Adds an entry to the entries that a restricted tree holds.
+	 *
+	 * @param entry the entry
+	 * @param entries the held entries
+	 * @param links the held links whose destinations are still to be followed
+	 */
+	private static void hold(Map.Entry<Path, FileEntry> entry, Map<Path, FileEntry> entries, Deque<Path> links)
+	{
+		entries.put(entry.getKey(), entry.getValue());
+		if (entry.getValue() instanceof SymbolicLink)
+			links.add(entry.getKey());
 	}
 
 	/**
@@ -152,18 +265,32 @@ public final class ForkTree
 	{
 		for (Path path : paths)
 		{
-			Path source;
-			if (path.isAbsolute())
-				source = path;
-			else
-				source = base.resolve(path);
-			if (Files.notExists(source, NOFOLLOW_LINKS))
-			{
-				throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
-					"recorded in the fork.");
-			}
+			Path source = requireExists(base, path);
 			FileTree.copy(source, FileTree.locate(project, external, path), omitted);
 		}
+	}
+
+	/**
+	 * Requires that a path to record exists.
+	 *
+	 * @param base the normalized project directory
+	 * @param path the path, named as in {@link #record(Path, Path, Set)}
+	 * @return the path's location
+	 * @throws WorkspaceException if the path does not exist
+	 */
+	private static Path requireExists(Path base, Path path) throws WorkspaceException
+	{
+		Path source;
+		if (path.isAbsolute())
+			source = path;
+		else
+			source = base.resolve(path);
+		if (Files.notExists(source, NOFOLLOW_LINKS))
+		{
+			throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
+				"recorded in the fork.");
+		}
+		return source;
 	}
 
 	/**
@@ -205,11 +332,12 @@ public final class ForkTree
 	 * @param copied the absolute paths that this recording copied whole
 	 * @param previous the keys that the tree held before this recording; a target with a key at or below it is held
 	 * @param omitted accepts the absolute source paths whose subtrees are never copied
+	 * @param listener is told each target before it is copied
 	 * @return the tree, rescanned
 	 * @throws IOException if a target cannot be copied
 	 */
-	private ForkTree recordLinkTargets(Path base, Set<Path> copied, Set<Path> previous, Predicate<Path> omitted)
-		throws IOException
+	private ForkTree recordLinkTargets(Path base, Set<Path> copied, Set<Path> previous, Predicate<Path> omitted,
+		TargetListener listener) throws IOException
 	{
 		Set<Path> roots = new HashSet<>(copied);
 		Set<Path> unreadable = new HashSet<>();
@@ -222,6 +350,7 @@ public final class ForkTree
 			for (Path target : targets)
 			{
 				Path copy = FileTree.locate(project, external, target);
+				listener.copying(target);
 				try
 				{
 					FileTree.copy(target, copy, omitted);
@@ -389,20 +518,43 @@ public final class ForkTree
 	}
 
 	/**
-	 * Requires that a candidate is an overlay on this tree's fork.
+	 * Requires that a candidate is an overlay on this tree's fork or on an earlier fork that this tree holds, as the
+	 * candidates of a campaign's earlier lineages are after a confirmed revision moved it onto a larger fork.
 	 *
 	 * @param candidate the candidate
-	 * @throws IllegalArgumentException if the candidate's fork differs from this tree's inventory
+	 * @throws IllegalArgumentException if this tree's inventory lacks a file of the candidate's fork or records it
+	 *   differently
 	 */
 	void requireSameFork(Overlay candidate)
 	{
-		if (!candidate.fork().equals(inventory))
-			throw new IllegalArgumentException("The candidate is an overlay on a different fork than this workspace.");
+		for (Map.Entry<Path, FileEntry> entry : candidate.fork().entries().entrySet())
+		{
+			if (!inventory.entry(entry.getKey()).equals(Optional.of(entry.getValue())))
+			{
+				throw new IllegalArgumentException("The candidate is an overlay on a different fork than this " +
+					"workspace.");
+			}
+		}
 	}
 
 	@Override
 	public String toString()
 	{
 		return "ForkTree[" + directory + "]";
+	}
+
+	/**
+	 * Is told each target outside the project that a recording is about to copy.
+	 */
+	@FunctionalInterface
+	interface TargetListener
+	{
+		/**
+		 * Called before a target is copied.
+		 *
+		 * @param target the absolute path of the target
+		 * @throws IOException if the target cannot be noted
+		 */
+		void copying(Path target) throws IOException;
 	}
 }

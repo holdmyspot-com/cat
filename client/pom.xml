@@ -30,7 +30,7 @@
 		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
 		<cat.native.harness></cat.native.harness>
 		<!-- The repository's .cat/work/temp directory, which holds the fixtures that a harness runner consumes -->
-		<cat.work.temp>${maven.multiModuleProjectDirectory}/../.cat/work/temp</cat.work.temp>
+		<cat.work.temp>${project.rootDirectory}/../.cat/work/temp</cat.work.temp>
 		<checkstyle.version>14.3.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>

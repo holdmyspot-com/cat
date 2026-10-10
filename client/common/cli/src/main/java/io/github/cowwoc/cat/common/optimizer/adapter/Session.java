@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.adapter;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -11,6 +12,7 @@ import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -43,8 +46,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>CAT asked for an interrupt: {@link SessionResult.Interrupted}, even if the harness then failed;</li>
  *   <li>the provider rejected a request for a rate limit: {@link SessionResult.RateLimited};</li>
  *   <li>the provider refused a request with HTTP status 403: {@link SessionResult.Refused};</li>
- *   <li>a deriver, judge, triage or author session exceeded its time limit: {@link SessionResult.Failed}, because
- *   the limit says nothing about the prompt under test and the session must be retried;</li>
+ *   <li>a contract author, judge, triage or prompt author session exceeded its time limit:
+ *   {@link SessionResult.Failed}, because the limit says nothing about the prompt under test and the session must be
+ *   retried;</li>
  *   <li>a trial session whose turn exceeded the time limit with no model output and no running hook:
  *   {@link SessionResult.Failed}, because the provider never answered the turn and the trial must be retried;</li>
  *   <li>the harness failed or ended early: {@link SessionResult.Failed};</li>
@@ -217,9 +221,11 @@ final class Session implements SessionHandle
 	private void serve()
 	{
 		IOException problem = null;
+		Path fixtures = null;
 		try
 		{
-			sessions.bridge().serve(arguments(), feed, sink);
+			fixtures = writeFixtures();
+			sessions.bridge().serve(arguments(fixtures), feed, sink);
 		}
 		catch (IOException e)
 		{
@@ -231,8 +237,45 @@ final class Session implements SessionHandle
 		}
 		finally
 		{
+			if (fixtures != null)
+			{
+				try
+				{
+					TemporaryDirectories.deleteRecursively(fixtures);
+				}
+				catch (IOException e)
+				{
+					if (problem == null)
+						problem = e;
+				}
+			}
 			messages.add(new Message.Ended(problem));
 		}
+	}
+
+	/**
+	 * Writes the trial's fixtures to a new directory under the run root of the session's part, so that the fixtures
+	 * of a held-out test case stay in a held-out location.
+	 *
+	 * @return the directory, or {@code null} if the session receives no fixtures
+	 * @throws IOException if the fixtures cannot be written
+	 */
+	private Path writeFixtures() throws IOException
+	{
+		if (request.files().isEmpty())
+			return null;
+		Path directory = Files.createDirectories(runRoot().resolve("fixtures")).resolve(UUID.randomUUID().toString());
+		Files.createDirectory(directory);
+		try
+		{
+			request.files().write(directory);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			TemporaryDirectories.deleteRecursively(directory);
+			throw e;
+		}
+		return directory;
 	}
 
 	/**
@@ -442,8 +485,9 @@ final class Session implements SessionHandle
 		}
 		if (timedOut && request.role() != SessionRole.TRIAL)
 		{
-			return new SessionResult.Failed("The " + request.role().name().toLowerCase(Locale.ROOT) +
-				" session reached its " + request.timeLimit().toMinutes() + "-minute time limit", windows);
+			String role = request.role().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+			return new SessionResult.Failed("The " + role + " session reached its " +
+				request.timeLimit().toMinutes() + "-minute time limit", windows);
 		}
 		if (timedOut && timedOutWithoutOutput)
 		{
@@ -482,10 +526,11 @@ final class Session implements SessionHandle
 	/**
 	 * Builds the runner's command-line options.
 	 *
+	 * @param fixtures the directory that holds the trial's fixtures, or {@code null} if there are none
 	 * @return the options
 	 * @throws IOException if the held-out locations cannot be created or listed
 	 */
-	private List<String> arguments() throws IOException
+	private List<String> arguments(Path fixtures) throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		arguments.addAll(List.of("--artifact", settings.artifact().toString(), "--project",
@@ -501,6 +546,8 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(profile.toolOutputTokenLimit())));
 		if (settings.installCat() && request.role() == SessionRole.TRIAL)
 			arguments.add("--install-cat");
+		if (fixtures != null)
+			arguments.addAll(List.of("--fixtures", fixtures.toString()));
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
 		List<Path> heldOut = sessions.heldOutLocations();
 		if (request.part() == Part.DEVELOPMENT)

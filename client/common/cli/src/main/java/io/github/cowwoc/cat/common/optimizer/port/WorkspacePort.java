@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Prepares the directories that nested sessions work in, and keeps the optimization worktree in step with the working
@@ -15,8 +16,8 @@ import java.util.Optional;
  * <ul>
  *   <li>A staged source is a directory without symbolic links that holds one candidate's files. The runner copies it
  *   for each trial session.</li>
- *   <li>An authoring copy is a directory that holds the working candidate's files for one author session to edit.
- *   Scanning it after the session yields the author's changes.</li>
+ *   <li>An authoring copy is a directory that holds the working candidate's files for one prompt author session to
+ *   edit. Scanning it after the session yields the prompt author's changes.</li>
  *   <li>The optimization worktree is CAT's detached Git worktree of the base, which holds the working candidate's
  *   files.</li>
  * </ul>
@@ -39,11 +40,13 @@ public interface WorkspacePort
 	 * Returns a staged source for a candidate, building it if it does not exist.
 	 *
 	 * @param candidate the candidate's overlay on the fork
+	 * @param excluded  the project-relative paths to leave out of the source, with everything below them
 	 * @return the directory that trial sessions copy
-	 * @throws NullPointerException if {@code candidate} is null
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if an excluded path is absolute
 	 * @throws IOException if the source cannot be built
 	 */
-	Path stage(Overlay candidate) throws IOException;
+	Path stage(Overlay candidate, Set<Path> excluded) throws IOException;
 
 	/**
 	 * Deletes a candidate's staged source. Deleting a source that does not exist does nothing.
@@ -55,17 +58,17 @@ public interface WorkspacePort
 	void deleteStaged(Sha256 candidate) throws IOException;
 
 	/**
-	 * Prepares a copy of the working candidate for an author session.
+	 * Prepares a copy of the working candidate for a prompt author session.
 	 *
 	 * @param working the working candidate's overlay on the fork
-	 * @return the directory that the author edits
+	 * @return the directory that the prompt author edits
 	 * @throws NullPointerException if {@code working} is null
 	 * @throws IOException if the copy cannot be prepared
 	 */
 	Path prepareAuthoringCopy(Overlay working) throws IOException;
 
 	/**
-	 * Scans an authoring copy after its author session ends.
+	 * Scans an authoring copy after its prompt author session ends.
 	 *
 	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned
 	 * @return the copy's inventory
@@ -75,9 +78,9 @@ public interface WorkspacePort
 	FileInventory scanAuthoringCopy(Path copy) throws IOException;
 
 	/**
-	 * Scans the effects of an author session that ran on an authoring copy, under the rules that
+	 * Scans the effects of a prompt author session that ran on an authoring copy, under the rules that
 	 * {@link #scanAuthoringCopy(Path)} applies to the copy. Comparing the copy's inventory with the effects' inventory
-	 * yields the author's delta.
+	 * yields the prompt author's delta.
 	 *
 	 * @param copy a directory that {@link #prepareAuthoringCopy(Overlay)} returned, which the session's project source
 	 *   was
@@ -86,7 +89,7 @@ public interface WorkspacePort
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the effects cannot be read
 	 */
-	FileInventory scanAuthorEffects(Path copy, Path effects) throws IOException;
+	FileInventory scanPromptAuthorEffects(Path copy, Path effects) throws IOException;
 
 	/**
 	 * Deletes an authoring copy. Deleting a copy that does not exist does nothing.

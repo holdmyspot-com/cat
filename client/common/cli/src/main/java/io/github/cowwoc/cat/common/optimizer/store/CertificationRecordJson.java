@@ -13,6 +13,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
@@ -24,6 +25,7 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -37,8 +39,9 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Converts a {@link CertificationRecord} to and from the JSON file that a certified delivery writes to the project.
  * <p>
- * The file holds the target, the certification index, the scope's identifier, the required pass rate and the
- * significance level {@code alpha} as decimal strings, each cell's counts, each prompt file's content hash and the
+ * The file holds the target, the certification index, the scope's identifier, the minimum pass rate and the
+ * significance level {@code alpha} as decimal strings, each cell's counts with the pairs of each assertion's control
+ * comparison, each prompt file's content hash and the
  * measurement conditions.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
@@ -53,7 +56,7 @@ public final class CertificationRecordJson
 	/**
 	 * The format version that this version of CAT writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 1;
+	private static final int FORMAT_VERSION = 4;
 	private static final String MALFORMED = "is malformed";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
@@ -94,17 +97,25 @@ public final class CertificationRecordJson
 		root.put("certification_index", record.certificationIndex());
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
-		root.put("required_pass_rate", parameters.requiredPassRate().toPlainString());
+		root.put("minimum_pass_rate", parameters.minimumPassRate().toPlainString());
 		root.put("alpha", alpha(parameters.level()));
 
 		ArrayNode cells = root.putArray("cells");
 		for (CellResult cell : record.cells())
 		{
 			ObjectNode element = cells.addObject();
-			element.put("category", cell.category());
+			element.put("test", cell.test());
 			element.put("cell", cell.cell());
 			element.put("passes", cell.passes());
 			element.put("failures", cell.failures());
+			ArrayNode comparisons = element.putArray("comparisons");
+			for (Entry<String, PairCounts> comparison : cell.comparisons().entrySet())
+			{
+				PairCounts pairs = comparison.getValue();
+				comparisons.addObject().put("assertion", comparison.getKey()).
+					put("both_passed", pairs.bothPassed()).put("candidate_only", pairs.candidateOnly()).
+					put("control_only", pairs.controlOnly()).put("neither_passed", pairs.neitherPassed());
+			}
 		}
 
 		ObjectNode promptFiles = root.putObject("prompt_files");
@@ -143,13 +154,23 @@ public final class CertificationRecordJson
 		CertificationScope scope = CertificationScope.fromId(scopeId).orElseThrow(() ->
 			new IllegalArgumentException("scope: " + scopeId + " is not a certification scope"));
 		CertificationParameters parameters = new CertificationParameters(
-			CampaignJson.decimal(root, "required_pass_rate"), level(CampaignJson.decimal(root, "alpha")));
+			CampaignJson.decimal(root, "minimum_pass_rate"), level(CampaignJson.decimal(root, "alpha")));
 
 		List<CellResult> cells = new ArrayList<>();
 		for (JsonNode element : elements(root, "cells"))
 		{
-			cells.add(new CellResult(text(element, "category"), text(element, "cell"), integer(element, "passes"),
-				integer(element, "failures")));
+			Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+			for (JsonNode comparison : elements(element, "comparisons"))
+			{
+				String assertionId = text(comparison, "assertion");
+				PairCounts pairs = new PairCounts(integer(comparison, "both_passed"),
+					integer(comparison, "candidate_only"), integer(comparison, "control_only"),
+					integer(comparison, "neither_passed"));
+				if (comparisons.put(assertionId, pairs) != null)
+					throw new IllegalArgumentException("comparisons: duplicate assertion " + assertionId);
+			}
+			cells.add(new CellResult(text(element, "test"), text(element, "cell"), integer(element, "passes"),
+				integer(element, "failures"), comparisons));
 		}
 
 		JsonNode promptFilesNode = field(root, "prompt_files");

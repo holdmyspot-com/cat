@@ -40,7 +40,7 @@ public final class ClaudeProcess implements HarnessProcess
 	/**
 	 * Reports that a turn's output began with a follow-up reply that Claude finished for an earlier turn.
 	 */
-	static final String LATE_FOLLOW_UP = "Claude finished a follow-up reply to a background task's " +
+	public static final String LATE_FOLLOW_UP = "Claude finished a follow-up reply to a background task's " +
 		"completion after the previous turn had ended. Its lines are included in this turn's events, but its text is " +
 		"not this turn's reply.";
 	private final HarnessRunnerScope scope;
@@ -445,7 +445,7 @@ public final class ClaudeProcess implements HarnessProcess
 	 * A {@code system/init} line in a process that has never printed a session state means that Claude does not
 	 * honour the setting, and the turn fails.
 	 */
-	static final class TurnBoundary
+	public static final class TurnBoundary
 	{
 		/**
 		 * Parses Claude's output lines.
@@ -474,7 +474,7 @@ public final class ClaudeProcess implements HarnessProcess
 		 * @param json                parses Claude's output lines
 		 * @param sessionStatePrinted whether Claude printed a {@code session_state_changed} line in an earlier turn
 		 */
-		TurnBoundary(JsonMapper json, boolean sessionStatePrinted)
+		public TurnBoundary(JsonMapper json, boolean sessionStatePrinted)
 		{
 			assert json != null;
 			this.json = json;
@@ -507,7 +507,7 @@ public final class ClaudeProcess implements HarnessProcess
 		 * @param line a line of Claude's output
 		 * @return what the line means for the turn
 		 */
-		LineEffect accept(String line)
+		public LineEffect accept(String line)
 		{
 			assert line != null;
 			JsonNode event;
@@ -578,7 +578,7 @@ public final class ClaudeProcess implements HarnessProcess
 	/**
 	 * What one output line means for the turn in progress.
 	 */
-	enum LineEffect
+	public enum LineEffect
 	{
 		/**
 		 * The turn continues.

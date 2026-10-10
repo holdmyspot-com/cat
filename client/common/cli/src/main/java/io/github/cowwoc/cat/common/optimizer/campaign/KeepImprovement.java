@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.util.ArrayList;
@@ -13,7 +12,7 @@ import java.util.Map;
 
 /**
  * Selects certification attempts that the user may keep as improvements without certification.
- * Comparisons use each cell's counts; a cell is a requirement category under one runner profile.
+ * Comparisons use each cell's counts; a cell is a prompt test under one runner profile.
  */
 public final class KeepImprovement
 {
@@ -60,7 +59,6 @@ public final class KeepImprovement
 		}
 		if (!Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable())
 			return false;
-		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		boolean provenBetter = false;
 		for (String cell : attempt.procedure().cells())
 		{
@@ -71,9 +69,8 @@ public final class KeepImprovement
 				provenBetter = true;
 				continue;
 			}
-			CellCounts counts = attempt.count(cell);
-			if (!boundaries.certifies(counts.passes(), counts.failures()) &&
-				counts.outcomes() < REGRESSION_CHECK_OUTCOMES)
+			if (DecisionTable.cellDecision(attempt, cell) != DecisionTable.CellDecision.CERTIFIED &&
+				attempt.count(cell).outcomes() < REGRESSION_CHECK_OUTCOMES)
 			{
 				return false;
 			}

@@ -22,14 +22,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
-import io.github.cowwoc.cat.common.optimizer.contract.Category;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
-import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
@@ -50,11 +50,12 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The status of a campaign: the JSON that the driver emits and the human summary that the user reads.
  * <p>
- * The report shows each cell's estimated pass rate, improvement over the incumbent, comparison with 95% and error
- * bars, the trial profiles, the development cell tier, the outcome names, the claim and its limitations, the minimum
- * remaining trials, token statistics, the descriptive check by concurrency level, the snapshot size comparisons and
- * retained author diagnoses, and the choices that the user may give now, with the evidence of a keep-improvement
- * choice. It never shows a pooled pass fraction, a token total, a time estimate or a completion probability.
+ * The report shows each cell's estimated pass rate, improvement over the incumbent, comparison with the minimum pass
+ * rate and error bars, the trial profiles, the development cell tier, the outcome names, the claim and its limitations,
+ * the minimum remaining trials, token statistics, the descriptive check by concurrency level, the snapshot size
+ * comparisons and retained prompt author diagnoses, and the choices that the user may give now, with the evidence of a
+ * keep-improvement choice. It never shows a pooled pass fraction, a token total, a time estimate or a completion
+ * probability.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -78,7 +79,7 @@ import tools.jackson.databind.node.ObjectNode;
  *   weight
  * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
  * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
- * @param cellTier the certification scope and each category's weakest cell and development cells, or {@code null}
+ * @param cellTier the certification scope and each test's weakest cell and development cells, or {@code null}
  *   before a contract is confirmed
  * @param remaining the minimum remaining trials
  * @param tokens the token statistics
@@ -89,10 +90,10 @@ import tools.jackson.databind.node.ObjectNode;
  * @param claim the statement that the measurements support, or {@code null} before a contract is confirmed
  * @param limitations what the claim does not cover
  * @param conditions the measurement conditions that the claim holds under
- * @param optimization descriptive snapshot comparisons and retained author diagnoses
+ * @param optimization descriptive snapshot comparisons and retained prompt author diagnoses
  * @param reverts withdrawn working candidates and the estimates that triggered their replacement
- * @param addedValues the key-value combinations added to the development part of the tests after certification
- *   attempts ended with formal failures, in the order they were added
+ * @param addedTestCases the test cases added to the development part of the tests after certification attempts
+ *   ended with formal failures, in the order they were added
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -104,14 +105,14 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts,
-	List<AddedCombinationReport> addedValues)
+	List<AddedTestCaseReport> addedTestCases)
 {
 	/**
-	 * The text of an outcome that is not a compliance outcome: work stopped and can resume.
+	 * The text of an outcome that is not a pass or fail outcome: work stopped and can resume.
 	 */
 	static final String INTERRUPTED = "interrupted";
 	/**
-	 * The text of an outcome that is not a compliance outcome: a precise failure stopped work.
+	 * The text of an outcome that is not a pass or fail outcome: a precise failure stopped work.
 	 */
 	static final String INFRASTRUCTURE_FAILURE = "infrastructure failure";
 	/**
@@ -190,7 +191,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param allocation the adopted outcomes of each cell in the reported phase
 	 * @param benchmark the benchmark weights, or {@code null} before a contract is confirmed
 	 * @param trialProfiles the confirmed trial profiles and cells, or {@code null} before a contract is confirmed
-	 * @param cellTier the certification scope and each category's weakest cell and development cells, or
+	 * @param cellTier the certification scope and each test's weakest cell and development cells, or
 	 *   {@code null} before a contract is confirmed
 	 * @param remaining the minimum remaining trials
 	 * @param tokens the token statistics
@@ -201,10 +202,10 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param claim the statement that the measurements support, or {@code null} before a contract is confirmed
 	 * @param limitations what the claim does not cover
 	 * @param conditions the measurement conditions that the claim holds under
-	 * @param optimization descriptive snapshot comparisons and retained author diagnoses
+	 * @param optimization descriptive snapshot comparisons and retained prompt author diagnoses
 	 * @param reverts withdrawn working candidates and the estimates that triggered their replacement
-	 * @param addedValues the key-value combinations added to the development part of the tests after certification
-	 *   attempts ended with formal failures, in the order they were added
+	 * @param addedTestCases the test cases added to the development part of the tests after certification attempts
+	 *   ended with formal failures, in the order they were added
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
 	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
@@ -242,7 +243,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		limitations = List.copyOf(limitations);
 		conditions = Map.copyOf(conditions);
 		reverts = List.copyOf(reverts);
-		addedValues = List.copyOf(addedValues);
+		addedTestCases = List.copyOf(addedTestCases);
 	}
 
 	/**
@@ -339,7 +340,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
-			OptimizationReport.of(campaign), campaign.development().reverts(), AddedCombinationReport.of(campaign));
+			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign));
 	}
 
 	/**
@@ -412,7 +413,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				List<String> edits = new ArrayList<>();
 				for (AuthorityWarning warning : warnings.warnings())
 					edits.add("requirement " + warning.requirement() + " at " + warning.path());
-				yield "an author needs edits outside the edit authority: " + String.join("; ", edits);
+				yield "a prompt author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
 		};
 	}
@@ -430,8 +431,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		{
 			if (group.status() != FailureGroup.Status.NOT_REPRODUCED)
 				continue;
-			groups.add("cell " + group.cellId() + ", test " + group.testId() + ", requirement " +
-				group.failed().requirementId() + " through " + group.failed().behavior() + ": " +
+			groups.add("cell " + group.cellId() + ", test " + group.testId() + ", assertion " +
+				group.failed().assertionId() + " through " + group.failed().behavior() + ": " +
 				group.formalFailures() + " formal failures; " + group.failures() + " of " + group.trials() +
 				" reproduction trials in " + group.rounds().size() + " rounds failed that way");
 		}
@@ -445,11 +446,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param conflict the conflict
 	 * @return its requirements, quotations and numbered resolutions
 	 */
-	private static String describeConflict(AuthorConflict conflict)
+	private static String describeConflict(PromptAuthorConflict conflict)
 	{
 		StringBuilder text = new StringBuilder(256);
 		text.append("conflicting requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
-		for (AuthorConflict.Quotation quotation : conflict.quotations())
+		for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
 			text.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
 		for (int i = 0; i < conflict.resolutions().size(); ++i)
 		{
@@ -492,7 +493,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			{
 				case RESOLUTION ->
 				{
-					AuthorConflict conflict = ((PendingDecision.ConflictFound) campaign.pending()).current();
+					PromptAuthorConflict conflict = ((PendingDecision.ConflictFound) campaign.pending()).current();
 					for (int i = 1; i <= conflict.resolutions().size(); ++i)
 						items.add(new ChoiceItem(choice, 0, false, 0, conflict, i));
 				}
@@ -515,7 +516,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
-	 * Returns the benchmark weights of a contract: each cell of the certification scope weighs its category's tests.
+	 * Returns the benchmark weights of a contract: each cell of the certification scope weighs its prompt test's
+	 * held-out test cases equally.
 	 *
 	 * @param contract the contract
 	 * @return the benchmark
@@ -525,9 +527,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		List<Benchmark.CellWeights> weights = new ArrayList<>();
 		for (Cell cell : CellTier.scopeCells(contract))
 		{
-			Category category = contract.categoryOf(cell);
-			weights.add(new Benchmark.CellWeights(cell.id(), category.tests().size(),
-				category.testProbability()));
+			int testCases = contract.split().testCases(contract.testOf(cell), Part.HELD_OUT).size();
+			weights.add(new Benchmark.CellWeights(cell.id(), testCases, 1.0 / testCases));
 		}
 		return new Benchmark(weights);
 	}
@@ -554,7 +555,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 
 	/**
 	 * Returns the statement that the measurements support. The benchmark counts the cells of the certification scope;
-	 * a claim that covers only each category's weakest cell names each category's profile and says that no other
+	 * a claim that covers only each test's weakest cell names each test's profile and says that no other
 	 * profile was certified.
 	 *
 	 * @param campaign the campaign, which has a confirmed contract
@@ -577,8 +578,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			return claim;
 		List<String> profiles = new ArrayList<>();
 		for (Cell cell : scopeCells)
-			profiles.add(cell.categoryId() + " under " + cell.profile().label());
-		return claim + " Certification covered only each category's weakest cell: " + String.join(", ", profiles) +
+			profiles.add(cell.testId() + " under " + cell.profile().label());
+		return claim + " Certification covered only each test's weakest cell: " + String.join(", ", profiles) +
 			". No other profile was certified.";
 	}
 
@@ -610,7 +611,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		for (CertificationAttempt attempt : campaign.attempts())
 		{
 			Applicability applicability = Applicability.of(attempt, campaign.development().working().snapshot(),
-				campaign.identity(), CertificationParameters.current(attempt.index()));
+				campaign.identity(), CertificationParameters.current(attempt.index(),
+				campaign.contract().minimumPassRate()));
 			String outcome = null;
 			if (attempt.outcome() != null)
 				outcome = attempt.outcome().label();
@@ -644,7 +646,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				Comparison frozen = comparison.comparison();
 				Interval difference = frozen.difference(
 					ConfidenceBounds.lower(counts.passes(), counts.failures(), boundaries.level()),
-					ConfidenceBounds.upper(counts.passes(), counts.failures(), boundaries.level()));
+					ConfidenceBounds.upper(counts.passes(), counts.failures(), boundaries.level(),
+						boundaries.minimumPassRate()));
 				String state = CellReports.improvementState(comparison, counts);
 				String note = null;
 				if (!state.equals(CellReports.PROVEN_BETTER) && difference.lower() < 0)

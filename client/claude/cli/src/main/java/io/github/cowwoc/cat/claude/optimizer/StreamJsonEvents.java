@@ -7,6 +7,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.claude.secrets.StreamJsonEventsAccess;
+import io.github.cowwoc.cat.claude.secrets.StreamJsonEventsSecrets;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -50,8 +52,20 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class StreamJsonEvents extends HarnessEvents
+public final class StreamJsonEvents extends HarnessEvents
 {
+	static
+	{
+		StreamJsonEventsSecrets.setAccess(new StreamJsonEventsAccess()
+		{
+			@Override
+			public StreamJsonEvents newStreamJsonEvents(JsonMapper json)
+			{
+				return new StreamJsonEvents(json);
+			}
+		});
+	}
+
 	private static final String RATE_LIMITED_STATUS = "rejected";
 	private static final int RATE_LIMITED_ERROR = 429;
 	private static final int REFUSED_ERROR = 403;
@@ -176,7 +190,7 @@ final class StreamJsonEvents extends HarnessEvents
 		if (arguments == null)
 			arguments = contentText(input);
 		toolEntries.put(id, entries.size());
-		entries.add(new SessionEvidence.Tool(eventTurn, agent, tool, arguments, null, ""));
+		entries.add(new SessionEvidence.Tool(eventTurn, agent, tool, arguments, command != null, null, ""));
 	}
 
 	/**
@@ -204,8 +218,8 @@ final class StreamJsonEvents extends HarnessEvents
 				status = exitStatus(block.path("is_error").asBoolean(false), result);
 			if (status == null)
 				status = tool.exitStatus();
-			entries.set(index, new SessionEvidence.Tool(tool.turn(), tool.agent(), tool.tool(), tool.input(), status,
-				toolOutput(tool.tool(), result, block.path("content"))));
+			entries.set(index, new SessionEvidence.Tool(tool.turn(), tool.agent(), tool.tool(), tool.input(),
+				tool.command(), status, toolOutput(tool.tool(), result, block.path("content"))));
 
 			ToolCall call = calls.get(id);
 			if (call != null && call.command() != null && call.exitStatus() == null && status != null)

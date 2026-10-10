@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 /**
  * Runs the declared acceptance command for each selected sealed replay output.
  */
-final class DeclaredOutputAcceptance
+public final class DeclaredOutputAcceptance
 {
 	private final CompletedBatchManifest completedManifests;
 	private final ReviewEvidence reviewEvidence;
@@ -68,7 +68,7 @@ final class DeclaredOutputAcceptance
 	 * @param outputId one selected output, or {@code null} for every declaration
 	 * @return selected checks; an unknown selection remains empty
 	 */
-	static List<SemanticCandidate> selectCandidates(List<SemanticCandidate> candidates, String outputId)
+	public static List<SemanticCandidate> selectCandidates(List<SemanticCandidate> candidates, String outputId)
 	{
 		return candidates.stream().filter(candidate -> outputId == null || candidate.output().equals(outputId)).toList();
 	}
@@ -81,7 +81,7 @@ final class DeclaredOutputAcceptance
 	 * @return the command and its witnessed result tree
 	 * @throws IOException if the behavior names an output without a retained witness
 	 */
-	static OutputGates.Target target(SemanticCandidate candidate, Map<String, OutputWitness> witnesses)
+	public static OutputGates.Target target(SemanticCandidate candidate, Map<String, OutputWitness> witnesses)
 		throws IOException
 	{
 		OutputWitness witness = witnesses.get(candidate.output());

@@ -3,6 +3,9 @@ package io.github.cowwoc.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.secrets.HarnessOneShotOptionsAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessOneShotOptionsSecrets;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -26,6 +29,18 @@ import java.util.Map;
 public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile, String model, Path output,
 	Path runRoot, String executable, boolean keepRun, boolean installCat)
 {
+	static
+	{
+		HarnessOneShotOptionsSecrets.setAccess(new HarnessOneShotOptionsAccess()
+		{
+			@Override
+			public int maximumPromptBytes()
+			{
+				return MAXIMUM_PROMPT_BYTES;
+			}
+		});
+	}
+
 	static final int MAXIMUM_PROMPT_BYTES = 1_048_576;
 
 	/**

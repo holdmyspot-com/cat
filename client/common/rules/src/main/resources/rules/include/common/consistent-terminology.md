@@ -5,6 +5,8 @@
 - Ensure every shared concept has one defined term that readers can recognize consistently across source code,
   configuration, documentation, commands, and rules.
 - Keep terms precise without treating ordinary local names or externally required vocabulary as corpus-wide terms.
+- Merge two terms for one concept into the better of them as soon as the duplication is noticed, so synonyms do not
+  accumulate while the reader assumes they name different concepts.
 
 ## Guidance
 
@@ -24,7 +26,14 @@ reader must distinguish a skill's harness metadata, a rule's routing contract, a
 command prompt's invocation. Do not use **prompt file** for source-code documentation, generated output, or a file that
 only happens to contain a prompt fragment without supplying reader-facing instructions.
 
-Before introducing a synonym or renaming an established term, inspect the authoritative definition and every in-scope
-use. Make the change only when the existing term is inaccurate, ambiguous, or conflicts with an external required term.
-Then update every governed use and verify that each remaining different term denotes a genuinely different concept or
+Before naming a shared concept, search its authoritative definitions, such as a glossary, and the in-scope artifacts
+for an existing term. Reuse that term unless a new name is better by the criteria below; do not introduce a synonym
+without that comparison.
+
+When two or more terms denote one shared concept, whether in artifacts, in a proposal, or in the current conversation,
+stop using more than one. Choose the better term by its accuracy, the distinction the reader must make, how readily
+the reader recognizes it, and any external interface that requires it; which term came first does not decide the
+choice. Report the duplication and the chosen term, then update every governed use, including identifiers and
+serialized names. When a use lies outside the authorized scope, report it and request direction instead of leaving the
+duplication unmentioned. Afterwards, verify that each remaining different term denotes a genuinely different concept or
 is required by an external interface.

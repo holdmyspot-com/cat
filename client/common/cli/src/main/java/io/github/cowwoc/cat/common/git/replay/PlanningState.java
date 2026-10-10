@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * Validates the source-repository facts captured by {@link History} before replay planning.
  */
-final class PlanningState
+public final class PlanningState
 {
 	/**
 	 * Prevents construction of static validation operations.
@@ -48,7 +48,7 @@ final class PlanningState
 	 * @param trackedChanges the parsed tracked porcelain status lines
 	 * @throws IOException if any tracked change exists
 	 */
-	static void rejectTrackedChanges(List<String> trackedChanges) throws IOException
+	public static void rejectTrackedChanges(List<String> trackedChanges) throws IOException
 	{
 		if (!trackedChanges.isEmpty())
 			throw new IOException("Topic-replay planning requires no tracked worktree or index changes");

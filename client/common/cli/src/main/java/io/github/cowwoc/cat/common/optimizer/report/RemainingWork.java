@@ -7,16 +7,23 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
+import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -56,7 +63,12 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		/**
 		 * Formal trials that a running certification attempt still requires of an unresolved cell.
 		 */
-		CERTIFICATION
+		CERTIFICATION,
+		/**
+		 * Control trials, and the formal trials that they pair with beyond the cell's other formal trials, that a
+		 * running certification attempt still requires of a cell whose control comparisons are undecided.
+		 */
+		CONTROL
 	}
 
 	/**
@@ -123,7 +135,10 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 * trials if every one passes and the next certification attempt's all-pass minimum.
 	 * <p>
 	 * <b>Formal:</b> for every unresolved cell, the smallest {@code s} such that {@code E↑(S + s, F)} exceeds
-	 * {@code 1/α_i}. A cell that cannot certify within its cap has no minimum.
+	 * {@code 1/α_i} while its minimum-pass-rate part is undecided, plus the fewest further pairs after which every
+	 * undecided control comparison's {@code E_ctl↑} exceeds {@code 1/α_i} if both trials of every pair pass, plus the
+	 * formal trials that those pairs need beyond the cell's other formal trials. A comparison that has not started
+	 * counts from no pairs. A cell that cannot certify within its cap has no minimum.
 	 *
 	 * @param campaign the campaign
 	 * @return the count
@@ -158,21 +173,22 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		List<String> scope = CellTier.scopeCellIds(campaign.contract());
 		Set<String> scopeIds = Set.copyOf(scope);
 		Set<String> development = Set.copyOf(CellTier.developmentCellIds(campaign));
+		BigDecimal minimumPassRate = campaign.contract().minimumPassRate();
 		int nextAttempt = DecisionBoundaries.allPassMinimum(
-			ErrorBudget.certificationLevel(campaign.nextCertificationIndex()));
+			ErrorBudget.certificationLevel(campaign.nextCertificationIndex()), minimumPassRate);
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		for (String id : CellTier.withDevelopmentCellIds(campaign, scope))
 		{
 			if (development.contains(id))
 			{
-				int readiness = readinessRemaining(campaign.development().count(id));
+				int readiness = readinessRemaining(campaign.development().count(id), minimumPassRate);
 				entries.add(new Entry(id, Kind.READINESS, readiness, null));
 				total += readiness;
 			}
 			if (scopeIds.contains(id))
 			{
-				int baseline = baselineRemaining(campaign.baseline(), id, scope.size());
+				int baseline = baselineRemaining(campaign.baseline(), id, scope.size(), minimumPassRate);
 				entries.add(new Entry(id, Kind.BASELINE, baseline, null));
 				entries.add(new Entry(id, Kind.NEXT_ATTEMPT, nextAttempt, null));
 				total += baseline + nextAttempt;
@@ -183,15 +199,16 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 
 	/**
 	 * Returns the fewest further all-pass trials after which a cell meets the readiness gate's count conditions: at
-	 * least 100 trials, at least 99% passes, and the latest two complete batches within the failure limit.
+	 * least 100 trials, the minimum observed pass rate, and the latest two complete batches within the failure limit.
 	 *
 	 * @param counts the cell's development counts
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the trials
 	 */
-	private static int readinessRemaining(CellCounts counts)
+	private static int readinessRemaining(CellCounts counts, BigDecimal minimumPassRate)
 	{
 		int trials = 0;
-		while (!ReadinessGate.isReady(counts))
+		while (!ReadinessGate.isReady(counts, minimumPassRate))
 		{
 			counts = counts.add(Verdict.PASS);
 			++trials;
@@ -205,13 +222,15 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 * @param baseline the incumbent baseline
 	 * @param cell the cell's identifier
 	 * @param cells the number of cells in the certification scope
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the trials
 	 */
-	private static int baselineRemaining(IncumbentBaseline baseline, String cell, int cells)
+	private static int baselineRemaining(IncumbentBaseline baseline, String cell, int cells,
+		BigDecimal minimumPassRate)
 	{
 		CellCounts counts = baseline.count(cell);
 		int trials = 0;
-		while (counts.outcomes() < Baseline.target(counts, baseline.index(), cells))
+		while (counts.outcomes() < Baseline.target(counts, baseline.index(), cells, minimumPassRate))
 		{
 			counts = counts.add(Verdict.PASS);
 			++trials;
@@ -233,25 +252,101 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		boolean available = true;
 		for (String cell : attempt.procedure().cells())
 		{
+			if (DecisionTable.cellDecision(attempt, cell) != DecisionTable.CellDecision.UNDECIDED)
+				continue;
 			CellCounts counts = attempt.count(cell);
-			if (DecisionTable.cellDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED)
-				continue;
-			int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
-			if (minimum > boundaries.cap() - counts.failures())
+			int certification = 0;
+			if (DecisionTable.minimumDecision(boundaries, counts) == DecisionTable.CellDecision.UNDECIDED)
 			{
-				entries.add(new Entry(cell, Kind.CERTIFICATION, null,
-					"No state with " + counts.failures() + " failures certifies within the cap of " +
-						boundaries.cap() + " outcomes."));
-				available = false;
-				continue;
+				Entry entry = certification(boundaries, cell, counts);
+				entries.add(entry);
+				if (entry.trials() == null)
+				{
+					// The control comparisons start only once the minimum-pass-rate part certifies
+					available = false;
+					continue;
+				}
+				certification = entry.trials();
+				total += certification;
 			}
-			int trials = minimum - counts.passes();
-			entries.add(new Entry(cell, Kind.CERTIFICATION, trials, null));
-			total += trials;
+			Entry control = control(attempt, cell, certification);
+			entries.add(control);
+			if (control.trials() == null)
+				available = false;
+			else
+				total += control.trials();
 		}
 		if (available)
 			return new RemainingWork(Phase.FORMAL, entries, total, null);
 		return new RemainingWork(Phase.FORMAL, entries, null,
 			"A cell cannot certify within its cap, so no minimum exists.");
+	}
+
+	/**
+	 * Returns the formal trials that a cell's minimum-pass-rate part still requires if every one passes.
+	 *
+	 * @param boundaries the attempt's boundaries
+	 * @param cell the cell's identifier
+	 * @param counts the cell's adopted counts, whose minimum-pass-rate part is undecided
+	 * @return the entry
+	 */
+	private static Entry certification(DecisionBoundaries boundaries, String cell, CellCounts counts)
+	{
+		int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
+		if (minimum > boundaries.cap() - counts.failures())
+		{
+			return new Entry(cell, Kind.CERTIFICATION, null,
+				"No state with " + counts.failures() + " failures certifies within the cap of " + boundaries.cap() +
+					" outcomes.");
+		}
+		return new Entry(cell, Kind.CERTIFICATION, minimum - counts.passes(), null);
+	}
+
+	/**
+	 * Returns the control trials that a cell still requires if both trials of every further pair pass, and the formal
+	 * trials that those pairs need beyond the cell's other formal trials. The pairs are shared by the cell's
+	 * assertions, so the cell requires the pairs of its slowest undecided comparison.
+	 *
+	 * @param attempt the attempt
+	 * @param cell the cell's identifier
+	 * @param certification the formal trials that the cell's minimum-pass-rate part still requires
+	 * @return the entry
+	 */
+	private static Entry control(CertificationAttempt attempt, String cell, int certification)
+	{
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
+		SignificanceLevel level = boundaries.level();
+		ControlPairing pairing = attempt.pairing(cell);
+		int further = boundaries.cap() - pairing.pairs();
+		if (!pairing.isComparing())
+		{
+			int needed = ControlComparison.fewestEvenPairsToPass(PairCounts.EMPTY.tally(), level, further);
+			if (needed > further)
+			{
+				return new Entry(cell, Kind.CONTROL, null,
+					"The control comparisons cannot pass within the cap of " + boundaries.cap() + " pairs.");
+			}
+			// Every formal outcome, including those that the minimum-pass-rate part still requires, pairs with a
+			// control trial once the comparisons start
+			int formal = attempt.count(cell).outcomes() + certification;
+			return new Entry(cell, Kind.CONTROL, needed + Math.max(0, needed - formal), null);
+		}
+
+		int pairs = 0;
+		for (Map.Entry<String, PairCounts> comparison : pairing.comparisons().entrySet())
+		{
+			PairTally tally = comparison.getValue().tally();
+			if (ControlComparison.passes(tally, level))
+				continue;
+			int needed = ControlComparison.fewestEvenPairsToPass(tally, level, further);
+			if (needed > further)
+			{
+				return new Entry(cell, Kind.CONTROL, null, "The control comparison of " + comparison.getKey() +
+					" cannot pass within the cap of " + boundaries.cap() + " pairs.");
+			}
+			pairs = Math.max(pairs, needed);
+		}
+		int formal = pairing.unpaired().size();
+		return new Entry(cell, Kind.CONTROL, pairs + Math.max(0, pairs - formal), null);
 	}
 }

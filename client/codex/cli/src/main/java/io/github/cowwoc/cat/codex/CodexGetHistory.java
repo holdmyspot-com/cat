@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.codex;
 
 import io.github.cowwoc.cat.codex.optimizer.RolloutInterruptSignal;
 import io.github.cowwoc.cat.common.history.SessionHistory;
+import io.github.cowwoc.cat.codex.secrets.CodexGetHistoryAccess;
+import io.github.cowwoc.cat.codex.secrets.CodexGetHistorySecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +19,18 @@ import java.util.stream.Stream;
  */
 public final class CodexGetHistory
 {
+	static
+	{
+		CodexGetHistorySecrets.setAccess(new CodexGetHistoryAccess()
+		{
+			@Override
+			public String execute(Map<String, String> environment, String[] args) throws IOException
+			{
+				return CodexGetHistory.execute(environment, args);
+			}
+		});
+	}
+
 	/**
  * Runs the requested session-history operation.
 	 *

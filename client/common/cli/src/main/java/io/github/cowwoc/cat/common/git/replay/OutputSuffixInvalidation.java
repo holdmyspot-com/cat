@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 /**
  * Removes one unsealed output suffix and every review decision that depends on its placement.
  */
-final class OutputSuffixInvalidation
+public final class OutputSuffixInvalidation
 {
 	/**
 	 * Returns the manifest state after invalidating one output and every later output.
@@ -18,7 +18,7 @@ final class OutputSuffixInvalidation
 	 * @return the retained prefix with dependent batches, witnesses, discards, and source reviews removed
 	 * @throws IOException if an output is open and therefore cannot be safely invalidated
 	 */
-	BatchManifest invalidate(BatchManifest manifest, String outputId) throws IOException
+	public BatchManifest invalidate(BatchManifest manifest, String outputId) throws IOException
 	{
 		int firstInvalidated = outputIndex(manifest.outputs(), outputId);
 		if (manifest.outputWitnesses().stream().anyMatch(witness -> witness.afterTree() == null))

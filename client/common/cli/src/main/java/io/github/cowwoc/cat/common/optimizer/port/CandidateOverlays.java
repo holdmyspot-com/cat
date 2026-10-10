@@ -10,8 +10,8 @@ import java.util.Optional;
  * Holds the overlay of every candidate that the slice driver stages, materializes or delivers.
  * <p>
  * A campaign records each candidate only by its snapshot, the overlay's identity. The driver needs the overlay
- * itself to stage a trial's source, to prepare an author's copy, to materialize the working candidate and to deliver
- * the selected one.
+ * itself to stage a trial's source, to prepare a prompt author's copy, to materialize the working candidate and to
+ * deliver the selected one.
  */
 public interface CandidateOverlays
 {

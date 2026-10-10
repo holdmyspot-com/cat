@@ -2,12 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
@@ -60,6 +60,7 @@ public final class Transitions
 			case CampaignEvent.ObserveTokenUsage observed ->
 				draft.optimization = draft.optimization.addUsage(observed.role(), observed.usage());
 			case CampaignEvent.Confirm confirm -> confirm(draft, confirm);
+			case CampaignEvent.ExtendFork extend -> extendFork(draft, extend);
 			case CampaignEvent.Revise _ -> revise(draft);
 			case CampaignEvent.Assign assign -> assign(draft, assign.admission());
 			case CampaignEvent.Start start -> start(draft, start.key());
@@ -77,22 +78,22 @@ public final class Transitions
 				draft.throttle = draft.throttle.hold(hold.until(), hold.backoffs());
 				draft.slowStart = SlowStart.INITIAL;
 			}
-			case CampaignEvent.StartAuthorAttempt start -> startAuthorAttempt(draft, start.cell());
-			case CampaignEvent.SubmitAuthorAttempt submit -> submitAuthorAttempt(draft, submit);
+			case CampaignEvent.StartPromptAuthorAttempt start -> startPromptAuthorAttempt(draft, start.cell());
+			case CampaignEvent.SubmitPromptAuthorAttempt submit -> submitPromptAuthorAttempt(draft, submit);
 			case CampaignEvent.AdvanceMinimality advance -> advanceMinimality(draft, advance.snapshot());
 			case CampaignEvent.MeasurePrompt measured ->
 			{
 				Map<Sha256, PromptSize> sizes = new HashMap<>(draft.optimization.promptSizes());
 				sizes.put(measured.snapshot(), measured.size());
-				draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
+				draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 					sizes, draft.optimization.trialInputs(), draft.optimization.attempts(),
 					draft.optimization.tokenUsage());
 			}
-			case CampaignEvent.RetainAuthorDiagnosis retain ->
+			case CampaignEvent.RetainPromptAuthorDiagnosis retain ->
 			{
-				List<AuthorDiagnosis> authors = new ArrayList<>(draft.optimization.authors());
-				authors.add(retain.diagnosis());
-				draft.optimization = new OptimizationEvidence(authors, draft.optimization.removed(),
+				List<PromptAuthorDiagnosis> promptAuthors = new ArrayList<>(draft.optimization.promptAuthors());
+				promptAuthors.add(retain.diagnosis());
+				draft.optimization = new OptimizationEvidence(promptAuthors, draft.optimization.removed(),
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
 					draft.optimization.tokenUsage());
 			}
@@ -185,7 +186,7 @@ public final class Transitions
 		}
 		draft.startLineage(new Lineage(draft.lineageNumber() + 1, confirm.contract(), confirm.contractHash(),
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, confirm.seed()).state(),
-			DrawStream.create(DrawStream.Kind.BASELINE, confirm.seed()).state(), List.of(), Set.of(), AddedValues.NONE));
+			DrawStream.create(DrawStream.Kind.BASELINE, confirm.seed()).state(), List.of(), Set.of(), AddedTestCases.NONE));
 		Map<MeasurementCondition, String> contractValues = new EnumMap<>(MeasurementCondition.class);
 		contractValues.put(MeasurementCondition.CONTRACT, confirm.contractHash().hex());
 		contractValues.put(MeasurementCondition.GENERATOR, Generator.IDENTITY);
@@ -199,7 +200,8 @@ public final class Transitions
 	}
 
 	/**
-	 * Records the deriver's combinations for a failure group's current round, whose reproduction trials then run.
+	 * Records the contract author's test cases for a failure group's current round, whose reproduction trials then
+	 * run.
 	 *
 	 * @param draft the state
 	 * @param values the event
@@ -223,7 +225,32 @@ public final class Transitions
 				values.group());
 		}
 		FailureGroup group = attempt.group(values.group());
-		draft.replaceAttempt(attempt.withGroup(values.group(), group.withValues(values.combinations())));
+		draft.replaceAttempt(attempt.withGroup(values.group(), group.withValues(values.testCases())));
+	}
+
+	/**
+	 * Moves a campaign whose revision waits for confirmation onto a larger fork. The confirmation that follows starts
+	 * the new lineage on it.
+	 *
+	 * @param draft the state
+	 * @param extend the event
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or no revision was
+	 *   requested
+	 * @throws IllegalArgumentException if the incumbent is the working candidate and the event gives them different
+	 *   snapshots
+	 */
+	private static void extendFork(Draft draft, CampaignEvent.ExtendFork extend)
+	{
+		requireConfirmed(draft);
+		if (!draft.revisionRequested)
+			throw new IllegalStateException("Only a revision that waits for confirmation moves the campaign's fork");
+		if (draft.working.isIncumbent() && !extend.working().equals(extend.incumbent()))
+		{
+			throw new IllegalArgumentException("The incumbent is the working candidate, so both need the same " +
+				"snapshot");
+		}
+		draft.incumbent = new Candidate(0, extend.incumbent());
+		draft.working = new Candidate(draft.working.number(), extend.working());
 	}
 
 	/**
@@ -291,13 +318,13 @@ public final class Transitions
 			throw new IllegalArgumentException("The contract has no cell " + cell);
 		TrialKey key = new TrialKey(admission.purpose(), admission.series(), admission.snapshot(), cell,
 			draft.nextSequence(new SequenceGroup(cell, admission.purpose(), admission.snapshot())));
-		TrialInstance instance = switch (admission.purpose())
+		DrawnTestCase testCase = switch (admission.purpose())
 		{
 			case DEVELOPMENT ->
 			{
 				requireSeriesAndSnapshot(admission, draft.series, draft.working);
 				DrawStream stream = DrawStream.resume(draft.developmentStream);
-				TrialInstance drawn = draft.generator().draw(cell, stream);
+				DrawnTestCase drawn = draft.generator().draw(cell, stream);
 				draft.developmentStream = stream.state();
 				yield drawn;
 			}
@@ -305,16 +332,17 @@ public final class Transitions
 			{
 				requireSeriesAndSnapshot(admission, draft.baselineIndex, draft.incumbent);
 				DrawStream stream = DrawStream.resume(draft.baselineStream);
-				TrialInstance drawn = draft.generator().draw(cell, stream);
+				DrawnTestCase drawn = draft.generator().draw(cell, stream);
 				draft.baselineStream = stream.state();
 				yield drawn;
 			}
 			case FORMAL -> assignFormal(draft, admission);
+			case CONTROL -> assignControl(draft, admission);
 			case DIAGNOSTIC -> assignDiagnostic(draft, admission, key);
 			case PROMOTION -> assignPromotion(draft, admission, key);
 			case REPRODUCTION -> assignReproduction(draft, admission);
 		};
-		draft.trials.add(LogicalTrial.assigned(key, instance, draft.identity, admission.allocation()));
+		draft.trials.add(LogicalTrial.assigned(key, testCase, draft.identity, admission.allocation()));
 	}
 
 	/**
@@ -339,10 +367,10 @@ public final class Transitions
 	 *
 	 * @param draft the state
 	 * @param admission the admission
-	 * @return the instance
+	 * @return the test case
 	 * @throws IllegalArgumentException if no attempt runs or the admission names another attempt or candidate
 	 */
-	private static TrialInstance assignFormal(Draft draft, Admission.Assign admission)
+	private static DrawnTestCase assignFormal(Draft draft, Admission.Assign admission)
 	{
 		Optional<CertificationAttempt> running = draft.runningAttempt();
 		if (running.isEmpty())
@@ -350,10 +378,57 @@ public final class Transitions
 		CertificationAttempt attempt = running.get();
 		requireSeriesAndSnapshot(admission, attempt.index(), attempt.candidate());
 		DrawStream stream = DrawStream.resume(attempt.formalStream());
-		TrialInstance drawn = draft.generator().draw(admission.cell(), stream);
-		draft.replaceAttempt(attempt.withEvidence(attempt.identity(), attempt.counts(), attempt.failures(),
-			stream.state()));
+		DrawnTestCase drawn = draft.generator().draw(admission.cell(), stream);
+		draft.replaceAttempt(attempt.withEvidence(attempt.identity(), attempt.counts(), attempt.pairings(),
+			attempt.failures(), stream.state()));
 		return drawn;
+	}
+
+	/**
+	 * Assigns the control trial that pairs with the running attempt's next candidate formal trial of a cell.
+	 *
+	 * @param draft the state
+	 * @param admission the admission
+	 * @return the test case
+	 * @throws IllegalArgumentException if no attempt runs, the admission names another attempt or control source, the
+	 *   cell is not comparing, or every waiting candidate formal trial of the cell already has a control trial in
+	 *   flight, or the next one ran another test case
+	 */
+	private static DrawnTestCase assignControl(Draft draft, Admission.Assign admission)
+	{
+		Optional<CertificationAttempt> running = draft.runningAttempt();
+		if (running.isEmpty())
+			throw new IllegalArgumentException("No certification attempt runs: " + admission);
+		CertificationAttempt attempt = running.get();
+		if (admission.series() != attempt.index() || !admission.snapshot().equals(attempt.control()))
+		{
+			throw new IllegalArgumentException("The state does not offer " + admission + "; expected the control " +
+				"source of attempt " + attempt.index());
+		}
+		ControlPairing pairing = attempt.pairing(admission.cell());
+		if (!pairing.isComparing())
+			throw new IllegalArgumentException("The cell does not compare its assertions yet: " + admission);
+		int inFlight = 0;
+		for (LogicalTrial trial : draft.trials)
+		{
+			TrialKey key = trial.key();
+			if (key.purpose() == Purpose.CONTROL && key.series() == attempt.index() &&
+				key.cell().equals(admission.cell()))
+			{
+				++inFlight;
+			}
+		}
+		List<ControlPairing.UnpairedTrial> unpaired = pairing.unpaired();
+		if (inFlight >= unpaired.size() ||
+			!Promotion.isSameTestCase(unpaired.get(inFlight).testCase(), admission.testCase()))
+		{
+			String next = "none";
+			if (inFlight < unpaired.size())
+				next = unpaired.get(inFlight).testCase().toString();
+			throw new IllegalArgumentException("The state does not offer " + admission + "; the next waiting " +
+				"candidate formal trial is " + next);
+		}
+		return admission.testCase();
 	}
 
 	/**
@@ -361,11 +436,11 @@ public final class Transitions
 	 *
 	 * @param draft the state
 	 * @param admission the admission, whose series is the group's 1-based position
-	 * @return the instance, marked targeted
+	 * @return the test case, marked targeted
 	 * @throws IllegalArgumentException if no attempt is reproducing, or the admission names a group that is not
 	 *   reproducing, a round that awaits values, another cell or another snapshot than the working candidate's
 	 */
-	private static TrialInstance assignReproduction(Draft draft, Admission.Assign admission)
+	private static DrawnTestCase assignReproduction(Draft draft, Admission.Assign admission)
 	{
 		CertificationAttempt attempt = draft.reproducing().orElseThrow(() ->
 			new IllegalArgumentException("No certification attempt is reproducing its formal failures: " + admission));
@@ -381,59 +456,60 @@ public final class Transitions
 		}
 		Generator generator = draft.reproductionGenerator();
 		DrawStream stream = DrawStream.resume(draft.developmentStream);
-		TrialInstance drawn = generator.drawCombination(round.cellId(), group.testId(), round.added(), stream);
+		DrawnTestCase drawn = generator.drawAdded(round.cellId(), group.testId(), round.added(), stream);
 		draft.developmentStream = stream.state();
 		return generator.markTargeted(drawn);
 	}
 
 	/**
-	 * Assigns the diagnostic rerun of the first failing instance.
+	 * Assigns the diagnostic rerun of the first failing test case.
 	 *
 	 * @param draft the state
 	 * @param admission the admission
 	 * @param key the rerun's key
-	 * @return the instance
-	 * @throws IllegalArgumentException if no rerun is due or the admission names another instance
+	 * @return the test case
+	 * @throws IllegalArgumentException if no rerun is due or the admission names another test case
 	 */
-	private static TrialInstance assignDiagnostic(Draft draft, Admission.Assign admission, TrialKey key)
+	private static DrawnTestCase assignDiagnostic(Draft draft, Admission.Assign admission, TrialKey key)
 	{
 		Diagnosis diagnosis = draft.diagnosis;
 		requireSeriesAndSnapshot(admission, draft.series, draft.working);
 		if (diagnosis == null || diagnosis.pending().isEmpty() || diagnosis.rerun() != null ||
-			!Promotion.isSameContent(diagnosis.pending().getFirst(), admission.instance()))
+			!Promotion.isSameTestCase(diagnosis.pending().getFirst(), admission.testCase()))
 		{
-			throw new IllegalArgumentException("No diagnostic rerun of " + admission.instance() + " is due");
+			throw new IllegalArgumentException("No diagnostic rerun of " + admission.testCase() + " is due");
 		}
 		draft.diagnosis = new Diagnosis(diagnosis.pending(), diagnosis.passedReruns(), key, diagnosis.reproduced());
-		return admission.instance();
+		return admission.testCase();
 	}
 
 	/**
-	 * Assigns an unassigned promotion run of the author attempt under validation.
+	 * Assigns an unassigned promotion run of the prompt author attempt under validation.
 	 *
 	 * @param draft the state
 	 * @param admission the admission
 	 * @param key the run's key
-	 * @return the instance
+	 * @return the test case
 	 * @throws IllegalArgumentException if no unassigned run matches the admission
 	 */
-	private static TrialInstance assignPromotion(Draft draft, Admission.Assign admission, TrialKey key)
+	private static DrawnTestCase assignPromotion(Draft draft, Admission.Assign admission, TrialKey key)
 	{
-		AuthorAttempt author = draft.findAuthor(admission.series());
-		if (author == null)
-			throw new IllegalArgumentException("No author attempt " + admission.series() + " is under validation");
-		List<PromotionRun> runs = new ArrayList<>(author.runs());
+		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(admission.series());
+		if (promptAuthor == null)
+			throw new IllegalArgumentException("No prompt author attempt " + admission.series() +
+			" is under validation");
+		List<PromotionRun> runs = new ArrayList<>(promptAuthor.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
 			PromotionRun run = runs.get(i);
-			Sha256 snapshot = Promotion.snapshot(author, run, draft.working.snapshot());
+			Sha256 snapshot = Promotion.snapshot(promptAuthor, run, draft.working.snapshot());
 			if (run.trial() == null && snapshot.equals(admission.snapshot()) &&
-				Promotion.isSameContent(run.instance(), admission.instance()))
+				Promotion.isSameTestCase(run.testCase(), admission.testCase()))
 			{
-				runs.set(i, new PromotionRun(run.role(), run.instance(), key, null));
-				draft.updateAuthor(new AuthorAttempt(author.number(), author.cell(), author.snapshot(), runs,
-					author.minimality()));
-				return run.instance();
+				runs.set(i, new PromotionRun(run.role(), run.testCase(), key, null));
+				draft.updatePromptAuthor(new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
+					promptAuthor.snapshot(), runs, promptAuthor.minimality()));
+				return run.testCase();
 			}
 		}
 		throw new IllegalArgumentException("No unassigned promotion run matches " + admission);
@@ -493,7 +569,7 @@ public final class Transitions
 		List<MeasurementCondition> differences = draft.identity.differences(observed);
 		if (!differences.isEmpty())
 		{
-			draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
+			draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), trial.identity(),
 				trial.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, trial.infrastructureFailures(),
 				trial.infrastructureAttempts(), trial.observations() + 1, List.of(), null));
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
@@ -512,8 +588,8 @@ public final class Transitions
 			draft.baselineIdentity = draft.baselineIdentity.extendWith(measured);
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
-		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), measured,
-			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedRequirements(),
+		draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), measured,
+			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedAssertions(),
 			complete.triage(), trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(),
 			complete.responses(), complete.files()));
 	}
@@ -532,7 +608,7 @@ public final class Transitions
 		{
 			CertificationAttempt attempt = running.get();
 			draft.replaceAttempt(attempt.withEvidence(attempt.identity().extendWith(observed), attempt.counts(),
-				attempt.failures(), attempt.formalStream()));
+				attempt.pairings(), attempt.failures(), attempt.formalStream()));
 		}
 	}
 
@@ -569,25 +645,25 @@ public final class Transitions
 		}
 		List<InfrastructureAttempt> attempts = new ArrayList<>(trial.infrastructureAttempts());
 		attempts.add(new InfrastructureAttempt(fail.at(), fail.failure(), fail.detail()));
-		draft.trials.set(index, new LogicalTrial(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
+		draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), trial.identity(), trial.allocation(),
 			TrialState.ASSIGNED, null, null, List.of(), null, infrastructureFailures, attempts, trial.observations(),
 			List.of(), null));
 	}
 
 	/**
-	 * Reserves a stable launch-order number without counting an unvalidated author session.
+	 * Reserves a stable launch-order number without counting an unvalidated prompt author session.
 	 *
 	 * @param draft the campaign state
 	 * @param cell the addressed cell
 	 * @throws IllegalStateException if the round has no available slot for that cell
 	 */
-	private static void startAuthorAttempt(Draft draft, String cell)
+	private static void startPromptAuthorAttempt(Draft draft, String cell)
 	{
 		requireConfirmed(draft);
 		Round round = draft.round;
-		if (round == null || draft.author != null || !round.nextCell().orElse("").equals(cell))
-			throw new IllegalStateException("No round offers an author attempt for " + cell);
-		int latest = draft.authorAttempts;
+		if (round == null || draft.promptAuthor != null || !round.nextCell().orElse("").equals(cell))
+			throw new IllegalStateException("No round offers a prompt author attempt for " + cell);
+		int latest = draft.promptAuthorAttempts;
 		for (int number : round.reservations().keySet())
 			latest = Math.max(latest, number);
 		for (AttemptResult result : draft.optimization.attempts())
@@ -602,29 +678,32 @@ public final class Transitions
 	 * @param submit the received attempt
 	 * @throws IllegalStateException if no pending reservation matches the attempt
 	 */
-	private static void submitAuthorAttempt(Draft draft, CampaignEvent.SubmitAuthorAttempt submit)
+	private static void submitPromptAuthorAttempt(Draft draft, CampaignEvent.SubmitPromptAuthorAttempt submit)
 	{
 		requireConfirmed(draft);
 		String cell = submit.cell();
 		int number = submit.number();
 		Round round = draft.round;
-		if (round == null || draft.author != null || !cell.equals(round.pendingAuthorAttempts().get(number)))
-			throw new IllegalStateException("No pending author attempt " + number + " addresses " + cell);
-		++draft.authorAttempts;
+		if (round == null || draft.promptAuthor != null ||
+			!cell.equals(round.pendingPromptAuthorAttempts().get(number)))
+		{
+			throw new IllegalStateException("No pending prompt author attempt " + number + " addresses " + cell);
+		}
+		++draft.promptAuthorAttempts;
 		List<PromotionRun> runs = List.of();
 		if (!submit.snapshot().equals(draft.working.snapshot()))
 		{
-			List<TrialInstance> failures = draft.developmentFailures.stream().map(Failure::instance).toList();
+			List<DrawnTestCase> failures = draft.developmentFailures.stream().map(Failure::testCase).toList();
 			List<String> cells = List.of(cell);
 			if (round.weak())
 			{
-				String categoryId = draft.contract().findCell(cell).orElseThrow().categoryId();
-				cells = draft.developmentCells().stream().filter(other -> other.categoryId().equals(categoryId)).
+				String testId = draft.contract().findCell(cell).orElseThrow().testId();
+				cells = draft.developmentCells().stream().filter(other -> other.testId().equals(testId)).
 					map(Cell::id).toList();
 			}
 			runs = planPromotionRuns(draft, cells, failures);
 		}
-		AuthorAttempt attempt = new AuthorAttempt(number, cell, submit.snapshot(), runs,
+		PromptAuthorAttempt attempt = new PromptAuthorAttempt(number, cell, submit.snapshot(), runs,
 			Minimality.start(submit.changes(), submit.snapshot()));
 		draft.round = round.withAttempt(attempt);
 		if (round.weak())
@@ -632,12 +711,12 @@ public final class Transitions
 			TrialAdoption.decideWeakRound(draft);
 			return;
 		}
-		draft.author = attempt;
+		draft.promptAuthor = attempt;
 		if (submit.snapshot().equals(draft.working.snapshot()))
 		{
 			TrialAdoption.retainAttempt(draft, attempt, false, false);
-			draft.author = null;
-			TrialAdoption.rejectAuthorAttempt(draft, cell);
+			draft.promptAuthor = null;
+			TrialAdoption.rejectPromptAuthorAttempt(draft, cell);
 			return;
 		}
 		TrialAdoption.decidePromotion(draft);
@@ -649,33 +728,33 @@ public final class Transitions
 	 *
 	 * @param draft the campaign state
 	 * @param cells the triggering cells
-	 * @param failures the instances that the author received
+	 * @param failures the test cases that the prompt author received
 	 * @return the attempt's own runs and references that have no owner yet
 	 */
 	private static List<PromotionRun> planPromotionRuns(Draft draft, List<String> cells,
-		List<TrialInstance> failures)
+		List<DrawnTestCase> failures)
 	{
-		List<TrialInstance> references = new ArrayList<>();
+		List<DrawnTestCase> references = new ArrayList<>();
 		for (LogicalTrial trial : draft.trials)
 		{
 			if (draft.isWorkingReference(trial))
-				references.add(trial.instance());
+				references.add(trial.testCase());
 		}
 		if (draft.round.weak())
 		{
-			for (AuthorAttempt attempt : draft.round.validationAttempts())
+			for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
 			{
 				for (PromotionRun run : attempt.runs())
 				{
 					if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
-						references.add(run.instance());
+						references.add(run.testCase());
 				}
 			}
 		}
 
 		return Promotion.plan(cells, failures, draft.regressionSet, draft.generator()).stream().filter(run ->
 			run.role() != PromotionRun.Role.WORKING_REFERENCE ||
-				!Promotion.containsContent(references, run.instance())).toList();
+				!Promotion.containsTestCase(references, run.testCase())).toList();
 	}
 
 	/**
@@ -687,24 +766,24 @@ public final class Transitions
 	 */
 	private static void advanceMinimality(Draft draft, Sha256 snapshot)
 	{
-		AuthorAttempt author = draft.author;
-		if (author == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
+		PromptAuthorAttempt promptAuthor = draft.promptAuthor;
+		if (promptAuthor == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
 			throw new IllegalStateException("Minimality needs a completed attempt with no remaining promotion trials");
-		Minimality next = author.minimality().advance(author.snapshot(), author.runs(),
-			Promotion.decide(author, draft.regressionSet, draft.instanceOutcomes));
+		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(),
+			Promotion.decide(promptAuthor, draft.regressionSet, draft.testCaseOutcomes));
 		if (next.testing() == null)
 		{
 			List<String> removed = new ArrayList<>(draft.optimization.removed());
 			removed.addAll(next.removed());
-			draft.optimization = new OptimizationEvidence(draft.optimization.authors(), removed,
+			draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), removed,
 				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
 				draft.optimization.tokenUsage());
-			TrialAdoption.promote(draft, new AuthorAttempt(author.number(), author.cell(), next.accepted(),
-				next.acceptedRuns(), next));
+			TrialAdoption.promote(draft, new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
+				next.accepted(), next.acceptedRuns(), next));
 			return;
 		}
-		List<PromotionRun> runs = Promotion.resetRuns(author.runs());
-		draft.author = new AuthorAttempt(author.number(), author.cell(), snapshot, runs, next);
+		List<PromotionRun> runs = Promotion.resetRuns(promptAuthor.runs());
+		draft.promptAuthor = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot, runs, next);
 	}
 
 	/**
@@ -714,7 +793,7 @@ public final class Transitions
 	 * @param draft the state
 	 * @param campaign the state before the event
 	 * @param commit the event
-	 * @throws IllegalStateException if no commit is due or the calibration is for another index
+	 * @throws IllegalStateException if no commit is due or the calibration is for another index or minimum pass rate
 	 */
 	private static void commit(Draft draft, Campaign campaign, CampaignEvent.Commit commit)
 	{
@@ -728,6 +807,12 @@ public final class Transitions
 			throw new IllegalStateException("The cap was calibrated at " + calibration.level() + ", but attempt " +
 				index + " uses " + level);
 		}
+		BigDecimal minimumPassRate = draft.contract().minimumPassRate();
+		if (calibration.minimumPassRate().compareTo(minimumPassRate) != 0)
+		{
+			throw new IllegalStateException("The cap was calibrated for the minimum pass rate " +
+				calibration.minimumPassRate() + ", but the contract requires " + minimumPassRate);
+		}
 		List<String> cells = CellTier.scopeCellIds(draft.contract());
 		int cellCount = cells.size();
 		SignificanceLevel improvementLevel = ErrorBudget.improvementLevel(index, cellCount);
@@ -739,19 +824,21 @@ public final class Transitions
 			if (comparable)
 			{
 				CellCounts counts = draft.baselineCounts.getOrDefault(cell, CellCounts.EMPTY);
-				comparisons.add(Comparison.freeze(counts.passes(), counts.failures(), incumbentLevel, improvementLevel));
+				comparisons.add(Comparison.freeze(counts.passes(), counts.failures(), incumbentLevel, improvementLevel,
+					minimumPassRate));
 			}
 			else
-				comparisons.add(new Comparison(BigDecimal.ONE, BigDecimal.ZERO, improvementLevel));
+				comparisons.add(new Comparison(BigDecimal.ONE, BigDecimal.ZERO, improvementLevel, minimumPassRate));
 		}
-		DecisionBoundaries boundaries = DecisionBoundaries.compute(level, calibration.cap(), comparisons);
+		DecisionBoundaries boundaries = DecisionBoundaries.compute(level, minimumPassRate, calibration.cap(),
+			comparisons);
 		CertificationProcedure procedure = new CertificationProcedure(improvementLevel, draft.baselineIndex,
 			draft.baselineIdentity, cells, boundaries, CertificationProcedure.BETS,
 			CertificationProcedure.ALLOCATION_POLICY);
 		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, commit.formalSeed());
 		formal.open();
 		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working, draft.identity,
-			procedure, Map.of(), List.of(), formal.state(), null, List.of()));
+			procedure, commit.control(), Map.of(), Map.of(), List.of(), formal.state(), null, List.of()));
 		draft.outcome = null;
 	}
 

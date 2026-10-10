@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 /**
  * Validates the candidate-universe and semantic-placement evidence that justifies replay outputs.
  */
-final class SemanticEvidence
+public final class SemanticEvidence
 {
 	private final History history;
 	private final PatchArtifacts patches;
@@ -26,7 +26,7 @@ final class SemanticEvidence
 	 * @param reviewEvidence the owner of reviewer-authored evidence artifacts
 	 * @param semanticPlanValidation the owner of candidate placement validation
 	 */
-	SemanticEvidence(History history, PatchArtifacts patches, ReviewEvidence reviewEvidence,
+	public SemanticEvidence(History history, PatchArtifacts patches, ReviewEvidence reviewEvidence,
 		SemanticPlanValidation semanticPlanValidation)
 	{
 		this.history = history;
@@ -43,8 +43,8 @@ final class SemanticEvidence
 	 * @param candidateUniverseEvidence validated discovery facts that the final plan must retain
 	 * @throws IOException if the plan is absent, incomplete, or disagrees with the ledger
 	 */
-	void validatePlan(Path manifestFile, BatchManifest manifest, CandidateUniverseEvidence candidateUniverseEvidence)
-		throws IOException
+	public void validatePlan(Path manifestFile, BatchManifest manifest,
+		CandidateUniverseEvidence candidateUniverseEvidence) throws IOException
 	{
 		Path planFile = reviewEvidence.semanticPlanFile(manifestFile);
 		List<SemanticCandidate> candidates = reviewEvidence.readSemanticCandidates(planFile, "semantic plan");

@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.runner;
 
 import io.github.cowwoc.cat.common.ExclusiveFileLock;
 import io.github.cowwoc.cat.common.LockFileOpener;
+import io.github.cowwoc.cat.common.secrets.HarnessRunLockAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessRunLockSecrets;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
@@ -20,6 +22,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class HarnessRunLock implements AutoCloseable
 {
+	static
+	{
+		HarnessRunLockSecrets.setAccess(new HarnessRunLockAccess()
+		{
+			@Override
+			public HarnessRunLock acquire(Path file, LockFileOpener opener) throws IOException
+			{
+				return HarnessRunLock.acquire(file, opener);
+			}
+		});
+	}
+
 	private static final HarnessRunLock UNLOCKED = new HarnessRunLock(null);
 
 	/**

@@ -5,6 +5,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
+import io.github.cowwoc.cat.common.secrets.EventSinkAccess;
+import io.github.cowwoc.cat.common.secrets.EventSinkSecrets;
+
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.file.Files;
@@ -28,8 +31,28 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class EventSink extends Writer
+public final class EventSink extends Writer
 {
+	static
+	{
+		EventSinkSecrets.setAccess(new EventSinkAccess()
+		{
+			@Override
+			public String transcript()
+			{
+				return TRANSCRIPT;
+			}
+
+			@Override
+			public EventSink newEventSink(JsonMapper json, HarnessEvents events,
+				Function<Map<String, Path>, PromptSources> newPromptSources, Path harnessDirectory,
+				Map<String, Path> placeholders, BlockingQueue<Message> messages)
+			{
+				return new EventSink(json, events, newPromptSources, harnessDirectory, placeholders, messages);
+			}
+		});
+	}
+
 	/**
 	 * The name of the retained harness event archive, inside the run's {@code artifacts} directory.
 	 */

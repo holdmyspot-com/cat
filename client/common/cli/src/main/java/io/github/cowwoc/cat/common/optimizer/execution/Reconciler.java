@@ -20,7 +20,7 @@ import java.util.Optional;
 /**
  * Brings a campaign that an earlier driver left behind to a consistent state before a new driver advances it.
  */
-final class Reconciler
+public final class Reconciler
 {
 	/**
 	 * Why a trial that was running when the earlier driver ended reruns.
@@ -128,7 +128,7 @@ final class Reconciler
 	 * @param key the trial's key
 	 * @return the trial, or empty if the campaign does not hold it
 	 */
-	static Optional<LogicalTrial> find(Campaign campaign, TrialKey key)
+	public static Optional<LogicalTrial> find(Campaign campaign, TrialKey key)
 	{
 		for (LogicalTrial trial : campaign.trials())
 		{

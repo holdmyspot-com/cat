@@ -11,7 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param cell the addressed cell that triggered withdrawal
  * @param upperBound the withdrawn candidate's development 95% Wilson upper bound in the cell
  * @param predecessorRate the predecessor's observed representative pass rate in the cell
- * @param development the withdrawn candidate's retained counts, failures and instance outcomes
+ * @param development the withdrawn candidate's retained counts, failures and test case outcomes
  */
 public record Revert(Candidate withdrawn, String cell, double upperBound, double predecessorRate,
 	Development development)

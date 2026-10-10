@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 /**
  * Validates the reviewer decisions that assign captured source changes to replay outputs.
  */
-final class SourceReviewValidation
+public final class SourceReviewValidation
 {
 	/**
 	 * Verifies every source has an explicit review of its atomicity claim.
@@ -18,7 +18,7 @@ final class SourceReviewValidation
 	 * @param sources the captured source hashes
 	 * @throws IOException if a review is missing, malformed, or contradicts the source's batch destinations
 	 */
-	void validateRecordedReviews(BatchManifest manifest, Set<String> sources) throws IOException
+	public void validateRecordedReviews(BatchManifest manifest, Set<String> sources) throws IOException
 	{
 		sources = sourcesRequiringReview(manifest, sources);
 		if (manifest.sourceReviews() == null || manifest.sourceReviews().size() != sources.size())
@@ -61,7 +61,7 @@ final class SourceReviewValidation
 	 * @param requireCompleteCoverage whether the submitted reviews must cover the complete source set
 	 * @throws IOException if a review is malformed, duplicated, incomplete, or names an unknown destination
 	 */
-	void validateInput(BatchManifest manifest, List<SourceReview> reviews, boolean requireCompleteCoverage)
+	public void validateInput(BatchManifest manifest, List<SourceReview> reviews, boolean requireCompleteCoverage)
 		throws IOException
 	{
 		Set<String> sources = sourcesRequiringReview(manifest, manifest.sources().stream().map(SourceSnapshot::hash).

@@ -11,7 +11,7 @@ import java.util.Map;
  *
  * @param index the baseline's number within the campaign, from 1
  * @param identity the conditions under which the incumbent outcomes were measured
- * @param counts the incumbent's sampled outcomes included in evidence per cell (category and trial profile)
+ * @param counts the incumbent's sampled outcomes included in evidence per cell (prompt test and trial profile)
  */
 public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<String, CellCounts> counts)
 {
@@ -20,7 +20,7 @@ public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<Str
 	 *
 	 * @param index the baseline's number within the campaign, from 1
 	 * @param identity the conditions under which the incumbent outcomes were measured
-	 * @param counts the incumbent's sampled outcomes included in evidence per cell (category and trial profile)
+	 * @param counts the incumbent's sampled outcomes included in evidence per cell (prompt test and trial profile)
 	 * @throws NullPointerException if {@code identity} or {@code counts} are null
 	 * @throws IllegalArgumentException if {@code index} is not positive
 	 */
@@ -41,7 +41,7 @@ public record IncumbentBaseline(int index, MeasurementIdentity identity, Map<Str
 	 */
 	public CellCounts count(String cell)
 	{
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		return counts.getOrDefault(cell, CellCounts.EMPTY);
 	}
 }

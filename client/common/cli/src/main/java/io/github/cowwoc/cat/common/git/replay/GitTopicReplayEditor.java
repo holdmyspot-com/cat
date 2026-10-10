@@ -99,7 +99,7 @@ public final class GitTopicReplayEditor
 	 * @param repository the repository that owns the workflow state
 	 * @return the CAT-owned temporary root
 	 */
-	static Path temporaryRoot(Path repository)
+	public static Path temporaryRoot(Path repository)
 	{
 		requireThat(repository, "repository").isNotNull();
 		try (ToolScope scope = ToolScope.forWorkingDirectory(repository))
@@ -114,7 +114,7 @@ public final class GitTopicReplayEditor
 	 * @param repository the repository working directory
 	 * @param temporaryRoot the root that owns temporary workflow state
 	 */
-	GitTopicReplayEditor(Path repository, Path temporaryRoot)
+	public GitTopicReplayEditor(Path repository, Path temporaryRoot)
 	{
 		requireThat(repository, "repository").isNotNull();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
@@ -1267,7 +1267,7 @@ public final class GitTopicReplayEditor
 	 * @param output the destination for the JSON candidate list
 	 * @throws IOException if the manifest cannot be read or the candidates cannot be written
 	 */
-	void writeOriginCandidates(Path manifestFile, OutputStream output) throws IOException
+	public void writeOriginCandidates(Path manifestFile, OutputStream output) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(output, "output").isNotNull();
@@ -1297,7 +1297,7 @@ public final class GitTopicReplayEditor
 	 * @param output the destination for the JSON scaffold
 	 * @throws IOException if the manifest cannot be read or the scaffold cannot be written
 	 */
-	void writeOriginReviewScaffold(Path manifestFile, OutputStream output) throws IOException
+	public void writeOriginReviewScaffold(Path manifestFile, OutputStream output) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(output, "output").isNotNull();
@@ -1326,7 +1326,7 @@ public final class GitTopicReplayEditor
 	 * @param output the destination for the JSON audit
 	 * @throws IOException if the manifest or recorded decisions cannot be read
 	 */
-	void writeOriginReviewAudit(Path manifestFile, OutputStream output) throws IOException
+	public void writeOriginReviewAudit(Path manifestFile, OutputStream output) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(output, "output").isNotNull();
@@ -1559,7 +1559,7 @@ public final class GitTopicReplayEditor
 	 * @return the selected output commands in witnessed order
 	 * @throws IOException if the selected output has no retained witness
 	 */
-	static List<OutputGates.Target> selectOutputTargets(List<OutputWitness> witnesses, String outputId,
+	public static List<OutputGates.Target> selectOutputTargets(List<OutputWitness> witnesses, String outputId,
 		List<String> command) throws IOException
 	{
 		if (outputId != null)

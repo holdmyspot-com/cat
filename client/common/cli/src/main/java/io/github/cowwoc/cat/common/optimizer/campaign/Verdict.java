@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The compliance result of one trial, determined by the judge or by failed deterministic checks.
+ * The pass or fail result of one trial, determined by the judge or by failed built-in tools.
  */
 public enum Verdict
 {

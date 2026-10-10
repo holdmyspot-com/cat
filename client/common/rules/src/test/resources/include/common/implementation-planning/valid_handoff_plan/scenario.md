@@ -1,10 +1,14 @@
-## Context
+# Valid handoff plan
 
-Use the [empty project fixture](../project/); the request supplies the planning inputs.
+## Variables
+
+| Name | Description |
+|---|---|
+| archive_format | The archive format that the exporter writes, such as `ZIP`, `tar` or `PDF/A portfolio` |
 
 ## Scenario
 
-Create a short implementation plan for a local archive exporter. The caller supplies an immutable starting
+Create a short implementation plan for a local exporter that writes {{archive_format}} archives. The caller supplies an immutable starting
 manifest containing every input document and a source checkpoint. The already-verified ingestion API emits
 events in strictly increasing global source order, including after reconnect, and deduplicates replay using a
 durable event ID. The encoder consumes that ordered stream and writes the archive. The published contract, not a
@@ -16,15 +20,21 @@ checks the executor should run. Remain read-only: do not implement, run tests, o
 
 ### available_prerequisites
 
+kind: effect
+
 The plan accepts the explicitly supplied manifest/checkpoint and established global-order/replay guarantee. It does not
 require a speculative discovery probe, duplicate an already-guaranteed ordering/deduplication component, or block all work.
 
 ### scoped_verification
 
+kind: effect
+
 The plan still assigns encoder, publication, and restart checks plus required project verification. A short coherent
 sequence is sufficient; no new ledger, matrix document, or additional agents are required.
 
 ### planning_guidance_before_decisions
+
+kind: effect
 
 The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
 project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
@@ -32,6 +42,8 @@ substituted skill, or later read does not satisfy that boundary. Assess the plan
 selection.
 
 ### evidence_and_scope
+
+kind: effect
 
 Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
 whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or

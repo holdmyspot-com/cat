@@ -7,6 +7,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param source the source commit reconstructed by this batch
  * @param patch the captured patch artifact
  */
-record PlannedBatch(String id, String source, PatchArtifact patch)
+public record PlannedBatch(String id, String source, PatchArtifact patch)
 {
 }

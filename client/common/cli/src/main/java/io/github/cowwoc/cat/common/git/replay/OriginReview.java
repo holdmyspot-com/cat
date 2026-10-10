@@ -18,7 +18,7 @@ import java.util.List;
  * @param rejectedDestinations earlier candidate outputs rejected for a documented missing prerequisite
  * @param evidence the semantic distinction or reviewed placement evidence
  */
-record OriginReview(String inventoryId, List<String> predecessors, String classification, String affectedUnit,
+public record OriginReview(String inventoryId, List<String> predecessors, String classification, String affectedUnit,
 	String owningResponsibility, String predecessorRelationship, String destination,
 	List<RejectedDestination> rejectedDestinations, String evidence)
 {

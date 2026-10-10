@@ -8,9 +8,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
+import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBound;
@@ -20,11 +25,15 @@ import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
- * Builds the estimated pass rate, improvement over the incumbent, comparison with 95% and error bars for each cell.
+ * Builds the estimated pass rate, improvement over the incumbent, comparison with the minimum pass rate and error
+ * bars for each cell.
  */
 final class CellReports
 {
@@ -52,6 +61,10 @@ final class CellReports
 	 * The state of a cell that is neither proven better nor proven worse.
 	 */
 	static final String UNDECIDED = "undecided";
+	/**
+	 * The state of a control comparison that has not started.
+	 */
+	private static final String NOT_RUN = "not run";
 	/**
 	 * The method of the descriptive error bar.
 	 */
@@ -107,7 +120,8 @@ final class CellReports
 		if (trials > 0)
 			errorBars.add(wilson(counts));
 		return new CellReport(cell, counts.passes(), trials, passRate,
-			developmentImprovement(campaign, cell, counts), developmentComparison(counts), errorBars);
+			developmentImprovement(campaign, cell, counts),
+			developmentComparison(counts, campaign.contract().minimumPassRate()), errorBars);
 	}
 
 	/**
@@ -136,7 +150,8 @@ final class CellReports
 		Interval other = ExploratoryBounds.wilson(incumbent.passes(), incumbent.outcomes());
 		Interval difference = new Interval(candidate.lower() - other.upper(), candidate.upper() - other.lower());
 		return new CellReport.Improvement(null, points(counts, incumbent), incumbentCounts(baseline, incumbent),
-			deficiency(baseline, incumbent, CellTier.scopeCells(campaign.contract()).size()), difference,
+			deficiency(baseline, incumbent, CellTier.scopeCells(campaign.contract()).size(),
+				campaign.contract().minimumPassRate()), difference,
 			"exploratory difference of the two 95% Wilson intervals", null, null, null);
 	}
 
@@ -144,16 +159,20 @@ final class CellReports
 	 * Returns the readiness assessment of a development cell.
 	 *
 	 * @param counts the cell's development counts
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the comparison
 	 */
-	private static CellReport.Threshold developmentComparison(CellCounts counts)
+	private static CellReport.Threshold developmentComparison(CellCounts counts, BigDecimal minimumPassRate)
 	{
 		List<String> reasons = new ArrayList<>();
 		int trials = counts.outcomes();
 		if (trials < ReadinessGate.MINIMUM_TRIALS)
 			reasons.add("fewer than " + ReadinessGate.MINIMUM_TRIALS + " outcomes");
-		if (!ReadinessGate.meetsPassRateThreshold(counts))
-			reasons.add("fewer than 99% passes");
+		if (!ReadinessGate.meetsPassRateThreshold(counts, minimumPassRate))
+		{
+			reasons.add("fewer than " + ReadinessGate.minimumObservedPassRate(minimumPassRate).movePointRight(2).
+				stripTrailingZeros().toPlainString() + "% passes");
+		}
 		List<Integer> batches = counts.completedBatchFailures();
 		if (batches.size() < 2)
 			reasons.add("fewer than two complete batches of " + CellCounts.BATCH_SIZE + " outcomes");
@@ -161,16 +180,20 @@ final class CellReports
 		{
 			int latest = batches.getLast();
 			int previous = batches.get(batches.size() - 2);
-			if (Math.max(latest, previous) > ReadinessGate.BATCH_FAILURE_LIMIT)
+			int limit = ReadinessGate.batchFailureLimit(minimumPassRate);
+			if (Math.max(latest, previous) > limit)
 			{
-				reasons.add("a latest complete batch has more than " + ReadinessGate.BATCH_FAILURE_LIMIT +
-					" failure");
+				String failures = "failures";
+				if (limit == 1)
+					failures = "failure";
+				reasons.add("a latest complete batch has more than " + limit + " " + failures);
 			}
 		}
 		String readiness = "not ready";
-		if (ReadinessGate.isReady(counts))
+		if (ReadinessGate.isReady(counts, minimumPassRate))
 			readiness = "ready";
-		return new CellReport.Threshold(NOT_CERTIFIED, readiness, reasons, null, null, null);
+		return new CellReport.Threshold(NOT_CERTIFIED, minimumPassRate, readiness, reasons, null, null, null,
+			List.of(), null);
 	}
 
 	/**
@@ -187,16 +210,25 @@ final class CellReports
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		SignificanceLevel alpha = boundaries.level();
 		ConfidenceBound lower = ConfidenceBounds.lower(counts.passes(), counts.failures(), alpha);
-		ConfidenceBound upper = ConfidenceBounds.upper(counts.passes(), counts.failures(), alpha);
-		String state = switch (DecisionTable.cellDecision(boundaries, counts))
+		ConfidenceBound upper = ConfidenceBounds.upper(counts.passes(), counts.failures(), alpha,
+			boundaries.minimumPassRate());
+		String state = switch (DecisionTable.minimumDecision(boundaries, counts))
 		{
 			case CERTIFIED -> "certified";
 			case CLEARLY_BELOW -> "clearly below";
+			case CAP_REACHED, UNDECIDED -> UNDECIDED;
+			case BELOW_CONTROL -> throw new AssertionError("The minimum pass rate part cannot be below control");
+		};
+		String cellState = switch (DecisionTable.cellDecision(attempt, cell))
+		{
+			case CERTIFIED -> "certified";
+			case CLEARLY_BELOW -> "clearly below";
+			case BELOW_CONTROL -> "below control";
 			case CAP_REACHED -> "inconclusive";
 			case UNDECIDED -> UNDECIDED;
 		};
-		CellReport.Threshold comparison = new CellReport.Threshold(state, null, List.of(), lower.value(),
-			upper.value(), alpha.probability());
+		CellReport.Threshold comparison = new CellReport.Threshold(state, boundaries.minimumPassRate(), null,
+			List.of(), lower.value(), upper.value(), alpha.probability(), controls(campaign, attempt, cell), cellState);
 		List<CellReport.ErrorBar> errorBars = new ArrayList<>();
 		errorBars.add(new CellReport.ErrorBar("one-sided lower confidence bound at alpha_i", true,
 			alpha.probability(), false, counts.outcomes(), new Interval(lower.value(), 1.0)));
@@ -204,6 +236,48 @@ final class CellReports
 		return new CellReport(cell, counts.passes(), counts.outcomes(),
 			passRate(FORMAL_ESTIMATE, counts, "no adopted formal outcomes"),
 			formalImprovement(campaign, attempt, cell, counts, lower, upper), comparison, errorBars);
+	}
+
+	/**
+	 * Returns the control comparison of each assertion of a cell. Before the comparisons start, each assertion of the
+	 * cell's prompt test is listed as not run.
+	 *
+	 * @param campaign the campaign
+	 * @param attempt the attempt
+	 * @param cell the cell's identifier
+	 * @return the comparisons, in assertion order
+	 */
+	private static List<CellReport.ControlReport> controls(Campaign campaign, CertificationAttempt attempt,
+		String cell)
+	{
+		ControlPairing pairing = attempt.pairing(cell);
+		List<CellReport.ControlReport> controls = new ArrayList<>();
+		if (!pairing.isComparing())
+		{
+			Optional<PromptTest> test = campaign.contract().findCell(cell).
+				flatMap(found -> campaign.contract().findTest(found.testId()));
+			if (test.isEmpty())
+				return controls;
+			for (Assertion assertion : test.get().allAssertions())
+				controls.add(new CellReport.ControlReport(assertion.id(), NOT_RUN, 0, 0, 0));
+			return controls;
+		}
+
+		SignificanceLevel level = attempt.procedure().boundaries().level();
+		for (Map.Entry<String, PairCounts> comparison : pairing.comparisons().entrySet())
+		{
+			PairCounts pairs = comparison.getValue();
+			String state;
+			if (ControlComparison.passes(pairs.tally(), level))
+				state = "passed";
+			else if (ControlComparison.isBelowControl(pairs.tally(), level))
+				state = "below control";
+			else
+				state = UNDECIDED;
+			controls.add(new CellReport.ControlReport(comparison.getKey(), state, pairs.pairs(),
+				pairs.candidatePasses(), pairs.controlPasses()));
+		}
+		return controls;
 	}
 
 	/**
@@ -235,7 +309,8 @@ final class CellReports
 		{
 			CellCounts incumbent = baseline.count(cell);
 			incumbentCounts = incumbentCounts(baseline, incumbent);
-			deficiency = deficiency(baseline, incumbent, attempt.procedure().cells().size());
+			deficiency = deficiency(baseline, incumbent, attempt.procedure().cells().size(),
+				campaign.contract().minimumPassRate());
 			if (counts.outcomes() > 0 && incumbent.outcomes() > 0)
 				points = points(counts, incumbent);
 		}
@@ -332,11 +407,13 @@ final class CellReports
 	 * @param baseline the baseline
 	 * @param counts the cell's counts
 	 * @param cells the number of cells in the certification scope
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return {@code proven deficient} or {@code deficiency unproven}
 	 */
-	private static String deficiency(IncumbentBaseline baseline, CellCounts counts, int cells)
+	private static String deficiency(IncumbentBaseline baseline, CellCounts counts, int cells,
+		BigDecimal minimumPassRate)
 	{
-		if (Baseline.isProvenDeficient(counts, baseline.index(), cells))
+		if (Baseline.isProvenDeficient(counts, baseline.index(), cells, minimumPassRate))
 			return "proven deficient";
 		return "deficiency unproven";
 	}

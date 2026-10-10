@@ -18,11 +18,12 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Validates {@link DeriverProtocol}'s additional findings alongside the proposed contract: {@code derived_sources},
- * {@code profile_restriction}, {@code capability_ranking}, {@code certification_profiles}, {@code scope_conditions}
- * and {@code conflicts}, as {@code deriver-findings.schema.json} describes them.
+ * Validates {@link ContractAuthorProtocol}'s additional findings alongside the proposed contract:
+ * {@code derived_sources}, {@code profile_restriction}, {@code capability_ranking}, {@code certification_profiles},
+ * {@code scope_conditions} and {@code conflicts}, as {@code contract-author-findings.schema.json} describes them.
  * <p>
- * Each violation is reported at its location in the deriver's output, in the form that the proposal schema uses.
+ * Each violation is reported at its location in the contract author's output, in the form that the proposal schema
+ * uses.
  */
 final class Findings
 {
@@ -468,7 +469,7 @@ final class Findings
 	 * Returns the JSON condition name for an unavailability outcome.
 	 *
 	 * @param outcome the outcome
-	 * @return the lowercase name used by the deriver findings schema
+	 * @return the lowercase name used by the contract author findings schema
 	 */
 	private static String conditionName(Outcome outcome)
 	{

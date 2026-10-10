@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The file-system implementation of {@link WorkspacePort}: staged sources, authoring copies, and the optimization
@@ -75,9 +76,9 @@ public final class Workspace implements WorkspacePort
 	}
 
 	@Override
-	public Path stage(Overlay candidate) throws IOException
+	public Path stage(Overlay candidate, Set<Path> excluded) throws IOException
 	{
-		return stagedSources.stage(candidate);
+		return stagedSources.stage(candidate, excluded);
 	}
 
 	@Override
@@ -99,7 +100,7 @@ public final class Workspace implements WorkspacePort
 	}
 
 	@Override
-	public FileInventory scanAuthorEffects(Path copy, Path effects) throws IOException
+	public FileInventory scanPromptAuthorEffects(Path copy, Path effects) throws IOException
 	{
 		return authoringCopies.scanEffects(copy, effects);
 	}

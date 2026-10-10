@@ -9,7 +9,7 @@ import java.util.List;
  * @param candidates independently discovered behavior candidates
  * @param entryPointFamilies evidence for deliberately combined selectable entry points
  */
-record CandidateUniverse(String reviewer, List<CandidateUniverseEntry> candidates,
+public record CandidateUniverse(String reviewer, List<CandidateUniverseEntry> candidates,
 	List<EntryPointFamily> entryPointFamilies)
 {
 }

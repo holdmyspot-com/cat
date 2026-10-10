@@ -7,14 +7,14 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Retains immutable object path states for {@link History} while rereading movable symbolic revisions.
  */
-final class PathStates
+public final class PathStates
 {
 	private final Map<ObjectPath, PathState> states = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates an initially empty path-state inventory.
 	 */
-	PathStates()
+	public PathStates()
 	{
 	}
 
@@ -27,7 +27,7 @@ final class PathStates
 	 * @return the current state or the state already read for an immutable object
 	 * @throws IOException if the path cannot be read
 	 */
-	PathState read(String revision, String path, Reader reader) throws IOException
+	public PathState read(String revision, String path, Reader reader) throws IOException
 	{
 		if (!revision.matches("[0-9a-f]{40}"))
 			return reader.read();
@@ -45,7 +45,7 @@ final class PathStates
 	 * Supplies one current path state to {@link PathStates}.
 	 */
 	@FunctionalInterface
-	interface Reader
+	public interface Reader
 	{
 		/**
 		 * Reads the current path state.

@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 /**
  * Installs CAT's self-contained Codex custom-agent definitions into an isolated Codex home.
  */
-final class CodexAgents
+public final class CodexAgents
 {
 	/**
 	 * Copies every Codex custom-agent definition from the selected CAT artifact.
@@ -22,7 +22,7 @@ final class CodexAgents
 	 * @throws NullPointerException if {@code artifact} or {@code home} are null
 	 * @throws IOException if the artifact contains no regular Codex agent definitions or an agent cannot be copied
 	 */
-	static void install(Path artifact, Path home) throws IOException
+	public static void install(Path artifact, Path home) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(home, "home").isNotNull();

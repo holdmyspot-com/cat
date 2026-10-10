@@ -1,0 +1,1603 @@
+# Release Notes
+
+## Release 4.1
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.2
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.3
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.4
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.5
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.6
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.7
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.8
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.9
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.10
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.11
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.12
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.13
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.14
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.15
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.16
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.17
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.18
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.19
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.20
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.21
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.22
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.23
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.24
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.25
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.26
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.27
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.28
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.29
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.30
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.31
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.32
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.33
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.34
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.35
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.36
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.37
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.38
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.39
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.40
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.41
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.42
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.43
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.44
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.45
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.46
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.47
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.48
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.49
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.50
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.51
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.52
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.53
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.54
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.55
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.56
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.57
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.58
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.59
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.60
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.61
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.62
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.63
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.64
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.65
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.66
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.67
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.68
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.69
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.70
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.71
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.72
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.73
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.74
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.75
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.76
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.77
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.78
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.79
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.80
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.81
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.82
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.83
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.84
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.85
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.86
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.87
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.88
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.89
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.90
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.91
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.92
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.93
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.94
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.95
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.96
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.97
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.98
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.99
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.100
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.101
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.102
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.103
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.104
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.105
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.106
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.107
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.108
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.109
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.110
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.111
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.112
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.113
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.114
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.115
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.116
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.117
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.118
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.119
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.120
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.121
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.122
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.123
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.124
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.125
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.126
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.127
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.128
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.129
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.130
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.131
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.132
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.133
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.134
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.135
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.136
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.137
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.138
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.139
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.140
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.141
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.142
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.143
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.144
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.145
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.146
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.147
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.148
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.149
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.150
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.151
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.152
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.153
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.154
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.155
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.156
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.157
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.158
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.159
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.160
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.161
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.162
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.163
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.164
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.165
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.166
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.167
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.168
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.169
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.170
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.171
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.172
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.173
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+- The exporter now stops with an error unless each call passes an explicit destination; callers that relied on the
+  previous default directory must add one.
+
+## Release 4.174
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.175
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.176
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.177
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.178
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.179
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.180
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.181
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.182
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.183
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.184
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.185
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.186
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.187
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.188
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.189
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.190
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.191
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.192
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.193
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.194
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.195
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.196
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.197
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.198
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.199
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.200
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.201
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.202
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.203
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.204
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.205
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.206
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.207
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.208
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.209
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.210
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.211
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.212
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.213
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.214
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.215
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.216
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.217
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.218
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.219
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.220
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.221
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.222
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.223
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.224
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.225
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.226
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.227
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.228
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.229
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.230
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.231
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.232
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.233
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.234
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.235
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.236
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.237
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.238
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.239
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.240
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.241
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.242
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.243
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.244
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.245
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.246
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.247
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.248
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.249
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.250
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.251
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.252
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.253
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.254
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.255
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.256
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.257
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.258
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.259
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.260
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.261
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.262
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.263
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.264
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.265
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.266
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.267
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.268
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.269
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.270
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.271
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.272
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.273
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.274
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.275
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.276
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.277
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.278
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.279
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.280
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.281
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.282
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.283
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.284
+
+- Improved the CLI so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.285
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.286
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the configuration loader that named the wrong option.
+
+## Release 4.287
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.288
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.289
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.290
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.291
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.292
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.293
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the retry policy that named the wrong option.
+
+## Release 4.294
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.295
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.296
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the report builder that named the wrong option.
+
+## Release 4.297
+
+- Improved the retry policy so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.298
+
+- Improved the configuration loader so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.299
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.300
+
+- Improved the validator so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.301
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.302
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.303
+
+- Improved the scheduler so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.304
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the validator that named the wrong option.
+
+## Release 4.305
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.306
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the logging that named the wrong option.
+
+## Release 4.307
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.308
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the scheduler that named the wrong option.
+
+## Release 4.309
+
+- Improved the cache so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.310
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.311
+
+- Improved the uploader so repeated runs finish sooner on large inputs.
+- Corrected a message in the importer that named the wrong option.
+
+## Release 4.312
+
+- Improved the report builder so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.313
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.314
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.
+
+## Release 4.315
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.316
+
+- Improved the logging so repeated runs finish sooner on large inputs.
+- Corrected a message in the exporter that named the wrong option.
+
+## Release 4.317
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the uploader that named the wrong option.
+
+## Release 4.318
+
+- Improved the exporter so repeated runs finish sooner on large inputs.
+- Corrected a message in the cache that named the wrong option.
+
+## Release 4.319
+
+- Improved the parser so repeated runs finish sooner on large inputs.
+- Corrected a message in the CLI that named the wrong option.
+
+## Release 4.320
+
+- Improved the importer so repeated runs finish sooner on large inputs.
+- Corrected a message in the parser that named the wrong option.

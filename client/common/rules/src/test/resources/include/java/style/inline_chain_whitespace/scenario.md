@@ -1,18 +1,30 @@
+# Inline chain whitespace
+
+## Variables
+
+| Name | Description |
+|---|---|
+| chain | A Java method chain of three or more invocations with one space before one of its `.` selectors, such as `values.stream() .map(this::transform).toList()` |
+
 ## Scenario
 
 Reformat this Java method chain so it has no whitespace between chained invocations:
 
 ```java
-return values.stream() .map(this::transform).toList();
+return {{chain}};
 ```
 
 ## Assertions
 
 ### no_inline_chain_whitespace
 
-The response writes `values.stream().map(this::transform).toList()` or an equivalent wrapped chain; it does not retain
-whitespace between `stream()` and `.map(...)`.
+kind: effect
+
+The response writes the chain without whitespace between its invocations, or an equivalent wrapped chain; it
+does not retain whitespace before a selector on the same line.
 
 ### guidance_selection
+
+kind: effect
 
 The retained events establish that the executor selects `rules/include/java/style.md` before its first governed action.

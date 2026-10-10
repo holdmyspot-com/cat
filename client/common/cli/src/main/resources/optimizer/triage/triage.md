@@ -33,16 +33,16 @@
 
 ### Failure
 
-Why the trial failed: the judge's rationale, or the deterministic checks that failed.
+Why the trial failed: the judge's rationale, or the built-in tools that failed.
 
 {{failure}}
 
 ### Evidence
 
-The trial instance, as JSON: its category, its test, the variation values it drew, the exact turns the trial agent
-received, and the expected compliant behaviour.
+The test case, as JSON: its test, the variable values it drew, the exact turns the trial agent received, the
+expected compliant behaviour, and the expected outcome that a compliant reply gives for those values.
 
-{{instance}}
+{{test_case}}
 
 The trial agent's reply to each turn, in order, as a JSON array of arrays. Each inner array contains that turn's
 assistant messages in order, including interim messages and ending with the final response.
@@ -57,11 +57,11 @@ source the trial started from:
 The trial's project directory after the trial, {{effects}}, is available read-only so that you can open a whole file
 when its diff or note is not enough.
 
-The results of the test's deterministic checks, as JSON: the requirement that each check decided, its kind, what it
-checks, whether it passed and the value that it observed. The array is empty when the test has no check or no check
-ran.
+The results of the test's built-in tools, as JSON: the assertion that each tool decided, what that assertion
+requires, the tool and its arguments, whether it passed and the value that it observed. The array is empty when the
+test has no built-in tool or none ran.
 
-{{deterministic_results}}
+{{tool_results}}
 
 ### How to triage
 

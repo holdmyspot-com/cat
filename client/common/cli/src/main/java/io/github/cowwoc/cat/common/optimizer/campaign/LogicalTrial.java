@@ -2,26 +2,26 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 
 import java.util.List;
 
 /**
- * One assigned test instance whose result is not yet included in campaign evidence. Retries run the same instance
+ * One assigned trial whose result is not yet included in campaign evidence. Retries run the same test case
  * under the same key rather than count as additional trials.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param key the trial's identity
- * @param instance the assigned instance, which every retry reuses
+ * @param testCase the assigned test case, which every retry reuses
  * @param identity the measurement conditions that the trial belongs to
  * @param allocation the allocation decision that assigned the trial
  * @param state whether the trial is assigned, running or awaiting inclusion in evidence
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
  * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
- *   deterministic checks, or {@code null} if the trial is not judged
- * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its failed
- *   deterministic checks or, when its judge failed it, those that the judge named; empty unless the trial failed
+ *   built-in tools, or {@code null} if the trial is not judged
+ * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its failed
+ *   built-in tools or, when its judge failed it, those that the judge named; empty unless the trial failed
  * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
  *   another purpose or was judged by a build that did not decide impacts
  * @param infrastructureFailures the runs that ended without an outcome and count toward
@@ -32,8 +32,8 @@ import java.util.List;
  * @param files where the trial session's harness events and file changes were retained, or {@code null} if the trial
  *   is not judged
  */
-public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIdentity identity, Allocation allocation,
-	TrialState state, Verdict verdict, String rationale, List<FailedRequirement> failedRequirements, Triage triage,
+public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity, Allocation allocation,
+	TrialState state, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions, Triage triage,
 	int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
 	List<List<String>> responses, TrialFiles files)
 {
@@ -41,15 +41,15 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * Creates a trial.
 	 *
 	 * @param key the trial's identity
-	 * @param instance the assigned instance, which every retry reuses
+	 * @param testCase the assigned test case, which every retry reuses
 	 * @param identity the measurement conditions that the trial belongs to
 	 * @param allocation the allocation decision that assigned the trial
 	 * @param state whether the trial is assigned, running or awaiting inclusion in evidence
 	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
 	 * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
-	 *   deterministic checks, or {@code null} if the trial is not judged
-	 * @param failedRequirements the requirements that a failed trial violated, each with its behavior: those of its
-	 *   failed deterministic checks or, when its judge failed it, those that the judge named; empty unless the trial
+	 *   built-in tools, or {@code null} if the trial is not judged
+	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
+	 *   failed built-in tools or, when its judge failed it, those that the judge named; empty unless the trial
 	 *   failed
 	 * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
 	 *   another purpose or was judged by a build that did not decide impacts
@@ -60,41 +60,41 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * @param responses each completed turn's assistant messages in order; empty before the trial is judged
 	 * @param files where the trial session's harness events and file changes were retained, or {@code null} if the
 	 *   trial is not judged
-	 * @throws NullPointerException if {@code key}, {@code instance}, {@code identity}, {@code allocation},
-	 *   {@code state}, {@code failedRequirements}, {@code infrastructureAttempts} or {@code responses} are null, or a
-	 *   failed requirement, a turn's messages or an assistant message is null
-	 * @throws IllegalArgumentException if a count is negative, the instance's cell differs from the key's, the
+	 * @throws NullPointerException if {@code key}, {@code testCase}, {@code identity}, {@code allocation},
+	 *   {@code state}, {@code failedAssertions}, {@code infrastructureAttempts} or {@code responses} are null, or a
+	 *   failed assertion, a turn's messages or an assistant message is null
+	 * @throws IllegalArgumentException if a count is negative, the test case's cell differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
 	 *   or that state lacks a verdict, only one of {@code rationale}, {@code files} and {@code verdict} has a value,
-	 *   {@code failedRequirements} is not empty for a trial that did not fail, a
+	 *   {@code failedAssertions} is not empty for a trial that did not fail, a
 	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial, or
 	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
 	 */
 	public LogicalTrial
 	{
 		requireThat(key, "key").isNotNull();
-		requireThat(instance, "instance").isNotNull();
+		requireThat(testCase, "testCase").isNotNull();
 		requireThat(identity, "identity").isNotNull();
 		requireThat(allocation, "allocation").isNotNull();
 		requireThat(state, "state").isNotNull();
-		requireThat(failedRequirements, "failedRequirements").isNotNull();
+		requireThat(failedAssertions, "failedAssertions").isNotNull();
 		requireThat(infrastructureFailures, "infrastructureFailures").isNotNegative();
 		requireThat(infrastructureAttempts, "infrastructureAttempts").isNotNull();
 		requireThat(observations, "observations").isNotNegative();
 		requireThat(responses, "responses").isNotNull();
-		requireThat(instance.cellId(), "instance.cellId()").isEqualTo(key.cell(), "key.category()");
+		requireThat(testCase.cellId(), "testCase.cellId()").isEqualTo(key.cell(), "key.cell()");
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
 		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");
 		requireThat(files != null, "hasFiles").isEqualTo(verdict != null, "hasVerdict");
 		if (verdict != Verdict.FAIL)
-			requireThat(failedRequirements, "failedRequirements").isEmpty();
+			requireThat(failedAssertions, "failedAssertions").isEmpty();
 		if (triage != null)
 		{
 			requireThat(verdict, "verdict").isEqualTo(Verdict.FAIL);
 			requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
 		}
-		failedRequirements = List.copyOf(failedRequirements);
+		failedAssertions = List.copyOf(failedAssertions);
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
 		responses = responses.stream().map(List::copyOf).toList();
 		long infrastructure = infrastructureAttempts.stream().
@@ -108,18 +108,18 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 * Returns a trial that was just assigned.
 	 *
 	 * @param key the trial's identity
-	 * @param instance the assigned instance
+	 * @param testCase the assigned test case
 	 * @param identity the measurement conditions that the trial belongs to
 	 * @param allocation the allocation decision that assigned the trial
 	 * @return the trial
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the instance's cell differs from the key's, or the allocation rule does
+	 * @throws IllegalArgumentException if the test case's cell differs from the key's, or the allocation rule does
 	 *   not assign the key's purpose
 	 */
-	public static LogicalTrial assigned(TrialKey key, TrialInstance instance, MeasurementIdentity identity,
+	public static LogicalTrial assigned(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity,
 		Allocation allocation)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, TrialState.ASSIGNED, null, null, List.of(), null,
+		return new LogicalTrial(key, testCase, identity, allocation, TrialState.ASSIGNED, null, null, List.of(), null,
 			0, List.of(), 0, List.of(), null);
 	}
 
@@ -133,7 +133,7 @@ public record LogicalTrial(TrialKey key, TrialInstance instance, MeasurementIden
 	 */
 	LogicalTrial withState(TrialState newState)
 	{
-		return new LogicalTrial(key, instance, identity, allocation, newState, null, null, List.of(), null,
+		return new LogicalTrial(key, testCase, identity, allocation, newState, null, null, List.of(), null,
 			infrastructureFailures, infrastructureAttempts, observations, List.of(), null);
 	}
 }

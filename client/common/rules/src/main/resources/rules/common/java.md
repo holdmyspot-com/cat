@@ -15,6 +15,9 @@ paths:
 
 When configuring Logback, lazy load `../include/java/logback.md`.
 
+When writing or reviewing a Maven POM or Maven configuration that refers to a project or root directory, lazy load
+`../include/java/maven.md`.
+
 When writing or reviewing SLF4J logging calls, lazy load `../include/java/slf4j.md`.
 
 When writing or reviewing a Java test whose assertion depends on elapsed time, lazy load

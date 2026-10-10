@@ -11,20 +11,22 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Durable descriptive optimization evidence, separate from compliance counts and allowance.
+ * Durable descriptive optimization evidence, separate from pass and failure counts and allowance.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param authors the retained author diagnoses
+ * @param promptAuthors the retained prompt author diagnoses
  * @param removed the hunks removed from promoted attempts
  * @param promptSizes measured prompt sizes by snapshot
  * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
  * @param attempts retained original promotion results in launch order
  * @param tokenUsage reported usage of every finished nested session, by role
  */
-public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
+public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 	Map<Sha256, PromptSize> promptSizes,
 	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
 	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage)
@@ -37,7 +39,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	/**
 	 * Creates evidence.
 	 *
-	 * @param authors the retained author diagnoses
+	 * @param promptAuthors the retained prompt author diagnoses
 	 * @param removed the removed hunks
 	 * @param promptSizes measured prompt sizes by snapshot
 	 * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
@@ -47,7 +49,7 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	 */
 	public OptimizationEvidence
 	{
-		authors = List.copyOf(authors);
+		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		promptSizes = Map.copyOf(promptSizes);
 		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> copied = new HashMap<>();
@@ -67,22 +69,45 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 	}
 
 	/**
-	 * Creates fresh descriptive evidence with no author promotion results.
+	 * Creates fresh descriptive evidence with no prompt author promotion results.
 	 *
-	 * @param authors the author diagnoses
+	 * @param promptAuthors the prompt author diagnoses
 	 * @param removed the removed hunks
 	 * @param promptSizes the prompt measurements
 	 * @param trialInputs the trial observations
 	 */
-	public OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> removed,
+	public OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 		Map<Sha256, PromptSize> promptSizes,
 		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs)
 	{
-		this(authors, removed, promptSizes, trialInputs, List.of(), Map.of());
+		this(promptAuthors, removed, promptSizes, trialInputs, List.of(), Map.of());
 	}
 
 	/**
-	 * Records one completed trial's input usage without changing compliance evidence.
+	 * Returns the number of prompt author attempts that addressed a cell before an attempt number.
+	 *
+	 * @param cell the addressed cell
+	 * @param before the first attempt number not counted
+	 * @return the number of distinct earlier attempts for which CAT retained a manifest or a promotion result
+	 */
+	public int promptAuthorAttempts(String cell, int before)
+	{
+		Set<Integer> numbers = new HashSet<>();
+		for (PromptAuthorDiagnosis promptAuthor : promptAuthors)
+		{
+			if (promptAuthor.cell().equals(cell) && promptAuthor.number() < before)
+				numbers.add(promptAuthor.number());
+		}
+		for (AttemptResult attempt : attempts)
+		{
+			if (attempt.cell().equals(cell) && attempt.number() < before)
+				numbers.add(attempt.number());
+		}
+		return numbers.size();
+	}
+
+	/**
+	 * Records one completed trial's input usage without changing pass or failure evidence.
 	 *
 	 * @param identity the observed conditions under which the tokens were measured
 	 * @param snapshot the trial prompt-system snapshot
@@ -104,11 +129,11 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
 		snapshots.put(snapshot, cells);
 		updated.put(identity, snapshots);
-		return new OptimizationEvidence(authors, removed, promptSizes, updated, attempts, tokenUsage);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage);
 	}
 
 	/**
-	 * Adds a finished session's reported usage independently of its compliance outcome.
+	 * Adds a finished session's reported usage independently of its pass or fail outcome.
 	 *
 	 * @param role the session's role
 	 * @param usage the reported token counts
@@ -124,6 +149,6 @@ public record OptimizationEvidence(List<AuthorDiagnosis> authors, List<String> r
 		List<TokenUsage> sessions = new ArrayList<>(updated.getOrDefault(role, List.of()));
 		sessions.add(usage);
 		updated.put(role, sessions);
-		return new OptimizationEvidence(authors, removed, promptSizes, trialInputs, attempts, updated);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated);
 	}
 }

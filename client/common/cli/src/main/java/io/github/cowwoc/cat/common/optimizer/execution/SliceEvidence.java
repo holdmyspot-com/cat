@@ -12,7 +12,7 @@ import java.util.List;
  * Observations from one driver run that the campaign does not persist: trial durations, the concurrency at which each
  * outcome was observed.
  */
-final class SliceEvidence
+public final class SliceEvidence
 {
 	/**
 	 * Use observed durations to decide whether to admit another trial once this many trials have completed.
@@ -28,7 +28,7 @@ final class SliceEvidence
 	/**
 	 * Creates empty evidence.
 	 */
-	SliceEvidence()
+	public SliceEvidence()
 	{
 	}
 
@@ -37,19 +37,19 @@ final class SliceEvidence
 	 *
 	 * @param duration the duration
 	 */
-	void recordDuration(Duration duration)
+	public void recordDuration(Duration duration)
 	{
 		durations.add(duration);
 	}
 
 	/**
 	 * Returns how long the admission cutoff expects a trial to take: the 90th-percentile duration of the completed
-	 * trials once 5 have completed, otherwise the test definition's time limit.
+	 * trials once 5 have completed, otherwise the prompt test's time limit.
 	 *
 	 * @param timeLimit the trial's time limit
 	 * @return the expected duration
 	 */
-	Duration expectedDuration(Duration timeLimit)
+	public Duration expectedDuration(Duration timeLimit)
 	{
 		if (durations.size() < DURATION_SAMPLES)
 			return timeLimit;

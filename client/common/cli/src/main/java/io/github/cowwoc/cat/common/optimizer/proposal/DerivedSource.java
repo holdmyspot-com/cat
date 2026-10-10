@@ -8,7 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param path the non-blank file path reported by the deriver
+ * @param path the non-blank file path reported by the contract author
  * @param rule the non-blank explanation of the documented rule that loads the file
  */
 public record DerivedSource(String path, String rule)
@@ -16,7 +16,7 @@ public record DerivedSource(String path, String rule)
 	/**
 	 * Creates a derived source.
 	 *
-	 * @param path the non-blank file path reported by the deriver
+	 * @param path the non-blank file path reported by the contract author
 	 * @param rule the non-blank explanation of the documented rule that loads the file
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if any of the arguments are blank

@@ -10,6 +10,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
@@ -41,7 +42,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class OverlayJson
 {
 	/**
-	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
+	 * The version of the layout that this class writes and reads. It holds no test or cell, so it did not change
 	 * when campaign files became keyed by cell.
 	 */
 	private static final int FORMAT_VERSION = 1;
@@ -90,6 +91,21 @@ final class OverlayJson
 			}
 		}
 		return root;
+	}
+
+	/**
+	 * Returns the identity of the fork that a document's overlay is on.
+	 *
+	 * @param root the document
+	 * @return the fork's identity
+	 * @throws IllegalArgumentException if the document has a different format version or names no valid identity
+	 * @throws NullPointerException if a required value is missing
+	 */
+	Sha256 fork(JsonNode root)
+	{
+		requireFields(root, "$", ROOT_FIELDS);
+		requireVersion(root, FORMAT_VERSION);
+		return new Sha256(text(root, "fork"));
 	}
 
 	/**

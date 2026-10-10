@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 /**
  * Validates the policy that places reviewed changes with their exact-path predecessors.
  */
-final class OriginReviewValidation
+public final class OriginReviewValidation
 {
 	private final PathStateReader pathStates;
 
@@ -31,7 +31,7 @@ final class OriginReviewValidation
 	 *
 	 * @param pathStates reads the immutable state of one path in a captured tree
 	 */
-	OriginReviewValidation(PathStateReader pathStates)
+	public OriginReviewValidation(PathStateReader pathStates)
 	{
 		this.pathStates = pathStates;
 	}
@@ -362,7 +362,7 @@ final class OriginReviewValidation
 	 * Reads captured path facts used by {@link OriginReviewValidation} to check output placement.
 	 */
 	@FunctionalInterface
-	interface PathStateReader
+	public interface PathStateReader
 	{
 		/**
 		 * Reads a repository-relative path's state in one immutable tree.

@@ -23,22 +23,22 @@ import java.util.random.RandomGenerator;
  *
  * @param store the campaign store
  * @param sessions starts nested sessions
- * @param workspace stages candidates, prepares author copies and reads or writes the optimization worktree
+ * @param workspace stages candidates, prepares prompt author copies and reads or writes the optimization worktree
  * @param interrupts reports whether the host interrupted the run
  * @param clock the clock
  * @param overlays the candidates' overlays
  * @param judge builds judge requests and reads their verdicts
  * @param triage builds triage requests and reads the impacts of failed development trials
- * @param author builds author requests and reads their reports
+ * @param promptAuthor builds prompt author requests and reads their reports
  * @param values builds the requests of the sessions that add development values after a certification
- *   attempt ended with formal failures, and reads their combinations
+ *   attempt ended with formal failures, and reads their test cases
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
  * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
  *   port's run roots
- * @param authority the confirmed edit authority, which validates author attempts and diagnoses the edits that
- *   authors report needing
+ * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits that
+ *   prompt authors report needing
  * @param promptSources the in-project prompt sources, relative to the project
  * @param environment the measurement conditions that the driver observes outside trials; it records no
  *   {@link MeasurementCondition#MODEL}, {@link MeasurementCondition#REASONING},
@@ -50,7 +50,7 @@ import java.util.random.RandomGenerator;
  */
 public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
-	TriageProtocol triage, AuthorProtocol author, ValuesProtocol values, Deliverer deliverer,
+	TriageProtocol triage, PromptAuthorProtocol promptAuthor, ValuesProtocol values, Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
 	SliceSettings settings)
@@ -60,22 +60,22 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 *
 	 * @param store the campaign store
 	 * @param sessions starts nested sessions
-	 * @param workspace stages candidates, prepares author copies and reads or writes the optimization worktree
+	 * @param workspace stages candidates, prepares prompt author copies and reads or writes the optimization worktree
 	 * @param interrupts reports whether the host interrupted the run
 	 * @param clock the clock
 	 * @param overlays the candidates' overlays
 	 * @param judge builds judge requests and reads their verdicts
 	 * @param triage builds triage requests and reads the impacts of failed development trials
-	 * @param author builds author requests and reads their reports
+	 * @param promptAuthor builds prompt author requests and reads their reports
 	 * @param values builds the requests of the sessions that add development values after a certification
-	 *   attempt ended with formal failures, and reads their combinations
+	 *   attempt ended with formal failures, and reads their test cases
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
 	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
  *   port's run roots
-	 * @param authority the confirmed edit authority, which validates author attempts and diagnoses the edits that
-	 *   authors report needing
+	 * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits
+	 *   that prompt authors report needing
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
 	 * @param lockFile the campaign's write-lock file
@@ -94,7 +94,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 		requireThat(overlays, "overlays").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(triage, "triage").isNotNull();
-		requireThat(author, "author").isNotNull();
+		requireThat(promptAuthor, "promptAuthor").isNotNull();
 		requireThat(values, "values").isNotNull();
 		requireThat(deliverer, "deliverer").isNotNull();
 		requireThat(calibrator, "calibrator").isNotNull();

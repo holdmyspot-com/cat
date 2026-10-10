@@ -125,8 +125,8 @@ final class UserChoices
 			LogicalTrial trial = draft.trials.get(i);
 			if (failing.contains(trial.key()))
 			{
-				draft.trials.set(i, new LogicalTrial(trial.key(), trial.instance(), trial.identity(),
-					trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedRequirements(),
+				draft.trials.set(i, new LogicalTrial(trial.key(), trial.testCase(), trial.identity(),
+					trial.allocation(), trial.state(), trial.verdict(), trial.rationale(), trial.failedAssertions(),
 					trial.triage(), 0,
 					trial.infrastructureAttempts(), trial.observations(), trial.responses(), trial.files()));
 			}
@@ -135,12 +135,12 @@ final class UserChoices
 	}
 
 	/**
-	 * Continues development of a category to a later review point.
+	 * Continues development of a test to a later review point.
 	 *
 	 * @param draft the state
 	 * @param checkpoint the pending decision
 	 * @param reviewPoint the next review point
-	 * @throws IllegalArgumentException if {@code reviewPoint} does not exceed the category's outcomes
+	 * @throws IllegalArgumentException if {@code reviewPoint} does not exceed the test's outcomes
 	 */
 	private static void moreEvidence(Draft draft, PendingDecision.CheckpointReached checkpoint,
 		int reviewPoint)

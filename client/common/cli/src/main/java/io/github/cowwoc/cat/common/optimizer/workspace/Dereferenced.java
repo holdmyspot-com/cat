@@ -26,8 +26,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The files of one inventory as a trial or an author sees them, with every symbolic link replaced by a copy of its
- * resolved target.
+ * The files of one inventory as a trial or a prompt author sees them, with every symbolic link replaced by a copy of
+ * its resolved target.
  * <p>
  * The tree is computed over the inventory, without touching the file system. A link to a directory expands to the
  * directory's recorded files, nested links included. Git metadata never appears, and neither does CAT's work
@@ -232,12 +232,15 @@ final class Dereferenced
 	 * @param tree the fork tree that holds the recorded files' content
 	 * @param overlay the candidate whose snapshot this tree was computed from; its edits replace recorded content
 	 * @param directory the directory to fill
+	 * @param excluded  the paths of the tree to leave out, with everything below them
 	 * @throws IOException if a file cannot be written
 	 */
-	void writeTo(ForkTree tree, Overlay overlay, Path directory) throws IOException
+	void writeTo(ForkTree tree, Overlay overlay, Path directory, Set<Path> excluded) throws IOException
 	{
 		for (Placement placement : placements)
 		{
+			if (excluded.stream().anyMatch(placement.destination()::startsWith))
+				continue;
 			Path file = directory.resolve(placement.destination());
 			Files.createDirectories(file.getParent());
 			tree.writeFile(overlay, placement.source(), placement.file(), file);

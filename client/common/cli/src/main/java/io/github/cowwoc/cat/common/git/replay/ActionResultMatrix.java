@@ -8,6 +8,6 @@ import java.util.List;
  * @param rows one observable behavior for every candidate-universe entry
  * @param pairs one split assessment for every unordered pair of rows
  */
-record ActionResultMatrix(List<ActionResultRow> rows, List<ActionPairAssessment> pairs)
+public record ActionResultMatrix(List<ActionResultRow> rows, List<ActionPairAssessment> pairs)
 {
 }

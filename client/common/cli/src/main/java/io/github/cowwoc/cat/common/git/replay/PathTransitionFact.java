@@ -10,6 +10,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param path the added/deleted path, or the old path for a rename
  * @param targetPath the new path for a Git-reported rename, or {@code null} otherwise
  */
-record PathTransitionFact(String id, String source, String output, String status, String path, String targetPath)
+public record PathTransitionFact(String id, String source, String output, String status, String path, String targetPath)
 {
 }

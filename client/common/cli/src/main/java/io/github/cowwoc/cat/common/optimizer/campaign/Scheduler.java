@@ -2,13 +2,16 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
+import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.time.Instant;
@@ -21,7 +24,7 @@ import java.util.Optional;
 
 /**
  * Plans which trials may start next from the persisted campaign state. An admission either reruns an assigned
- * trial or assigns a new one. A cell tests one category with one model and reasoning effort.
+ * trial or assigns a new one. A cell tests one prompt test with one model and reasoning effort.
  */
 public final class Scheduler
 {
@@ -102,40 +105,40 @@ public final class Scheduler
 		Diagnosis diagnosis = development.diagnosis();
 		if (diagnosis != null && !diagnosis.pending().isEmpty() && diagnosis.rerun() == null)
 		{
-			TrialInstance instance = diagnosis.pending().getFirst();
-			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, instance.cellId(),
-				instance, allocations.of(AllocationRule.TARGETED)));
+			DrawnTestCase testCase = diagnosis.pending().getFirst();
+			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, testCase.cellId(),
+				testCase, allocations.of(AllocationRule.TARGETED)));
 		}
 		Round round = development.round();
-		if (round != null && round.weak() && development.author() == null)
+		if (round != null && round.weak() && development.promptAuthor() == null)
 		{
-			for (AuthorAttempt attempt : round.validationAttempts())
+			for (PromptAuthorAttempt attempt : round.validationAttempts())
 				planPromotion(attempt, working, plan, allocations);
 			return;
 		}
-		AuthorAttempt author = development.author();
-		if (author != null && Promotion.decide(author, campaign.lineage().regressionSet(),
-			development.instanceOutcomes()) == Promotion.Decision.PENDING)
-			planPromotion(author, working, plan, allocations);
+		PromptAuthorAttempt promptAuthor = development.promptAuthor();
+		if (promptAuthor != null && Promotion.decide(promptAuthor, campaign.lineage().regressionSet(),
+			development.testCaseOutcomes()) == Promotion.Decision.PENDING)
+			planPromotion(promptAuthor, working, plan, allocations);
 	}
 
 	/**
 	 * Plans every unassigned run of an attempt, including runs after an early weak-contender rejection.
 	 *
-	 * @param author the attempt
+	 * @param promptAuthor the attempt
 	 * @param working the working snapshot
 	 * @param plan the planned admissions
 	 * @param allocations the allocation decisions
 	 */
-	private static void planPromotion(AuthorAttempt author, Sha256 working, List<Admission> plan,
+	private static void planPromotion(PromptAuthorAttempt promptAuthor, Sha256 working, List<Admission> plan,
 		Allocations allocations)
 	{
-		for (PromotionRun run : author.runs())
+		for (PromotionRun run : promptAuthor.runs())
 		{
 			if (run.trial() != null || run.verdict() != null)
 				continue;
-			plan.add(new Admission.Assign(Purpose.PROMOTION, author.number(), Promotion.snapshot(author, run, working),
-				run.instance().cellId(), run.instance(), allocations.of(AllocationRule.TARGETED)));
+			plan.add(new Admission.Assign(Purpose.PROMOTION, promptAuthor.number(), Promotion.snapshot(promptAuthor,
+				run, working), run.testCase().cellId(), run.testCase(), allocations.of(AllocationRule.TARGETED)));
 		}
 	}
 
@@ -144,7 +147,7 @@ public final class Scheduler
 	 *
 	 * @param campaign the campaign
 	 * @param purpose the trial purpose to count
-	 * @param series the development series or baseline, certification or author-attempt number to count
+	 * @param series the development series or baseline, certification or prompt-author-attempt number to count
 	 * @return the number of trials per cell
 	 */
 	private static Map<String, Integer> countInFlight(Campaign campaign, Purpose purpose, int series)
@@ -174,11 +177,16 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the running attempt's formal trials in its {@link CellTier open cells}. Each category offers the open cell
+	 * Plans the running attempt's formal trials in its {@link CellTier open cells}. Each test offers the open cell
 	 * with the fewest adopted outcomes, ties to fewer unadopted trials and then contract order. Among the offered
 	 * cells, an untried cell first, then the cell whose confidence lower bound at the attempt's significance level
-	 * is lowest, ties to fewer adopted outcomes and then contract order. A decided cell, or one whose unadopted trials
-	 * reach its remaining passes to certification, offers nothing.
+	 * is lowest, ties to fewer adopted outcomes and then contract order. A cell whose minimum-pass-rate part is
+	 * decided, or one whose unadopted trials reach its remaining passes to certification, offers nothing.
+	 * <p>
+	 * The formal trials of the minimum-pass-rate part come first. Then each open cell whose control comparisons are
+	 * undecided receives, in turn and in contract order, the control trials of its waiting candidate formal trials,
+	 * and then the further candidate formal trials that its slowest comparison needs. The control and formal trials in
+	 * flight share the attempt's window.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
@@ -190,7 +198,8 @@ public final class Scheduler
 		int freeCapacity, Allocations allocations)
 	{
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.FORMAL, attempt.index());
-		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
+		Map<String, Integer> controlsInFlight = countInFlight(campaign, Purpose.CONTROL, attempt.index());
+		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight) - total(controlsInFlight);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Cell> openCells = CellTier.openCells(campaign, attempt);
 		while (slots > 0 && plan.size() < freeCapacity)
@@ -201,12 +210,13 @@ public final class Scheduler
 				String id = cell.id();
 				CellCounts counts = attempt.count(id);
 				int assigned = inFlight.getOrDefault(id, 0);
-				if (DecisionTable.cellDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
+				if (attempt.pairing(id).isComparing() ||
+					DecisionTable.minimumDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
 					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0)
 				{
 					continue;
 				}
-				offered.merge(cell.categoryId(), id, (current, candidate) ->
+				offered.merge(cell.testId(), id, (current, candidate) ->
 				{
 					if (hasFewerFormalOutcomes(attempt, inFlight, candidate, current))
 						return candidate;
@@ -220,22 +230,133 @@ public final class Scheduler
 					best = cell;
 			}
 			if (best == null)
-				return;
+				break;
 			plan.add(new Admission.Assign(Purpose.FORMAL, attempt.index(), attempt.candidate().snapshot(), best,
 				null, allocations.of(AllocationRule.FORMAL)));
 			inFlight.merge(best, 1, Integer::sum);
 			--slots;
 		}
+		planControl(attempt, openCells, plan, Math.min(slots, freeCapacity - plan.size()), inFlight, controlsInFlight,
+			allocations);
 	}
 
 	/**
-	 * Indicates whether a cell has fewer formal outcomes than another of its category: fewer adopted outcomes, then
+	 * Plans the control trials of the open cells whose control comparisons are undecided, then the further candidate
+	 * formal trials that their comparisons need, one trial per cell in turn and in contract order.
+	 * <p>
+	 * A cell's control trials pair, in assignment order, with its candidate formal trials that wait for one, and its
+	 * in-flight control trials never exceed the pairs that its slowest undecided comparison still needs if every pair
+	 * favours the candidate. Further candidate formal trials run only when the waiting and in-flight candidate formal
+	 * trials cannot complete those pairs, up to the cell's cap.
+	 *
+	 * @param attempt the running attempt
+	 * @param openCells the open cells, in contract order
+	 * @param plan the admissions planned so far
+	 * @param slots the number of trials that may be planned
+	 * @param inFlight the unadopted candidate formal trials per cell, updated with the planned ones
+	 * @param controlsInFlight the unadopted control trials per cell, updated with the planned ones
+	 * @param allocations the allocation decisions of this plan
+	 */
+	private static void planControl(CertificationAttempt attempt, List<Cell> openCells, List<Admission> plan,
+		int slots, Map<String, Integer> inFlight, Map<String, Integer> controlsInFlight, Allocations allocations)
+	{
+		List<String> comparing = new ArrayList<>();
+		for (Cell cell : openCells)
+		{
+			String id = cell.id();
+			if (attempt.pairing(id).isComparing() &&
+				DecisionTable.cellDecision(attempt, id) == DecisionTable.CellDecision.UNDECIDED)
+			{
+				comparing.add(id);
+			}
+		}
+		Map<String, Integer> needed = new HashMap<>();
+		for (String id : comparing)
+			needed.put(id, pairsNeeded(attempt, id));
+		boolean planned = true;
+		while (planned && slots > 0)
+		{
+			planned = false;
+			for (String id : comparing)
+			{
+				if (slots <= 0)
+					break;
+				Admission admission = nextControlAdmission(attempt, id, needed.get(id), inFlight, controlsInFlight,
+					allocations);
+				if (admission == null)
+					continue;
+				plan.add(admission);
+				--slots;
+				planned = true;
+			}
+		}
+	}
+
+	/**
+	 * Returns the pairs that a cell's slowest undecided control comparison still needs if every further pair
+	 * favours the candidate.
+	 *
+	 * @param attempt the running attempt
+	 * @param cell the identifier of a cell whose control comparisons are undecided
+	 * @return the pairs, at least 1 and at most the pairs that the cell's cap still allows
+	 */
+	private static int pairsNeeded(CertificationAttempt attempt, String cell)
+	{
+		ControlPairing pairing = attempt.pairing(cell);
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
+		int remaining = Math.max(0, boundaries.cap() - pairing.pairs());
+		int needed = 1;
+		for (PairCounts comparison : pairing.comparisons().values())
+		{
+			PairTally tally = comparison.tally();
+			if (!ControlComparison.passes(tally, boundaries.level()))
+			{
+				needed = Math.max(needed, ControlComparison.fewestCandidateAheadPairsToPass(tally, boundaries.level(),
+					remaining));
+			}
+		}
+		return Math.min(needed, Math.max(1, remaining));
+	}
+
+	/**
+	 * Returns a cell's next control trial, or else its next further candidate formal trial, and counts it in flight.
+	 *
+	 * @param attempt the running attempt
+	 * @param cell the identifier of a cell whose control comparisons are undecided
+	 * @param needed the pairs that the cell's slowest undecided comparison still needs
+	 * @param inFlight the unadopted candidate formal trials per cell
+	 * @param controlsInFlight the unadopted control trials per cell
+	 * @param allocations the allocation decisions of this plan
+	 * @return the admission, or {@code null} if the cell needs no further trial now
+	 */
+	private static Admission nextControlAdmission(CertificationAttempt attempt, String cell, int needed,
+		Map<String, Integer> inFlight, Map<String, Integer> controlsInFlight, Allocations allocations)
+	{
+		List<UnpairedTrial> unpaired = attempt.pairing(cell).unpaired();
+		int controls = controlsInFlight.getOrDefault(cell, 0);
+		if (controls < Math.min(unpaired.size(), needed))
+		{
+			controlsInFlight.merge(cell, 1, Integer::sum);
+			return new Admission.Assign(Purpose.CONTROL, attempt.index(), attempt.control(), cell,
+				unpaired.get(controls).testCase(), allocations.of(AllocationRule.CONTROL));
+		}
+		int formal = inFlight.getOrDefault(cell, 0);
+		int capRemaining = attempt.procedure().boundaries().cap() - attempt.count(cell).outcomes() - formal;
+		if (Math.min(needed - unpaired.size() - formal, capRemaining) <= 0)
+			return null;
+		inFlight.merge(cell, 1, Integer::sum);
+		return new Admission.Assign(Purpose.FORMAL, attempt.index(), attempt.candidate().snapshot(), cell, null,
+			allocations.of(AllocationRule.CONTROL));
+	}
+
+	/**
+	 * Indicates whether a cell has fewer formal outcomes than another of its test: fewer adopted outcomes, then
 	 * fewer unadopted trials. A tie preserves the earlier cell in contract order.
 	 *
 	 * @param attempt the running attempt
 	 * @param inFlight the unadopted trials per cell
 	 * @param cell the identifier of a cell that comes after {@code other} in contract order
-	 * @param other the identifier of the category's first cell so far
+	 * @param other the identifier of the test's first cell so far
 	 * @return {@code true} if {@code cell} comes first
 	 */
 	private static boolean hasFewerFormalOutcomes(CertificationAttempt attempt, Map<String, Integer> inFlight,
@@ -331,7 +452,7 @@ public final class Scheduler
 	 * <p>
 	 * Development cells that are ready or at their review point are ineligible. Exclude an eligible cell when it leads
 	 * the least-sampled eligible cell by at least {@value #COVERAGE_LEAD} assignments. Among the remaining cells, the
-	 * lowest 95% Wilson lower bound comes first, ties to fewer outcomes, then higher category risk, then contract order.
+	 * lowest 95% Wilson lower bound comes first, ties to fewer outcomes, then higher test risk, then contract order.
 	 * Record {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} when the chosen cell also wins that ordering across all
 	 * eligible cells before the lead exclusion; otherwise record {@link AllocationRule#COVERAGE_FLOOR}.
 	 *
@@ -354,8 +475,11 @@ public final class Scheduler
 			for (Cell cell : developmentCells)
 			{
 				CellCounts counts = development.count(cell.id());
-				if (!ReadinessGate.isReady(counts) && counts.outcomes() < development.reviewPoint(cell.id()))
+				if (!ReadinessGate.isReady(counts, contract.minimumPassRate()) &&
+					counts.outcomes() < development.reviewPoint(cell.id()))
+				{
 					eligible.add(cell);
+				}
 			}
 			if (eligible.isEmpty())
 				return;
@@ -400,7 +524,7 @@ public final class Scheduler
 
 	/**
 	 * Indicates whether a cell has a lower 95% Wilson bound than another, breaking ties by fewer adopted outcomes
-	 * and then higher category risk. A tie preserves the earlier cell in contract order.
+	 * and then higher test risk. A tie preserves the earlier cell in contract order.
 	 *
 	 * @param contract the campaign's contract
 	 * @param development the development state
@@ -418,7 +542,7 @@ public final class Scheduler
 			return byBound < 0;
 		if (counts.outcomes() != otherCounts.outcomes())
 			return counts.outcomes() < otherCounts.outcomes();
-		return contract.categoryOf(cell).riskRank().compareTo(contract.categoryOf(other).riskRank()) < 0;
+		return contract.testOf(cell).riskRank().compareTo(contract.testOf(other).riskRank()) < 0;
 	}
 
 	/**
@@ -442,7 +566,8 @@ public final class Scheduler
 		for (String cell : cells)
 		{
 			CellCounts counts = baseline.count(cell);
-			int target = Baseline.target(counts, baseline.index(), cells.size());
+			int target = Baseline.target(counts, baseline.index(), cells.size(),
+				campaign.contract().minimumPassRate());
 			needed.put(cell, target - counts.outcomes() - inFlight.getOrDefault(cell, 0));
 		}
 		boolean added = true;
@@ -455,7 +580,7 @@ public final class Scheduler
 				if (need <= 0 || plan.size() >= freeCapacity)
 					continue;
 				plan.add(new Admission.Assign(Purpose.BASELINE, baseline.index(), campaign.incumbent().snapshot(),
-					cell, null, allocations.of(AllocationRule.BASELINE_ARM)));
+					cell, null, allocations.of(AllocationRule.BASELINE)));
 				needed.put(cell, need - 1);
 				added = true;
 			}

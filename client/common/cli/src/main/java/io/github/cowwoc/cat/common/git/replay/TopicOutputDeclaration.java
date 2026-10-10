@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 /**
  * Declares the ordered topic outputs that later review and replay operations populate.
  */
-final class TopicOutputDeclaration
+public final class TopicOutputDeclaration
 {
 	private final JsonMapper json;
 	private final ManifestStore<BatchManifest> manifests;
@@ -74,7 +74,7 @@ final class TopicOutputDeclaration
 	 * @return the corresponding topic outputs without an assumed source owner
 	 * @throws IOException if the declarations are empty, duplicated, blank, or use an unsupported subject
 	 */
-	static List<Output> convertDeclarations(TopicOutputRequest[] requests) throws IOException
+	public static List<Output> convertDeclarations(TopicOutputRequest[] requests) throws IOException
 	{
 		if (requests.length == 0)
 			throw new IOException("Topic-output declarations must contain at least one output");

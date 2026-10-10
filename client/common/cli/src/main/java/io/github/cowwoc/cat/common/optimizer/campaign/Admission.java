@@ -2,7 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 /**
@@ -25,14 +26,14 @@ public sealed interface Admission
 	Sha256 snapshot();
 
 	/**
-	 * Returns the trial's cell identifier: its requirement category and runner profile.
+	 * Returns the trial's cell identifier: its prompt test and runner profile.
 	 *
-	 * @return the category
+	 * @return the test
 	 */
 	String cell();
 
 	/**
-	 * Reruns an assigned trial with the same instance, purpose and snapshot.
+	 * Reruns an assigned trial with the same test case, purpose and snapshot.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -71,7 +72,7 @@ public sealed interface Admission
 	}
 
 	/**
-	 * Assigns a new trial instance to a purpose and snapshot. Recording {@link CampaignEvent.Assign} precedes
+	 * Assigns a new test case to a purpose and snapshot. Recording {@link CampaignEvent.Assign} precedes
 	 * starting its session.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
@@ -80,10 +81,10 @@ public sealed interface Admission
 	 * @param series the series that the trial belongs to, as {@link TrialKey#series()} describes
 	 * @param snapshot the snapshot that the trial runs
 	 * @param cell the trial's cell identifier
-	 * @param instance the targeted instance, or {@code null} if the assignment draws the instance
+	 * @param testCase the replayed test case, or {@code null} if the assignment draws the test case
 	 * @param allocation the allocation decision that chose the trial
 	 */
-	record Assign(Purpose purpose, int series, Sha256 snapshot, String cell, TrialInstance instance,
+	record Assign(Purpose purpose, int series, Sha256 snapshot, String cell, DrawnTestCase testCase,
 		Allocation allocation) implements Admission
 	{
 		/**
@@ -93,29 +94,32 @@ public sealed interface Admission
 		 * @param series the series that the trial belongs to
 		 * @param snapshot the snapshot that the trial runs
 		 * @param cell the trial's non-blank cell identifier
-		 * @param instance the targeted instance, or {@code null} if the assignment draws the instance
+		 * @param testCase the replayed test case, or {@code null} if the assignment draws the test case
 		 * @param allocation the allocation decision that chose the trial
 		 * @throws NullPointerException if {@code purpose}, {@code snapshot}, {@code cell} or {@code allocation}
 		 *   are null
 		 * @throws IllegalArgumentException if {@code series} is negative, {@code cell} is blank,
-		 *   {@code instance} is missing for a purpose that replays an instance or supplied for one that draws it,
-		 *   {@code instance} is not marked targeted or belongs to another cell, or the allocation rule does not assign
-		 *   the purpose
+		 *   {@code testCase} is missing for a purpose that replays a test case or supplied for one that draws it,
+		 *   {@code testCase} belongs to another cell, a development purpose's {@code testCase} is not marked
+		 *   targeted, a {@link Purpose#CONTROL control} trial's held-out {@code testCase} is marked targeted, or the
+		 *   allocation rule does not assign the purpose
 		 */
 		public Assign
 		{
 			requireThat(purpose, "purpose").isNotNull();
 			requireThat(series, "series").isNotNegative();
 			requireThat(snapshot, "snapshot").isNotNull();
-			requireThat(cell, "category").isNotBlank();
+			requireThat(cell, "cell").isNotBlank();
 			requireThat(allocation, "allocation").isNotNull();
 			requireThat(allocation.rule().assigns(purpose), "allocation.rule().assigns(purpose)").isTrue();
-			boolean targeted = instance != null;
-			requireThat(targeted, "targeted").isNotEqualTo(purpose.drawsAtAssignment(), "purpose.drawsAtAssignment()");
-			if (instance != null)
+			boolean replaysTestCase = testCase != null;
+			requireThat(replaysTestCase, "replaysTestCase").
+				isNotEqualTo(purpose.drawsAtAssignment(), "purpose.drawsAtAssignment()");
+			if (testCase != null)
 			{
-				requireThat(instance.targeted(), "instance.targeted()").isTrue();
-				requireThat(instance.cellId(), "instance.cellId()").isEqualTo(cell, "category");
+				requireThat(testCase.targeted(), "testCase.targeted()").
+					isEqualTo(purpose.part() == Part.DEVELOPMENT, "developmentPurpose");
+				requireThat(testCase.cellId(), "testCase.cellId()").isEqualTo(cell, "cell");
 			}
 		}
 	}

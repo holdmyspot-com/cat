@@ -7,6 +7,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param source the full hash of the source commit reconstructed by this batch
  * @param patch the patch path relative to the manifest directory
  */
-record BatchRequest(String id, String source, String patch)
+public record BatchRequest(String id, String source, String patch)
 {
 }

@@ -101,7 +101,8 @@ public interface Core
 		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
-	 * Passes the user's answer to a pending decision back to the campaign.
+	 * Passes the user's answer to a pending decision back to the campaign. A choice that ends the campaign delivers
+	 * the selected candidate, or the prompt tests of the incumbent that the user kept.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param choice the choice
@@ -110,10 +111,11 @@ public interface Core
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or the choice is
 	 *   not one that the campaign offers now
-	 * @throws IOException if the store or the workspace fails
+	 * @throws IOException if the store, the workspace or the delivery fails
+	 * @throws InterruptedException if the thread is interrupted while the delivery waits for the campaign's sessions
 	 */
 	CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
-		throws CommandRefusedException, IOException;
+		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Records a resolution of the current conflict. After the final conflict's choice, regenerates the proposal

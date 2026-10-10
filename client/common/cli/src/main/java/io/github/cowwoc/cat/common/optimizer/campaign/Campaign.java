@@ -2,8 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -27,7 +27,7 @@ import java.util.Set;
  * @param identity the current measurement identity
  * @param incumbent the prompt snapshot recorded before optimization
  * @param candidates the number of candidates promoted so far
- * @param authorAttempts the number of author attempts validated so far
+ * @param promptAuthorAttempts the number of prompt author attempts validated so far
  * @param development the working candidate's development state
  * @param baseline the original prompt's measured outcomes, or {@code null} before the first confirmation
  * @param attempts every certification attempt, in index order
@@ -42,13 +42,13 @@ import java.util.Set;
  * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
  * @param outcome the outcome that the campaign reports, or {@code null} if none
  * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
- * @param optimization the retained author and minimality evidence
+ * @param optimization the retained prompt author and minimality evidence
  * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing to
  *   use an authorized source, each once, in the order they were answered; a later warning equal to one of them raises
  *   no decision
  */
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
-	Candidate incumbent, int candidates, int authorAttempts, Development development,
+	Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
@@ -77,7 +77,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param identity the current measurement identity
 	 * @param incumbent the prompt snapshot recorded before optimization
 	 * @param candidates the number of candidates promoted so far
-	 * @param authorAttempts the number of author attempts validated so far
+	 * @param promptAuthorAttempts the number of prompt author attempts validated so far
 	 * @param development the working candidate's development state
 	 * @param baseline the original prompt's measured outcomes, or {@code null} before the first confirmation
 	 * @param attempts every certification attempt, in index order
@@ -91,7 +91,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
 	 * @param outcome the outcome that the campaign reports, or {@code null} if none
 	 * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
-	 * @param optimization the retained author and minimality evidence
+	 * @param optimization the retained prompt author and minimality evidence
 	 * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing
 	 *   to use an authorized source, each once, in the order they were answered
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
@@ -112,7 +112,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		requireThat(incumbent, "incumbent").isNotNull();
 		requireThat(incumbent.isIncumbent(), "incumbent.isIncumbent()").isTrue();
 		requireThat(candidates, "candidates").isNotNegative();
-		requireThat(authorAttempts, "authorAttempts").isNotNegative();
+		requireThat(promptAuthorAttempts, "promptAuthorAttempts").isNotNegative();
 		requireThat(development, "development").isNotNull();
 		if (!lineages.isEmpty())
 			requireThat(baseline, "baseline").isNotNull();
@@ -171,6 +171,28 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	}
 
 	/**
+	 * Returns this campaign, which waits for its first confirmed contract, bound to a different incumbent snapshot.
+	 * Presenting a proposal can change the fork's files, and the incumbent must follow them; the evidence gathered so
+	 * far, such as session usage, stays.
+	 *
+	 * @param snapshot the identity of the new incumbent snapshot
+	 * @return the rebound campaign
+	 * @throws NullPointerException if {@code snapshot} is null
+	 * @throws IllegalStateException if a contract has been confirmed; a confirmed campaign changes its incumbent only
+	 *   when a confirmed revision moves it onto a larger fork
+	 */
+	public Campaign withIncumbent(Sha256 snapshot)
+	{
+		requireThat(snapshot, "snapshot").isNotNull();
+		if (isConfirmed())
+			throw new IllegalStateException("A confirmed campaign keeps its incumbent");
+		Candidate candidate = new Candidate(0, snapshot);
+		return new Campaign(header, ceiling, lineages, identity, candidate, candidates, promptAuthorAttempts,
+			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
+	}
+
+	/**
 	 * Returns the campaign's lifecycle state.
 	 *
 	 * @return the state
@@ -188,6 +210,17 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	public boolean isConfirmed()
 	{
 		return !lineages.isEmpty();
+	}
+
+	/**
+	 * Indicates whether the user kept the incumbent: the campaign finished as {@code certified} without delivering a
+	 * candidate, so that a delivery writes its prompt tests alone.
+	 *
+	 * @return {@code true} if the user kept the incumbent
+	 */
+	public boolean isIncumbentKept()
+	{
+		return lifecycle() == Lifecycle.FINISHED && outcome == Outcome.CERTIFIED && delivery == null;
 	}
 
 	/**
@@ -217,7 +250,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	/**
 	 * Returns the certification attempt whose formal failure groups hold back development: the current lineage's latest
 	 * attempt, while one of its groups is reproducing or did not reproduce and waits for the user's choice. Until then,
-	 * development draws nothing, no author works on its failures and the readiness gate is not met.
+	 * development draws nothing, no prompt author works on its failures and the readiness gate is not met.
 	 *
 	 * @return the attempt, or empty if none is reproducing
 	 */
@@ -246,37 +279,37 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	}
 
 	/**
-	 * Returns the key-value combinations that the current lineage's tests may hold beyond the confirmed contract: the
-	 * values added to development, and every combination that a failure group of the lineage tried or tries.
+	 * Returns the test cases that the current lineage's tests may hold beyond the confirmed contract: the test cases
+	 * added to development, and every test case that a failure group of the lineage tried or tries.
 	 *
-	 * @return the combinations, each once
+	 * @return the test cases, each once
 	 * @throws IllegalStateException if no contract has been confirmed
 	 */
-	public AddedValues developmentValues()
+	public AddedTestCases developmentTestCases()
 	{
 		Lineage current = lineage();
-		return developmentValues(current.added(), current.number(), attempts);
+		return developmentTestCases(current.added(), current.number(), attempts);
 	}
 
 	/**
-	 * Returns the key-value combinations that a lineage's tests may hold beyond its confirmed contract.
+	 * Returns the test cases that a lineage's tests may hold beyond its confirmed contract.
 	 *
-	 * @param added the values added to the lineage's development
+	 * @param added the test cases added to the lineage's development
 	 * @param lineage the lineage's number
 	 * @param attempts the campaign's certification attempts
-	 * @return the added values, then every combination that a failure group of the lineage tried or tries, each once
+	 * @return the added test cases, then every test case that a failure group of the lineage tried or tries, each once
 	 */
-	static AddedValues developmentValues(AddedValues added, int lineage, List<CertificationAttempt> attempts)
+	static AddedTestCases developmentTestCases(AddedTestCases added, int lineage, List<CertificationAttempt> attempts)
 	{
-		Set<AddedCombination> combinations = new LinkedHashSet<>(added.combinations());
+		Set<AddedTestCase> testCases = new LinkedHashSet<>(added.testCases());
 		for (CertificationAttempt attempt : attempts)
 		{
 			if (attempt.lineage() != lineage)
 				continue;
 			for (FailureGroup group : attempt.groups())
-				combinations.addAll(group.combinations());
+				testCases.addAll(group.testCases());
 		}
-		return new AddedValues(List.copyOf(combinations));
+		return new AddedTestCases(List.copyOf(testCases));
 	}
 
 	/**

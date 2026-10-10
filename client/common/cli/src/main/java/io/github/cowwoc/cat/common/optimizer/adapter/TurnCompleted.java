@@ -7,7 +7,7 @@ import java.util.List;
  *
  * @param assistantMessages every assistant text message of the turn, in order
  */
-record TurnCompleted(List<String> assistantMessages) implements Message
+public record TurnCompleted(List<String> assistantMessages) implements Message
 {
 	/**
 	 * Copies the messages so queued turn evidence cannot change.
@@ -15,7 +15,7 @@ record TurnCompleted(List<String> assistantMessages) implements Message
 	 * @param assistantMessages the ordered assistant text messages
 	 * @throws NullPointerException if {@code assistantMessages} is null or contains null
 	 */
-	TurnCompleted
+	public TurnCompleted
 	{
 		assistantMessages = List.copyOf(assistantMessages);
 	}

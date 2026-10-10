@@ -9,6 +9,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
+import io.github.cowwoc.cat.claude.secrets.ClaudeProfileInventoryAccess;
+import io.github.cowwoc.cat.claude.secrets.ClaudeProfileInventorySecrets;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +43,18 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeProfileInventory implements ProfileInventory
 {
+	static
+	{
+		ClaudeProfileInventorySecrets.setAccess(new ClaudeProfileInventoryAccess()
+		{
+			@Override
+			public ProfileCatalog parse(InputStream in) throws IOException
+			{
+				return ClaudeProfileInventory.parse(in);
+			}
+		});
+	}
+
 	private static final String RANKING = "capability-ranking.json";
 	private static final String RESOURCE = "claude-profiles.json";
 	private static final int FORMAT_VERSION = 1;

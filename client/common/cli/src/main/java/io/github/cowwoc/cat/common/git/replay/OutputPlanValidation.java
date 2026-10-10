@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * <p>
  * This class does not persist a plan or select the replay lifecycle transition that consumes it.
  */
-final class OutputPlanValidation
+public final class OutputPlanValidation
 {
 	private final History history;
 	private final PatchArtifacts patches;
@@ -29,7 +29,7 @@ final class OutputPlanValidation
 	 * @param patches the owner of manifest-local patch declarations
 	 * @param patchApplication the isolated patch-application boundary
 	 */
-	OutputPlanValidation(History history, PatchArtifacts patches,
+	public OutputPlanValidation(History history, PatchArtifacts patches,
 		PatchApplication patchApplication)
 	{
 		this.history = history;
@@ -127,7 +127,7 @@ final class OutputPlanValidation
 	 * @param destinationsBySource the projected batch destinations for each source
 	 * @throws IOException if a source placement contradicts its completed review
 	 */
-	static void validateSourceDestinations(BatchManifest manifest, List<PlannedOutput> plannedOutputs,
+	public static void validateSourceDestinations(BatchManifest manifest, List<PlannedOutput> plannedOutputs,
 		Map<String, Set<String>> destinationsBySource) throws IOException
 	{
 		for (SourceReview review : sourceReviews(manifest))
@@ -214,7 +214,7 @@ final class OutputPlanValidation
 	 * @param review the completed source review, or {@code null} if the source is not yet reviewed
 	 * @throws IOException if the proposed destination is excluded by the completed review
 	 */
-	static void validateDraftDestination(BatchRequest batch, Output output, SourceReview review) throws IOException
+	public static void validateDraftDestination(BatchRequest batch, Output output, SourceReview review) throws IOException
 	{
 		if (review != null && !review.destinations().contains(output.id()))
 		{

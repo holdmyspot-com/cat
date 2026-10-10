@@ -10,7 +10,7 @@ import java.util.List;
  * @param witnesses retained-output tree transitions produced by that application
  * @param discardedOutputs discarded logical outputs produced by the plan
  */
-record ValidatedOutputPlan(OutputPlan plan, List<Batch> batches, List<OutputWitness> witnesses,
+public record ValidatedOutputPlan(OutputPlan plan, List<Batch> batches, List<OutputWitness> witnesses,
 	List<String> discardedOutputs)
 {
 }

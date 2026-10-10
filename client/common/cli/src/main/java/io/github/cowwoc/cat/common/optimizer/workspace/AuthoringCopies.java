@@ -13,11 +13,11 @@ import java.nio.file.Path;
 import java.util.Set;
 
 /**
- * Prepares the directory that an author session edits and captures the session's delta.
+ * Prepares the directory that a prompt author session edits and captures the session's delta.
  * <p>
  * An authoring copy holds the working candidate as a staged source does, with every symbolic link replaced by a copy
  * of its target. Scanning the copy before and after the session yields two inventories whose difference is the
- * session's delta. An author session that edits the runner's copy of the authoring copy leaves its edits in its
+ * session's delta. A prompt author session that edits the runner's copy of the authoring copy leaves its edits in its
  * effects directory instead, which is scanned under the same rules.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Each copy is a separate directory.
@@ -43,10 +43,10 @@ public final class AuthoringCopies
 	}
 
 	/**
-	 * Prepares a copy of the working candidate for an author session.
+	 * Prepares a copy of the working candidate for a prompt author session.
 	 *
 	 * @param working the working candidate's overlay on the fork
-	 * @return the directory that the author edits
+	 * @return the directory that the prompt author edits
 	 * @throws NullPointerException if {@code working} is null
 	 * @throws IllegalArgumentException if {@code working} is an overlay on a different fork
 	 * @throws WorkspaceException if a symbolic link forms a cycle or leads to a missing target
@@ -62,7 +62,7 @@ public final class AuthoringCopies
 		Path copy = Files.createTempDirectory(storage, "copy-");
 		try
 		{
-			files.writeTo(tree, working, copy);
+			files.writeTo(tree, working, copy, Set.of());
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -94,7 +94,7 @@ public final class AuthoringCopies
 	}
 
 	/**
-	 * Scans the effects of an author session that ran on an authoring copy, under the rules that
+	 * Scans the effects of a prompt author session that ran on an authoring copy, under the rules that
 	 * {@link #scan(Path)} applies to the copy.
 	 *
 	 * @param copy a directory that {@link #prepare(Overlay)} returned, which the session's project source was

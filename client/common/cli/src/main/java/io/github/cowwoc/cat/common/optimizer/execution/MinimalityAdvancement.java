@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
@@ -38,18 +38,18 @@ final class MinimalityAdvancement
 	 */
 	static Campaign advance(DriverContext context, Campaign campaign) throws IOException
 	{
-		AuthorAttempt author = campaign.development().author();
+		PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
 		if (campaign.lifecycle() != Lifecycle.ACTIVE || !campaign.isConfirmed() || campaign.pending() != null ||
-			campaign.revisionRequested() || author == null ||
+			campaign.revisionRequested() || promptAuthor == null ||
 			campaign.trials().stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
 		{
 			return campaign;
 		}
-		Promotion.Decision decision = Promotion.decide(author, campaign.lineage().regressionSet(),
-			campaign.development().instanceOutcomes());
+		Promotion.Decision decision = Promotion.decide(promptAuthor, campaign.lineage().regressionSet(),
+			campaign.development().testCaseOutcomes());
 		if (decision == Promotion.Decision.PENDING)
 			return campaign;
-		Minimality next = author.minimality().advance(author.snapshot(), author.runs(), decision);
+		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(), decision);
 		Sha256 snapshot = next.accepted();
 		if (next.testing() != null)
 		{

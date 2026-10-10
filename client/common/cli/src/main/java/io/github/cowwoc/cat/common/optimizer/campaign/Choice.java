@@ -6,7 +6,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 public enum Choice
 {
 	/**
-	 * The user restored a changed measurement condition; the affected trial runs again with the same instance.
+	 * The user restored a changed measurement condition; the affected trial runs again with the same test case.
 	 */
 	RESTORE,
 	/**
@@ -22,7 +22,7 @@ public enum Choice
 	 */
 	RESUME,
 	/**
-	 * Run the paused trial again after a run ended without a compliance result, or retry trial-cap calibration.
+	 * Run the paused trial again after a run ended without a pass or fail result, or retry trial-cap calibration.
 	 */
 	RETRY,
 	/**
@@ -30,11 +30,12 @@ public enum Choice
 	 */
 	STOP,
 	/**
-	 * Continue sampling a cell (category and trial profile) until a newly chosen outcome count triggers another review.
+	 * Continue sampling a cell (prompt test and trial profile) until a newly chosen outcome count triggers another
+	 * review.
 	 */
 	MORE_EVIDENCE,
 	/**
-	 * Start author attempts to improve failing cells when the sampled-outcome count triggers a review.
+	 * Start prompt author attempts to improve failing cells when the sampled-outcome count triggers a review.
 	 */
 	TARGETED_OPTIMIZATION,
 	/**

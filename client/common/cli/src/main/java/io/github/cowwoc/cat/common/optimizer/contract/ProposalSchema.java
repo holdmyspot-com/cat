@@ -2,28 +2,21 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.Count;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ExactText;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ExitStatus;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.FileContent;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.FileExists;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ForbiddenText;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.PatternMatch;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckCriterion.ToolUsed;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -32,34 +25,34 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Reads and writes the JSON form of a proposed contract, validating the output of the agent that proposes its
- * requirements and tests (the deriver).
+ * requirements and tests (the contract author).
  * <p>
  * The shape of the proposal is defined once, in {@code optimizer/contract/proposal.schema.json}. Validation first
  * checks the shape, which rejects a missing item, an unknown item and an aggregate count in place of a list. It then
- * builds the contract, whose constructors enforce the rules that a schema cannot express, such as probabilities that
- * sum to 1 and references that name a listed requirement. Last, it runs each condition evaluated directly from trial
- * evidence (a deterministic check) against evidence it must accept and evidence it must reject (its controls), and
- * discards each check that fails one. Both the confirmation of deriver
- * output and the loading of a stored contract parse through this class, so both validate the controls.
+ * builds the contract, whose constructors enforce the rules that a schema cannot express, such as test cases that
+ * give a value to each declared variable, references that name a listed requirement and {@code tool:} lines that name
+ * a built-in tool with arguments that suit it. Both the confirmation of contract author output and the loading of a
+ * stored contract parse through this class, so both apply these rules.
  */
 public final class ProposalSchema
 {
 	private static final String SCHEMA_RESOURCE = "/optimizer/contract/proposal.schema.json";
 	/**
-	 * The property that holds the trial profiles, which CAT computes rather than the deriver.
+	 * The property that holds the trial profiles, which CAT computes rather than the contract author.
 	 */
 	public static final String TRIAL_PROFILES = "trial_profiles";
-	/**
-	 * The property of a test that holds the checks that CAT discarded, which CAT computes rather than the deriver.
-	 */
-	private static final String DISCARDED_CHECKS = "discarded_checks";
 
 	/**
 	 * The proposal field holding the paths of recorded scenarios covered by a test.
 	 */
 	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
 	/**
-	 * The property that holds the contract's salt, which CAT draws rather than the deriver.
+	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
+	 * the contract author writes.
+	 */
+	private static final String COMMITTED_TEST_CASES = "committed_test_cases";
+	/**
+	 * The property that holds the contract's salt, which CAT draws rather than the contract author.
 	 */
 	private static final String SALT = "salt";
 	private final JsonMapper json;
@@ -96,7 +89,7 @@ public final class ProposalSchema
 
 	/**
 	 * Returns the proposal schema without the parts that CAT computes: the salt, the trial profiles and each test's
-	 * discarded checks.
+	 * committed test cases.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schemaText the proposal schema
@@ -107,9 +100,8 @@ public final class ProposalSchema
 		ObjectNode root = (ObjectNode) json.readTree(schemaText);
 		removeProperty(json, root, TRIAL_PROFILES);
 		removeProperty(json, root, SALT);
-		ObjectNode test = (ObjectNode) root.get("properties").get("categories").get("items").get("properties").
-			get("tests").get("items");
-		removeProperty(json, test, DISCARDED_CHECKS);
+		ObjectNode test = (ObjectNode) root.get("properties").get("tests").get("items");
+		removeProperty(json, test, COMMITTED_TEST_CASES);
 		return root;
 	}
 
@@ -143,8 +135,8 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Returns the JSON schema of deriver output: the proposal schema without the salt, the trial profiles and the
-	 * discarded checks that CAT computes.
+	 * Returns the JSON schema of contract author output: the proposal schema without the salt, the trial profiles and
+	 * the committed test cases that CAT supplies.
 	 *
 	 * @return a copy of the schema, which the caller may change
 	 */
@@ -154,7 +146,7 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Validates a stored contract, runs its checks against their controls and converts it to a contract.
+	 * Validates a stored contract and converts it to a contract.
 	 *
 	 * @param proposal the contract's JSON form
 	 * @return the contract that the proposal describes
@@ -165,27 +157,34 @@ public final class ProposalSchema
 	public Contract parse(String proposal) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
-		return parse(proposal, validator, null, null);
+		return parse(proposal, validator, null, null, null, Map.of());
 	}
 
 	/**
-	 * Validates deriver output that holds no salt, no trial profiles and no discarded checks, computes the profiles,
-	 * runs the checks against their controls and converts the output to a contract.
+	 * Validates contract author output that holds no salt, no trial profiles and no committed test cases, computes the
+	 * profiles, adds the committed test cases and converts the output to a contract.
 	 *
-	 * @param proposal the deriver's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES} and
-	 *   {@value #DISCARDED_CHECKS}
-	 * @param profiles computes the trial profiles from the proposal's requirements and categories
+	 * @param proposal the contract author's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES} and
+	 *   {@value #COMMITTED_TEST_CASES}
+	 * @param profiles computes the trial profiles from the proposal's requirements and tests
 	 * @param salt the salt that CAT drew for the proposal
+	 * @param seeds the source of the seeds that CAT adds to each generator call
+	 * @param committed the test cases that earlier campaigns committed, by the identifier of the prompt test that
+	 *   receives them; a prompt test that it does not name has none
 	 * @return the contract that the proposal describes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds a salt or
-	 *   trial profiles, breaks a rule that the schema cannot express, or {@code profiles} rejects it
+	 *   trial profiles, states a generator call's seed or version, breaks a rule that the schema cannot express, or
+	 *   {@code profiles} rejects it
 	 */
-	public Contract parse(String proposal, ProfileRule profiles, long salt) throws InvalidProposalException
+	public Contract parse(String proposal, ProfileRule profiles, long salt, RandomGenerator seeds,
+		Map<String, List<TestCase>> committed) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		return parse(proposal, derivation, profiles, salt);
+		requireThat(seeds, "seeds").isNotNull();
+		requireThat(committed, "committed").isNotNull();
+		return parse(proposal, derivation, profiles, salt, seeds, committed);
 	}
 
 	/**
@@ -195,11 +194,14 @@ public final class ProposalSchema
 	 * @param schema the schema that the proposal must satisfy
 	 * @param profiles computes the trial profiles, or {@code null} to read them from the proposal
 	 * @param salt the contract's salt, or {@code null} to read it from the proposal
+	 * @param seeds the source of the seeds that CAT adds to each generator call, or {@code null} if each call carries
+	 *   its seed and version
+	 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON holds none
 	 * @return the contract
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
-	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt)
-		throws InvalidProposalException
+	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt,
+		RandomGenerator seeds, Map<String, List<TestCase>> committed) throws InvalidProposalException
 	{
 		JsonNode root;
 		try
@@ -218,7 +220,7 @@ public final class ProposalSchema
 			throw new InvalidProposalException(violations);
 
 		List<String> problems = new ArrayList<>();
-		Contract contract = new Builder(problems).contract(root, profiles, salt);
+		Contract contract = new Builder(problems, seeds, committed).contract(root, profiles, salt);
 		if (contract == null)
 			throw new InvalidProposalException(problems);
 		return contract;
@@ -228,8 +230,7 @@ public final class ProposalSchema
 	 * Writes a contract in the proposal schema.
 	 *
 	 * @param contract the contract
-	 * @return the contract's JSON text; {@link #parse(String)} revalidates controls and may discard a check that
-	 *   fails one
+	 * @return the contract's JSON text
 	 * @throws NullPointerException if {@code contract} is null
 	 */
 	public String toJson(Contract contract)
@@ -238,26 +239,10 @@ public final class ProposalSchema
 		ObjectNode root = json.createObjectNode();
 		ArrayNode requirements = root.putArray("requirements");
 		for (Requirement requirement : contract.requirements())
-		{
-			ObjectNode node = requirements.addObject();
-			node.put("id", requirement.id());
-			node.put("description", requirement.description());
-			node.put("source", requirement.source());
-			node.put("trigger", requirement.trigger());
-			ArrayNode behaviors = node.putArray("behaviors");
-			requirement.behaviors().forEach(behaviors::add);
-		}
-		ArrayNode categories = root.putArray("categories");
-		for (Category category : contract.categories())
-		{
-			ObjectNode node = categories.addObject();
-			node.put("id", category.id());
-			node.put("rationale", category.rationale());
-			node.put("risk_rank", category.riskRank().position());
-			ArrayNode tests = node.putArray("tests");
-			for (TestDefinition test : category.tests())
-				write(test, tests.addObject());
-		}
+			write(requirement, requirements.addObject());
+		ArrayNode tests = root.putArray("tests");
+		for (PromptTest test : contract.tests())
+			write(test, tests.addObject());
 		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		JudgeProfile judge = contract.judge();
 		ObjectNode judgeNode = root.putObject("judge");
@@ -270,8 +255,50 @@ public final class ProposalSchema
 		contract.fixtures().ignoredPaths().forEach(ignoredPaths::add);
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
+		root.put("minimum_pass_rate", contract.minimumPassRate());
 		root.put(SALT, contract.salt());
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes one prompt test of a contract with the requirements that it checks: everything that decides how its
+	 * trials run and how they are decided, apart from the judge fields that CAT supplies to every contract.
+	 *
+	 * @param contract the contract
+	 * @param test a prompt test of {@code contract}
+	 * @return the JSON text: an object whose {@code test} holds the prompt test as the proposal schema writes it, and
+	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public String toJson(Contract contract, PromptTest test)
+	{
+		requireThat(contract, "contract").isNotNull();
+		requireThat(test, "test").isNotNull();
+		ObjectNode root = json.createObjectNode();
+		write(test, root.putObject("test"));
+		ArrayNode requirements = root.putArray("requirements");
+		for (Requirement requirement : contract.requirements())
+		{
+			if (test.requirementIds().contains(requirement.id()))
+				write(requirement, requirements.addObject());
+		}
+		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes one requirement.
+	 *
+	 * @param requirement the requirement
+	 * @param node the object that receives its properties
+	 */
+	private static void write(Requirement requirement, ObjectNode node)
+	{
+		node.put("id", requirement.id());
+		node.put("description", requirement.description());
+		node.put("source", requirement.source());
+		node.put("trigger", requirement.trigger());
+		ArrayNode behaviors = node.putArray("behaviors");
+		requirement.behaviors().forEach(behaviors::add);
 	}
 
 	/**
@@ -312,7 +339,7 @@ public final class ProposalSchema
 		{
 			ObjectNode cellNode = cells.addObject();
 			cellNode.put("id", cell.id());
-			cellNode.put("category", cell.categoryId());
+			cellNode.put("test", cell.testId());
 			write(cell.profile(), cellNode);
 		}
 	}
@@ -330,14 +357,15 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Writes one test definition.
+	 * Writes one prompt test.
 	 *
-	 * @param test the test definition
+	 * @param test the prompt test
 	 * @param node the object that receives its properties
 	 */
-	private static void write(TestDefinition test, ObjectNode node)
+	private static void write(PromptTest test, ObjectNode node)
 	{
 		node.put("id", test.id());
+		node.put("risk_rank", test.riskRank().position());
 		ArrayNode requirementIds = node.putArray("requirement_ids");
 		test.requirementIds().forEach(requirementIds::add);
 		ArrayNode absentTriggers = node.putArray("absent_triggers");
@@ -351,146 +379,48 @@ public final class ProposalSchema
 		test.uncoveredInteractions().forEach(uncovered::add);
 		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
 		test.regressionScenarios().forEach(scenarios::add);
-		ArrayNode variations = node.putArray("variations");
-		for (VariationRule rule : test.variations())
+		ArrayNode fixtures = node.putArray("fixtures");
+		for (FixtureFile fixture : test.fixtures())
 		{
-			ObjectNode ruleNode = variations.addObject();
-			ruleNode.put("dimension", rule.dimension());
-			ArrayNode values = ruleNode.putArray("values");
-			for (VariationValue value : rule.values())
-			{
-				ObjectNode valueNode = values.addObject();
-				valueNode.put("label", value.label());
-				valueNode.put("text", value.text());
-				valueNode.put("probability", value.probability());
-			}
+			ObjectNode fixtureNode = fixtures.addObject();
+			fixtureNode.put("path", fixture.path());
+			fixtureNode.put("content", fixture.content());
 		}
-		ArrayNode keyDimensions = node.putArray("key_dimensions");
-		test.keyDimensions().forEach(keyDimensions::add);
-		ArrayNode checks = node.putArray("checks");
-		for (DeterministicCheck check : test.checks())
-			write(check, checks.addObject());
-		ArrayNode discarded = node.putArray(DISCARDED_CHECKS);
-		for (DiscardedCheck check : test.discardedChecks())
+		ArrayNode variables = node.putArray("variables");
+		for (VariableDeclaration variable : test.variables())
 		{
-			ObjectNode discardedNode = discarded.addObject();
-			write(check.check(), discardedNode.putObject("check"));
-			discardedNode.put("reason", check.reason());
+			ObjectNode variableNode = variables.addObject();
+			variableNode.put("name", variable.name());
+			variableNode.put("description", variable.description());
+		}
+		write(test.committedTestCases(), node.putArray(COMMITTED_TEST_CASES));
+		write(test.testCases(), node.putArray("test_cases"));
+		ArrayNode assertions = node.putArray("assertions");
+		for (MappedAssertion mapped : test.assertions())
+		{
+			Assertion assertion = mapped.assertion();
+			ObjectNode assertionNode = assertions.addObject();
+			assertionNode.put("id", assertion.id());
+			assertionNode.put("kind", EnumNames.lowerCase(assertion.kind()));
+			assertionNode.put("tool", assertion.tool());
+			assertionNode.put("statement", assertion.statement());
+			assertionNode.put("requirement_id", mapped.requirementId());
 		}
 	}
 
 	/**
-	 * Writes one deterministic check.
+	 * Writes test cases.
 	 *
-	 * @param check the check
-	 * @param node the object that receives its properties
+	 * @param testCases the test cases
+	 * @param array the array that receives them
 	 */
-	private static void write(DeterministicCheck check, ObjectNode node)
+	private static void write(List<TestCase> testCases, ArrayNode array)
 	{
-		node.put("requirement_id", check.requirementId());
-		node.put("behavior", check.behavior());
-		node.put("kind", check.criterion().kind());
-		ObjectNode parameters = node.putObject("parameters");
-		switch (check.criterion())
+		for (TestCase testCase : testCases)
 		{
-			case ExactText exact ->
-			{
-				putTurn(parameters, exact.turn());
-				parameters.put("text", exact.text());
-			}
-			case ForbiddenText forbidden ->
-			{
-				putTurn(parameters, forbidden.turn());
-				parameters.put("text", forbidden.text());
-			}
-			case PatternMatch pattern ->
-			{
-				putTurn(parameters, pattern.turn());
-				parameters.put("pattern", pattern.pattern());
-			}
-			case Count count ->
-			{
-				putTurn(parameters, count.turn());
-				parameters.put("pattern", count.pattern());
-				if (count.minimum() != null)
-					parameters.put("minimum", count.minimum());
-				if (count.maximum() != null)
-					parameters.put("maximum", count.maximum());
-			}
-			case FileExists exists ->
-			{
-				parameters.put("path", exists.path());
-				parameters.put("exists", exists.exists());
-			}
-			case FileContent content ->
-			{
-				parameters.put("path", content.path());
-				parameters.put("text", content.text());
-			}
-			case ExitStatus status ->
-			{
-				parameters.put("command", status.command());
-				parameters.put("status", status.status());
-			}
-			case ToolUsed used ->
-			{
-				parameters.put("tool", used.tool());
-				parameters.put("used", used.used());
-			}
-		}
-		write(check.knownGood(), node.putObject("known_good"));
-		write(check.knownBad(), node.putObject("known_bad"));
-	}
-
-	/**
-	 * Writes the turn that a reply kind examines.
-	 *
-	 * @param parameters the check's parameters
-	 * @param turn the turn, or {@code null} for every turn
-	 */
-	private static void putTurn(ObjectNode parameters, Integer turn)
-	{
-		if (turn != null)
-			parameters.put("turn", turn);
-	}
-
-	/**
-	 * Writes a check's control.
-	 *
-	 * @param control the control's evidence
-	 * @param node the object that receives its properties
-	 */
-	private static void write(ControlEvidence control, ObjectNode node)
-	{
-		ArrayNode replies = node.putArray("replies");
-		for (List<String> turn : control.replies())
-		{
-			ArrayNode messages = replies.addArray();
-			turn.forEach(messages::add);
-		}
-		ArrayNode files = node.putArray("files");
-		for (EvidenceFile file : control.files())
-		{
-			ObjectNode fileNode = files.addObject();
-			fileNode.put("path", file.path());
-			fileNode.put("content", file.content());
-		}
-		ArrayNode calls = node.putArray("tool_calls");
-		for (ToolCall call : control.calls())
-		{
-			ObjectNode callNode = calls.addObject();
-			callNode.put("tool", call.tool());
-			if (call.command() != null)
-				callNode.put("command", call.command());
-			if (call.exitStatus() != null)
-				callNode.put("exit_status", call.exitStatus());
-		}
-		ArrayNode choices = node.putArray("choices");
-		for (Map.Entry<String, String> choice : control.choices().entrySet())
-		{
-			ObjectNode choiceNode = choices.addObject();
-			choiceNode.put("dimension", choice.getKey());
-			choiceNode.put("label", choice.getValue());
+			ObjectNode testCaseNode = array.addObject();
+			TestValueJson.write(testCase.values(), testCaseNode.putArray("values"));
+			testCaseNode.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
 		}
 	}
 
@@ -503,15 +433,35 @@ public final class ProposalSchema
 	private static final class Builder
 	{
 		private final List<String> problems;
+		private final RandomGenerator seeds;
+		private final Map<String, List<TestCase>> committed;
+		private final Set<Long> taken = new HashSet<>();
 
 		/**
 		 * Creates a builder.
 		 *
 		 * @param problems receives one message per rejected object
+		 * @param seeds the source of the seeds that CAT adds to each generator call, or {@code null} if each call
+		 *   carries its seed and version
+		 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON
+		 *   holds none
 		 */
-		Builder(List<String> problems)
+		Builder(List<String> problems, RandomGenerator seeds, Map<String, List<TestCase>> committed)
 		{
 			this.problems = problems;
+			this.seeds = seeds;
+			this.committed = committed;
+			for (List<TestCase> testCases : committed.values())
+			{
+				for (TestCase testCase : testCases)
+				{
+					for (TestValue value : testCase.values().values())
+					{
+						if (value instanceof TestValue.Generated generated)
+							taken.add(generated.seed());
+					}
+				}
+			}
 		}
 
 		/**
@@ -528,7 +478,7 @@ public final class ProposalSchema
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
 				attempt(location, () -> new Requirement(text(node, "id"), text(node, "description"),
 					text(node, "source"), optionalText(node, "trigger"), strings(node.get("behaviors")))));
-			List<Category> categories = list(root.get("categories"), "$.categories", this::category);
+			List<PromptTest> tests = list(root.get("tests"), "$.tests", this::test);
 			JsonNode judgeNode = root.get("judge");
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
@@ -541,7 +491,7 @@ public final class ProposalSchema
 			if (rule == null)
 				profiles = attempt("$." + TRIAL_PROFILES, () -> profiles(root.get(TRIAL_PROFILES)));
 			else
-				profiles = attempt("$." + TRIAL_PROFILES, () -> rule.profiles(requirements, categories));
+				profiles = attempt("$." + TRIAL_PROFILES, () -> rule.profiles(requirements, tests));
 			if (profiles == null)
 				return null;
 			long contractSalt;
@@ -549,8 +499,8 @@ public final class ProposalSchema
 				contractSalt = root.get(SALT).asLong();
 			else
 				contractSalt = salt;
-			return attempt("$", () -> new Contract(requirements, categories, profiles, judge, fixtures,
-				strings(root.get("limitations")), contractSalt));
+			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, fixtures,
+				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt));
 		}
 
 		/**
@@ -582,7 +532,7 @@ public final class ProposalSchema
 				scope = EnumNames.parse(node.get("scope").asString(), CertificationScope.class);
 			List<Cell> cells = new ArrayList<>();
 			for (JsonNode cellNode : node.get("cells"))
-				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "category"), profile(cellNode)));
+				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "test"), profile(cellNode)));
 			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), ranking,
 				bindings, restriction, described, scope, cells);
 		}
@@ -599,264 +549,76 @@ public final class ProposalSchema
 		}
 
 		/**
-		 * Builds one category and its tests.
+		 * Builds one prompt test and its variables.
 		 *
-		 * @param node the category
-		 * @param location the location of the category
-		 * @return the category, or null if a problem was added
+		 * @param node the prompt test
+		 * @param location the location of the prompt test
+		 * @return the prompt test, or null if a problem was added
 		 */
-		private Category category(JsonNode node, String location)
+		private PromptTest test(JsonNode node, String location)
 		{
 			int problemsBefore = problems.size();
-			List<TestDefinition> tests = list(node.get("tests"), location + ".tests", this::test);
+			List<VariableDeclaration> variables = list(node.get("variables"), location + ".variables",
+				(variableNode, variableLocation) -> attempt(variableLocation, () ->
+					new VariableDeclaration(text(variableNode, "name"), text(variableNode, "description"))));
+			List<FixtureFile> fixtures = list(node.get("fixtures"), location + ".fixtures", (fixtureNode, at) ->
+				attempt(at, () -> new FixtureFile(text(fixtureNode, "path"), text(fixtureNode, "content"))));
+			List<TestCase> committedTestCases = committed.getOrDefault(node.get("id").asString(), List.of());
+			JsonNode committedNode = node.get(COMMITTED_TEST_CASES);
+			if (committedNode != null)
+				committedTestCases = list(committedNode, location + "." + COMMITTED_TEST_CASES, this::testCase);
+			List<TestCase> testCases = list(node.get("test_cases"), location + ".test_cases", this::testCase);
+			List<MappedAssertion> assertions = list(node.get("assertions"), location + ".assertions",
+				this::assertion);
 			if (problems.size() > problemsBefore)
 				return null;
-			return attempt(location, () -> new Category(text(node, "id"), text(node, "rationale"),
-				new RiskRank(node.get("risk_rank").asInt()), tests));
-		}
-
-		/**
-		 * Builds one test definition and its variation rules.
-		 *
-		 * @param node the test definition
-		 * @param location the location of the test definition
-		 * @return the test definition, or null if a problem was added
-		 */
-		private TestDefinition test(JsonNode node, String location)
-		{
-			int problemsBefore = problems.size();
-			List<VariationRule> variations = list(node.get("variations"), location + ".variations", this::variation);
-			List<DeterministicCheck> checks = list(node.get("checks"), location + ".checks", this::check);
-			List<DiscardedCheck> discarded = List.of();
-			JsonNode discardedNode = node.get(DISCARDED_CHECKS);
-			if (discardedNode != null)
-				discarded = list(discardedNode, location + "." + DISCARDED_CHECKS, this::discarded);
-			if (problems.size() > problemsBefore)
-				return null;
-			List<DiscardedCheck> discardedChecks = discarded;
-			return attempt(location, () -> new TestDefinition(text(node, "id"), strings(node.get("requirement_ids")),
+			List<TestCase> committed = committedTestCases;
+			PromptTest test = attempt(location, () -> new PromptTest(text(node, "id"),
+				new RiskRank(node.get("risk_rank").asInt()), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
-				strings(node.get("uncovered_interactions")), variations, strings(node.get("key_dimensions")), checks,
-				discardedChecks, strings(node.get(REGRESSION_SCENARIOS))).
-				withValidatedControls());
-		}
-
-		/**
-		 * Builds one discarded check.
-		 *
-		 * @param node the discarded check
-		 * @param location the location of the discarded check
-		 * @return the discarded check, or null if a problem was added
-		 */
-		private DiscardedCheck discarded(JsonNode node, String location)
-		{
-			DeterministicCheck check = check(node.get("check"), location + ".check");
-			if (check == null)
+				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
+				strings(node.get(REGRESSION_SCENARIOS)), fixtures));
+			if (test == null)
 				return null;
-			return attempt(location, () -> new DiscardedCheck(check, text(node, "reason")));
-		}
-
-		/**
-		 * Builds one deterministic check and its controls.
-		 *
-		 * @param node the check
-		 * @param location the location of the check
-		 * @return the check, or null if a problem was added
-		 */
-		private DeterministicCheck check(JsonNode node, String location)
-		{
-			int problemsBefore = problems.size();
-			CheckCriterion criterion = attempt(location + ".parameters", () -> criterion(text(node, "kind"),
-				node.get("parameters")));
-			ControlEvidence knownGood = attempt(location + ".known_good", () -> control(node.get("known_good")));
-			ControlEvidence knownBad = attempt(location + ".known_bad", () -> control(node.get("known_bad")));
-			if (problems.size() > problemsBefore)
+			// Delivery writes every prompt test as a scenario.md
+			if (attempt(location, () -> test.scenario().render()) == null)
 				return null;
-			return attempt(location, () -> new DeterministicCheck(text(node, "requirement_id"), text(node, "behavior"),
-				criterion, knownGood, knownBad));
+			return test;
 		}
 
 		/**
-		 * Builds a check's criterion from its kind and parameters.
+		 * Builds one assertion and the requirement that it checks.
 		 *
-		 * @param kind the kind's name
-		 * @param parameters the parameters
-		 * @return the criterion
-		 * @throws IllegalArgumentException if a parameter that the kind needs is missing, a parameter does not apply to
-		 *   the kind, or the criterion rejects a value
+		 * @param node the assertion
+		 * @param location the location of the assertion
+		 * @return the assertion, or null if a problem was added
 		 */
-		private static CheckCriterion criterion(String kind, JsonNode parameters)
+		private MappedAssertion assertion(JsonNode node, String location)
 		{
-			return switch (kind)
+			return attempt(location, () -> new MappedAssertion(new Assertion(text(node, "id"),
+				EnumNames.parse(text(node, "kind"), AssertionKind.class), optionalText(node, "tool"),
+				text(node, "statement")), text(node, "requirement_id")));
+		}
+
+		/**
+		 * Builds one test case.
+		 *
+		 * @param node the test case
+		 * @param location the location of the test case
+		 * @return the test case, or null if a problem was added
+		 */
+		private TestCase testCase(JsonNode node, String location)
+		{
+			return attempt(location, () ->
 			{
-				case "exact_text" ->
-				{
-					onlyParameters(kind, parameters, "turn", "text");
-					yield new ExactText(optionalInteger(parameters, "turn"), requiredText(kind, parameters, "text"));
-				}
-				case "forbidden_text" ->
-				{
-					onlyParameters(kind, parameters, "turn", "text");
-					yield new ForbiddenText(optionalInteger(parameters, "turn"), requiredText(kind, parameters, "text"));
-				}
-				case "pattern" ->
-				{
-					onlyParameters(kind, parameters, "turn", "pattern");
-					yield new PatternMatch(optionalInteger(parameters, "turn"),
-						requiredText(kind, parameters, "pattern"));
-				}
-				case "count" ->
-				{
-					onlyParameters(kind, parameters, "turn", "pattern", "minimum", "maximum");
-					yield new Count(optionalInteger(parameters, "turn"), requiredText(kind, parameters, "pattern"),
-						optionalInteger(parameters, "minimum"), optionalInteger(parameters, "maximum"));
-				}
-				case "file_exists" ->
-				{
-					onlyParameters(kind, parameters, "path", "exists");
-					yield new FileExists(requiredText(kind, parameters, "path"), required(kind, parameters, "exists").
-						asBoolean());
-				}
-				case "file_content" ->
-				{
-					onlyParameters(kind, parameters, "path", "text");
-					yield new FileContent(requiredText(kind, parameters, "path"), requiredText(kind, parameters,
-						"text"));
-				}
-				case "exit_status" ->
-				{
-					onlyParameters(kind, parameters, "command", "status");
-					yield new ExitStatus(requiredText(kind, parameters, "command"), required(kind, parameters,
-						"status").asInt());
-				}
-				case "tool_used" ->
-				{
-					onlyParameters(kind, parameters, "tool", "used");
-					yield new ToolUsed(requiredText(kind, parameters, "tool"), required(kind, parameters, "used").
-						asBoolean());
-				}
-				default -> throw new IllegalArgumentException("Unknown check kind '" + kind + "'");
-			};
-		}
-
-		/**
-		 * Rejects a parameter that a kind does not take.
-		 *
-		 * @param kind the kind's name
-		 * @param parameters the parameters
-		 * @param names the parameters that the kind takes
-		 * @throws IllegalArgumentException if {@code parameters} holds another parameter
-		 */
-		private static void onlyParameters(String kind, JsonNode parameters, String... names)
-		{
-			Set<String> allowed = Set.of(names);
-			for (String name : parameters.propertyNames())
-			{
-				if (!allowed.contains(name))
-				{
-					throw new IllegalArgumentException("The kind '" + kind + "' does not take the parameter '" + name +
-						"'. It takes: " + String.join(", ", names));
-				}
-			}
-		}
-
-		/**
-		 * Returns a parameter that a kind needs.
-		 *
-		 * @param kind the kind's name
-		 * @param parameters the parameters
-		 * @param name the parameter's name
-		 * @return the parameter's value
-		 * @throws IllegalArgumentException if the parameter is missing
-		 */
-		private static JsonNode required(String kind, JsonNode parameters, String name)
-		{
-			JsonNode value = parameters.get(name);
-			if (value == null)
-				throw new IllegalArgumentException("The kind '" + kind + "' needs the parameter '" + name + "'");
-			return value;
-		}
-
-		/**
-		 * Returns a string parameter that a kind needs.
-		 *
-		 * @param kind the kind's name
-		 * @param parameters the parameters
-		 * @param name the parameter's name
-		 * @return the parameter's value
-		 * @throws IllegalArgumentException if the parameter is missing
-		 */
-		private static String requiredText(String kind, JsonNode parameters, String name)
-		{
-			return required(kind, parameters, name).asString();
-		}
-
-		/**
-		 * Returns an optional integer parameter.
-		 *
-		 * @param parameters the parameters
-		 * @param name the parameter's name
-		 * @return the parameter's value, or {@code null} if it is missing
-		 */
-		private static Integer optionalInteger(JsonNode parameters, String name)
-		{
-			JsonNode value = parameters.get(name);
-			if (value == null)
-				return null;
-			return value.asInt();
-		}
-
-		/**
-		 * Builds a check's control.
-		 *
-		 * @param node the control
-		 * @return the control's evidence
-		 * @throws IllegalArgumentException if a model constructor rejects a value
-		 */
-		private static ControlEvidence control(JsonNode node)
-		{
-			List<EvidenceFile> files = new ArrayList<>();
-			for (JsonNode fileNode : node.get("files"))
-				files.add(new EvidenceFile(text(fileNode, "path"), text(fileNode, "content")));
-			List<ToolCall> calls = new ArrayList<>();
-			for (JsonNode callNode : node.get("tool_calls"))
-			{
-				String command = null;
-				if (callNode.has("command"))
-					command = text(callNode, "command");
-				Integer exitStatus = optionalInteger(callNode, "exit_status");
-				calls.add(new ToolCall(text(callNode, "tool"), command, exitStatus));
-			}
-			Map<String, String> choices = new HashMap<>();
-			for (JsonNode choiceNode : node.get("choices"))
-			{
-				String dimension = text(choiceNode, "dimension");
-				if (choices.put(dimension, text(choiceNode, "label")) != null)
-					throw new IllegalArgumentException("The control chooses a value for '" + dimension + "' twice");
-			}
-			List<List<String>> replies = new ArrayList<>();
-			for (JsonNode turn : node.get("replies"))
-				replies.add(strings(turn));
-			return new ControlEvidence(replies, files, calls, choices);
-		}
-
-		/**
-		 * Builds one variation rule and its values.
-		 *
-		 * @param node the variation rule
-		 * @param location the location of the variation rule
-		 * @return the variation rule, or null if a problem was added
-		 */
-		private VariationRule variation(JsonNode node, String location)
-		{
-			int problemsBefore = problems.size();
-			List<VariationValue> values = list(node.get("values"), location + ".values", (valueNode, valueLocation) ->
-				attempt(valueLocation, () -> new VariationValue(text(valueNode, "label"), text(valueNode, "text"),
-					valueNode.get("probability").asDouble())));
-			if (problems.size() > problemsBefore)
-				return null;
-			return attempt(location, () -> new VariationRule(text(node, "dimension"), values));
+				Map<String, TestValue> values;
+				if (seeds == null)
+					values = TestValueJson.read(node.get("values"));
+				else
+					values = TestValueJson.readCalls(node.get("values"), seeds, taken);
+				return new TestCase(values, text(node, TestCase.EXPECTED_OUTCOME));
+			});
 		}
 
 		/**

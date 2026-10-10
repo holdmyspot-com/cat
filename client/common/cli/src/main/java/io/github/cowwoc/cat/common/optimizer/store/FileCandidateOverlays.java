@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.CandidateOverlays;
+import io.github.cowwoc.cat.common.optimizer.port.ForkVersions;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,7 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
  * the fork is recorded once in campaign storage, and the caller supplies its inventory. Each file is written once and
  * replaced atomically (see {@link WriteStep}), so a crash leaves either no overlay or the complete overlay.
  * <p>
- * Loading rebuilds the overlay on the fork and returns it only if its identity equals the requested snapshot.
+ * Loading rebuilds the overlay on the fork that the file names, which is the campaign's current fork or an earlier
+ * one that {@link ForkVersions} supplies, and returns it only if its identity equals the requested snapshot.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe. One process at a time may write a campaign.
  */
@@ -32,12 +34,13 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	private static final String SUFFIX = ".json";
 	private final Path directory;
 	private final FileInventory fork;
+	private final ForkVersions versions;
 	private final JsonMapper json;
 	private final OverlayJson codec;
 	private final Consumer<WriteStep> afterStep;
 
 	/**
-	 * Creates the overlays of a campaign.
+	 * Creates the overlays of a campaign that has run on one fork only.
 	 *
 	 * @param campaign the campaign storage directory
 	 * @param fork the files recorded at the campaign's fork
@@ -46,7 +49,21 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 */
 	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json)
 	{
-		this(campaign, fork, json, _ ->
+		this(campaign, fork, ForkVersions.NONE, json);
+	}
+
+	/**
+	 * Creates the overlays of a campaign.
+	 *
+	 * @param campaign the campaign storage directory
+	 * @param fork the files recorded at the campaign's current fork
+	 * @param versions the earlier forks that the campaign ran on
+	 * @param json the JSON mapper
+	 * @throws NullPointerException if any argument is null
+	 */
+	public FileCandidateOverlays(Path campaign, FileInventory fork, ForkVersions versions, JsonMapper json)
+	{
+		this(campaign, fork, versions, json, _ ->
 		{
 		});
 	}
@@ -63,11 +80,30 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 */
 	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json, Consumer<WriteStep> afterStep)
 	{
+		this(campaign, fork, ForkVersions.NONE, json, afterStep);
+	}
+
+	/**
+	 * Creates the overlays of a campaign that report each completed write step.
+	 *
+	 * @param campaign the campaign storage directory
+	 * @param fork the files recorded at the campaign's current fork
+	 * @param versions the earlier forks that the campaign ran on
+	 * @param json the JSON mapper
+	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
+	 *   point, as a crash would
+	 * @throws NullPointerException if any argument is null
+	 */
+	private FileCandidateOverlays(Path campaign, FileInventory fork, ForkVersions versions, JsonMapper json,
+		Consumer<WriteStep> afterStep)
+	{
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(fork, "fork").isNotNull();
+		requireThat(versions, "versions").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
 		this.directory = campaign.resolve("overlays");
 		this.fork = fork;
+		this.versions = versions;
 		this.json = json;
 		this.codec = new OverlayJson(json);
 		this.afterStep = afterStep;
@@ -87,7 +123,8 @@ public final class FileCandidateOverlays implements CandidateOverlays
 		if (Files.notExists(file))
 			return Optional.empty();
 		// An overlay holds only the prompt files a candidate changes, so the whole document fits in memory
-		Overlay overlay = JsonFiles.read(json, file, tree -> codec.read(tree, fork),
+		FileInventory recorded = forkOf(JsonFiles.read(json, file, codec::fork, "does not describe an overlay"));
+		Overlay overlay = JsonFiles.read(json, file, tree -> codec.read(tree, recorded),
 			"does not describe an overlay on this campaign's fork");
 		Sha256 identity = overlay.identity();
 		if (!identity.equals(snapshot))
@@ -114,6 +151,21 @@ public final class FileCandidateOverlays implements CandidateOverlays
 			return;
 		AtomicFiles.createDirectories(directory);
 		JsonFiles.replace(json, file, codec.write(overlay), afterStep);
+	}
+
+	/**
+	 * Returns the files of the fork that an overlay file names.
+	 *
+	 * @param identity the fork's identity
+	 * @return the campaign's current fork, or the earlier fork with that identity; the current fork if the campaign
+	 *   never ran on such a fork, so that reading the overlay reports the mismatch
+	 * @throws IOException if the earlier forks cannot be read
+	 */
+	private FileInventory forkOf(Sha256 identity) throws IOException
+	{
+		if (identity.equals(fork.identity()))
+			return fork;
+		return versions.find(identity).orElse(fork);
 	}
 
 	/**

@@ -11,7 +11,7 @@ import java.nio.file.Path;
 /**
  * Creates Claude's isolated local CAT marketplace.
  */
-final class ClaudeMarketplace
+public final class ClaudeMarketplace
 {
 	/**
 	 * Prevents construction of utility class instances.
@@ -29,7 +29,7 @@ final class ClaudeMarketplace
 	 * @throws NullPointerException if {@code artifact} or {@code home} are null
 	 * @throws IOException if the marketplace cannot be created
 	 */
-	static Path create(Path artifact, Path home) throws IOException
+	public static Path create(Path artifact, Path home) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(home, "home").isNotNull();
@@ -95,7 +95,7 @@ final class ClaudeMarketplace
 	 * @param configuration the launch configuration path that Claude's sandbox may inspect
 	 * @throws IOException if the configuration cannot be written
 	 */
-	static void writeEmptyLaunchConfiguration(Path configuration) throws IOException
+	public static void writeEmptyLaunchConfiguration(Path configuration) throws IOException
 	{
 		requireThat(configuration, "configuration").isNotNull();
 		//WORKAROUND: https://github.com/anthropics/claude-code/issues/84563

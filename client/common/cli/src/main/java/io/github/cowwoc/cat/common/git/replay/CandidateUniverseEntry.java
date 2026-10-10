@@ -14,7 +14,7 @@ import java.util.List;
  * @param units reviewer-named semantic units that may contribute to the behavior
  * @param exposedEntryPoints every tool-derived selectable entry point this candidate owns
  */
-record CandidateUniverseEntry(String id, String observableOutcome, String discoveryEvidence,
+public record CandidateUniverseEntry(String id, String observableOutcome, String discoveryEvidence,
 	String responsibility, String acceptanceEvidence, String splitCounterfactual, List<CandidateUniverseUnit> units,
 	List<String> exposedEntryPoints)
 {

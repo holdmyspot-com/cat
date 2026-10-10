@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -20,15 +20,15 @@ import java.util.Set;
  * @param contract the confirmed contract, with the certification scope that the user chose
  * @param contractHash the contract's identity
  * @param development the development draw stream
- * @param baseline the baseline-arm draw stream
- * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
+ * @param baseline the baseline trials' draw stream
+ * @param regressionSet the test cases that failed sampled trials under this contract, replayed to check later edits,
  *   in failure order
  * @param unavailable the known conditions that make certification unavailable under this lineage
- * @param added the key-value combinations added to the development part of the contract's tests after certification
- *   attempts of this lineage ended with formal failures
+ * @param added the test cases added to the development part of the contract's tests after
+ *   certification attempts of this lineage ended with formal failures
  */
 public record Lineage(int number, Contract contract, Sha256 contractHash, DrawStream.State development,
-	DrawStream.State baseline, List<RegressionInstance> regressionSet, Set<Outcome> unavailable, AddedValues added)
+	DrawStream.State baseline, List<RegressionTestCase> regressionSet, Set<Outcome> unavailable, AddedTestCases added)
 {
 	/**
 	 * Creates a lineage.
@@ -37,11 +37,11 @@ public record Lineage(int number, Contract contract, Sha256 contractHash, DrawSt
 	 * @param contract the confirmed contract, with the certification scope that the user chose
 	 * @param contractHash the contract's identity
 	 * @param development the development draw stream
-	 * @param baseline the baseline-arm draw stream
-	 * @param regressionSet the instances that failed sampled trials under this contract, replayed to check later edits,
+	 * @param baseline the baseline trials' draw stream
+	 * @param regressionSet the test cases that failed sampled trials under this contract, replayed to check later edits,
 	 *   in failure order
 	 * @param unavailable the known conditions that make certification unavailable under this lineage
-	 * @param added the key-value combinations added to the development part of the contract's tests after
+	 * @param added the test cases added to the development part of the contract's tests after
 	 *   certification attempts of this lineage ended with formal failures
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code number} is not positive, {@code contract} has no certification

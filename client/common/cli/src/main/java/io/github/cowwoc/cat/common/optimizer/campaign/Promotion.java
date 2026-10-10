@@ -3,8 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.secrets.PromotionAccess;
+import io.github.cowwoc.cat.common.secrets.PromotionSecrets;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -13,29 +15,41 @@ import java.util.List;
 /**
  * Plans trial runs and decides whether a proposed edit replaces the working candidate.
  * <p>
- * A triggering instance is a failure in the edited cell, the requirement category under a runner profile. The edit
- * starts each triggering instance with two runs and runs each other instance in the regression set once. The working
- * candidate also runs each of those other instances on which it has no outcome. An edit fixes a triggering instance
+ * A triggering test case is a failure in the edited cell, the prompt test under a runner profile. The edit
+ * starts each triggering test case with two runs and runs each other test case in the regression set once. The working
+ * candidate also runs each of those other test cases on which it has no outcome. An edit fixes a triggering test case
  * when every run passes and its passing streak has probability below 10% under the working candidate's smoothed
- * observed pass rate, {@code (passes + 1) / (outcomes + 2)} on the same trial content.
+ * observed pass rate, {@code (passes + 1) / (outcomes + 2)} on the same test case.
  * Passing streaks extend one run at a time, up to four runs. The edit replaces the working candidate when all needed
- * outcomes are known, it fixes at least one triggering instance and it fails no regression instance that the working
+ * outcomes are known, it fixes at least one triggering test case and it fails no regression test case that the working
  * candidate passes. A minimality reduction must preserve every triggering fix in the last accepted runs. These runs
- * reuse fixed instances and never count as representative evidence.
+ * reuse fixed test cases and never count as representative evidence.
  */
 public final class Promotion
 {
+	static
+	{
+		PromotionSecrets.setAccess(new PromotionAccess()
+		{
+			@Override
+			public boolean isSameTestCase(DrawnTestCase first, DrawnTestCase second)
+			{
+				return Promotion.isSameTestCase(first, second);
+			}
+		});
+	}
+
 	/**
-	 * The initial number of promotion runs planned for each distinct triggering instance.
+	 * The initial number of promotion runs planned for each distinct triggering test case.
 	 */
 	public static final int STARTING_TRIGGERING_RUNS = 2;
 	/**
-	 * The maximum passing streak tested before an instance whose streak is still likely is considered unfixed.
+	 * The maximum passing streak tested before a test case whose streak is still likely is considered unfixed.
 	 */
 	public static final int MAXIMUM_TRIGGERING_RUNS = 4;
 
 	/**
-	 * The state of an author attempt's promotion.
+	 * The state of a prompt author attempt's promotion.
 	 */
 	public enum Decision
 	{
@@ -61,24 +75,24 @@ public final class Promotion
 	}
 
 	/**
-	 * Plans the promotion runs of an author attempt.
+	 * Plans the promotion runs of a prompt author attempt.
 	 *
 	 * @param cell the round cell that the attempt addresses
-	 * @param failures the failing instances that the author received; only those in {@code cell} trigger runs
+	 * @param failures the failing test cases that the prompt author received; only those in {@code cell} trigger runs
 	 * @param regressionSet the lineage's regression set
-	 * @param generator the contract's generator, which marks the instances targeted
+	 * @param generator the contract's generator, which marks the test cases targeted
 	 * @return the unassigned runs: the triggering runs, then the regression runs, then the working candidate's
 	 *   reference runs
 	 * @throws NullPointerException if any argument is null or either list contains null
 	 */
-	public static List<PromotionRun> plan(String cell, List<TrialInstance> failures,
-		List<RegressionInstance> regressionSet, Generator generator)
+	public static List<PromotionRun> plan(String cell, List<DrawnTestCase> failures,
+		List<RegressionTestCase> regressionSet, Generator generator)
 	{
 		return plan(List.of(cell), failures, regressionSet, generator);
 	}
 
 	/**
-	 * Plans promotion runs for all triggering cells of one addressed category.
+	 * Plans promotion runs for all triggering cells of one addressed test.
 	 *
 	 * @param cells the triggering cells
 	 * @param failures the received failures
@@ -88,36 +102,36 @@ public final class Promotion
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code cells} is empty
 	 */
-	public static List<PromotionRun> plan(List<String> cells, List<TrialInstance> failures,
-		List<RegressionInstance> regressionSet, Generator generator)
+	public static List<PromotionRun> plan(List<String> cells, List<DrawnTestCase> failures,
+		List<RegressionTestCase> regressionSet, Generator generator)
 	{
 		requireThat(cells, "cells").isNotEmpty();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(generator, "generator").isNotNull();
 		List<PromotionRun> triggering = new ArrayList<>();
-		List<TrialInstance> triggeringInstances = new ArrayList<>();
-		for (TrialInstance failure : failures)
+		List<DrawnTestCase> triggeringTestCases = new ArrayList<>();
+		for (DrawnTestCase failure : failures)
 		{
 			if (!cells.contains(failure.cellId()))
 				continue;
-			if (containsContent(triggeringInstances, failure))
+			if (containsTestCase(triggeringTestCases, failure))
 				continue;
-			TrialInstance instance = generator.markTargeted(failure);
-			triggeringInstances.add(instance);
+			DrawnTestCase testCase = generator.markTargeted(failure);
+			triggeringTestCases.add(testCase);
 			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
-				triggering.add(new PromotionRun(PromotionRun.Role.TRIGGERING, instance, null, null));
+				triggering.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
 		}
 		List<PromotionRun> regressions = new ArrayList<>();
 		List<PromotionRun> references = new ArrayList<>();
-		for (RegressionInstance regression : regressionSet)
+		for (RegressionTestCase regression : regressionSet)
 		{
-			if (containsContent(triggeringInstances, regression.instance()))
+			if (containsTestCase(triggeringTestCases, regression.testCase()))
 				continue;
-			regressions.add(new PromotionRun(PromotionRun.Role.REGRESSION, regression.instance(), null, null));
+			regressions.add(new PromotionRun(PromotionRun.Role.REGRESSION, regression.testCase(), null, null));
 			if (regression.working() == null)
 			{
-				references.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, regression.instance(), null,
+				references.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, regression.testCase(), null,
 					null));
 			}
 		}
@@ -131,30 +145,31 @@ public final class Promotion
 	 * Plans one extra run for each fully passing triggering streak that is still likely and below the maximum.
 	 *
 	 * @param attempt the attempt whose adopted outcomes determine extensions
-	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by trial content
+	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
 	 * @return the attempt with unassigned extensions appended, or the same attempt if none is due
 	 * @throws NullPointerException if an argument or outcome is null
 	 */
-	public static AuthorAttempt extend(AuthorAttempt attempt, List<InstanceOutcomes> workingOutcomes)
+	public static PromptAuthorAttempt extend(PromptAuthorAttempt attempt, List<TestCaseOutcomes> workingOutcomes)
 	{
 		requireThat(attempt, "attempt").isNotNull();
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 
 		List<PromotionRun> runs = new ArrayList<>(attempt.runs());
-		for (TrialInstance instance : triggeringInstances(attempt.runs()))
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
 		{
 			List<PromotionRun> streak = attempt.runs().stream().filter(run ->
-				run.role() == PromotionRun.Role.TRIGGERING && isSameContent(instance, run.instance())).toList();
+				run.role() == PromotionRun.Role.TRIGGERING && isSameTestCase(testCase, run.testCase())).toList();
 			if (streak.size() >= STARTING_TRIGGERING_RUNS && streak.size() < MAXIMUM_TRIGGERING_RUNS &&
 				streak.stream().allMatch(run -> run.verdict() == Verdict.PASS) &&
-				!isUnlikely(instance, streak.size(), workingOutcomes))
+				!isUnlikely(testCase, streak.size(), workingOutcomes))
 			{
-				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, instance, null, null));
+				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
 			}
 		}
 		if (runs.size() == attempt.runs().size())
 			return attempt;
-		return new AuthorAttempt(attempt.number(), attempt.cell(), attempt.snapshot(), runs, attempt.minimality());
+		return new PromptAuthorAttempt(attempt.number(), attempt.cell(), attempt.snapshot(), runs,
+			attempt.minimality());
 	}
 
 	/**
@@ -169,16 +184,16 @@ public final class Promotion
 		requireThat(acceptedRuns, "acceptedRuns").isNotNull();
 
 		List<PromotionRun> runs = new ArrayList<>();
-		for (TrialInstance instance : triggeringInstances(acceptedRuns))
+		for (DrawnTestCase testCase : triggeringTestCases(acceptedRuns))
 		{
 			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
-				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, instance, null, null));
+				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
 		}
 		for (PromotionRun run : acceptedRuns)
 		{
 			switch (run.role())
 			{
-				case REGRESSION -> runs.add(new PromotionRun(run.role(), run.instance(), null, null));
+				case REGRESSION -> runs.add(new PromotionRun(run.role(), run.testCase(), null, null));
 				case WORKING_REFERENCE -> runs.add(run);
 				case TRIGGERING ->
 				{
@@ -189,31 +204,31 @@ public final class Promotion
 	}
 
 	/**
-	 * Decides promotion from the adopted runs. An original attempt must fix at least one triggering instance; a
+	 * Decides promotion from the adopted runs. An original attempt must fix at least one triggering test case; a
 	 * reduction must retain every fix from its minimality search's last accepted runs. Either rejects a regression
 	 * where the working candidate passes, and waits for all needed outcomes unless rejection is certain.
 	 *
-	 * @param attempt the author attempt
+	 * @param attempt the prompt author attempt
 	 * @param regressionSet the lineage's regression set
-	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by trial content
+	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
 	 * @return the decision
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static Decision decide(AuthorAttempt attempt, List<RegressionInstance> regressionSet,
-		List<InstanceOutcomes> workingOutcomes)
+	public static Decision decide(PromptAuthorAttempt attempt, List<RegressionTestCase> regressionSet,
+		List<TestCaseOutcomes> workingOutcomes)
 	{
 		requireThat(attempt, "attempt").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 
-		List<TrialInstance> triggering = triggeringInstances(attempt.runs());
+		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
 		if (attempt.minimality().testing() != null)
 		{
 			List<PromotionRun> accepted = attempt.minimality().acceptedRuns();
-			for (TrialInstance instance : triggeringInstances(accepted))
+			for (DrawnTestCase testCase : triggeringTestCases(accepted))
 			{
-				if (triggeringVerdict(instance, accepted, workingOutcomes) == Verdict.PASS &&
-					triggeringVerdict(instance, attempt.runs(), workingOutcomes) == Verdict.FAIL)
+				if (triggeringVerdict(testCase, accepted, workingOutcomes) == Verdict.PASS &&
+					triggeringVerdict(testCase, attempt.runs(), workingOutcomes) == Verdict.FAIL)
 				{
 					return Decision.REJECT;
 				}
@@ -221,18 +236,18 @@ public final class Promotion
 		}
 
 		boolean possibleFix = false;
-		for (TrialInstance instance : triggering)
+		for (DrawnTestCase testCase : triggering)
 		{
-			if (triggeringVerdict(instance, attempt.runs(), workingOutcomes) != Verdict.FAIL)
+			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) != Verdict.FAIL)
 				possibleFix = true;
 		}
 		if (!possibleFix)
 			return Decision.REJECT;
 
 		boolean pending = false;
-		for (TrialInstance instance : triggering)
+		for (DrawnTestCase testCase : triggering)
 		{
-			if (triggeringVerdict(instance, attempt.runs(), workingOutcomes) == null)
+			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) == null)
 				pending = true;
 		}
 		for (PromotionRun run : attempt.runs())
@@ -250,7 +265,7 @@ public final class Promotion
 						pending = true;
 					else if (run.verdict() == Verdict.FAIL)
 					{
-						Verdict working = workingVerdict(run.instance(), attempt, regressionSet);
+						Verdict working = workingVerdict(run.testCase(), attempt, regressionSet);
 						if (working == Verdict.PASS)
 							return Decision.REJECT;
 						if (working == null)
@@ -269,39 +284,39 @@ public final class Promotion
 	}
 
 	/**
-	 * Returns triggering instances once per trial content, in run order.
+	 * Returns each triggering test case once, in run order.
 	 *
 	 * @param runs the promotion evidence
-	 * @return the distinct triggering instances
+	 * @return the distinct triggering test cases
 	 */
-	private static List<TrialInstance> triggeringInstances(List<PromotionRun> runs)
+	private static List<DrawnTestCase> triggeringTestCases(List<PromotionRun> runs)
 	{
-		List<TrialInstance> instances = new ArrayList<>();
+		List<DrawnTestCase> testCases = new ArrayList<>();
 		for (PromotionRun run : runs)
 		{
-			if (run.role() == PromotionRun.Role.TRIGGERING && !containsContent(instances, run.instance()))
-				instances.add(run.instance());
+			if (run.role() == PromotionRun.Role.TRIGGERING && !containsTestCase(testCases, run.testCase()))
+				testCases.add(run.testCase());
 		}
-		return instances;
+		return testCases;
 	}
 
 	/**
-	 * Returns whether an instance's triggering runs establish a fix or make one impossible.
+	 * Returns whether a test case's triggering runs establish a fix or make one impossible.
 	 *
-	 * @param instance the triggering instance, matched by content
+	 * @param testCase the triggering test case, matched by content
 	 * @param runs the tested attempt's runs
-	 * @param workingOutcomes the working candidate's records on trial content
+	 * @param workingOutcomes the working candidate's records by test case
 	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed run, fewer than two planned runs,
 	 *   or a still-likely streak at four passes, or {@code null} while a run or extension is needed
 	 */
-	private static Verdict triggeringVerdict(TrialInstance instance, List<PromotionRun> runs,
-		List<InstanceOutcomes> workingOutcomes)
+	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionRun> runs,
+		List<TestCaseOutcomes> workingOutcomes)
 	{
 		int passes = 0;
 		boolean pending = false;
 		for (PromotionRun run : runs)
 		{
-			if (run.role() != PromotionRun.Role.TRIGGERING || !isSameContent(instance, run.instance()))
+			if (run.role() != PromotionRun.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
 				continue;
 			if (run.verdict() == Verdict.FAIL)
 				return Verdict.FAIL;
@@ -314,7 +329,7 @@ public final class Promotion
 			return null;
 		if (passes < STARTING_TRIGGERING_RUNS)
 			return Verdict.FAIL;
-		if (isUnlikely(instance, passes, workingOutcomes))
+		if (isUnlikely(testCase, passes, workingOutcomes))
 			return Verdict.PASS;
 		if (passes < MAXIMUM_TRIGGERING_RUNS)
 			return null;
@@ -324,18 +339,18 @@ public final class Promotion
 	/**
 	 * Indicates whether a passing streak has probability below 10% under the working candidate's smoothed pass rate.
 	 *
-	 * @param instance the triggering trial content
+	 * @param testCase the triggering test case
 	 * @param streak the attempt's passing streak length
 	 * @param workingOutcomes the working candidate's adopted records
 	 * @return {@code true} when {@code (passes + 1)^streak * 10 < (outcomes + 2)^streak}, compared exactly
 	 */
-	private static boolean isUnlikely(TrialInstance instance, int streak, List<InstanceOutcomes> workingOutcomes)
+	private static boolean isUnlikely(DrawnTestCase testCase, int streak, List<TestCaseOutcomes> workingOutcomes)
 	{
 		BigInteger passes = BigInteger.ONE;
 		BigInteger outcomes = BigInteger.TWO;
-		for (InstanceOutcomes record : workingOutcomes)
+		for (TestCaseOutcomes record : workingOutcomes)
 		{
-			if (isSameContent(instance, record.instance()))
+			if (isSameTestCase(testCase, record.testCase()))
 			{
 				passes = passes.add(BigInteger.valueOf(record.passes()));
 				outcomes = outcomes.add(BigInteger.valueOf(record.outcomes()));
@@ -345,26 +360,26 @@ public final class Promotion
 	}
 
 	/**
-	 * Returns the working candidate's verdict on an instance: the regression set's verdict, or else the verdict of
+	 * Returns the working candidate's verdict on a test case: the regression set's verdict, or else the verdict of
 	 * the attempt's reference run.
 	 *
-	 * @param instance the instance
-	 * @param attempt the author attempt
+	 * @param testCase the test case
+	 * @param attempt the prompt author attempt
 	 * @param regressionSet the lineage's regression set
 	 * @return the verdict, or {@code null} if it is unknown
 	 */
-	private static Verdict workingVerdict(TrialInstance instance, AuthorAttempt attempt,
-		List<RegressionInstance> regressionSet)
+	private static Verdict workingVerdict(DrawnTestCase testCase, PromptAuthorAttempt attempt,
+		List<RegressionTestCase> regressionSet)
 	{
-		for (RegressionInstance regression : regressionSet)
+		for (RegressionTestCase regression : regressionSet)
 		{
-			if (regression.working() != null && isSameContent(regression.instance(), instance))
+			if (regression.working() != null && isSameTestCase(regression.testCase(), testCase))
 				return regression.working();
 		}
 		for (PromotionRun run : attempt.runs())
 		{
 			if (run.role() == PromotionRun.Role.WORKING_REFERENCE && run.verdict() != null &&
-				isSameContent(run.instance(), instance))
+				isSameTestCase(run.testCase(), testCase))
 			{
 				return run.verdict();
 			}
@@ -373,17 +388,17 @@ public final class Promotion
 	}
 
 	/**
-	 * Indicates whether a list holds an instance with the same content.
+	 * Indicates whether a list holds the same test case.
 	 *
-	 * @param instances the instances
-	 * @param instance the instance to look for
-	 * @return {@code true} if an element presents the same trial
+	 * @param testCases the test cases
+	 * @param testCase the test case to look for
+	 * @return {@code true} if an element is the same test case
 	 */
-	static boolean containsContent(List<TrialInstance> instances, TrialInstance instance)
+	static boolean containsTestCase(List<DrawnTestCase> testCases, DrawnTestCase testCase)
 	{
-		for (TrialInstance element : instances)
+		for (DrawnTestCase element : testCases)
 		{
-			if (isSameContent(element, instance))
+			if (isSameTestCase(element, testCase))
 				return true;
 		}
 		return false;
@@ -392,12 +407,12 @@ public final class Promotion
 	/**
 	 * Returns the snapshot that a promotion run tests.
 	 *
-	 * @param attempt the author attempt
+	 * @param attempt the prompt author attempt
 	 * @param run one of its runs
 	 * @param working the working candidate's snapshot
-	 * @return {@code working} for a reference run, otherwise the author attempt's snapshot
+	 * @return {@code working} for a reference run, otherwise the prompt author attempt's snapshot
 	 */
-	static Sha256 snapshot(AuthorAttempt attempt, PromotionRun run, Sha256 working)
+	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionRun run, Sha256 working)
 	{
 		if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
 			return working;
@@ -405,15 +420,15 @@ public final class Promotion
 	}
 
 	/**
-	 * Indicates whether two instances present the same trial, regardless of how they were drawn or marked.
+	 * Indicates whether two drawn test cases are the same test case, regardless of how they were drawn or marked.
 	 *
-	 * @param first an instance
-	 * @param second another instance
-	 * @return {@code true} if both have the same cell, test, variation choices and turns
+	 * @param first a drawn test case
+	 * @param second another drawn test case
+	 * @return {@code true} if both have the same cell, prompt test, test case and turns
 	 */
-	static boolean isSameContent(TrialInstance first, TrialInstance second)
+	static boolean isSameTestCase(DrawnTestCase first, DrawnTestCase second)
 	{
 		return first.cellId().equals(second.cellId()) && first.testId().equals(second.testId()) &&
-			first.choices().equals(second.choices()) && first.turns().equals(second.turns());
+			first.testCase().equals(second.testCase()) && first.turns().equals(second.turns());
 	}
 }

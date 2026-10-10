@@ -9,33 +9,33 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * The failing instances and generalization cases that an author's manifest gives for one changed hunk.
+ * The failures and generalization cases that a prompt author's manifest gives for one changed hunk.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param id the author's identifier for the hunk, which the manifest's kinds name
+ * @param id the prompt author's identifier for the hunk, which the manifest's kinds name
  * @param path the changed file's resolved path
  * @param beforeStart the first annotated working line, from zero
  * @param beforeEnd the end of the working range, exclusive
- * @param afterStart the first annotated author line, from zero
- * @param afterEnd the end of the author range, exclusive
- * @param instances the supplied failing-instance identifiers
+ * @param afterStart the first annotated prompt author line, from zero
+ * @param afterEnd the end of the prompt author range, exclusive
+ * @param failures the supplied failure identifiers
  * @param analogous a case requiring the same guidance
  * @param dissimilar the identifier of the contract test whose case must not receive the guidance
  */
 public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd, int afterStart, int afterEnd,
-	List<String> instances, String analogous, String dissimilar)
+	List<String> failures, String analogous, String dissimilar)
 {
 	/**
 	 * Creates evidence for one hunk.
 	 *
-	 * @param id the author's identifier for the hunk
+	 * @param id the prompt author's identifier for the hunk
 	 * @param path the changed file's resolved path
 	 * @param beforeStart the first working line
 	 * @param beforeEnd the working range end
-	 * @param afterStart the first author line
-	 * @param afterEnd the author range end
-	 * @param instances the supplied failing-instance identifiers
+	 * @param afterStart the first prompt author line
+	 * @param afterEnd the prompt author range end
+	 * @param failures the supplied failure identifiers
 	 * @param analogous a case requiring the same guidance
 	 * @param dissimilar the identifier of the contract test whose case is excluded from the guidance
 	 * @throws NullPointerException if an argument or a collection element is null
@@ -50,10 +50,10 @@ public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd,
 		requireThat(beforeEnd, "beforeEnd").isGreaterThanOrEqualTo(beforeStart);
 		requireThat(afterStart, "afterStart").isNotNegative();
 		requireThat(afterEnd, "afterEnd").isGreaterThanOrEqualTo(afterStart);
-		requireThat(instances, "instances").isNotEmpty();
-		instances = List.copyOf(instances);
-		for (String instance : instances)
-			requireThat(instance, "instance").isNotBlank();
+		requireThat(failures, "failures").isNotEmpty();
+		failures = List.copyOf(failures);
+		for (String failure : failures)
+			requireThat(failure, "failure").isNotBlank();
 		requireThat(analogous, "analogous").isNotBlank();
 		requireThat(dissimilar, "dissimilar").isNotBlank();
 	}

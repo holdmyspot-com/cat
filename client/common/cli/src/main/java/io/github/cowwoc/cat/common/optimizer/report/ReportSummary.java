@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Renders a {@link StatusReport} as text for the user.
@@ -31,28 +32,36 @@ final class ReportSummary
 	}
 
 	/**
-	 * Lists the key-value combinations added to the development part of the tests.
+	 * Lists the test cases added to the development part of the tests.
 	 *
 	 * @param lines receives the text's lines
-	 * @param combinations the combinations, in the order they were added
+	 * @param testCases the test cases, in the order they were added
 	 */
-	private static void addedValues(List<String> lines, List<AddedCombinationReport> combinations)
+	private static void addedTestCases(List<String> lines, List<AddedTestCaseReport> testCases)
 	{
-		if (combinations.isEmpty())
+		if (testCases.isEmpty())
 			return;
-		lines.add("Development values added after certification attempts with formal failures (development " +
+		lines.add("Development test cases added after certification attempts with formal failures (development " +
 			"draws only; the contract, its claims and formal draws are unchanged):");
-		for (AddedCombinationReport combination : combinations)
+		for (AddedTestCaseReport testCase : testCases)
 		{
 			List<String> values = new ArrayList<>();
-			for (AddedCombinationReport.KeyValue value : combination.values())
-			{
-				values.add(value.dimension() + " = " + value.label() + " (\"" + value.text().replace("\n", "\\n") +
-					"\")");
-			}
-			lines.add("  attempt " + combination.attempt() + ", test " + combination.testId() + ": " +
-				String.join(", ", values));
+			for (Map.Entry<String, String> value : testCase.values().entrySet())
+				values.add(value.getKey() + " = \"" + escape(value.getValue()) + "\"");
+			lines.add("  attempt " + testCase.attempt() + ", test " + testCase.testId() + ": " +
+				String.join(", ", values) + "; expected outcome \"" + escape(testCase.expectedOutcome()) + "\"");
 		}
+	}
+
+	/**
+	 * Shows line breaks in a value on one line.
+	 *
+	 * @param text the value
+	 * @return the value with each line break written as {@code \\n}
+	 */
+	private static String escape(String text)
+	{
+		return text.replace("\n", "\\n");
 	}
 
 	/**
@@ -87,7 +96,7 @@ final class ReportSummary
 				"upper bound " + decimal(revert.upperBound()) + " < predecessor rate " +
 				decimal(revert.predecessorRate()));
 		}
-		addedValues(lines, report.addedValues());
+		addedTestCases(lines, report.addedTestCases());
 		if (!report.choices().isEmpty())
 		{
 			List<String> labels = new ArrayList<>();
@@ -121,8 +130,8 @@ final class ReportSummary
 			List<String> weights = new ArrayList<>();
 			for (Benchmark.CellWeights weight : report.benchmark().cells())
 			{
-				weights.add(weight.cell() + ": " + weight.tests() + " tests of weight " +
-					decimal(weight.testWeight()));
+				weights.add(weight.cell() + ": " + weight.testCases() + " held-out test cases of weight " +
+					decimal(weight.testCaseWeight()));
 			}
 			lines.add("Benchmark weights (testing assumptions, not usage frequencies): " +
 				String.join("; ", weights));
@@ -218,7 +227,7 @@ final class ReportSummary
 	}
 
 	/**
-	 * Adds the certification scope and each category's weakest cell and development cells.
+	 * Adds the certification scope and each test's weakest cell and development cells.
 	 *
 	 * @param lines the lines
 	 * @param tier the cells, or {@code null} before a contract is confirmed
@@ -232,9 +241,9 @@ final class ReportSummary
 		}
 		lines.add("Certification scope: " + EnumNames.lowerCase(tier.scope()).replace('_', ' ') + " (" +
 			tier.scopeCells() + " cells)");
-		for (CellTierReport.CategoryCells cells : tier.categories())
+		for (CellTierReport.TestCells cells : tier.tests())
 		{
-			lines.add("Category " + cells.category() + ": weakest cell " + cells.weakestCell() +
+			lines.add("Test " + cells.test() + ": weakest cell " + cells.weakestCell() +
 				"; development cells " + String.join(", ", cells.developmentCells()));
 		}
 	}
@@ -282,7 +291,9 @@ final class ReportSummary
 			lines.add(text.toString());
 		}
 		CellReport.Threshold comparison = report.comparison();
-		StringBuilder comparisonText = new StringBuilder(300).append("  comparison with 95%: ").append(comparison.state());
+		StringBuilder comparisonText = new StringBuilder(300).append("  comparison with the minimum pass rate ").
+			append(comparison.minimumPassRate().movePointRight(2).stripTrailingZeros().toPlainString()).append("%: ").
+			append(comparison.state());
 		if (comparison.readiness() != null)
 		{
 			comparisonText.append(" (").append(comparison.readiness());
@@ -297,6 +308,23 @@ final class ReportSummary
 				append(decimal(comparison.alpha()));
 		}
 		lines.add(comparisonText.toString());
+		for (CellReport.ControlReport control : comparison.controls())
+		{
+			StringBuilder controlText = new StringBuilder(120).append("  control comparison ").
+				append(control.assertionId()).append(": ").append(control.state());
+			if (control.pairs() == 0)
+				controlText.append(", no pairs");
+			else
+			{
+				controlText.append(", candidate ").append(percent(control.candidateRate())).append(" (").
+					append(control.candidatePasses()).append('/').append(control.pairs()).append("), control ").
+					append(percent(control.controlRate())).append(" (").append(control.controlPasses()).append('/').
+					append(control.pairs()).append(')');
+			}
+			lines.add(controlText.toString());
+		}
+		if (comparison.cellState() != null)
+			lines.add("  cell: " + comparison.cellState() + " at alpha " + decimal(comparison.alpha()));
 		for (CellReport.ErrorBar bar : report.errorBars())
 		{
 			String kind = "two-sided";
@@ -371,14 +399,14 @@ final class ReportSummary
 					input.incumbentSessions() + " sessions)");
 			}
 		}
-		for (AuthorDiagnosis author : report.authors())
+		for (PromptAuthorDiagnosis promptAuthor : report.promptAuthors())
 		{
-			List<String> kinds = author.kinds().stream().
+			List<String> kinds = promptAuthor.kinds().stream().
 				map(kind -> kind.name() + " (" + EnumNames.lowerCase(kind.classification()).replace('_', ' ') + ")").
 				toList();
-			lines.add("Author diagnosis of attempt " + author.number() + " in cell " + author.cell() + ": " +
-				String.join(", ", kinds) + "; evidence " + author.transcript());
-			for (String rejection : author.rejections())
+			lines.add("Prompt author diagnosis of attempt " + promptAuthor.number() + " in cell " +
+				promptAuthor.cell() + ": " + String.join(", ", kinds) + "; evidence " + promptAuthor.transcript());
+			for (String rejection : promptAuthor.rejections())
 				lines.add("  Rejected: " + rejection);
 		}
 		if (!report.removed().isEmpty())

@@ -176,7 +176,7 @@ public record CapabilityRanking(List<String> families, String source)
 	}
 
 	/**
-	 * Describes the ranking for the user and the deriver.
+	 * Describes the ranking for the user and the contract author.
 	 *
 	 * @return a line that lists the families, most capable first, with the source
 	 */

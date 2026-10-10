@@ -1,0 +1,414 @@
+package io.github.cowwoc.cat.common.optimizer.proposal;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
+import io.github.cowwoc.cat.common.optimizer.contract.BuiltInTool;
+import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
+import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerators;
+import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
+import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
+import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.SplittableRandom;
+import java.util.StringJoiner;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+/**
+ * Creates requests for the session that reads a prompt system and proposes its requirements and tests (the
+ * contract author), and validates that session's output.
+ * <p>
+ * The contract author's output follows the proposal schema without the judge fields, the trial profiles and the
+ * committed test cases that CAT owns, plus the contract author's additional findings: the prompt files whose loading no
+ * harness event reports, the user's profile restriction, the conditions that make certification unavailable,
+ * and the groups of requirements that no reply can satisfy together.
+ * CAT adds its judge fields and computes the trial profiles before validating the proposal. It rejects output that
+ * supplies a field that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness does
+ * not report, or omits a citation for a recorded regression scenario of a prompt source.
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ */
+public final class ContractAuthorProtocol
+{
+	private static final Duration TIME_LIMIT = Duration.ofMinutes(30);
+	private static final String PROMPT_RESOURCE = "/optimizer/proposal/contract-author.md";
+	/**
+	 * The final turn, which asks for the proposal alone so that no narration of the inspection shares the final
+	 * response.
+	 */
+	private static final String OUTPUT_RESOURCE = "/optimizer/proposal/contract-author-output.md";
+	private static final String FINDINGS_RESOURCE = "/optimizer/proposal/contract-author-findings.schema.json";
+	/**
+	 * The value of the revision placeholders when there is nothing to revise.
+	 */
+	private static final String NONE = "none";
+	private static final String NOT_ONE_OBJECT = "$: the final response is not exactly one JSON object, either bare " +
+		"or alone inside one Markdown code fence";
+	private final JsonMapper json;
+	private final ProposalSchema schema;
+	private final JudgeTemplate judge;
+	private final JsonResponse responses;
+	private final PromptTemplate prompt;
+	private final String outputSchema;
+	private final String outputTurn;
+	private final RegressionScenarios scenarios;
+	private final boolean reportsExitStatus;
+
+	/**
+	 * Creates the contract author request builder and response validator.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param schema the proposal schema
+	 * @param judge the judge fields that CAT adds to every proposal
+	 * @param scenarios the available recorded scenarios that CAT supplies and checks
+	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
+	 *   check that needs it can be decided
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws UncheckedIOException if a packaged prompt or schema cannot be read
+	 */
+	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
+		RegressionScenarios scenarios, boolean reportsExitStatus)
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(schema, "schema").isNotNull();
+		requireThat(judge, "judge").isNotNull();
+		requireThat(scenarios, "scenarios").isNotNull();
+		this.json = json;
+		this.schema = schema;
+		this.judge = judge;
+		this.scenarios = scenarios;
+		this.reportsExitStatus = reportsExitStatus;
+		this.responses = new JsonResponse(json);
+		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
+		this.outputSchema = outputSchema(json, schema);
+		this.outputTurn = PromptTemplate.readResource(OUTPUT_RESOURCE);
+	}
+
+	/**
+	 * Returns the schema of the contract author's output: the proposal schema without the judge fields, the trial
+	 * profiles and the committed test cases that CAT owns, plus the contract author's findings.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param schema the proposal schema
+	 * @return the schema text
+	 */
+	private static String outputSchema(JsonMapper json, ProposalSchema schema)
+	{
+		ObjectNode root = schema.derivationSchema();
+		ObjectNode judgeSchema = (ObjectNode) root.get("properties").get("judge");
+		((ObjectNode) judgeSchema.get("properties")).remove(JudgeTemplate.OWNED_FIELDS);
+		ArrayNode judgeRequired = json.createArrayNode();
+		for (JsonNode name : judgeSchema.get("required"))
+		{
+			if (!JudgeTemplate.OWNED_FIELDS.contains(name.asString()))
+				judgeRequired.add(name);
+		}
+		judgeSchema.set("required", judgeRequired);
+		judgeSchema.put("description", "The rubric and decision rule of the judge profile. CAT supplies the " +
+			"role profile, prompt and result schema.");
+
+		JsonNode findings = json.readTree(PromptTemplate.readResource(FINDINGS_RESOURCE));
+		((ObjectNode) root.get("properties")).setAll((ObjectNode) findings.get("properties"));
+		((ArrayNode) root.get("required")).addAll((ArrayNode) findings.get("required"));
+		return json.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+	}
+
+	/**
+	 * Returns the request for deriving the first proposal.
+	 *
+	 * @param promptSystem the directory that holds the prompt system, which the session works in so that the harness
+	 *   loads it as it would in production
+	 * @param profiles the harness's profile inventory, which a profile restriction selects from, and its capability
+	 *   ranking
+	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles)
+	{
+		requireThat(promptSystem, "promptSystem").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
+		return request(promptSystem, profiles, NONE, NONE);
+	}
+
+	/**
+	 * Returns the request for regenerating the complete proposal from the user's feedback.
+	 *
+	 * @param promptSystem the directory that holds the prompt system
+	 * @param profiles the harness's profile inventory, which a profile restriction selects from, and its capability
+	 *   ranking
+	 * @param previous the proposal that the user gave feedback on
+	 * @param feedback the user's feedback
+	 * @param pilots the latest guard pilot of each prompt test of {@code previous} that has one, by prompt test; the
+	 *   request shows their results after the previous proposal
+	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code feedback} is blank
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, DerivedProposal previous,
+		String feedback, Map<String, PilotResult> pilots)
+	{
+		requireThat(promptSystem, "promptSystem").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
+		requireThat(previous, "previous").isNotNull();
+		requireThat(feedback, "feedback").isNotBlank();
+		requireThat(pilots, "pilots").isNotNull();
+		return request(promptSystem, profiles, previous.derivation() + "\n\nGuard pilot results of the previous " +
+			"proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback);
+	}
+
+	/**
+	 * Returns a contract author session request.
+	 *
+	 * @param promptSystem the directory that holds the prompt system
+	 * @param evidence the harness's profile inventory and its capability ranking
+	 * @param previous the previous proposal, or {@code none}
+	 * @param feedback the user's feedback, or {@code none}
+	 * @return the request
+	 */
+	private SessionRequest request(Path promptSystem, ProfileEvidence evidence, String previous, String feedback)
+	{
+		ProfileCatalog inventory = evidence.inventory();
+		StringJoiner profiles = new StringJoiner("\n");
+		profiles.add("Source: " + inventory.source());
+		for (TrialProfile profile : inventory.profiles())
+		{
+			if (profile.effort().isEmpty())
+				profiles.add("- model `" + profile.model() + "`, no effort dimension");
+			else
+				profiles.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
+		}
+		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
+			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
+			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll()));
+		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
+			outputTurn), List.of(), TIME_LIMIT, judge.role());
+	}
+
+	/**
+	 * Validates a contract author session's output and computes its trial profiles. A capability ranking in the output,
+	 * which the user's feedback supplies, replaces the shipped one; the profiles of a described certification scope in
+	 * the output become the contract's described profiles. References to the session's project directory in the
+	 * output's text name the user's project in both the proposal and its saved derivation.
+	 *
+	 * @param result the contract author session's result
+	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
+	 *   contract author ran
+	 * @param salt the salt that CAT drew for the proposal, which splits each test's outcome-changing combinations into
+	 *   the development part and the held-out part, and from which the seeds of the generator calls derive, so that
+	 *   reading the same output again gives the same contract
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
+	 *   Markdown code fence, or the object violates the contract author's output schema, supplies a judge field or the
+	 *   trial profiles that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness
+	 *   does not report, restricts the
+	 *   profiles to a set that the inventory cannot satisfy, describes a certification profile that matches no
+	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of a prompt source, or breaks
+	 *   a rule of the contract model
+	 */
+	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles, long salt)
+		throws InvalidProposalException
+	{
+		requireThat(result, "result").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
+		Optional<ObjectNode> extracted = responses.parseFinalResponse(result);
+		if (extracted.isEmpty())
+			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
+		ObjectNode output = extracted.get();
+		rewriteProjectPaths(output, result.effects().toAbsolutePath().normalize().toString(),
+			scenarios.project().toString());
+		String derivation = json.writerWithDefaultPrettyPrinter().writeValueAsString(output);
+
+		List<String> problems = new ArrayList<>();
+		Findings findings = new Findings(problems);
+		JsonNode scopeNode = output.remove(Findings.SCOPE_CONDITIONS);
+		JsonNode conflictsNode = output.remove(Findings.CONFLICTS);
+		List<Conflict> conflicts = findings.conflicts(conflictsNode);
+		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(Findings.DERIVED_SOURCES));
+		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
+		List<TrialProfile> restriction = findings.profileRestriction(
+			output.remove(Findings.PROFILE_RESTRICTION));
+		List<TrialProfile> described = findings.certificationProfiles(
+			output.remove(Findings.CERTIFICATION_PROFILES));
+		CapabilityRanking ranking = findings.capabilityRanking(output.remove(Findings.CAPABILITY_RANKING)).
+			orElse(profiles.ranking());
+		if (output.remove(ProposalSchema.TRIAL_PROFILES) != null)
+		{
+			problems.add("$." + ProposalSchema.TRIAL_PROFILES +
+				": CAT computes the trial profiles, so the contract author " + "must leave them out");
+		}
+		if (output.get("judge") instanceof ObjectNode judgeNode)
+		{
+			for (String field : JudgeTemplate.OWNED_FIELDS)
+			{
+				if (judgeNode.has(field))
+					problems.add("$.judge." + field +
+					": CAT supplies this field, so the contract author must leave it out");
+			}
+			judgeNode.remove(JudgeTemplate.OWNED_FIELDS);
+			judge.complete(judgeNode);
+		}
+		Contract contract = null;
+		try
+		{
+			contract = schema.parse(json.writeValueAsString(output), (requirements, tests) ->
+				TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
+					restriction, described, requirements, tests), salt, new SplittableRandom(salt),
+				committedTestCases(output));
+			problems.addAll(unreportedExitStatuses(contract));
+			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
+			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
+			problems.addAll(scenarios.missingCitations(contract, derivedSources));
+		}
+		catch (InvalidProposalException e)
+		{
+			problems.addAll(e.problems());
+		}
+		if (!problems.isEmpty())
+			throw new InvalidProposalException(problems);
+		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, result.promptSources(),
+			derivation, citedScenarios(contract));
+	}
+
+	/**
+	 * Returns the test cases that earlier campaigns committed for each prompt test of the contract author's output: those
+	 * of the recorded scenarios that the test cites. The schema validation that follows rejects a malformed test.
+	 *
+	 * @param output the contract author's output
+	 * @return the committed test cases, by prompt test identifier
+	 */
+	private Map<String, List<TestCase>> committedTestCases(ObjectNode output)
+	{
+		Map<String, List<TestCase>> committed = new HashMap<>();
+		JsonNode tests = output.get("tests");
+		if (tests == null || !tests.isArray())
+			return committed;
+		for (JsonNode test : tests)
+		{
+			JsonNode id = test.get("id");
+			JsonNode citations = test.get("regression_scenarios");
+			if (id == null || !id.isString() || citations == null || !citations.isArray())
+				continue;
+			List<String> cited = new ArrayList<>();
+			for (JsonNode citation : citations)
+			{
+				if (citation.isString())
+					cited.add(citation.asString());
+			}
+			List<TestCase> testCases = scenarios.committedTestCases(cited);
+			if (!testCases.isEmpty())
+				committed.put(id.asString(), testCases);
+		}
+		return committed;
+	}
+
+	/**
+	 * Returns the recorded regression scenarios that a contract's prompt tests cite.
+	 *
+	 * @param contract the contract
+	 * @return the content of each cited scenario, by citation, in contract order
+	 */
+	private Map<String, String> citedScenarios(Contract contract)
+	{
+		Map<String, String> byCitation = new HashMap<>();
+		for (RegressionScenarios.Scenario scenario : scenarios.scenarios())
+			byCitation.put(scenario.citation(), scenario.content());
+		Map<String, String> cited = new LinkedHashMap<>();
+		for (PromptTest test : contract.tests())
+		{
+			for (String citation : test.regressionScenarios())
+			{
+				String content = byCitation.get(citation);
+				if (content != null)
+					cited.put(citation, content);
+			}
+		}
+		return cited;
+	}
+
+	/**
+	 * Replaces staged project references in every string value of the contract author's output. Paths to the session's
+	 * artifacts outside its project directory remain unchanged.
+	 *
+	 * @param node the output value whose text is rewritten in place
+	 * @param staged the absolute root of the session's project copy
+	 * @param project the absolute root of the user's project
+	 */
+	private void rewriteProjectPaths(JsonNode node, String staged, String project)
+	{
+		if (node instanceof ObjectNode object)
+		{
+			for (String name : object.propertyNames())
+			{
+				JsonNode value = object.get(name);
+				if (value.isString())
+					object.put(name, value.asString().replace(staged, project));
+				else
+					rewriteProjectPaths(value, staged, project);
+			}
+		}
+		else if (node instanceof ArrayNode array)
+		{
+			for (int i = 0; i < array.size(); ++i)
+			{
+				JsonNode value = array.get(i);
+				if (value.isString())
+					array.set(i, json.getNodeFactory().stringNode(value.asString().replace(staged, project)));
+				else
+					rewriteProjectPaths(value, staged, project);
+			}
+		}
+	}
+
+	/**
+	 * Returns a problem for each assertion whose built-in tool needs exit statuses when the harness does not report
+	 * them.
+	 *
+	 * @param contract the proposed contract
+	 * @return the problems, empty if the harness reports exit statuses or no check needs them
+	 */
+	private List<String> unreportedExitStatuses(Contract contract)
+	{
+		List<String> problems = new ArrayList<>();
+		if (reportsExitStatus)
+			return problems;
+		for (PromptTest test : contract.tests())
+		{
+			for (MappedAssertion mapped : test.assertions())
+			{
+				Assertion assertion = mapped.assertion();
+				if (assertion.builtInTool().map(BuiltInTool::needsExitStatus).orElse(false))
+				{
+					problems.add("test '" + test.id() + "', assertion '" + assertion.id() + "': this harness does " +
+						"not report the exit status of commands, so `tool: " + assertion.tool() + "` cannot be decided. Use " +
+						"another built-in tool or let the judge decide the assertion.");
+				}
+			}
+		}
+		return problems;
+	}
+}

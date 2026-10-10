@@ -20,9 +20,9 @@ public enum SessionRole
 	/**
 	 * Edits a copy of the working candidate in response to failure evidence.
 	 */
-	AUTHOR,
+	PROMPT_AUTHOR,
 	/**
 	 * Inspects the prompt system and proposes a contract.
 	 */
-	DERIVER
+	CONTRACT_AUTHOR
 }

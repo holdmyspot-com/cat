@@ -148,7 +148,8 @@ final class AppServerEvidence
 	void readTool(JsonNode params, String rootThread, ToolCall call)
 	{
 		JsonNode item = params.path("item");
-		String input = switch (item.path("type").asString(""))
+		String type = item.path("type").asString("");
+		String input = switch (type)
 		{
 			case "commandExecution" -> renderValue(item.path("command"));
 			case "dynamicToolCall", "mcpToolCall" -> renderValue(item.path("arguments"));
@@ -156,13 +157,13 @@ final class AppServerEvidence
 			default -> selectFields(item, false);
 		};
 		String output;
-		if (item.path("type").asString("").equals("commandExecution"))
+		if (type.equals("commandExecution"))
 			output = renderValue(item.path("aggregatedOutput"));
 		else
 			output = selectFields(item, true);
 		entries.put(createKey(params, "item", item.path("id").asString("")),
 			new Tool(resolveTurn(params, rootThread), resolveActor(params, rootThread), call.tool(), input,
-				call.exitStatus(), output));
+				type.equals("commandExecution"), call.exitStatus(), output));
 	}
 
 	/**

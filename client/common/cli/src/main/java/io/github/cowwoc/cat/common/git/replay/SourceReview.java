@@ -13,7 +13,7 @@ import java.util.List;
  * @param counterfactual why omitting the source does not leave an earlier output incomplete
  * @param evidence the reviewed predecessor, consumer, and destination evidence
  */
-record SourceReview(String source, String disposition, List<String> destinations, List<UnitPlacement> placements,
+public record SourceReview(String source, String disposition, List<String> destinations, List<UnitPlacement> placements,
 	String counterfactual, String evidence)
 {
 }

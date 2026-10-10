@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
-import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
@@ -15,10 +15,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorAttempt;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.AttemptResult;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
@@ -36,14 +36,16 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
-import io.github.cowwoc.cat.common.optimizer.campaign.InstanceOutcomes;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestCaseOutcomes;
 import io.github.cowwoc.cat.common.optimizer.campaign.Predecessor;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
@@ -56,10 +58,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.RegressionInstance;
+import io.github.cowwoc.cat.common.optimizer.campaign.RegressionTestCase;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
@@ -70,17 +73,17 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
-import io.github.cowwoc.cat.common.optimizer.campaign.TriedCombination;
+import io.github.cowwoc.cat.common.optimizer.campaign.TriedTestCase;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationChoice;
-import io.github.cowwoc.cat.common.optimizer.contract.VariationValue;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TestValueJson;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -105,11 +108,13 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -138,9 +143,9 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 25;
+	private static final int FORMAT_VERSION = 36;
 	private static final String TOKEN_USAGE = "token_usage";
-	private static final String FAILED_REQUIREMENTS = "failed_requirements";
+	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
 	private final JsonMapper json;
@@ -177,7 +182,7 @@ final class CampaignJson
 		root.set("identity", writeIdentity(campaign.identity()));
 		root.set("incumbent", writeCandidate(campaign.incumbent()));
 		root.put("candidates", campaign.candidates());
-		root.put("author_attempts", campaign.authorAttempts());
+		root.put("prompt_author_attempts", campaign.promptAuthorAttempts());
 		root.set("development", writeDevelopment(campaign.development()));
 		root.set("optimization", writeOptimization(campaign.optimization()));
 		IncumbentBaseline baseline = campaign.baseline();
@@ -288,7 +293,7 @@ final class CampaignJson
 			ceiling = integer(root, "ceiling");
 		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
-			integer(root, "candidates"), integer(root, "author_attempts"),
+			integer(root, "candidates"), integer(root, "prompt_author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
@@ -297,7 +302,7 @@ final class CampaignJson
 	}
 
 	/**
-	 * Writes retained author diagnoses and removed hunks.
+	 * Writes retained prompt author diagnoses and removed hunks.
 	 *
 	 * @param evidence the durable descriptive evidence
 	 * @return its document
@@ -313,26 +318,26 @@ final class CampaignJson
 				usage.set(EnumNames.lowerCase(role), writeUsage(sessions));
 		}
 
-		ArrayNode authors = node.putArray("authors");
-		for (AuthorDiagnosis diagnosis : evidence.authors())
+		ArrayNode promptAuthors = node.putArray("prompt_authors");
+		for (PromptAuthorDiagnosis diagnosis : evidence.promptAuthors())
 		{
-			ObjectNode author = authors.addObject();
-			author.put("number", diagnosis.number());
-			author.put("lineage", diagnosis.lineage());
-			author.put("cell", diagnosis.cell());
-			author.put("snapshot", diagnosis.snapshot().hex());
-			author.put("transcript", diagnosis.transcript().toString());
-			author.put("effects", diagnosis.effects().toString());
-			ArrayNode kinds = author.putArray("kinds");
-			for (AuthorKind kind : diagnosis.kinds())
+			ObjectNode promptAuthor = promptAuthors.addObject();
+			promptAuthor.put("number", diagnosis.number());
+			promptAuthor.put("lineage", diagnosis.lineage());
+			promptAuthor.put("cell", diagnosis.cell());
+			promptAuthor.put("snapshot", diagnosis.snapshot().hex());
+			promptAuthor.put("transcript", diagnosis.transcript().toString());
+			promptAuthor.put("effects", diagnosis.effects().toString());
+			ArrayNode kinds = promptAuthor.putArray("kinds");
+			for (PromptAuthorKind kind : diagnosis.kinds())
 			{
 				ObjectNode element = kinds.addObject();
 				element.put("name", kind.name());
-				writeStrings(element.putArray("instances"), kind.instances());
+				writeStrings(element.putArray("failures"), kind.failures());
 				element.put("classification", EnumNames.lowerCase(kind.classification()));
 				writeStrings(element.putArray("hunks"), kind.hunks());
 			}
-			ArrayNode hunks = author.putArray("hunks");
+			ArrayNode hunks = promptAuthor.putArray("hunks");
 			for (HunkEvidence hunk : diagnosis.hunks())
 			{
 				ObjectNode element = hunks.addObject();
@@ -342,11 +347,11 @@ final class CampaignJson
 				element.put("before_end", hunk.beforeEnd());
 				element.put("after_start", hunk.afterStart());
 				element.put("after_end", hunk.afterEnd());
-				writeStrings(element.putArray("instances"), hunk.instances());
+				writeStrings(element.putArray("failures"), hunk.failures());
 				element.put("analogous", hunk.analogous());
 				element.put("dissimilar", hunk.dissimilar());
 			}
-			ArrayNode rejections = author.putArray("rejections");
+			ArrayNode rejections = promptAuthor.putArray("rejections");
 			for (String reason : diagnosis.rejections())
 				rejections.add(reason);
 		}
@@ -399,34 +404,35 @@ final class CampaignJson
 	}
 
 	/**
-	 * Reads retained author diagnoses and removed hunks.
+	 * Reads retained prompt author diagnoses and removed hunks.
 	 *
 	 * @param node the document
 	 * @return the durable evidence
 	 */
 	private static OptimizationEvidence readOptimization(JsonNode node)
 	{
-		List<AuthorDiagnosis> authors = new ArrayList<>();
-		for (JsonNode author : elements(node, "authors"))
+		List<PromptAuthorDiagnosis> promptAuthors = new ArrayList<>();
+		for (JsonNode promptAuthor : elements(node, "prompt_authors"))
 		{
-			List<AuthorKind> kinds = new ArrayList<>();
-			for (JsonNode kind : elements(author, "kinds"))
+			List<PromptAuthorKind> kinds = new ArrayList<>();
+			for (JsonNode kind : elements(promptAuthor, "kinds"))
 			{
-				kinds.add(new AuthorKind(text(kind, "name"), readStrings(kind, "instances"),
+				kinds.add(new PromptAuthorKind(text(kind, "name"), readStrings(kind, "failures"),
 					constantValue(field(kind, "classification"), "classification", FailureKind.class),
 					readStrings(kind, "hunks")));
 			}
 			List<HunkEvidence> hunks = new ArrayList<>();
-			for (JsonNode hunk : elements(author, "hunks"))
+			for (JsonNode hunk : elements(promptAuthor, "hunks"))
 			{
 				hunks.add(new HunkEvidence(text(hunk, "id"), pathValue(field(hunk, "path"), "path"),
 					integer(hunk, "before_start"), integer(hunk, "before_end"), integer(hunk, "after_start"),
-					integer(hunk, "after_end"), readStrings(hunk, "instances"), text(hunk, "analogous"),
+					integer(hunk, "after_end"), readStrings(hunk, "failures"), text(hunk, "analogous"),
 					text(hunk, "dissimilar")));
 			}
-			authors.add(new AuthorDiagnosis(integer(author, "number"), integer(author, "lineage"), text(author, "cell"),
-				sha256(author, "snapshot"), kinds, hunks, readStrings(author, "rejections"),
-				Path.of(text(author, "transcript")), Path.of(text(author, "effects"))));
+			promptAuthors.add(new PromptAuthorDiagnosis(integer(promptAuthor, "number"), integer(promptAuthor,
+				"lineage"), text(promptAuthor, "cell"), sha256(promptAuthor, "snapshot"), kinds, hunks,
+				readStrings(promptAuthor, "rejections"), Path.of(text(promptAuthor, "transcript")),
+				Path.of(text(promptAuthor, "effects"))));
 		}
 		Map<Sha256, PromptSize> sizes = new HashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "prompt_sizes").properties())
@@ -462,7 +468,7 @@ final class CampaignJson
 				readPromotionRuns(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
 				bool(attempt, "winner")));
 		}
-		return new OptimizationEvidence(authors, readStrings(node, "removed"), sizes, inputs, results,
+		return new OptimizationEvidence(promptAuthors, readStrings(node, "removed"), sizes, inputs, results,
 			readRoleUsage(node));
 	}
 
@@ -523,29 +529,29 @@ final class CampaignJson
 	}
 
 	/**
-	 * Writes the requirements that a trial failed, each with its behavior.
+	 * Writes the assertions that a trial failed, each with its behavior.
 	 *
 	 * @param node the containing object
-	 * @param failures the failed requirements
+	 * @param failures the failed assertions
 	 */
-	private static void putFailedRequirements(ObjectNode node, List<FailedRequirement> failures)
+	private static void putFailedAssertions(ObjectNode node, List<FailedAssertion> failures)
 	{
-		ArrayNode array = node.putArray(FAILED_REQUIREMENTS);
-		for (FailedRequirement failure : failures)
-			array.addObject().put("requirement_id", failure.requirementId()).put("behavior", failure.behavior());
+		ArrayNode array = node.putArray(FAILED_ASSERTIONS);
+		for (FailedAssertion failure : failures)
+			array.addObject().put("assertion_id", failure.assertionId()).put("behavior", failure.behavior());
 	}
 
 	/**
-	 * Reads the requirements that a trial failed, each with its behavior.
+	 * Reads the assertions that a trial failed, each with its behavior.
 	 *
 	 * @param node the containing object
-	 * @return the failed requirements
+	 * @return the failed assertions
 	 */
-	private static List<FailedRequirement> readFailedRequirements(JsonNode node)
+	private static List<FailedAssertion> readFailedAssertions(JsonNode node)
 	{
-		List<FailedRequirement> failures = new ArrayList<>();
-		for (JsonNode element : elements(node, FAILED_REQUIREMENTS))
-			failures.add(new FailedRequirement(text(element, "requirement_id"), text(element, "behavior")));
+		List<FailedAssertion> failures = new ArrayList<>();
+		for (JsonNode element : elements(node, FAILED_ASSERTIONS))
+			failures.add(new FailedAssertion(text(element, "assertion_id"), text(element, "behavior")));
 		return List.copyOf(failures);
 	}
 
@@ -575,7 +581,7 @@ final class CampaignJson
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
 		root.set("key", writeKey(record.key()));
-		root.set("instance", writeInstance(record.instance()));
+		root.set("test_case", writeTestCase(record.testCase()));
 		root.set("identity", writeIdentity(record.identity()));
 		root.set("allocation", writeAllocation(record.allocation()));
 		root.set("infrastructure_attempts", writeInfrastructureAttempts(record.infrastructureAttempts()));
@@ -590,7 +596,7 @@ final class CampaignJson
 			ObjectNode node = root.putObject("outcome");
 			node.put("verdict", EnumNames.lowerCase(outcome.verdict()));
 			node.put("rationale", outcome.rationale());
-			putFailedRequirements(node, outcome.failedRequirements());
+			putFailedAssertions(node, outcome.failedAssertions());
 			node.set("triage", writeTriage(outcome.triage()));
 			node.set("observed", writeIdentity(outcome.observed()));
 			node.put("input_tokens", outcome.inputTokens());
@@ -618,14 +624,14 @@ final class CampaignJson
 		if (outcomeNode != null)
 		{
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
-				text(outcomeNode, "rationale"), readFailedRequirements(outcomeNode), readTriage(outcomeNode),
+				text(outcomeNode, "rationale"), readFailedAssertions(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
 				readResponses(outcomeNode), readFiles(outcomeNode));
 		}
 		List<TrialSession> sessions = new ArrayList<>();
 		for (JsonNode session : elements(root, "sessions"))
 			sessions.add(readSession(session));
-		return new TrialRecord(key, readInstance(field(root, "instance")), readIdentity(field(root, "identity")),
+		return new TrialRecord(key, readTestCase(field(root, "test_case")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome, sessions);
 	}
 
@@ -895,10 +901,10 @@ final class CampaignJson
 		node.set("development_stream", writeStream(lineage.development()));
 		node.set("baseline_stream", writeStream(lineage.baseline()));
 		ArrayNode regressionSet = node.putArray("regression_set");
-		for (RegressionInstance regression : lineage.regressionSet())
+		for (RegressionTestCase regression : lineage.regressionSet())
 		{
 			ObjectNode element = regressionSet.addObject();
-			element.set("instance", writeInstance(regression.instance()));
+			element.set("test_case", writeTestCase(regression.testCase()));
 			putConstant(element, "working_verdict", regression.working());
 			element.put("settled", regression.settled());
 		}
@@ -908,46 +914,62 @@ final class CampaignJson
 			if (lineage.unavailable().contains(outcome))
 				unavailable.add(EnumNames.lowerCase(outcome));
 		}
-		ArrayNode added = node.putArray("added_values");
-		for (AddedCombination combination : lineage.added().combinations())
-			added.add(writeCombination(combination));
+		ArrayNode added = node.putArray("added_test_cases");
+		for (AddedTestCase testCase : lineage.added().testCases())
+			added.add(writeAddedTestCase(testCase));
 		return node;
 	}
 
 	/**
-	 * Converts a key-value combination beyond the confirmed values to a document.
+	 * Converts a development test case that a reproduction added to a document.
 	 *
-	 * @param combination the combination
+	 * @param testCase the added test case
 	 * @return the document
 	 */
-	private ObjectNode writeCombination(AddedCombination combination)
+	private ObjectNode writeAddedTestCase(AddedTestCase testCase)
 	{
 		ObjectNode element = json.createObjectNode();
-		element.put("attempt", combination.attempt());
-		element.put("test_id", combination.testId());
-		ArrayNode values = element.putArray("values");
-		for (VariationValue value : combination.values())
-		{
-			values.addObject().
-				put("label", value.label()).
-				put("text", value.text()).
-				put("probability", value.probability());
-		}
+		element.put("attempt", testCase.attempt());
+		element.put("test_id", testCase.testId());
+		element.set("test_case", writeValues(testCase.testCase()));
 		return element;
 	}
 
 	/**
-	 * Converts a document to a key-value combination beyond the confirmed values.
+	 * Converts a document to a development test case that a reproduction added.
 	 *
 	 * @param element the document
-	 * @return the combination
+	 * @return the added test case
 	 */
-	private static AddedCombination readCombination(JsonNode element)
+	private static AddedTestCase readAddedTestCase(JsonNode element)
 	{
-		List<VariationValue> values = new ArrayList<>();
-		for (JsonNode value : elements(element, "values"))
-			values.add(new VariationValue(text(value, "label"), text(value, "text"), floating(value, "probability")));
-		return new AddedCombination(integer(element, "attempt"), text(element, "test_id"), values);
+		return new AddedTestCase(integer(element, "attempt"), text(element, "test_id"),
+			readValues(field(element, "test_case")));
+	}
+
+	/**
+	 * Converts a test case's values and expected outcome to a document.
+	 *
+	 * @param testCase the test case
+	 * @return the document
+	 */
+	private ObjectNode writeValues(TestCase testCase)
+	{
+		ObjectNode node = json.createObjectNode();
+		TestValueJson.write(testCase.values(), node.putArray("values"));
+		node.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+		return node;
+	}
+
+	/**
+	 * Converts a document to a test case's values and expected outcome.
+	 *
+	 * @param node the document
+	 * @return the test case
+	 */
+	private static TestCase readValues(JsonNode node)
+	{
+		return new TestCase(TestValueJson.read(field(node, "values")), text(node, TestCase.EXPECTED_OUTCOME));
 	}
 
 	/**
@@ -964,7 +986,7 @@ final class CampaignJson
 			ObjectNode node = array.addObject();
 			node.put("cell", group.cellId());
 			node.put("test_id", group.testId());
-			node.put("requirement_id", group.failed().requirementId());
+			node.put("assertion_id", group.failed().assertionId());
 			node.put("behavior", group.failed().behavior());
 			node.put("formal_failures", group.formalFailures());
 			node.put("round_limit", group.roundLimit());
@@ -973,11 +995,11 @@ final class CampaignJson
 			{
 				ObjectNode roundNode = rounds.addObject();
 				roundNode.put("cell", round.cellId());
-				ArrayNode combinations = roundNode.putArray("combinations");
-				for (TriedCombination tried : round.combinations())
+				ArrayNode testCases = roundNode.putArray("test_cases");
+				for (TriedTestCase tried : round.testCases())
 				{
-					ObjectNode triedNode = combinations.addObject();
-					triedNode.set("combination", writeCombination(tried.combination()));
+					ObjectNode triedNode = testCases.addObject();
+					triedNode.set("test_case", writeAddedTestCase(tried.testCase()));
 					triedNode.put("trials", tried.trials());
 					triedNode.put("failures", tried.failures());
 				}
@@ -1001,16 +1023,16 @@ final class CampaignJson
 			List<ReproductionRound> rounds = new ArrayList<>();
 			for (JsonNode roundNode : elements(element, "rounds"))
 			{
-				List<TriedCombination> combinations = new ArrayList<>();
-				for (JsonNode tried : elements(roundNode, "combinations"))
+				List<TriedTestCase> testCases = new ArrayList<>();
+				for (JsonNode tried : elements(roundNode, "test_cases"))
 				{
-					combinations.add(new TriedCombination(readCombination(field(tried, "combination")),
+					testCases.add(new TriedTestCase(readAddedTestCase(field(tried, "test_case")),
 						integer(tried, "trials"), integer(tried, "failures")));
 				}
-				rounds.add(new ReproductionRound(text(roundNode, "cell"), combinations));
+				rounds.add(new ReproductionRound(text(roundNode, "cell"), testCases));
 			}
 			groups.add(new FailureGroup(text(element, "cell"), text(element, "test_id"),
-				new FailedRequirement(text(element, "requirement_id"), text(element, "behavior")),
+				new FailedAssertion(text(element, "assertion_id"), text(element, "behavior")),
 				integer(element, "formal_failures"), integer(element, "round_limit"), rounds,
 				constant(element, "status", FailureGroup.Status.class)));
 		}
@@ -1035,21 +1057,21 @@ final class CampaignJson
 		{
 			throw new IllegalArgumentException("contract: " + e.getMessage(), e);
 		}
-		List<RegressionInstance> regressionSet = new ArrayList<>();
+		List<RegressionTestCase> regressionSet = new ArrayList<>();
 		for (JsonNode element : elements(node, "regression_set"))
 		{
-			regressionSet.add(new RegressionInstance(readInstance(field(element, "instance")),
+			regressionSet.add(new RegressionTestCase(readTestCase(field(element, "test_case")),
 				nullableConstant(element, "working_verdict", Verdict.class), bool(element, "settled")));
 		}
 		Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
 		for (JsonNode element : elements(node, "unavailable"))
 			unavailable.add(constantValue(element, "unavailable", Outcome.class));
-		List<AddedCombination> added = new ArrayList<>();
-		for (JsonNode element : elements(node, "added_values"))
-			added.add(readCombination(element));
+		List<AddedTestCase> added = new ArrayList<>();
+		for (JsonNode element : elements(node, "added_test_cases"))
+			added.add(readAddedTestCase(element));
 		return new Lineage(integer(node, "number"), contract, sha256(node, "contract_hash"),
 			readStream(field(node, "development_stream")), readStream(field(node, "baseline_stream")), regressionSet,
-			unavailable, new AddedValues(added));
+			unavailable, new AddedTestCases(added));
 	}
 
 	/**
@@ -1071,7 +1093,7 @@ final class CampaignJson
 		else
 		{
 			ObjectNode element = node.putObject("diagnosis");
-			element.set("pending", writeInstances(diagnosis.pending()));
+			element.set("pending", writeTestCases(diagnosis.pending()));
 			element.put("passed_reruns", diagnosis.passedReruns());
 			putKey(element, "rerun", diagnosis.rerun());
 			element.put("reproduced", diagnosis.reproduced());
@@ -1081,19 +1103,19 @@ final class CampaignJson
 			node.putNull("round");
 		else
 			node.set("round", writeRound(round));
-		AuthorAttempt author = development.author();
-		if (author == null)
-			node.putNull("author");
+		PromptAuthorAttempt promptAuthor = development.promptAuthor();
+		if (promptAuthor == null)
+			node.putNull("prompt_author");
 		else
-			node.set("author", writeAuthorAttempt(author));
+			node.set("prompt_author", writePromptAuthorAttempt(promptAuthor));
 		ObjectNode reviewPoints = node.putObject("review_points");
 		for (Entry<String, Integer> entry : new TreeMap<>(development.reviewPoints()).entrySet())
 			reviewPoints.put(entry.getKey(), entry.getValue());
-		ArrayNode outcomes = node.putArray("instance_outcomes");
-		for (InstanceOutcomes outcome : development.instanceOutcomes())
+		ArrayNode outcomes = node.putArray("test_case_outcomes");
+		for (TestCaseOutcomes outcome : development.testCaseOutcomes())
 		{
 			ObjectNode element = outcomes.addObject();
-			element.set("instance", writeInstance(outcome.instance()));
+			element.set("test_case", writeTestCase(outcome.testCase()));
 			element.put("passes", outcome.passes());
 			element.put("outcomes", outcome.outcomes());
 		}
@@ -1107,12 +1129,12 @@ final class CampaignJson
 			element.set("round", writeRound(predecessor.round()));
 			element.put("cell", predecessor.cell());
 			ArrayNode regressions = element.putArray("regression_set");
-			for (RegressionInstance regression : predecessor.regressionSet())
+			for (RegressionTestCase regression : predecessor.regressionSet())
 			{
-				ObjectNode instance = regressions.addObject();
-				instance.set("instance", writeInstance(regression.instance()));
-				putConstant(instance, "working_verdict", regression.working());
-				instance.put("settled", regression.settled());
+				ObjectNode testCase = regressions.addObject();
+				testCase.set("test_case", writeTestCase(regression.testCase()));
+				putConstant(testCase, "working_verdict", regression.working());
+				testCase.put("settled", regression.settled());
 			}
 		}
 		ArrayNode reverts = node.putArray("reverts");
@@ -1129,7 +1151,7 @@ final class CampaignJson
 	}
 
 	/**
-	 * Writes the frozen author policy and all reserved or validated attempts of a round.
+	 * Writes the frozen prompt author policy and all reserved or validated attempts of a round.
 	 *
 	 * @param round the round
 	 * @return its document
@@ -1153,18 +1175,18 @@ final class CampaignJson
 			reservation.put("cell", entry.getValue());
 		}
 		ArrayNode contenders = node.putArray("contenders");
-		for (AuthorAttempt attempt : round.validationAttempts())
-			contenders.add(writeAuthorAttempt(attempt));
+		for (PromptAuthorAttempt attempt : round.validationAttempts())
+			contenders.add(writePromptAuthorAttempt(attempt));
 		return node;
 	}
 
 	/**
-	 * Writes one author attempt and all promotion or reduction progress.
+	 * Writes one prompt author attempt and all promotion or reduction progress.
 	 *
 	 * @param attempt the attempt
 	 * @return its document
 	 */
-	private ObjectNode writeAuthorAttempt(AuthorAttempt attempt)
+	private ObjectNode writePromptAuthorAttempt(PromptAuthorAttempt attempt)
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("number", attempt.number());
@@ -1188,7 +1210,7 @@ final class CampaignJson
 		{
 			ObjectNode node = array.addObject();
 			node.put("role", EnumNames.lowerCase(run.role()));
-			node.set("instance", writeInstance(run.instance()));
+			node.set("test_case", writeTestCase(run.testCase()));
 			putKey(node, "trial", run.trial());
 			putConstant(node, "verdict", run.verdict());
 		}
@@ -1196,14 +1218,14 @@ final class CampaignJson
 	}
 
 	/**
-	 * Reads an author attempt without reconstructing its evidence.
+	 * Reads a prompt author attempt without reconstructing its evidence.
 	 *
 	 * @param node its document
 	 * @return the attempt
 	 */
-	private static AuthorAttempt readAuthorAttempt(JsonNode node)
+	private static PromptAuthorAttempt readPromptAuthorAttempt(JsonNode node)
 	{
-		return new AuthorAttempt(integer(node, "number"), text(node, "cell"), sha256(node, "snapshot"),
+		return new PromptAuthorAttempt(integer(node, "number"), text(node, "cell"), sha256(node, "snapshot"),
 			readPromotionRuns(node, "runs"), readMinimality(field(node, "minimality")));
 	}
 
@@ -1220,7 +1242,7 @@ final class CampaignJson
 		for (JsonNode run : elements(node, name))
 		{
 			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
-				readInstance(field(run, "instance")), nullableKey(run, "trial"),
+				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
 				nullableConstant(run, "verdict", Verdict.class)));
 		}
 		return runs;
@@ -1263,7 +1285,7 @@ final class CampaignJson
 		{
 			ObjectNode element = runs.addObject();
 			element.put("role", EnumNames.lowerCase(run.role()));
-			element.set("instance", writeInstance(run.instance()));
+			element.set("test_case", writeTestCase(run.testCase()));
 			putKey(element, "trial", run.trial());
 			putConstant(element, "verdict", run.verdict());
 		}
@@ -1309,7 +1331,7 @@ final class CampaignJson
 		for (JsonNode run : elements(node, "accepted_runs"))
 		{
 			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
-				readInstance(field(run, "instance")), nullableKey(run, "trial"),
+				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
 				nullableConstant(run, "verdict", Verdict.class)));
 		}
 		List<String> testing = null;
@@ -1331,35 +1353,35 @@ final class CampaignJson
 		JsonNode diagnosisNode = nullable(node, "diagnosis");
 		if (diagnosisNode != null)
 		{
-			diagnosis = new Diagnosis(readInstances(diagnosisNode, "pending"), integer(diagnosisNode, "passed_reruns"),
+			diagnosis = new Diagnosis(readTestCases(diagnosisNode, "pending"), integer(diagnosisNode, "passed_reruns"),
 				nullableKey(diagnosisNode, "rerun"), bool(diagnosisNode, "reproduced"));
 		}
 		Round round = null;
 		JsonNode roundNode = nullable(node, "round");
 		if (roundNode != null)
 			round = readRound(roundNode);
-		AuthorAttempt author = null;
-		JsonNode authorNode = nullable(node, "author");
-		if (authorNode != null)
-			author = readAuthorAttempt(authorNode);
+		PromptAuthorAttempt promptAuthor = null;
+		JsonNode promptAuthorNode = nullable(node, "prompt_author");
+		if (promptAuthorNode != null)
+			promptAuthor = readPromptAuthorAttempt(promptAuthorNode);
 		Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : object(node, "review_points").properties())
 			reviewPoints.put(entry.getKey(), intValue(entry.getValue(), "review_points." + entry.getKey()));
 		List<Failure> failures = readFailures(node, "failures");
-		List<InstanceOutcomes> outcomes = new ArrayList<>();
-		for (JsonNode outcome : elements(node, "instance_outcomes"))
+		List<TestCaseOutcomes> outcomes = new ArrayList<>();
+		for (JsonNode outcome : elements(node, "test_case_outcomes"))
 		{
-			outcomes.add(new InstanceOutcomes(readInstance(field(outcome, "instance")), integer(outcome, "passes"),
+			outcomes.add(new TestCaseOutcomes(readTestCase(field(outcome, "test_case")), integer(outcome, "passes"),
 				integer(outcome, "outcomes")));
 		}
 		Predecessor predecessor = null;
 		JsonNode predecessorNode = nullable(node, "predecessor");
 		if (predecessorNode != null)
 		{
-			List<RegressionInstance> regressions = new ArrayList<>();
+			List<RegressionTestCase> regressions = new ArrayList<>();
 			for (JsonNode regression : elements(predecessorNode, "regression_set"))
 			{
-				regressions.add(new RegressionInstance(readInstance(field(regression, "instance")),
+				regressions.add(new RegressionTestCase(readTestCase(field(regression, "test_case")),
 					nullableConstant(regression, "working_verdict", Verdict.class), bool(regression, "settled")));
 			}
 			predecessor = new Predecessor(readDevelopment(field(predecessorNode, "development")),
@@ -1373,12 +1395,12 @@ final class CampaignJson
 				readDevelopment(field(revert, "development"))));
 		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
-			readCounts(field(node, "counts")), failures, diagnosis, round, author,
+			readCounts(field(node, "counts")), failures, diagnosis, round, promptAuthor,
 			reviewPoints, outcomes, predecessor, reverts);
 	}
 
 	/**
-	 * Reads a round's frozen author policy and durable attempt reservations.
+	 * Reads a round's frozen prompt author policy and durable attempt reservations.
 	 *
 	 * @param node the round document
 	 * @return the round
@@ -1399,9 +1421,9 @@ final class CampaignJson
 			if (reservations.put(number, text(reservation, "cell")) != null)
 				throw new IllegalArgumentException("round: duplicate reservation " + number);
 		}
-		List<AuthorAttempt> contenders = new ArrayList<>();
+		List<PromptAuthorAttempt> contenders = new ArrayList<>();
 		for (JsonNode contender : elements(node, "contenders"))
-			contenders.add(readAuthorAttempt(contender));
+			contenders.add(readPromptAuthorAttempt(contender));
 		return new Round(attempts, bool(node, "weak"), reservations, contenders);
 	}
 
@@ -1429,7 +1451,9 @@ final class CampaignJson
 		procedureNode.set("boundaries", writeBoundaries(procedure.boundaries()));
 		procedureNode.put("bets", procedure.bets());
 		procedureNode.put("allocation_policy", procedure.allocationPolicy());
+		node.put("control", attempt.control().hex());
 		node.set("counts", writeCounts(attempt.counts()));
+		node.set("pairings", writePairings(attempt.pairings()));
 		node.set("failures", writeFailures(attempt.failures()));
 		node.set("formal_stream", writeStream(attempt.formalStream()));
 		putConstant(node, "outcome", attempt.outcome());
@@ -1455,7 +1479,8 @@ final class CampaignJson
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
-			readCounts(field(node, "counts")), readFailures(node, "failures"),
+			sha256(node, "control"), readCounts(field(node, "counts")), readPairings(field(node, "pairings")),
+			readFailures(node, "failures"),
 			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class),
 			readGroups(node));
 	}
@@ -1470,7 +1495,7 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("level", boundaries.level().threshold().toString());
-		node.put("required_pass_rate", boundaries.requiredPassRate().toPlainString());
+		node.put("minimum_pass_rate", boundaries.minimumPassRate().toPlainString());
 		node.put("cap", boundaries.cap());
 		node.set("minimum_certifying_passes", writeIntegers(boundaries.minimumCertifyingPasses()));
 		node.set("maximum_clearly_below_passes", writeIntegers(boundaries.maximumClearlyBelowPasses()));
@@ -1495,17 +1520,18 @@ final class CampaignJson
 	 */
 	private static DecisionBoundaries readBoundaries(JsonNode node)
 	{
+		BigDecimal minimumPassRate = decimal(node, "minimum_pass_rate");
 		List<ComparisonBoundaries> comparisons = new ArrayList<>();
 		for (JsonNode element : elements(node, "comparisons"))
 		{
 			Comparison comparison = new Comparison(decimal(element, "incumbent_upper"),
-				decimal(element, "incumbent_lower"), level(element, "level"));
+				decimal(element, "incumbent_lower"), level(element, "level"), minimumPassRate);
 			comparisons.add(new ComparisonBoundaries(comparison, readIntegers(element, "minimum_proven_better_passes"),
 				readIntegers(element, "maximum_proven_worse_passes")));
 		}
-		return new DecisionBoundaries(level(node, "level"), decimal(node, "required_pass_rate"), integer(node, "cap"),
-			readIntegers(node, "minimum_certifying_passes"), readIntegers(node, "maximum_clearly_below_passes"),
-			comparisons);
+		return new DecisionBoundaries(level(node, "level"), minimumPassRate,
+			integer(node, "cap"), readIntegers(node, "minimum_certifying_passes"),
+			readIntegers(node, "maximum_clearly_below_passes"), comparisons);
 	}
 
 	/**
@@ -1518,13 +1544,13 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.set("key", writeKey(trial.key()));
-		node.set("instance", writeInstance(trial.instance()));
+		node.set("test_case", writeTestCase(trial.testCase()));
 		node.set("identity", writeIdentity(trial.identity()));
 		node.set("allocation", writeAllocation(trial.allocation()));
 		node.put("state", EnumNames.lowerCase(trial.state()));
 		putConstant(node, "verdict", trial.verdict());
 		node.put("rationale", trial.rationale());
-		putFailedRequirements(node, trial.failedRequirements());
+		putFailedAssertions(node, trial.failedAssertions());
 		node.set("triage", writeTriage(trial.triage()));
 		node.put("infrastructure_failures", trial.infrastructureFailures());
 		node.set("infrastructure_attempts", writeInfrastructureAttempts(trial.infrastructureAttempts()));
@@ -1544,9 +1570,9 @@ final class CampaignJson
 	{
 		Verdict verdict = nullableConstant(node, "verdict", Verdict.class);
 		String rationale = nullableText(node, "rationale");
-		return new LogicalTrial(readKey(field(node, "key")), readInstance(field(node, "instance")),
+		return new LogicalTrial(readKey(field(node, "key")), readTestCase(field(node, "test_case")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
-			constant(node, "state", TrialState.class), verdict, rationale, readFailedRequirements(node),
+			constant(node, "state", TrialState.class), verdict, rationale, readFailedAssertions(node),
 			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
 			readResponses(node), readFiles(node));
@@ -1796,25 +1822,25 @@ final class CampaignJson
 	}
 
 	/**
-	 * Writes ordered author conflicts for a pending decision.
+	 * Writes ordered prompt author conflicts for a pending decision.
 	 *
 	 * @param conflicts the conflicts
 	 * @return their JSON array
 	 */
-	private ArrayNode writeConflicts(List<AuthorConflict> conflicts)
+	private ArrayNode writeConflicts(List<PromptAuthorConflict> conflicts)
 	{
 		ArrayNode array = json.createArrayNode();
-		for (AuthorConflict conflict : conflicts)
+		for (PromptAuthorConflict conflict : conflicts)
 		{
 			ObjectNode node = array.addObject();
-			ArrayNode instances = node.putArray("instances");
-			for (String instance : conflict.instances())
-				instances.add(instance);
+			ArrayNode failures = node.putArray("failures");
+			for (String failure : conflict.failures())
+				failures.add(failure);
 			ArrayNode requirements = node.putArray("requirement_ids");
 			for (String requirement : conflict.requirementIds())
 				requirements.add(requirement);
 			ArrayNode quotations = node.putArray("quotations");
-			for (AuthorConflict.Quotation quotation : conflict.quotations())
+			for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
 			{
 				ObjectNode entry = quotations.addObject();
 				entry.put("path", quotation.path().toString());
@@ -1830,24 +1856,25 @@ final class CampaignJson
 	}
 
 	/**
-	 * Reads ordered author conflicts from a pending-decision document.
+	 * Reads ordered prompt author conflicts from a pending-decision document.
 	 *
 	 * @param node the pending decision
 	 * @return its conflicts
 	 */
-	private static List<AuthorConflict> readConflicts(JsonNode node)
+	private static List<PromptAuthorConflict> readConflicts(JsonNode node)
 	{
-		List<AuthorConflict> conflicts = new ArrayList<>();
+		List<PromptAuthorConflict> conflicts = new ArrayList<>();
 		for (JsonNode element : elements(node, "conflicts"))
 		{
-			List<AuthorConflict.Quotation> quotations = new ArrayList<>();
+			List<PromptAuthorConflict.Quotation> quotations = new ArrayList<>();
 			for (JsonNode quotation : elements(element, "quotations"))
 			{
-				quotations.add(new AuthorConflict.Quotation(pathValue(field(quotation, "path"), "path"),
+				quotations.add(new PromptAuthorConflict.Quotation(pathValue(field(quotation, "path"), "path"),
 					text(quotation, "text")));
 			}
-			conflicts.add(new AuthorConflict(readStrings(element, "instances"), readStrings(element, "requirement_ids"),
-				quotations, readStrings(element, "resolutions"), integer(element, "recommended"), text(element, "reason")));
+			conflicts.add(new PromptAuthorConflict(readStrings(element, "failures"), readStrings(element,
+				"requirement_ids"), quotations, readStrings(element, "resolutions"), integer(element, "recommended"),
+				text(element, "reason")));
 		}
 		return conflicts;
 	}
@@ -1912,91 +1939,76 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts a trial instance to a document.
+	 * Converts a test case to a document.
 	 *
-	 * @param instance the instance
+	 * @param testCase the test case
 	 * @return the document
 	 */
-	private ObjectNode writeInstance(TrialInstance instance)
+	private ObjectNode writeTestCase(DrawnTestCase testCase)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("cell_id", instance.cellId());
-		node.put("category_id", instance.categoryId());
-		node.put("test_id", instance.testId());
-		ArrayNode choices = node.putArray("choices");
-		for (VariationChoice choice : instance.choices())
-		{
-			ObjectNode element = choices.addObject();
-			element.put("dimension", choice.dimension());
-			element.put("label", choice.label());
-			element.put("probability", choice.probability());
-		}
+		node.put("cell_id", testCase.cellId());
+		node.put("test_id", testCase.testId());
+		node.set("test_case", writeValues(testCase.testCase()));
 		ArrayNode turns = node.putArray("turns");
-		for (String turn : instance.turns())
+		for (String turn : testCase.turns())
 			turns.add(turn);
-		node.put("expected_behaviour", instance.expectedBehaviour());
-		node.put("generator", instance.generator());
-		node.put("stream_kind", EnumNames.lowerCase(instance.streamKind()));
-		node.put("stream_position", instance.streamPosition());
-		node.put("targeted", instance.targeted());
+		node.put("expected_behaviour", testCase.expectedBehaviour());
+		node.put("generator", testCase.generator());
+		node.put("stream_kind", EnumNames.lowerCase(testCase.streamKind()));
+		node.put("stream_position", testCase.streamPosition());
+		node.put("targeted", testCase.targeted());
 		return node;
 	}
 
 	/**
-	 * Converts a document to a trial instance.
+	 * Converts a document to a test case.
 	 *
 	 * @param node the document
-	 * @return the instance
+	 * @return the test case
 	 */
-	private static TrialInstance readInstance(JsonNode node)
+	private static DrawnTestCase readTestCase(JsonNode node)
 	{
-		List<VariationChoice> choices = new ArrayList<>();
-		for (JsonNode element : elements(node, "choices"))
-		{
-			choices.add(new VariationChoice(text(element, "dimension"), text(element, "label"),
-				floating(element, "probability")));
-		}
 		List<String> turns = new ArrayList<>();
 		for (JsonNode element : elements(node, "turns"))
 			turns.add(stringValue(element, "turns"));
-		return new TrialInstance(text(node, "cell_id"), text(node, "category_id"), text(node, "test_id"), choices,
-			turns,
-			text(node, "expected_behaviour"), text(node, "generator"),
+		return new DrawnTestCase(text(node, "cell_id"), text(node, "test_id"),
+			readValues(field(node, "test_case")), turns, text(node, "expected_behaviour"), text(node, "generator"),
 			constant(node, "stream_kind", DrawStream.Kind.class), longInteger(node, "stream_position"),
 			bool(node, "targeted"));
 	}
 
 	/**
-	 * Converts trial instances to a document.
+	 * Converts test cases to a document.
 	 *
-	 * @param instances the instances
+	 * @param testCases the test cases
 	 * @return the document
 	 */
-	private ArrayNode writeInstances(List<TrialInstance> instances)
+	private ArrayNode writeTestCases(List<DrawnTestCase> testCases)
 	{
 		ArrayNode node = json.createArrayNode();
-		for (TrialInstance instance : instances)
-			node.add(writeInstance(instance));
+		for (DrawnTestCase testCase : testCases)
+			node.add(writeTestCase(testCase));
 		return node;
 	}
 
 	/**
-	 * Reads a list of trial instances.
+	 * Reads a list of test cases.
 	 *
 	 * @param node the object that holds the field
 	 * @param name the field's name
-	 * @return the instances
+	 * @return the test cases
 	 */
-	private static List<TrialInstance> readInstances(JsonNode node, String name)
+	private static List<DrawnTestCase> readTestCases(JsonNode node, String name)
 	{
-		List<TrialInstance> instances = new ArrayList<>();
+		List<DrawnTestCase> testCases = new ArrayList<>();
 		for (JsonNode element : elements(node, name))
-			instances.add(readInstance(element));
-		return instances;
+			testCases.add(readTestCase(element));
+		return testCases;
 	}
 
 	/**
-	 * Converts failures to a document. Each failure is its instance's document with the judge's rationale, the
+	 * Converts failures to a document. Each failure is its test case's document with the judge's rationale, the
 	 * failure's impact and the diagnostic reruns added.
 	 *
 	 * @param failures the failures
@@ -2007,9 +2019,9 @@ final class CampaignJson
 		ArrayNode node = json.createArrayNode();
 		for (Failure failure : failures)
 		{
-			ObjectNode element = writeInstance(failure.instance());
+			ObjectNode element = writeTestCase(failure.testCase());
 			element.put("rationale", failure.rationale());
-			putFailedRequirements(element, failure.failedRequirements());
+			putFailedAssertions(element, failure.failedAssertions());
 			element.set("triage", writeTriage(failure.triage()));
 			element.set("responses", writeResponses(failure.responses()));
 			element.set("files", writeFiles(failure.files()));
@@ -2040,8 +2052,8 @@ final class CampaignJson
 			List<DiagnosticRerun> reruns = new ArrayList<>();
 			for (JsonNode rerun : elements(element, "reruns"))
 				reruns.add(new DiagnosticRerun(constant(rerun, "verdict", Verdict.class), text(rerun, "rationale")));
-			failures.add(new Failure(readInstance(element), text(element, "rationale"),
-				readFailedRequirements(element), readTriage(element), reruns, readResponses(element), readFiles(element)));
+			failures.add(new Failure(readTestCase(element), text(element, "rationale"),
+				readFailedAssertions(element), readTriage(element), reruns, readResponses(element), readFiles(element)));
 		}
 		return failures;
 	}
@@ -2202,6 +2214,78 @@ final class CampaignJson
 				readIntegers(element, "batch_failures")));
 		}
 		return counts;
+	}
+
+	/**
+	 * Converts per-cell control comparisons to a document, sorted by cell identifier.
+	 *
+	 * @param pairings the control comparisons
+	 * @return the document
+	 */
+	private ObjectNode writePairings(Map<String, ControlPairing> pairings)
+	{
+		ObjectNode node = json.createObjectNode();
+		for (Entry<String, ControlPairing> entry : new TreeMap<>(pairings).entrySet())
+		{
+			ObjectNode element = node.putObject(entry.getKey());
+			ArrayNode unpaired = element.putArray("unpaired");
+			for (UnpairedTrial trial : entry.getValue().unpaired())
+			{
+				ObjectNode trialNode = unpaired.addObject();
+				trialNode.set("test_case", writeTestCase(trial.testCase()));
+				ArrayNode passed = trialNode.putArray("passed");
+				for (String assertionId : new TreeSet<>(trial.passed()))
+					passed.add(assertionId);
+			}
+			ArrayNode comparisons = element.putArray("comparisons");
+			for (Entry<String, PairCounts> comparison : entry.getValue().comparisons().entrySet())
+			{
+				ObjectNode comparisonNode = comparisons.addObject();
+				comparisonNode.put("assertion", comparison.getKey());
+				PairCounts counts = comparison.getValue();
+				comparisonNode.put("both_passed", counts.bothPassed());
+				comparisonNode.put("candidate_only", counts.candidateOnly());
+				comparisonNode.put("control_only", counts.controlOnly());
+				comparisonNode.put("neither_passed", counts.neitherPassed());
+			}
+		}
+		return node;
+	}
+
+	/**
+	 * Converts a document to per-cell control comparisons.
+	 *
+	 * @param node the document
+	 * @return the control comparisons
+	 */
+	private static Map<String, ControlPairing> readPairings(JsonNode node)
+	{
+		requireObject(node, "pairings");
+		Map<String, ControlPairing> pairings = new LinkedHashMap<>();
+		for (Entry<String, JsonNode> entry : node.properties())
+		{
+			JsonNode element = entry.getValue();
+			List<UnpairedTrial> unpaired = new ArrayList<>();
+			for (JsonNode trial : elements(element, "unpaired"))
+			{
+				Set<String> passed = new LinkedHashSet<>();
+				for (JsonNode assertionId : elements(trial, "passed"))
+					passed.add(stringValue(assertionId, "passed"));
+				unpaired.add(new UnpairedTrial(readTestCase(field(trial, "test_case")), passed));
+			}
+			Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+			for (JsonNode comparison : elements(element, "comparisons"))
+			{
+				String assertionId = text(comparison, "assertion");
+				PairCounts counts = new PairCounts(integer(comparison, "both_passed"),
+					integer(comparison, "candidate_only"), integer(comparison, "control_only"),
+					integer(comparison, "neither_passed"));
+				if (comparisons.put(assertionId, counts) != null)
+					throw new IllegalArgumentException("pairings: duplicate assertion " + assertionId);
+			}
+			pairings.put(entry.getKey(), new ControlPairing(unpaired, comparisons));
+		}
+		return pairings;
 	}
 
 	/**

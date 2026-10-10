@@ -10,7 +10,7 @@ import java.util.Set;
 /**
  * Establishes whether immutable source transitions permit prior review evidence reuse.
  */
-final class ReviewEvidenceTransfer
+public final class ReviewEvidenceTransfer
 {
 	/**
 	 * Prevents instantiation of this static transfer-policy owner.
@@ -28,7 +28,7 @@ final class ReviewEvidenceTransfer
 	 * @return old-to-new source-hash map
 	 * @throws IOException if a source position does not describe the same transition
 	 */
-	static Map<String, String> sourceTransitionMap(List<SourceSnapshot> previousSources,
+	public static Map<String, String> sourceTransitionMap(List<SourceSnapshot> previousSources,
 		List<SourceSnapshot> replacementSources, Set<String> excludedSources) throws IOException
 	{
 		Map<String, String> result = new HashMap<>();
@@ -75,7 +75,7 @@ final class ReviewEvidenceTransfer
 	 * @return the equivalent replacement identifier
 	 * @throws IOException if the identifier is malformed or names a source outside the verified prefix
 	 */
-	static String mapSourceScopedId(Map<String, String> sources, String identifier, String evidenceKind)
+	public static String mapSourceScopedId(Map<String, String> sources, String identifier, String evidenceKind)
 		throws IOException
 	{
 		if (identifier == null)

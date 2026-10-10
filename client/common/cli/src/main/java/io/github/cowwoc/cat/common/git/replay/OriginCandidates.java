@@ -9,7 +9,7 @@ import java.util.Set;
 /**
  * Selects earlier source commits whose same-path changes require origin review.
  */
-final class OriginCandidates
+public final class OriginCandidates
 {
 	/**
 	 * Selects candidates whose changed path existed in an earlier reviewed source.
@@ -19,7 +19,7 @@ final class OriginCandidates
 	 * @param sourcesToReview sources whose changed paths require origin review
 	 * @return origin candidates in source and inventory order
 	 */
-	List<Candidate> select(List<String> sources, List<History.InventoryEntry> inventory,
+	public List<Candidate> select(List<String> sources, List<History.InventoryEntry> inventory,
 		Set<String> sourcesToReview)
 	{
 		Map<String, Integer> sourceIndexes = new HashMap<>();
@@ -48,7 +48,7 @@ final class OriginCandidates
 	 * @param path the changed repository-relative path
 	 * @param predecessors earlier source commits that changed the same path
 	 */
-	record Candidate(String inventoryId, String path, List<String> predecessors)
+	public record Candidate(String inventoryId, String path, List<String> predecessors)
 	{
 	}
 }

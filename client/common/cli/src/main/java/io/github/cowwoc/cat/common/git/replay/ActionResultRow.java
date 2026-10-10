@@ -12,7 +12,7 @@ import java.util.List;
  * @param requiredArtifacts the smallest artifact contract needed for the behavior
  * @param deferredArtifacts final-tree artifacts deliberately absent from that smaller contract
  */
-record ActionResultRow(String candidateId, String observableBehavior, String observableResult,
+public record ActionResultRow(String candidateId, String observableBehavior, String observableResult,
 	String acceptanceCheck, List<String> requiredArtifacts, List<String> deferredArtifacts)
 {
 }

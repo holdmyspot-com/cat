@@ -26,11 +26,11 @@ public final class DrawStream implements RandomGenerator
 		 */
 		DEVELOPMENT(0x5DEECE66DA3C4F17L),
 		/**
-		 * Trials used to certify compliance, after the prompt-system version and measurement procedure are fixed.
+		 * Trials used to certify a pass rate, after the prompt-system version and measurement procedure are fixed.
 		 */
 		FORMAL(0x2545F4914F6CDD1DL),
 		/**
-		 * Trials that measure compliance of the currently retained prompt-system version for comparison.
+		 * Trials that measure the pass rate of the currently retained prompt-system version for comparison.
 		 */
 		BASELINE(0x6A09E667F3BCC909L);
 
@@ -47,7 +47,7 @@ public final class DrawStream implements RandomGenerator
 		}
 
 		/**
-		 * Returns the part of the contract whose instances a stream of this kind draws.
+		 * Returns the part of the contract whose test cases a stream of this kind draws.
 		 *
 		 * @return {@link Part#DEVELOPMENT} for development draws, {@link Part#HELD_OUT} for formal and baseline draws
 		 */

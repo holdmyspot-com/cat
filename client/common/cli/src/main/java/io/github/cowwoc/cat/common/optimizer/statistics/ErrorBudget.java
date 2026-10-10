@@ -9,8 +9,8 @@ import java.math.BigInteger;
  * <p>
  * The budget is split into 0.04 for certification, 0.005 for improvement claims and 0.005 for the incumbent's bounds.
  * Each part {@code x} is spent by the series {@code x / (n(n + 1))}, which sums to {@code x} over an unlimited number
- * of terms, so the union bound over every attempt, baseline and cell stays at most 0.05. A cell is one category under
- * one trial profile, and {@code K} is the number of cells in a contract.
+ * of terms, so the union bound over every attempt, baseline and cell stays at most 0.05. A cell is one prompt test
+ * under one trial profile, and {@code K} is the number of cells in a contract.
  * <p>
  * Callers own the indexes: a certification index is assigned when an attempt is committed, and a baseline index when
  * the incumbent is measured for a new lineage or measurement identity. Work that never receives an index spends

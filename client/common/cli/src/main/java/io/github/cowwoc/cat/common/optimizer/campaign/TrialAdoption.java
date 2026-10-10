@@ -1,13 +1,18 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
+import io.github.cowwoc.cat.common.secrets.TrialAdoptionAccess;
+import io.github.cowwoc.cat.common.secrets.TrialAdoptionSecrets;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -19,13 +24,25 @@ import java.util.Optional;
  * Records judged trials in campaign evidence and applies the policies that each adoption triggers.
  * <p>
  * Representative and reproduction outcomes enter counts in assignment order within each adoption group: trials
- * sharing a purpose, series, snapshot and cell, where a cell tests one category with one model and reasoning effort.
+ * sharing a purpose, series, snapshot and cell, where a cell tests one prompt test with one model and reasoning effort.
  * Completion order therefore cannot choose which outcomes enter a decision. Diagnostic and promotion outcomes are
  * adopted as soon as they are judged and do not enter representative counts. A trial whose purpose the state no
  * longer serves is stale: its outcome is discarded.
  */
-final class TrialAdoption
+public final class TrialAdoption
 {
+	static
+	{
+		TrialAdoptionSecrets.setAccess(new TrialAdoptionAccess()
+		{
+			@Override
+			public Round failingRound(Map<String, CellCounts> counts, List<Cell> developmentCells, String required)
+			{
+				return TrialAdoption.failingRound(counts, developmentCells, required);
+			}
+		});
+	}
+
 	/**
 	 * Prevents instantiation.
 	 */
@@ -50,6 +67,7 @@ final class TrialAdoption
 			case DEVELOPMENT -> key.series() != draft.series || !key.snapshot().equals(draft.working.snapshot());
 			case BASELINE -> key.series() != draft.baselineIndex;
 			case FORMAL -> isStaleFormal(draft, key);
+			case CONTROL -> isStaleControl(draft, key);
 			case REPRODUCTION -> isStaleReproduction(draft, trial);
 			case DIAGNOSTIC -> key.series() != draft.series || draft.diagnosis == null ||
 				!key.equals(draft.diagnosis.rerun());
@@ -57,8 +75,8 @@ final class TrialAdoption
 			{
 				if (draft.isWorkingReference(trial))
 					yield false;
-				AuthorAttempt author = draft.findAuthor(key.series());
-				yield author == null || author.runs().stream().noneMatch(run -> key.equals(run.trial()));
+				PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
+				yield promptAuthor == null || promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
 			}
 		};
 	}
@@ -75,13 +93,30 @@ final class TrialAdoption
 		if (key.series() < 1 || key.series() > draft.attempts.size())
 			return true;
 		CertificationAttempt attempt = draft.attempt(key.series());
-		return !attempt.isRunning() || DecisionTable.cellDecision(attempt.procedure().boundaries(),
-			attempt.count(key.cell())) != DecisionTable.CellDecision.UNDECIDED;
+		return !attempt.isRunning() ||
+			DecisionTable.cellDecision(attempt, key.cell()) != DecisionTable.CellDecision.UNDECIDED;
+	}
+
+	/**
+	 * Indicates whether a control trial's attempt is absent or ended, the trial ran another control source than the
+	 * attempt's, or its cell already has a decision.
+	 *
+	 * @param draft the state
+	 * @param key the trial's key
+	 * @return {@code true} if the trial's outcome must be discarded
+	 */
+	private static boolean isStaleControl(Draft draft, TrialKey key)
+	{
+		if (key.series() < 1 || key.series() > draft.attempts.size())
+			return true;
+		CertificationAttempt attempt = draft.attempt(key.series());
+		return !attempt.isRunning() || !key.snapshot().equals(attempt.control()) ||
+			DecisionTable.cellDecision(attempt, key.cell()) != DecisionTable.CellDecision.UNDECIDED;
 	}
 
 	/**
 	 * Indicates whether a reproduction trial's group no longer runs the trial's round: no attempt is reproducing, the
-	 * group is not reproducing, its current round runs in another cell or lacks the trial's combination, or the
+	 * group is not reproducing, its current round runs in another cell or lacks the trial's test case, or the
 	 * working candidate changed.
 	 *
 	 * @param draft the state
@@ -101,8 +136,8 @@ final class TrialAdoption
 		ReproductionRound round = group.round();
 		if (group.status() != FailureGroup.Status.REPRODUCING || !round.cellId().equals(key.cell()))
 			return true;
-		TestDefinition test = draft.contract().findTest(group.testId()).orElseThrow();
-		return round.indexOf(test, trial.instance()) < 0;
+		PromptTest test = draft.contract().findTest(group.testId()).orElseThrow();
+		return round.indexOf(test, trial.testCase()) < 0;
 	}
 
 	/**
@@ -141,7 +176,7 @@ final class TrialAdoption
 		{
 			if (trial.state() != TrialState.JUDGED)
 				continue;
-			if (!trial.key().purpose().drawsAtAssignment() || !waitsForEarlierTrial(draft, trial))
+			if (!trial.key().purpose().adoptsInOrder() || !waitsForEarlierTrial(draft, trial))
 				return Optional.of(trial);
 		}
 		return Optional.empty();
@@ -173,16 +208,18 @@ final class TrialAdoption
 	private static void adopt(Draft draft, LogicalTrial trial)
 	{
 		Purpose purpose = trial.key().purpose();
-		if (purpose != Purpose.REPRODUCTION && trial.key().snapshot().equals(draft.working.snapshot()))
+		if (purpose != Purpose.REPRODUCTION && purpose != Purpose.CONTROL &&
+			trial.key().snapshot().equals(draft.working.snapshot()))
 		{
-			draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, trial.instance(), trial.verdict());
-			recordWorkingVerdict(draft, trial.instance(), trial.verdict());
+			draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, trial.testCase(), trial.verdict());
+			recordWorkingVerdict(draft, trial.testCase(), trial.verdict());
 		}
 		switch (purpose)
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
 			case BASELINE -> adoptBaseline(draft, trial);
 			case FORMAL -> adoptFormal(draft, trial);
+			case CONTROL -> adoptControl(draft, trial);
 			case DIAGNOSTIC -> adoptDiagnostic(draft, trial);
 			case PROMOTION -> adoptPromotion(draft, trial);
 			case REPRODUCTION -> adoptReproduction(draft, trial);
@@ -191,8 +228,8 @@ final class TrialAdoption
 
 	/**
 	 * Adopts a reproduction outcome into its failure group's current round. A failure counts toward the group only
-	 * when it failed the group's requirement through the group's behavior. Once the group reproduces, its round's
-	 * combinations join development and the working candidate's development counts restart, because the development
+	 * when it failed the group's assertion through the group's behavior. Once the group reproduces, its round's
+	 * test cases join development and the working candidate's development counts restart, because the development
 	 * distribution changed. Once no group is reproducing and some group did not reproduce, the user decides how to
 	 * continue.
 	 *
@@ -205,8 +242,8 @@ final class TrialAdoption
 		CertificationAttempt attempt = draft.reproducing().orElseThrow();
 		FailureGroup group = attempt.group(number);
 		Contract contract = draft.contract();
-		int index = group.round().indexOf(contract.findTest(group.testId()).orElseThrow(), trial.instance());
-		boolean matched = trial.verdict() == Verdict.FAIL && trial.failedRequirements().contains(group.failed());
+		int index = group.round().indexOf(contract.findTest(group.testId()).orElseThrow(), trial.testCase());
+		boolean matched = trial.verdict() == Verdict.FAIL && trial.failedAssertions().contains(group.failed());
 		if (trial.verdict() == Verdict.PASS)
 			draft.slowStart = draft.slowStart.afterPass();
 		else
@@ -232,8 +269,8 @@ final class TrialAdoption
 
 	/**
 	 * Adopts a development outcome. A {@link Impact#BLOCKING blocking} failure that does not withdraw
-	 * the working candidate fails fast; any other failure is diagnosed by reruns when no round or author attempt is in
-	 * progress.
+	 * the working candidate fails fast; any other failure is diagnosed by reruns when no round or prompt author attempt
+	 * is in progress.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -250,8 +287,8 @@ final class TrialAdoption
 		else
 		{
 			draft.slowStart = draft.slowStart.afterFailure();
-			TrialInstance targeted = draft.generator().markTargeted(trial.instance());
-			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.failedRequirements(),
+			DrawnTestCase targeted = draft.generator().markTargeted(trial.testCase());
+			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.failedAssertions(),
 				trial.triage(), List.of(), trial.responses(), trial.files()));
 			addRegression(draft, targeted, Verdict.FAIL);
 			if (isBlocking(trial))
@@ -260,13 +297,19 @@ final class TrialAdoption
 					failFast(draft);
 				return;
 			}
-			if (draft.round == null && draft.author == null)
+			if (draft.round == null && draft.promptAuthor == null)
 			{
 				if (draft.diagnosis == null)
 					draft.diagnosis = new Diagnosis(List.of(targeted), 0, null, false);
+				else if (Promotion.containsTestCase(draft.diagnosis.pending(), targeted))
+				{
+					// Another trial of a test case awaiting reruns failed, so the test case fails again
+					draft.diagnosis = new Diagnosis(draft.diagnosis.pending(), draft.diagnosis.passedReruns(),
+						draft.diagnosis.rerun(), true);
+				}
 				else
 				{
-					List<TrialInstance> pending = new ArrayList<>(draft.diagnosis.pending());
+					List<DrawnTestCase> pending = new ArrayList<>(draft.diagnosis.pending());
 					pending.add(targeted);
 					draft.diagnosis = new Diagnosis(pending, draft.diagnosis.passedReruns(),
 						draft.diagnosis.rerun(), draft.diagnosis.reproduced());
@@ -291,7 +334,7 @@ final class TrialAdoption
 	/**
 	 * Edits at once after a blocking failure. Discards the working candidate's development trials that have no adopted
 	 * outcome, whatever their state, and ends any diagnosis together with its rerun, so the decision depends only on
-	 * adopted outcomes. Starts a round over the failing cells unless a round or author attempt is in progress.
+	 * adopted outcomes. Starts a round over the failing cells unless a round or prompt author attempt is in progress.
 	 *
 	 * @param draft the state after adopting the failure
 	 */
@@ -306,11 +349,11 @@ final class TrialAdoption
 			{
 				case DEVELOPMENT -> key.snapshot().equals(draft.working.snapshot());
 				case DIAGNOSTIC -> true;
-				case BASELINE, FORMAL, PROMOTION, REPRODUCTION -> false;
+				case BASELINE, FORMAL, CONTROL, PROMOTION, REPRODUCTION -> false;
 			};
 		});
 		draft.diagnosis = null;
-		if (draft.round == null && draft.author == null)
+		if (draft.round == null && draft.promptAuthor == null)
 			draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), null);
 	}
 
@@ -345,7 +388,7 @@ final class TrialAdoption
 		draft.startDevelopment(restored.working());
 		draft.developmentCounts = new LinkedHashMap<>(restored.counts());
 		draft.developmentFailures = new ArrayList<>(restored.failures());
-		draft.instanceOutcomes = restored.instanceOutcomes();
+		draft.testCaseOutcomes = restored.testCaseOutcomes();
 		draft.reviewPoints = new LinkedHashMap<>(restored.reviewPoints());
 		restoreRegressionVerdicts(draft, predecessor.regressionSet());
 		draft.round = predecessor.round();
@@ -356,12 +399,12 @@ final class TrialAdoption
 				endUnproductiveRound(draft);
 		}
 		else
-			rejectAuthorAttempt(draft, predecessor.cell());
+			rejectPromptAuthorAttempt(draft, predecessor.cell());
 		return true;
 	}
 
 	/**
-	 * Indicates whether the promoting round addressed a cell, including all profiles of a weak round's category.
+	 * Indicates whether the promoting round addressed a cell, including all profiles of a weak round's test.
 	 *
 	 * @param draft the campaign state
 	 * @param round the promoting round
@@ -374,9 +417,9 @@ final class TrialAdoption
 			return true;
 		if (!round.weak())
 			return false;
-		String category = draft.contract().findCell(cell).orElseThrow().categoryId();
+		String test = draft.contract().findCell(cell).orElseThrow().testId();
 		return round.attempts().keySet().stream().anyMatch(addressed ->
-			draft.contract().findCell(addressed).orElseThrow().categoryId().equals(category));
+			draft.contract().findCell(addressed).orElseThrow().testId().equals(test));
 	}
 
 	/**
@@ -388,27 +431,27 @@ final class TrialAdoption
 	private static Development snapshotDevelopment(Draft draft)
 	{
 		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
-			null, null, null, draft.reviewPoints, draft.instanceOutcomes, null, List.of());
+			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of());
 	}
 
 	/**
 	 * Restores the predecessor's known verdicts, and whether each failing verdict was settled, while retaining newly
-	 * discovered regression instances without a verdict.
+	 * discovered regression test cases without a verdict.
 	 *
 	 * @param draft the campaign state
 	 * @param retained the predecessor's regression verdicts
 	 */
-	private static void restoreRegressionVerdicts(Draft draft, List<RegressionInstance> retained)
+	private static void restoreRegressionVerdicts(Draft draft, List<RegressionTestCase> retained)
 	{
 		for (int index = 0; index < draft.regressionSet.size(); ++index)
 		{
-			RegressionInstance regression = draft.regressionSet.get(index);
-			RegressionInstance restored = new RegressionInstance(regression.instance(), null, false);
-			for (RegressionInstance prior : retained)
+			RegressionTestCase regression = draft.regressionSet.get(index);
+			RegressionTestCase restored = new RegressionTestCase(regression.testCase(), null, false);
+			for (RegressionTestCase prior : retained)
 			{
-				if (Promotion.isSameContent(prior.instance(), regression.instance()))
+				if (Promotion.isSameTestCase(prior.testCase(), regression.testCase()))
 				{
-					restored = new RegressionInstance(regression.instance(), prior.working(), prior.settled());
+					restored = new RegressionTestCase(regression.testCase(), prior.working(), prior.settled());
 					break;
 				}
 			}
@@ -417,7 +460,7 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adopts an incumbent baseline outcome. Its held-out instance never enters development evidence or the
+	 * Adopts an incumbent baseline outcome. Its held-out test case never enters development evidence or the
 	 * regression set.
 	 *
 	 * @param draft the state
@@ -431,37 +474,37 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Adds an instance to the regression set unless an instance with the same content is in it.
+	 * Adds a test case to the regression set unless the set already holds it.
 	 *
 	 * @param draft the state
-	 * @param targeted the targeted copy of the instance
+	 * @param targeted the targeted copy of the test case
 	 * @param working the working candidate's verdict on it, or {@code null} if unknown
 	 */
-	private static void addRegression(Draft draft, TrialInstance targeted, Verdict working)
+	private static void addRegression(Draft draft, DrawnTestCase targeted, Verdict working)
 	{
-		for (RegressionInstance regression : draft.regressionSet)
+		for (RegressionTestCase regression : draft.regressionSet)
 		{
-			if (Promotion.isSameContent(regression.instance(), targeted))
+			if (Promotion.isSameTestCase(regression.testCase(), targeted))
 				return;
 		}
-		draft.regressionSet.add(new RegressionInstance(targeted, working, false));
+		draft.regressionSet.add(new RegressionTestCase(targeted, working, false));
 	}
 
 	/**
-	 * Records the working candidate's verdict on every regression instance with the same content. The recorded verdict
+	 * Records the working candidate's verdict on the regression set's entry for the same test case. The recorded verdict
 	 * replaces a settled failure and is not settled.
 	 *
 	 * @param draft the state
-	 * @param instance the instance that the working candidate ran
+	 * @param testCase the test case that the working candidate ran
 	 * @param verdict the verdict
 	 */
-	private static void recordWorkingVerdict(Draft draft, TrialInstance instance, Verdict verdict)
+	private static void recordWorkingVerdict(Draft draft, DrawnTestCase testCase, Verdict verdict)
 	{
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
-			RegressionInstance regression = draft.regressionSet.get(i);
-			if (Promotion.isSameContent(regression.instance(), instance))
-				draft.regressionSet.set(i, new RegressionInstance(regression.instance(), verdict, false));
+			RegressionTestCase regression = draft.regressionSet.get(i);
+			if (Promotion.isSameTestCase(regression.testCase(), testCase))
+				draft.regressionSet.set(i, new RegressionTestCase(regression.testCase(), verdict, false));
 		}
 	}
 
@@ -476,7 +519,7 @@ final class TrialAdoption
 			return;
 		Development development = new Development(draft.working, draft.series, draft.developmentCounts,
 			draft.developmentFailures, draft.diagnosis, null, null, draft.reviewPoints);
-		switch (EditOrContinue.decide(development))
+		switch (EditOrContinue.decide(development, draft.contract().minimumPassRate()))
 		{
 			case RERUN ->
 			{
@@ -502,11 +545,11 @@ final class TrialAdoption
 	static Round failingRound(Map<String, CellCounts> counts, List<Cell> developmentCells, String required)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>();
-		Map<String, String> categories = new LinkedHashMap<>();
+		Map<String, String> tests = new LinkedHashMap<>();
 		for (Cell cell : developmentCells)
 		{
 			String id = cell.id();
-			categories.put(id, cell.categoryId());
+			tests.put(id, cell.testId());
 			if (counts.getOrDefault(id, CellCounts.EMPTY).failures() > 0 || id.equals(required))
 				attempts.put(id, 0);
 		}
@@ -514,7 +557,7 @@ final class TrialAdoption
 		if (weak)
 		{
 			Set<String> addressed = new HashSet<>();
-			attempts.keySet().removeIf(cell -> !addressed.add(categories.get(cell)));
+			attempts.keySet().removeIf(cell -> !addressed.add(tests.get(cell)));
 		}
 		return new Round(attempts, weak, Map.of(), List.of());
 	}
@@ -539,32 +582,32 @@ final class TrialAdoption
 		}
 		else
 		{
-			List<TrialInstance> pending = diagnosis.pending().subList(1, diagnosis.pending().size());
+			List<DrawnTestCase> pending = diagnosis.pending().subList(1, diagnosis.pending().size());
 			draft.diagnosis = new Diagnosis(pending, 0, null, diagnosis.reproduced());
 		}
 		resolveDiagnosis(draft);
 	}
 
 	/**
-	 * Adds a diagnostic rerun to the development failure whose instance it reran.
+	 * Adds a diagnostic rerun to the development failure whose test case it reran.
 	 *
 	 * @param draft the state
-	 * @param instance the failing instance that the rerun ran
+	 * @param testCase the failing test case that the rerun ran
 	 * @param rerun the rerun's outcome
-	 * @throws IllegalStateException if no development failure has the instance
+	 * @throws IllegalStateException if no development failure has the test case
 	 */
-	private static void recordRerun(Draft draft, TrialInstance instance, DiagnosticRerun rerun)
+	private static void recordRerun(Draft draft, DrawnTestCase testCase, DiagnosticRerun rerun)
 	{
 		for (int i = 0; i < draft.developmentFailures.size(); ++i)
 		{
 			Failure failure = draft.developmentFailures.get(i);
-			if (failure.instance().equals(instance))
+			if (failure.testCase().equals(testCase))
 			{
 				draft.developmentFailures.set(i, failure.withRerun(rerun));
 				return;
 			}
 		}
-		throw new IllegalStateException("No development failure has the rerun's instance: " + instance);
+		throw new IllegalStateException("No development failure has the rerun's test case: " + testCase);
 	}
 
 	/**
@@ -575,42 +618,45 @@ final class TrialAdoption
 	 */
 	private static void adoptPromotion(Draft draft, LogicalTrial trial)
 	{
-		AuthorAttempt author = draft.findAuthor(trial.key().series());
-		if (author == null)
+		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(trial.key().series());
+		if (promptAuthor == null)
 		{
-			if (draft.author != null)
+			if (draft.promptAuthor != null)
 				decidePromotion(draft);
 			return;
 		}
-		List<PromotionRun> runs = new ArrayList<>(author.runs());
+		List<PromotionRun> runs = new ArrayList<>(promptAuthor.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
 			PromotionRun run = runs.get(i);
 			if (trial.key().equals(run.trial()))
 			{
-				runs.set(i, new PromotionRun(run.role(), run.instance(), run.trial(), trial.verdict()));
+				runs.set(i, new PromotionRun(run.role(), run.testCase(), run.trial(), trial.verdict()));
 				break;
 			}
 		}
-		draft.updateAuthor(new AuthorAttempt(author.number(), author.cell(), author.snapshot(), runs,
-			author.minimality()));
-		if (draft.round.weak() && draft.author == null)
+		draft.updatePromptAuthor(new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
+			promptAuthor.snapshot(), runs, promptAuthor.minimality()));
+		if (draft.round.weak() && draft.promptAuthor == null)
 			decideWeakRound(draft);
 		else
 			decidePromotion(draft);
 	}
 
 	/**
-	 * Applies the promotion decision of the author attempt under validation.
+	 * Applies the promotion decision of the prompt author attempt under validation.
 	 *
 	 * @param draft the state
 	 */
 	static void decidePromotion(Draft draft)
 	{
-		if (Promotion.decide(draft.author, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PENDING)
-			draft.author = Promotion.extend(draft.author, draft.instanceOutcomes);
-		AuthorAttempt author = draft.author;
-		switch (Promotion.decide(author, draft.regressionSet, draft.instanceOutcomes))
+		if (Promotion.decide(draft.promptAuthor, draft.regressionSet, draft.testCaseOutcomes) ==
+			Promotion.Decision.PENDING)
+		{
+			draft.promptAuthor = Promotion.extend(draft.promptAuthor, draft.testCaseOutcomes);
+		}
+		PromptAuthorAttempt promptAuthor = draft.promptAuthor;
+		switch (Promotion.decide(promptAuthor, draft.regressionSet, draft.testCaseOutcomes))
 		{
 			case PENDING ->
 			{
@@ -618,50 +664,50 @@ final class TrialAdoption
 			}
 			case PROMOTE ->
 			{
-				if (author.minimality().acceptedRuns().isEmpty())
-					retainAttempt(draft, author, true, true);
+				if (promptAuthor.minimality().acceptedRuns().isEmpty())
+					retainAttempt(draft, promptAuthor, true, true);
 			}
 			case REJECT ->
 			{
-				if (author.minimality().testing() != null)
+				if (promptAuthor.minimality().testing() != null)
 					return;
-				retainAttempt(draft, author, false, false);
-				draft.author = null;
-				rejectAuthorAttempt(draft, author.cell());
+				retainAttempt(draft, promptAuthor, false, false);
+				draft.promptAuthor = null;
+				rejectPromptAuthorAttempt(draft, promptAuthor.cell());
 			}
 		}
 	}
 
 	/**
-	 * Retains settled contenders and selects only after every addressed category received all three attempts.
+	 * Retains settled contenders and selects only after every addressed test received all three attempts.
 	 *
 	 * @param draft the campaign state
 	 */
 	static void decideWeakRound(Draft draft)
 	{
-		for (AuthorAttempt attempt : draft.round.validationAttempts())
+		for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
 		{
-			if (Promotion.decide(attempt, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PENDING)
-				draft.round = draft.round.withAttempt(Promotion.extend(attempt, draft.instanceOutcomes));
+			if (Promotion.decide(attempt, draft.regressionSet, draft.testCaseOutcomes) == Promotion.Decision.PENDING)
+				draft.round = draft.round.withAttempt(Promotion.extend(attempt, draft.testCaseOutcomes));
 		}
 		Round round = draft.round;
-		for (AuthorAttempt attempt : round.validationAttempts())
+		for (PromptAuthorAttempt attempt : round.validationAttempts())
 		{
 			if (attempt.runs().stream().allMatch(run -> run.verdict() != null))
 			{
 				boolean accepted = !attempt.snapshot().equals(draft.working.snapshot()) &&
-					Promotion.decide(attempt, draft.regressionSet, draft.instanceOutcomes) == Promotion.Decision.PROMOTE;
+					Promotion.decide(attempt, draft.regressionSet, draft.testCaseOutcomes) == Promotion.Decision.PROMOTE;
 				retainAttempt(draft, attempt, accepted, false);
 			}
 		}
 		if (!round.isComplete())
 			return;
-		Optional<AuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
-			draft.working.snapshot(), draft.regressionSet, draft.instanceOutcomes);
+		Optional<PromptAuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
+			draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes);
 		if (winner.isPresent())
 		{
-			draft.author = winner.get();
-			retainAttempt(draft, draft.author, true, true);
+			draft.promptAuthor = winner.get();
+			retainAttempt(draft, draft.promptAuthor, true, true);
 			return;
 		}
 		endUnproductiveRound(draft);
@@ -670,10 +716,10 @@ final class TrialAdoption
 	/**
 	 * Ends a complete round that produced no promotable attempt, however many failures the working candidate has. The
 	 * working candidate stays, and its representative trials resume with a concurrency window of one; the round's
-	 * attempts and author diagnoses remain in the optimization evidence. A later failure goes through edit-or-continue
-	 * and can start a new round with new failure evidence. Every regression instance that the working candidate failed
-	 * last becomes settled, so that failure no longer blocks the readiness gate until the working candidate runs the
-	 * instance again.
+	 * attempts and prompt author diagnoses remain in the optimization evidence. A later failure goes through
+	 * edit-or-continue and can start a new round with new failure evidence. Every regression test case that the working
+	 * candidate failed last becomes settled, so that failure no longer blocks the readiness gate until the working
+	 * candidate runs the test case again.
 	 *
 	 * @param draft the state, whose round is complete
 	 */
@@ -683,9 +729,9 @@ final class TrialAdoption
 		draft.slowStart = SlowStart.INITIAL;
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
-			RegressionInstance regression = draft.regressionSet.get(i);
+			RegressionTestCase regression = draft.regressionSet.get(i);
 			if (regression.working() == Verdict.FAIL)
-				draft.regressionSet.set(i, new RegressionInstance(regression.instance(), Verdict.FAIL, true));
+				draft.regressionSet.set(i, new RegressionTestCase(regression.testCase(), Verdict.FAIL, true));
 		}
 	}
 
@@ -697,7 +743,7 @@ final class TrialAdoption
 	 * @param accepted whether the promotion rule accepted it
 	 * @param winner whether it was selected
 	 */
-	static void retainAttempt(Draft draft, AuthorAttempt attempt, boolean accepted, boolean winner)
+	static void retainAttempt(Draft draft, PromptAuthorAttempt attempt, boolean accepted, boolean winner)
 	{
 		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
 		AttemptResult result = new AttemptResult(draft.round.number(), draft.working.snapshot(), attempt.number(),
@@ -718,51 +764,51 @@ final class TrialAdoption
 		else
 			results.add(result);
 		results.sort(Comparator.comparingInt(AttemptResult::number));
-		draft.optimization = new OptimizationEvidence(draft.optimization.authors(), draft.optimization.removed(),
+		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage());
 	}
 
 	/**
-	 * Makes an author attempt the working candidate.
+	 * Makes a prompt author attempt the working candidate.
 	 *
 	 * @param draft the state
-	 * @param author the author attempt
+	 * @param promptAuthor the prompt author attempt
 	 */
-	static void promote(Draft draft, AuthorAttempt author)
+	static void promote(Draft draft, PromptAuthorAttempt promptAuthor)
 	{
-		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft), draft.round, author.cell(),
+		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft), draft.round, promptAuthor.cell(),
 			draft.regressionSet);
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
-			RegressionInstance regression = draft.regressionSet.get(i);
-			draft.regressionSet.set(i, new RegressionInstance(regression.instance(),
-				promotedVerdict(author, regression.instance()), false));
+			RegressionTestCase regression = draft.regressionSet.get(i);
+			draft.regressionSet.set(i, new RegressionTestCase(regression.testCase(),
+				promotedVerdict(promptAuthor, regression.testCase()), false));
 		}
 		++draft.candidates;
-		draft.startDevelopment(new Candidate(draft.candidates, author.snapshot()));
+		draft.startDevelopment(new Candidate(draft.candidates, promptAuthor.snapshot()));
 		draft.predecessor = predecessor;
-		for (PromotionRun run : author.runs())
+		for (PromotionRun run : promptAuthor.runs())
 		{
 			if (run.role() != PromotionRun.Role.WORKING_REFERENCE && run.verdict() != null)
-				draft.instanceOutcomes = InstanceOutcomes.add(draft.instanceOutcomes, run.instance(), run.verdict());
+				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
 		draft.slowStart = SlowStart.INITIAL;
 	}
 
 	/**
-	 * Returns the promoted candidate's verdict on a regression instance.
+	 * Returns the promoted candidate's verdict on a regression test case.
 	 *
-	 * @param author the promoted author attempt
-	 * @param instance the instance
-	 * @return the verdict of the attempt's run on the instance, or {@code null} if the attempt did not run it
+	 * @param promptAuthor the promoted prompt author attempt
+	 * @param testCase the test case
+	 * @return the verdict of the attempt's run on the test case, or {@code null} if the attempt did not run it
 	 */
-	private static Verdict promotedVerdict(AuthorAttempt author, TrialInstance instance)
+	private static Verdict promotedVerdict(PromptAuthorAttempt promptAuthor, DrawnTestCase testCase)
 	{
 		Verdict verdict = null;
-		for (PromotionRun run : author.runs())
+		for (PromotionRun run : promptAuthor.runs())
 		{
 			if (run.role() == PromotionRun.Role.WORKING_REFERENCE || run.verdict() == null ||
-				!Promotion.isSameContent(run.instance(), instance))
+				!Promotion.isSameTestCase(run.testCase(), testCase))
 			{
 				continue;
 			}
@@ -774,13 +820,13 @@ final class TrialAdoption
 	}
 
 	/**
-	 * Counts a rejected author attempt against its round category and ends the round once every category has used its
-	 * attempts.
+	 * Counts a rejected prompt author attempt against its round test and ends the round once every test has
+	 * used its attempts.
 	 *
 	 * @param draft the state
-	 * @param cell the round category
+	 * @param cell the round test
 	 */
-	static void rejectAuthorAttempt(Draft draft, String cell)
+	static void rejectPromptAuthorAttempt(Draft draft, String cell)
 	{
 		Map<String, Integer> attempts = new LinkedHashMap<>(draft.round.attempts());
 		attempts.put(cell, attempts.get(cell) + 1);
@@ -792,7 +838,9 @@ final class TrialAdoption
 
 	/**
 	 * Adopts a formal outcome and applies the attempt's decision. A failure stays with the attempt, for the user's
-	 * report; its held-out instance never enters development evidence or the regression set.
+	 * report; its held-out test case never enters development evidence or the regression set. The trial waits for
+	 * the control trial that pairs with it, and the trial that certifies the cell's minimum-pass-rate part starts the
+	 * cell's control comparisons.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -802,20 +850,104 @@ final class TrialAdoption
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
 		String cell = trial.key().cell();
 		Map<String, CellCounts> counts = new LinkedHashMap<>(attempt.counts());
-		counts.put(cell, attempt.count(cell).add(trial.verdict()));
+		CellCounts cellCounts = attempt.count(cell).add(trial.verdict());
+		counts.put(cell, cellCounts);
+		PromptTest test = testOf(draft, cell);
+		ControlPairing pairing = attempt.pairing(cell).withCandidate(new UnpairedTrial(trial.testCase(),
+			passedAssertions(test, trial, true)));
+		if (!pairing.isComparing() && DecisionTable.minimumDecision(attempt.procedure().boundaries(), cellCounts) ==
+			DecisionTable.CellDecision.CERTIFIED)
+		{
+			pairing = pairing.startComparing(test.allAssertions().stream().map(Assertion::id).toList());
+		}
+		Map<String, ControlPairing> pairings = new LinkedHashMap<>(attempt.pairings());
+		pairings.put(cell, pairing);
 		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)
 		{
-			failures.add(new Failure(trial.instance(), trial.rationale(), trial.failedRequirements(), null, List.of(),
+			failures.add(new Failure(trial.testCase(), trial.rationale(), trial.failedAssertions(), null, List.of(),
 				trial.responses(), trial.files()));
 			draft.slowStart = draft.slowStart.afterFailure();
 		}
 		else
 			draft.slowStart = draft.slowStart.afterPass();
-		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, failures,
+		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, pairings, failures,
 			attempt.formalStream());
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
+	}
+
+	/**
+	 * Adopts a control outcome into the control comparisons of its cell and applies the attempt's decision. A failed
+	 * control trial stays out of the attempt's failures: it measures the prompt's absence, not the candidate.
+	 *
+	 * @param draft the state
+	 * @param trial the trial
+	 */
+	private static void adoptControl(Draft draft, LogicalTrial trial)
+	{
+		CertificationAttempt attempt = draft.attempt(trial.key().series());
+		String cell = trial.key().cell();
+		ControlPairing pairing = attempt.pairing(cell).withControl(trial.testCase(),
+			passedAssertions(testOf(draft, cell), trial, false));
+		Map<String, ControlPairing> pairings = new LinkedHashMap<>(attempt.pairings());
+		pairings.put(cell, pairing);
+		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), attempt.counts(), pairings,
+			attempt.failures(), attempt.formalStream());
+		draft.replaceAttempt(updated);
+		applyDecision(draft, updated);
+	}
+
+	/**
+	 * Returns the prompt test of a cell.
+	 *
+	 * @param draft the state
+	 * @param cell the cell's identifier
+	 * @return the prompt test
+	 */
+	private static PromptTest testOf(Draft draft, String cell)
+	{
+		Contract contract = draft.contract();
+		return contract.findTest(contract.findCell(cell).orElseThrow().testId()).orElseThrow();
+	}
+
+	/**
+	 * Returns the assertions that a trial passed. A passing trial passed every assertion, and a failed trial every
+	 * assertion that it did not fail. A failed built-in tool decides its trial without a judge, so the trial's judged
+	 * assertions were never decided: both sides count them against the candidate, failed for a candidate trial and
+	 * passed for a control trial, so that the missing evidence cannot favour the candidate. A failure that names no
+	 * assertion passed none.
+	 *
+	 * @param test the trial's prompt test
+	 * @param trial the judged trial
+	 * @param candidate {@code true} for a candidate formal trial, {@code false} for a control trial
+	 * @return the identifiers of the assertions that the trial passed, in the prompt test's assertion order
+	 */
+	private static Set<String> passedAssertions(PromptTest test, LogicalTrial trial, boolean candidate)
+	{
+		Set<String> passed = new LinkedHashSet<>();
+		for (Assertion assertion : test.allAssertions())
+			passed.add(assertion.id());
+		if (trial.verdict() == Verdict.PASS)
+			return passed;
+		if (trial.failedAssertions().isEmpty())
+			return Set.of();
+		boolean checkFailed = false;
+		for (FailedAssertion failed : trial.failedAssertions())
+		{
+			passed.remove(failed.assertionId());
+			for (Assertion assertion : test.allAssertions())
+			{
+				if (assertion.id().equals(failed.assertionId()) && assertion.tool() != null)
+					checkFailed = true;
+			}
+		}
+		if (checkFailed && candidate)
+		{
+			for (Assertion assertion : test.judgedAssertions())
+				passed.remove(assertion.id());
+		}
+		return passed;
 	}
 
 	/**
@@ -832,6 +964,7 @@ final class TrialAdoption
 			case UNDECIDED -> null;
 			case CERTIFIED, CERTIFIED_PROVEN_WORSE -> Outcome.CERTIFIED;
 			case BELOW_MINIMUM -> Outcome.BELOW_MINIMUM;
+			case BELOW_CONTROL -> Outcome.BELOW_CONTROL;
 			case INCONCLUSIVE -> Outcome.INCONCLUSIVE;
 		};
 		if (ending == null)
@@ -855,15 +988,16 @@ final class TrialAdoption
 			case OFFER_KEEP_IMPROVEMENT -> draft.raise(new PendingDecision.ImprovementProven(ended.index()));
 			case RETURN_TO_DEVELOPMENT ->
 			{
-				// Development continues: the attempt's failed cells are development cells, and authors see each
-				// formal failure's cell, test and failed requirements, never its held-out instance
+				// Development continues: the attempt's failed cells are development cells, and prompt authors see each
+				// formal failure's cell, test and failed assertions, never its held-out test case
 			}
 		}
 	}
 
 	/**
 	 * Raises a review decision for the first cell whose development review point is due, if the active, confirmed
-	 * campaign has no pending decision, revision, certification attempt, diagnosis, optimization round or author attempt.
+	 * campaign has no pending decision, revision, certification attempt, diagnosis, optimization round or prompt author
+	 * attempt.
 	 *
 	 * @param draft the state
 	 */
@@ -871,7 +1005,7 @@ final class TrialAdoption
 	{
 		if (draft.header.lifecycle() != Lifecycle.ACTIVE || !draft.isConfirmed() || !draft.pendingDecisions.isEmpty() ||
 			draft.revisionRequested || draft.runningAttempt().isPresent() || draft.diagnosis != null ||
-			draft.round != null || draft.author != null)
+			draft.round != null || draft.promptAuthor != null)
 		{
 			return;
 		}

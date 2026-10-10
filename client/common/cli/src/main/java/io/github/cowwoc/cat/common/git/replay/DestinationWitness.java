@@ -6,6 +6,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param beforeTree the full Git tree ID required before the batch is applied
  * @param afterTree the full Git tree ID required after the batch is applied
  */
-record DestinationWitness(String beforeTree, String afterTree)
+public record DestinationWitness(String beforeTree, String afterTree)
 {
 }

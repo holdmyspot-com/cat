@@ -19,7 +19,7 @@ import java.util.List;
  * @param fixedSources the mechanically preserved sources that a known-complete prefix owns
  * @param outputPlan the complete validated output plan, before individual output decisions are recorded
  */
-record BatchManifest(int version, String base, String tipTree, List<SourceSnapshot> sources,
+public record BatchManifest(int version, String base, String tipTree, List<SourceSnapshot> sources,
 	List<Output> outputs, List<InventoryItem> inventory, List<Batch> batches,
 	List<SourceReconstruction> sourceReconstructions, List<OutputWitness> outputWitnesses,
 	List<String> discardedOutputs, List<SourceReview> sourceReviews, List<String> fixedSources, OutputPlan outputPlan)
@@ -42,7 +42,7 @@ record BatchManifest(int version, String base, String tipTree, List<SourceSnapsh
 	 * @param replacement the replacement batches
 	 * @return the updated manifest
 	 */
-	BatchManifest withBatches(List<Batch> replacement)
+	public BatchManifest withBatches(List<Batch> replacement)
 	{
 		return new BatchManifest(version, base, tipTree, sources, outputs, inventory, replacement,
 			sourceReconstructions, outputWitnesses, discardedOutputs, sourceReviews, fixedSources, outputPlan);
@@ -66,7 +66,7 @@ record BatchManifest(int version, String base, String tipTree, List<SourceSnapsh
 	 * @param replacement the replacement witnesses
 	 * @return the updated manifest
 	 */
-	BatchManifest withOutputWitnesses(List<OutputWitness> replacement)
+	public BatchManifest withOutputWitnesses(List<OutputWitness> replacement)
 	{
 		return new BatchManifest(version, base, tipTree, sources, outputs, inventory, batches,
 			sourceReconstructions, replacement, discardedOutputs, sourceReviews, fixedSources, outputPlan);
@@ -78,7 +78,7 @@ record BatchManifest(int version, String base, String tipTree, List<SourceSnapsh
 	 * @param replacement the replacement absorbed-output identifiers
 	 * @return the updated manifest
 	 */
-	BatchManifest withDiscardedOutputs(List<String> replacement)
+	public BatchManifest withDiscardedOutputs(List<String> replacement)
 	{
 		return new BatchManifest(version, base, tipTree, sources, outputs, inventory, batches,
 			sourceReconstructions, outputWitnesses, replacement, sourceReviews, fixedSources, outputPlan);
@@ -114,7 +114,7 @@ record BatchManifest(int version, String base, String tipTree, List<SourceSnapsh
 	 * @param replacement the replacement output plan
 	 * @return the updated manifest
 	 */
-	BatchManifest withOutputPlan(OutputPlan replacement)
+	public BatchManifest withOutputPlan(OutputPlan replacement)
 	{
 		return new BatchManifest(version, base, tipTree, sources, outputs, inventory, batches,
 			sourceReconstructions, outputWitnesses, discardedOutputs, sourceReviews, fixedSources, replacement);

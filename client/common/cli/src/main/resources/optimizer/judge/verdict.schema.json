@@ -3,20 +3,21 @@
 	"title": "Judge verdict",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["verdict", "rationale", "failures"],
+	"required": ["assertions"],
 	"properties": {
-		"verdict": {"enum": ["pass", "fail"]},
-		"rationale": {"description": "The evidence that decided the verdict.", "type": "string", "pattern": "\\S"},
-		"failures": {
-			"description": "One item per requirement that the trial failed: at least one when the verdict is fail, none when it is pass.",
+		"assertions": {
+			"description": "One item per assertion listed under Assertions to decide, each exactly once. The trial fails when any item's verdict is fail.",
 			"type": "array",
+			"minItems": 1,
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["requirement_id", "behavior"],
+				"required": ["id", "verdict", "rationale", "behavior"],
 				"properties": {
-					"requirement_id": {"description": "The id of a requirement listed under Requirements to decide.", "type": "string"},
-					"behavior": {"description": "One of the behaviors that the requirement lists, or other when none of them describes the failure.", "type": "string", "pattern": "\\S"}
+					"id": {"description": "The id of an assertion listed under Assertions to decide.", "type": "string"},
+					"verdict": {"enum": ["pass", "fail"]},
+					"rationale": {"description": "The evidence that decided this assertion.", "type": "string", "pattern": "\\S"},
+					"behavior": {"description": "null when the verdict is pass. When it is fail, one of the behaviors that the assertion lists, or other when none of them describes the failure.", "type": ["string", "null"], "pattern": "\\S"}
 				}
 			}
 		}

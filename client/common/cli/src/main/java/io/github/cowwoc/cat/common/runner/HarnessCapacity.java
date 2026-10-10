@@ -6,6 +6,8 @@ import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.github.cowwoc.cat.common.ExclusiveFileLock;
 import io.github.cowwoc.cat.common.LockFileOpener;
+import io.github.cowwoc.cat.common.secrets.HarnessCapacityAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessCapacitySecrets;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -46,6 +48,18 @@ import java.util.concurrent.ConcurrentMap;
  */
 public final class HarnessCapacity
 {
+	static
+	{
+		HarnessCapacitySecrets.setAccess(new HarnessCapacityAccess()
+		{
+			@Override
+			public HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
+			{
+				return HarnessCapacity.of(lockDirectory, maximum, pause, clock, opener);
+			}
+		});
+	}
+
 	/**
 	 * The highest number of harness sessions that CAT may run at once.
 	 */

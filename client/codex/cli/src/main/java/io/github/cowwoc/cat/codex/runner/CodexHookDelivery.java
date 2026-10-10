@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Verifies that CAT's configured Codex hooks are trusted and that every newly started subagent receives its start hook.
  */
-final class CodexHookDelivery
+public final class CodexHookDelivery
 {
 	private static final String SESSION_START = "cat@cat:hooks/hooks.json:session_start:0:0";
 	private static final String SUBAGENT_START = "cat@cat:hooks/hooks.json:subagent_start:0:0";
@@ -22,7 +22,7 @@ final class CodexHookDelivery
 	 * @param response the harness {@code hooks/list} response
 	 * @throws IOException if either CAT hook is unavailable or not trusted
 	 */
-	static void verifyConfiguredHooks(JsonNode response) throws IOException
+	public static void verifyConfiguredHooks(JsonNode response) throws IOException
 	{
 		assert response != null;
 		JsonNode hooks = response.path("result").path("data").path(0).path("hooks");
@@ -37,7 +37,7 @@ final class CodexHookDelivery
 	 * @param json the JSON parser used by the owning runner session
 	 * @throws IOException if the event stream is malformed or Codex omitted a required subagent hook event
 	 */
-	static void verifySubagentDelivery(String events, JsonMapper json) throws IOException
+	public static void verifySubagentDelivery(String events, JsonMapper json) throws IOException
 	{
 		assert events != null;
 		assert json != null;

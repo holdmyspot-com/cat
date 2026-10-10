@@ -27,8 +27,8 @@ import java.util.TreeSet;
  * The differences between two inventories of the same project, compared path by path.
  * <p>
  * An empty difference between the inventory CAT expects, such as a candidate's {@link Overlay#snapshot() snapshot},
- * and a fresh scan shows that nothing changed outside CAT's recorded operations. A difference between an author's copy
- * before and after an attempt is the attempt's delta, which {@link #review(FileInventory, Authority)} validates.
+ * and a fresh scan shows that nothing changed outside CAT's recorded operations. A difference between a prompt author's
+ * copy before and after an attempt is the attempt's delta, which {@link #review(FileInventory, Authority)} validates.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -97,10 +97,10 @@ public final class InventoryDiff
 	}
 
 	/**
-	 * Validates an author attempt, treating this difference as the attempt's delta: the author's copy scanned before
-	 * and after the attempt.
+	 * Validates a prompt author attempt, treating this difference as the attempt's delta: the prompt author's copy
+	 * scanned before and after the attempt.
 	 * <p>
-	 * The author's copy replaces every symbolic link with a copy of its target, so each changed path is resolved
+	 * The prompt author's copy replaces every symbolic link with a copy of its target, so each changed path is resolved
 	 * through the fork's links and the change applies to the resolved target. Each change is classified:
 	 * <ul>
 	 *   <li>changed bytes of a regular file: a content edit of the target;</li>
@@ -170,7 +170,7 @@ public final class InventoryDiff
 		/**
 		 * Classifies a path that the attempt added.
 		 *
-		 * @param path the path in the author's copy
+		 * @param path the path in the prompt author's copy
 		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
 		 * @param after the added entry
 		 */
@@ -187,13 +187,14 @@ public final class InventoryDiff
 		/**
 		 * Classifies a path that the attempt removed.
 		 *
-		 * @param path the path in the author's copy
+		 * @param path the path in the prompt author's copy
 		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
 		 * @param before the removed entry
 		 */
 		private void classifyRemoved(Path path, Optional<Path> resolved, FileEntry before)
 		{
-			// The author's copy holds a regular file where the fork holds a link, so removing that file removes the link
+			// The prompt author's copy holds a regular file where the fork holds a link, so removing that file removes
+			// the link
 			if (fork.entry(path).orElse(before) instanceof SymbolicLink)
 			{
 				forbid(path, resolved, Operation.CHANGE_LINK, Limit.LINK_FIXED);
@@ -210,7 +211,7 @@ public final class InventoryDiff
 		/**
 		 * Classifies a path whose entry the attempt changed.
 		 *
-		 * @param path the path in the author's copy
+		 * @param path the path in the prompt author's copy
 		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
 		 * @param before the earlier entry
 		 * @param after the later entry
@@ -238,7 +239,7 @@ public final class InventoryDiff
 		/**
 		 * Checks an operation against the authority, recording it as forbidden or as a permitted outcome for its target.
 		 *
-		 * @param path the path in the author's copy
+		 * @param path the path in the prompt author's copy
 		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
 		 * @param operation the operation
 		 * @param after the target's resulting regular file, or {@code null} if the operation deletes it
@@ -263,7 +264,7 @@ public final class InventoryDiff
 		/**
 		 * Records a forbidden operation.
 		 *
-		 * @param path the path in the author's copy
+		 * @param path the path in the prompt author's copy
 		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
 		 * @param operation the operation
 		 * @param limit the reason it is forbidden
@@ -310,7 +311,7 @@ public final class InventoryDiff
 	/**
 	 * A permitted operation's effect on its resolved target.
 	 *
-	 * @param source the path in the author's copy at which the operation was performed
+	 * @param source the path in the prompt author's copy at which the operation was performed
 	 * @param operation the operation
 	 * @param after the target's resulting regular file, or {@code null} if the operation deletes it
 	 */

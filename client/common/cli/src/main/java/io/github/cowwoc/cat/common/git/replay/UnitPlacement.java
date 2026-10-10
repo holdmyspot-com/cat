@@ -9,7 +9,7 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param destination the output that owns the responsibility
  * @param evidence the concrete predecessor, consumer, or prerequisite evidence for the placement
  */
-record UnitPlacement(String inventoryId, String affectedUnit, String owningResponsibility, String destination,
+public record UnitPlacement(String inventoryId, String affectedUnit, String owningResponsibility, String destination,
 	String evidence)
 {
 }

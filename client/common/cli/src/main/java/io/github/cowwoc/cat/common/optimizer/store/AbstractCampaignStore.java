@@ -16,12 +16,12 @@ import java.util.Optional;
 /**
  * The record rules that every {@link CampaignStore} shares, over storage primitives that each implementation provides.
  */
-abstract class AbstractCampaignStore implements CampaignStore
+public abstract class AbstractCampaignStore implements CampaignStore
 {
 	/**
 	 * Creates a store.
 	 */
-	AbstractCampaignStore()
+	public AbstractCampaignStore()
 	{
 	}
 
@@ -46,7 +46,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 		}
 		// A trial that returns to ASSIGNED after a run without an outcome is written again before its next session,
 		// which adds that run's infrastructure attempt to the record
-		writeRecord(campaignId, new TrialRecord(trial.key(), trial.instance(), trial.identity(), trial.allocation(),
+		writeRecord(campaignId, new TrialRecord(trial.key(), trial.testCase(), trial.identity(), trial.allocation(),
 			trial.infrastructureAttempts(), null, existing.map(TrialRecord::sessions).orElse(List.of())));
 	}
 
@@ -104,12 +104,12 @@ abstract class AbstractCampaignStore implements CampaignStore
 			if (record.isEmpty() || record.get().outcome() == null)
 				continue;
 			TrialRecord found = record.get();
-			if (!found.instance().equals(trial.instance()))
+			if (!found.testCase().equals(trial.testCase()))
 			{
 				throw new IOException("The record of trial " + trial.key() + " in campaign " + campaignId +
-					" holds a different instance than the snapshot.\n" +
-					"Record  : " + found.instance() + "\n" +
-					"Snapshot: " + trial.instance());
+					" holds a different test case than the snapshot.\n" +
+					"Record  : " + found.testCase() + "\n" +
+					"Snapshot: " + trial.testCase());
 			}
 			outcomes.add(found.outcome());
 		}
@@ -168,7 +168,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @return the campaign, or empty if it has no snapshot
 	 * @throws IOException if the snapshot cannot be read or is malformed
 	 */
-	abstract Optional<Campaign> readSnapshot(String campaignId) throws IOException;
+	public abstract Optional<Campaign> readSnapshot(String campaignId) throws IOException;
 
 	/**
 	 * Atomically replaces a campaign's snapshot.
@@ -176,7 +176,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @param campaign the campaign, whose identifier {@link #requireCampaignId(String)} accepts
 	 * @throws IOException if the snapshot cannot be written
 	 */
-	abstract void writeSnapshot(Campaign campaign) throws IOException;
+	public abstract void writeSnapshot(Campaign campaign) throws IOException;
 
 	/**
 	 * Reads a trial's record.
@@ -186,7 +186,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @return the record, or empty if the trial has none
 	 * @throws IOException if the record cannot be read, is malformed or belongs to a different trial
 	 */
-	abstract Optional<TrialRecord> readRecord(String campaignId, TrialKey key) throws IOException;
+	public abstract Optional<TrialRecord> readRecord(String campaignId, TrialKey key) throws IOException;
 
 	/**
 	 * Atomically replaces a trial's record.
@@ -195,7 +195,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @param record the record
 	 * @throws IOException if the record cannot be written
 	 */
-	abstract void writeRecord(String campaignId, TrialRecord record) throws IOException;
+	public abstract void writeRecord(String campaignId, TrialRecord record) throws IOException;
 
 	/**
 	 * Reads a campaign's delivery journal.
@@ -204,7 +204,7 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @return the journal, or empty if the campaign has none
 	 * @throws IOException if the journal cannot be read or is malformed
 	 */
-	abstract Optional<DeliveryJournal> readJournal(String campaignId) throws IOException;
+	public abstract Optional<DeliveryJournal> readJournal(String campaignId) throws IOException;
 
 	/**
 	 * Atomically replaces a campaign's delivery journal.
@@ -213,5 +213,5 @@ abstract class AbstractCampaignStore implements CampaignStore
 	 * @param journal the journal
 	 * @throws IOException if the journal cannot be written
 	 */
-	abstract void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException;
+	public abstract void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException;
 }

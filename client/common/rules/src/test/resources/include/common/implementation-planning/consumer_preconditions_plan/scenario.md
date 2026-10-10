@@ -1,11 +1,15 @@
-## Context
+# Consumer preconditions plan
 
-Use the [empty project fixture](../project/); the request supplies the planning inputs.
+## Variables
+
+| Name | Description |
+|---|---|
+| threshold | The value that the lower confidence bound must exceed, a decimal between 0.80 and 0.99 |
 
 ## Scenario
 
 Create an implementation plan for this quality-assessment service. The approved product claim is a one-sided
-exact binomial lower confidence bound above 0.95 for each material category, evaluated once at a predeclared
+exact binomial lower confidence bound above {{threshold}} for each material category, evaluated once at a predeclared
 fixed sample size. Its statistical routine is valid for independent identically distributed Bernoulli trials
 within a category. Each category contains several approved test definitions with potentially different success
 probabilities. The draft sampling component independently draws each test's incidental values but selects
@@ -19,10 +23,14 @@ and acceptance boundaries. Remain read-only: do not implement, execute probes or
 
 ### population_compatibility
 
+kind: effect
+
 The plan recognizes that fixed per-definition counts with potentially different success probabilities do not establish
 the consumer's IID Bernoulli premise. A valid binary result schema is insufficient.
 
 ### supported_correction
+
+kind: effect
 
 It resolves the handoff before declaring statistical work ready: for example, independently draw test definitions from
 a frozen distribution with replacement, or establish a different valid procedure for the required claim. It retains
@@ -31,12 +39,16 @@ ran or that fresh incidental wording proves independence.
 
 ### planning_guidance_before_decisions
 
+kind: effect
+
 The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
 project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
 substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
 selection.
 
 ### evidence_and_scope
+
+kind: effect
 
 Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
 whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or

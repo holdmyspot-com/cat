@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 /**
  * Copies the connection settings needed by an isolated Codex process without inheriting host customization state.
  */
-final class CodexConnectionConfiguration
+public final class CodexConnectionConfiguration
 {
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	private static final String STARTUP_UPDATE_CHECK = "check_for_update_on_startup = false";
@@ -41,7 +41,7 @@ final class CodexConnectionConfiguration
 	 * @param destination the isolated configuration file
 	 * @throws IOException if configuration I/O fails
 	 */
-	static void copy(Path source, Path destination) throws IOException
+	public static void copy(Path source, Path destination) throws IOException
 	{
 		copy(source, destination, null, destination.getParent().resolve("tmp"));
 	}
@@ -61,7 +61,7 @@ final class CodexConnectionConfiguration
 	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
 	 * @throws IOException if configuration I/O fails
 	 */
-	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
+	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
 	{
 		copy(source, destination, npmCache, temporaryDirectory, 0);
 	}
@@ -78,8 +78,8 @@ final class CodexConnectionConfiguration
 	 *   Codex's default
 	 * @throws IOException if configuration I/O fails
 	 */
-	static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory, int toolOutputTokenLimit)
-		throws IOException
+	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory,
+		int toolOutputTokenLimit) throws IOException
 	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
@@ -190,7 +190,7 @@ final class CodexConnectionConfiguration
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the isolated configuration cannot be updated
 	 */
-	static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
+	public static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
 		throws IOException
 	{
 		requireThat(destination, "destination").isNotNull();
@@ -257,7 +257,7 @@ final class CodexConnectionConfiguration
 	 * @param evidenceRoots the completed evidence directories and files
 	 * @throws IOException if the isolated configuration cannot be updated
 	 */
-	static void addValidatorProfile(Path destination, List<Path> evidenceRoots) throws IOException
+	public static void addValidatorProfile(Path destination, List<Path> evidenceRoots) throws IOException
 	{
 		requireThat(evidenceRoots, "evidenceRoots").isNotEmpty();
 		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
@@ -347,7 +347,7 @@ final class CodexConnectionConfiguration
 	 * @param destination the isolated Codex configuration file
 	 * @throws IOException if configuration I/O fails
 	 */
-	static void copyTrustedCatHooks(Path source, Path destination) throws IOException
+	public static void copyTrustedCatHooks(Path source, Path destination) throws IOException
 	{
 		if (!Files.isRegularFile(source))
 			return;

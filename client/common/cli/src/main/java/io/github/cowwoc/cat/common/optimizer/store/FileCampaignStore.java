@@ -279,7 +279,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	Optional<Campaign> readSnapshot(String campaignId) throws IOException
+	public Optional<Campaign> readSnapshot(String campaignId) throws IOException
 	{
 		Path directory = directory(base, campaignId);
 		Path file = directory.resolve(HELD_OUT).resolve(SNAPSHOT);
@@ -294,7 +294,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	void writeSnapshot(Campaign campaign) throws IOException
+	public void writeSnapshot(Campaign campaign) throws IOException
 	{
 		Path heldOut = heldOutDirectory(base, campaign.header().id());
 		// Sessions that start before the first trial record is written must already be denied the records' directory.
@@ -303,7 +303,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	Optional<TrialRecord> readRecord(String campaignId, TrialKey key) throws IOException
+	public Optional<TrialRecord> readRecord(String campaignId, TrialKey key) throws IOException
 	{
 		Path file = recordFile(campaignId, key);
 		if (Files.notExists(file))
@@ -319,7 +319,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	void writeRecord(String campaignId, TrialRecord record) throws IOException
+	public void writeRecord(String campaignId, TrialRecord record) throws IOException
 	{
 		Path file = recordFile(campaignId, record.key());
 		AtomicFiles.createDirectories(file.getParent());
@@ -348,7 +348,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	Optional<DeliveryJournal> readJournal(String campaignId) throws IOException
+	public Optional<DeliveryJournal> readJournal(String campaignId) throws IOException
 	{
 		Path file = directory(base, campaignId).resolve(JOURNAL);
 		if (Files.notExists(file))
@@ -357,7 +357,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
-	void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
+	public void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
 	{
 		Path directory = directory(base, campaignId);
 		AtomicFiles.createDirectories(directory);

@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 
 import tools.jackson.databind.node.ArrayNode;
@@ -47,27 +47,27 @@ final class OptimizationJson
 			cell.put("incumbent_sessions", comparison.incumbentSessions());
 			cell.put("unavailable", comparison.unavailable());
 		}
-		ArrayNode authors = root.putArray("author_diagnoses");
-		for (AuthorDiagnosis diagnosis : report.authors())
+		ArrayNode promptAuthors = root.putArray("prompt_author_diagnoses");
+		for (PromptAuthorDiagnosis diagnosis : report.promptAuthors())
 		{
-			ObjectNode author = authors.addObject();
-			author.put("attempt", diagnosis.number());
-			author.put("cell", diagnosis.cell());
-			author.put("snapshot", diagnosis.snapshot().hex());
-			author.put("transcript", diagnosis.transcript().toString());
-			author.put("effects", diagnosis.effects().toString());
-			ArrayNode kinds = author.putArray("kinds");
-			for (AuthorKind kind : diagnosis.kinds())
+			ObjectNode promptAuthor = promptAuthors.addObject();
+			promptAuthor.put("attempt", diagnosis.number());
+			promptAuthor.put("cell", diagnosis.cell());
+			promptAuthor.put("snapshot", diagnosis.snapshot().hex());
+			promptAuthor.put("transcript", diagnosis.transcript().toString());
+			promptAuthor.put("effects", diagnosis.effects().toString());
+			ArrayNode kinds = promptAuthor.putArray("kinds");
+			for (PromptAuthorKind kind : diagnosis.kinds())
 			{
 				ObjectNode element = kinds.addObject();
 				element.put("name", kind.name());
 				element.put("classification", EnumNames.lowerCase(kind.classification()));
-				ArrayNode instances = element.putArray("instances");
-				kind.instances().forEach(instances::add);
+				ArrayNode failures = element.putArray("failures");
+				kind.failures().forEach(failures::add);
 				ArrayNode hunks = element.putArray("hunks");
 				kind.hunks().forEach(hunks::add);
 			}
-			ArrayNode rejections = author.putArray("rejections");
+			ArrayNode rejections = promptAuthor.putArray("rejections");
 			for (String rejection : diagnosis.rejections())
 				rejections.add(rejection);
 		}
@@ -75,7 +75,7 @@ final class OptimizationJson
 		for (String hunk : report.removed())
 			removed.add(hunk);
 
-		ArrayNode attempts = root.putArray("author_attempts");
+		ArrayNode attempts = root.putArray("prompt_author_attempts");
 		for (AttemptProgress progress : report.attempts())
 		{
 			ObjectNode attempt = attempts.addObject();

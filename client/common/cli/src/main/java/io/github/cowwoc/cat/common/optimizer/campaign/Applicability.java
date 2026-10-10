@@ -10,7 +10,7 @@ import java.util.List;
  * Whether a result still describes the current prompt system and conditions.
  * <p>
  * A result is current only while CAT knows of no material change. A known change makes it historical without
- * deleting or rewriting it. Conditions are compared campaign-wide and for the same cell, the requirement category
+ * deleting or rewriting it. Conditions are compared campaign-wide and for the same cell, the prompt test
  * under a runner profile. Missing data is not a known change: a condition that the result records but the current
  * state does not, such as the trial model outside a session, is unchecked. A certification is also historical when
  * its recorded parameters do not imply the parameters that the current version of CAT certifies under.

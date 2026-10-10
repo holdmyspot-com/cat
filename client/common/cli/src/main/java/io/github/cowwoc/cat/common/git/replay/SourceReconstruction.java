@@ -11,7 +11,7 @@ import java.util.List;
  * @param beforeTree the source commit parent's tree
  * @param afterTree the source commit's tree
  */
-record SourceReconstruction(String source, List<String> batchIds, PatchArtifact sourcePatch, String beforeTree,
+public record SourceReconstruction(String source, List<String> batchIds, PatchArtifact sourcePatch, String beforeTree,
 	String afterTree)
 {
 }

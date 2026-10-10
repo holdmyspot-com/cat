@@ -18,9 +18,13 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
@@ -28,15 +32,18 @@ import io.github.cowwoc.cat.common.optimizer.execution.Cleanup;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.execution.Driver;
 import io.github.cowwoc.cat.common.optimizer.execution.DriverContext;
+import io.github.cowwoc.cat.common.optimizer.execution.GuardPilot;
 import io.github.cowwoc.cat.common.optimizer.execution.LeftoverRuns;
+import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
 import io.github.cowwoc.cat.common.optimizer.execution.ProcessHandleTerminator;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceResult;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
-import io.github.cowwoc.cat.common.optimizer.execution.prompt.AuthorPrompt;
+import io.github.cowwoc.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
+import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
@@ -49,7 +56,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.proposal.DeriverProtocol;
+import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
@@ -81,7 +88,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.SplittableRandom;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -120,16 +130,17 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a deriver protocol with the current recorded scenarios and the harness's role profile.
+	 * Returns a contract author protocol with the current recorded scenarios and the harness's role profile.
 	 *
 	 * @param root the original project root, where scenarios are recorded
 	 * @return the protocol
 	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
 	 */
-	private DeriverProtocol deriver(Path root) throws IOException
+	private ContractAuthorProtocol contractAuthor(Path root) throws IOException
 	{
-		return new DeriverProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
-			scope.profiles().roleProfile()), RegressionScenarios.read(root, scope.home()));
+		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
+			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
+			scope.sessions().reportsExitStatus());
 	}
 
 	/**
@@ -177,7 +188,7 @@ public final class OptimizerCore implements Core
 		}
 		if (unsupported.isEmpty())
 			return "";
-		return "The deriver session did not start because the harness does not support a bound model: " +
+		return "The contract author session did not start because the harness does not support a bound model: " +
 			String.join("; ", unsupported) + ". Change the binding and run `start` again.";
 	}
 
@@ -336,7 +347,7 @@ public final class OptimizerCore implements Core
 		ForkView fork = openFork(root, campaign);
 		Optional<DerivedProposal> stored = stored(root, campaign);
 		if (stored.isPresent())
-			return present(root, campaign, fork, stored.get());
+			return present(root, store, campaign, fork, stored.get());
 		return derive(root, store, campaign, fork, null, null);
 	}
 
@@ -455,7 +466,7 @@ public final class OptimizerCore implements Core
 		}
 		MeasurementIdentity known = environment(path -> InventoryScanner.entry(root, path));
 		return CommandResult.of(new CertificationStatus(record.get(),
-			record.get().applicability(promptFiles, known)));
+			record.get().applicability(promptFiles, known, record.get().parameters().minimumPassRate())));
 	}
 
 	/**
@@ -491,85 +502,182 @@ public final class OptimizerCore implements Core
 			ForkView fork = openFork(root, loaded);
 			DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 				"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
-			Proposal proposal = proposal(root, loaded, fork, derived);
+			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
+			if (loaded.isConfirmed())
+				fork = fork.including(participants(root, derived).existing());
+			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(root, loaded).read());
 			if (!proposal.isConfirmable(certificationScope))
 				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-			loaded = recordParticipants(root, store, loaded, fork, proposal, derived);
-			return apply(root, loaded, proposal.confirmation(scope.random().nextLong(), certificationScope));
+			requireParticipantsHeld(root, fork, derived);
+			List<CampaignEvent> events = new ArrayList<>(moveOnto(root, loaded, fork));
+			events.addAll(proposal.confirmation(scope.random().nextLong(), certificationScope));
+			return apply(root, loaded, events);
 		});
 	}
 
 	/**
-	 * Records the confirmed contract's trial fixtures and the derived prompt sources that the fork does not hold,
-	 * before confirmation writes anything, so that trials never read a live file. The incumbent overlay is saved for
-	 * the extended fork before the campaign refers to it.
+	 * Requires that the fork holds the trial fixtures and derived prompt sources of the proposal that the user
+	 * confirms, which presenting the proposal recorded, so that trials never read a live file.
 	 *
 	 * @param root the project root
-	 * @param store the store
-	 * @param campaign the campaign
-	 * @param fork the campaign's fork
-	 * @param proposal the proposal that the user confirms
-	 * @param derived the deriver's proposal
-	 * @return the campaign, bound to the extended fork
-	 * @throws CommandRefusedException if a fixture does not exist, or the fork lacks a participant that a revision
-	 *   would need
-	 * @throws IOException if the store or the workspace fails
+	 * @param fork the fork that the confirmed contract runs on
+	 * @param derived the proposal that the user confirms
+	 * @throws CommandRefusedException if a fixture does not exist, the fork lacks a file that the proposal needs, or a
+	 *   fixture file of a prompt test would replace a file of the fork
 	 */
-	private Campaign recordParticipants(Path root, CampaignStore store, Campaign campaign, ForkView fork,
-		Proposal proposal, DerivedProposal derived) throws CommandRefusedException, IOException
+	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived)
+		throws CommandRefusedException
+	{
+		Set<String> collisions = fixtureCollisions(fork.inventory(), derived.contract());
+		if (!collisions.isEmpty())
+		{
+			throw new CommandRefusedException("These fixture files of the proposal's prompt tests collide with " +
+				"project files, so the trials could not receive them: " + String.join(", ", collisions) + ". Run " +
+				"`revise` with feedback that asks for other paths.");
+		}
+		Participants participants = participants(root, derived);
+		if (!participants.missingFixtures().isEmpty())
+		{
+			throw new CommandRefusedException("These trial fixtures do not exist in the project, so the trials " +
+				"could not see them: " + String.join(", ", participants.missingFixtures()));
+		}
+		String unheld = unheld(fork, participants);
+		if (unheld.isEmpty())
+			return;
+		throw new CommandRefusedException("These files appeared after CAT presented the proposal, so its guard pilot " +
+			"did not see them: " + unheld + ". Run `start` for the same target again so that CAT presents the " +
+			"proposal with them.");
+	}
+
+	/**
+	 * Returns the fixture files of a contract's prompt tests that would replace a file of the fork, or that need a
+	 * directory where the fork holds a file.
+	 *
+	 * @param inventory the files of the fork
+	 * @param contract the contract
+	 * @return the colliding paths of every test case, relative to the workspace root
+	 */
+	private static Set<String> fixtureCollisions(FileInventory inventory, Contract contract)
+	{
+		Set<String> collisions = new TreeSet<>();
+		for (PromptTest test : contract.tests())
+		{
+			for (TestCase testCase : test.allTestCases())
+			{
+				for (String target : test.fixtureTargets(testCase).keySet())
+				{
+					Path path = Path.of(target);
+					boolean collides = inventory.holds(path);
+					for (Path parent = path.getParent(); parent != null && !collides; parent = parent.getParent())
+						collides = inventory.entry(parent).isPresent();
+					if (collides)
+						collisions.add(target);
+				}
+			}
+		}
+		return collisions;
+	}
+
+	/**
+	 * Moves a confirmed campaign whose revision waits for confirmation onto the fork that holds the files of the
+	 * revised contract, if that fork holds more files than the campaign's. The fork becomes the campaign's current
+	 * fork, the incumbent and the working candidate keep their edits on it, and the optimization worktree is rewritten
+	 * to hold the working candidate. Repeating the move after an interruption repeats each step.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the fork that the revised contract runs on
+	 * @return the event that moves the campaign, or none if the campaign is not confirmed or is on that fork already
+	 * @throws CommandRefusedException if the working candidate's edits do not apply to the larger fork
+	 * @throws IOException if the overlays, the fork's selection or the worktree cannot be read or written
+	 */
+	private List<CampaignEvent> moveOnto(Path root, Campaign campaign, ForkView fork)
+		throws CommandRefusedException, IOException
+	{
+		if (!campaign.isConfirmed())
+			return List.of();
+		FileInventory larger = fork.inventory();
+		FileCandidateOverlays overlays = new FileCandidateOverlays(directory(root, campaign.header().id()), larger,
+			fork::version, scope.json());
+		if (overlays.require(campaign.incumbent().snapshot()).fork().equals(larger))
+			return List.of();
+		Overlay working;
+		try
+		{
+			working = overlays.require(campaign.development().working().snapshot()).onto(larger);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw new CommandRefusedException("The working candidate's edits do not apply beside the files that the " +
+				"revised contract needs: " + e.getMessage(), e);
+		}
+		Overlay incumbent = Overlay.of(larger);
+		fork.adopt();
+		overlays.save(incumbent);
+		overlays.save(working);
+		fork.workspace().materialize(working);
+		return List.of(new CampaignEvent.ExtendFork(incumbent.identity(), working.identity()));
+	}
+
+	/**
+	 * Returns the participants of a proposal that the fork does not hold.
+	 *
+	 * @param fork the campaign's fork
+	 * @param participants the proposal's participants
+	 * @return the participants, separated by commas, or an empty string if the fork holds them all
+	 */
+	private static String unheld(ForkView fork, Participants participants)
 	{
 		FileInventory held = fork.inventory();
-		Set<Path> needed = new LinkedHashSet<>();
+		return participants.existing().stream().filter(path -> !held.holds(path)).map(Path::toString).
+			collect(Collectors.joining(", "));
+	}
+
+	/**
+	 * The files beyond the prompt system that a proposal's trials need.
+	 *
+	 * @param existing the existing trial fixtures and derived prompt sources, named as the fork names participants
+	 * @param missingFixtures the trial fixtures that do not exist in the project
+	 */
+	private record Participants(Set<Path> existing, List<String> missingFixtures)
+	{
+	}
+
+	/**
+	 * Returns the trial fixtures and derived prompt sources of a proposal.
+	 *
+	 * @param root the project root
+	 * @param derived the contract author's proposal
+	 * @return the files
+	 */
+	private static Participants participants(Path root, DerivedProposal derived)
+	{
+		Set<Path> existing = new LinkedHashSet<>();
 		List<String> missing = new ArrayList<>();
-		for (String fixture : proposal.contract().fixtures().ignoredPaths())
+		for (String fixture : derived.contract().fixtures().ignoredPaths())
 		{
 			Path path = Path.of(fixture);
-			if (held.holds(path))
-				continue;
 			if (InventoryScanner.isOmitted(path) ||
 				Files.notExists(root.resolve(path), LinkOption.NOFOLLOW_LINKS))
 			{
 				missing.add(fixture);
 			}
 			else
-				needed.add(path);
-		}
-		if (!missing.isEmpty())
-		{
-			throw new CommandRefusedException("These trial fixtures do not exist in the project, so the trials " +
-				"could not see them: " + String.join(", ", missing));
+				existing.add(path);
 		}
 		for (Path source : derivedPaths(root, derived))
 		{
-			Path location = source;
-			if (!source.isAbsolute())
-				location = root.resolve(source);
-			if (!held.holds(source) && Files.exists(location, LinkOption.NOFOLLOW_LINKS))
-				needed.add(source);
+			if (Files.exists(root.resolve(source), LinkOption.NOFOLLOW_LINKS))
+				existing.add(source);
 		}
-		if (needed.isEmpty())
-			return campaign;
-		if (campaign.isConfirmed())
-		{
-			throw new CommandRefusedException("The revised contract needs files that the fork does not hold: " +
-				needed.stream().map(Path::toString).collect(Collectors.joining(", ")) + ". Start a new campaign " +
-				"so that the fork records them.");
-		}
-		ForkView extended = fork.addParticipants(root, needed);
-		FileInventory inventory = extended.inventory();
-		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory(root, campaign.header().id()), inventory, scope.json()).save(incumbent);
-		Campaign rebound = Campaign.start(campaign.header(), campaign.ceiling(), incumbent.identity(),
-			campaign.identity());
-		store.replaceSnapshot(rebound);
-		return rebound;
+		return new Participants(existing, missing);
 	}
 
 	/**
 	 * Returns the derived prompt sources as the fork names them.
 	 *
 	 * @param root the project root
-	 * @param derived the deriver's proposal
+	 * @param derived the contract author's proposal
 	 * @return paths relative to the project for sources inside it, and absolute paths for sources outside it
 	 */
 	private static Set<Path> derivedPaths(Path root, DerivedProposal derived)
@@ -635,15 +743,23 @@ public final class OptimizerCore implements Core
 
 	@Override
 	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
-		throws CommandRefusedException, IOException
+		throws CommandRefusedException, IOException, InterruptedException
 	{
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
 			Campaign loaded = require(scope.store(), campaign, true);
 			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
-			// Retaining the incumbent ends the campaign without a delivery
-			noticeOf(cleanup().end(require(scope.store(), campaign, true), Optional.empty()), notices);
+			Campaign chosen = require(scope.store(), campaign, true);
+			Optional<DeliveryResult> delivery = Optional.empty();
+			if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
+			{
+				// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
+				SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of());
+				delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result);
+				result = new CommandResult(slice.status(), scope.harness(), null, slice.delivery(), null);
+			}
+			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return result;
 		});
 	}
@@ -748,7 +864,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Runs the deriver and presents its proposal.
+	 * Runs the contract author and presents its proposal.
 	 *
 	 * @param root the project root
 	 * @param store persists the campaign's observed usage
@@ -756,7 +872,7 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param previous the proposal that the user gave feedback on, or {@code null} for the first derivation
 	 * @param feedback the user's feedback, or {@code null} for the first derivation
-	 * @return the result. If the deriver fails, the result carries the reason instead of a proposal.
+	 * @return the result. If the contract author fails, the result carries the reason instead of a proposal.
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
@@ -764,10 +880,11 @@ public final class OptimizerCore implements Core
 		DerivedProposal previous, String feedback) throws IOException, InterruptedException
 	{
 		Path directory = directory(root, campaign.header().id());
-		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), scope.json()).
+		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json()).
 			require(campaign.incumbent().snapshot());
-		Path staged = fork.workspace().stage(incumbent);
-		DeriverProtocol protocol = deriver(root);
+		// The contract author reads the regression scenarios, so nothing is left out
+		Path staged = fork.workspace().stage(incumbent, Set.of());
+		ContractAuthorProtocol protocol = contractAuthor(root);
 		ProfileEvidence profiles = profileEvidence(staged);
 		String unsupported = unsupportedBindings(profiles);
 		if (!unsupported.isEmpty())
@@ -776,7 +893,7 @@ public final class OptimizerCore implements Core
 		if (previous == null)
 			request = protocol.request(staged, profiles);
 		else
-			request = protocol.request(staged, profiles, previous, feedback);
+			request = protocol.request(staged, profiles, previous, feedback, pilotFile(root, campaign).read());
 		SessionResult result = await(scope.sessions().start(request));
 		SessionResult.Completed completed;
 		switch (result)
@@ -784,7 +901,7 @@ public final class OptimizerCore implements Core
 			case SessionResult.Completed ended -> completed = ended;
 			case SessionResult.Failed failed ->
 			{
-				return report(root, campaign, null, "The deriver session did not complete: " + failed.reason() +
+				return report(root, campaign, null, "The contract author session did not complete: " + failed.reason() +
 					". Run `start` again to retry.");
 			}
 			case SessionResult.Refused refused ->
@@ -801,14 +918,14 @@ public final class OptimizerCore implements Core
 				}
 				if (held)
 				{
-					return report(root, campaign, null, "The provider refused the deriver session until " + end +
-						". Run `start` again after that time.");
+					return report(root, campaign, null, "The provider refused the contract author session until " +
+						end + ". Run `start` again after that time.");
 				}
-				return report(root, campaign, null, "The provider refused the deriver session. " + retry);
+				return report(root, campaign, null, "The provider refused the contract author session. " + retry);
 			}
 			case SessionResult.Interrupted _ ->
 			{
-				return report(root, campaign, null, "The deriver session was interrupted. " +
+				return report(root, campaign, null, "The contract author session was interrupted. " +
 					"Run `start` again to retry.");
 			}
 			case SessionResult.RateLimited limited ->
@@ -820,19 +937,19 @@ public final class OptimizerCore implements Core
 					until = " until " + limited.hold().endsAt();
 					retry = "Run `start` again after that time.";
 				}
-				return report(root, campaign, null, "The provider rejected the deriver session because of a rate limit" +
-					until + ". " + retry);
+				return report(root, campaign, null,
+					"The provider rejected the contract author session because of a rate limit" + until + ". " + retry);
 			}
 		}
 
 		if (completed.usage() != null)
 		{
-			campaign = Transitions.apply(campaign, new CampaignEvent.ObserveTokenUsage(SessionRole.DERIVER,
+			campaign = Transitions.apply(campaign, new CampaignEvent.ObserveTokenUsage(SessionRole.CONTRACT_AUTHOR,
 				completed.usage()));
 			store.replaceSnapshot(campaign);
 		}
 
-		// Revision keeps the salt, so the instances that the user reviewed keep their parts
+		// Revision keeps the salt, so the test cases that the user reviewed keep their parts
 		long salt;
 		if (previous == null)
 			salt = scope.random().nextLong();
@@ -845,28 +962,94 @@ public final class OptimizerCore implements Core
 		}
 		catch (InvalidProposalException e)
 		{
-			return report(root, campaign, null, "The deriver's proposal is invalid: " +
+			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". Run `revise` with feedback, or `start`, to retry.");
 		}
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
-		return present(root, campaign, fork, derived);
+		return present(root, store, campaign, fork, derived);
 	}
 
 	/**
-	 * Presents a proposal.
+	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, then
+	 * presents the proposal with the pilot's results. The fork first records the proposal's trial fixtures and derived
+	 * prompt sources, so the pilot's trials see the files that formal trials will see. Before confirmation, the fork
+	 * also leaves out those that an earlier proposal needed and this one does not. After confirmation, nothing leaves
+	 * the fork, and the campaign stays on its current fork until the user confirms the revision.
 	 *
 	 * @param root the project root
+	 * @param store the store
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
 	 * @return the result
-	 * @throws IOException if the host's login cannot be read
+	 * @throws IOException if the host's login, the stored pilot or the workspace cannot be read, or the pilot or the
+	 *   campaign cannot be stored
+	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
-	private CommandResult present(Path root, Campaign campaign, ForkView fork, DerivedProposal derived)
+	private CommandResult present(Path root, CampaignStore store, Campaign campaign, ForkView fork,
+		DerivedProposal derived)
+		throws IOException, InterruptedException
+	{
+		Participants participants = participants(root, derived);
+		if (campaign.isConfirmed())
+		{
+			// The confirmed campaign keeps its fork until the user confirms the revision that needs a larger one
+			if (!unheld(fork, participants).isEmpty())
+				fork = fork.extend(root, participants.existing());
+		}
+		else
+		{
+			ForkView selected = fork.selectParticipants(root, participants.existing());
+			if (!selected.inventory().equals(fork.inventory()))
+				campaign = rebind(root, store, campaign, selected.inventory());
+			fork = selected;
+		}
+
+		FileInventory inventory = fork.inventory();
+		Overlay control = ControlSource.of(inventory, authority(root, campaign, inventory));
+		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
+			campaign.ceiling());
+		PilotFile file = pilotFile(root, campaign);
+		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign));
+		Map<String, PilotResult> pilots = pilot.run(derived.contract(), control, excluded, file.read(),
+			scope.random());
+		file.write(pilots);
+
+		Proposal proposal = proposal(root, campaign, fork, derived, pilots);
+		return report(root, campaign, proposal.render(), null);
+	}
+
+	/**
+	 * Binds a campaign that waits for its first confirmed contract to the incumbent of its fork's changed files. The
+	 * incumbent overlay is saved for the new files before the campaign refers to it.
+	 *
+	 * @param root the project root
+	 * @param store the store
+	 * @param campaign the campaign
+	 * @param inventory the fork's files
+	 * @return the rebound campaign
+	 * @throws IOException if the overlay or the campaign cannot be stored
+	 */
+	private Campaign rebind(Path root, CampaignStore store, Campaign campaign, FileInventory inventory)
 		throws IOException
 	{
-		Proposal proposal = proposal(root, campaign, fork, derived);
-		return report(root, campaign, proposal.render(), null);
+		Overlay incumbent = Overlay.of(inventory);
+		new FileCandidateOverlays(directory(root, campaign.header().id()), inventory, scope.json()).save(incumbent);
+		Campaign rebound = campaign.withIncumbent(incumbent.identity());
+		store.replaceSnapshot(rebound);
+		return rebound;
+	}
+
+	/**
+	 * Returns the file that holds a campaign's guard pilot.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @return the file
+	 */
+	private PilotFile pilotFile(Path root, Campaign campaign)
+	{
+		return new PilotFile(heldOutDirectory(root, campaign.header().id()), scope.json());
 	}
 
 	/**
@@ -876,13 +1059,17 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
+	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @return the proposal
 	 * @throws IOException if the host's login or the target's certification record cannot be read
 	 */
-	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
+	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
+		Map<String, PilotResult> pilots) throws IOException
 	{
 		FileInventory inventory = fork.inventory();
-		LinkReport links = LinkReport.of(inventory, authority(root, campaign, inventory));
+		Authority authority = authority(root, campaign, inventory);
+		LinkReport links = LinkReport.of(inventory, authority);
+		SortedSet<Path> controlFiles = ControlSource.promptFiles(inventory, authority);
 		Optional<CertificationStatus> incumbent = Optional.empty();
 		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
 		if (record.isPresent())
@@ -896,10 +1083,11 @@ public final class OptimizerCore implements Core
 					promptFiles.put(path, file.contentHash());
 			}
 			incumbent = Optional.of(new CertificationStatus(record.get(),
-				record.get().applicability(promptFiles, campaign.identity())));
+				record.get().applicability(promptFiles, campaign.identity(),
+					derived.contract().minimumPassRate())));
 		}
-		return Proposal.of(derived, campaign, links, scope.sessions().hostLogin(), scope.calibrator(),
-			schema, incumbent);
+		return Proposal.of(derived, campaign, links, controlFiles, scope.sessions().hostLogin(), scope.calibrator(),
+			schema, incumbent, pilots);
 	}
 
 	/**
@@ -918,7 +1106,7 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(deriver(root).proposal(stored.get().result(), stored.get().profiles(),
+			return Optional.of(contractAuthor(root).proposal(stored.get().result(), stored.get().profiles(),
 				stored.get().salt()));
 		}
 		catch (InvalidProposalException e)
@@ -1021,6 +1209,21 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Returns the judge protocol of a campaign, which writes each judge's evidence under the campaign's directory.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @return the protocol
+	 * @throws IOException if the judge's directory cannot be created
+	 */
+	private JudgePrompt judgePrompt(Path root, Campaign campaign) throws IOException
+	{
+		Path judgeDirectory = directory(root, campaign.header().id()).resolve("judge");
+		Files.createDirectories(judgeDirectory);
+		return new JudgePrompt(scope.json(), judgeDirectory);
+	}
+
+	/**
 	 * Builds the driver's context.
 	 *
 	 * @param root the project root
@@ -1036,20 +1239,20 @@ public final class OptimizerCore implements Core
 		FileInventory inventory = fork.inventory();
 		CampaignStore store = scope.store();
 		Authority authority = authority(root, campaign, inventory);
-		Path judgeDirectory = directory.resolve("judge");
-		Files.createDirectories(judgeDirectory);
 		Path triageDirectory = directory.resolve("triage");
 		Files.createDirectories(triageDirectory);
 		Path valuesDirectory = directory.resolve("values");
 		Files.createDirectories(valuesDirectory);
 		Set<Path> promptSources = promptSources(root, campaign);
-		JudgePrompt judge = new JudgePrompt(scope.json(), judgeDirectory);
+		JudgePrompt judge = judgePrompt(root, campaign);
 		TriagePrompt triage = new TriagePrompt(scope.json(), triageDirectory);
-		AuthorPrompt author = new AuthorPrompt(scope.json(), schema, promptSources,
+		PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(scope.json(), schema, promptSources,
 			Set.copyOf(scope.loaderConfiguration()));
-		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory);
+		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
+			new SplittableRandom(scope.random().nextLong()));
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
-			new FileCandidateOverlays(directory, inventory, scope.json()), judge, triage, author, values,
+			new FileCandidateOverlays(directory, inventory, fork::version, scope.json()), judge, triage, promptAuthor,
+			values,
 			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(root, campaign.header().id()), scope.random(),

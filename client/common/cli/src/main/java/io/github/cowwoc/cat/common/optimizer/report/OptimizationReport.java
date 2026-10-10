@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
@@ -17,19 +17,19 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Snapshot size comparisons, trial input medians, and retained author diagnoses.
+ * Snapshot size comparisons, trial input medians, and retained prompt author diagnoses.
  *
  * @param workingSnapshot the working snapshot
  * @param incumbentSnapshot the incumbent snapshot
  * @param working the working prompt sizes
  * @param incumbent the incumbent prompt sizes
  * @param inputs per-cell trial input comparisons
- * @param authors retained author diagnoses, including attempts that produced no candidate
+ * @param promptAuthors retained prompt author diagnoses, including attempts that produced no candidate
  * @param removed original hunk identifiers removed by minimality
- * @param attempts original promotion results and unfinished author reservations
+ * @param attempts original promotion results and unfinished prompt author reservations
  */
 public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapshot, PromptSize working,
-	PromptSize incumbent, List<InputComparison> inputs, List<AuthorDiagnosis> authors, List<String> removed,
+	PromptSize incumbent, List<InputComparison> inputs, List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 	List<AttemptProgress> attempts)
 {
 	/**
@@ -89,7 +89,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 	 * @param working the working sizes
 	 * @param incumbent the incumbent sizes
 	 * @param inputs trial inputs by cell
-	 * @param authors author diagnoses
+	 * @param promptAuthors prompt author diagnoses
 	 * @param removed removed hunk identifiers
 	 * @param attempts original attempt results and progress
 	 * @throws NullPointerException if any argument or collection element is null
@@ -101,7 +101,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		requireThat(working, "working").isNotNull();
 		requireThat(incumbent, "incumbent").isNotNull();
 		inputs = List.copyOf(inputs);
-		authors = List.copyOf(authors);
+		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		attempts = List.copyOf(attempts);
 	}
@@ -136,7 +136,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 			}
 		}
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),
-			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.authors(),
+			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.promptAuthors(),
 			evidence.removed(), AttemptProgress.of(campaign));
 	}
 

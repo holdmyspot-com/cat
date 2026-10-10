@@ -1,8 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 /**
- * Thrown when a generated trial is outside what its test definition permits. The trial cannot supply compliance
- * evidence; the caller records a failure to run the trial rather than a failure to comply.
+ * Thrown when a generated trial is outside what its prompt test permits. The trial cannot supply a pass or
+ * fail outcome; the caller records a failure to run the trial rather than a failed trial.
  */
 public final class GeneratorValidationException extends RuntimeException
 {
@@ -11,7 +11,7 @@ public final class GeneratorValidationException extends RuntimeException
 	/**
 	 * Creates an exception.
 	 *
-	 * @param message the test-definition constraint that the generated trial violates
+	 * @param message the prompt-test constraint that the generated trial violates
 	 */
 	public GeneratorValidationException(String message)
 	{

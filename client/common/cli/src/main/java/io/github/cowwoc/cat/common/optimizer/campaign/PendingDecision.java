@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
-import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -119,7 +119,7 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A cell (category and trial profile) reached the outcome count that triggers review without meeting readiness.
+	 * A cell (prompt test and trial profile) reached the outcome count that triggers review without meeting readiness.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -138,7 +138,7 @@ public sealed interface PendingDecision
 		 */
 		public CheckpointReached
 		{
-			requireThat(cell, "category").isNotBlank();
+			requireThat(cell, "cell").isNotBlank();
 			requireThat(outcomes, "outcomes").isNotNegative();
 		}
 	}
@@ -167,7 +167,7 @@ public sealed interface PendingDecision
 
 	/**
 	 * Every failure group of an ended certification attempt either reproduced or ran its rounds without reproducing,
-	 * and at least one did not reproduce. No author works on a group that did not reproduce.
+	 * and at least one did not reproduce. No prompt author works on a group that did not reproduce.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -232,14 +232,14 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * An author reported conflicts held by the confirmed prompt system. Answers follow report order.
+	 * A prompt author reported conflicts held by the confirmed prompt system. Answers follow report order.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param conflicts the conflicts, in report order
 	 * @param resolutions the 1-based positions already selected, in conflict order
 	 */
-	record ConflictFound(List<AuthorConflict> conflicts, List<Integer> resolutions) implements PendingDecision
+	record ConflictFound(List<PromptAuthorConflict> conflicts, List<Integer> resolutions) implements PendingDecision
 	{
 		/**
 		 * Creates the decision.
@@ -267,7 +267,7 @@ public sealed interface PendingDecision
 		 *
 		 * @return the conflict
 		 */
-		public AuthorConflict current()
+		public PromptAuthorConflict current()
 		{
 			return conflicts.get(resolutions.size());
 		}
@@ -303,9 +303,9 @@ public sealed interface PendingDecision
 			StringBuilder feedback = new StringBuilder(256);
 			for (int i = 0; i < chosen.size(); ++i)
 			{
-				AuthorConflict conflict = conflicts.get(i);
+				PromptAuthorConflict conflict = conflicts.get(i);
 				feedback.append("Requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
-				for (AuthorConflict.Quotation quotation : conflict.quotations())
+				for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
 					feedback.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
 				feedback.append("Resolution: ").append(conflict.resolutions().get(chosen.get(i) - 1)).append('\n');
 			}
@@ -314,7 +314,7 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * An author reported edits that its requirements need but that lie outside the edit authority.
+	 * A prompt author reported edits that its requirements need but that lie outside the edit authority.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

@@ -1,8 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.statistics;
 
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.ABOVE;
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.BELOW;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import java.math.BigDecimal;
 
 /**
  * Display confidence bounds that invert the {@link BettingProcess} tests over the null rate.
@@ -38,32 +38,36 @@ public final class ConfidenceBounds
 
 		double logThreshold = BettingProcess.log(level.threshold());
 		Interval bracket = Bisection.bracket(nullRate ->
-			BettingProcess.logValue(ABOVE, nullRate, passes, failures) > logThreshold);
+			BettingProcess.logAboveValue(nullRate, passes, failures) > logThreshold);
 		return new ConfidenceBound(bracket.lower(), level);
 	}
 
 	/**
 	 * Returns the upper confidence bound on a pass probability.
 	 *
-	 * @param passes   the number of adopted passes {@code S}
-	 * @param failures the number of adopted failures {@code F}
-	 * @param level    the level
+	 * @param passes          the number of adopted passes {@code S}
+	 * @param failures        the number of adopted failures {@code F}
+	 * @param level           the level
+	 * @param minimumPassRate the campaign's minimum pass rate, which selects the below-minimum bets
 	 * @return the bound, which is 1 if there are no failures
-	 * @throws NullPointerException     if {@code level} is null
-	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative
+	 * @throws NullPointerException     if {@code level} or {@code minimumPassRate} are null
+	 * @throws IllegalArgumentException if {@code passes} or {@code failures} are negative, or if
+	 *                                  {@code minimumPassRate} is not strictly between 0 and 1
 	 */
-	public static ConfidenceBound upper(int passes, int failures, SignificanceLevel level)
+	public static ConfidenceBound upper(int passes, int failures, SignificanceLevel level,
+		BigDecimal minimumPassRate)
 	{
 		requireThat(passes, "passes").isNotNegative();
 		requireThat(failures, "failures").isNotNegative();
 		requireThat(level, "level").isNotNull();
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
 		// Without failures, E_down never exceeds 1, so no null rate is rejected
 		if (failures == 0)
 			return new ConfidenceBound(1, level);
 
 		double logThreshold = BettingProcess.log(level.threshold());
 		Interval bracket = Bisection.bracket(nullRate ->
-			BettingProcess.logValue(BELOW, nullRate, passes, failures) <= logThreshold);
+			BettingProcess.logBelowValue(nullRate, minimumPassRate, passes, failures) <= logThreshold);
 		return new ConfidenceBound(bracket.upper(), level);
 	}
 

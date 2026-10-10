@@ -1,7 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
 /**
- * The author's classification of a kind of failure: the boundary that caused it.
+ * The prompt author's classification of a kind of failure: the boundary that caused it.
  */
 public enum FailureKind
 {

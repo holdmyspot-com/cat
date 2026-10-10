@@ -8,6 +8,6 @@ import java.util.Set;
  * @param reviewerCandidates topic-reviewer candidate identifiers
  * @param reviewerMatrix topic-reviewer observable-behavior evidence
  */
-record CandidateUniverseEvidence(Set<String> reviewerCandidates, ActionResultMatrix reviewerMatrix)
+public record CandidateUniverseEvidence(Set<String> reviewerCandidates, ActionResultMatrix reviewerMatrix)
 {
 }

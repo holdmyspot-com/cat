@@ -71,42 +71,42 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	}
 
 	@Override
-	final Harness harness()
+	protected final Harness harness()
 	{
 		ensureOpen();
 		return harness;
 	}
 
 	@Override
-	final RandomGenerator random()
+	protected final RandomGenerator random()
 	{
 		ensureOpen();
 		return random.getValue();
 	}
 
 	@Override
-	final HarnessVersion.Launcher harnessVersionLauncher()
+	protected final HarnessVersion.Launcher harnessVersionLauncher()
 	{
 		ensureOpen();
 		return HarnessVersion.process();
 	}
 
 	@Override
-	final List<Path> loaderConfiguration()
+	protected final List<Path> loaderConfiguration()
 	{
 		ensureOpen();
 		return loaderConfiguration;
 	}
 
 	@Override
-	final Forks forks()
+	protected final Forks forks()
 	{
 		ensureOpen();
 		return forks.getValue();
 	}
 
 	@Override
-	final CapCalibrator calibrator()
+	protected final CapCalibrator calibrator()
 	{
 		ensureOpen();
 		return CapCalibration::calibrate;

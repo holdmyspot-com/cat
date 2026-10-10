@@ -10,13 +10,16 @@ import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -33,6 +36,8 @@ public final class Fork implements ForkView
 {
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index", ".cat/work/probe"};
 	private static final String CLEAN_PATHSPEC_EXCLUDING_WORK = ":(exclude).cat/work";
+	private final ForkTree recorded;
+	private final ParticipantSelection selection;
 	private final ForkTree tree;
 	private final Workspace workspace;
 	private final Path worktree;
@@ -41,15 +46,17 @@ public final class Fork implements ForkView
 	/**
 	 * Creates a fork.
 	 *
-	 * @param tree the recorded files
-	 * @param workspace the fork's workspace
+	 * @param recorded every recorded file, including the participants that the selection leaves out
+	 * @param selection the participants recorded after creation that the fork's files hold
 	 * @param worktree the optimization worktree's directory
 	 * @param excludeAdded {@code true} if creating the fork appended CAT's work directory to the local exclude
 	 */
-	private Fork(ForkTree tree, Workspace workspace, Path worktree, boolean excludeAdded)
+	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, boolean excludeAdded)
 	{
-		this.tree = tree;
-		this.workspace = workspace;
+		this.recorded = recorded;
+		this.selection = selection;
+		this.tree = recorded.reachableFrom(selection::holds);
+		this.workspace = new Workspace(tree, recorded.directory().getParent(), worktree);
 		this.worktree = worktree;
 		this.excludeAdded = excludeAdded;
 	}
@@ -98,10 +105,10 @@ public final class Fork implements ForkView
 		{
 			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
 			worktreeAdded = true;
-			Workspace workspace = new Workspace(tree, normalizedCampaign, worktree);
+			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, excludeAdded);
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
-			workspace.materialize(Overlay.of(tree.inventory()));
-			return new Fork(tree, workspace, worktree, excludeAdded);
+			fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
+			return fork;
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -183,7 +190,7 @@ public final class Fork implements ForkView
 		Path worktree = worktreeOf(normalizedCampaign);
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
-		return new Fork(tree, new Workspace(tree, normalizedCampaign, worktree), worktree, false);
+		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, false);
 	}
 
 	/**
@@ -283,27 +290,134 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Records further participants in the fork and writes them into the optimization worktree. A participant that the
-	 * fork already holds is left alone. This fork stays unchanged: callers use the returned fork, whose inventory is
-	 * extended, so any overlay on the old inventory must be saved again for the new one.
+	 * {@inheritDoc}
+	 * <p>
+	 * The selection is stored in campaign storage before any file is copied, so that a copy that a failure interrupts
+	 * is never taken for a path that the fork was created with. The optimization worktree is then rewritten to hold
+	 * the fork's files. Each target outside the project that a participant's links reach is stored in the selection
+	 * before it is copied, and it leaves the fork's files with the participant unless a link that the fork still
+	 * holds reaches it.
 	 *
-	 * @param base the base worktree that the fork was created from
-	 * @param participants the paths to add, named as in {@link #create(Path, Path, Set)}
-	 * @return the extended fork
-	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a path cannot be recorded
-	 * @throws WorkspaceException if a path does not exist
-	 * @throws IOException if the files cannot be copied or written
 	 */
 	@Override
-	public Fork addParticipants(Path base, Set<Path> participants) throws IOException
+	public Fork selectParticipants(Path base, Set<Path> participants) throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(participants, "participants").isNotNull();
-		ForkTree extended = tree.extend(base, participants);
-		Workspace extendedWorkspace = new Workspace(extended, tree.directory().getParent(), worktree);
-		extendedWorkspace.materialize(Overlay.of(extended.inventory()));
-		return new Fork(extended, extendedWorkspace, worktree, excludeAdded);
+		Set<Path> chosen = notCreated(participants);
+		recorded.requireExtensible(base, chosen);
+
+		Path campaign = recorded.directory().getParent();
+		ParticipantSelection[] next = {selection.select(chosen)};
+		next[0].write(campaign);
+		ForkTree extended = recorded.extend(base, chosen, target ->
+		{
+			next[0] = next[0].withTarget(target);
+			next[0].write(campaign);
+		});
+		Fork fork = new Fork(extended, next[0], worktree, excludeAdded);
+		fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
+		return fork;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Each path that the fork has not recorded yet is stored in the campaign's selection as left out before it is
+	 * copied, so that the current fork stays as it is and an interrupted copy is never taken for a path that the fork
+	 * was created with.
+	 *
+	 * @throws IllegalArgumentException if a path cannot be recorded
+	 */
+	@Override
+	public Fork extend(Path base, Set<Path> participants) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(participants, "participants").isNotNull();
+		Set<Path> chosen = notCreated(participants);
+		recorded.requireExtensible(base, chosen);
+
+		Path campaign = recorded.directory().getParent();
+		ParticipantSelection[] stored = {ParticipantSelection.read(campaign).withAdded(chosen)};
+		stored[0].write(campaign);
+		ForkTree extended = recorded.extend(base, chosen, target ->
+		{
+			stored[0] = stored[0].withTarget(target);
+			stored[0].write(campaign);
+		});
+		Set<Path> held = new HashSet<>(selection.selected());
+		held.addAll(chosen);
+		return new Fork(extended, stored[0].withSelected(held), worktree, excludeAdded);
+	}
+
+	@Override
+	public Fork including(Set<Path> participants)
+	{
+		requireThat(participants, "participants").isNotNull();
+		Set<Path> held = new HashSet<>(selection.selected());
+		for (Path participant : notCreated(participants))
+		{
+			if (selection.added().contains(participant))
+				held.add(participant);
+		}
+		return new Fork(recorded, selection.withSelected(held), worktree, excludeAdded);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The selection of the fork that was current is stored under its identity before this fork's selection replaces
+	 * it, so an interrupted call leaves the earlier fork current.
+	 */
+	@Override
+	public void adopt() throws IOException
+	{
+		Path campaign = recorded.directory().getParent();
+		ParticipantSelection stored = ParticipantSelection.read(campaign).withAdded(selection.added());
+		FileInventory current = recorded.reachableFrom(stored::holds).inventory();
+		if (!current.equals(tree.inventory()))
+			stored.writeVersion(campaign, current.identity());
+		stored.withSelected(selection.selected()).write(campaign);
+	}
+
+	@Override
+	public Optional<FileInventory> version(Sha256 identity) throws IOException
+	{
+		requireThat(identity, "identity").isNotNull();
+		if (identity.equals(tree.inventory().identity()))
+			return Optional.of(tree.inventory());
+		Path campaign = recorded.directory().getParent();
+		// Paths recorded after a fork was current lie outside it, so every fork is rebuilt with every recorded path
+		ParticipantSelection stored = ParticipantSelection.read(campaign).withAdded(selection.added());
+		List<Set<Path>> selections = new ArrayList<>();
+		selections.add(stored.selected());
+		ParticipantSelection.readVersion(campaign, identity).ifPresent(version -> selections.add(version.selected()));
+		for (Set<Path> selected : selections)
+		{
+			FileInventory fork = recorded.reachableFrom(stored.withSelected(selected)::holds).inventory();
+			if (fork.identity().equals(identity))
+				return Optional.of(fork);
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns the participants that the fork was not created with.
+	 *
+	 * @param participants the participants
+	 * @return those that lie at or below no path that the fork was created with
+	 */
+	private Set<Path> notCreated(Set<Path> participants)
+	{
+		FileInventory created = recorded.restrict(selection::isCreated).inventory();
+		Set<Path> chosen = new HashSet<>();
+		for (Path participant : participants)
+		{
+			if (!created.holds(participant))
+				chosen.add(participant);
+		}
+		return chosen;
 	}
 
 	@Override

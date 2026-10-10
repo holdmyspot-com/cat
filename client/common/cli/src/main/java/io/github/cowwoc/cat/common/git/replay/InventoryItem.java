@@ -11,7 +11,7 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param afterMode the Git mode after the source change, or {@code 000000} when absent
  * @param afterBlob the Git blob after the source change, or forty zeroes when absent
  */
-record InventoryItem(String id, String source, String path, String beforeMode, String beforeBlob, String afterMode,
-	String afterBlob)
+public record InventoryItem(String id, String source, String path, String beforeMode, String beforeBlob,
+	String afterMode, String afterBlob)
 {
 }

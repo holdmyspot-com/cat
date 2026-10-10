@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * Applies a sealed replay in an isolated index and advances the current branch after verification.
  */
-final class ReplayExecution
+public final class ReplayExecution
 {
 	private final Git git;
 	private final History history;
@@ -27,7 +27,7 @@ final class ReplayExecution
 	 * @param manifests the owner of manifest-local temporary indexes
 	 * @param patches the owner of manifest-local patch artifacts
 	 */
-	ReplayExecution(Git git, History history, ManifestStore<?> manifests, PatchArtifacts patches)
+	public ReplayExecution(Git git, History history, ManifestStore<?> manifests, PatchArtifacts patches)
 	{
 		this.git = git;
 		this.history = history;
@@ -43,7 +43,7 @@ final class ReplayExecution
 	 * @return the final replacement commit
 	 * @throws IOException if the source tip changed, a batch differs from its witness, or Git cannot update the branch
 	 */
-	String execute(Path manifestFile, BatchManifest manifest) throws IOException
+	public String execute(Path manifestFile, BatchManifest manifest) throws IOException
 	{
 		String expectedTip = manifest.sources().getLast().hash();
 		String currentTip = git.lines("rev-parse", "HEAD").getFirst();
@@ -94,7 +94,7 @@ final class ReplayExecution
 	 * @param manifest the sealed replay decisions
 	 * @return retained outputs in declared chronological order
 	 */
-	static List<Output> retainedOutputs(BatchManifest manifest)
+	public static List<Output> retainedOutputs(BatchManifest manifest)
 	{
 		return manifest.outputs().stream().filter(output -> manifest.batches().stream().anyMatch(batch ->
 			batch.destination().equals(output.id()))).toList();
@@ -139,7 +139,7 @@ final class ReplayExecution
 	 * @param outputId the destination whose batches are selected
 	 * @return batches assigned to that output
 	 */
-	static List<Batch> outputBatches(BatchManifest manifest, String outputId)
+	public static List<Batch> outputBatches(BatchManifest manifest, String outputId)
 	{
 		return manifest.batches().stream().filter(batch -> batch.destination().equals(outputId)).toList();
 	}
@@ -151,7 +151,7 @@ final class ReplayExecution
 	 * @param output the output being committed
 	 * @return its declared source, or the first contributing batch's source for a reviewer-declared topic
 	 */
-	static String authorSource(BatchManifest manifest, Output output)
+	public static String authorSource(BatchManifest manifest, Output output)
 	{
 		if (output.source() != null)
 			return output.source();
@@ -209,7 +209,7 @@ final class ReplayExecution
 	 * @param parent the preceding commit, or {@code null} for an orphan-root output
 	 * @return the ordered Git command arguments
 	 */
-	static List<String> commitArguments(Output output, String tree, String parent)
+	public static List<String> commitArguments(Output output, String tree, String parent)
 	{
 		List<String> arguments = new ArrayList<>(List.of("commit-tree", tree));
 		if (parent != null)

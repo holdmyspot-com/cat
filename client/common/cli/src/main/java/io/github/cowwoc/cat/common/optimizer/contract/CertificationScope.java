@@ -8,14 +8,14 @@ import java.util.Optional;
 /**
  * The cells that certification tests and that a claim covers, which the user chooses at confirmation.
  * <p>
- * A category with one cell is certified in that cell under every choice.
+ * A test with one cell is certified in that cell under every choice.
  */
 public enum CertificationScope
 {
 	/**
-	 * Each category's weakest cell only: the lowest effort of the least capable model among the latest versions.
+	 * Each test's weakest cell only: the lowest effort of the least capable model among the latest versions.
 	 */
-	WEAKEST_CELL("each category's weakest cell only"),
+	WEAKEST_CELL("each test's weakest cell only"),
 	/**
 	 * Every cell of each model family's latest version.
 	 */
@@ -50,7 +50,7 @@ public enum CertificationScope
 	/**
 	 * Returns the cells that the choice covers.
 	 *
-	 * @return a phrase, such as {@code each category's weakest cell only}
+	 * @return a phrase, such as {@code each test's weakest cell only}
 	 */
 	public String summary()
 	{
@@ -78,7 +78,7 @@ public enum CertificationScope
 	/**
 	 * Describes every choice for a message that asks the user to choose one.
 	 *
-	 * @return text such as {@code weakest_cell (each category's weakest cell only), ...}
+	 * @return text such as {@code weakest_cell (each test's weakest cell only), ...}
 	 */
 	public static String choices()
 	{

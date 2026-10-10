@@ -11,7 +11,7 @@ import java.util.TreeSet;
 /**
  * Whether two observations record equal measurement conditions, and which conditions prevent comparison.
  * <p>
- * Compares campaign-wide values and values for the same cell, the requirement category under a runner profile.
+ * Compares campaign-wide values and values for the same cell, the prompt test under a runner profile.
  * A cell uses its recorded value when present, otherwise the campaign-wide value. Conditions absent from both
  * observations have not been observed and do not prevent comparison, and conditions that are recorded for
  * information only never prevent it.

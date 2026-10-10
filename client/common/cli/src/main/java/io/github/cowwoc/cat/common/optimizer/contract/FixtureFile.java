@@ -1,0 +1,48 @@
+package io.github.cowwoc.cat.common.optimizer.contract;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+/**
+ * A text file that a prompt test places in each trial's workspace, as the contract author wrote it.
+ *
+ * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
+ *                {@code {{name}}} placeholders
+ * @param content the UTF-8 content, which may contain {@code {{name}}} placeholders
+ */
+public record FixtureFile(String path, String content)
+{
+	/**
+	 * Creates a fixture file.
+	 *
+	 * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
+	 *                {@code {{name}}} placeholders
+	 * @param content the UTF-8 content, which may contain {@code {{name}}} placeholders
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code path} is blank, starts or ends with {@code /}, contains {@code \},
+	 *                                  has an empty, {@code .} or {@code ..} segment, or lies in the workspace's
+	 *                                  {@code .git} directory
+	 */
+	public FixtureFile
+	{
+		requireThat(path, "path").isNotBlank();
+		requireThat(content, "content").isNotNull();
+		if (path.indexOf('\\') != -1)
+		{
+			throw new IllegalArgumentException("The fixture path '" + path + "' contains '\\'. Separate directories " +
+				"with '/'.");
+		}
+		for (String segment : path.split("/", -1))
+		{
+			if (segment.isEmpty() || segment.equals(".") || segment.equals(".."))
+			{
+				throw new IllegalArgumentException("The fixture path '" + path + "' must be relative to the workspace " +
+					"root, with no empty, '.' or '..' segment");
+			}
+		}
+		if (path.equals(".git") || path.startsWith(".git/"))
+		{
+			throw new IllegalArgumentException("The fixture path '" + path + "' lies in the workspace's .git " +
+				"directory, which CAT creates");
+		}
+	}
+}

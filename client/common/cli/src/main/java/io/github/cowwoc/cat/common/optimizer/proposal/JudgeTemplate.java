@@ -12,10 +12,10 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The fields of every judge profile that CAT supplies: the model and effort used by deriver, judge and author
- * sessions (the role profile), the judge prompt and the result schema.
+ * The fields of every judge profile that CAT supplies: the model and effort used by contract author, judge and prompt
+ * author sessions (the role profile), the judge prompt and the result schema.
  * <p>
- * The deriver proposes only the rubric and the decision rule. CAT adds its own fields before it validates the
+ * The contract author proposes only the rubric and the decision rule. CAT adds its own fields before it validates the
  * proposal, so a prompt system cannot choose how it is judged, and confirmation freezes the complete profile in the
  * contract.
  * <p>
@@ -38,7 +38,7 @@ public final class JudgeTemplate
 	 * Creates a template.
 	 *
 	 * @param json the operation-owned JSON mapper
-	 * @param role the harness's role profile, which the deriver, judge and author sessions run under
+	 * @param role the harness's role profile, which the contract author, judge and prompt author sessions run under
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code role} binds nothing
 	 * @throws UncheckedIOException if the packaged judge prompt or result schema cannot be read
@@ -74,7 +74,7 @@ public final class JudgeTemplate
 	/**
 	 * Returns the role profile.
 	 *
-	 * @return the profile that the deriver, judge and author sessions run under
+	 * @return the profile that the contract author, judge and prompt author sessions run under
 	 */
 	TrialProfile role()
 	{

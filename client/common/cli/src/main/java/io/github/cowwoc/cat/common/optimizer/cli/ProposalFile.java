@@ -26,13 +26,13 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Persists the deriver's latest proposal in the campaign's {@code held_out} directory so that {@code confirm} and
- * {@code revise} can continue after the launcher exited.
+ * Persists the contract author's latest proposal in the campaign's {@code held_out} directory so that {@code confirm}
+ * and {@code revise} can continue after the launcher exited.
  * <p>
- * The file holds the deriver's output, which {@code DeriverProtocol} validates again when it is read, the sources
- * that the deriver's session was observed loading, the profile inventory, capability ranking and bindings that CAT
- * read when the deriver ran, and the salt that CAT drew for the proposal. Confirmation therefore freezes the trial
- * profiles and the split into development and held-out instances that the user saw.
+ * The file holds the contract author's output, which {@code ContractAuthorProtocol} validates again when it is read,
+ * the sources that the contract author's session was observed loading, the profile inventory, capability ranking and
+ * bindings that CAT read when the contract author ran, and the salt that CAT drew for the proposal. Confirmation
+ * therefore freezes the trial profiles and the split into development and held-out test cases that the user saw.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -43,18 +43,19 @@ final class ProposalFile
 	 */
 	static final String NAME = FileCampaignStore.PROPOSAL;
 	/**
-	 * The version of the proposal layout, including regression scenario citations and key dimensions in each test
-	 * definition, the triggers of the requirements, the shipped capability ranking and the salt.
+	 * The version of the proposal layout, including regression scenario citations, the variables of each prompt test
+	 * and whether each is outcome-changing, the triggers of the requirements, the shipped capability
+	 * ranking, the salt, the judge prompt's placeholders and the assertions of each prompt test.
 	 */
-	private static final int FORMAT_VERSION = 8;
+	private static final int FORMAT_VERSION = 15;
 	private final Path file;
 	private final JsonMapper json;
 
 	/**
 	 * A stored proposal.
 	 *
-	 * @param result the deriver's output as a session result, which the caller validates again
-	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the deriver ran
+	 * @param result the contract author's output as a session result, which the caller validates again
+	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
 	 * @param salt the salt that CAT drew for the proposal
 	 */
 	record Stored(SessionResult.Completed result, ProfileEvidence profiles, long salt)
@@ -62,7 +63,7 @@ final class ProposalFile
 		/**
 		 * Creates a stored proposal.
 		 *
-		 * @param result the deriver's output as a session result
+		 * @param result the contract author's output as a session result
 		 * @param profiles the profile inventory and bindings
 		 * @param salt the salt that CAT drew for the proposal
 		 * @throws NullPointerException if {@code result} or {@code profiles} are null
@@ -93,7 +94,7 @@ final class ProposalFile
 	 * Replaces the stored proposal.
 	 *
 	 * @param derived the proposal
-	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the deriver ran
+	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the file cannot be written
 	 */
@@ -187,7 +188,7 @@ final class ProposalFile
 		{
 			throw new IOException(file + " holds invalid trial profiles: " + e.getMessage(), e);
 		}
-		// Stored text already names the user's project, so the deriver protocol must use that same root when it
+		// Stored text already names the user's project, so the contract author protocol must use that same root when it
 		// validates the text again. The proposal file stands in for the session's transcript.
 		SessionResult.Completed result = new SessionResult.Completed(file,
 			List.of(List.of(derivation)),

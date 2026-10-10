@@ -1,5 +1,8 @@
 package io.github.cowwoc.cat.common;
 
+import io.github.cowwoc.cat.common.secrets.ExecutableFilesAccess;
+import io.github.cowwoc.cat.common.secrets.ExecutableFilesSecrets;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
@@ -15,6 +18,18 @@ import java.util.Objects;
  */
 public final class ExecutableFiles
 {
+	static
+	{
+		ExecutableFilesSecrets.setAccess(new ExecutableFilesAccess()
+		{
+			@Override
+			public Process run(ExecutableFiles.ProcessStart start, ExecutableFiles.RetryWait wait) throws IOException
+			{
+				return ExecutableFiles.run(start, wait);
+			}
+		});
+	}
+
 	private static final int MAXIMUM_START_ATTEMPTS = 4;
 	private static final Duration INITIAL_TEXT_FILE_BUSY_RETRY_DELAY = Duration.ofMillis(125);
 
@@ -102,7 +117,7 @@ public final class ExecutableFiles
 	 * Starts one process for a retry-controlled executable boundary.
 	 */
 	@FunctionalInterface
-	interface ProcessStart
+	public interface ProcessStart
 	{
 		/**
 		 * Starts the process.
@@ -117,7 +132,7 @@ public final class ExecutableFiles
 	 * Waits for the delay requested by {@link ExecutableFiles}' retry policy.
 	 */
 	@FunctionalInterface
-	interface RetryWait
+	public interface RetryWait
 	{
 		/**
 		 * Waits before the next process-start attempt.

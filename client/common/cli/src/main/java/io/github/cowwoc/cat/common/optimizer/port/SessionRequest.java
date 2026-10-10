@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.nio.file.Path;
@@ -23,14 +24,16 @@ import java.util.List;
  * @param readOnly paths that the session may read but never write, such as a judge's evidence
  * @param timeLimit how long the session may run before its remaining turns are abandoned
  * @param profile the model and reasoning effort that the session starts under: a trial's cell profile, or the role
- *   profile for the deriver, judge and author. An empty dimension starts the session without
+ *   profile for the contract author, judge and prompt author. An empty dimension starts the session without
  *   selecting it.
+ * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn;
+ *   {@link WorkspaceFixtures#NONE} for every other session
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-	Duration timeLimit, TrialProfile profile)
+	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files)
 {
 	/**
-	 * Creates a request.
+	 * Creates a request whose workspace receives no fixtures.
 	 *
 	 * @param role the kind of work that the session performs
 	 * @param part the part of the contract whose content the session may read
@@ -41,8 +44,30 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, or if the {@code part} of triage, an author or the deriver is not
-	 *   {@link Part#DEVELOPMENT}
+	 *   {@code part} is not {@link Part#HELD_OUT}, or if the {@code part} of triage, a prompt author or the contract
+	 *   author is not {@link Part#DEVELOPMENT}
+	 */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, WorkspaceFixtures.NONE);
+	}
+
+	/**
+	 * Creates a request.
+	 *
+	 * @param role the kind of work that the session performs
+	 * @param part the part of the contract whose content the session may read
+	 * @param source the directory that the session works in
+	 * @param turns the complete turn sequence, sent one turn at a time
+	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
+	 * @param timeLimit how long the session may run before its remaining turns are abandoned
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
+	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures
 	 */
 	public SessionRequest
 	{
@@ -52,7 +77,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		{
 			case TRIAL -> part;
 			case JUDGE -> Part.HELD_OUT;
-			case TRIAGE, AUTHOR, DERIVER -> Part.DEVELOPMENT;
+			case TRIAGE, PROMPT_AUTHOR, CONTRACT_AUTHOR -> Part.DEVELOPMENT;
 		};
 		if (part != rolePart)
 			throw new IllegalArgumentException("A " + role + " session reads the " + rolePart + " part, not " + part);
@@ -62,6 +87,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(timeLimit, "timeLimit").isNotNull();
 		requireThat(timeLimit.isPositive(), "timeLimit.isPositive").isTrue();
 		requireThat(profile, "profile").isNotNull();
+		requireThat(files, "files").isNotNull();
+		if (role != SessionRole.TRIAL && !files.isEmpty())
+			throw new IllegalArgumentException("A " + role + " session receives no fixtures");
 		turns = List.copyOf(turns);
 		readOnly = List.copyOf(readOnly);
 	}

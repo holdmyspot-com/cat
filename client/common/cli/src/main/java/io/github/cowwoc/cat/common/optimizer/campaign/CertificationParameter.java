@@ -8,10 +8,10 @@ public enum CertificationParameter
 	/**
 	 * The pass probability that each certified cell exceeds.
 	 */
-	REQUIRED_PASS_RATE,
+	MINIMUM_PASS_RATE,
 	/**
 	 * The certification level {@code α_i}: the attempt's probability of certifying a cell whose pass probability does
-	 * not exceed the required pass rate.
+	 * not exceed the minimum pass rate.
 	 */
 	CERTIFICATION_LEVEL
 }

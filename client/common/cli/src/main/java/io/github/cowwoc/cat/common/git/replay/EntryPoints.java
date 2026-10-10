@@ -11,7 +11,7 @@ import java.util.Set;
 /**
  * Derives user-selectable product surfaces from {@link History}'s immutable source facts.
  */
-final class EntryPoints
+public final class EntryPoints
 {
 	/**
 	 * Prevents construction of static inventory operations.
@@ -28,7 +28,7 @@ final class EntryPoints
 	 * @return one harness-neutral entry point for each affected product surface
 	 * @throws IOException if a captured agent-manifest blob cannot be read
 	 */
-	static List<ExposedEntryPoint> collect(List<History.InventoryEntry> inventory, ManifestContents manifests)
+	public static List<ExposedEntryPoint> collect(List<History.InventoryEntry> inventory, ManifestContents manifests)
 		throws IOException
 	{
 		Map<String, Set<String>> pathsByEntryPoint = new HashMap<>();
@@ -140,7 +140,7 @@ final class EntryPoints
 	 * Supplies immutable custom-agent manifest contents to {@link EntryPoints}.
 	 */
 	@FunctionalInterface
-	interface ManifestContents
+	public interface ManifestContents
 	{
 		/**
 		 * Reads the immutable manifest identified by a captured blob.

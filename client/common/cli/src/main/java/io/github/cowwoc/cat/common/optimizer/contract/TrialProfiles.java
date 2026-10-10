@@ -16,9 +16,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The model and reasoning-effort combinations used to measure a contract's compliance. It records the combinations
+ * The model and reasoning-effort combinations used to measure a contract's pass rates. It records the combinations
  * available from the harness, their capability ranking, the choices selected by prompt files, the user's restriction,
- * the resulting pairs of category and trial profile, called cells, and the certification scope.
+ * the resulting pairs of prompt test and trial profile, called cells, and the certification scope.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  * @param described the patterns of the profiles that the user described as the certification scope, or empty if the
  *   user described none. An empty dimension of a pattern matches every value.
  * @param scope the certification scope, or null until the user chooses it at confirmation
- * @param cells every cell, grouped by category in category order
+ * @param cells every cell, grouped by test in test order
  */
 public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
 	List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
@@ -51,11 +51,11 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	 * @param restriction the patterns that the user restricted the profile set to, or empty
 	 * @param described the patterns of the profiles that the user described as the certification scope, or empty
 	 * @param scope the certification scope, or null until the user chooses it
-	 * @param cells every cell, grouped by category in category order
+	 * @param cells every cell, grouped by test in test order
 	 * @throws NullPointerException if any of the arguments other than {@code scope} are null
 	 * @throws IllegalArgumentException if {@code cells} is empty, two cells share an identifier, two bindings name the
 	 *   same file, a restriction or described pattern binds nothing or matches no inventory profile, the described
-	 *   patterns leave a category of several cells without a cell, {@code scope} is
+	 *   patterns leave a test of several cells without a cell, {@code scope} is
 	 *   {@link CertificationScope#DESCRIBED} and no pattern is described, or a scope is chosen while an inventory
 	 *   model's family is missing from {@code ranking}
 	 */
@@ -101,14 +101,14 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	}
 
 	/**
-	 * Requires the described patterns to select inventory profiles and to leave every category of several cells
-	 * with a cell.
+	 * Requires the described patterns to select inventory profiles and to leave every test of several cells with a
+	 * cell.
 	 *
 	 * @param inventory the inventory
 	 * @param described the described patterns, or empty
-	 * @param cells every cell, grouped by category
+	 * @param cells every cell, grouped by test
 	 * @throws IllegalArgumentException if a pattern binds nothing or matches no inventory profile, or the patterns
-	 *   leave a category of several cells without a cell
+	 *   leave a test of several cells without a cell
 	 */
 	private static void requireDescribable(ProfileCatalog inventory, List<TrialProfile> described, List<Cell> cells)
 	{
@@ -124,16 +124,16 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 					"no profile in the inventory (" + inventory.source() + ")");
 			}
 		}
-		Map<String, List<TrialProfile>> byCategory = new LinkedHashMap<>();
+		Map<String, List<TrialProfile>> byTest = new LinkedHashMap<>();
 		for (Cell cell : cells)
-			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell.profile());
-		for (Map.Entry<String, List<TrialProfile>> entry : byCategory.entrySet())
+			byTest.computeIfAbsent(cell.testId(), _ -> new ArrayList<>()).add(cell.profile());
+		for (Map.Entry<String, List<TrialProfile>> entry : byTest.entrySet())
 		{
 			List<TrialProfile> profiles = entry.getValue();
 			if (profiles.size() > 1 && profiles.stream().noneMatch(profile -> isDescribed(profile, described)))
 			{
 				throw new IllegalArgumentException("The described certification cells " + labels(described) +
-					" leave the category '" + entry.getKey() + "' with no cell to certify. Its cells are " +
+					" leave the test '" + entry.getKey() + "' with no cell to certify. Its cells are " +
 					labels(profiles));
 			}
 		}
@@ -185,7 +185,7 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	/**
 	 * Describes the trial profiles for the user: the inventory and its source, the capability ranking and its source
 	 * with any unranked models, the bindings, marking each value outside the inventory, the restriction, the
-	 * described certification cells and each category's cells.
+	 * described certification cells and each test's cells.
 	 *
 	 * @return the lines of the description
 	 */
@@ -218,11 +218,11 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		if (!described.isEmpty())
 			lines.add("Described certification cells: " + labels(described));
 		lines.add("Cells:");
-		Map<String, List<TrialProfile>> byCategory = new LinkedHashMap<>();
+		Map<String, List<TrialProfile>> byTest = new LinkedHashMap<>();
 		for (Cell cell : cells)
-			byCategory.computeIfAbsent(cell.categoryId(), _ -> new ArrayList<>()).add(cell.profile());
+			byTest.computeIfAbsent(cell.testId(), _ -> new ArrayList<>()).add(cell.profile());
 		Map<List<TrialProfile>, List<String>> byProfiles = new LinkedHashMap<>();
-		for (Map.Entry<String, List<TrialProfile>> entry : byCategory.entrySet())
+		for (Map.Entry<String, List<TrialProfile>> entry : byTest.entrySet())
 			byProfiles.computeIfAbsent(entry.getValue(), _ -> new ArrayList<>()).add(entry.getKey());
 		for (Map.Entry<List<TrialProfile>, List<String>> entry : byProfiles.entrySet())
 			lines.add("  - " + describeGroup(entry.getValue(), entry.getKey()));
@@ -230,25 +230,25 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	}
 
 	/**
-	 * Describes the categories that share a profile set: how many cells each has, how the cells are named and the
+	 * Describes the prompt tests that share a profile set: how many cells each has, how the cells are named and the
 	 * profiles.
 	 *
-	 * @param categoryIds the identifiers of the categories
-	 * @param profiles the profiles of each category's cells
+	 * @param testIds the identifiers of the tests
+	 * @param profiles the profiles of each test's cells
 	 * @return the description
 	 */
-	private static String describeGroup(List<String> categoryIds, List<TrialProfile> profiles)
+	private static String describeGroup(List<String> testIds, List<TrialProfile> profiles)
 	{
-		String categories;
+		String tests;
 		String each;
-		if (categoryIds.size() == 1)
+		if (testIds.size() == 1)
 		{
-			categories = "category ";
+			tests = "test ";
 			each = "";
 		}
 		else
 		{
-			categories = "categories ";
+			tests = "tests ";
 			each = " each";
 		}
 		String count;
@@ -256,14 +256,14 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		if (profiles.size() == 1)
 		{
 			count = "1 cell";
-			naming = "named by the category";
+			naming = "named by the test";
 		}
 		else
 		{
 			count = profiles.size() + " cells";
-			naming = "named `<category>@<profile>`";
+			naming = "named `<test>@<profile>`";
 		}
-		return categories + String.join(", ", categoryIds) + " (" + count + each + ", " + naming + "): " +
+		return tests + String.join(", ", testIds) + " (" + count + each + ", " + naming + "): " +
 			labels(profiles);
 	}
 
@@ -279,13 +279,12 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	}
 
 	/**
-	 * Computes each category's profile set and the resulting cells.
+	 * Computes each prompt test's profile set and the resulting cells.
 	 * <p>
-	 * A category's profile set comes from the files that supply the requirements its tests check, excluding the
-	 * excluded requirements. When every such file binds the same complete profile, the category has one cell under
-	 * that profile. Otherwise it has one cell for each inventory profile that matches every dimension that the files
-	 * all bind to the same value; if no inventory profile matches, the bound values are used as written. The user's
-	 * restriction then narrows each set.
+	 * A test's profile set comes from the files that supply the requirements that the proposal maps to its assertions.
+	 * When every such file binds the same complete profile, the test has one cell under that profile. Otherwise it has
+	 * one cell for each inventory profile that matches every dimension that the files all bind to the same value; if no
+	 * inventory profile matches, the bound values are used as written. The user's restriction then narrows each set.
 	 *
 	 * @param inventory the harness's profile inventory
 	 * @param ranking the model families ranked by advertised capability
@@ -293,18 +292,16 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	 * @param restriction the patterns that the user restricted the profile set to, or empty
 	 * @param described the patterns of the profiles that the user described as the certification scope, or empty
 	 * @param requirements every requirement of the contract
-	 * @param categories every category of the contract
-	 * @param excludedRequirements the requirements that come from CAT rather than from a file, such as the core-task
-	 *   requirement
+	 * @param tests every prompt test of the contract
 	 * @return the trial profiles, without a certification scope
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a restriction pattern binds nothing or matches no inventory profile, the
-	 *   restriction leaves a category without a profile, or a test names a requirement that {@code requirements} does
+	 *   restriction leaves a test without a profile, or a test names a requirement that {@code requirements} does
 	 *   not list
 	 */
 	public static TrialProfiles compute(ProfileCatalog inventory, CapabilityRanking ranking,
 		List<ProfileBinding> bindings, List<TrialProfile> restriction, List<TrialProfile> described,
-		List<Requirement> requirements, List<Category> categories, Set<String> excludedRequirements)
+		List<Requirement> requirements, List<PromptTest> tests)
 	{
 		requireThat(inventory, "inventory").isNotNull();
 		requireThat(ranking, "ranking").isNotNull();
@@ -312,8 +309,7 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		requireThat(bindings, "bindings").isNotNull();
 		requireThat(restriction, "restriction").isNotNull();
 		requireThat(requirements, "requirements").isNotNull();
-		requireThat(categories, "categories").isNotNull();
-		requireThat(excludedRequirements, "excludedRequirements").isNotNull();
+		requireThat(tests, "tests").isNotNull();
 		for (TrialProfile pattern : restriction)
 			requireRestrictable(inventory, pattern);
 		Map<String, String> sources = new HashMap<>();
@@ -324,45 +320,40 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 			bound.put(binding.file(), binding.profile());
 
 		List<Cell> cells = new ArrayList<>();
-		for (Category category : categories)
+		for (PromptTest test : tests)
 		{
 			Set<String> files = new LinkedHashSet<>();
-			for (TestDefinition test : category.tests())
+			for (String requirementId : test.requirementIds())
 			{
-				for (String requirementId : test.requirementIds())
+				String source = sources.get(requirementId);
+				if (source == null)
 				{
-					if (excludedRequirements.contains(requirementId))
-						continue;
-					String source = sources.get(requirementId);
-					if (source == null)
-					{
-						throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
-							requirementId + "', which the contract does not list");
-					}
-					files.add(source);
+					throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
+						requirementId + "', which the contract does not list");
 				}
+				files.add(source);
 			}
 			List<TrialProfile> available = profileSet(inventory, files, bound);
 			List<TrialProfile> set = restrict(available, restriction);
 			if (set.isEmpty())
 			{
-				throw new IllegalArgumentException("The profile restriction leaves the category '" + category.id() +
+				throw new IllegalArgumentException("The profile restriction leaves the test '" + test.id() +
 					"' with no trial profile. Its profile set is " +
 					available.stream().map(TrialProfile::label).toList());
 			}
 			if (set.size() == 1)
-				cells.add(new Cell(category.id(), category.id(), set.getFirst()));
+				cells.add(new Cell(test.id(), test.id(), set.getFirst()));
 			else
 			{
 				for (TrialProfile profile : set)
-					cells.add(new Cell(category.id() + "@" + profile.label(), category.id(), profile));
+					cells.add(new Cell(test.id() + "@" + profile.label(), test.id(), profile));
 			}
 		}
 		return new TrialProfiles(inventory, ranking, bindings, restriction, described, null, cells);
 	}
 
 	/**
-	 * Returns the profile set of the files that supply a category's requirements, before any restriction.
+	 * Returns the profile set of the files that supply a test's requirements, before any restriction.
 	 *
 	 * @param inventory the harness's profile inventory
 	 * @param files the files
@@ -455,16 +446,16 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	}
 
 	/**
-	 * Returns a category's cells.
+	 * Returns a prompt test's cells.
 	 *
-	 * @param categoryId the category
-	 * @return the cells, in contract order; empty if the category has none
-	 * @throws NullPointerException if {@code categoryId} is null
+	 * @param testId the test
+	 * @return the cells, in contract order; empty if the test has none
+	 * @throws NullPointerException if {@code testId} is null
 	 */
-	public List<Cell> cellsOf(String categoryId)
+	public List<Cell> cellsOf(String testId)
 	{
-		requireThat(categoryId, "categoryId").isNotNull();
-		return cells.stream().filter(cell -> cell.categoryId().equals(categoryId)).toList();
+		requireThat(testId, "testId").isNotNull();
+		return cells.stream().filter(cell -> cell.testId().equals(testId)).toList();
 	}
 
 	/**

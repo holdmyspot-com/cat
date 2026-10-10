@@ -17,7 +17,7 @@ import java.util.List;
  * @param protectedRoots the absolute roots of state that no trial may access, such as another trial's records
  * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
  * @param interrupted {@code true} if work stopped and can resume
- * @param infrastructureFailure the precise failure that stopped work and is not a compliance outcome, or
+ * @param infrastructureFailure the precise failure that stopped work and is not a pass or fail outcome, or
  *   {@code null} if none did
  */
 public record ReportEvidence(List<AssumptionCheck.Observation> observations,

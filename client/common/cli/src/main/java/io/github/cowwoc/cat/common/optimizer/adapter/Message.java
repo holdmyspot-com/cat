@@ -7,7 +7,7 @@ import java.io.IOException;
  * <p>
  * <b>Thread Safety:</b> Implementations are immutable and thread-safe.
  */
-sealed interface Message permits Message.Started, TurnCompleted, Message.Ended, Message.Wake
+public sealed interface Message permits Message.Started, TurnCompleted, Message.Ended, Message.Wake
 {
 	/**
 	 * The runner started its harness and is ready for turns.

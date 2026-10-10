@@ -14,7 +14,7 @@ public enum TrialState
 	 */
 	RUNNING,
 	/**
-	 * The trial has a compliance result and waits for earlier trials with the same cell, purpose, snapshot and series
+	 * The trial has a pass or fail result and waits for earlier trials with the same cell, purpose, snapshot and series
 	 * to enter campaign evidence first.
 	 */
 	JUDGED

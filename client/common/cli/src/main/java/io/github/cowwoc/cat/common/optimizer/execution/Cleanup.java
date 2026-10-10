@@ -98,7 +98,8 @@ public final class Cleanup
 
 	/**
 	 * Indicates whether a campaign's ending removes its files: the campaign finished as {@code certified}, and either
-	 * the user retained the incumbent, so it delivers nothing, or its certified delivery passed final verification.
+	 * the user kept the incumbent and the delivery of its prompt tests passed final verification, or its certified
+	 * delivery passed final verification.
 	 *
 	 * @param campaign the campaign, as stored after the command that may have ended it
 	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
@@ -109,12 +110,15 @@ public final class Cleanup
 	{
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(delivery, "delivery").isNotNull();
-		if (campaign.lifecycle() != Lifecycle.FINISHED || campaign.outcome() != Outcome.CERTIFIED)
+		if (campaign.lifecycle() != Lifecycle.FINISHED || campaign.outcome() != Outcome.CERTIFIED ||
+			!(delivery.orElse(null) instanceof Delivered delivered))
+		{
 			return false;
-		// A certified campaign that delivers nothing ended by retaining the incumbent
-		boolean retainedIncumbent = campaign.delivery() == null;
-		return retainedIncumbent ||
-			delivery.orElse(null) instanceof Delivered delivered && delivered.label() == Outcome.CERTIFIED;
+		}
+		// The delivery of a kept incumbent's prompt tests carries no label
+		if (campaign.isIncumbentKept())
+			return delivered.label() == null;
+		return delivered.label() == Outcome.CERTIFIED;
 	}
 
 	/**

@@ -6,7 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.AuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -18,7 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
-import io.github.cowwoc.cat.common.optimizer.campaign.FailedRequirement;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
@@ -37,15 +37,22 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
-import io.github.cowwoc.cat.common.optimizer.contract.AddedCombination;
-import io.github.cowwoc.cat.common.optimizer.contract.CheckResult;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.BuiltInToolResult;
+import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.TestDefinition;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialInstance;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.contract.UndecidableCheckException;
+import io.github.cowwoc.cat.common.optimizer.contract.UndecidableToolException;
+import io.github.cowwoc.cat.common.optimizer.evidence.EvidenceSection;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
+import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Judging;
 import io.github.cowwoc.cat.common.optimizer.execution.InFlight.Triaging;
@@ -53,6 +60,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.Event;
 import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
+import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
@@ -110,15 +118,15 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Count the trial's session as an infrastructure failure after this many failed judge attempts.
 	 */
-	static final int JUDGE_ATTEMPTS = 3;
+	public static final int JUDGE_ATTEMPTS = 3;
 	/**
 	 * Count a development failure as blocking after this many failed triage attempts.
 	 */
-	static final int TRIAGE_ATTEMPTS = 3;
+	public static final int TRIAGE_ATTEMPTS = 3;
 	/**
-	 * Stop the slice with an infrastructure failure after this many author sessions fail.
+	 * Stop the slice with an infrastructure failure after this many prompt author sessions fail.
 	 */
-	static final int AUTHOR_FAILURE_LIMIT = 3;
+	public static final int PROMPT_AUTHOR_FAILURE_LIMIT = 3;
 	private final DriverContext context;
 	private final CampaignLock lock;
 	private final String campaignId;
@@ -140,7 +148,7 @@ public final class Driver implements AutoCloseable
 	private final Map<Sha256, Sha256> staged = new HashMap<>();
 	private Campaign campaign;
 	private long nextToken;
-	private int authorFailures;
+	private int promptAuthorFailures;
 	private boolean interrupted;
 	private String infrastructureFailure;
 	private DeliveryReport delivery;
@@ -203,7 +211,7 @@ public final class Driver implements AutoCloseable
 	 * @throws IOException if the store, the worktree or the run records cannot be read or written, or the harness's
 	 *   credential file exists but cannot be read
 	 */
-	static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
+	public static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
 	{
 		try
 		{
@@ -263,7 +271,8 @@ public final class Driver implements AutoCloseable
 	 * Applies a user's command and persists the result. Resuming after an unowned change restores the working
 	 * candidate in the optimization worktree, so the change is never incorporated.
 	 *
-	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.Revise}, {@link CampaignEvent.Choose},
+	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.ExtendFork}, {@link CampaignEvent.Revise},
+	 *   {@link CampaignEvent.Choose},
 	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close} or
 	 *   {@link CampaignEvent.ReportUnavailable}
 	 * @throws NullPointerException if {@code event} is null
@@ -279,7 +288,7 @@ public final class Driver implements AutoCloseable
 		switch (event)
 		{
 			// A user's command
-			case CampaignEvent.Confirm _, CampaignEvent.Revise _, CampaignEvent.Choose _,
+			case CampaignEvent.Confirm _, CampaignEvent.ExtendFork _, CampaignEvent.Revise _, CampaignEvent.Choose _,
 				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
 				CampaignEvent.ReportUnavailable _ ->
 			{
@@ -300,8 +309,8 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Advances the campaign without blocking. A step consumes the sessions that ended, stops the slice on a host
 	 * interrupt or at the end of the grace period, starts pending triages and judges, and before the slice's deadline
-	 * starts the session that writes reproduction values after a failed certification attempt, commits, starts an author
-	 * session and admits trials. Work whose logical trial the campaign discarded ends without an outcome.
+	 * starts the session that writes reproduction values after a failed certification attempt, commits, starts a prompt
+	 * author session and admits trials. Work whose logical trial the campaign discarded ends without an outcome.
 	 *
 	 * @return what follows
 	 * @throws IllegalStateException if the driver is closed
@@ -343,7 +352,7 @@ public final class Driver implements AutoCloseable
 			started |= advanceMinimality();
 			started |= startValues(now);
 			started |= commitIfDue();
-			started |= startAuthor(now);
+			started |= startPromptAuthor(now);
 			started |= admit(now);
 		}
 		if (!isDrained())
@@ -533,7 +542,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
 			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure());
-			case InFlight.Author author -> authorEnded(author, result, event.failure());
+			case InFlight.PromptAuthor promptAuthor -> promptAuthorEnded(promptAuthor, result, event.failure());
 			case InFlight.Values values -> valuesEnded(values, result, event.failure());
 		}
 	}
@@ -585,8 +594,8 @@ public final class Driver implements AutoCloseable
 			case InFlight.Trial _ -> SessionRole.TRIAL;
 			case InFlight.Judge _ -> SessionRole.JUDGE;
 			case InFlight.Triage _ -> SessionRole.TRIAGE;
-			case InFlight.Author _ -> SessionRole.AUTHOR;
-			case InFlight.Values _ -> SessionRole.DERIVER;
+			case InFlight.PromptAuthor _ -> SessionRole.PROMPT_AUTHOR;
+			case InFlight.Values _ -> SessionRole.CONTRACT_AUTHOR;
 		};
 
 		record(new CampaignEvent.ObserveTokenUsage(role, completed.usage()));
@@ -614,7 +623,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Consumes the end of a trial session. A completed session's deterministic checks decide it or send it to its
+	 * Consumes the end of a trial session. A completed session's built-in tools decide it or send it to its
 	 * judge; any other result returns the trial to the queue.
 	 *
 	 * @param trial the session
@@ -634,7 +643,7 @@ public final class Driver implements AutoCloseable
 			{
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
 				if (findRunningTrial(key).isPresent())
-					decideChecks(trial, completed, now);
+					decideTools(trial, completed, now);
 			}
 			case SessionResult.Interrupted _ ->
 				fail(key, RunFailure.INTERRUPTED, "The trial session was interrupted", now);
@@ -648,66 +657,56 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Runs a completed trial's deterministic checks first. A failed check fails the trial with the
-	 * record of each failed check, and a trial whose checks decide every requirement passes with the record of its
-	 * checks; neither runs a judge. A failed development trial waits for its triage before the failure is recorded.
-	 * Otherwise the trial waits for a judge of its semantic requirements, which receives the check results as
-	 * evidence. A check that the evidence cannot decide, or evidence that cannot be rendered, makes the run an
-	 * infrastructure failure.
+	 * Runs a completed trial's built-in tools first. A failed tool fails the trial with the record of each failed
+	 * tool and no judge runs; a failed development trial waits for its triage before the failure is recorded.
+	 * Otherwise the trial waits for a judge of the assertions without a {@code tool:} line and of the assertion
+	 * {@value TestCase#EXPECTED_OUTCOME}, which receives the tool results as evidence. A tool that the record cannot
+	 * decide, or evidence that cannot be rendered, makes the run an infrastructure failure.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void decideChecks(InFlight.Trial trial, SessionResult.Completed completed, Instant now)
+	private void decideTools(InFlight.Trial trial, SessionResult.Completed completed, Instant now)
 		throws IOException
 	{
-		TrialInstance instance = trial.instance();
-		TestDefinition test = campaign.contract().findTest(instance.testId()).orElseThrow();
-		List<CheckResult> results;
+		DrawnTestCase testCase = trial.testCase();
+		PromptTest test = campaign.contract().findTest(testCase.testId()).orElseThrow();
+		List<BuiltInToolResult> results;
 		try
 		{
-			results = test.decide(new Generator(campaign.contract(), campaign.developmentValues()).texts(instance),
-				new TrialEvidence(completed));
+			new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
+			results = test.decide(testCase.testCase(), TrialEvidence.read(context.sessions(), completed,
+				trial.source()));
 		}
-		catch (IOException | UndecidableCheckException e)
+		catch (IOException | UndecidableToolException e)
 		{
-			fail(trial.key(), RunFailure.INFRASTRUCTURE, "The deterministic checks could not be decided: " +
+			fail(trial.key(), RunFailure.INFRASTRUCTURE, "The built-in tools could not be decided: " +
 				describe(e), now);
 			return;
 		}
-		List<CheckResult> failed = results.stream().filter(result -> !result.passed()).toList();
+		List<BuiltInToolResult> failed = results.stream().filter(result -> !result.passed()).toList();
 		if (!failed.isEmpty())
 		{
-			String record = checkRecord("Failed deterministic checks:", failed);
-			List<FailedRequirement> failures = failed.stream().
-				map(result -> new FailedRequirement(result.check().requirementId(), result.check().behavior())).
+			String record = toolRecord("Failed built-in tools:", failed);
+			List<FailedAssertion> failures = failed.stream().
+				map(result -> new FailedAssertion(result.assertion().id(), result.behavior())).
 				toList();
 			if (trial.key().purpose() != Purpose.DEVELOPMENT)
 			{
-				complete(trial.key(), instance, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
+				complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
 				return;
 			}
 			Optional<String> section = renderEvidence(trial.key(), completed, trial.source(), now);
 			if (section.isPresent())
 			{
-				triageQueue.add(new Triaging(trial.key(), instance, completed, section.get(), results, record, failures,
+				triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
 					1, trial.concurrency()));
 			}
 			return;
 		}
-		List<String> semanticIds = test.semanticRequirementIds();
-		if (semanticIds.isEmpty())
-		{
-			complete(trial.key(), instance, trial.concurrency(), completed, Verdict.PASS,
-				checkRecord("Passed deterministic checks:", results), List.of(), null);
-			return;
-		}
-		Map<String, Requirement> requirementById = new HashMap<>();
-		for (Requirement requirement : campaign.contract().requirements())
-			requirementById.put(requirement.id(), requirement);
-		List<Requirement> semantic = semanticIds.stream().map(requirementById::get).toList();
+		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements());
 		String section = "";
 		if (judgeRendersEvidence())
 		{
@@ -716,7 +715,7 @@ public final class Driver implements AutoCloseable
 				return;
 			section = rendered.get();
 		}
-		judgingQueue.add(new Judging(trial.key(), instance, trial.source(), completed, section, semantic, results, 1,
+		judgingQueue.add(new Judging(trial.key(), testCase, trial.source(), completed, section, judged, results, 1,
 			trial.concurrency()));
 	}
 
@@ -746,7 +745,7 @@ public final class Driver implements AutoCloseable
 	{
 		try
 		{
-			return Optional.of(context.sessions().renderEvidence(completed.transcript(), completed.effects(), source));
+			return Optional.of(TrialEvidence.read(context.sessions(), completed, source).render());
 		}
 		catch (IOException e)
 		{
@@ -756,17 +755,17 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Returns the record of deterministic checks that labels a trial in place of a judge's rationale.
+	 * Returns the record of built-in tools that labels a trial in place of a judge's rationale.
 	 *
 	 * @param heading the record's first line
-	 * @param results the checks' results
-	 * @return the record: the heading, then one line per check naming its requirement, kind, parameters and
-	 *   observed value
+	 * @param results the tools' results
+	 * @return the record: the heading, then one line per tool naming its assertion, its {@code tool:} line, its
+	 *   behavior and its observed value
 	 */
-	private static String checkRecord(String heading, List<CheckResult> results)
+	private static String toolRecord(String heading, List<BuiltInToolResult> results)
 	{
 		StringBuilder record = new StringBuilder(heading);
-		for (CheckResult result : results)
+		for (BuiltInToolResult result : results)
 			record.append("\n- ").append(result.describe());
 		return record.toString();
 	}
@@ -789,8 +788,8 @@ public final class Driver implements AutoCloseable
 			if (findRunningTrial(judging.key()).isEmpty())
 				continue;
 			started = true;
-			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.instance(),
-				judging.evidence(), judging.requirements(), judging.results(), judging.evidenceSection());
+			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.testCase(),
+				judging.evidence(), judging.assertions(), judging.results(), judging.evidenceSection());
 			SessionHandle handle;
 			try
 			{
@@ -827,7 +826,7 @@ public final class Driver implements AutoCloseable
 			case null -> reason = "The judge session failed: " + describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				Optional<Judgment> judgment = context.judge().judgment(completed, judging.requirements());
+				Optional<Judgment> judgment = context.judge().judgment(completed, judging.assertions());
 				if (judgment.isPresent())
 				{
 					judged(judging, judgment.get(), now);
@@ -859,7 +858,7 @@ public final class Driver implements AutoCloseable
 	{
 		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
 		{
-			complete(judging.key(), judging.instance(), judging.concurrency(), judging.evidence(), judgment.verdict(),
+			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), judgment.verdict(),
 				judgment.rationale(), judgment.failures(), null);
 			return;
 		}
@@ -871,7 +870,7 @@ public final class Driver implements AutoCloseable
 				return;
 			section = rendered.get();
 		}
-		triageQueue.add(new Triaging(judging.key(), judging.instance(), judging.evidence(), section, judging.results(),
+		triageQueue.add(new Triaging(judging.key(), judging.testCase(), judging.evidence(), section, judging.results(),
 			judgment.rationale(), judgment.failures(), 1, judging.concurrency()));
 	}
 
@@ -914,7 +913,7 @@ public final class Driver implements AutoCloseable
 				continue;
 			started = true;
 			SessionRequest request = context.triage().request(campaign.contract().judge().profile(),
-				triaging.instance(), triaging.evidence(), triaging.results(), triaging.evidenceSection(),
+				triaging.testCase(), triaging.evidence(), triaging.results(), triaging.evidenceSection(),
 				triaging.rationale());
 			SessionHandle handle;
 			try
@@ -999,7 +998,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
 	{
-		complete(triaging.key(), triaging.instance(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
+		complete(triaging.key(), triaging.testCase(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
 			triaging.rationale(), triaging.failures(), triage);
 	}
 
@@ -1009,20 +1008,20 @@ public final class Driver implements AutoCloseable
 	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
 	 *
 	 * @param key the logical trial
-	 * @param instance the trial's instance
+	 * @param testCase the trial's test case
 	 * @param concurrency the number of trial sessions that ran once the trial's session started
 	 * @param trial the trial session's result
 	 * @param verdict the trial's label
-	 * @param rationale the judge's rationale or, when no judge ran, the record of the trial's deterministic checks
-	 * @param failures the requirements that a failed trial failed, each with its behavior; empty for a pass
+	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
+	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void complete(TrialKey key, TrialInstance instance, int concurrency, SessionResult.Completed trial,
-		Verdict verdict, String rationale, List<FailedRequirement> failures, Triage triage)
+	private void complete(TrialKey key, DrawnTestCase testCase, int concurrency, SessionResult.Completed trial,
+		Verdict verdict, String rationale, List<FailedAssertion> failures, Triage triage)
 		throws IOException
 	{
-		MeasurementIdentity observed = observedIdentity(instance, trial);
+		MeasurementIdentity observed = observedIdentity(testCase, trial);
 		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
 			triage, observed, trialInputTokens(trial), trial.responses(), files);
@@ -1045,11 +1044,11 @@ public final class Driver implements AutoCloseable
 	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
 	 * trial's cell.
 	 *
-	 * @param instance the trial's instance
+	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
 	 * @return the conditions
 	 */
-	private MeasurementIdentity observedIdentity(TrialInstance instance, SessionResult.Completed trial)
+	private MeasurementIdentity observedIdentity(DrawnTestCase testCase, SessionResult.Completed trial)
 	{
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(context.environment().values());
@@ -1059,19 +1058,20 @@ public final class Driver implements AutoCloseable
 			cell.put(MeasurementCondition.MODEL, trial.model());
 		if (trial.reasoning() != null)
 			cell.put(MeasurementCondition.REASONING, trial.reasoning());
-		int toolOutputTokenLimit = campaign.contract().findCell(instance.cellId()).orElseThrow().profile().
+		int toolOutputTokenLimit = campaign.contract().findCell(testCase.cellId()).orElseThrow().profile().
 			toolOutputTokenLimit();
 		if (toolOutputTokenLimit > 0)
 			cell.put(MeasurementCondition.TOOL_OUTPUT_LIMIT, String.valueOf(toolOutputTokenLimit));
-		return new MeasurementIdentity(values, Map.of(instance.cellId(), cell));
+		return new MeasurementIdentity(values, Map.of(testCase.cellId(), cell));
 	}
 
 	/**
 	 * Indicates whether a candidate commitment or calibration failure was recorded. Commits the working candidate
-	 * if the campaign is ready, calibrating the attempt's trial cap first.
+	 * if the campaign is ready, calibrating the attempt's trial cap first and saving the control source that the
+	 * attempt's control trials run on.
 	 *
 	 * @return {@code true} if a commit or a calibration failure was recorded
-	 * @throws IOException if the store cannot be written
+	 * @throws IOException if the store or the control source cannot be written
 	 */
 	private boolean commitIfDue() throws IOException
 	{
@@ -1080,8 +1080,12 @@ public final class Driver implements AutoCloseable
 		CampaignEvent event;
 		try
 		{
+			FileInventory fork = context.overlays().require(campaign.incumbent().snapshot()).fork();
+			Overlay control = ControlSource.of(fork, context.authority());
+			context.overlays().save(control);
 			event = new CampaignEvent.Commit(context.calibrator().calibrate(
-				ErrorBudget.certificationLevel(campaign.nextCertificationIndex())), context.random().nextLong());
+				ErrorBudget.certificationLevel(campaign.nextCertificationIndex()),
+				campaign.contract().minimumPassRate()), context.random().nextLong(), control.identity());
 		}
 		catch (CapCalibrationException e)
 		{
@@ -1092,8 +1096,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Starts the session that writes the combinations of the first failure group whose reproduction round awaits
-	 * values. One such session runs at a time, so each one knows every combination written before it.
+	 * Starts the session that writes the test cases of the first failure group whose reproduction round awaits
+	 * values. One such session runs at a time, so each one knows every test case written before it.
 	 *
 	 * @param now the current time
 	 * @return whether the session was started or failed to start
@@ -1115,7 +1119,7 @@ public final class Driver implements AutoCloseable
 		}
 		if (number == 0)
 			return false;
-		SessionRequest request = context.values().request(campaign.contract(), campaign.developmentValues(),
+		SessionRequest request = context.values().request(campaign.contract(), campaign.developmentTestCases(),
 			attempt.group(number));
 		SessionHandle handle;
 		try
@@ -1147,7 +1151,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Consumes the end of a session that writes reproduction values. Valid combinations become the failure group's
+	 * Consumes the end of a session that writes reproduction values. Valid test cases become the failure group's
 	 * current round, whose reproduction trials then run; a rejected response or a failed session is an infrastructure
 	 * failure. The result is ignored if its group's round does not await values when the session ends.
 	 *
@@ -1172,18 +1176,18 @@ public final class Driver implements AutoCloseable
 				describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				List<AddedCombination> combinations;
+				List<AddedTestCase> testCases;
 				try
 				{
-					combinations = context.values().combinations(completed, campaign.contract(),
-						campaign.developmentValues(), values.attempt(), group);
+					testCases = context.values().testCases(completed, campaign.contract(),
+						campaign.developmentTestCases(), values.attempt(), group);
 				}
 				catch (InvalidProposalException e)
 				{
 					infrastructureFailure = "The reproduction values were rejected: " + String.join(" ", e.problems());
 					return;
 				}
-				record(new CampaignEvent.ReproductionValues(values.attempt(), values.group(), combinations));
+				record(new CampaignEvent.ReproductionValues(values.attempt(), values.group(), testCases));
 			}
 			// The session starts again once the harness's shared hold ends
 			case SessionResult.RateLimited _, SessionResult.Refused _ ->
@@ -1197,29 +1201,31 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Starts the round's authors within the available session capacity, concurrently when the frozen policy is weak.
-	 * Weak authors wait for already assigned development trials to settle so every attempt receives the same brief.
+	 * Starts the round's prompt authors within the available session capacity, concurrently when the frozen policy is
+	 * weak. Weak prompt authors wait for already assigned development trials to settle so every attempt receives the
+	 * same brief.
 	 *
 	 * @param now the current time
-	 * @return whether an author session was started or failed to start
+	 * @return whether a prompt author session was started or failed to start
 	 * @throws IOException if the workspace or reservation cannot be read or written
 	 */
-	private boolean startAuthor(Instant now) throws IOException
+	private boolean startPromptAuthor(Instant now) throws IOException
 	{
 		boolean started = false;
-		while (isAdmissible() && campaign.development().round() != null && campaign.development().author() == null &&
-			authorFailures < AUTHOR_FAILURE_LIMIT && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		while (isAdmissible() && campaign.development().round() != null && campaign.development().
+			promptAuthor() == null && promptAuthorFailures < PROMPT_AUTHOR_FAILURE_LIMIT && freeCapacity() > 0 &&
+			campaign.throttle(). allowsAdmission(now))
 		{
 			Round round = campaign.development().round();
 			if (round.weak() && campaign.trials().stream().anyMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT))
 				break;
-			if (!round.weak() && hasAuthorSession())
+			if (!round.weak() && hasPromptAuthorSession())
 				break;
-			Optional<Entry<Integer, String>> reservation = reserveAuthor();
+			Optional<Entry<Integer, String>> reservation = reservePromptAuthor();
 			if (reservation.isEmpty())
 				break;
 
-			startAuthorSession(reservation.get().getKey(), reservation.get().getValue());
+			startPromptAuthorSession(reservation.get().getKey(), reservation.get().getValue());
 			started = true;
 			if (!round.weak())
 				break;
@@ -1228,48 +1234,49 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Finds an unfinished author reservation whose session is absent, or reserves the next unstarted attempt.
+	 * Finds an unfinished prompt author reservation whose session is absent, or reserves the next unstarted attempt.
 	 *
 	 * @return the reservation in launch order, or empty when every slot has a session or has been submitted
 	 * @throws IOException if a new reservation cannot be persisted
 	 */
-	private Optional<Entry<Integer, String>> reserveAuthor() throws IOException
+	private Optional<Entry<Integer, String>> reservePromptAuthor() throws IOException
 	{
 		Round round = campaign.development().round();
-		for (Entry<Integer, String> entry : round.pendingAuthorAttempts().entrySet())
+		for (Entry<Integer, String> entry : round.pendingPromptAuthorAttempts().entrySet())
 		{
-			if (!isAuthorRunning(entry.getKey()))
+			if (!isPromptAuthorRunning(entry.getKey()))
 				return Optional.of(entry);
 		}
 		Optional<String> cell = round.nextCell();
 		if (cell.isEmpty())
 			return Optional.empty();
 
-		record(new CampaignEvent.StartAuthorAttempt(cell.get()));
-		return campaign.development().round().pendingAuthorAttempts().entrySet().stream().
-			filter(entry -> !isAuthorRunning(entry.getKey())).findFirst();
+		record(new CampaignEvent.StartPromptAuthorAttempt(cell.get()));
+		return campaign.development().round().pendingPromptAuthorAttempts().entrySet().stream().
+			filter(entry -> !isPromptAuthorRunning(entry.getKey())).findFirst();
 	}
 
 	/**
-	 * Indicates whether an author reservation has a running session in this slice.
+	 * Indicates whether a prompt author reservation has a running session in this slice.
 	 *
 	 * @param number the reserved attempt number
 	 * @return whether that session is running
 	 */
-	private boolean isAuthorRunning(int number)
+	private boolean isPromptAuthorRunning(int number)
 	{
-		return inFlight.values().stream().anyMatch(session -> session instanceof InFlight.Author author &&
-			author.number() == number);
+		return inFlight.values().stream().anyMatch(session -> session instanceof InFlight.PromptAuthor promptAuthor &&
+			promptAuthor.number() == number);
 	}
 
 	/**
-	 * Launches an already persisted author reservation from the unchanged working candidate and its frozen evidence.
+	 * Launches an already persisted prompt author reservation from the unchanged working candidate and its frozen
+	 * evidence.
 	 *
 	 * @param number the reserved attempt number
 	 * @param cell the addressed cell
 	 * @throws IOException if the workspace or overlay cannot be read or written
 	 */
-	private void startAuthorSession(int number, String cell) throws IOException
+	private void startPromptAuthorSession(int number, String cell) throws IOException
 	{
 		Candidate working = campaign.development().working();
 		Overlay overlay = context.overlays().require(working.snapshot());
@@ -1280,17 +1287,30 @@ public final class Driver implements AutoCloseable
 			Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 			String edits = CampaignEdits.of(context.workspace(), incumbent, overlay, context.promptSources());
 			Map<Integer, String> sections = renderFailureSections(working, overlay);
-			AuthorBrief brief = AuthorBrief.of(campaign, number, overlay.fork(), edits, sections);
-			SessionRequest request = context.author().request(brief, copy);
+			PromptAuthorBrief brief = PromptAuthorBrief.of(campaign, number, overlay.fork(), edits, sections);
+			SessionRequest request = context.promptAuthor().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
-			register(new InFlight.Author(number, campaign.lineage().number(), cell, working, overlay, copy, before, brief,
-				handle));
+			register(new InFlight.PromptAuthor(number, campaign.lineage().number(), cell, working, overlay, copy,
+				before, brief, handle));
 		}
 		catch (IOException e)
 		{
 			context.workspace().deleteAuthoringCopy(copy);
-			authorFailed("The author session could not start: " + describe(e));
+			promptAuthorFailed("The prompt author session could not start: " + describe(e));
 		}
+	}
+
+	/**
+	 * Returns the paths that a staged source leaves out so that a trial cannot read the prompt tests.
+	 *
+	 * @return the confirmed contract's prompt test directories and cited regression scenarios, relative to the project
+	 */
+	private Set<Path> excludedTests()
+	{
+		if (!campaign.isConfirmed())
+			return Set.of();
+		Path target = campaign.header().root().relativize(campaign.header().target());
+		return PromptTestLocations.excluded(campaign.contract(), target);
 	}
 
 	/**
@@ -1310,15 +1330,15 @@ public final class Driver implements AutoCloseable
 		if (failures.isEmpty())
 			return sections;
 		// Development failures belong to the working candidate, so its staged source is the one each trial started from
-		Path source = context.workspace().stage(overlay);
+		Path source = context.workspace().stage(overlay, excludedTests());
 		staged.put(working.snapshot(), overlay.identity());
 		for (int index = 0; index < failures.size(); ++index)
 		{
 			TrialFiles files = failures.get(index).files();
 			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()))
 			{
-				sections.put(index, context.sessions().renderEvidence(files.transcript(), files.effects(),
-					source));
+				SessionEvidence activity = context.sessions().readEvidence(files.transcript());
+				sections.put(index, EvidenceSection.render(activity, files.effects(), source));
 			}
 		}
 		return sections;
@@ -1346,114 +1366,115 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether an author session runs.
+	 * Indicates whether a prompt author session runs.
 	 *
 	 * @return {@code true} if one runs
 	 */
-	private boolean hasAuthorSession()
+	private boolean hasPromptAuthorSession()
 	{
 		for (InFlight session : inFlight.values())
 		{
-			if (session instanceof InFlight.Author)
+			if (session instanceof InFlight.PromptAuthor)
 				return true;
 		}
 		return false;
 	}
 
 	/**
-	 * Consumes the end of an author session and deletes the author's copy.
+	 * Consumes the end of a prompt author session and deletes the prompt author's copy.
 	 *
-	 * @param author the session
+	 * @param promptAuthor the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param failure the exception, or {@code null}
 	 * @throws IOException if the store or the workspace cannot be read or written
 	 */
-	private void authorEnded(InFlight.Author author, SessionResult result, Throwable failure)
+	private void promptAuthorEnded(InFlight.PromptAuthor promptAuthor, SessionResult result, Throwable failure)
 		throws IOException
 	{
 		try
 		{
 			switch (result)
 			{
-				case null -> authorFailed("The author session failed: " + describe(failure));
+				case null -> promptAuthorFailed("The prompt author session failed: " + describe(failure));
 				case SessionResult.Completed completed ->
 				{
-					submit(author, completed);
+					submit(promptAuthor, completed);
 				}
-				// The author starts again with the same brief once the harness's shared hold ends
+				// The prompt author starts again with the same brief once the harness's shared hold ends
 				case SessionResult.RateLimited _, SessionResult.Refused _ ->
 				{
 				}
-				case SessionResult.Interrupted _ -> authorFailed("The author session was interrupted");
-				case SessionResult.Failed failed -> authorFailed(failed.reason());
+				case SessionResult.Interrupted _ -> promptAuthorFailed("The prompt author session was interrupted");
+				case SessionResult.Failed failed -> promptAuthorFailed(failed.reason());
 			}
 		}
 		finally
 		{
-			context.workspace().deleteAuthoringCopy(author.copy());
+			context.workspace().deleteAuthoringCopy(promptAuthor.copy());
 		}
 	}
 
 	/**
-	 * Validates a completed author attempt against its starting snapshot and submits its candidate, then checks the
-	 * edits that the author reported needing against the edit authority. An attempt with a forbidden operation or a
-	 * malformed report contributes no candidate and counts as an infrastructure failure. A rejected manifest is
-	 * retained and contributes no candidate. An attempt that classifies no kind routing or guidance offers its working
-	 * snapshot, which is no candidate. A needed
+	 * Validates a completed prompt author attempt against its starting snapshot and submits its candidate, then checks
+	 * the edits that the prompt author reported needing against the edit authority. An attempt with a forbidden
+	 * operation or a malformed report contributes no candidate and counts as an infrastructure failure. A rejected
+	 * manifest is retained and contributes no candidate. An attempt that classifies no kind routing or guidance offers
+	 * its working snapshot, which is no candidate. A needed
 	 * edit outside the authority raises an {@code awaiting_user} decision that holds the warnings. A valid conflict
 	 * report discards the candidate and pauses for the user's resolution.
 	 *
-	 * @param author the session
+	 * @param promptAuthor the session
 	 * @param completed the session's result
 	 * @throws IOException if the store, the overlays or the session's effects cannot be read or written
 	 */
-	private void submit(InFlight.Author author, SessionResult.Completed completed) throws IOException
+	private void submit(InFlight.PromptAuthor promptAuthor, SessionResult.Completed completed) throws IOException
 	{
-		Optional<AuthorReport> report = context.author().report(completed);
+		Optional<PromptAuthorReport> report = context.promptAuthor().report(completed);
 		if (report.isEmpty() || !namesContractRequirements(report.get().neededEdits()))
 		{
-			authorFailed("The author's report of needed edits is malformed");
+			promptAuthorFailed("The prompt author's report of needed edits is malformed");
 			return;
 		}
 		Authority authority = context.authority();
-		FileInventory fork = author.overlay().fork();
+		FileInventory fork = promptAuthor.overlay().fork();
 		List<AuthorityWarning> warnings = new ArrayList<>();
 		for (NeededEdit edit : report.get().neededEdits())
 			authority.diagnose(edit.requirement(), edit.path(), edit.operation(), fork).ifPresent(warnings::add);
 
 		// The session edits the runner's copy of the authoring copy, so its edits are in the effects directory
-		FileInventory after = context.workspace().scanAuthorEffects(author.copy(), completed.effects());
-		AttemptReview review = InventoryDiff.between(author.before(), after).review(fork, authority);
+		FileInventory after = context.workspace().scanPromptAuthorEffects(promptAuthor.copy(), completed.effects());
+		AttemptReview review = InventoryDiff.between(promptAuthor.before(), after).review(fork, authority);
 		if (!review.isPermitted())
 		{
-			authorFailed("The author attempt made forbidden changes: " + review.forbidden());
+			promptAuthorFailed("The prompt author attempt made forbidden changes: " + review.forbidden());
 			return;
 		}
-		Optional<Overlay> candidate = AuthorDelta.apply(author.overlay(), completed.effects(), review.changes());
+		Optional<Overlay> candidate = PromptAuthorDelta.apply(promptAuthor.overlay(), completed.effects(),
+			review.changes());
 		if (candidate.isEmpty())
 		{
-			authorFailed("A file in the author's copy changed while CAT read it");
+			promptAuthorFailed("A file in the prompt author's copy changed while CAT read it");
 			return;
 		}
-		Optional<List<FileDelta>> changes = AuthorDelta.changes(author.overlay(), author.copy(), completed.effects(),
-			review.changes());
+		Optional<List<FileDelta>> changes = PromptAuthorDelta.changes(promptAuthor.overlay(), promptAuthor.copy(),
+			completed.effects(), review.changes());
 		if (changes.isEmpty())
 		{
-			authorFailed("A file in the author's effects changed while CAT read it");
+			promptAuthorFailed("A file in the prompt author's effects changed while CAT read it");
 			return;
 		}
 		List<Hunk> hunks = changes.get().stream().flatMap(change -> Hunks.between(change).stream()).toList();
-		Set<String> received = author.brief().failureIds();
+		Set<String> received = promptAuthor.brief().failureIds();
 		Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 		List<String> violations = report.get().manifest().violations(received, hunks, campaign.contract(),
 			incumbent.snapshot(), confirmedContents(incumbent, report.get().conflicts()), report.get().conflicts());
-		AuthorManifest manifest = report.get().manifest();
-		record(new CampaignEvent.RetainAuthorDiagnosis(new AuthorDiagnosis(author.number(), author.lineage(),
-			author.cell(), author.working().snapshot(), manifest.kinds(), manifest.hunks(), violations,
-			completed.transcript(), completed.effects())));
+		PromptAuthorManifest manifest = report.get().manifest();
+		record(new CampaignEvent.RetainPromptAuthorDiagnosis(new PromptAuthorDiagnosis(promptAuthor.number(),
+			promptAuthor.lineage(), promptAuthor.cell(), promptAuthor.working().snapshot(), manifest.kinds(),
+			manifest.hunks(), violations, completed.transcript(), completed.effects())));
 		if (!violations.isEmpty())
 		{
-			authorFailed("The author manifest is invalid: " + violations);
+			promptAuthorFailed("The prompt author manifest is invalid: " + violations);
 			return;
 		}
 		if (!report.get().conflicts().isEmpty())
@@ -1462,19 +1483,20 @@ public final class Driver implements AutoCloseable
 				record(new CampaignEvent.FindConflict(report.get().conflicts()));
 			return;
 		}
-		if (offersAuthorAttempt(author))
+		if (offersPromptAuthorAttempt(promptAuthor))
 		{
 			// An attempt that classified no kind routing or guidance offers its working snapshot, which is no candidate
-			Sha256 snapshot = author.working().snapshot();
+			Sha256 snapshot = promptAuthor.working().snapshot();
 			List<FileDelta> submitted = List.of();
 			if (manifest.producesCandidate(hunks) &&
-				!candidate.get().identity().equals(author.overlay().identity()))
+				!candidate.get().identity().equals(promptAuthor.overlay().identity()))
 			{
 				context.overlays().save(candidate.get());
 				snapshot = candidate.get().identity();
 				submitted = changes.get();
 			}
-			record(new CampaignEvent.SubmitAuthorAttempt(author.number(), author.cell(), snapshot, submitted));
+			record(new CampaignEvent.SubmitPromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot,
+				submitted));
 		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
@@ -1491,13 +1513,13 @@ public final class Driver implements AutoCloseable
 	 * @return recorded file bytes keyed by resolved path; absent files remain absent for manifest validation
 	 * @throws IOException if recorded content cannot be read
 	 */
-	private Map<Path, FileContent> confirmedContents(Overlay incumbent, List<AuthorConflict> conflicts)
+	private Map<Path, FileContent> confirmedContents(Overlay incumbent, List<PromptAuthorConflict> conflicts)
 		throws IOException
 	{
 		Map<Path, FileContent> contents = new HashMap<>();
-		for (AuthorConflict conflict : conflicts)
+		for (PromptAuthorConflict conflict : conflicts)
 		{
-			for (AuthorConflict.Quotation quotation : conflict.quotations())
+			for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
 			{
 				Path target = incumbent.snapshot().resolve(quotation.path()).orElse(quotation.path());
 				if (!contents.containsKey(target))
@@ -1527,34 +1549,35 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether the campaign still offers the author attempt that a session made.
+	 * Indicates whether the campaign still offers the prompt author attempt that a session made.
 	 *
-	 * @param author the session
+	 * @param promptAuthor the session
 	 * @return {@code true} if the attempt may be submitted
 	 */
-	private boolean offersAuthorAttempt(InFlight.Author author)
+	private boolean offersPromptAuthorAttempt(InFlight.PromptAuthor promptAuthor)
 	{
 		if (campaign.lifecycle() != Lifecycle.ACTIVE || !campaign.isConfirmed() || campaign.revisionRequested())
 			return false;
 		Development development = campaign.development();
 		Round round = development.round();
-		return round != null && development.author() == null && development.working().equals(author.working()) &&
-			author.cell().equals(round.pendingAuthorAttempts().get(author.number()));
+		return round != null && development.promptAuthor() == null && development.working().
+			equals(promptAuthor.working()) && promptAuthor.cell().equals(round.pendingPromptAuthorAttempts().
+			get(promptAuthor.number()));
 	}
 
 	/**
-	 * Records a failed author session. The slice stops with an infrastructure failure once
-	 * {@value #AUTHOR_FAILURE_LIMIT} author sessions failed.
+	 * Records a failed prompt author session. The slice stops with an infrastructure failure once
+	 * {@value #PROMPT_AUTHOR_FAILURE_LIMIT} prompt author sessions failed.
 	 *
 	 * @param reason why the session failed
 	 */
-	private void authorFailed(String reason)
+	private void promptAuthorFailed(String reason)
 	{
-		++authorFailures;
-		if (authorFailures >= AUTHOR_FAILURE_LIMIT)
+		++promptAuthorFailures;
+		if (promptAuthorFailures >= PROMPT_AUTHOR_FAILURE_LIMIT)
 		{
-			infrastructureFailure = "The author session failed " + AUTHOR_FAILURE_LIMIT + " times. Last failure: " +
-				reason;
+			infrastructureFailure = "The prompt author session failed " + PROMPT_AUTHOR_FAILURE_LIMIT +
+				" times. Last failure: " + reason;
 		}
 	}
 
@@ -1585,7 +1608,7 @@ public final class Driver implements AutoCloseable
 					yield next.trials().getLast();
 				}
 			};
-			Duration expected = evidence.expectedDuration(findTimeLimit(trial.instance()));
+			Duration expected = evidence.expectedDuration(findTimeLimit(trial.testCase()));
 			if (now.plus(expected).isAfter(deadline))
 				break;
 			context.store().writeAssignment(campaignId, trial);
@@ -1601,19 +1624,15 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Finds a trial test's time limit in its category of the confirmed contract.
+	 * Finds a trial's time limit in the confirmed contract.
 	 *
-	 * @param instance the trial's instance
-	 * @return the time limit of the instance's test definition
+	 * @param testCase the trial's test case
+	 * @return the time limit of the test case's prompt test
 	 */
-	private Duration findTimeLimit(TrialInstance instance)
+	private Duration findTimeLimit(DrawnTestCase testCase)
 	{
-		for (TestDefinition test : campaign.contract().findCategory(instance.categoryId()).orElseThrow().tests())
-		{
-			if (test.id().equals(instance.testId()))
-				return test.timeLimit();
-		}
-		throw new AssertionError("The contract has no test " + instance.testId() + " in " + instance.categoryId());
+		return campaign.contract().findTest(testCase.testId()).orElseThrow(() ->
+			new AssertionError("The contract has no test " + testCase.testId())).timeLimit();
 	}
 
 	/**
@@ -1631,11 +1650,13 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			Overlay candidate = context.overlays().require(key.snapshot());
-			source = context.workspace().stage(candidate);
+			source = context.workspace().stage(candidate, excludedTests());
 			staged.put(key.snapshot(), candidate.identity());
-			TrialProfile profile = campaign.contract().findCell(trial.instance().cellId()).orElseThrow().profile();
+			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
+			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
-				trial.instance().turns(), List.of(), findTimeLimit(trial.instance()), profile));
+				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
+				WorkspaceFixtures.of(test, trial.testCase().testCase())));
 		}
 		catch (IOException e)
 		{
@@ -1648,7 +1669,7 @@ public final class Driver implements AutoCloseable
 			if (session instanceof InFlight.Trial)
 				++concurrency;
 		}
-		register(new InFlight.Trial(key, trial.instance(), source, now, concurrency, handle));
+		register(new InFlight.Trial(key, trial.testCase(), source, now, concurrency, handle));
 	}
 
 	/**
@@ -1666,8 +1687,9 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether delivery was attempted. Delivers the candidate that a finished campaign selected, once per
-	 * slice.
+	 * Indicates whether delivery was attempted. Delivers the candidate that a finished campaign selected, or the prompt
+	 * tests of an incumbent that the user kept, once per slice. A certified delivery and a kept incumbent write the
+	 * confirmed prompt tests.
 	 *
 	 * @return {@code true} if a delivery was attempted
 	 * @throws IOException if the store, the overlays or a file cannot be read or written
@@ -1675,9 +1697,14 @@ public final class Driver implements AutoCloseable
 	private boolean deliver() throws IOException
 	{
 		DeliveryRequest request = campaign.delivery();
-		if (campaign.lifecycle() != Lifecycle.FINISHED || request == null || delivery != null)
+		boolean incumbentKept = campaign.isIncumbentKept();
+		if (campaign.lifecycle() != Lifecycle.FINISHED || (request == null && !incumbentKept) || delivery != null)
 			return false;
-		Overlay selected = context.overlays().require(request.candidate().snapshot());
+		Overlay selected;
+		if (incumbentKept)
+			selected = context.overlays().require(campaign.incumbent().snapshot());
+		else
+			selected = context.overlays().require(request.candidate().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
 		// A read-only external participant that changed after the fork makes the delivered system a different snapshot
 		Set<Path> promptSources = new HashSet<>(context.promptSources());
@@ -1687,15 +1714,23 @@ public final class Driver implements AutoCloseable
 				promptSources.add(path);
 		}
 		Optional<CertificationRecord> record = Optional.empty();
-		if (request.label() == Outcome.CERTIFIED)
+		List<DeliveredTest> tests = List.of();
+		if (incumbentKept || request.label() == Outcome.CERTIFIED)
+		{
+			Path target = campaign.header().root().relativize(campaign.header().target());
+			tests = DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(), target);
+		}
+		if (!incumbentKept && request.label() == Outcome.CERTIFIED)
 		{
 			record = Optional.of(CertificationRecord.of(campaign, campaign.attempt(request.attempt()),
 				selected.snapshot(), context.promptSources()));
 		}
-		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working, promptSources,
-			record);
+		DeliveryResult result = context.deliverer().deliver(campaignId, Optional.ofNullable(request), selected,
+			working, promptSources, record, tests);
 		Applicability applicability = null;
-		if (result instanceof DeliveryResult.Delivered delivered)
+		if (result instanceof DeliveryResult.Delivered delivered && incumbentKept)
+			applicability = delivered.applicability();
+		else if (result instanceof DeliveryResult.Delivered delivered)
 		{
 			Sha256 snapshot = request.candidate().snapshot();
 			MeasurementIdentity current = campaign.identity().replaceWith(context.environment());
@@ -1704,7 +1739,7 @@ public final class Driver implements AutoCloseable
 			{
 				CertificationAttempt attempt = campaign.attempt(request.attempt());
 				measurement = Applicability.of(attempt, snapshot, current,
-					CertificationParameters.current(attempt.index()));
+					CertificationParameters.current(attempt.index(), campaign.contract().minimumPassRate()));
 			}
 			else
 				measurement = Applicability.of(snapshot, campaign.identity(), snapshot, current);
@@ -1716,7 +1751,7 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Interrupts every session that still runs and returns its trial to the queue, to rerun later as the same
-	 * logical trial. Author copies are deleted. Every session is interrupted even if interrupting one fails.
+	 * logical trial. Prompt author copies are deleted. Every session is interrupted even if interrupting one fails.
 	 *
 	 * @param now the current time
 	 * @param reason why the sessions are cancelled
@@ -1733,8 +1768,8 @@ public final class Driver implements AutoCloseable
 				case InFlight.Trial trial -> abandoned.add(trial.key());
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
-				// The author copy is cleaned up by interrupt(); authors have no logical trial to queue.
-				case InFlight.Author _, InFlight.Values _ ->
+				// The prompt author copy is cleaned up by interrupt(); prompt authors have no logical trial to queue.
+				case InFlight.PromptAuthor _, InFlight.Values _ ->
 				{
 				}
 			}
@@ -1791,7 +1826,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Trial trial -> trial.key();
 				case InFlight.Judge judge -> judge.judging().key();
 				case InFlight.Triage triage -> triage.triaging().key();
-				case InFlight.Author _, InFlight.Values _ -> null;
+				case InFlight.PromptAuthor _, InFlight.Values _ -> null;
 			};
 			if (key == null || !isRemoved(key))
 				continue;
@@ -1825,20 +1860,20 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Interrupts a session and deletes its author copy even if the interrupt fails. If both operations fail, the
+	 * Interrupts a session and deletes its prompt author copy even if the interrupt fails. If both operations fail, the
 	 * cleanup failure is suppressed on the interrupt failure.
 	 *
 	 * @param session the running session
-	 * @throws IOException if the interrupt cannot be delivered or the author copy cannot be deleted
+	 * @throws IOException if the interrupt cannot be delivered or the prompt author copy cannot be deleted
 	 */
 	private void interrupt(InFlight session) throws IOException
 	{
-		if (session instanceof InFlight.Author author)
+		if (session instanceof InFlight.PromptAuthor promptAuthor)
 		{
-			Closeable cleanup = () -> context.workspace().deleteAuthoringCopy(author.copy());
+			Closeable cleanup = () -> context.workspace().deleteAuthoringCopy(promptAuthor.copy());
 			try (cleanup)
 			{
-				author.handle().interrupt();
+				promptAuthor.handle().interrupt();
 			}
 			return;
 		}
@@ -1857,9 +1892,13 @@ public final class Driver implements AutoCloseable
 		Set<Sha256> used = new HashSet<>();
 		used.add(campaign.incumbent().snapshot());
 		used.add(campaign.development().working().snapshot());
-		if (campaign.development().author() != null)
-			used.add(campaign.development().author().snapshot());
-		campaign.runningAttempt().ifPresent(attempt -> used.add(attempt.candidate().snapshot()));
+		if (campaign.development().promptAuthor() != null)
+			used.add(campaign.development().promptAuthor().snapshot());
+		campaign.runningAttempt().ifPresent(attempt ->
+		{
+			used.add(attempt.candidate().snapshot());
+			used.add(attempt.control());
+		});
 		for (LogicalTrial trial : campaign.trials())
 			used.add(trial.key().snapshot());
 		for (Entry<Sha256, Sha256> entry : staged.entrySet())
@@ -1886,7 +1925,7 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			Overlay overlay = context.overlays().require(snapshot);
-			Path source = context.workspace().stage(overlay);
+			Path source = context.workspace().stage(overlay, excludedTests());
 			staged.put(snapshot, overlay.identity());
 			size = PromptMeasurements.measure(source, overlay.snapshot(), context.promptSources());
 		}

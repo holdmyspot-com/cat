@@ -18,7 +18,7 @@ import java.util.Set;
 
 /**
  * The available model and effort combinations (trial profiles), the capability ranking of their model families, and
- * the model or effort that each prompt file selects (its binding), recorded when the deriver ran.
+ * the model or effort that each prompt file selects (its binding), recorded when the contract author ran.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

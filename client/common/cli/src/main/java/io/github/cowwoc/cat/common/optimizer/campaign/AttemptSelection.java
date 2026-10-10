@@ -32,7 +32,7 @@ public final class AttemptSelection
 	}
 
 	/**
-	 * Tests every development cell of the addressed categories, including cells with no development outcomes.
+	 * Tests every development cell of the addressed tests, including cells with no development outcomes.
 	 *
 	 * @param counts the current working candidate's development counts
 	 * @param developmentCells the development cells, in contract order
@@ -45,15 +45,15 @@ public final class AttemptSelection
 		requireThat(counts, "counts").isNotNull();
 		requireThat(developmentCells, "developmentCells").isNotNull();
 		requireThat(addressed, "addressed").isNotNull();
-		Set<String> categories = new HashSet<>();
+		Set<String> tests = new HashSet<>();
 		for (Cell cell : developmentCells)
 		{
 			if (addressed.contains(cell.id()))
-				categories.add(cell.categoryId());
+				tests.add(cell.testId());
 		}
 		for (Cell cell : developmentCells)
 		{
-			if (!categories.contains(cell.categoryId()))
+			if (!tests.contains(cell.testId()))
 				continue;
 			CellCounts outcomes = counts.getOrDefault(cell.id(), CellCounts.EMPTY);
 			if (ExploratoryBounds.wilson(outcomes.passes(), outcomes.outcomes()).lower() < WEAK_ESTIMATE)
@@ -68,11 +68,11 @@ public final class AttemptSelection
 	 * @param attempts the fully tested contenders
 	 * @param working the unchanged working snapshot
 	 * @param regressionSet the existing working-candidate regression evidence
-	 * @param workingOutcomes the working candidate's adopted records by trial content
+	 * @param workingOutcomes the working candidate's adopted records by test case
 	 * @return the winner, or empty when no edited attempt is accepted
 	 */
-	public static Optional<AuthorAttempt> select(List<AuthorAttempt> attempts, Sha256 working,
-		List<RegressionInstance> regressionSet, List<InstanceOutcomes> workingOutcomes)
+	public static Optional<PromptAuthorAttempt> select(List<PromptAuthorAttempt> attempts, Sha256 working,
+		List<RegressionTestCase> regressionSet, List<TestCaseOutcomes> workingOutcomes)
 	{
 		requireThat(attempts, "attempts").isNotNull();
 		requireThat(working, "working").isNotNull();
@@ -80,8 +80,8 @@ public final class AttemptSelection
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 		return attempts.stream().filter(attempt -> !attempt.snapshot().equals(working) &&
 			Promotion.decide(attempt, regressionSet, workingOutcomes) == Promotion.Decision.PROMOTE).min(
-				Comparator.comparingLong((AuthorAttempt attempt) -> passingRuns(attempt.runs())).reversed().
-					thenComparingInt(AttemptSelection::changedLines).thenComparingInt(AuthorAttempt::number));
+				Comparator.comparingLong((PromptAuthorAttempt attempt) -> passingRuns(attempt.runs())).reversed().
+					thenComparingInt(AttemptSelection::changedLines).thenComparingInt(PromptAuthorAttempt::number));
 	}
 
 	/**
@@ -128,7 +128,7 @@ public final class AttemptSelection
 	 * @param attempt the original contender
 	 * @return its changed line count
 	 */
-	static int changedLines(AuthorAttempt attempt)
+	static int changedLines(PromptAuthorAttempt attempt)
 	{
 		return attempt.minimality().files().stream().mapToInt(Hunks::changedLines).sum();
 	}

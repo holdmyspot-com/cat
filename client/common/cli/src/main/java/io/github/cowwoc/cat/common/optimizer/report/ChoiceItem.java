@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
-import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 
 /**
  * One answer that the user may give now. The command that passes an answer back accepts only listed choices.
@@ -19,7 +19,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.AuthorConflict;
  * @param resolution the 1-based resolution position, otherwise 0
  */
 public record ChoiceItem(Choice choice, int attempt, boolean historical, int reviewPointAbove,
-	AuthorConflict conflict, int resolution)
+	PromptAuthorConflict conflict, int resolution)
 {
 	/**
 	 * Creates a choice item.

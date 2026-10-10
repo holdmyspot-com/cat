@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Compares the saved confirmed and working prompt files for an author brief.
+ * Compares the saved confirmed and working prompt files for a prompt author brief.
  */
 final class CampaignEdits
 {

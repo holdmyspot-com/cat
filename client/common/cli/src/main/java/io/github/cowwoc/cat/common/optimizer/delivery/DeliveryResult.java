@@ -23,7 +23,8 @@ public sealed interface DeliveryResult
 	/**
 	 * Every change of the candidate is in place in the base worktree, and verified.
 	 *
-	 * @param label the certification label that the delivered result carries
+	 * @param label the certification label that the delivered result carries, or {@code null} if the user kept the
+	 *              incumbent and only its prompt tests were delivered
 	 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork, in the base worktree
 	 *                      or to a read-only external participant, changed a prompt source, so that the merged prompt
 	 *                      system is a different snapshot than the one measured; otherwise {@code CURRENT}
@@ -40,18 +41,18 @@ public sealed interface DeliveryResult
 		/**
 		 * Creates a result.
 		 *
-		 * @param label the certification label that the delivered result carries
+		 * @param label the certification label that the delivered result carries, or {@code null} if the user kept the
+		 *              incumbent and only its prompt tests were delivered
 		 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork changed a prompt
 		 *                      source; otherwise {@code CURRENT}
 		 * @param changedPromptSources the prompt-source paths that changed outside the candidate since the fork
 		 * @param baseOnlyChanges every path that changed outside the candidate since the fork
 		 * @param changes the changes that delivered the candidate, in the order they were applied
 		 * @param diff the Git diff of the delivered paths in the base worktree against its {@code HEAD}
-		 * @throws NullPointerException if any of the arguments are null
+		 * @throws NullPointerException if any of the arguments other than {@code label} are null
 		 */
 		public Delivered
 		{
-			requireThat(label, "label").isNotNull();
 			requireThat(applicability, "applicability").isNotNull();
 			changedPromptSources = List.copyOf(changedPromptSources);
 			baseOnlyChanges = List.copyOf(baseOnlyChanges);

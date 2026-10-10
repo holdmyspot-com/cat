@@ -13,10 +13,10 @@ import java.util.List;
 /**
  * Reads the Git history facts that define one topic-replay range.
  */
-final class History
+public final class History
 {
-	static final String ROOT_BASE = "--root";
-	static final String EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+	public static final String ROOT_BASE = "--root";
+	public static final String EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 	private final Path repository;
 	private final Git git;
 	/**
@@ -31,7 +31,7 @@ final class History
 	 * @param repository the replay repository working directory
 	 * @param git Git access for the replay repository
 	 */
-	History(Path repository, Git git)
+	public History(Path repository, Git git)
 	{
 		this.repository = repository.toAbsolutePath().normalize();
 		this.git = git;
@@ -73,7 +73,7 @@ final class History
 	 * @return the resolved commit hash or {@value #ROOT_BASE}
 	 * @throws IOException if a non-root base cannot be resolved
 	 */
-	String resolveBase(String base) throws IOException
+	public String resolveBase(String base) throws IOException
 	{
 		if (base.equals(ROOT_BASE))
 			return ROOT_BASE;
@@ -87,7 +87,7 @@ final class History
 	 * @return the preceding tree hash
 	 * @throws IOException if a commit-backed base cannot be read
 	 */
-	String baseTree(String base) throws IOException
+	public String baseTree(String base) throws IOException
 	{
 		if (base.equals(ROOT_BASE))
 			return EMPTY_TREE;
@@ -167,7 +167,7 @@ final class History
 	 * @return one inventory entry for each path changed by the source
 	 * @throws IOException if Git cannot inspect the source or one of its paths
 	 */
-	List<InventoryEntry> inventory(String source) throws IOException
+	public List<InventoryEntry> inventory(String source) throws IOException
 	{
 		List<String> paths = git.lines("diff-tree", "--root", "--no-commit-id", "--no-renames", "--name-only", "-r",
 			source);
@@ -240,7 +240,7 @@ final class History
 	 * @param hash the full commit hash
 	 * @param parents the commit's space-separated parent hashes, or an empty string for a root commit
 	 */
-	record RangeCommit(String hash, String parents)
+	public record RangeCommit(String hash, String parents)
 	{
 	}
 
@@ -255,7 +255,7 @@ final class History
 	 * @param afterMode the Git mode after the source change, or {@code 000000} when absent
 	 * @param afterBlob the Git blob after the source change, or forty zeroes when absent
 	 */
-	record InventoryEntry(String id, String source, String path, String beforeMode, String beforeBlob,
+	public record InventoryEntry(String id, String source, String path, String beforeMode, String beforeBlob,
 		String afterMode, String afterBlob)
 	{
 	}

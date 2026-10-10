@@ -44,7 +44,7 @@ public final class ClaudeGetHistory
 	 * @throws IllegalArgumentException if {@code args} does not start with a UUID session identifier and an operation
 	 * @throws IOException if the requested transcript cannot be resolved or read
 	 */
-	static String execute(Map<String, String> environment, String[] args) throws IOException
+	public static String execute(Map<String, String> environment, String[] args) throws IOException
 	{
 		if (args.length < 2)
 			throw new IllegalArgumentException(usage());

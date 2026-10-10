@@ -44,7 +44,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class DeliveryJournalJson
 {
 	/**
-	 * The version of the layout that this class writes and reads. It holds no category or cell, so it did not change
+	 * The version of the layout that this class writes and reads. It holds no test or cell, so it did not change
 	 * when campaign files became keyed by cell.
 	 */
 	private static final int FORMAT_VERSION = 1;

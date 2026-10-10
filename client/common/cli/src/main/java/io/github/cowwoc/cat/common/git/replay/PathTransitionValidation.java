@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 /**
  * Validates reviewer decisions for raw deletions and Git-reported path renames.
  */
-final class PathTransitionValidation
+public final class PathTransitionValidation
 {
 	/**
 	 * Validates complete or incremental path-transition decisions against the captured raw Git facts.
@@ -23,7 +23,7 @@ final class PathTransitionValidation
 	 * @param sourceReviewValidation source-review policy used to exclude the fixed prefix
 	 * @throws IOException if a decision is invalid or the requested coverage is incomplete
 	 */
-	void validate(BatchManifest manifest, List<PathTransitionFact> facts, List<PathTransitionDecision> decisions,
+	public void validate(BatchManifest manifest, List<PathTransitionFact> facts, List<PathTransitionDecision> decisions,
 		boolean requireCompleteCoverage, SourceReviewValidation sourceReviewValidation) throws IOException
 	{
 		Set<String> sources = manifest.sources().stream().map(SourceSnapshot::hash).collect(Collectors.toSet());

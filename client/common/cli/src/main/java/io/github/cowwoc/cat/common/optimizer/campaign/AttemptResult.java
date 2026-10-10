@@ -13,9 +13,9 @@ import java.util.List;
  *
  * @param round the round's first reserved attempt number
  * @param working the working snapshot all attempts received
- * @param number the author's launch-order attempt number
+ * @param number the prompt author's launch-order attempt number
  * @param cell the representative failing cell
- * @param snapshot the author's original snapshot, equal to working when no edit was made
+ * @param snapshot the prompt author's original snapshot, equal to working when no edit was made
  * @param runs the original promotion runs, including working reference runs
  * @param changedLines the number of added and removed lines
  * @param accepted whether the promotion rule accepted this edited attempt
@@ -44,7 +44,7 @@ public record AttemptResult(int round, Sha256 working, int number, String cell, 
 		requireThat(round, "round").isPositive();
 		requireThat(working, "working").isNotNull();
 		requireThat(number, "number").isGreaterThanOrEqualTo(round);
-		requireThat(cell, "category").isNotBlank();
+		requireThat(cell, "cell").isNotBlank();
 		requireThat(snapshot, "snapshot").isNotNull();
 		runs = List.copyOf(runs);
 		requireThat(changedLines, "changedLines").isNotNegative();

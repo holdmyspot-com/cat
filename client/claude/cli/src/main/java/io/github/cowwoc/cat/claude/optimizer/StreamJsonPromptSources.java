@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.claude.optimizer;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
+import io.github.cowwoc.cat.claude.secrets.StreamJsonPromptSourcesAccess;
+import io.github.cowwoc.cat.claude.secrets.StreamJsonPromptSourcesSecrets;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -17,8 +19,20 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class StreamJsonPromptSources extends PromptSources
+public final class StreamJsonPromptSources extends PromptSources
 {
+	static
+	{
+		StreamJsonPromptSourcesSecrets.setAccess(new StreamJsonPromptSourcesAccess()
+		{
+			@Override
+			public StreamJsonPromptSources newStreamJsonPromptSources(JsonMapper json, Map<String, Path> directories)
+			{
+				return new StreamJsonPromptSources(json, directories);
+			}
+		});
+	}
+
 	/**
 	 * Creates an observation that has seen no events.
 	 *

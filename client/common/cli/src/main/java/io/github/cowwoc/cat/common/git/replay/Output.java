@@ -7,6 +7,6 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param source the optional source commit for a mechanically preserved default output
  * @param subject the reviewer-selected replacement commit subject in the format {@code type: summary}
  */
-record Output(String id, String source, String subject)
+public record Output(String id, String source, String subject)
 {
 }

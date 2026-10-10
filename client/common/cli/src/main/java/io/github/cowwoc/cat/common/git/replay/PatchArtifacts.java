@@ -12,7 +12,7 @@ import java.util.HexFormat;
 /**
  * Resolves and identifies manifest-local immutable patch artifacts.
  */
-final class PatchArtifacts
+public final class PatchArtifacts
 {
 	/**
 	 * Resolves a reviewer-declared patch path without permitting the manifest to escape its own directory.
@@ -22,7 +22,7 @@ final class PatchArtifacts
 	 * @return the resolved regular patch file
 	 * @throws IOException if the patch declaration is unsafe or cannot be used
 	 */
-	Path resolve(Path manifestFile, String patchPath) throws IOException
+	public Path resolve(Path manifestFile, String patchPath) throws IOException
 	{
 		if (patchPath == null || patchPath.isBlank())
 			throw new IOException("Topic-replay output batch patch must name a manifest-relative regular file");
@@ -44,7 +44,7 @@ final class PatchArtifacts
 	 * @return the resolved regular patch file
 	 * @throws IOException if the patch declaration is unsafe or cannot be used
 	 */
-	Path resolve(Path manifestFile, PatchArtifact patch) throws IOException
+	public Path resolve(Path manifestFile, PatchArtifact patch) throws IOException
 	{
 		if (patch == null || patch.path() == null || patch.path().isBlank() || patch.sha256() == null ||
 			!patch.sha256().matches("[0-9a-f]{64}"))
@@ -62,7 +62,7 @@ final class PatchArtifacts
 	 * @return the patch declaration
 	 * @throws IOException if the patch is outside the manifest directory or cannot be hashed
 	 */
-	PatchArtifact declare(Path manifestFile, Path patchFile) throws IOException
+	public PatchArtifact declare(Path manifestFile, Path patchFile) throws IOException
 	{
 		Path directory = manifestFile.toAbsolutePath().normalize().getParent();
 		Path resolvedPatch = patchFile.toAbsolutePath().normalize();

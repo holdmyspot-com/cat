@@ -9,6 +9,8 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
+import io.github.cowwoc.cat.common.secrets.OptimizerCommandScopeAccess;
+import io.github.cowwoc.cat.common.secrets.OptimizerCommandScopeSecrets;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
@@ -31,6 +33,36 @@ import java.util.random.RandomGenerator;
  */
 public abstract class OptimizerCommandScope implements AutoCloseable
 {
+	static
+	{
+		OptimizerCommandScopeSecrets.setAccess(new OptimizerCommandScopeAccess()
+		{
+			@Override
+			public SliceSettings sliceSettings(OptimizerCommandScope scope)
+			{
+				return scope.sliceSettings();
+			}
+
+			@Override
+			public Path projectRoot(OptimizerCommandScope scope) throws CommandRefusedException, IOException
+			{
+				return scope.projectRoot();
+			}
+
+			@Override
+			public CampaignStore store(OptimizerCommandScope scope) throws CommandRefusedException, IOException
+			{
+				return scope.store();
+			}
+
+			@Override
+			public List<Path> heldOutDirectories(OptimizerCommandScope scope) throws IOException
+			{
+				return scope.heldOutDirectories();
+			}
+		});
+	}
+
 	private boolean closed;
 	private Path projectRoot;
 	private CampaignStore store;
@@ -105,7 +137,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the harness
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract Harness harness();
+	protected abstract Harness harness();
 
 	/**
 	 * Returns the source of campaign identifiers and draw seeds.
@@ -113,7 +145,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the source
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract RandomGenerator random();
+	protected abstract RandomGenerator random();
 
 	/**
 	 * Returns the launcher that runs {@code <harness> --version}.
@@ -121,7 +153,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the launcher
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract HarnessVersion.Launcher harnessVersionLauncher();
+	protected abstract HarnessVersion.Launcher harnessVersionLauncher();
 
 	/**
 	 * Returns the files, relative to the project, that decide which prompt files the harness loads.
@@ -129,7 +161,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the files
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract List<Path> loaderConfiguration();
+	protected abstract List<Path> loaderConfiguration();
 
 	/**
 	 * Returns the forks of the project's campaigns.
@@ -137,7 +169,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the forks
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract Forks forks();
+	protected abstract Forks forks();
 
 	/**
 	 * Returns the calibration of the caps of certification attempts.
@@ -145,7 +177,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @return the calibration
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	abstract CapCalibrator calibrator();
+	protected abstract CapCalibrator calibrator();
 
 	/**
 	 * Returns the slice's time budget: the 8-minute budget plus the 1-minute grace period that fits the skill's

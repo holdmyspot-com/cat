@@ -6,7 +6,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 public enum Outcome
 {
 	/**
-	 * Every cell (category and trial profile) certified.
+	 * Every cell (prompt test and trial profile) certified.
 	 */
 	CERTIFIED("certified"),
 	/**
@@ -15,11 +15,16 @@ public enum Outcome
 	 */
 	IMPROVED_NOT_CERTIFIED("improved, not certified"),
 	/**
-	 * A cell is proven below 95% compliance in the certification attempt.
+	 * A cell is proven below the minimum pass rate in the certification attempt.
 	 */
 	BELOW_MINIMUM("not certified: below minimum"),
 	/**
-	 * A cell reached its trial cap without certifying or being proven below 95% compliance.
+	 * On some assertion of a cell, the candidate is proven to pass more than 5 percentage points less often than the
+	 * incumbent with every target prompt file emptied.
+	 */
+	BELOW_CONTROL("not certified: below control"),
+	/**
+	 * A cell reached its trial cap without certifying or being proven below the minimum pass rate.
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
 	/**
@@ -89,8 +94,8 @@ public enum Outcome
 		{
 			case UNSUPPORTED_INSTRUCTION_SOURCE, INELIGIBLE_TRIAL_EFFECT, UNSUPPORTED_OUTPUT,
 				UNSUPPORTED_TEST_INTERACTION, INVALID_STATISTICAL_ASSUMPTIONS -> true;
-			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, INCONCLUSIVE, STOPPED_FOR_CONTRACT_REVISION,
-				TESTING_ENVIRONMENT_CHANGED, NOT_CERTIFIED -> false;
+			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE,
+				STOPPED_FOR_CONTRACT_REVISION, TESTING_ENVIRONMENT_CHANGED, NOT_CERTIFIED -> false;
 		};
 	}
 }

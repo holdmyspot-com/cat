@@ -10,8 +10,8 @@ import java.util.List;
 /**
  * The statistical settings frozen when a certification attempt is admitted, before its first trial is sampled.
  * <p>
- * The boundaries use the attempt's certification error limit {@code α_i} and trial cap. Each cell (category and
- * trial profile) is compared with the incumbent's upper and lower compliance bounds, {@code UI(k)} and {@code LI(k)},
+ * The boundaries use the attempt's certification error limit {@code α_i} and trial cap. Each cell (test and
+ * trial profile) is compared with the incumbent's upper and lower pass-rate bounds, {@code UI(k)} and {@code LI(k)},
  * using the improvement error limit {@code β_i / K}. A comparison is unavailable unless the attempt and frozen
  * baseline record every required measurement condition with equal values.
  * <p>
@@ -33,12 +33,13 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	 * The fixed bets and weights for certification and below-minimum tests.
 	 */
 	public static final String BETS = "certification (0.4, 0.1) (0.6, 0.2) (0.8, 0.5) (1.0, 0.2); " +
-		"below minimum 9/19 3/19 1/19 with equal weights";
+		"below minimum, for the minimum pass rate p_min and the number of shortfalls n_short = 9, 3, 1, " +
+		"min(1, n_short (1 - p_min) / p_min) against the pass rate p_min - n_short (1 - p_min) with equal weights";
 	/**
 	 * The policy for prioritizing formal trials and limiting in-flight trials.
 	 */
-	public static final String ALLOCATION_POLICY = "one trial per category, then the lowest lower bound at " +
-		"alpha_i, ties to fewer outcomes then category order; in-flight trials limited by the passes still required";
+	public static final String ALLOCATION_POLICY = "one trial per test, then the lowest lower bound at " +
+		"alpha_i, ties to fewer outcomes then test order; in-flight trials limited by the passes still required";
 
 	/**
 	 * Creates a procedure.
@@ -59,10 +60,10 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 		requireThat(improvementLevel, "improvementLevel").isNotNull();
 		requireThat(baselineIndex, "baselineIndex").isPositive();
 		requireThat(baselineIdentity, "baselineIdentity").isNotNull();
-		requireThat(cells, "categories").isNotEmpty();
+		requireThat(cells, "cells").isNotEmpty();
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(boundaries.comparisons().size(), "boundaries.comparisons().size()").
-			isEqualTo(cells.size(), "categories.size()");
+			isEqualTo(cells.size(), "cells.size()");
 		requireThat(bets, "bets").isNotBlank();
 		requireThat(allocationPolicy, "allocationPolicy").isNotBlank();
 		cells = List.copyOf(cells);
@@ -78,7 +79,7 @@ public record CertificationProcedure(SignificanceLevel improvementLevel, int bas
 	int position(String cell)
 	{
 		int position = cells.indexOf(cell);
-		requireThat(position, "position").withContext(cell, "category").isNotNegative();
+		requireThat(position, "position").withContext(cell, "cell").isNotNegative();
 		return position;
 	}
 }

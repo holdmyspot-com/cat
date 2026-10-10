@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,24 +36,33 @@ public interface SessionPort
 
 	/**
 	 * Returns the version of the judge that this port's sessions run: the judge's role profile, its prompt, rubric,
-	 * decision rule and result schema, and the evidence section that {@link #renderEvidence(Path, Path,
-	 * Path)} renders for the same harness events. A release of CAT changes it whenever any of them changes.
+	 * decision rule and result schema, and the evidence section that
+	 * {@link io.github.cowwoc.cat.common.optimizer.evidence.EvidenceSection} renders from what
+	 * {@link #readEvidence(Path)} reads for the same harness events. A release of CAT changes it whenever any of them
+	 * changes.
 	 *
 	 * @return the harness's judge version
 	 */
 	int judgeVersion();
 
 	/**
-	 * Renders a completed trial's recorded activity and file changes for the judge.
+	 * Reads a completed trial's activity from its harness events: every tool call of the main agent and its children
+	 * with its complete input and output, hook outcomes and assistant positions.
 	 *
 	 * @param transcript the trial's retained harness events
-	 * @param effects the directory that holds the files that the trial changed
-	 * @param source the staged source copied at the start of the trial
-	 * @return the complete evidence section, without injected instructions, streaming fragments or telemetry
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the transcript, source or effects cannot be read
+	 * @return the activity, without injected instructions, streaming fragments or telemetry
+	 * @throws NullPointerException if {@code transcript} is null
+	 * @throws IOException if the transcript cannot be read
 	 */
-	String renderEvidence(Path transcript, Path effects, Path source) throws IOException;
+	SessionEvidence readEvidence(Path transcript) throws IOException;
+
+	/**
+	 * Indicates whether the harness reports the exit status of the commands that a session runs, which the built-in tool
+	 * {@code exit-status} needs.
+	 *
+	 * @return {@code true} if it does
+	 */
+	boolean reportsExitStatus();
 
 	/**
 	 * Classifies the host's login for this harness, so that the confirmation step can warn about a subscription before

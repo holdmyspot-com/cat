@@ -1,7 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.statistics;
 
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.ABOVE;
-import static io.github.cowwoc.cat.common.optimizer.statistics.BettingProcess.Side.BELOW;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.math.BigDecimal;
@@ -9,21 +7,24 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 
 /**
- * The frozen comparison between a candidate and the incumbent in one cell {@code k}, one category under one trial
+ * The frozen comparison between a candidate and the incumbent in one cell {@code k}, one prompt test under one trial
  * profile, of a certification attempt.
  * <p>
- * The candidate is <i>proven better</i> when {@code E_up}, with the null rate {@code UI(k)} in place of 0.95, exceeds
- * the attempt's per-cell improvement threshold {@code K / beta_i}. It is <i>proven worse</i> when
- * {@code E_down}, with the null rate {@code LI(k)}, exceeds the same threshold. {@code UI(k)} and {@code LI(k)} are
+ * The candidate is <i>proven better</i> when {@code E_up}, with the null rate {@code UI(k)} in place of the minimum
+ * pass rate {@code p_min}, exceeds the attempt's per-cell improvement threshold {@code K / beta_i}. It is <i>proven
+ * worse</i> when {@code E_down}, with the null rate {@code LI(k)} and the bets of {@code p_min}, exceeds the same
+ * threshold. {@code UI(k)} and {@code LI(k)} are
  * the incumbent's bounds at its baseline's level {@code gamma_b / K}, rounded outward to 4 decimal places and frozen
  * when the attempt is committed. {@code K} is the number of cells in the contract, and {@link ErrorBudget} defines the
  * improvement budget {@code beta_i} and the incumbent budget {@code gamma_b}.
  *
  * @param incumbentUpper the incumbent's upper bound {@code UI(k)}, a multiple of 0.0001 in {@code (0, 1]}
- * @param incumbentLower the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
- * @param level          the per-cell improvement level {@code beta_i / K}
+ * @param incumbentLower  the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
+ * @param level           the per-cell improvement level {@code beta_i / K}
+ * @param minimumPassRate the campaign's minimum pass rate {@code p_min}, which selects the below-minimum bets
  */
-public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, SignificanceLevel level)
+public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, SignificanceLevel level,
+	BigDecimal minimumPassRate)
 {
 	/**
 	 * The number of decimal places of a frozen bound.
@@ -42,11 +43,12 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 	 * Creates a comparison.
 	 *
 	 * @param incumbentUpper the incumbent's upper bound {@code UI(k)}, a multiple of 0.0001 in {@code (0, 1]}
-	 * @param incumbentLower the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
-	 * @param level          the per-cell improvement level {@code beta_i / K}
+	 * @param incumbentLower  the incumbent's lower bound {@code LI(k)}, a multiple of 0.0001 in {@code [0, UI(k))}
+	 * @param level           the per-cell improvement level {@code beta_i / K}
+	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}, which selects the below-minimum bets
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code incumbentUpper} or {@code incumbentLower} are not multiples of 0.0001
-	 *                                  in their ranges
+	 *                                  in their ranges, or if {@code minimumPassRate} is not strictly between 0 and 1
 	 */
 	public Comparison
 	{
@@ -55,6 +57,7 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 		requireThat(incumbentLower, "incumbentLower").isGreaterThanOrEqualTo(BigDecimal.ZERO).
 			isLessThan(incumbentUpper, "incumbentUpper").isMultipleOf(GRID_STEP);
 		requireThat(level, "level").isNotNull();
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
 		incumbentUpper = incumbentUpper.setScale(SCALE, RoundingMode.UNNECESSARY);
 		incumbentLower = incumbentLower.setScale(SCALE, RoundingMode.UNNECESSARY);
 	}
@@ -72,17 +75,20 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 	 * @param incumbentFailures the incumbent's representative failures in the cell
 	 * @param incumbentLevel    the baseline's per-cell level {@code gamma_b / K}
 	 * @param improvementLevel  the attempt's per-cell improvement level {@code beta_i / K}
+	 * @param minimumPassRate   the campaign's minimum pass rate {@code p_min}, which selects the below-minimum bets
 	 * @return the frozen comparison
-	 * @throws NullPointerException     if any of the levels are null
-	 * @throws IllegalArgumentException if {@code incumbentPasses} or {@code incumbentFailures} are negative
+	 * @throws NullPointerException     if any of the levels or {@code minimumPassRate} are null
+	 * @throws IllegalArgumentException if {@code incumbentPasses} or {@code incumbentFailures} are negative, or if
+	 *                                  {@code minimumPassRate} is not strictly between 0 and 1
 	 */
 	public static Comparison freeze(int incumbentPasses, int incumbentFailures, SignificanceLevel incumbentLevel,
-		SignificanceLevel improvementLevel)
+		SignificanceLevel improvementLevel, BigDecimal minimumPassRate)
 	{
 		requireThat(incumbentPasses, "incumbentPasses").isNotNegative();
 		requireThat(incumbentFailures, "incumbentFailures").isNotNegative();
 		requireThat(incumbentLevel, "incumbentLevel").isNotNull();
 		requireThat(improvementLevel, "improvementLevel").isNotNull();
+		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).isLessThan(BigDecimal.ONE);
 
 		BigInteger threshold = incumbentLevel.threshold();
 		int low = 1;
@@ -90,7 +96,8 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 		while (low < high)
 		{
 			int middle = (low + high) / 2;
-			if (new BettingProcess(BELOW, gridPoint(middle)).compare(incumbentPasses, incumbentFailures, threshold) >= 0)
+			BettingProcess below = BettingProcess.below(gridPoint(middle), minimumPassRate);
+			if (below.compare(incumbentPasses, incumbentFailures, threshold) >= 0)
 				high = middle;
 			else
 				low = middle + 1;
@@ -102,12 +109,12 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 		while (low < high)
 		{
 			int middle = (low + high + 1) / 2;
-			if (new BettingProcess(ABOVE, gridPoint(middle)).compare(incumbentPasses, incumbentFailures, threshold) >= 0)
+			if (BettingProcess.above(gridPoint(middle)).compare(incumbentPasses, incumbentFailures, threshold) >= 0)
 				low = middle;
 			else
 				high = middle - 1;
 		}
-		return new Comparison(upper, gridPoint(low), improvementLevel);
+		return new Comparison(upper, gridPoint(low), improvementLevel, minimumPassRate);
 	}
 
 	/**
@@ -135,7 +142,7 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 		requireThat(passes, "passes").isNotNegative();
 		requireThat(failures, "failures").isNotNegative();
 		return incumbentUpper.compareTo(BigDecimal.ONE) < 0 &&
-			new BettingProcess(ABOVE, incumbentUpper).exceeds(passes, failures, level);
+			BettingProcess.above(incumbentUpper).exceeds(passes, failures, level);
 	}
 
 	/**
@@ -151,16 +158,18 @@ public record Comparison(BigDecimal incumbentUpper, BigDecimal incumbentLower, S
 	{
 		requireThat(passes, "passes").isNotNegative();
 		requireThat(failures, "failures").isNotNegative();
-		return incumbentLower.signum() > 0 && new BettingProcess(BELOW, incumbentLower).exceeds(passes, failures, level);
+		return incumbentLower.signum() > 0 &&
+			BettingProcess.below(incumbentLower, minimumPassRate).exceeds(passes, failures, level);
 	}
 
 	/**
 	 * Returns the displayed difference interval {@code [LC - UI(k), UC - LI(k)]} between the candidate's and the
 	 * incumbent's pass probabilities.
 	 * <p>
-	 * If the candidate is certified at {@code alpha_i}, its lower bound {@code LC} at {@code alpha_i} is above 0.95;
-	 * if the incumbent is proven deficient, the rounded {@code UI(k)} is at most 0.95. The lower endpoint is then
-	 * positive, so the improvement follows from certification and deficiency without additional trials.
+	 * If the candidate is certified at {@code alpha_i}, its lower bound {@code LC} at {@code alpha_i} is above the
+	 * minimum pass rate {@code p_min}; if the incumbent is proven deficient, the rounded {@code UI(k)} is at most
+	 * {@code p_min}. The lower endpoint is then positive, so the improvement follows from certification and deficiency
+	 * without additional trials.
 	 *
 	 * @param candidateLower the candidate's lower bound {@code LC}
 	 * @param candidateUpper the candidate's upper bound {@code UC}

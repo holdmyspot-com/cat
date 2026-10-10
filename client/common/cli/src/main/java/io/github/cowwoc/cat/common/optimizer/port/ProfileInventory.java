@@ -68,8 +68,8 @@ public interface ProfileInventory
 	boolean supportsModel(String model);
 
 	/**
-	 * Returns the harness's role profile, which the deriver, judge and author sessions run under: the profile that
-	 * the installed definition of CAT's highest implementer tier, {@code optimize-xhigh}, binds.
+	 * Returns the harness's role profile, which the contract author, judge and prompt author sessions run under: the
+	 * profile that the installed definition of CAT's highest implementer tier, {@code optimize-xhigh}, binds.
 	 *
 	 * @return the role profile
 	 * @throws IOException if the installed agent definition is missing or binds no profile

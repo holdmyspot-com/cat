@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Thrown when the agent that derives the contract returns an invalid proposal. The caller records a failure to
- * derive the contract rather than evidence of noncompliance.
+ * derive the contract rather than a failed trial.
  */
 public final class InvalidProposalException extends Exception
 {

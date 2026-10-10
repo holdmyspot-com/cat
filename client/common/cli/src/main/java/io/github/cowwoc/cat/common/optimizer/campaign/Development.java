@@ -6,25 +6,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The outcomes and pending diagnosis or author work used to improve the current prompt snapshot.
+ * The outcomes and pending diagnosis or prompt author work used to improve the current prompt snapshot.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param working the working candidate
  * @param series the sequence of development counts, identified by a number that changes whenever counts restart
  * @param counts the working candidate's sampled outcomes included in evidence per cell in this series
- * @param failures the failures that an author attempt receives, in failure order
+ * @param failures the failures that a prompt author attempt receives, in failure order
  * @param diagnosis the reruns in progress, or {@code null} if none are
  * @param round the development round in progress, or {@code null} if none is
- * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
+ * @param promptAuthor the prompt author attempt whose promotion runs are in progress, or {@code null} if none is
  * @param reviewPoints the outcome count that triggers another review for each cell the user extended
- * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
+ * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
  * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
  * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
  */
 public record Development(Candidate working, int series, Map<String, CellCounts> counts,
-	List<Failure> failures, Diagnosis diagnosis, Round round, AuthorAttempt author,
-	Map<String, Integer> reviewPoints, List<InstanceOutcomes> instanceOutcomes,
+	List<Failure> failures, Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor,
+	Map<String, Integer> reviewPoints, List<TestCaseOutcomes> testCaseOutcomes,
 	Predecessor predecessor, List<Revert> reverts)
 {
 	/**
@@ -38,18 +38,18 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param working the working candidate
 	 * @param series the sequence of development counts, identified by a number that changes whenever counts restart
 	 * @param counts the working candidate's sampled outcomes included in evidence per cell in this series
-	 * @param failures the failures that an author attempt receives, in failure order
+	 * @param failures the failures that a prompt author attempt receives, in failure order
 	 * @param diagnosis the reruns in progress, or {@code null} if none are
 	 * @param round the development round in progress, or {@code null} if none is
-	 * @param author the author attempt whose promotion runs are in progress, or {@code null} if none is
+	 * @param promptAuthor the prompt author attempt whose promotion runs are in progress, or {@code null} if none is
 	 * @param reviewPoints the outcome count that triggers another review for each cell the user extended
-	 * @param instanceOutcomes the working candidate's adopted outcomes grouped by instance content
+	 * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
 	 * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
 	 * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
 	 * @throws NullPointerException if {@code working}, {@code counts}, {@code failures} or {@code reviewPoints} are
 	 *   null
-	 * @throws NullPointerException if {@code instanceOutcomes} or {@code reverts} are null or contain null
-	 * @throws NullPointerException if {@code author} is non-null while {@code round} is null
+	 * @throws NullPointerException if {@code testCaseOutcomes} or {@code reverts} are null or contain null
+	 * @throws NullPointerException if {@code promptAuthor} is non-null while {@code round} is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public Development
@@ -59,34 +59,34 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		requireThat(counts, "counts").isNotNull();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(reviewPoints, "reviewPoints").isNotNull();
-		if (author != null)
+		if (promptAuthor != null)
 			requireThat(round, "round").isNotNull();
 		counts = Map.copyOf(counts);
 		failures = List.copyOf(failures);
 		reviewPoints = Map.copyOf(reviewPoints);
-		instanceOutcomes = List.copyOf(instanceOutcomes);
+		testCaseOutcomes = List.copyOf(testCaseOutcomes);
 		reverts = List.copyOf(reverts);
 	}
 
 	/**
-	 * Creates development state with the recorded failures and diagnostic reruns as its instance evidence.
+	 * Creates development state with the recorded failures and diagnostic reruns as its test case evidence.
 	 *
 	 * @param working the working candidate
 	 * @param series the development count series
 	 * @param counts the representative counts per cell
-	 * @param failures the retained failing instances and diagnostic reruns
+	 * @param failures the retained failing test cases and diagnostic reruns
 	 * @param diagnosis the diagnosis in progress, or {@code null}
 	 * @param round the round in progress, or {@code null}
-	 * @param author the author under validation, or {@code null}
+	 * @param promptAuthor the prompt author under validation, or {@code null}
 	 * @param reviewPoints the outcome counts that trigger cell reviews
 	 * @throws NullPointerException if a required argument or collection element is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
 	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
-		Diagnosis diagnosis, Round round, AuthorAttempt author, Map<String, Integer> reviewPoints)
+		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints)
 	{
-		this(working, series, counts, failures, diagnosis, round, author, reviewPoints,
-			InstanceOutcomes.fromFailures(failures), null, List.of());
+		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints,
+			TestCaseOutcomes.fromFailures(failures), null, List.of());
 	}
 
 	/**
@@ -112,7 +112,7 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 */
 	public CellCounts count(String cell)
 	{
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		return counts.getOrDefault(cell, CellCounts.EMPTY);
 	}
 
@@ -125,17 +125,17 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 */
 	public int reviewPoint(String cell)
 	{
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		return reviewPoints.getOrDefault(cell, DEFAULT_REVIEW_POINT);
 	}
 
 	/**
 	 * Indicates whether new representative development trials must wait.
 	 *
-	 * @return {@code true} if a diagnosis, round or author attempt is in progress
+	 * @return {@code true} if a diagnosis, round or prompt author attempt is in progress
 	 */
 	public boolean isPaused()
 	{
-		return diagnosis != null || round != null || author != null;
+		return diagnosis != null || round != null || promptAuthor != null;
 	}
 }

@@ -11,13 +11,13 @@ import java.util.Set;
  * @param exposedEntryPointIds every selectable entry point the universe must place
  * @param rootRange whether the replay starts at the repository root
  */
-record CandidateUniverseRequirements(Set<String> inventoryIds, List<String> sourceHashes,
+public record CandidateUniverseRequirements(Set<String> inventoryIds, List<String> sourceHashes,
 	Set<String> exposedEntryPointIds, boolean rootRange)
 {
 	/**
 	 * Defensively retains the immutable facts used by candidate-universe validation.
 	 */
-	CandidateUniverseRequirements
+	public CandidateUniverseRequirements
 	{
 		inventoryIds = Set.copyOf(inventoryIds);
 		sourceHashes = List.copyOf(sourceHashes);

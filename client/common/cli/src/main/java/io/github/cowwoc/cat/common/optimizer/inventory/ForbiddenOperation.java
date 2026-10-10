@@ -5,9 +5,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.nio.file.Path;
 
 /**
- * An operation an author attempt performed that its edit authority forbids.
+ * An operation a prompt author attempt performed that its edit authority forbids.
  *
- * @param path the path in the author's copy at which the attempt performed the operation
+ * @param path the path in the prompt author's copy at which the attempt performed the operation
  * @param target the path the operation changes after the fork's symbolic links are resolved, or {@code path} if they
  *               form a cycle
  * @param operation the operation
@@ -18,7 +18,7 @@ public record ForbiddenOperation(Path path, Path target, Operation operation, Li
 	/**
 	 * Creates a forbidden operation.
 	 *
-	 * @param path the path in the author's copy at which the attempt performed the operation
+	 * @param path the path in the prompt author's copy at which the attempt performed the operation
 	 * @param target the path the operation changes after the fork's symbolic links are resolved, or {@code path} if
 	 *               they form a cycle
 	 * @param operation the operation

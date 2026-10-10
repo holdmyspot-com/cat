@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * Captures immutable Git-range facts and publishes an unreviewed topic-replay manifest.
  */
-final class ReplayManifestInitialization
+public final class ReplayManifestInitialization
 {
 	private final Git git;
 	private final History history;
@@ -72,7 +72,7 @@ final class ReplayManifestInitialization
 	 * @param inventory the captured changed paths
 	 * @return the initial manifest with one unassigned output per source
 	 */
-	static BatchManifest initialManifest(String base, String tipTree, List<SourceSnapshot> sources,
+	public static BatchManifest initialManifest(String base, String tipTree, List<SourceSnapshot> sources,
 		List<InventoryItem> inventory)
 	{
 		List<Output> outputs = new ArrayList<>(sources.size());
@@ -118,7 +118,7 @@ final class ReplayManifestInitialization
 	 * @return the manifest with that fixed prefix
 	 * @throws IOException if the prefix is empty or consumes the complete range
 	 */
-	static BatchManifest withFixedPrefix(BatchManifest manifest, List<String> fixedSources) throws IOException
+	public static BatchManifest withFixedPrefix(BatchManifest manifest, List<String> fixedSources) throws IOException
 	{
 		if (fixedSources.isEmpty() || fixedSources.size() == manifest.sources().size())
 		{

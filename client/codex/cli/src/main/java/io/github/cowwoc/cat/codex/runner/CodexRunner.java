@@ -106,8 +106,8 @@ public final class CodexRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, "", installCat, null, List.of(),
-			List.of(), 0);
+		return start(artifact, project, null, manager, executable, environment, model, "", installCat, null,
+			List.of(), List.of(), 0);
 	}
 
 	/**
@@ -130,7 +130,7 @@ public final class CodexRunner
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent)
 		throws IOException
 	{
-		return start(artifact, project, manager, executable, environment, model, effort, installCat, agent,
+		return start(artifact, project, null, manager, executable, environment, model, effort, installCat, agent,
 			List.of(), List.of(), 0);
 	}
 
@@ -139,6 +139,7 @@ public final class CodexRunner
 	 *
 	 * @param artifact the complete Codex artifact
 	 * @param project the validator project
+	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
 	 * @param manager the run manager
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
@@ -154,7 +155,7 @@ public final class CodexRunner
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
+	HarnessRunSession start(Path artifact, Path project, Path fixtures, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, int toolOutputTokenLimit) throws IOException
 	{
@@ -174,6 +175,8 @@ public final class CodexRunner
 		try
 		{
 			manager.copyProject(project, run);
+			if (fixtures != null)
+				manager.copyFixtures(fixtures, run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
@@ -268,7 +271,7 @@ public final class CodexRunner
 	 * @param installCat {@code true} if CAT is installed into the isolated home
 	 * @return the app-server command
 	 */
-	static List<String> appServerCommand(String executable, boolean installCat)
+	public static List<String> appServerCommand(String executable, boolean installCat)
 	{
 		requireThat(executable, "executable").isNotBlank();
 		if (installCat)
@@ -283,7 +286,7 @@ public final class CodexRunner
 	 * @param marketplace the run-local marketplace directory
 	 * @return the ordered marketplace-add and plugin-add commands
 	 */
-	static List<List<String>> pluginSetupCommands(String executable, Path marketplace)
+	public static List<List<String>> pluginSetupCommands(String executable, Path marketplace)
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(marketplace, "marketplace").isNotNull();
@@ -336,7 +339,7 @@ public final class CodexRunner
 	 * @param environment the parent process environment
 	 * @return {@code true} if no usable Codex authentication variable is present
 	 */
-	static boolean requiresCredentialFiles(Map<String, String> environment)
+	public static boolean requiresCredentialFiles(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		return AUTHENTICATION_VARIABLES.stream().map(environment::get).noneMatch(value ->

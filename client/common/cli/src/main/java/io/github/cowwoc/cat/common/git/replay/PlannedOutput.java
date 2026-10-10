@@ -9,6 +9,6 @@ import java.util.List;
  * @param disposition {@code retained} or {@code discarded}
  * @param batches the ordered, digest-captured retained batches
  */
-record PlannedOutput(String outputId, String disposition, List<PlannedBatch> batches)
+public record PlannedOutput(String outputId, String disposition, List<PlannedBatch> batches)
 {
 }

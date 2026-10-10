@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.delivery;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
@@ -8,6 +9,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.ConcurrentEdit;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
@@ -28,12 +32,14 @@ import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.inventory.TestFiles;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -46,6 +52,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -66,7 +73,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   candidate there if it is not the working candidate.</li>
  *   <li>It plans the delivery against a fresh scan of the base worktree and the read-only external participants that
  *   the fork recorded, and stops before writing anything if the plan has conflicts. A certified delivery's plan also
- *   creates or replaces the target's certification record, after the candidate's changes.</li>
+ *   creates or replaces the target's certification record, after the candidate's changes. A certified delivery, and
+ *   keeping the incumbent, also write each confirmed prompt test's regression scenario and values file, after the
+ *   candidate's changes and before the record.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
@@ -82,6 +91,7 @@ public final class Delivery
 	private static final String TEMPORARY_SUFFIX = ".cat-delivery";
 	private final CampaignStore store;
 	private final WorkspacePort workspace;
+	private final JsonMapper json;
 	private final CertificationRecordJson recordCodec;
 	private final Consumer<DeliveryChange> afterWrite;
 
@@ -119,16 +129,20 @@ public final class Delivery
 		requireThat(afterWrite, "afterWrite").isNotNull();
 		this.store = store;
 		this.workspace = workspace;
+		this.json = json;
 		this.recordCodec = new CertificationRecordJson(json);
 		this.afterWrite = afterWrite;
 	}
 
 	/**
-	 * Delivers a candidate, or resumes its interrupted delivery.
+	 * Delivers a candidate, or resumes its interrupted delivery. When the user kept the incumbent, delivers its prompt
+	 * tests alone.
 	 *
 	 * @param campaignId the campaign's identity
-	 * @param request the user's delivery request, which names the selected candidate and the label it carries
-	 * @param selected the selected candidate's overlay; its fork's root is the base worktree
+	 * @param request the user's delivery request, which names the selected candidate and the label it carries, or empty
+	 *   if the user kept the incumbent
+	 * @param selected the selected candidate's overlay, or the incumbent's if the user kept it; its fork's root is the
+	 *   base worktree
 	 * @param working the working candidate's overlay, which the optimization worktree holds unless the selected
 	 *   candidate was already materialized there
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
@@ -136,17 +150,21 @@ public final class Delivery
 	 *   historical
 	 * @param record the certification record to write to the base worktree, present exactly when the request is
 	 *   labelled {@code certified}
-	 * @return the result
+	 * @param tests the confirmed prompt tests to write, empty unless the request is labelled {@code certified} or the
+	 *   user kept the incumbent
+	 * @return the result; a {@link Delivered} result carries no label when the user kept the incumbent
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
 	 *   an external file, if the request names a different candidate than {@code selected}, if {@code selected} and
-	 *   {@code working} have different forks, or if {@code record} is absent from a certified request or present in
-	 *   another
+	 *   {@code working} have different forks, if {@code record} is absent from a certified request or present in
+	 *   another, if {@code tests} accompany a request that is not labelled {@code certified}, if a kept incumbent
+	 *   changes a file, or if a prompt test cannot be written as a regression scenario
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, or if Git fails
 	 */
-	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
-		Set<Path> promptSources, Optional<CertificationRecord> record) throws IOException
+	public DeliveryResult deliver(String campaignId, Optional<DeliveryRequest> request, Overlay selected,
+		Overlay working, Set<Path> promptSources, Optional<CertificationRecord> record, List<DeliveredTest> tests)
+		throws IOException
 	{
 		requireThat(campaignId, "campaignId").isNotNull();
 		requireThat(request, "request").isNotNull();
@@ -154,17 +172,26 @@ public final class Delivery
 		requireThat(working, "working").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
 		requireThat(record, "record").isNotNull();
-		requireDeliverable(request.label());
-		boolean certified = request.label() == Outcome.CERTIFIED;
-		if (certified && record.isEmpty())
-			throw new IllegalArgumentException("A delivery labelled \"certified\" requires a certification record.");
-		if (!certified && record.isPresent())
+		requireThat(tests, "tests").isNotNull();
+		Outcome label = null;
+		if (request.isPresent())
 		{
-			throw new IllegalArgumentException("A delivery labelled \"" + request.label().label() + "\" may not " +
-				"write a certification record.");
+			label = request.get().label();
+			requireDeliverable(label);
+			requireThat(request.get().candidate().snapshot(), "request.candidate().snapshot()").
+				isEqualTo(selected.identity(), "selected.identity()");
+			if (label != Outcome.CERTIFIED && !tests.isEmpty())
+			{
+				throw new IllegalArgumentException("A delivery labelled \"" + label.label() + "\" may not write " +
+					"prompt tests.");
+			}
 		}
-		requireThat(request.candidate().snapshot(), "request.candidate().snapshot()").
-			isEqualTo(selected.identity(), "selected.identity()");
+		else if (!selected.entries().isEmpty())
+		{
+			throw new IllegalArgumentException("The kept incumbent changes " + selected.entries().keySet() + ", but " +
+				"keeping the incumbent delivers its prompt tests alone.");
+		}
+		requireRecord(label, record);
 		requireThat(working.fork(), "working.fork()").isEqualTo(selected.fork(), "selected.fork()");
 		DeliveryPlan.requireProjectChanges(selected);
 
@@ -192,7 +219,8 @@ public final class Delivery
 				additionalFiles.put(CertificationRecord.location(record.get().target()),
 					new FileContent(recordCodec.write(record.get())));
 			}
-			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths), additionalFiles);
+			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths),
+				testFiles(selected, tests), additionalFiles);
 			if (!plan.conflicts().isEmpty())
 				return new Conflicted(plan.conflicts());
 			journal = new DeliveryJournal(selected.identity(), plan.changes(), 0);
@@ -214,7 +242,73 @@ public final class Delivery
 			journal = journal.withApplied(i + 1);
 			store.writeJournal(campaignId, journal);
 		}
-		return verify(request.label(), selected, journal, externalPaths, promptSources);
+		return verify(label, selected, journal, externalPaths, promptSources);
+	}
+
+	/**
+	 * Rejects a certification record that does not match the delivery's label.
+	 *
+	 * @param label the label of the delivery request, or {@code null} if the user kept the incumbent
+	 * @param record the certification record to write
+	 * @throws IllegalArgumentException if {@code record} is absent from a certified request or present otherwise
+	 */
+	private static void requireRecord(Outcome label, Optional<CertificationRecord> record)
+	{
+		boolean certified = label == Outcome.CERTIFIED;
+		if (certified && record.isEmpty())
+			throw new IllegalArgumentException("A delivery labelled \"certified\" requires a certification record.");
+		if (!certified && record.isPresent())
+		{
+			String writer;
+			if (label == null)
+				writer = "Keeping the incumbent";
+			else
+				writer = "A delivery labelled \"" + label.label() + "\"";
+			throw new IllegalArgumentException(writer + " may not write a certification record.");
+		}
+	}
+
+	/**
+	 * Returns the files that write the prompt tests: each test's values file, its regression scenario and its fixture
+	 * files under {@value PromptTestFiles#FIXTURES}. A test that delivery creates gets a new scenario titled with its
+	 * identifier. A test that edits a recorded scenario keeps that scenario's title and design goals; a recorded
+	 * scenario that does not follow the scenario format is replaced as a created one would be. Recorded fixture files
+	 * that the test no longer names are kept.
+	 *
+	 * @param selected the delivered overlay, whose recorded files the edited scenarios start from
+	 * @param tests the prompt tests
+	 * @return the test files
+	 * @throws IOException if a recorded scenario cannot be read
+	 */
+	private TestFiles testFiles(Overlay selected, List<DeliveredTest> tests) throws IOException
+	{
+		Map<Path, FileContent> files = new HashMap<>();
+		Set<Path> createdDirectories = new LinkedHashSet<>();
+		for (DeliveredTest test : tests)
+		{
+			Path directory = test.location().directory();
+			StringWriter values = new StringWriter();
+			ValuesFile.write(json, test.testCases(), values);
+			files.put(directory.resolve(ValuesFile.NAME), new FileContent(values.toString().getBytes(UTF_8)));
+
+			Path scenarioPath = directory.resolve(PromptTestFiles.SCENARIO);
+			String scenario;
+			if (test.location().created())
+			{
+				createdDirectories.add(directory);
+				scenario = test.scenarioFile(Optional.empty());
+			}
+			else
+			{
+				scenario = test.scenarioFile(workspace.readFile(selected, scenarioPath).
+					map(recorded -> new String(recorded.bytes(), UTF_8)));
+			}
+			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
+			Path fixtures = directory.resolve(PromptTestFiles.FIXTURES);
+			for (FixtureFile fixture : test.fixtures())
+				files.put(fixtures.resolve(fixture.path()), new FileContent(fixture.content().getBytes(UTF_8)));
+		}
+		return new TestFiles(files, createdDirectories);
 	}
 
 	/**
@@ -230,7 +324,7 @@ public final class Delivery
 		boolean deliverable = switch (label)
 		{
 			case CERTIFIED, IMPROVED_NOT_CERTIFIED, NOT_CERTIFIED -> true;
-			case BELOW_MINIMUM, INCONCLUSIVE, STOPPED_FOR_CONTRACT_REVISION, TESTING_ENVIRONMENT_CHANGED,
+			case BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE, STOPPED_FOR_CONTRACT_REVISION, TESTING_ENVIRONMENT_CHANGED,
 				UNSUPPORTED_INSTRUCTION_SOURCE, INELIGIBLE_TRIAL_EFFECT, UNSUPPORTED_OUTPUT, UNSUPPORTED_TEST_INTERACTION,
 				INVALID_STATISTICAL_ASSUMPTIONS -> false;
 		};
@@ -390,7 +484,7 @@ public final class Delivery
 	/**
 	 * Checks that every target holds the candidate's state and reports the delivered result.
 	 *
-	 * @param label the label that the delivered result carries
+	 * @param label the label that the delivered result carries, or {@code null} if the user kept the incumbent
 	 * @param selected the delivered candidate
 	 * @param journal the completed journal
 	 * @param externalPaths the external paths that a scan of the base covers

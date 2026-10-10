@@ -4,11 +4,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.statistics.Interval;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
  * The four outputs for one cell: the estimated pass rate, the improvement over
- * the incumbent, the comparison with 95%, and the error bars.
+ * the incumbent, the comparison with the minimum pass rate, and the error bars.
  * <p>
  * Every output that cannot be shown carries the reason.
  * <p>
@@ -19,7 +20,7 @@ import java.util.List;
  * @param trials the candidate's adopted outcomes in the reported phase
  * @param passRate the estimated pass rate
  * @param improvement the improvement over the incumbent
- * @param comparison the comparison with 95%
+ * @param comparison the comparison with the minimum pass rate
  * @param errorBars the error bars; the one-sided certification bound is kept apart from descriptive two-sided
  *   intervals
  */
@@ -143,40 +144,111 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	}
 
 	/**
-	 * The comparison with the 95% requirement.
+	 * The comparison with the minimum pass rate.
 	 * <p>
 	 * In development, {@code state} is always {@code not certified} and {@code readiness} holds the readiness
-	 * assessment. In a certification attempt, {@code state} is {@code certified}, {@code clearly below},
-	 * {@code inconclusive} or {@code undecided}, and the bounds hold the attempt's level.
+	 * assessment. In a certification attempt, {@code state} is the minimum-pass-rate part's {@code certified},
+	 * {@code clearly below} or {@code undecided}, the bounds hold the attempt's level, {@code controls} holds each
+	 * assertion's control comparison, and {@code cellState} decides the cell from both parts.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param state the state of the comparison
+	 * @param minimumPassRate the minimum pass rate {@code p_min} that the cell is compared with
 	 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
 	 * @param reasons why a development cell is not ready, empty if it is ready or the phase is formal
 	 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}, or {@code null} in development
 	 * @param upperBound the one-sided upper confidence bound at {@code α_i}, or {@code null} in development
 	 * @param alpha the attempt's certification level {@code α_i}, or {@code null} in development
+	 * @param controls each assertion's control comparison in contract order, empty in development
+	 * @param cellState the cell's {@code certified}, {@code clearly below}, {@code below control},
+	 *   {@code inconclusive} or {@code undecided}, or {@code null} in development
 	 */
-	public record Threshold(String state, String readiness, List<String> reasons, Double lowerBound,
-		Double upperBound, Double alpha)
+	public record Threshold(String state, BigDecimal minimumPassRate, String readiness, List<String> reasons,
+		Double lowerBound, Double upperBound, Double alpha, List<ControlReport> controls, String cellState)
 	{
 		/**
 		 * Creates a comparison.
 		 *
 		 * @param state the state of the comparison
+		 * @param minimumPassRate the minimum pass rate {@code p_min} that the cell is compared with
 		 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
 		 * @param reasons why a development cell is not ready
 		 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}
 		 * @param upperBound the one-sided upper confidence bound at {@code α_i}
 		 * @param alpha the attempt's certification level {@code α_i}
-		 * @throws NullPointerException if {@code state} or {@code reasons} are null
+		 * @param controls each assertion's control comparison in contract order
+		 * @param cellState the cell's state, or {@code null} in development
+		 * @throws NullPointerException if {@code state}, {@code minimumPassRate}, {@code reasons} or
+		 *   {@code controls} are null
 		 */
 		public Threshold
 		{
 			requireThat(state, "state").isNotNull();
+			requireThat(minimumPassRate, "minimumPassRate").isNotNull();
 			requireThat(reasons, "reasons").isNotNull();
+			requireThat(controls, "controls").isNotNull();
 			reasons = List.copyOf(reasons);
+			controls = List.copyOf(controls);
+		}
+	}
+
+	/**
+	 * One assertion's comparison between the candidate and the control in a certification attempt.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param assertionId the identifier of the assertion
+	 * @param state {@code passed}, {@code below control}, {@code undecided} or {@code not run}
+	 * @param pairs the adopted pairs of a candidate formal trial and its control trial
+	 * @param candidatePasses the pairs whose candidate trial passed the assertion
+	 * @param controlPasses the pairs whose control trial passed the assertion
+	 */
+	public record ControlReport(String assertionId, String state, int pairs, int candidatePasses, int controlPasses)
+	{
+		/**
+		 * Creates a comparison.
+		 *
+		 * @param assertionId the identifier of the assertion
+		 * @param state {@code passed}, {@code below control}, {@code undecided} or {@code not run}
+		 * @param pairs the adopted pairs of a candidate formal trial and its control trial
+		 * @param candidatePasses the pairs whose candidate trial passed the assertion
+		 * @param controlPasses the pairs whose control trial passed the assertion
+		 * @throws NullPointerException if {@code assertionId} or {@code state} are null
+		 * @throws IllegalArgumentException if {@code pairs} is negative, or {@code candidatePasses} or
+		 *   {@code controlPasses} are outside [0, {@code pairs}]
+		 */
+		public ControlReport
+		{
+			requireThat(assertionId, "assertionId").isNotNull();
+			requireThat(state, "state").isNotNull();
+			requireThat(pairs, "pairs").isNotNegative();
+			requireThat(candidatePasses, "candidatePasses").isBetween(0, true, pairs, true);
+			requireThat(controlPasses, "controlPasses").isBetween(0, true, pairs, true);
+		}
+
+		/**
+		 * Returns the fraction of pairs whose candidate trial passed the assertion.
+		 *
+		 * @return the rate, or {@code null} if there are no pairs
+		 */
+		public Double candidateRate()
+		{
+			if (pairs == 0)
+				return null;
+			return (double) candidatePasses / pairs;
+		}
+
+		/**
+		 * Returns the fraction of pairs whose control trial passed the assertion.
+		 *
+		 * @return the rate, or {@code null} if there are no pairs
+		 */
+		public Double controlRate()
+		{
+			if (pairs == 0)
+				return null;
+			return (double) controlPasses / pairs;
 		}
 	}
 
@@ -225,7 +297,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * @param trials the candidate's adopted outcomes in the reported phase
 	 * @param passRate the estimated pass rate
 	 * @param improvement the improvement over the incumbent
-	 * @param comparison the comparison with 95%
+	 * @param comparison the comparison with the minimum pass rate
 	 * @param errorBars the error bars
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code trials} is negative or {@code passes} is outside

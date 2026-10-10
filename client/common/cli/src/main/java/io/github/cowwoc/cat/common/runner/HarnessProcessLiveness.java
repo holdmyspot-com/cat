@@ -6,7 +6,7 @@ import java.time.Instant;
 /**
  * Checks and terminates a process only when its recorded identity still matches.
  */
-interface HarnessProcessLiveness
+public interface HarnessProcessLiveness
 {
 	/**
 	 * Determines whether a process with an exact start marker remains alive.

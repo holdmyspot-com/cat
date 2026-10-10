@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Applies and verifies manifest-local patches through isolated Git indexes.
  */
-final class PatchApplication
+public final class PatchApplication
 {
 	private final Git git;
 	private final ManifestStore<?> manifests;
@@ -32,7 +32,7 @@ final class PatchApplication
 	 * @param manifests the owner of manifest-local temporary indexes
 	 * @param patches the owner of patch declarations and integrity checks
 	 */
-	PatchApplication(Git git, ManifestStore<?> manifests,
+	public PatchApplication(Git git, ManifestStore<?> manifests,
 		PatchArtifacts patches)
 	{
 		this.git = git;
@@ -72,7 +72,7 @@ final class PatchApplication
 	 * @param reconstruction the source reconstruction to verify
 	 * @throws IOException if the source patch cannot be applied or produces a different source tree
 	 */
-	void verifySourceReconstruction(Path manifestFile, SourceReconstruction reconstruction) throws IOException
+	public void verifySourceReconstruction(Path manifestFile, SourceReconstruction reconstruction) throws IOException
 	{
 		if (verifiedSourceReconstructions.contains(reconstruction))
 		{
@@ -102,7 +102,7 @@ final class PatchApplication
 	 * @param actualTree the tree produced by Git's isolated index
 	 * @throws IOException if the resulting tree differs from the declared source tree
 	 */
-	void recordVerifiedSourceTree(SourceReconstruction reconstruction, String actualTree) throws IOException
+	public void recordVerifiedSourceTree(SourceReconstruction reconstruction, String actualTree) throws IOException
 	{
 		if (!actualTree.equals(reconstruction.afterTree()))
 		{

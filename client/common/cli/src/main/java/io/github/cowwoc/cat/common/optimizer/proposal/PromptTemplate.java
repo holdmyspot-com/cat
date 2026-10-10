@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.secrets.PromptTemplateAccess;
+import io.github.cowwoc.cat.common.secrets.PromptTemplateSecrets;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -19,6 +22,18 @@ import java.util.Map;
  */
 public final class PromptTemplate
 {
+	static
+	{
+		PromptTemplateSecrets.setAccess(new PromptTemplateAccess()
+		{
+			@Override
+			public String readResource(String resource)
+			{
+				return PromptTemplate.readResource(resource);
+			}
+		});
+	}
+
 	private final String text;
 
 	/**

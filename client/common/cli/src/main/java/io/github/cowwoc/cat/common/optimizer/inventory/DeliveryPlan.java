@@ -41,7 +41,10 @@ import java.util.TreeSet;
  * Changes made outside the candidate to other paths, including read-only external participants, survive delivery
  * and are reported.
  * <p>
- * A plan may also write files that are not part of the candidate, such as a certification record. Such a file
+ * A plan may also write test files, which are planned against the fork baseline like the candidate's own files and
+ * applied after them. A test file whose content the fork already records is left alone.
+ * <p>
+ * A plan may also write other files that are not part of the candidate, such as a certification record. Such a file
  * replaces whatever regular file the current state holds at its path, and conflicts only if the candidate also writes
  * the path, the path resolves to a different file, or the current structure collides with it.
  * <p>
@@ -99,8 +102,31 @@ public final class DeliveryPlan
 	 */
 	public static DeliveryPlan of(Overlay candidate, FileInventory current, Map<Path, FileContent> additionalFiles)
 	{
+		return of(candidate, current, TestFiles.NONE, additionalFiles);
+	}
+
+	/**
+	 * Plans the delivery of a candidate together with test files and other files that are not part of it. The test
+	 * files are planned against the fork baseline, as the candidate's files are: a file that the fork records with the
+	 * same content is left alone, and any other conflicts as a candidate's file would. A directory that the plan
+	 * creates conflicts with anything already at or inside it.
+	 *
+	 * @param candidate the candidate, whose fork is the baseline
+	 * @param current a fresh scan of the base worktree and of the same external paths as the fork
+	 * @param tests the test files to write after the candidate's changes
+	 * @param additionalFiles the content of each file to write after the test files, keyed by its path relative to the
+	 *   base worktree
+	 * @return the plan
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the candidate changes an external file, or if {@code additionalFiles} has an
+	 *   absolute path
+	 */
+	public static DeliveryPlan of(Overlay candidate, FileInventory current, TestFiles tests,
+		Map<Path, FileContent> additionalFiles)
+	{
 		requireThat(candidate, "candidate").isNotNull();
 		requireThat(current, "current").isNotNull();
+		requireThat(tests, "tests").isNotNull();
 		requireThat(additionalFiles, "additionalFiles").isNotNull();
 		requireProjectChanges(candidate);
 		for (Path path : additionalFiles.keySet())
@@ -108,17 +134,46 @@ public final class DeliveryPlan
 		FileInventory fork = candidate.fork();
 		Map<Path, OverlayEntry> overlay = candidate.entries();
 		Map<Path, FileContent> additions = new TreeMap<>(additionalFiles);
+		Map<Path, FileContent> testFiles = new TreeMap<>();
+		for (Entry<Path, FileContent> entry : tests.files().entrySet())
+		{
+			Optional<FileEntry> recorded = fork.entry(entry.getKey());
+			if (!(recorded.orElse(null) instanceof RegularFile file &&
+				file.contentHash().equals(Sha256.of(entry.getValue().bytes()))))
+			{
+				testFiles.put(entry.getKey(), entry.getValue());
+			}
+		}
 
 		List<DeliveryConflict> conflicts = new ArrayList<>();
 		for (Path target : overlay.keySet())
 			conflicts.addAll(conflictsOf(target, fork, current));
+		for (Path target : testFiles.keySet())
+		{
+			if (overlay.containsKey(target))
+				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			else
+				conflicts.addAll(conflictsOf(target, fork, current));
+		}
+		for (Path directory : new TreeSet<>(tests.createdDirectories()))
+		{
+			Optional<Path> occupant = occupant(directory, fork).or(() -> occupant(directory, current));
+			occupant.ifPresent(path -> conflicts.add(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, directory, path)));
+		}
 		for (Path target : additions.keySet())
-			conflicts.addAll(additionConflictsOf(target, overlay, current));
+		{
+			if (testFiles.containsKey(target))
+				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			else
+				conflicts.addAll(additionConflictsOf(target, overlay, current));
+		}
 
 		List<DeliveryChange> changes = new ArrayList<>();
 		if (conflicts.isEmpty())
 		{
 			changes = changesOf(overlay, fork);
+			for (Entry<Path, FileContent> entry : testFiles.entrySet())
+				changes.add(testFileOf(changes.size(), entry.getKey(), entry.getValue(), fork));
 			for (Entry<Path, FileContent> entry : additions.entrySet())
 				changes.add(additionOf(changes.size(), entry.getKey(), entry.getValue(), current));
 		}
@@ -128,7 +183,7 @@ public final class DeliveryPlan
 		List<Path> baseOnlyChanges = new ArrayList<>();
 		for (Path path : paths)
 		{
-			if (!overlay.containsKey(path) && !additions.containsKey(path) &&
+			if (!overlay.containsKey(path) && !testFiles.containsKey(path) && !additions.containsKey(path) &&
 				!Objects.equals(fork.entry(path), current.entry(path)))
 			{
 				baseOnlyChanges.add(path);
@@ -157,6 +212,38 @@ public final class DeliveryPlan
 					"candidate that changes only project files.");
 			}
 		}
+	}
+
+	/**
+	 * Returns the first entry of an inventory at or inside a directory that the plan creates.
+	 *
+	 * @param directory the directory
+	 * @param inventory the inventory
+	 * @return the entry's path, or empty if the inventory holds nothing there
+	 */
+	private static Optional<Path> occupant(Path directory, FileInventory inventory)
+	{
+		if (inventory.entry(directory).isPresent())
+			return Optional.of(directory);
+		return inventory.firstPathBelow(directory);
+	}
+
+	/**
+	 * Returns the change that writes a test file: an edit of the regular file that the fork records at its path,
+	 * keeping that file's mode, or else the creation of a new file.
+	 *
+	 * @param sequence the change's position in the plan
+	 * @param target the file's path
+	 * @param content the file's content
+	 * @param fork the files recorded at the fork
+	 * @return the change
+	 */
+	private static DeliveryChange testFileOf(int sequence, Path target, FileContent content, FileInventory fork)
+	{
+		// A conflict-free plan holds nothing but the recorded regular file, or nothing, at the target
+		if (fork.entry(target).orElse(null) instanceof RegularFile before)
+			return new Edit(sequence, target, before, content, before.permissions());
+		return new Create(sequence, target, content, NEW_FILE_PERMISSIONS);
 	}
 
 	/**

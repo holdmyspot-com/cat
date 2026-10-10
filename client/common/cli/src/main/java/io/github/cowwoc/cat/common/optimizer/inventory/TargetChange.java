@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import java.nio.file.Path;
 
 /**
- * A permitted change that an author attempt makes to one resolved target, which the attempt's caller adds to the
+ * A permitted change that a prompt author attempt makes to one resolved target, which the attempt's caller adds to the
  * starting candidate's {@link Overlay}.
  */
 public sealed interface TargetChange
@@ -20,12 +20,12 @@ public sealed interface TargetChange
 	Path target();
 
 	/**
-	 * The target becomes a regular file. The caller reads its content from {@code source} in the author's copy, checks
-	 * it against {@code after}, and calls {@link Overlay#write}.
+	 * The target becomes a regular file. The caller reads its content from {@code source} in the prompt author's copy,
+	 * checks it against {@code after}, and calls {@link Overlay#write}.
 	 *
 	 * @param target the resolved target
-	 * @param source the path in the author's copy that holds the new content; when several paths reach the target with
-	 *               the same content, the first in path order
+	 * @param source the path in the prompt author's copy that holds the new content; when several paths reach the
+	 *               target with the same content, the first in path order
 	 * @param after the new file's content hash and mode
 	 */
 	record TargetWrite(Path target, Path source, RegularFile after) implements TargetChange
@@ -34,7 +34,7 @@ public sealed interface TargetChange
 		 * Creates a write.
 		 *
 		 * @param target the resolved target
-		 * @param source the path in the author's copy that holds the new content
+		 * @param source the path in the prompt author's copy that holds the new content
 		 * @param after the new file's content hash and mode
 		 * @throws NullPointerException if any of the arguments are null
 		 */

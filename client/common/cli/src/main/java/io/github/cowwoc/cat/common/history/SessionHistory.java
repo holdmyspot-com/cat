@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.common.history;
 
 import io.github.cowwoc.cat.common.ToolScope;
+import io.github.cowwoc.cat.common.secrets.SessionHistoryAccess;
+import io.github.cowwoc.cat.common.secrets.SessionHistorySecrets;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -22,6 +24,24 @@ import tools.jackson.databind.JsonNode;
  */
 public final class SessionHistory
 {
+	static
+	{
+		SessionHistorySecrets.setAccess(new SessionHistoryAccess()
+		{
+			@Override
+			public String execute(String[] args) throws IOException
+			{
+				return SessionHistory.execute(args);
+			}
+
+			@Override
+			public String search(Path transcript, String phrase, int context) throws IOException
+			{
+				return SessionHistory.search(transcript, phrase, context);
+			}
+		});
+	}
+
 	private static final int DEFAULT_SUMMARY_RECORD_LIMIT = 1_000;
 
 	/**

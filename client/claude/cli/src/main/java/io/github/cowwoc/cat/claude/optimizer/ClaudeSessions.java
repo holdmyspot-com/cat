@@ -12,6 +12,8 @@ import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.claude.secrets.ClaudeSessionsAccess;
+import io.github.cowwoc.cat.claude.secrets.ClaudeSessionsSecrets;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,6 +37,25 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeSessions extends RunnerSessions
 {
+	static
+	{
+		ClaudeSessionsSecrets.setAccess(new ClaudeSessionsAccess()
+		{
+			@Override
+			public ClaudeSessions newClaudeSessions(RunnerSessions.Settings settings, Bridge bridge)
+			{
+				return new ClaudeSessions(settings, bridge);
+			}
+
+			@Override
+			public ClaudeSessions newClaudeSessions(RunnerSessions.Settings settings, Bridge bridge,
+				List<Path> managedSettings)
+			{
+				return new ClaudeSessions(settings, bridge, managedSettings);
+			}
+		});
+	}
+
 	/**
 	 * The version of the environment that Claude sessions run in. Increment it in every release that changes what a
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
@@ -46,7 +67,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 1;
+	private static final int JUDGE_VERSION = 6;
 	/**
 	 * The managed settings files that an administrator installs on Linux and on macOS.
 	 */
@@ -107,6 +128,18 @@ public final class ClaudeSessions extends RunnerSessions
 	public int judgeVersion()
 	{
 		return JUDGE_VERSION;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude's events state a command's exit status only in the error text of some failed commands, and otherwise only
+	 * whether the command succeeded, so a check of an exit status is not supported.
+	 */
+	@Override
+	public boolean reportsExitStatus()
+	{
+		return false;
 	}
 
 	/**

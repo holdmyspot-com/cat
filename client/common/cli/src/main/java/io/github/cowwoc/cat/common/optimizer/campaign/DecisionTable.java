@@ -3,12 +3,15 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
+import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 /**
  * Maps adopted formal counts to cell and certification-attempt decisions, then selects the campaign action.
  * <p>
- * A cell tests one category with one model and reasoning effort. Decisions use each cell's adopted counts and the
+ * A cell tests one prompt test with one model and reasoning effort. Decisions use each cell's adopted counts and the
  * attempt's fixed boundaries; this class does not change the attempt or campaign.
  */
 public final class DecisionTable
@@ -27,13 +30,18 @@ public final class DecisionTable
 		 */
 		CERTIFIED,
 		/**
-		 * The cell's compliance rate is clearly below 95%.
+		 * The cell's pass rate is clearly below the minimum pass rate.
 		 */
 		CLEARLY_BELOW,
 		/**
 		 * The cell reached its outcome cap without certification or a clearly-below decision.
 		 */
-		CAP_REACHED
+		CAP_REACHED,
+		/**
+		 * The cell's minimum-pass-rate part certified, but the candidate passes one of its assertions less often than
+		 * the control.
+		 */
+		BELOW_CONTROL
 	}
 
 	/**
@@ -54,11 +62,15 @@ public final class DecisionTable
 		 */
 		CERTIFIED_PROVEN_WORSE,
 		/**
-		 * At least one cell's compliance rate is clearly below 95%.
+		 * At least one cell's pass rate is clearly below the minimum pass rate.
 		 */
 		BELOW_MINIMUM,
 		/**
-		 * At least one cell reached its outcome cap undecided, and none is clearly below 95%.
+		 * At least one cell passes one of its assertions less often than the control.
+		 */
+		BELOW_CONTROL,
+		/**
+		 * At least one cell reached its outcome cap undecided, and none is clearly below the minimum pass rate.
 		 */
 		INCONCLUSIVE
 	}
@@ -81,8 +93,10 @@ public final class DecisionTable
 		 */
 		AWAIT_TRADE_OFF,
 		/**
-		 * Return to development automatically. Each formal failure makes its cell a development cell, and authors receive
-		 * its cell, test and failed requirements, never its held-out instance, reply or rationale.
+		 * Return to development automatically. Each formal failure makes its cell a development cell, and prompt
+		 * authors receive its cell, test and failed requirements, never its held-out test case, reply or rationale.
+		 * A cell below control becomes a development cell, and prompt authors receive its assertion with the
+		 * candidate's and the control's pass rates.
 		 */
 		RETURN_TO_DEVELOPMENT,
 		/**
@@ -99,7 +113,8 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Decides one cell from its adopted formal counts.
+	 * Decides the minimum-pass-rate part of one cell from its adopted formal counts. The result never is
+	 * {@link CellDecision#BELOW_CONTROL}.
 	 *
 	 * @param boundaries the attempt's boundaries
 	 * @param counts the cell's adopted formal counts
@@ -107,7 +122,7 @@ public final class DecisionTable
 	 * @throws NullPointerException if {@code boundaries} or {@code counts} are null
 	 * @throws IllegalArgumentException if {@code counts} exceed the boundaries' outcome cap
 	 */
-	public static CellDecision cellDecision(DecisionBoundaries boundaries, CellCounts counts)
+	public static CellDecision minimumDecision(DecisionBoundaries boundaries, CellCounts counts)
 	{
 		requireThat(boundaries, "boundaries").isNotNull();
 		requireThat(counts, "counts").isNotNull();
@@ -116,6 +131,53 @@ public final class DecisionTable
 		if (boundaries.isClearlyBelow(counts.passes(), counts.failures()))
 			return CellDecision.CLEARLY_BELOW;
 		if (counts.outcomes() >= boundaries.cap())
+			return CellDecision.CAP_REACHED;
+		return CellDecision.UNDECIDED;
+	}
+
+	/**
+	 * Decides one cell of a certification attempt from its adopted formal counts and control comparisons. Once the
+	 * cell's minimum-pass-rate part certified, later formal failures do not undo it. The cell then certifies once
+	 * every assertion's control comparison passed, is below control once any assertion is, and reaches its cap once
+	 * its formal outcomes reach the cap and each has its control trial.
+	 *
+	 * @param attempt the attempt
+	 * @param cell the identifier of the cell
+	 * @return the decision
+	 * @throws NullPointerException if {@code attempt} or {@code cell} are null
+	 * @throws IllegalArgumentException if the attempt's procedure has no cell identified by {@code cell}
+	 */
+	public static CellDecision cellDecision(CertificationAttempt attempt, String cell)
+	{
+		requireThat(attempt, "attempt").isNotNull();
+		requireThat(cell, "cell").isNotNull();
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
+		CellCounts counts = attempt.count(cell);
+		ControlPairing pairing = attempt.pairing(cell);
+		if (!pairing.isComparing())
+		{
+			CellDecision minimum = minimumDecision(boundaries, counts);
+			if (minimum == CellDecision.CERTIFIED)
+			{
+				// The control comparisons start when the adopted outcome that certified the minimum-pass-rate part
+				// is adopted
+				return CellDecision.UNDECIDED;
+			}
+			return minimum;
+		}
+		SignificanceLevel level = boundaries.level();
+		boolean allPassed = true;
+		for (PairCounts comparison : pairing.comparisons().values())
+		{
+			PairTally tally = comparison.tally();
+			if (ControlComparison.isBelowControl(tally, level))
+				return CellDecision.BELOW_CONTROL;
+			if (!ControlComparison.passes(tally, level))
+				allPassed = false;
+		}
+		if (allPassed)
+			return CellDecision.CERTIFIED;
+		if (counts.outcomes() >= boundaries.cap() && pairing.unpaired().isEmpty())
 			return CellDecision.CAP_REACHED;
 		return CellDecision.UNDECIDED;
 	}
@@ -130,18 +192,21 @@ public final class DecisionTable
 	public static AttemptDecision attemptDecision(CertificationAttempt attempt)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		boolean capReached = false;
 		boolean allCertified = true;
 		boolean provenWorse = false;
 		for (String cell : attempt.procedure().cells())
 		{
-			CellDecision decision = cellDecision(boundaries, attempt.count(cell));
+			CellDecision decision = cellDecision(attempt, cell);
 			switch (decision)
 			{
 				case CLEARLY_BELOW ->
 				{
 					return AttemptDecision.BELOW_MINIMUM;
+				}
+				case BELOW_CONTROL ->
+				{
+					return AttemptDecision.BELOW_CONTROL;
 				}
 				case CAP_REACHED ->
 				{
@@ -181,7 +246,7 @@ public final class DecisionTable
 			case UNDECIDED -> Action.CONTINUE;
 			case CERTIFIED -> Action.DELIVER;
 			case CERTIFIED_PROVEN_WORSE -> Action.AWAIT_TRADE_OFF;
-			case BELOW_MINIMUM, INCONCLUSIVE ->
+			case BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE ->
 			{
 				if (qualifiesForKeep)
 					yield Action.OFFER_KEEP_IMPROVEMENT;
@@ -203,7 +268,7 @@ public final class DecisionTable
 	public static boolean isProvenBetter(CertificationAttempt attempt, String cell)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		CellCounts counts = attempt.count(cell);
 		ComparisonBoundaries comparison = comparison(attempt, cell);
 		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&
@@ -223,7 +288,7 @@ public final class DecisionTable
 	public static boolean isProvenWorse(CertificationAttempt attempt, String cell)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		requireThat(cell, "category").isNotNull();
+		requireThat(cell, "cell").isNotNull();
 		CellCounts counts = attempt.count(cell);
 		ComparisonBoundaries comparison = comparison(attempt, cell);
 		return Comparability.of(attempt.identity(), attempt.procedure().baselineIdentity()).isComparable() &&

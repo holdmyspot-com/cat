@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Reads and validates reviewer-authored evidence artifacts before topic-replay planning or replay accepts them.
  */
-final class ReviewEvidence
+public final class ReviewEvidence
 {
 	private final JsonMapper json;
 
@@ -29,7 +29,7 @@ final class ReviewEvidence
 	 *
 	 * @param json the JSON mapper used to read review artifacts
 	 */
-	ReviewEvidence(JsonMapper json)
+	public ReviewEvidence(JsonMapper json)
 	{
 		this.json = json;
 	}
@@ -51,7 +51,7 @@ final class ReviewEvidence
 	 * @param manifestFile the topic-replay manifest
 	 * @return the manifest-local semantic-placement ledger
 	 */
-	Path semanticPlacementLedgerFile(Path manifestFile)
+	public Path semanticPlacementLedgerFile(Path manifestFile)
 	{
 		return manifestFile.resolveSibling(manifestFile.getFileName() + ".semantic-placement-ledger.json");
 	}
@@ -121,7 +121,7 @@ final class ReviewEvidence
 	 * @param manifestFile the topic-replay manifest
 	 * @return the manifest-local semantic plan
 	 */
-	Path semanticPlanFile(Path manifestFile)
+	public Path semanticPlanFile(Path manifestFile)
 	{
 		return manifestFile.resolveSibling(manifestFile.getFileName() + ".semantic-plan.json");
 	}
@@ -132,7 +132,7 @@ final class ReviewEvidence
 	 * @param manifestFile the topic-replay manifest
 	 * @return the manifest-local review packet
 	 */
-	Path reviewPacketFile(Path manifestFile)
+	public Path reviewPacketFile(Path manifestFile)
 	{
 		return manifestFile.resolveSibling(manifestFile.getFileName() + ".review-packet.md");
 	}
@@ -143,7 +143,7 @@ final class ReviewEvidence
 	 * @param manifestFile the topic-replay manifest
 	 * @return the manifest-local challenge ledger
 	 */
-	Path challengeLedgerFile(Path manifestFile)
+	public Path challengeLedgerFile(Path manifestFile)
 	{
 		return manifestFile.resolveSibling(manifestFile.getFileName() + ".adversarial-challenges.json");
 	}
@@ -184,7 +184,7 @@ final class ReviewEvidence
 	 * @param reviews the validated reviews
 	 * @throws IOException if the reviews cannot be written
 	 */
-	void writeOriginReviews(Path manifestFile, List<OriginReview> reviews) throws IOException
+	public void writeOriginReviews(Path manifestFile, List<OriginReview> reviews) throws IOException
 	{
 		json.writerWithDefaultPrettyPrinter().writeValue(originReviewsFile(manifestFile).toFile(), reviews);
 	}
@@ -226,7 +226,7 @@ final class ReviewEvidence
 	 * @throws IOException if the packet is absent or blank, or the ledger is absent, malformed, unresolved, or requests
 	 *                     an unsupported operation
 	 */
-	void validateReplayReadiness(Path packet, Path ledgerFile) throws IOException
+	public void validateReplayReadiness(Path packet, Path ledgerFile) throws IOException
 	{
 		if (!Files.isRegularFile(packet) || isBlank(packet))
 			throw new IOException("Topic-replay preflight requires a non-empty review packet: " + packet);
@@ -345,7 +345,7 @@ final class ReviewEvidence
 	 * @param manifestFile the topic-replay manifest
 	 * @throws IOException if either review artifact is absent, empty, or contains an unresolved challenge
 	 */
-	void validateReplayReadiness(Path manifestFile) throws IOException
+	public void validateReplayReadiness(Path manifestFile) throws IOException
 	{
 		validateReplayReadiness(reviewPacketFile(manifestFile), challengeLedgerFile(manifestFile));
 	}
@@ -384,7 +384,7 @@ final class ReviewEvidence
 	 * @return its non-empty candidates
 	 * @throws IOException if the artifact is absent or empty
 	 */
-	List<SemanticCandidate> readSemanticCandidates(Path file, String artifactName) throws IOException
+	public List<SemanticCandidate> readSemanticCandidates(Path file, String artifactName) throws IOException
 	{
 		if (!Files.isRegularFile(file))
 			throw new IOException("Topic-replay requires an auditable " + artifactName + ": " + file);
@@ -420,7 +420,7 @@ final class ReviewEvidence
 	 * @param reviewer the reviewer role used in diagnostics
 	 * @throws IOException if a pass omits a candidate or the review lacks a terminal empty pass
 	 */
-	void validateCandidateDiscoveryPasses(Path file, Set<String> candidateIds, String reviewer) throws IOException
+	public void validateCandidateDiscoveryPasses(Path file, Set<String> candidateIds, String reviewer) throws IOException
 	{
 		if (!Files.isRegularFile(file))
 			throw new IOException("Topic-replay requires " + reviewer + " candidate-discovery passes: " + file);
@@ -461,7 +461,7 @@ final class ReviewEvidence
 	 * @return the validated matrix
 	 * @throws IOException if the matrix omits a candidate or pairwise decision
 	 */
-	ActionResultMatrix validateActionResultMatrix(Path file, Set<String> candidateIds, String reviewer)
+	public ActionResultMatrix validateActionResultMatrix(Path file, Set<String> candidateIds, String reviewer)
 		throws IOException
 	{
 		if (!Files.isRegularFile(file))
@@ -522,7 +522,7 @@ final class ReviewEvidence
 	 * @return its stable candidate identifiers
 	 * @throws IOException if the inventory omits or ambiguously identifies a behavior candidate
 	 */
-	Set<String> validateCandidateUniverse(CandidateUniverseRequirements requirements, CandidateUniverse universe,
+	public Set<String> validateCandidateUniverse(CandidateUniverseRequirements requirements, CandidateUniverse universe,
 		Path file) throws IOException
 	{
 		Set<String> candidates = new HashSet<>();
@@ -576,7 +576,7 @@ final class ReviewEvidence
 	 * @param artifactFile the final candidate artifact used in diagnostics
 	 * @throws IOException if final placement omits, invents, or collapses reviewer evidence
 	 */
-	void validateCandidateUniverseLinks(List<SemanticCandidate> candidates, CandidateUniverseEvidence evidence,
+	public void validateCandidateUniverseLinks(List<SemanticCandidate> candidates, CandidateUniverseEvidence evidence,
 		Path artifactFile) throws IOException
 	{
 		Set<String> citedReviewer = new HashSet<>();

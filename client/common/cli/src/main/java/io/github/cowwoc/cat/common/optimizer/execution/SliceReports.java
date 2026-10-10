@@ -15,12 +15,12 @@ import java.util.StringJoiner;
  * Adds the {@link Driver}'s run results to a {@link StatusReport}: a revision awaiting confirmation, a delivery that
  * stopped, and whether a delivered candidate's result still applies to the current prompt and measurement conditions.
  */
-final class SliceReports
+public final class SliceReports
 {
 	/**
 	 * The decision that a campaign waits for after a revision request, once its running trials have ended.
 	 */
-	static final String REVISION_PENDING = "A contract revision waits for confirmation";
+	public static final String REVISION_PENDING = "A contract revision waits for confirmation";
 
 	/**
 	 * Prevents instantiation.
@@ -45,7 +45,7 @@ final class SliceReports
 			report.allocation(), report.benchmark(), report.trialProfiles(), report.cellTier(), report.remaining(),
 			report.tokens(),
 			report.concurrency(), report.assumptions(), report.attempts(), report.keepOffers(), report.claim(),
-			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedValues());
+			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedTestCases());
 	}
 
 	/**
@@ -54,7 +54,7 @@ final class SliceReports
 	 * @param result the delivery's result, which is not {@link DeliveryResult.Delivered}
 	 * @return the description
 	 */
-	static String describe(DeliveryResult result)
+	public static String describe(DeliveryResult result)
 	{
 		return switch (result)
 		{

@@ -8,7 +8,7 @@ import java.nio.file.Path;
 /**
  * Revalidates the mechanically sealed prefix of a replay before recovery can reuse it.
  */
-final class SealedPrefixRecovery
+public final class SealedPrefixRecovery
 {
 	private final Git git;
 	private final History history;
@@ -81,7 +81,8 @@ final class SealedPrefixRecovery
 	 * @param actualTree the current result tree
 	 * @throws IOException if either endpoint changed
 	 */
-	static void verifySourceTrees(SourceSnapshot source, String actualParentTree, String actualTree) throws IOException
+	public static void verifySourceTrees(SourceSnapshot source, String actualParentTree, String actualTree)
+		throws IOException
 	{
 		if (!actualParentTree.equals(source.parentTree()) || !actualTree.equals(source.tree()))
 		{
@@ -98,7 +99,7 @@ final class SealedPrefixRecovery
 	 * @param currentTree the tree produced by the prefix
 	 * @throws IOException if the transition does not continue the prefix
 	 */
-	static void verifyOutputBefore(Output output, OutputWitness witness, String currentTree) throws IOException
+	public static void verifyOutputBefore(Output output, OutputWitness witness, String currentTree) throws IOException
 	{
 		if (!currentTree.equals(witness.beforeTree()))
 		{
@@ -116,7 +117,7 @@ final class SealedPrefixRecovery
 	 * @return the verified patch file
 	 * @throws IOException if the patch is missing, unsafe, or changed
 	 */
-	static Path verifyBatchPatch(Path manifestFile, Batch batch, PatchArtifacts patches) throws IOException
+	public static Path verifyBatchPatch(Path manifestFile, Batch batch, PatchArtifacts patches) throws IOException
 	{
 		Path patch = patches.resolve(manifestFile, batch.patch());
 		if (!patches.sha256(patch).equals(batch.patch().sha256()))
@@ -134,7 +135,7 @@ final class SealedPrefixRecovery
 	 * @param actualTree the result of applying its patch
 	 * @throws IOException if the result differs from the recorded batch witness
 	 */
-	static void verifyBatchAfter(Batch batch, String actualTree) throws IOException
+	public static void verifyBatchAfter(Batch batch, String actualTree) throws IOException
 	{
 		if (!actualTree.equals(batch.destinationWitness().afterTree()))
 		{
@@ -151,7 +152,7 @@ final class SealedPrefixRecovery
 	 * @param actualTree the result of applying its batches
 	 * @throws IOException if the result differs from the recorded output witness
 	 */
-	static void verifyOutputAfter(Output output, OutputWitness witness, String actualTree) throws IOException
+	public static void verifyOutputAfter(Output output, OutputWitness witness, String actualTree) throws IOException
 	{
 		if (!actualTree.equals(witness.afterTree()))
 		{

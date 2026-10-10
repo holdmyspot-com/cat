@@ -4,6 +4,8 @@ import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.codex.secrets.AppServerEventsAccess;
+import io.github.cowwoc.cat.codex.secrets.AppServerEventsSecrets;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -47,8 +49,20 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class AppServerEvents extends HarnessEvents
+public final class AppServerEvents extends HarnessEvents
 {
+	static
+	{
+		AppServerEventsSecrets.setAccess(new AppServerEventsAccess()
+		{
+			@Override
+			public AppServerEvents newAppServerEvents(JsonMapper json)
+			{
+				return new AppServerEvents(json);
+			}
+		});
+	}
+
 	private static final double PERCENT = 100.0;
 	/**
 	 * The HTTP status of a provider refusal.

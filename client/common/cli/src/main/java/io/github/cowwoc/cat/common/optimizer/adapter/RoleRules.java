@@ -18,11 +18,11 @@ final class RoleRules
 {
 	private static final Path CONTRACT_DESIGN = Path.of("include/common/contract-design.md");
 	private static final Map<SessionRole, List<Path>> RULES = Map.of(
-		SessionRole.AUTHOR, List.of(Path.of("include/common/write-clearly.md"),
+		SessionRole.PROMPT_AUTHOR, List.of(Path.of("include/common/write-clearly.md"),
 			Path.of("include/common/failure-prevention.md"), CONTRACT_DESIGN,
 			Path.of("include/common/rule-organization.md"), Path.of("include/common/prompt-file-dependencies.md"),
 			Path.of("include/common/prompt-file-references.md")),
-		SessionRole.DERIVER, List.of(CONTRACT_DESIGN),
+		SessionRole.CONTRACT_AUTHOR, List.of(CONTRACT_DESIGN),
 		SessionRole.JUDGE, List.of(),
 		SessionRole.TRIAGE, List.of(),
 		SessionRole.TRIAL, List.of());

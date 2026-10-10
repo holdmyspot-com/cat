@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.codex.optimizer;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
+import io.github.cowwoc.cat.codex.secrets.AppServerPromptSourcesAccess;
+import io.github.cowwoc.cat.codex.secrets.AppServerPromptSourcesSecrets;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -17,8 +19,20 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class AppServerPromptSources extends PromptSources
+public final class AppServerPromptSources extends PromptSources
 {
+	static
+	{
+		AppServerPromptSourcesSecrets.setAccess(new AppServerPromptSourcesAccess()
+		{
+			@Override
+			public AppServerPromptSources newAppServerPromptSources(JsonMapper json, Map<String, Path> directories)
+			{
+				return new AppServerPromptSources(json, directories);
+			}
+		});
+	}
+
 	/**
 	 * Creates an observation that has seen no events.
 	 *

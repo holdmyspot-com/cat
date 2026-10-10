@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The editor supplies only sealed replay facts after it has applied manifest and semantic-plan policy. This owner
  * then binds those facts, the replacement chain, and retained evidence to the terminal receipt.
  */
-final class Finalization
+public final class Finalization
 {
 	private static final int RECEIPT_VERSION = 1;
 	private final Git git;
@@ -45,7 +45,7 @@ final class Finalization
 	 * @param history the immutable replacement-chain reader
 	 * @param json the process JSON mapper
 	 */
-	Finalization(Git git, History history, JsonMapper json)
+	public Finalization(Git git, History history, JsonMapper json)
 	{
 		requireThat(git, "git").isNotNull();
 		requireThat(history, "history").isNotNull();
@@ -80,7 +80,7 @@ final class Finalization
 	 * @param rewrittenTip the final replacement commit
 	 * @throws IOException if finalization evidence is incomplete or publication fails
 	 */
-	void publish(Path manifestFile, Replay replay, String rewrittenTip) throws IOException
+	public void publish(Path manifestFile, Replay replay, String rewrittenTip) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(replay, "replay").isNotNull();
@@ -109,7 +109,7 @@ final class Finalization
 	 * @param rewrittenTip the expected final replacement commit
 	 * @throws IOException if the receipt is absent, stale, or does not bind the requested replay
 	 */
-	void verify(Path manifestFile, Replay replay, String rebaseBase, String rewrittenTip) throws IOException
+	public void verify(Path manifestFile, Replay replay, String rebaseBase, String rewrittenTip) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(replay, "replay").isNotNull();
@@ -149,7 +149,7 @@ final class Finalization
 	 * @return the existing receipt path
 	 * @throws IOException if the receipt is absent and the history is therefore unreviewed
 	 */
-	Path requireReceipt(Path manifestFile) throws IOException
+	public Path requireReceipt(Path manifestFile) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		Path receiptFile = receiptFile(manifestFile);
@@ -170,7 +170,7 @@ final class Finalization
 	 * @param email the approved author and committer email
 	 * @throws IOException if Git cannot read the range or any identity differs from the approved policy
 	 */
-	void verifyIdentity(String rebaseBase, String rewrittenTip, String name, String email) throws IOException
+	public void verifyIdentity(String rebaseBase, String rewrittenTip, String name, String email) throws IOException
 	{
 		requireThat(rebaseBase, "rebaseBase").isNotBlank();
 		requireThat(rewrittenTip, "rewrittenTip").isNotBlank();
@@ -195,7 +195,7 @@ final class Finalization
 	 * @return the receipt ready for atomic publication
 	 * @throws IOException if retained evidence cannot be captured
 	 */
-	FinalizationReceipt captureReceipt(Path manifestFile, Replay replay, String rewrittenTip,
+	public FinalizationReceipt captureReceipt(Path manifestFile, Replay replay, String rewrittenTip,
 		List<FinalizedOutput> outputs, String manifestDigest, String identityDigest) throws IOException
 	{
 		return new FinalizationReceipt(RECEIPT_VERSION, manifestDigest, replay.base(), replay.sourceTip(),
@@ -210,7 +210,7 @@ final class Finalization
 	 * @param receipt the captured facts and evidence
 	 * @throws IOException if atomic receipt publication fails
 	 */
-	void publishReceipt(Path manifestFile, FinalizationReceipt receipt) throws IOException
+	public void publishReceipt(Path manifestFile, FinalizationReceipt receipt) throws IOException
 	{
 		Path receiptFile = receiptFile(manifestFile);
 		writeAtomically(receiptFile, receipt);
@@ -225,7 +225,7 @@ final class Finalization
 	 * @param tip the resolved selected tip
 	 * @return whether the recorded selection matches
 	 */
-	static boolean matchesSelection(FinalizationReceipt receipt, String base, String tip)
+	public static boolean matchesSelection(FinalizationReceipt receipt, String base, String tip)
 	{
 		return receipt.version() == RECEIPT_VERSION && receipt.base().equals(base) && receipt.rewrittenTip().equals(tip);
 	}
@@ -237,7 +237,7 @@ final class Finalization
 	 * @param replay the captured replay facts
 	 * @return whether all captured facts match
 	 */
-	static boolean matchesSourceFacts(FinalizationReceipt receipt, Replay replay)
+	public static boolean matchesSourceFacts(FinalizationReceipt receipt, Replay replay)
 	{
 		return receipt.base().equals(replay.base()) && receipt.sourceTip().equals(replay.sourceTip()) &&
 			receipt.sourceTipTree().equals(replay.sourceTipTree()) && receipt.finalTree().equals(replay.finalTree());
@@ -252,7 +252,7 @@ final class Finalization
 	 * @return whether the ordered output facts match
 	 * @throws IOException if the replacement chain cannot be bound to the sealed outputs
 	 */
-	static boolean matchesChainOutputs(FinalizationReceipt receipt, Replay replay, List<History.RangeCommit> chain)
+	public static boolean matchesChainOutputs(FinalizationReceipt receipt, Replay replay, List<History.RangeCommit> chain)
 		throws IOException
 	{
 		return receipt.outputs().equals(finalizedOutputs(replay, chain));
@@ -265,7 +265,7 @@ final class Finalization
 	 * @param receipt the decoded receipt
 	 * @throws IOException if the manifest changed or cannot be read
 	 */
-	void verifyManifestDigest(Path manifestFile, FinalizationReceipt receipt) throws IOException
+	public void verifyManifestDigest(Path manifestFile, FinalizationReceipt receipt) throws IOException
 	{
 		if (!receipt.manifestSha256().equals(sha256(manifestFile)))
 		{
@@ -283,7 +283,7 @@ final class Finalization
 	 * @param email the approved email
 	 * @throws IOException if any decoded identity differs or a field is missing
 	 */
-	static void verifyCommitIdentity(String commit, byte[] bytes, String name, String email) throws IOException
+	public static void verifyCommitIdentity(String commit, byte[] bytes, String name, String email) throws IOException
 	{
 		String[] identity = new String(bytes, UTF_8).strip().split("\\x00", -1);
 		if (identity.length != 4 || !identity[0].equals(name) || !identity[1].equals(email) ||
@@ -314,7 +314,8 @@ final class Finalization
 	 * @return the receipt-ready ordered outputs
 	 * @throws IOException if the replacement chain is incomplete or a witness is absent
 	 */
-	static List<FinalizedOutput> finalizedOutputs(Replay replay, List<History.RangeCommit> chain) throws IOException
+	public static List<FinalizedOutput> finalizedOutputs(Replay replay, List<History.RangeCommit> chain)
+		throws IOException
 	{
 		List<Output> expected = replay.outputs().stream().filter(Output::retained).toList();
 		if (chain.size() != expected.size())
@@ -360,7 +361,7 @@ final class Finalization
 	 * @param evidence the digests read from the receipt
 	 * @throws IOException if evidence is absent, escapes the directory, is missing, or changed
 	 */
-	void verifyFinalizationEvidence(Path manifestFile, List<ArtifactDigest> evidence) throws IOException
+	public void verifyFinalizationEvidence(Path manifestFile, List<ArtifactDigest> evidence) throws IOException
 	{
 		if (evidence == null || evidence.isEmpty())
 			throw new IOException("Topic-replay finalization receipt has no evidence artifact digests");
@@ -422,7 +423,7 @@ final class Finalization
 	 * @param replay the sealed replay facts whose retained outputs require evidence
 	 * @throws IOException if a retained output lacks required gate evidence
 	 */
-	void requirePerOutputGateEvidence(Path manifestFile, Replay replay) throws IOException
+	public void requirePerOutputGateEvidence(Path manifestFile, Replay replay) throws IOException
 	{
 		requireThat(manifestFile, "manifestFile").isRegularFile();
 		requireThat(replay, "replay").isNotNull();
@@ -463,7 +464,7 @@ final class Finalization
 	 * @return the lowercase hexadecimal digest
 	 * @throws IOException if the artifact cannot be read or SHA-256 is unavailable
 	 */
-	String sha256(Path file) throws IOException
+	public String sha256(Path file) throws IOException
 	{
 		try
 		{
@@ -512,7 +513,7 @@ final class Finalization
 	 * @param outputs each logical output and whether it remains in the final chain
 	 * @param witnesses the sealed tree transitions for retained outputs
 	 */
-	record Replay(String base, String sourceTip, String sourceTipTree, String finalTree, List<Output> outputs,
+	public record Replay(String base, String sourceTip, String sourceTipTree, String finalTree, List<Output> outputs,
 		List<OutputWitness> witnesses)
 	{
 		/**
@@ -535,7 +536,7 @@ final class Finalization
 	 * @param id the output identifier
 	 * @param retained whether the output remains in the final replacement chain
 	 */
-	record Output(String id, boolean retained)
+	public record Output(String id, boolean retained)
 	{
 	}
 
@@ -546,7 +547,7 @@ final class Finalization
 	 * @param beforeTree the tree immediately before the output
 	 * @param afterTree the tree produced by the output
 	 */
-	record OutputWitness(String outputId, String beforeTree, String afterTree)
+	public record OutputWitness(String outputId, String beforeTree, String afterTree)
 	{
 	}
 
@@ -564,7 +565,7 @@ final class Finalization
 	 * @param identityDigest the ordered replacement identity digest
 	 * @param evidence the retained artifact digests
 	 */
-	record FinalizationReceipt(int version, String manifestSha256, String base, String sourceTip,
+	public record FinalizationReceipt(int version, String manifestSha256, String base, String sourceTip,
 		String sourceTipTree, String finalTree, String rewrittenTip, List<FinalizedOutput> outputs,
 		String identityDigest, List<ArtifactDigest> evidence)
 	{
@@ -579,7 +580,7 @@ final class Finalization
 	 * @param beforeTree the sealed starting tree
 	 * @param afterTree the sealed result tree
 	 */
-	record FinalizedOutput(String outputId, String commit, String parent, String beforeTree, String afterTree)
+	public record FinalizedOutput(String outputId, String commit, String parent, String beforeTree, String afterTree)
 	{
 	}
 
@@ -589,7 +590,7 @@ final class Finalization
 	 * @param path the manifest-relative artifact path
 	 * @param sha256 the captured artifact digest
 	 */
-	record ArtifactDigest(String path, String sha256)
+	public record ArtifactDigest(String path, String sha256)
 	{
 	}
 }

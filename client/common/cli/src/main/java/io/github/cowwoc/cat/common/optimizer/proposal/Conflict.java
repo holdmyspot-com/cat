@@ -6,7 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 
 /**
- * Requirements that no reply can satisfy together, as the deriver found them in the prompt system.
+ * Requirements that no reply can satisfy together, as the contract author found them in the prompt system.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

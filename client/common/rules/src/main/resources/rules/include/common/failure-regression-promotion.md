@@ -29,14 +29,30 @@ Classify the attribution before changing guidance:
 
 For every correction to user-owned prompt, rule, or workflow guidance, record regression scenarios before resuming
 dependent work: the reported case, a meaningful analogous case, and a dissimilar case that must not receive unrelated
-guidance. Each scenario is one Markdown file holding the prewritten turns and the expected behaviour. Store it in the
-corrected guidance's scenario directory: for `<root>/.cat/rules/<path>.md`, where `<root>` is the project or `${HOME}`,
-use `<root>/.cat/tests/<path>/<case>.md`; for guidance packaged as a module resource,
+guidance. Each scenario is a directory named by its case in snake_case. It holds `scenario.md` and, when the turns need
+files in the workspace, a `fixtures/` directory whose files are copied into the workspace root. Store it in the
+corrected guidance's test directory: for `<root>/.cat/rules/<path>.md`, where `<root>` is the project or `${HOME}`,
+use `<root>/.cat/tests/<path>/<case>/`; for guidance packaged as a module resource,
 `<module>/src/main/resources/<top>/<path>.md`, such as a plugin's rules and skills, use
-`<module>/src/test/resources/<path>/<case>/scenario.md`; for other guidance in the project, use
-`<project>/.cat/tests/<path relative to the project, without .md>/<case>.md`. Extend an existing scenario that already makes the
-same reader decision under the same observable trigger instead of adding one; add a new scenario only when none can
-express that decision.
+`<module>/src/test/resources/<path>/<case>/`; for other guidance in the project, use
+`<project>/.cat/tests/<path relative to the project, without .md>/<case>/`. Extend an existing scenario that already
+makes the same reader decision under the same observable trigger instead of adding one; add a new scenario only when
+none can express that decision.
+
+Write `scenario.md` with these sections and no others:
+
+- `# <Title>`, optionally followed by `## Design Goals`, which says what the scenario proves.
+- `## Variables`: a table with exactly the columns `Name` and `Description` and one row per variable, with a snake_case
+  name and single-line cells. Declare at least one variable, such as a file name, a value that the turn asks about or
+  part of a turn's wording, and choose them so that different values lead to different expected outcomes.
+- `## Scenario`: the turn's text, or `### Turn <n>` subsections numbered from 1 when there are several turns. State the
+  situation that the agent faces in the turn itself.
+- `## Assertions`: one `### <id>` subsection per assertion, with a snake_case id. Its body starts with `kind: effect`,
+  or `kind: guard` for behavior that holds without the corrected guidance, then a blank line and the statement.
+
+Write `{{<name>}}` wherever a variable's value belongs, in the turns, the assertions and the fixtures' names and
+contents. `{{expected_outcome}}` and the assertion id `expected_outcome` are reserved. Do not write test cases or their
+values: a campaign's contract author writes them.
 
 When a user asks for a current percentage, ETA, or completion estimate, Long-Running Progress Reporting is the
 governing rule. Its regression belongs with progress-claim routing: without an evidence-backed component inventory

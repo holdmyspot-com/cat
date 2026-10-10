@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.time.Instant;
 
 /**
- * A run of a logical trial that ended without a compliance outcome. The trial runs again with the same instance.
+ * A run of a logical trial that ended without a pass or fail outcome. The trial runs again with the same test case.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *

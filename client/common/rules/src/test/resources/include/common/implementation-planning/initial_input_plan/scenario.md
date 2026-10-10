@@ -1,10 +1,14 @@
-## Context
+# Initial input plan
 
-Use the [empty project fixture](../project/); the request supplies the planning inputs.
+## Variables
+
+| Name | Description |
+|---|---|
+| documents | The kind of documents that the optimizer improves, in the plural, such as `prompt files` or `API reference pages` |
 
 ## Scenario
 
-Create an implementation plan for this document optimizer. The user selects an existing document set and
+Create an implementation plan for this optimizer of {{documents}}. The user selects an existing set of {{documents}} and
 confirms its acceptance tests. The system measures the initial documents, proposes edits in the active worktree,
 measures revisions, and returns a stronger revision or a plateau with retained evidence. It must also handle an
 initial set that already passes without requiring a pointless edit. A draft component design has Preparation
@@ -20,10 +24,14 @@ product outcomes. Remain read-only: do not implement, execute tests, or delegate
 
 ### initial_producer
 
+kind: effect
+
 The plan supplies a real immutable initial snapshot/revision from selected source bytes before first evaluation. It does
 not require a successful authoring call or a fixture-only argument to create that initial input.
 
 ### executable_order
+
+kind: effect
 
 The plan splits responsibilities or changes the handoff so baseline capture precedes evaluation, which precedes
 candidate authoring. It retains initial measurement, an already-passing initial set, revisions, and plateau evidence,
@@ -31,12 +39,16 @@ and names a first-invocation acceptance check. A component list or a future audi
 
 ### planning_guidance_before_decisions
 
+kind: effect
+
 The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
 project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
 substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
 selection.
 
 ### evidence_and_scope
+
+kind: effect
 
 Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
 whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or

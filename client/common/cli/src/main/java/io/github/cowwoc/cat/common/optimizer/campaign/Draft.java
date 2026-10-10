@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import io.github.cowwoc.cat.common.optimizer.contract.AddedValues;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
@@ -38,7 +38,7 @@ final class Draft
 	/**
 	 * The current lineage's regression set.
 	 */
-	List<RegressionInstance> regressionSet = new ArrayList<>();
+	List<RegressionTestCase> regressionSet = new ArrayList<>();
 	/**
 	 * The conditions that make certification unavailable under the current lineage.
 	 */
@@ -54,7 +54,7 @@ final class Draft
 	/**
 	 * The development values added to the current lineage's tests.
 	 */
-	AddedValues added = AddedValues.NONE;
+	AddedTestCases added = AddedTestCases.NONE;
 	/**
 	 * The current measurement identity.
 	 */
@@ -62,15 +62,15 @@ final class Draft
 	/**
 	 * The incumbent.
 	 */
-	final Candidate incumbent;
+	Candidate incumbent;
 	/**
 	 * The number of candidates promoted so far.
 	 */
 	int candidates;
 	/**
-	 * The number of author attempts validated so far.
+	 * The number of prompt author attempts validated so far.
 	 */
-	int authorAttempts;
+	int promptAuthorAttempts;
 	/**
 	 * The working candidate.
 	 */
@@ -80,17 +80,17 @@ final class Draft
 	 */
 	int series;
 	/**
-	 * The working candidate's development outcomes included in evidence per cell (category and trial profile).
+	 * The working candidate's development outcomes included in evidence per cell (prompt test and trial profile).
 	 */
 	Map<String, CellCounts> developmentCounts;
 	/**
-	 * The failures that the next author attempt receives.
+	 * The failures that the next prompt author attempt receives.
 	 */
 	List<Failure> developmentFailures;
 	/**
-	 * The working candidate's adopted outcomes grouped by instance content.
+	 * The working candidate's adopted outcomes grouped by test case.
 	 */
-	List<InstanceOutcomes> instanceOutcomes;
+	List<TestCaseOutcomes> testCaseOutcomes;
 	/**
 	 * The retained state before the latest promotion, or {@code null}.
 	 */
@@ -108,11 +108,11 @@ final class Draft
 	 */
 	Round round;
 	/**
-	 * The author attempt under validation, or {@code null}.
+	 * The prompt author attempt under validation, or {@code null}.
 	 */
-	AuthorAttempt author;
+	PromptAuthorAttempt promptAuthor;
 	/**
-	 * Descriptive author, minimality and snapshot measurements.
+	 * Descriptive prompt author, minimality and snapshot measurements.
 	 */
 	OptimizationEvidence optimization;
 	/**
@@ -191,18 +191,18 @@ final class Draft
 		identity = campaign.identity();
 		incumbent = campaign.incumbent();
 		candidates = campaign.candidates();
-		authorAttempts = campaign.authorAttempts();
+		promptAuthorAttempts = campaign.promptAuthorAttempts();
 		Development development = campaign.development();
 		working = development.working();
 		series = development.series();
 		developmentCounts = new LinkedHashMap<>(development.counts());
 		developmentFailures = new ArrayList<>(development.failures());
-		instanceOutcomes = development.instanceOutcomes();
+		testCaseOutcomes = development.testCaseOutcomes();
 		predecessor = development.predecessor();
 		reverts = new ArrayList<>(development.reverts());
 		diagnosis = development.diagnosis();
 		round = development.round();
-		author = development.author();
+		promptAuthor = development.promptAuthor();
 		optimization = campaign.optimization();
 		reviewPoints = new LinkedHashMap<>(development.reviewPoints());
 		IncumbentBaseline baseline = campaign.baseline();
@@ -310,15 +310,15 @@ final class Draft
 	}
 
 	/**
-	 * Returns a generator for the current contract that also holds every combination that a failure group of the
-	 * current lineage tried or tries, so that it draws and validates reproduction instances.
+	 * Returns a generator for the current contract that also holds every test case that a failure group of the
+	 * current lineage tried or tries, so that it draws and validates reproduction test cases.
 	 *
 	 * @return the generator
 	 * @throws IllegalStateException if no contract is confirmed
 	 */
 	Generator reproductionGenerator()
 	{
-		return new Generator(contract(), Campaign.developmentValues(added, lineageNumber(), attempts));
+		return new Generator(contract(), Campaign.developmentTestCases(added, lineageNumber(), attempts));
 	}
 
 	/**
@@ -350,10 +350,10 @@ final class Draft
 	 * @param number the attempt number
 	 * @return the attempt, or null if it is absent
 	 */
-	AuthorAttempt findAuthor(int number)
+	PromptAuthorAttempt findPromptAuthor(int number)
 	{
-		if (author != null && author.number() == number)
-			return author;
+		if (promptAuthor != null && promptAuthor.number() == number)
+			return promptAuthor;
 		if (round == null || !round.weak())
 			return null;
 		return round.validationAttempts().stream().filter(attempt -> attempt.number() == number).findFirst().
@@ -372,18 +372,18 @@ final class Draft
 		TrialKey key = trial.key();
 		if (key.purpose() != Purpose.PROMOTION || !key.snapshot().equals(working.snapshot()) || round == null)
 			return false;
-		AuthorAttempt owner = findAuthor(key.series());
+		PromptAuthorAttempt owner = findPromptAuthor(key.series());
 		if (owner != null)
 		{
 			return owner.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE &&
 				key.equals(run.trial()));
 		}
-		for (AuthorAttempt attempt : round.validationAttempts())
+		for (PromptAuthorAttempt attempt : round.validationAttempts())
 		{
 			if (attempt.number() != key.series())
 				continue;
 			return attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE &&
-				Promotion.isSameContent(run.instance(), trial.instance()));
+				Promotion.isSameTestCase(run.testCase(), trial.testCase()));
 		}
 		return false;
 	}
@@ -393,10 +393,10 @@ final class Draft
 	 *
 	 * @param attempt the updated attempt
 	 */
-	void updateAuthor(AuthorAttempt attempt)
+	void updatePromptAuthor(PromptAuthorAttempt attempt)
 	{
-		if (author != null && author.number() == attempt.number())
-			author = attempt;
+		if (promptAuthor != null && promptAuthor.number() == attempt.number())
+			promptAuthor = attempt;
 		else
 			round = round.withAttempt(attempt);
 	}
@@ -412,18 +412,18 @@ final class Draft
 		++series;
 		developmentCounts = new LinkedHashMap<>();
 		developmentFailures = new ArrayList<>();
-		instanceOutcomes = List.of();
+		testCaseOutcomes = List.of();
 		predecessor = null;
 		diagnosis = null;
 		round = null;
-		author = null;
+		promptAuthor = null;
 		reviewPoints = new LinkedHashMap<>();
 	}
 
 	/**
 	 * Restarts the working candidate's development counts after the development distribution changed: starts a new
 	 * development series with no counted outcomes, and discards the retained predecessor, whose counts measured the
-	 * earlier distribution. Failures, instance outcomes and the revert history remain.
+	 * earlier distribution. Failures, test case outcomes and the revert history remain.
 	 */
 	void restartDevelopmentCounts()
 	{
@@ -584,8 +584,8 @@ final class Draft
 			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, author, reviewPoints, instanceOutcomes, predecessor, reverts);
-		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, authorAttempts,
+			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts);
+		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
 	}

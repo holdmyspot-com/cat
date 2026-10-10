@@ -13,12 +13,12 @@ public enum Impact
 	BLOCKING,
 	/**
 	 * The reply still delivers the turn's correct and complete result and leaves nothing to undo, so the failure cost
-	 * only extra work. Development reruns the failing instance before it decides whether to edit.
+	 * only extra work. Development reruns the failing test case before it decides whether to edit.
 	 */
 	SELF_RECOVERING;
 
 	/**
-	 * Returns the label that the triage's output and the author's brief use.
+	 * Returns the label that the triage's output and the prompt author's brief use.
 	 *
 	 * @return the label
 	 */

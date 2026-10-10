@@ -10,7 +10,7 @@ import java.nio.file.Path;
 /**
  * Completes one sealed topic replay without losing the backup or finalization evidence needed to recover it.
  */
-final class TopicReplayCompletion
+public final class TopicReplayCompletion
 {
 	private final Git git;
 	private final History history;
@@ -128,7 +128,8 @@ final class TopicReplayCompletion
 	 * @return the deleted backup branch
 	 * @throws IOException if publication or cleanup fails
 	 */
-	static String publishThenFinalize(ReceiptPublication publication, BackupCompletion completion) throws IOException
+	public static String publishThenFinalize(ReceiptPublication publication, BackupCompletion completion)
+		throws IOException
 	{
 		publication.publish();
 		return completion.complete();
@@ -136,7 +137,7 @@ final class TopicReplayCompletion
 
 	/** Publishes or verifies the durable receipt before cleanup. */
 	@FunctionalInterface
-	interface ReceiptPublication
+	public interface ReceiptPublication
 	{
 		/**
 		 * Establishes durable finalization evidence.
@@ -148,7 +149,7 @@ final class TopicReplayCompletion
 
 	/** Completes the cleanup of the replay's recorded backup. */
 	@FunctionalInterface
-	interface BackupCompletion
+	public interface BackupCompletion
 	{
 		/**
 		 * Removes the recorded recovery branch after receipt publication.

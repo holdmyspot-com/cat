@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 /**
- * The assigned trials that share one cell (category and trial profile), purpose and snapshot, and therefore one
+ * The assigned trials that share one cell (prompt test and trial profile), purpose and snapshot, and therefore one
  * sequence of numbers.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
@@ -27,7 +27,7 @@ public record SequenceGroup(String cell, Purpose purpose, Sha256 snapshot)
 	 */
 	public SequenceGroup
 	{
-		requireThat(cell, "category").isNotBlank();
+		requireThat(cell, "cell").isNotBlank();
 		requireThat(purpose, "purpose").isNotNull();
 		requireThat(snapshot, "snapshot").isNotNull();
 	}

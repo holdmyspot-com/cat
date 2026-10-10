@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Runs external commands for one working directory.
  */
-final class CommandRunner
+public final class CommandRunner
 {
 	private final Path workingDirectory;
 
@@ -26,7 +26,7 @@ final class CommandRunner
 	 *
 	 * @param workingDirectory the directory in which commands run
 	 */
-	CommandRunner(Path workingDirectory)
+	public CommandRunner(Path workingDirectory)
 	{
 		this.workingDirectory = workingDirectory;
 	}
@@ -39,7 +39,7 @@ final class CommandRunner
 	 * @return the command's exit code
 	 * @throws IOException if the command cannot run or its output cannot be written
 	 */
-	int run(List<String> command, Path outputFile) throws IOException
+	public int run(List<String> command, Path outputFile) throws IOException
 	{
 		try (Process process = new ProcessBuilder(command).directory(workingDirectory.toFile()).redirectErrorStream(true).
 			start())
@@ -70,7 +70,8 @@ final class CommandRunner
 	 * @return the command's exit code
 	 * @throws IOException if the command cannot run or its output cannot be written
 	 */
-	int run(List<String> command, Path outputFile, Duration heartbeatInterval, Runnable heartbeat) throws IOException
+	public int run(List<String> command, Path outputFile, Duration heartbeatInterval, Runnable heartbeat)
+		throws IOException
 	{
 		requireThat(heartbeatInterval, "heartbeatInterval").isGreaterThan(Duration.ZERO);
 		requireThat(heartbeat, "heartbeat").isNotNull();

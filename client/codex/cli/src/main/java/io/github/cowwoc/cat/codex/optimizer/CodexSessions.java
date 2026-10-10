@@ -12,6 +12,8 @@ import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.codex.secrets.CodexSessionsAccess;
+import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,6 +35,18 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexSessions extends RunnerSessions
 {
+	static
+	{
+		CodexSessionsSecrets.setAccess(new CodexSessionsAccess()
+		{
+			@Override
+			public CodexSessions newCodexSessions(RunnerSessions.Settings settings, Bridge bridge)
+			{
+				return new CodexSessions(settings, bridge);
+			}
+		});
+	}
+
 	/**
 	 * The version of the environment that Codex sessions run in. Increment it in every release that changes what a
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
@@ -44,7 +58,7 @@ public final class CodexSessions extends RunnerSessions
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 1;
+	private static final int JUDGE_VERSION = 6;
 
 	/**
 	 * Creates a port that runs sessions through the real Codex runner.
@@ -79,6 +93,17 @@ public final class CodexSessions extends RunnerSessions
 	public int judgeVersion()
 	{
 		return JUDGE_VERSION;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex reports the exit code of each command that it executes.
+	 */
+	@Override
+	public boolean reportsExitStatus()
+	{
+		return true;
 	}
 
 	@Override

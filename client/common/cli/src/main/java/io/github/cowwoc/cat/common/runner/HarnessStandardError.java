@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import io.github.cowwoc.pouch10.core.WrappedCheckedException;
+import io.github.cowwoc.cat.common.secrets.HarnessStandardErrorAccess;
+import io.github.cowwoc.cat.common.secrets.HarnessStandardErrorSecrets;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -16,6 +18,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class HarnessStandardError
 {
+	static
+	{
+		HarnessStandardErrorSecrets.setAccess(new HarnessStandardErrorAccess()
+		{
+			@Override
+			public int maximumDiagnosticBytes()
+			{
+				return MAXIMUM_DIAGNOSTIC_BYTES;
+			}
+		});
+	}
+
 	static final int MAXIMUM_DIAGNOSTIC_BYTES = 1_048_576;
 
 	private final InputStream input;

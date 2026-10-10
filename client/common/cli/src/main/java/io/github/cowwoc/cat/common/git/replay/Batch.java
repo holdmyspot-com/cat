@@ -9,6 +9,7 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param patch the immutable patch artifact
  * @param destinationWitness the index states before and after applying this batch
  */
-record Batch(String id, String source, String destination, PatchArtifact patch, DestinationWitness destinationWitness)
+public record Batch(String id, String source, String destination, PatchArtifact patch,
+	DestinationWitness destinationWitness)
 {
 }

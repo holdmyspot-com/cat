@@ -1,17 +1,18 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 /**
- * One of the two halves into which the confirmed contract splits each test definition's instances, by their key
- * values, before any trial.
+ * One of the two halves into which the confirmed contract splits each prompt test's test cases, by their expected
+ * outcomes, before any trial.
  */
 public enum Part
 {
 	/**
-	 * The instances that development trials, targeted runs, triage, diagnosis and author sessions draw or receive.
+	 * The test cases that development trials, targeted runs, triage, diagnosis and prompt author sessions draw or
+	 * receive.
 	 */
 	DEVELOPMENT,
 	/**
-	 * The instances that formal trials and the incumbent's baseline arm draw. No session that shapes a candidate
+	 * The test cases that formal trials and the incumbent's baseline trials draw. No session that shapes a candidate
 	 * receives one.
 	 */
 	HELD_OUT;

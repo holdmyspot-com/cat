@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 /**
  * Validates reviewer-authored behavior candidates that justify replay outputs.
  */
-final class SemanticPlanValidation
+public final class SemanticPlanValidation
 {
 	private final ReviewEvidence reviewEvidence;
 
@@ -23,7 +23,7 @@ final class SemanticPlanValidation
 	 *
 	 * @param reviewEvidence the reviewer-evidence validation boundary
 	 */
-	SemanticPlanValidation(ReviewEvidence reviewEvidence)
+	public SemanticPlanValidation(ReviewEvidence reviewEvidence)
 	{
 		this.reviewEvidence = reviewEvidence;
 	}
@@ -39,7 +39,7 @@ final class SemanticPlanValidation
 	 * @param candidateUniverseEvidence validated discovery facts that the candidates must retain
 	 * @throws IOException if the candidates are incomplete or inconsistent
 	 */
-	void validate(BatchManifest manifest, List<SemanticCandidate> candidates, Set<String> requiredOutputs,
+	public void validate(BatchManifest manifest, List<SemanticCandidate> candidates, Set<String> requiredOutputs,
 		boolean requireReviewedPlacement, Path artifactFile, CandidateUniverseEvidence candidateUniverseEvidence)
 		throws IOException
 	{
