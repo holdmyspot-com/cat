@@ -21,8 +21,26 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
 - Use Allman braces. Put `else`, `catch`, `finally`, and `do`/`while` continuations on a new line after the closing
   brace. Do not align multiline parameters with spaces.
 - In a try-with-resources header, put each resource declaration on its own line.
-- For every optional-brace control-flow branch (`if`, `else`, `for`, `while`, and `catch`), use braces if either its
-  condition or controlled body spans more than one visual line. Remove braces when both each occupy one visual line.
+- A structure whose body may be a single statement or a block (`if`, `else`, `for`, `while`, and `do`) has braces if
+  and only if its condition or its body spans more than one visual line. A one-line statement under a one-line condition
+  has no braces; a statement that wraps onto a second line, or a condition that wraps, needs them:
+
+  ```java
+  if (condition)
+  	statement;
+
+  if (condition)
+  {
+  	function1(function2(
+  		function3()));
+  }
+
+  if (first &&
+  	second)
+  {
+  	statement;
+  }
+  ```
 - Use camelCase for method names, Java variables (local variables, parameters, and instance fields), and keys and
   symbolic values that stay inside Java, such as map keys and string identifiers that no external format defines.
   Static final constants and enum constants keep UPPER_SNAKE_CASE. When a key or symbolic value crosses into
@@ -138,7 +156,7 @@ if (normalizedArchitecture.equals("amd64") || normalizedArchitecture.equals("x86
 
 - Use enhanced `for` loops when an index is not required.
 - Use `++` or `--` only when it improves a loop counter; otherwise use explicit arithmetic.
-- Prefer direct method chains when each step is clear. Break a chain before `.` when wrapping it across lines.
+- Prefer direct method chains when each step is clear. Break a chain after `.` when wrapping it across lines.
 - Use a text block for multiline or escape-heavy literal content when it removes Java delimiter escaping and makes the
   represented text easier to inspect. Keep a regular string for a short literal whose escapes are few or required by
   the represented content itself. Account for a text block's incidental newline explicitly when it matters.
