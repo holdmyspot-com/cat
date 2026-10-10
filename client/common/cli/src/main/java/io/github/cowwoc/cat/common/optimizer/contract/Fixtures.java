@@ -62,14 +62,13 @@ public final class Fixtures
 			}
 		}
 
-		Path sources = files.directory().resolve(PromptTestFiles.FIXTURES);
 		List<Path> created = new ArrayList<>();
 		try
 		{
 			for (Map.Entry<PromptTestFiles.Fixture, String> entry : targets.entrySet())
 			{
 				PromptTestFiles.Fixture fixture = entry.getKey();
-				Path source = sources.resolve(fixture.path());
+				Path source = files.source(fixture);
 				Path target = workspace.resolve(entry.getValue());
 				createParents(workspace, target.getParent(), created);
 				if (fixture.text())

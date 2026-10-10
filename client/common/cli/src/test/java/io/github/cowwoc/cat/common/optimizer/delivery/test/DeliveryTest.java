@@ -792,6 +792,45 @@ public final class DeliveryTest
 	}
 
 	/**
+	 * A prompt test's fixture that it inherits unchanged from a {@code fixtures/} directory between its test root and
+	 * its own directory stays shared: delivery does not copy it into the prompt test's own {@code fixtures/}. A fixture
+	 * whose content differs from the inherited file is written there, where it replaces the inherited file.
+	 *
+	 * @throws IOException             if the fixture or delivery fails
+	 * @throws ScenarioFormatException if a written file cannot be read back
+	 */
+	@Test
+	public void inheritedFixtureStaysShared() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-W11, R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path sharedNotes = TESTS.resolve("fixtures/docs/{{notes}}");
+			Path sharedAgents = Path.of(".cat/tests/fixtures/AGENTS.md");
+			String notes = "Release {{notes}} fixes the installer.\n";
+			Fixture fixture = Fixture.create(cleanup).
+				commit(sharedNotes, notes.getBytes(UTF_8)).
+				commit(sharedAgents, "Reply briefly.\n".getBytes(UTF_8));
+			Overlay candidate = fixture.candidate();
+			DeliveredTest created = promptTest("created_summary", true);
+			DeliveredTest test = new DeliveredTest(created.id(), created.location(), created.scenario(), DESIGN_GOALS,
+				created.testCases(), List.of(new FixtureFile("AGENTS.md", "Reply in one sentence.\n"),
+				new FixtureFile("docs/{{notes}}", notes)));
+
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+				Map.of(sharedNotes, content(notes), sharedAgents, content("Reply briefly.\n"))).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, List.of(test));
+
+			requireDelivered(result);
+			Path own = fixture.resolve(test.location().directory().resolve(PromptTestFiles.FIXTURES));
+			requireThat(read(own.resolve("AGENTS.md")), "agents").isEqualTo("Reply in one sentence.\n");
+			requireThat(Files.notExists(own.resolve("docs")), "notesAreShared").isTrue();
+			requireThat(read(fixture.resolve(sharedNotes)), "sharedNotes").isEqualTo(notes);
+		}
+	}
+
+	/**
 	 * When the user keeps the incumbent, delivery writes the prompt tests alone: the result carries no label, no
 	 * prompt source or certification record changes, and the files that the rejected candidate changed keep their
 	 * forked content.

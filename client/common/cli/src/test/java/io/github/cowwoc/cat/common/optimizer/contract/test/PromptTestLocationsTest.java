@@ -78,7 +78,8 @@ public final class PromptTestLocationsTest
 
 	/**
 	 * The paths that staging excludes are every prompt test's directory and every scenario that a prompt test cites
-	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format.
+	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format. The
+	 * {@code fixtures/} directories that such a directory inherits from are excluded too.
 	 */
 	@Test
 	public void excludedPathsCoverEveryCitedScenario()
@@ -91,6 +92,26 @@ public final class PromptTestLocationsTest
 		requireThat(PromptTestLocations.excluded(contract, TARGET), "excluded").isEqualTo(Set.of(
 			Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
 			Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
-			Path.of(".cat/tests/other/old_list.md")));
+			Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/fixtures"),
+			Path.of(".cat/tests/other/fixtures"), Path.of(".cat/tests/fixtures")));
+	}
+
+	/**
+	 * The {@code fixtures/} directories that staging excludes for a prompt test of guidance packaged as a module
+	 * resource are those between the module's test resources and the prompt test's directory, the test resources
+	 * included.
+	 */
+	@Test
+	public void excludedPathsCoverModuleFixtures()
+	{
+		// Requirement: R-W11, R-C21
+		Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
+			"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
+		Path target = Path.of("client/codex/cli/src/main/resources/rules/codex/read-file.md");
+		Path tests = Path.of("client/codex/cli/src/test/resources");
+		requireThat(PromptTestLocations.excluded(contract, target), "excluded").isEqualTo(Set.of(
+			tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
+			tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/fixtures"),
+			tests.resolve("codex/fixtures"), tests.resolve("fixtures")));
 	}
 }

@@ -1392,12 +1392,30 @@ stands for the test case's expected outcome, and no variable may take that name.
 cases: they come from the contract author ([§6.1](#61-derivation-and-confirmation)). An assertion whose id is
 `expected_outcome` is reserved too.
 
+**Declared kind.** An assertion's `kind:` line states how the contract author expects it to fare without the target
+prompt, and CAT checks that expectation instead of deriving it. The guard pilot
+([§6.1](#61-derivation-and-confirmation)) measures each assertion's pass rate without the prompt and warns on a guard
+below `p_min`. A low rate is what an effect assertion predicts. On a guard it means that the control comparison on that
+assertion may need many pairs or end the attempt, or that the agent fails the operation the guard protects even without
+the prompt. A kind derived from the pilot's rates would always agree with them, so the warning could never tell the user
+that a protected operation fails without the prompt. The kinds also decide the kind of `expected_outcome`. Certification
+still compares every assertion, whatever its kind, with its control trials ([§2.3](#23-sequential-tests)).
+
 **Fixtures.** The files under `fixtures/` are copied into each trial's workspace root, keeping their relative paths,
 with placeholders replaced in file names and in the contents of UTF-8 files ([§4.4](#44-trial-staging)). A value used
 in a file name must be a single name: not empty, not `.` or `..`, without `/`, `\`, control characters, or any of
 `< > : " | ? *`, which Windows forbids. CAT refuses a test case that breaks these rules or whose file names collide. A
 pattern that must match a literal brace in a fixture's name escapes it, because many file-pattern tools, Java's
 `PathMatcher` among them, read `{a,b}` as alternation.
+
+**Shared fixtures.** A prompt test also receives the files under the `fixtures/` directories of its ancestors, from the
+test root (`.cat/tests` or a module's `src/test/resources`) down to its guidance's scenario directory. A file of an
+inner directory replaces the file at the same relative path of an outer one, so a prompt test overrides a shared file by
+holding its own copy. Shared files follow the same placeholder rules as the prompt test's own. Staging leaves out every
+inherited `fixtures/` directory, as it does the prompt test directories. Delivery writes a fixture into the prompt
+test's own `fixtures/` unless the prompt test does not record that file and the innermost ancestor that records it holds
+the same bytes, so an unchanged shared file stays shared. A file that only some prompt tests of a guidance use, such as
+a recorded tool output that a scenario links to, lies outside any `fixtures/` directory.
 
 **Test cases (user rulings, 2026-10-09 and 2026-10-10).** A test case is a prompt test with one value for each of its
 variables, together with its **expected outcome**: the result a compliant reply gives, such as the date that the turn

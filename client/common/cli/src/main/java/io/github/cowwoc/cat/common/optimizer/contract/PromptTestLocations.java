@@ -3,10 +3,13 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -95,6 +98,57 @@ public final class PromptTestLocations
 	}
 
 	/**
+	 * Returns the test root that holds a prompt test directory: the {@code .cat/tests} directory or a module's
+	 * {@code src/test/resources} directory that the path lies in.
+	 *
+	 * @param normalized a normalized prompt test directory, relative to the project
+	 * @return the test root, relative to the project, or an empty value if no test root holds the directory
+	 */
+	private static Optional<Path> testRoot(Path normalized)
+	{
+		if (normalized.startsWith(TESTS))
+			return Optional.of(TESTS);
+		int count = normalized.getNameCount();
+		// <module>/src/test/resources/<path>, where <module> may be empty
+		for (int i = 0; i + 2 < count; ++i)
+		{
+			if (normalized.getName(i).toString().equals("src") && normalized.getName(i + 1).toString().equals("test") &&
+				normalized.getName(i + 2).toString().equals("resources"))
+			{
+				return Optional.of(normalized.subpath(0, i + 3));
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns the {@value PromptTestFiles#FIXTURES} directories that a prompt test directory inherits from: those of
+	 * its test root and of each directory between the root and the prompt test directory.
+	 *
+	 * @param directory a prompt test directory, relative to the project
+	 * @return the inherited {@value PromptTestFiles#FIXTURES} directories, innermost first, or an empty list if the
+	 *   directory lies in neither {@code .cat/tests} nor a module's {@code src/test/resources}
+	 * @throws NullPointerException     if {@code directory} is null
+	 * @throws IllegalArgumentException if {@code directory} is absolute
+	 */
+	public static List<Path> inheritedFixtures(Path directory)
+	{
+		requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+		Path normalized = directory.normalize();
+		Optional<Path> testRoot = testRoot(normalized);
+		if (testRoot.isEmpty())
+			return List.of();
+		Path root = testRoot.get();
+		List<Path> inherited = new ArrayList<>();
+		for (Path ancestor = normalized.getParent(); ancestor != null && ancestor.startsWith(root);
+			ancestor = ancestor.getParent())
+		{
+			inherited.add(ancestor.resolve(PromptTestFiles.FIXTURES));
+		}
+		return inherited;
+	}
+
+	/**
 	 * Removes the Markdown suffix from a path.
 	 *
 	 * @param path a path
@@ -153,7 +207,8 @@ public final class PromptTestLocations
 	/**
 	 * Returns the paths that staging leaves out of a candidate so that a trial cannot read the prompt tests: the
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
-	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format.
+	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and the
+	 * {@value PromptTestFiles#FIXTURES} directories that those directories inherit from.
 	 *
 	 * @param contract the contract
 	 * @param target   the campaign target, relative to the project
@@ -165,7 +220,10 @@ public final class PromptTestLocations
 	{
 		Set<Path> excluded = new LinkedHashSet<>();
 		for (Location location : of(contract, target).values())
+		{
 			excluded.add(location.directory());
+			excluded.addAll(inheritedFixtures(location.directory()));
+		}
 		for (PromptTest test : contract.tests())
 		{
 			for (String citation : test.regressionScenarios())
@@ -174,7 +232,10 @@ public final class PromptTestLocations
 				if (scenario.isAbsolute())
 					continue;
 				if (scenario.getFileName().toString().equals(PromptTestFiles.SCENARIO) && scenario.getParent() != null)
+				{
 					excluded.add(scenario.getParent());
+					excluded.addAll(inheritedFixtures(scenario.getParent()));
+				}
 				else
 					excluded.add(scenario);
 			}

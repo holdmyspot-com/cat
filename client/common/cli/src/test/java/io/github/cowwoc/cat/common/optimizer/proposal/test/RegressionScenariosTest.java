@@ -293,6 +293,79 @@ public final class RegressionScenariosTest
 	}
 
 	/**
+	 * Verifies that the contract author receives, with a prompt test, the text fixtures that it inherits from the
+	 * {@code fixtures/} directories between its test root and its own directory, whether the test root is a module's
+	 * test resources or {@code .cat/tests}.
+	 *
+	 * @throws IOException if the scenario tree cannot be created or read
+	 */
+	@Test
+	public void readsInheritedFixtures() throws IOException
+	{
+		// Requirement: R-I3, R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"inherited-fixtures"));
+			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+				resolve("reading.md");
+			Files.writeString(guidance, "Read files whole.");
+			Path rules = Files.createDirectories(root.resolve(".cat/rules"));
+			Files.writeString(rules.resolve("wording.md"), "Be brief.");
+			for (Path tests : List.of(root.resolve("plugin/src/test/resources"), root.resolve(".cat/tests")))
+			{
+				Files.createDirectories(tests.resolve("fixtures"));
+				Files.writeString(tests.resolve("fixtures/shared.md"), "Shared by every guidance.");
+			}
+			Path reading = root.resolve("plugin/src/test/resources/common/reading");
+			Files.createDirectories(reading.resolve("fixtures"));
+			Files.writeString(reading.resolve("fixtures/AGENTS.md"), "Shared by the reading tests.");
+			Path wording = root.resolve(".cat/tests/wording");
+			for (Path directory : List.of(reading.resolve("whole_file_read"), wording.resolve("brief_reply")))
+			{
+				Files.createDirectories(directory);
+				Files.writeString(directory.resolve("scenario.md"), """
+					## Variables
+
+					| Name | Description |
+					|---|---|
+					| topic | The topic to summarize |
+
+					## Scenario
+
+					Summarize {{topic}}.
+
+					## Assertions
+
+					### summary_given
+
+					kind: effect
+
+					The reply summarizes the topic.
+					""");
+			}
+
+			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home")).
+				scenarios();
+			requireThat(found.size(), "found.size()").isEqualTo(2);
+			for (RegressionScenarios.Scenario scenario : found)
+			{
+				if (!(scenario.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
+					throw new AssertionError("Not the current format: " + scenario.format());
+				List<FixtureFile> expected;
+				if (scenario.citation().startsWith(".cat/tests/"))
+					expected = List.of(new FixtureFile("shared.md", "Shared by every guidance."));
+				else
+				{
+					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests."),
+						new FixtureFile("shared.md", "Shared by every guidance."));
+				}
+				requireThat(texts, "texts").withContext(scenario.citation(), "citation").isEqualTo(expected);
+			}
+		}
+	}
+
+	/**
 	 * Returns the citation of every scenario that discovery finds in the repository.
 	 *
 	 * @param root the repository root

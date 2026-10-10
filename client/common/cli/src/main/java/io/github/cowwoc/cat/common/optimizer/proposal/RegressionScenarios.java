@@ -198,7 +198,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 					source = root.resolve(relative + ".md");
 				if (!Files.isRegularFile(source))
 					continue;
-				readDirectory(json, project, directory, source, scenarios);
+				readDirectory(json, project, tests, directory, source, scenarios);
 			}
 		}
 	}
@@ -208,12 +208,13 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 *
 	 * @param json the JSON mapper that reads values files
 	 * @param project the project used to render citations
+	 * @param tests the test root that holds the scenario directory
 	 * @param directory the guidance's scenario directory
 	 * @param source the guidance file
 	 * @param scenarios receives the discovered scenarios
 	 * @throws IOException if the directory or a scenario cannot be read
 	 */
-	private static void readDirectory(JsonMapper json, Path project, Path directory, Path source,
+	private static void readDirectory(JsonMapper json, Path project, Path tests, Path directory, Path source,
 		List<Scenario> scenarios)
 		throws IOException
 	{
@@ -225,7 +226,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 					(path.getParent().equals(directory) || isCaseScenario(directory, path))).
 				sorted().toList())
 			{
-				addScenario(json, project, source, file, scenarios);
+				addScenario(json, project, tests, source, file, scenarios);
 			}
 		}
 	}
@@ -290,7 +291,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 						Path source = top.resolve(relative + ".md");
 						if (Files.isRegularFile(source))
 						{
-							addScenario(json, project, source, file, scenarios);
+							addScenario(json, project, tests, source, file, scenarios);
 							break;
 						}
 					}
@@ -316,12 +317,14 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 *
 	 * @param json      the JSON mapper that reads values files
 	 * @param project   the project used to render citations
+	 * @param tests     the test root that holds the scenario
 	 * @param source    the guidance file
 	 * @param file      the scenario file
 	 * @param scenarios receives the scenario
 	 * @throws IOException if the scenario, its fixtures or its values file cannot be read
 	 */
-	private static void addScenario(JsonMapper json, Path project, Path source, Path file, List<Scenario> scenarios)
+	private static void addScenario(JsonMapper json, Path project, Path tests, Path source, Path file,
+		List<Scenario> scenarios)
 		throws IOException
 	{
 		String citation;
@@ -334,14 +337,13 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		{
 			try
 			{
-				PromptTestFiles files = PromptTestFiles.read(json, file.getParent());
+				PromptTestFiles files = PromptTestFiles.read(json, tests, file.getParent());
 				List<FixtureFile> textFixtures = new ArrayList<>();
 				for (PromptTestFiles.Fixture fixture : files.fixtures())
 				{
 					if (fixture.text())
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(
-							files.directory().resolve(PromptTestFiles.FIXTURES).resolve(fixture.path()))));
+						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(files.source(fixture))));
 					}
 				}
 				format = new Current(files, textFixtures);

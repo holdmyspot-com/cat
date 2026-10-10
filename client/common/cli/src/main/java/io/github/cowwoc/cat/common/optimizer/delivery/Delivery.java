@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.ConcurrentEdit;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
@@ -50,6 +51,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -273,7 +275,9 @@ public final class Delivery
 	 * files under {@value PromptTestFiles#FIXTURES}. A test that delivery creates gets a new scenario titled with its
 	 * identifier. A test that edits a recorded scenario keeps that scenario's title and design goals; a recorded
 	 * scenario that does not follow the scenario format is replaced as a created one would be. Recorded fixture files
-	 * that the test no longer names are kept.
+	 * that the test no longer names are kept. A fixture that the test inherits unchanged from an ancestor
+	 * {@value PromptTestFiles#FIXTURES} directory, and that its own directory does not record, stays shared and is not
+	 * written.
 	 *
 	 * @param selected the delivered overlay, whose recorded files the edited scenarios start from
 	 * @param tests the prompt tests
@@ -306,9 +310,42 @@ public final class Delivery
 			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
 			Path fixtures = directory.resolve(PromptTestFiles.FIXTURES);
 			for (FixtureFile fixture : test.fixtures())
-				files.put(fixtures.resolve(fixture.path()), new FileContent(fixture.content().getBytes(UTF_8)));
+			{
+				byte[] content = fixture.content().getBytes(UTF_8);
+				Path path = fixtures.resolve(fixture.path());
+				if (workspace.readFile(selected, path).isEmpty() && isInheritedUnchanged(selected, directory,
+					fixture.path(), content))
+				{
+					continue;
+				}
+				files.put(path, new FileContent(content));
+			}
 		}
 		return new TestFiles(files, createdDirectories);
+	}
+
+	/**
+	 * Indicates whether a prompt test inherits a fixture unchanged: the innermost ancestor
+	 * {@value PromptTestFiles#FIXTURES} directory that records the fixture's path holds the same bytes.
+	 *
+	 * @param selected  the delivered overlay
+	 * @param directory the prompt test's directory, relative to the project
+	 * @param path      the fixture's path inside a {@value PromptTestFiles#FIXTURES} directory
+	 * @param content   the fixture's content
+	 * @return {@code true} if the inherited file holds {@code content}, or {@code false} if no ancestor records the path
+	 *   or the innermost one that does holds other bytes
+	 * @throws IOException if a recorded file cannot be read
+	 */
+	private boolean isInheritedUnchanged(Overlay selected, Path directory, String path, byte[] content)
+		throws IOException
+	{
+		for (Path inherited : PromptTestLocations.inheritedFixtures(directory))
+		{
+			Optional<FileContent> recorded = workspace.readFile(selected, inherited.resolve(path));
+			if (recorded.isPresent())
+				return Arrays.equals(recorded.get().bytes(), content);
+		}
+		return false;
 	}
 
 	/**

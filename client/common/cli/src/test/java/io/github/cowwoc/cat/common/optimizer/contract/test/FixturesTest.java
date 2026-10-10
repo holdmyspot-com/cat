@@ -88,6 +88,19 @@ public final class FixturesTest
 	}
 
 	/**
+	 * Reads a prompt test directory that is its own test root, so it inherits no fixtures.
+	 *
+	 * @param directory the prompt test directory
+	 * @return the prompt test's files
+	 * @throws IOException             if a file cannot be read
+	 * @throws ScenarioFormatException if the prompt test is refused
+	 */
+	private PromptTestFiles read(Path directory) throws IOException, ScenarioFormatException
+	{
+		return PromptTestFiles.read(json, directory, directory);
+	}
+
+	/**
 	 * Returns a test case.
 	 *
 	 * @param notes the value of {@code notes}
@@ -130,7 +143,7 @@ public final class FixturesTest
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			PromptTestFiles files = PromptTestFiles.read(json, promptTest(cleanup));
+			PromptTestFiles files = read(promptTest(cleanup));
 			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
 				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
 				new PromptTestFiles.Fixture("logo.png", false, Set.of())));
@@ -151,7 +164,7 @@ public final class FixturesTest
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			PromptTestFiles files = PromptTestFiles.read(json, promptTest(cleanup));
+			PromptTestFiles files = read(promptTest(cleanup));
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			Files.writeString(workspace.resolve("README.md"), "Project");
@@ -172,6 +185,53 @@ public final class FixturesTest
 	}
 
 	/**
+	 * Verifies that a prompt test also copies the fixtures of each directory between its test root and its own
+	 * directory, from the outermost inward, that a nearer directory's file replaces an outer file at the same path,
+	 * and that a {@code fixtures/} directory outside the test root is not read.
+	 *
+	 * @throws IOException             if a file cannot be written or read
+	 * @throws ScenarioFormatException if the prompt test is refused
+	 */
+	@Test
+	public void inheritsAncestorFixtures() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"test-root"));
+			Files.createDirectories(outside.resolve("fixtures"));
+			Files.writeString(outside.resolve("fixtures/outside.md"), "Not a fixture");
+			Path root = Files.createDirectories(outside.resolve("tests"));
+			Files.createDirectories(root.resolve("fixtures/docs"));
+			Files.writeString(root.resolve("fixtures/shared.md"), "From the test root");
+			Files.writeString(root.resolve("fixtures/docs/{{notes}}"), "From the test root");
+			Path guidance = Files.createDirectories(root.resolve("guidance"));
+			Files.createDirectories(guidance.resolve("fixtures/docs"));
+			Files.writeString(guidance.resolve("fixtures/AGENTS.md"), "Published on {{expected_outcome}}");
+			Files.writeString(guidance.resolve("fixtures/docs/{{notes}}"), "From the guidance");
+			Path directory = Files.createDirectories(guidance.resolve("case"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Files.createDirectories(directory.resolve("fixtures/docs"));
+			Files.writeString(directory.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the case");
+
+			PromptTestFiles files = PromptTestFiles.read(json, root, directory);
+			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
+				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
+				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
+				new PromptTestFiles.Fixture("shared.md", true, Set.of())));
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"workspace"));
+			Fixtures.copy(files, testCase("notes.md"), workspace);
+			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "docs/notes.md", "shared.md"));
+			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
+				isEqualTo("Published on 2025-03-04");
+			requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").endsWith("\nFrom the case");
+			requireThat(Files.readString(workspace.resolve("shared.md")), "shared").isEqualTo("From the test root");
+		}
+	}
+
+	/**
 	 * Verifies that a fixture whose path exists in the workspace as a file is refused before any fixture is written.
 	 *
 	 * @throws IOException             if a file cannot be written or read
@@ -183,7 +243,7 @@ public final class FixturesTest
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			PromptTestFiles files = PromptTestFiles.read(json, promptTest(cleanup));
+			PromptTestFiles files = read(promptTest(cleanup));
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			Files.createDirectories(workspace.resolve("docs"));
@@ -228,7 +288,7 @@ public final class FixturesTest
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			PromptTestFiles files = PromptTestFiles.read(json, promptTest(cleanup));
+			PromptTestFiles files = read(promptTest(cleanup));
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			try
@@ -272,7 +332,7 @@ public final class FixturesTest
 				  ]
 				}
 				""");
-			requireThat(PromptTestFiles.read(json, directory).testCases(), "testCases").
+			requireThat(read(directory).testCases(), "testCases").
 				isEqualTo(List.of(testCase("notes.md")));
 
 			Files.writeString(directory.resolve("values.json"), """
@@ -280,7 +340,7 @@ public final class FixturesTest
 				""");
 			try
 			{
-				PromptTestFiles.read(json, directory);
+				read(directory);
 				throw new AssertionError("An invalid committed test case was accepted");
 			}
 			catch (ScenarioFormatException e)
@@ -292,7 +352,7 @@ public final class FixturesTest
 			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), "## Scenario\n\nHello.\n");
 			try
 			{
-				PromptTestFiles.read(json, directory);
+				read(directory);
 				throw new AssertionError("A malformed scenario was accepted");
 			}
 			catch (ScenarioFormatException e)

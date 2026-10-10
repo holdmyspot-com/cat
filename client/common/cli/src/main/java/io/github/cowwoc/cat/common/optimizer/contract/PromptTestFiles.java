@@ -27,15 +27,15 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * A prompt test directory: its {@code scenario.md}, the files under its {@code fixtures/} directory and the test
- * cases of its values file.
+ * A prompt test directory: its {@code scenario.md}, its fixtures and the test cases of its values file.
  *
+ * @param root      the test root, which holds the prompt test directory or is that directory
  * @param directory the prompt test directory
  * @param scenario  the parsed scenario
  * @param fixtures  the fixture files, sorted by path
  * @param testCases the test cases of the values file, or an empty list if the directory has none
  */
-public record PromptTestFiles(Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
+public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
 	List<TestCase> testCases)
 {
 	/**
@@ -85,15 +85,21 @@ public record PromptTestFiles(Path directory, Scenario scenario, List<PromptTest
 	/**
 	 * Creates the files of a prompt test.
 	 *
+	 * @param root      the test root, which holds the prompt test directory or is that directory
 	 * @param directory the prompt test directory
 	 * @param scenario  the parsed scenario
 	 * @param fixtures  the fixture files, sorted by path
 	 * @param testCases the test cases of the values file, or an empty list if the directory has none
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}
 	 */
 	public PromptTestFiles
 	{
+		requireThat(root, "root").isNotNull();
 		requireThat(directory, "directory").isNotNull();
+		if (!directory.startsWith(root))
+			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
+				"\ndirectory: " + directory);
 		requireThat(scenario, "scenario").isNotNull();
 		fixtures = List.copyOf(fixtures);
 		testCases = List.copyOf(testCases);
@@ -101,35 +107,54 @@ public record PromptTestFiles(Path directory, Scenario scenario, List<PromptTest
 
 	/**
 	 * Reads a prompt test directory.
+	 * <p>
+	 * The prompt test's fixtures are the files under the {@code fixtures/} directories of the test root, of each
+	 * directory between it and the prompt test directory, and of the prompt test directory. A file of an inner
+	 * directory replaces the file at the same path of an outer one.
 	 *
 	 * @param json      the JSON mapper that reads the values file
+	 * @param root      the test root, which holds the prompt test directory or is that directory
 	 * @param directory the prompt test directory
 	 * @return the prompt test's files
-	 * @throws NullPointerException    if any of the arguments are null
-	 * @throws IOException             if a file cannot be read
-	 * @throws ScenarioFormatException if the scenario or the values file does not follow the format, a fixture is a
-	 *                                 symbolic link, or a committed test case is not valid for the prompt test
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the scenario or the values file does not follow the format, a fixture is a
+	 *                                  symbolic link, or a committed test case is not valid for the prompt test
 	 */
-	public static PromptTestFiles read(JsonMapper json, Path directory) throws IOException, ScenarioFormatException
+	public static PromptTestFiles read(JsonMapper json, Path root, Path directory)
+		throws IOException, ScenarioFormatException
 	{
 		requireThat(json, "json").isNotNull();
+		requireThat(root, "root").isNotNull();
 		requireThat(directory, "directory").isNotNull();
+		if (!directory.startsWith(root))
+			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
+				"\ndirectory: " + directory);
 		Path scenarioFile = directory.resolve(SCENARIO);
 		Scenario scenario = new ScenarioParser(scenarioFile + ": ", Files.readString(scenarioFile)).parse();
 		Set<String> declared = new HashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
 			declared.add(variable.name());
-		List<Fixture> fixtures = readFixtures(directory.resolve(FIXTURES), declared);
+		// A fixture of an inner directory replaces the ancestor's fixture at the same path
+		Map<String, Fixture> byPath = new HashMap<>();
+		for (Path fixtureDirectory : fixtureDirectories(root, directory))
+		{
+			for (Fixture fixture : readFixtures(fixtureDirectory, declared))
+				byPath.put(fixture.path(), fixture);
+		}
+		List<Fixture> fixtures = new ArrayList<>(byPath.values());
+		fixtures.sort(Comparator.comparing(Fixture::path));
 
 		Path valuesFile = directory.resolve(ValuesFile.NAME);
 		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
-			return new PromptTestFiles(directory, scenario, fixtures, List.of());
+			return new PromptTestFiles(root, directory, scenario, fixtures, List.of());
 		List<TestCase> testCases;
 		try (BufferedReader in = Files.newBufferedReader(valuesFile))
 		{
 			testCases = ValuesFile.read(json, in, valuesFile.toString());
 		}
-		PromptTestFiles files = new PromptTestFiles(directory, scenario, fixtures, List.of());
+		PromptTestFiles files = new PromptTestFiles(root, directory, scenario, fixtures, List.of());
 		for (int i = 0; i < testCases.size(); ++i)
 		{
 			List<String> problems = files.problems(testCases.get(i));
@@ -139,11 +164,35 @@ public record PromptTestFiles(Path directory, Scenario scenario, List<PromptTest
 					"prompt test: " + String.join("; ", problems));
 			}
 		}
-		return new PromptTestFiles(directory, scenario, fixtures, testCases);
+		return new PromptTestFiles(root, directory, scenario, fixtures, testCases);
 	}
 
 	/**
-	 * Lists the fixtures of a prompt test.
+	 * Returns the {@code fixtures} directories that a prompt test directory inherits, outermost first.
+	 *
+	 * @param root      the test root
+	 * @param directory the prompt test directory, at or below {@code root}
+	 * @return the {@code fixtures} directories of {@code root}, of each directory between them and of
+	 *   {@code directory}
+	 */
+	private static List<Path> fixtureDirectories(Path root, Path directory)
+	{
+		List<Path> fixtureDirectories = new ArrayList<>();
+		Path current = root;
+		fixtureDirectories.add(current.resolve(FIXTURES));
+		if (!directory.equals(root))
+		{
+			for (Path name : root.relativize(directory))
+			{
+				current = current.resolve(name);
+				fixtureDirectories.add(current.resolve(FIXTURES));
+			}
+		}
+		return fixtureDirectories;
+	}
+
+	/**
+	 * Lists the fixtures of one {@code fixtures/} directory.
 	 *
 	 * @param root     the {@code fixtures/} directory, which need not exist
 	 * @param declared the declared variable names
@@ -189,6 +238,29 @@ public record PromptTestFiles(Path directory, Scenario scenario, List<PromptTest
 		}
 		fixtures.sort(Comparator.comparing(Fixture::path));
 		return fixtures;
+	}
+
+	/**
+	 * Returns the file that a fixture is copied from.
+	 *
+	 * @param fixture one of this prompt test's fixtures
+	 * @return the file
+	 * @throws NullPointerException     if {@code fixture} is null
+	 * @throws IllegalArgumentException if {@code fixture} is not one of this prompt test's fixtures
+	 */
+	public Path source(Fixture fixture)
+	{
+		requireThat(fixture, "fixture").isNotNull();
+		if (!fixtures.contains(fixture))
+			throw new IllegalArgumentException("The fixture is not one of this prompt test's: " + fixture.path());
+		List<Path> fixtureDirectories = fixtureDirectories(root, directory);
+		for (Path fixtureDirectory : fixtureDirectories.reversed())
+		{
+			Path source = fixtureDirectory.resolve(fixture.path());
+			if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
+				return source;
+		}
+		throw new IllegalArgumentException("The fixture's file no longer exists: " + fixture.path());
 	}
 
 	/**

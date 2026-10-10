@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that, when the launcher answers `start` for the target with
-  [long-proposal.json](../fixtures/long-proposal.json), whose `proposal` holds about 25 KB of contract text, the
+  [long-proposal.json](../launcher/long-proposal.json), whose `proposal` holds about 25 KB of contract text, the
   skill shows that proposal to the user verbatim and leaves its confirmation to the user.
 
 ## Variables

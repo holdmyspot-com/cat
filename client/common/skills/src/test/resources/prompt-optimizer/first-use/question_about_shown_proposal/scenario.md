@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that, after the launcher has answered `start` for the target with
-  [long-proposal.json](../fixtures/long-proposal.json) and the skill has shown that proposal, the skill answers a
+  [long-proposal.json](../launcher/long-proposal.json) and the skill has shown that proposal, the skill answers a
   question about it from the shown proposal, without repeating it or running the launcher.
 
 ## Variables

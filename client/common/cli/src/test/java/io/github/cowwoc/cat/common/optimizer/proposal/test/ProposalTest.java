@@ -1485,8 +1485,8 @@ public final class ProposalTest
 			""");
 		TestCase committed = new TestCase(Map.of("tone", new TestValue.Text("a terse"), "audience",
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
-		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded,
-			List.of(), List.of(committed));
+		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests"),
+			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of(), List.of(committed));
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
