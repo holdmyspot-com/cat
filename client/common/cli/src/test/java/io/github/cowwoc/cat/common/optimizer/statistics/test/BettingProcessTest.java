@@ -356,7 +356,8 @@ public final class BettingProcessTest
 		// Requirement: R-S3
 		BigDecimal ninety = new BigDecimal("0.9");
 		BettingProcess below = BettingProcess.below(ninety, ninety);
-		requireThat(below.logValue(0, 0), "empty").isEqualTo(0.0);
+		// The weights of 1/3 have no exact double, so the logarithm of their sum is 0 only to within rounding
+		requireThat(below.logValue(0, 0), "empty").isBetween(-1.0e-12, true, 1.0e-12, true);
 		// (0 + 2/3 + 8/9) / 3 = 14/27
 		requireThat(below.logValue(1, 0), "onePass").isBetween(Math.log(14.0 / 27) - 1.0e-12, true,
 			Math.log(14.0 / 27) + 1.0e-12, true);
