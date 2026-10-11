@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| confinement_setting | The name of the vendor worker's setting that the plan relies on for write confinement, such as `allowedDirectories` |
+- **confinement_setting**: The name of the vendor worker's setting that the plan relies on for write confinement, such
+  as `allowedDirectories`
 
 ## Scenario
 
@@ -30,39 +29,35 @@ the gateway and worker adapter in separate clusters.
 
 ### authentic_capability_before_dependency
 
-kind: effect
-
-The review requires a bounded real vendor-worker check of the write confinement claimed for `{{confinement_setting}}` before fixing dependent
-interfaces. It does not treat the stub or configuration as behavior proof, and it does not require an end-to-end import
-result before the service exists.
+- **kind**: effect
+- **description**: The review requires a bounded real vendor-worker check of the write confinement claimed for
+  `{{confinement_setting}}` before fixing dependent interfaces. It does not treat the stub or configuration as behavior
+  proof, and it does not require an end-to-end import result before the service exists.
 
 ### produced_reference_at_use
 
-kind: effect
-
-The review exposes that `approvedDestinationRef` is unavailable when `ImportGateway` stages the import and requires a
-producer, publication point, and consumer validation or a changed staging order before that handoff is accepted.
+- **kind**: effect
+- **description**: The review exposes that `approvedDestinationRef` is unavailable when `ImportGateway` stages the
+  import and requires a producer, publication point, and consumer validation or a changed staging order before that
+  handoff is accepted.
 
 ### first_observation_recovery
 
-kind: effect
-
-The review requires ownership of the live worker and a recoverable completion path when the *first* `id()` read fails.
-It calls for a focused check that makes that first read fail and observes both successful completion and safe restart;
-it does not treat the later-read test as proof of this path.
+- **kind**: effect
+- **description**: The review requires ownership of the live worker and a recoverable completion path when the *first*
+  `id()` read fails. It calls for a focused check that makes that first read fail and observes both successful
+  completion and safe restart; it does not treat the later-read test as proof of this path.
 
 ### review_provenance_and_clusters
 
-kind: effect
-
-The review does not reuse revision 7's PASS without a verifiable comparison of the inputs its finding depended on; it
-requires a new affected-scope review when that comparison is unavailable. It releases dependent work after the
-producer's focused result is current, then checks the combined handoff before accepting dependent behavior, without
-claiming product acceptance from the plan review.
+- **kind**: effect
+- **description**: The review does not reuse revision 7's PASS without a verifiable comparison of the inputs its finding
+  depended on; it requires a new affected-scope review when that comparison is unavailable. It releases dependent work
+  after the producer's focused result is current, then checks the combined handoff before accepting dependent behavior,
+  without claiming product acceptance from the plan review.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/design-quality.md`
+  before its first governed action.

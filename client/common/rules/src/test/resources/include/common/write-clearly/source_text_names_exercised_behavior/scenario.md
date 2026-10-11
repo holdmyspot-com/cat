@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| handoff_code | The plan's code for the handoff from inspected prompt sources to the confirmed source contract, a capital letter and a digit such as `H2`, other than `W4` and `R3` |
+- **handoff_code**: The plan's code for the handoff from inspected prompt sources to the confirmed source contract, a
+  capital letter and a digit such as `H2`, other than `W4` and `R3`
 
 ## Scenario
 
@@ -35,52 +34,48 @@ learn its meaning.
 
 ### local_transition_named
 
-kind: effect
-
-For request 1: The Java test names the scheduler lease ending and cold store reopening. Its exception and option no
-longer claim that a process exited or restarted; the reported adoption recovery stays limited to the exercised boundary.
+- **kind**: effect
+- **description**: For request 1: The Java test names the scheduler lease ending and cold store reopening. Its exception
+  and option no longer claim that a process exited or restarted; the reported adoption recovery stays limited to the
+  exercised boundary.
 
 ### adjacent_format_corrected
 
-kind: effect
-
-For request 1: The status update names the client replacement and fake adapter reset without claiming the server
-restarted.
+- **kind**: effect
+- **description**: For request 1: The status update names the client replacement and fake adapter reset without claiming
+  the server restarted.
 
 ### actual_process_claim_preserved
 
-kind: guard
-
-For request 1: The process test may describe a child exit and replacement start because it exercises and observes both
-boundaries.
+- **kind**: guard
+- **description**: For request 1: The process test may describe a child exit and replacement start because it exercises
+  and observes both boundaries.
 
 ### source_language_describes_behavior
 
-kind: effect
-
-For request 2: The test name, Javadoc, and failure message identify adoption retrieval, source review, or the actual
-rejecting operation and result without retaining `{{handoff_code}}`. The test artifact has no interface use or explicit
-cross-reference that needs the exact plan code. They do not retain the unsupported restart claim.
+- **kind**: effect
+- **description**: For request 2: The test name, Javadoc, and failure message identify adoption retrieval, source
+  review, or the actual rejecting operation and result without retaining `{{handoff_code}}`. The test artifact has no
+  interface use or explicit cross-reference that needs the exact plan code. They do not retain the unsupported restart
+  claim.
 
 ### update_names_operation_and_result
 
-kind: effect
-
-For request 2: The status update names the candidate-capture operation and the observed failure rather than reporting
-only `W4`. The diagnostic names the retained-adoption validation failure rather than reporting only `R3`.
+- **kind**: effect
+- **description**: For request 2: The status update names the candidate-capture operation and the observed failure
+  rather than reporting only `W4`. The diagnostic names the retained-adoption validation failure rather than reporting
+  only `R3`.
 
 ### necessary_identifiers_retained
 
-kind: guard
-
-For request 2: The plan may retain `{{handoff_code}}` as a defined cross-reference, and the API documentation retains the literal `{{handoff_code}}`
-value with its caller-facing meaning. The correction does not ban decision-bearing identifiers.
+- **kind**: guard
+- **description**: For request 2: The plan may retain `{{handoff_code}}` as a defined cross-reference, and the API
+  documentation retains the literal `{{handoff_code}}` value with its caller-facing meaning. The correction does not ban
+  decision-bearing identifiers.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/write-clearly.md` before its first
-governed action.
-Selection of `rules/include/java/javadoc.md`, `rules/include/documentation/general.md`,
-`rules/include/common/check-assumptions.md` is permitted but not required.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
+  before its first governed action. Selection of `rules/include/java/javadoc.md`,
+  `rules/include/documentation/general.md`, `rules/include/common/check-assumptions.md` is permitted but not required.

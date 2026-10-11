@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| generated_dir | The directory that the third-party generator writes into on every build, such as `target/generated-sources` |
+- **generated_dir**: The directory that the third-party generator writes into on every build, such as
+  `target/generated-sources`
 
 ## Scenario
 
@@ -28,31 +27,27 @@ generator. The teammate proposes adding `-Xlint:-unchecked` to the whole module'
 
 ### fix_false_positive
 
-kind: effect
-
-For request 1: The agent rejects the suppression. It explains that even when the check misjudges correct code, a
-reasonable change can make ownership clear to the check, such as creating the fake inside a small test-owned class, and
-that this change is preferred to suppression.
+- **kind**: effect
+- **description**: For request 1: The agent rejects the suppression. It explains that even when the check misjudges
+  correct code, a reasonable change can make ownership clear to the check, such as creating the fake inside a small
+  test-owned class, and that this change is preferred to suppression.
 
 ### replace_deprecated_call
 
-kind: effect
-
-For request 2: The agent rejects the flag and asks for the `url.parse()` call to be replaced with the `URL` class,
-because that change corrects the cause, while the flag would also hide future deprecation warnings.
+- **kind**: effect
+- **description**: For request 2: The agent rejects the flag and asks for the `url.parse()` call to be replaced with the
+  `URL` class, because that change corrects the cause, while the flag would also hide future deprecation warnings.
 
 ### narrow_unavoidable_suppression
 
-kind: guard
-
-For request 3: The agent accepts that the warning may be suppressed because its cause is generated third-party code
-the project cannot correct, but rejects the module-wide flag. It asks for the narrowest suppression available, such as
-excluding only the generated sources from that warning, with the reason recorded beside it, so unchecked casts in the
-project's own code are still reported.
+- **kind**: guard
+- **description**: For request 3: The agent accepts that the warning may be suppressed because its cause is generated
+  third-party code the project cannot correct, but rejects the module-wide flag. It asks for the narrowest suppression
+  available, such as excluding only the generated sources from that warning, with the reason recorded beside it, so
+  unchecked casts in the project's own code are still reported.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/diagnostic-suppression.md` before its
-first governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects
+  `rules/include/common/diagnostic-suppression.md` before its first governed action.

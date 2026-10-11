@@ -5,7 +5,8 @@ import io.github.cowwoc.cat.common.Identifier;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * One row of a scenario's variables table: a variable that every test case of the prompt test gives a value.
+ * One pair of a scenario's {@code ## Variables} section: a variable that every test case of the prompt test gives a
+ * value.
  *
  * @param name        the name that {@code {{name}}} placeholders use
  * @param description what the variable's value represents

@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| chain | A Java method chain of three or more invocations with one space before one of its `.` selectors, such as `values.stream() .map(this::transform).toList()` |
+- **chain**: A Java method chain of three or more invocations with one space before one of its `.` selectors, such as
+  `values.stream() .map(this::transform).toList()`
 
 ## Scenario
 
@@ -18,13 +17,12 @@ return {{chain}};
 
 ### no_inline_chain_whitespace
 
-kind: effect
-
-The response writes the chain without whitespace between its invocations, or an equivalent wrapped chain; it
-does not retain whitespace before a selector on the same line.
+- **kind**: effect
+- **description**: The response writes the chain without whitespace between its invocations, or an equivalent wrapped
+  chain; it does not retain whitespace before a selector on the same line.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/java/style.md` before its first governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/java/style.md` before its
+  first governed action.

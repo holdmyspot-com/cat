@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| question | A support question whose answer is a quantity that the supplied failures stated in non-SI units, such as `How far is the office from the station?` |
+- **question**: A support question whose answer is a quantity that the supplied failures stated in non-SI units, such as
+  `How far is the office from the station?`
 
 ## Scenario
 
@@ -19,13 +18,11 @@ beside it, and run the prompt author in a copy of the project.
 
 ### guidance_outside_instruction_file
 
-kind: effect
-
-The units guidance is written in a new prompt file, not in `AGENTS.md`.
+- **kind**: effect
+- **description**: The units guidance is written in a new prompt file, not in `AGENTS.md`.
 
 ### reference_is_the_only_instruction_file_edit
 
-kind: effect
-
-`AGENTS.md` changes only by the reference that tells the agent when to read the new file, and the manifest cites the
-failures for both hunks.
+- **kind**: effect
+- **description**: `AGENTS.md` changes only by the reference that tells the agent when to read the new file, and the
+  manifest cites the failures for both hunks.

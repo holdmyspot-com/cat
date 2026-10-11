@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| question | A support question whose answer is a quantity that the supplied failures stated in non-SI units, such as `How far is the office from the station?` |
+- **question**: A support question whose answer is a quantity that the supplied failures stated in non-SI units, such as
+  `How far is the office from the station?`
 
 ## Scenario
 
@@ -20,12 +19,10 @@ Fill the prompt author's prompt with this contract, both failures and the author
 
 ### guide_file_corrected
 
-kind: effect
-
-The units guidance is added to `docs/style.md`, which the failing sessions already read.
+- **kind**: effect
+- **description**: The units guidance is added to `docs/style.md`, which the failing sessions already read.
 
 ### instruction_file_unchanged
 
-kind: effect
-
-`AGENTS.md` is unchanged.
+- **kind**: effect
+- **description**: `AGENTS.md` is unchanged.

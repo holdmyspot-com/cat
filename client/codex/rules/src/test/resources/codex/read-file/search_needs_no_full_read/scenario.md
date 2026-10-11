@@ -6,10 +6,17 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| notes | The release-notes file name under `docs/`, such as `release-notes.md` or `CHANGES.md` |
-| component | The component whose improvements the turn counts, one of: scheduler, cache, exporter, CLI, logging, configuration loader, retry policy, parser, importer, validator, uploader, report builder. Each release has exactly one line `- Improved the <component> so repeated runs finish sooner on large inputs.` |
+- **notes**: The release-notes file name under `docs/`, such as `release-notes.md` or `CHANGES.md`
+- **component**: The component whose improvements the turn counts, one of: scheduler, cache, exporter, CLI, logging,
+  configuration loader, retry policy, parser, importer, validator, uploader, report builder. Each release has exactly
+  one line `- Improved the <component> so repeated runs finish sooner on large inputs.`
+- **change**: The one sentence of release 4.173, the only release that requires callers to change their code, stating
+  what callers must change, such as "The exporter now stops with an error unless each call passes an explicit
+  destination."
+
+## Fixtures
+
+- **patterns**: `../fixtures/docs/\{\{notes\}\}`
 
 ## Scenario
 
@@ -19,15 +26,13 @@ How many releases in `docs/{{notes}}` improved the {{component}}? Answer with th
 
 ### search_is_sufficient
 
-kind: guard
-tool: read-at-most docs/{{notes}} 90
-
-No command reads the whole of `docs/{{notes}}`: receiving over 90% of its lines through any command is overreach for
-this task.
+- **kind**: guard
+- **tool**: `read-at-most docs/{{notes}} 90`
+- **description**: No command reads the whole of `docs/{{notes}}`: receiving over 90% of its lines through any command
+  is overreach for this task.
 
 ### searched_with_rg
 
-kind: guard
-
-The retained tool events count the matching lines with an `exec` call that runs `rg` on `docs/{{notes}}`, and contain
-no `read-file` call on it.
+- **kind**: guard
+- **description**: The retained tool events count the matching lines with an `exec` call that runs `rg` on
+  `docs/{{notes}}`, and contain no `read-file` call on it.

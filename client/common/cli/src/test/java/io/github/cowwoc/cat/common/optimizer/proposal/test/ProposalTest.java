@@ -1411,9 +1411,7 @@ public final class ProposalTest
 
 			## Variables
 
-			| Name | Description |
-			|---|---|
-			| tone | The tone of the summary. |
+			- **tone**: The tone of the summary.
 
 			## Scenario
 
@@ -1423,9 +1421,8 @@ public final class ProposalTest
 
 			### keeps_tone
 
-			kind: effect
-
-			The summary keeps the {{tone}} tone.
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
 			""";
 		Proposal edited = Proposal.of(contractAuthor(citation, recorded).proposal(session(output), PROFILES, SALT),
 			new Builder().build(), noLinks(), CONTROL_FILES, HostLogin.API_KEY,
@@ -1466,10 +1463,8 @@ public final class ProposalTest
 
 			## Variables
 
-			| Name | Description |
-			|---|---|
-			| tone | The tone of the summary. |
-			| audience | The reader of the summary. |
+			- **tone**: The tone of the summary.
+			- **audience**: The reader of the summary.
 
 			## Scenario
 
@@ -1479,14 +1474,14 @@ public final class ProposalTest
 
 			### keeps_tone
 
-			kind: effect
-
-			The summary keeps the {{tone}} tone.
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
 			""");
 		TestCase committed = new TestCase(Map.of("tone", new TestValue.Text("a terse"), "audience",
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
 		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests"),
-			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of(), List.of(committed));
+			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of("fixtures/**"), List.of(),
+			List.of(committed));
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),

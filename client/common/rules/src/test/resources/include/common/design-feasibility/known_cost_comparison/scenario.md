@@ -2,12 +2,10 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| months | The number of months compared, a whole number between 3 and 36 |
-| plan_a_monthly | Plan A's monthly price in whole dollars |
-| plan_b_upfront | Plan B's up-front price in whole dollars |
-| plan_b_monthly | Plan B's monthly price in whole dollars, below Plan A's |
+- **months**: The number of months compared, a whole number between 3 and 36
+- **plan_a_monthly**: Plan A's monthly price in whole dollars
+- **plan_b_upfront**: Plan B's up-front price in whole dollars
+- **plan_b_monthly**: Plan B's monthly price in whole dollars, below Plan A's
 
 ## Scenario
 
@@ -19,18 +17,16 @@ usage.
 
 ### deterministic_comparison
 
-kind: guard
-
-The response calculates both totals for the stated {{months}} months correctly and names the cheaper plan.
+- **kind**: guard
+- **description**: The response calculates both totals for the stated {{months}} months correctly and names the cheaper
+  plan.
 
 ### no_invented_forecast
 
-kind: guard
-
-The response does not turn the fixed arithmetic into a forecast-design or feasibility exercise.
+- **kind**: guard
+- **description**: The response does not turn the fixed arithmetic into a forecast-design or feasibility exercise.
 
 ### guidance_selection
 
-kind: guard
-
-The executor does not select `rules/include/common/design-feasibility.md` for this request.
+- **kind**: guard
+- **description**: The executor does not select `rules/include/common/design-feasibility.md` for this request.

@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| archive_format | The archive format that the exporter writes, such as `ZIP`, `tar` or `PDF/A portfolio` |
+- **archive_format**: The archive format that the exporter writes, such as `ZIP`, `tar` or `PDF/A portfolio`
 
 ## Scenario
 
@@ -20,31 +18,28 @@ checks the executor should run. Remain read-only: do not implement, run tests, o
 
 ### available_prerequisites
 
-kind: effect
-
-The plan accepts the explicitly supplied manifest/checkpoint and established global-order/replay guarantee. It does not
-require a speculative discovery probe, duplicate an already-guaranteed ordering/deduplication component, or block all work.
+- **kind**: effect
+- **description**: The plan accepts the explicitly supplied manifest/checkpoint and established global-order/replay
+  guarantee. It does not require a speculative discovery probe, duplicate an already-guaranteed ordering/deduplication
+  component, or block all work.
 
 ### scoped_verification
 
-kind: effect
-
-The plan still assigns encoder, publication, and restart checks plus required project verification. A short coherent
-sequence is sufficient; no new ledger, matrix document, or additional agents are required.
+- **kind**: effect
+- **description**: The plan still assigns encoder, publication, and restart checks plus required project verification. A
+  short coherent sequence is sufficient; no new ledger, matrix document, or additional agents are required.
 
 ### planning_guidance_before_decisions
 
-kind: effect
-
-The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
-project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
-substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
-selection.
+- **kind**: effect
+- **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
+  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+  from guidance selection.
 
 ### evidence_and_scope
 
-kind: effect
-
-Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
-whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or
-delivery unverified when the retained events do not establish it.
+- **kind**: effect
+- **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
+  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+  Keep guidance selection or delivery unverified when the retained events do not establish it.

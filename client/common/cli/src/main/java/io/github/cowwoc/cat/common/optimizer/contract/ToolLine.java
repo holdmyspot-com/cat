@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Parses the {@code tool:} line of an assertion into a {@link BuiltInTool}.
+ * Parses the {@code tool} of an assertion into a {@link BuiltInTool}.
  * <p>
  * Arguments are separated by whitespace. An argument that starts with a double quote extends to the next unescaped
  * double quote and may hold whitespace; inside it, {@code \"} stands for a double quote and {@code \\} for a backslash,

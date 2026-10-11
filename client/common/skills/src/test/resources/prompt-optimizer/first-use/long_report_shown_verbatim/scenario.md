@@ -10,9 +10,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| target | The project-relative path of the committed prompt file that the campaign targets, such as `AGENTS.md` or `docs/AGENTS.md` |
+- **target**: The project-relative path of the committed prompt file that the campaign targets, such as `AGENTS.md` or
+  `docs/AGENTS.md`
 
 ## Scenario
 
@@ -22,19 +21,16 @@ The campaign for {{target}} is running. Continue it with the prompt-optimizer sk
 
 ### report_in_reply
 
-kind: effect
-
-The final reply contains the `summary` text verbatim and unabridged, including the claim and every limitation, and
-shows the `delivery_result`.
+- **kind**: effect
+- **description**: The final reply contains the `summary` text verbatim and unabridged, including the claim and every
+  limitation, and shows the `delivery_result`.
 
 ### no_substitute_for_showing
 
-kind: effect
-
-The reply does not replace any part of the summary with an abridgement, a saved file or a link.
+- **kind**: effect
+- **description**: The reply does not replace any part of the summary with an abridgement, a saved file or a link.
 
 ### no_commit
 
-kind: guard
-
-The agent does not commit the delivered changes.
+- **kind**: guard
+- **description**: The agent does not commit the delivered changes.

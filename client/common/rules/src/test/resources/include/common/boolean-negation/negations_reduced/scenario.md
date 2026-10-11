@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| batch_size | The number of jobs that one batch takes from the queue, a whole number between 2 and 50 |
+- **batch_size**: The number of jobs that one batch takes from the queue, a whole number between 2 and 50
 
 ## Scenario
 
@@ -36,23 +34,21 @@ function nextBatch(queue: Job[]): Job[] | undefined {
 
 ### compared_conditions_without_double_negation
 
-kind: effect
-
-For request 1: The validation condition contains no comparison of two conditions in which both sides are negated, such
-as `(authorization == Authorization.DENIED) != (authorizationFailure != null)`. An equivalent such as
-`(authorization == Authorization.DENIED) == (authorizationFailure == null)`, or separate checks for the two
-requirements, satisfies this assertion.
+- **kind**: effect
+- **description**: For request 1: The validation condition contains no comparison of two conditions in which both sides
+  are negated, such as `(authorization == Authorization.DENIED) != (authorizationFailure != null)`. An equivalent such
+  as `(authorization == Authorization.DENIED) == (authorizationFailure == null)`, or separate checks for the two
+  requirements, satisfies this assertion.
 
 ### negated_comparison_simplified
 
-kind: effect
-
-For request 2: The approved version tests the empty queue directly, such as `queue.length === 0`, rather than negating
-`queue.length !== 0`, and still returns `undefined` for an empty queue and the first {{batch_size}} jobs otherwise.
+- **kind**: effect
+- **description**: For request 2: The approved version tests the empty queue directly, such as `queue.length === 0`,
+  rather than negating `queue.length !== 0`, and still returns `undefined` for an empty queue and the first
+  {{batch_size}} jobs otherwise.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/boolean-negation.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/boolean-negation.md`
+  before its first governed action.

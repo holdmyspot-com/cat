@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| parsed_document | The document that the service reads and parses in one synchronous call, such as `manifest` or `signature list` |
+- **parsed_document**: The document that the service reads and parses in one synchronous call, such as `manifest` or
+  `signature list`
 
 ## Scenario
 
@@ -20,25 +19,28 @@ Identify the smallest changes needed before the plan is handed to implementers. 
 
 ### durable_retrieval_after_composed_transitions
 
-kind: effect
-
-The review identifies that the final publication check cannot obtain the required historical receipts from the cancelled-origin resume event. It requires an authoritative surviving identity and retrieval path from persisted state for each required receipt across the complete interruption→acknowledgment→cancellation→resumption chain, or keeps that handoff unresolved. It does not treat prior publication or separate pairwise tests as proof.
+- **kind**: effect
+- **description**: The review identifies that the final publication check cannot obtain the required historical receipts
+  from the cancelled-origin resume event. It requires an authoritative surviving identity and retrieval path from
+  persisted state for each required receipt across the complete interruption→acknowledgment→cancellation→resumption
+  chain, or keeps that handoff unresolved. It does not treat prior publication or separate pairwise tests as proof.
 
 ### first_use_restart_proof
 
-kind: effect
-
-The review assigns a fault/restart check after the active reference is cleared but before the publication check's first use. The check must show that publication verifies the original accepted work without importing it twice, or fails closed when the historical evidence is missing or invalid.
+- **kind**: effect
+- **description**: The review assigns a fault/restart check after the active reference is cleared but before the
+  publication check's first use. The check must show that publication verifies the original accepted work without
+  importing it twice, or fails closed when the historical evidence is missing or invalid.
 
 ### no_unneeded_historical_lookup
 
-kind: guard
-
-The review does not require a durable historical lookup or crash-recovery test for the direct immutable byte-array handoff to the synchronous parser. It distinguishes that case because the consumer receives and uses the exact value before any intervening lifecycle transition.
+- **kind**: guard
+- **description**: The review does not require a durable historical lookup or crash-recovery test for the direct
+  immutable byte-array handoff to the synchronous parser. It distinguishes that case because the consumer receives and
+  uses the exact value before any intervening lifecycle transition.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/design-quality.md`
+  before its first governed action.

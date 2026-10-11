@@ -307,7 +307,7 @@ public final class Markdown
 				recordedFile = Optional.of(recorded);
 			else
 				recordedFile = Optional.empty();
-			String written = deliveredTest.scenarioFile(recordedFile);
+			String written = deliveredTest.scenarioFile(recordedFile, List.of());
 			if (written.equals(recorded))
 			{
 				text.append("- Scenario: recorded at `").append(citation).append("`, unchanged\n");

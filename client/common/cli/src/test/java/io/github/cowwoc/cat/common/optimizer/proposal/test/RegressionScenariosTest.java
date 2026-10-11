@@ -245,9 +245,7 @@ public final class RegressionScenariosTest
 			Files.writeString(current.resolve("scenario.md"), """
 				## Variables
 
-				| Name | Description |
-				|---|---|
-				| notes | The notes file name |
+				- **notes**: The notes file name
 
 				## Scenario
 
@@ -257,9 +255,8 @@ public final class RegressionScenariosTest
 
 				### summary_given
 
-				kind: effect
-
-				The reply summarizes the notes.
+				- **kind**: effect
+				- **description**: The reply summarizes the notes.
 				""");
 			Files.createDirectories(current.resolve("fixtures"));
 			Files.writeString(current.resolve("fixtures/{{notes}}"), "Release 4.2 shipped.");
@@ -293,20 +290,20 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that the contract author receives, with a prompt test, the text fixtures that it inherits from the
-	 * {@code fixtures/} directories between its test root and its own directory, whether the test root is a module's
-	 * test resources or {@code .cat/tests}.
+	 * Verifies that the contract author receives, with a prompt test, the text fixtures that its fixture patterns name
+	 * in shared {@code fixtures/} directories, and that a prompt test without a {@code ## Fixtures} section receives
+	 * none of the files that its ancestors hold.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
 	@Test
-	public void readsInheritedFixtures() throws IOException
+	public void readsSharedFixtures() throws IOException
 	{
 		// Requirement: R-I3, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
-				"inherited-fixtures"));
+				"shared-fixtures"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("reading.md");
 			Files.writeString(guidance, "Read files whole.");
@@ -320,47 +317,44 @@ public final class RegressionScenariosTest
 			Path reading = root.resolve("plugin/src/test/resources/common/reading");
 			Files.createDirectories(reading.resolve("fixtures"));
 			Files.writeString(reading.resolve("fixtures/AGENTS.md"), "Shared by the reading tests.");
-			Path wording = root.resolve(".cat/tests/wording");
-			for (Path directory : List.of(reading.resolve("whole_file_read"), wording.resolve("brief_reply")))
-			{
-				Files.createDirectories(directory);
-				Files.writeString(directory.resolve("scenario.md"), """
-					## Variables
+			String scenario = """
+				## Variables
 
-					| Name | Description |
-					|---|---|
-					| topic | The topic to summarize |
+				- **topic**: The topic to summarize
 
-					## Scenario
+				## Scenario
 
-					Summarize {{topic}}.
+				Summarize {{topic}}.
 
-					## Assertions
+				## Assertions
 
-					### summary_given
+				### summary_given
 
-					kind: effect
-
-					The reply summarizes the topic.
-					""");
-			}
+				- **kind**: effect
+				- **description**: The reply summarizes the topic.
+				""";
+			Path wholeFileRead = Files.createDirectories(reading.resolve("whole_file_read"));
+			Files.writeString(wholeFileRead.resolve("scenario.md"), "## Fixtures\n\n- **patterns**: " +
+				"`../fixtures/**`, `../../../fixtures/shared.md`\n\n" + scenario);
+			Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
+			Files.writeString(briefReply.resolve("scenario.md"), scenario);
 
 			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home")).
 				scenarios();
 			requireThat(found.size(), "found.size()").isEqualTo(2);
-			for (RegressionScenarios.Scenario scenario : found)
+			for (RegressionScenarios.Scenario regression : found)
 			{
-				if (!(scenario.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
-					throw new AssertionError("Not the current format: " + scenario.format());
+				if (!(regression.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
+					throw new AssertionError("Not the current format: " + regression.format());
 				List<FixtureFile> expected;
-				if (scenario.citation().startsWith(".cat/tests/"))
-					expected = List.of(new FixtureFile("shared.md", "Shared by every guidance."));
+				if (regression.citation().startsWith(".cat/tests/"))
+					expected = List.of();
 				else
 				{
 					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests."),
 						new FixtureFile("shared.md", "Shared by every guidance."));
 				}
-				requireThat(texts, "texts").withContext(scenario.citation(), "citation").isEqualTo(expected);
+				requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
 			}
 		}
 	}

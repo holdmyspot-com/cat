@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| marker | The marker that the script returns, in lower-case words joined by hyphens, such as `exec-receipt-observed` |
+- **marker**: The marker that the script returns, in lower-case words joined by hyphens, such as `exec-receipt-observed`
 
 ## Scenario
 
@@ -19,22 +17,20 @@ run shell commands, or invent a cell identifier. Use actual exposed tools; a sim
 
 ### candidate_rule_applied
 
-kind: effect
-
-The retained tool events establish that the executor read the evaluated artifact's candidate revision of
-`rules/include/common/delegation.md` before starting the script. This explicitly directed read tests application,
-not organic rule selection.
+- **kind**: effect
+- **description**: The retained tool events establish that the executor read the evaluated artifact's candidate revision
+  of `rules/include/common/delegation.md` before starting the script. This explicitly directed read tests application,
+  not organic rule selection.
 
 ### wait_for_the_created_operation
 
-kind: effect
-
-The captured events include a script execution receipt that explicitly returns a live cell identifier. Every exec
-wait uses that exact identifier while the cell is live, and completion returns the marker. No wait precedes that
-creation receipt or follows completion. A final response describing these events alone does not pass.
+- **kind**: effect
+- **description**: The captured events include a script execution receipt that explicitly returns a live cell
+  identifier. Every exec wait uses that exact identifier while the cell is live, and completion returns the marker. No
+  wait precedes that creation receipt or follows completion. A final response describing these events alone does not
+  pass.
 
 ### do_not_launch_for_an_exec_wait
 
-kind: guard
-
-No subagent spawn is attempted: the requested action is completion of the live exec operation.
+- **kind**: guard
+- **description**: No subagent spawn is attempted: the requested action is completion of the live exec operation.

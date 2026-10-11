@@ -19,14 +19,12 @@ import java.util.Set;
 public final class ScenarioTest
 {
 	/**
-	 * A variables table with one variable.
+	 * A variables section with one variable.
 	 */
 	private static final String VARIABLES = """
 		## Variables
 
-		| Name | Description |
-		|---|---|
-		| notes | The release-notes file name |
+		- **notes**: The release-notes file name
 		""";
 	/**
 	 * A single turn.
@@ -44,9 +42,8 @@ public final class ScenarioTest
 
 		### summary_given
 
-		kind: effect
-
-		The reply summarizes the notes.
+		- **kind**: effect
+		- **description**: The reply summarizes the notes.
 		""";
 
 	/**
@@ -77,7 +74,7 @@ public final class ScenarioTest
 
 	/**
 	 * Verifies that the design's example parses into its variables, its one turn and its assertion with a
-	 * {@code tool:} line.
+	 * {@code tool}.
 	 *
 	 * @throws ScenarioFormatException if the scenario is refused
 	 */
@@ -94,11 +91,9 @@ public final class ScenarioTest
 
 			## Variables
 
-			| Name | Description |
-			|---|---|
-			| notes | The release-notes file name, without its directory |
-			| release | The release whose publication date the turn asks for |
-			| before | Log text placed before the release's entry |
+			- **notes**: The release-notes file name, without its directory
+			- **release**: The release whose publication date the turn asks for
+			- **before**: Log text placed before the release's entry
 
 			## Scenario
 
@@ -108,10 +103,9 @@ public final class ScenarioTest
 
 			### whole_file_read
 
-			kind: effect
-			tool: read-in-full docs/{{notes}}
-
-			The agent reads all of `docs/{{notes}}` before it answers.
+			- **kind**: effect
+			- **tool**: `read-in-full docs/{{notes}}`
+			- **description**: The agent reads all of `docs/{{notes}}` before it answers.
 			""");
 		requireThat(scenario.variables(), "variables").isEqualTo(List.of(
 			new VariableDeclaration("notes", "The release-notes file name, without its directory"),
@@ -125,7 +119,8 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that numbered turn subsections become the turns in order, each keeping its inner lines.
+	 * Verifies that numbered turn subsections become the turns in order, each keeping its inner lines, whether a turn
+	 * is prose or a {@code description}.
 	 *
 	 * @throws ScenarioFormatException if the scenario is refused
 	 */
@@ -139,9 +134,9 @@ public final class ScenarioTest
 
 			### Turn 1
 
-			Open `docs/{{notes}}`.
+			- **description**: Open `docs/{{notes}}`.
 
-			Then wait.
+			  Then wait.
 
 			### Turn 2
 
@@ -150,6 +145,61 @@ public final class ScenarioTest
 			""" + ASSERTIONS);
 		requireThat(scenario.turns(), "turns").isEqualTo(List.of("Open `docs/{{notes}}`.\n\nThen wait.",
 			"Summarize it."));
+	}
+
+	/**
+	 * Verifies that a {@code ## Scenario} section of key-value pairs reads as the prose that its {@code description}
+	 * holds.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesScenarioDescription() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario prose = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
+		Scenario pairs = Scenario.parse(VARIABLES + """
+			## Scenario
+
+			- **description**: Summarize `docs/{{notes}}`.
+			""" + ASSERTIONS);
+		requireThat(pairs, "pairs").isEqualTo(prose);
+	}
+
+	/**
+	 * Verifies that a value continues on the lines indented under its item, across paragraphs, and may start on the
+	 * line after its key.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesMultiLineValues() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse("""
+			## Variables
+
+			- **notes**: The release-notes file name,
+			  without its directory
+			- **release**:
+			  The release to look up
+
+			""" + TURN + """
+
+			## Assertions
+
+			### summary_given
+
+			- **kind**: effect
+			- **description**: The reply summarizes the notes.
+
+			  It names every release.
+			""");
+		requireThat(scenario.variables(), "variables").isEqualTo(List.of(
+			new VariableDeclaration("notes", "The release-notes file name,\nwithout its directory"),
+			new VariableDeclaration("release", "The release to look up")));
+		requireThat(scenario.assertions().getFirst().statement(), "statement").
+			isEqualTo("The reply summarizes the notes.\n\nIt names every release.");
 	}
 
 	/**
@@ -170,36 +220,16 @@ public final class ScenarioTest
 			```markdown
 			## Assertions
 			### Turn 7
+			- **kind**: effect
 			```
 
 			""" + ASSERTIONS);
 		requireThat(scenario.turns(), "turns").isEqualTo(List.of(
-			"Fix this file:\n\n```markdown\n## Assertions\n### Turn 7\n```"));
+			"Fix this file:\n\n```markdown\n## Assertions\n### Turn 7\n- **kind**: effect\n```"));
 	}
 
 	/**
-	 * Verifies that an escaped pipe in a table cell becomes a literal pipe.
-	 *
-	 * @throws ScenarioFormatException if the scenario is refused
-	 */
-	@Test
-	public void unescapesPipe() throws ScenarioFormatException
-	{
-		// Requirement: R-C20
-		Scenario scenario = Scenario.parse("""
-			## Variables
-
-			| Name | Description |
-			|---|---|
-			| notes | Either `a \\| b` or `c` |
-
-			""" + TURN + ASSERTIONS);
-		requireThat(scenario.variables(), "variables").isEqualTo(List.of(
-			new VariableDeclaration("notes", "Either `a | b` or `c`")));
-	}
-
-	/**
-	 * Verifies that a guard assertion without a {@code tool:} line is decided by the judge, and that the expected
+	 * Verifies that a guard assertion without a {@code tool} is decided by the judge, and that the expected
 	 * outcome's placeholder is allowed in it.
 	 *
 	 * @throws ScenarioFormatException if the scenario is refused
@@ -213,12 +243,32 @@ public final class ScenarioTest
 
 			### answer_correct
 
-			kind: guard
-
-			The reply states {{expected_outcome}}.
+			- **kind**: guard
+			- **description**: The reply states {{expected_outcome}}.
 			""");
 		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(new Assertion("answer_correct",
 			AssertionKind.GUARD, null, "The reply states {{expected_outcome}}.")));
+	}
+
+	/**
+	 * Verifies that a {@code tool} holding backticks is read from a code span with a longer delimiter.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesToolHoldingBackticks() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + """
+			## Assertions
+
+			### command_quoted
+
+			- **kind**: effect
+			- **tool**: ``exact-text "Run `make`."``
+			- **description**: The reply quotes the command.
+			""");
+		requireThat(scenario.assertions().getFirst().tool(), "tool").isEqualTo("exact-text \"Run `make`.\"");
 	}
 
 	/**
@@ -242,6 +292,41 @@ public final class ScenarioTest
 	}
 
 	/**
+	 * Verifies that the fixture patterns are read from code spans, inline or as nested items, and that a scenario
+	 * without a {@code ## Fixtures} section copies its own {@code fixtures/} directory.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void readsFixturePatterns() throws ScenarioFormatException
+	{
+		// Requirement: R-C21
+		requireThat(Scenario.fixturePatterns(VARIABLES + TURN + ASSERTIONS), "default").
+			isEqualTo(List.of("fixtures/**"));
+		String inline = VARIABLES + """
+
+			## Fixtures
+
+			- **patterns**: `fixtures/**`, `../fixtures/{AGENTS.md,docs/glossary.md}`
+
+			""" + TURN + ASSERTIONS;
+		requireThat(Scenario.fixturePatterns(inline), "inline").
+			isEqualTo(List.of("fixtures/**", "../fixtures/{AGENTS.md,docs/glossary.md}"));
+		requireThat(Scenario.parse(inline), "parsed").isEqualTo(Scenario.parse(VARIABLES + TURN + ASSERTIONS));
+		String nested = VARIABLES + """
+
+			## Fixtures
+
+			- **patterns**:
+			  - `fixtures/**`
+			  - `../fixtures/docs/\\{\\{notes\\}\\}`
+
+			""" + TURN + ASSERTIONS;
+		requireThat(Scenario.fixturePatterns(nested), "nested").
+			isEqualTo(List.of("fixtures/**", "../fixtures/docs/\\{\\{notes\\}\\}"));
+	}
+
+	/**
 	 * Verifies that a scenario without a required section is refused, naming the section.
 	 */
 	@Test
@@ -260,7 +345,7 @@ public final class ScenarioTest
 	public void refusesDuplicateSection()
 	{
 		// Requirement: R-C20
-		requireThat(refusal(VARIABLES + TURN + TURN + ASSERTIONS), "refusal").startsWith("Line 9:");
+		requireThat(refusal(VARIABLES + TURN + TURN + ASSERTIONS), "refusal").startsWith("Line 7:");
 	}
 
 	/**
@@ -271,42 +356,96 @@ public final class ScenarioTest
 	{
 		// Requirement: R-C20
 		requireThat(refusal(VARIABLES + "## Notes\n\nText.\n" + TURN + ASSERTIONS), "refusal").
-			startsWith("Line 6:").contains("## Notes");
+			startsWith("Line 4:").contains("## Notes");
 	}
 
 	/**
-	 * Verifies that a variables table whose columns are not exactly {@code Name} and {@code Description} is refused.
+	 * Verifies that prose in a section of key-value pairs is refused at its line, including an assertion written with
+	 * bare key lines.
 	 */
 	@Test
-	public void refusesOtherColumns()
+	public void refusesProseInKeyValueSection()
 	{
 		// Requirement: R-C20
-		requireThat(refusal("""
-			## Variables
+		requireThat(refusal("## Variables\n\nThe notes file name.\n" + TURN + ASSERTIONS), "variablesProse").
+			startsWith("Line 3:").contains("key-value");
+		requireThat(refusal(VARIABLES + "The notes file name.\n" + TURN + ASSERTIONS), "afterPair").
+			startsWith("Line 4:");
+		requireThat(refusal(VARIABLES + "## Fixtures\n\nfixtures/**\n" + TURN + ASSERTIONS), "fixturesProse").
+			startsWith("Line 6:");
+		requireThat(refusal(VARIABLES + TURN + """
+			## Assertions
 
-			| Name | Value |
-			|---|---|
-			| notes | a.md |
-			""" + TURN + ASSERTIONS), "renamed").startsWith("Line 3:");
-		requireThat(refusal("""
-			## Variables
+			### summary_given
 
-			| Name | Description |
-			|---|---|
-			| notes | The file | extra |
-			""" + TURN + ASSERTIONS), "extraCell").startsWith("Line 5:");
+			kind: effect
+
+			The reply summarizes the notes.
+			"""), "keyLines").startsWith("Line 11:");
 	}
 
 	/**
-	 * Verifies that text after the variables table is refused, so that a table split by a blank line is not read in
-	 * part.
+	 * Verifies that a {@code ## Scenario} section or turn that mixes prose with key-value pairs is refused at the
+	 * line where the second form starts.
 	 */
 	@Test
-	public void refusesTextAfterTable()
+	public void refusesMixedScenario()
 	{
 		// Requirement: R-C20
-		requireThat(refusal(VARIABLES + "\n| release | The release |\n" + TURN + ASSERTIONS), "refusal").
-			startsWith("Line 7:");
+		requireThat(refusal(VARIABLES + """
+			## Scenario
+
+			Summarize `docs/{{notes}}`.
+			- **description**: Twice.
+			""" + ASSERTIONS), "pairAfterProse").startsWith("Line 7:");
+		requireThat(refusal(VARIABLES + """
+			## Scenario
+
+			- **description**: Summarize `docs/{{notes}}`.
+			Then stop.
+			""" + ASSERTIONS), "proseAfterPair").startsWith("Line 7:");
+		requireThat(refusal(VARIABLES + """
+			## Scenario
+
+			### Turn 1
+
+			Open it.
+
+			- **description**: Twice.
+			""" + ASSERTIONS), "turn").startsWith("Line 10:");
+	}
+
+	/**
+	 * Verifies that a key that its section does not define is refused at its line, naming the key.
+	 */
+	@Test
+	public void refusesUndefinedKey()
+	{
+		// Requirement: R-C20
+		requireThat(refusal(VARIABLES + "## Scenario\n\n- **turn**: Summarize `docs/{{notes}}`.\n" + ASSERTIONS),
+			"scenario").startsWith("Line 6:").contains("turn");
+		requireThat(refusal(VARIABLES + TURN + """
+			## Assertions
+
+			### summary_given
+
+			- **kind**: effect
+			- **timeout**: 5
+			- **description**: The reply summarizes the notes.
+			"""), "assertion").startsWith("Line 12:").contains("timeout");
+		requireThat(refusal(VARIABLES + "## Fixtures\n\n- **files**: `fixtures/**`\n" + TURN + ASSERTIONS),
+			"fixtures").startsWith("Line 6:").contains("files");
+	}
+
+	/**
+	 * Verifies that a {@code ## Scenario} section of key-value pairs whose {@code description} has no value is refused.
+	 */
+	@Test
+	public void refusesEmptyDescription()
+	{
+		// Requirement: R-C20
+		requireThat(refusal(VARIABLES + "## Scenario\n\n- **description**:\n" + ASSERTIONS), "refusal").
+			startsWith("Line 6:").contains("description");
 	}
 
 	/**
@@ -316,40 +455,26 @@ public final class ScenarioTest
 	public void refusesNoVariable()
 	{
 		// Requirement: R-C20
-		requireThat(refusal("""
-			## Variables
-
-			| Name | Description |
-			|---|---|
-
-			## Scenario
-
-			Summarize the notes.
-
-			""" + ASSERTIONS), "refusal").contains("no variable");
+		requireThat(refusal("## Variables\n\n## Scenario\n\nSummarize the notes.\n\n" + ASSERTIONS), "refusal").
+			contains("no variable");
 	}
 
 	/**
-	 * Verifies that a variable name that is not snake_case, a repeated variable and the reserved name are refused at
-	 * their rows.
+	 * Verifies that a variable name that is not snake_case, a repeated variable, the reserved name and a variable
+	 * without a description are refused at their items.
 	 */
 	@Test
-	public void refusesInvalidVariableNames()
+	public void refusesInvalidVariables()
 	{
 		// Requirement: R-C20
-		requireThat(refusal("""
-			## Variables
-
-			| Name | Description |
-			|---|---|
-			| releaseNotes | The notes |
-			""" + TURN + ASSERTIONS), "camelCase").startsWith("Line 5:");
-		requireThat(refusal(VARIABLES + """
-			| notes | The notes again |
-			""" + TURN + ASSERTIONS), "duplicate").startsWith("Line 6:");
-		requireThat(refusal(VARIABLES + """
-			| expected_outcome | The answer |
-			""" + TURN + ASSERTIONS), "reserved").startsWith("Line 6:").contains("expected_outcome");
+		requireThat(refusal("## Variables\n\n- **releaseNotes**: The notes\n" + TURN + ASSERTIONS), "camelCase").
+			startsWith("Line 3:");
+		requireThat(refusal(VARIABLES + "- **notes**: The notes again\n" + TURN + ASSERTIONS), "duplicate").
+			startsWith("Line 4:");
+		requireThat(refusal(VARIABLES + "- **expected_outcome**: The answer\n" + TURN + ASSERTIONS), "reserved").
+			startsWith("Line 4:").contains("expected_outcome");
+		requireThat(refusal(VARIABLES + "- **release**:\n" + TURN + ASSERTIONS), "noDescription").
+			startsWith("Line 4:").contains("release");
 	}
 
 	/**
@@ -367,7 +492,7 @@ public final class ScenarioTest
 
 			Summarize `docs/{{notes}}`.
 
-			""" + ASSERTIONS), "startsAtTwo").startsWith("Line 8:");
+			""" + ASSERTIONS), "startsAtTwo").startsWith("Line 6:");
 		requireThat(refusal(VARIABLES + """
 			## Scenario
 
@@ -375,7 +500,7 @@ public final class ScenarioTest
 
 			Summarize `docs/{{notes}}`.
 
-			""" + ASSERTIONS), "otherHeading").startsWith("Line 8:");
+			""" + ASSERTIONS), "otherHeading").startsWith("Line 6:");
 		requireThat(refusal(VARIABLES + """
 			## Scenario
 
@@ -385,7 +510,7 @@ public final class ScenarioTest
 
 			Summarize `docs/{{notes}}`.
 
-			""" + ASSERTIONS), "textBeforeTurn").startsWith("Line 8:");
+			""" + ASSERTIONS), "textBeforeTurn").startsWith("Line 6:");
 	}
 
 	/**
@@ -400,33 +525,34 @@ public final class ScenarioTest
 
 			### Turn 1
 
-			""" + ASSERTIONS), "refusal").startsWith("Line 8:");
+			""" + ASSERTIONS), "refusal").startsWith("Line 6:");
 	}
 
 	/**
-	 * Verifies that an assertion without a kind, with an unknown kind, with an unknown key line, without a statement
-	 * or with a {@code tool:} line that names no built-in tool or gives it unsuitable arguments is refused at the line
-	 * concerned.
+	 * Verifies that an assertion without a kind, with an unknown kind, without a description, with a repeated key, or
+	 * with a {@code tool} that is not a code span, names no built-in tool or gives it unsuitable arguments is refused
+	 * at the line concerned.
 	 */
 	@Test
 	public void refusesMalformedAssertions()
 	{
 		// Requirement: R-C20
 		String heading = VARIABLES + TURN + "## Assertions\n\n### summary_given\n\n";
-		requireThat(refusal(heading + "The reply summarizes the notes.\n"), "noKind").startsWith("Line 13:");
-		requireThat(refusal(heading + "kind: maybe\n\nThe reply summarizes the notes.\n"), "unknownKind").
-			startsWith("Line 13:");
-		requireThat(refusal(heading + "kind: effect\ntimeout: 5\n\nThe reply summarizes the notes.\n"),
-			"unknownKey").startsWith("Line 14:").contains("timeout");
-		requireThat(refusal(heading + "kind: effect\nThe reply summarizes the notes.\n"), "statementWithoutBlank").
-			startsWith("Line 14:");
-		requireThat(refusal(heading + "kind: effect\n"), "noStatement").startsWith("Line 11:");
-		requireThat(refusal(heading + "kind: effect\ntool:\n\nThe reply summarizes the notes.\n"), "blankTool").
-			startsWith("Line 14:");
-		requireThat(refusal(heading + "kind: effect\ntool: spell-check\n\nThe reply summarizes the notes.\n"),
-			"unknownCheck").startsWith("Line 14:").contains("spell-check");
-		requireThat(refusal(heading + "kind: effect\ntool: count \"^- \" 3 1\n\nThe reply summarizes the notes.\n"),
-			"unsuitedArguments").startsWith("Line 14:").contains("exceeds");
+		String description = "- **description**: The reply summarizes the notes.\n";
+		requireThat(refusal(heading + description), "noKind").startsWith("Line 9:").contains("kind");
+		requireThat(refusal(heading + "- **kind**: maybe\n" + description), "unknownKind").startsWith("Line 11:");
+		requireThat(refusal(heading + "- **kind**: effect\n"), "noDescription").startsWith("Line 9:").
+			contains("description");
+		requireThat(refusal(heading + "- **kind**: effect\n- **kind**: guard\n" + description), "repeatedKey").
+			startsWith("Line 12:").contains("kind");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**:\n" + description), "blankTool").
+			startsWith("Line 12:");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: read-in-full docs/{{notes}}\n" + description),
+			"toolOutsideCodeSpan").startsWith("Line 12:").contains("code span");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `spell-check`\n" + description),
+			"unknownTool").startsWith("Line 12:").contains("spell-check");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `count \"^- \" 3 1`\n" + description),
+			"unsuitedArguments").startsWith("Line 12:").contains("exceeds");
 	}
 
 	/**
@@ -437,12 +563,12 @@ public final class ScenarioTest
 	public void refusesInvalidAssertionIds()
 	{
 		// Requirement: R-C20
-		String body = "kind: effect\n\nThe reply summarizes the notes.\n\n";
+		String body = "- **kind**: effect\n- **description**: The reply summarizes the notes.\n\n";
 		String start = VARIABLES + TURN + "## Assertions\n\n";
-		requireThat(refusal(start + "### Summary Given\n\n" + body), "notSnakeCase").startsWith("Line 11:");
+		requireThat(refusal(start + "### Summary Given\n\n" + body), "notSnakeCase").startsWith("Line 9:");
 		requireThat(refusal(start + "### summary_given\n\n" + body + "### summary_given\n\n" + body),
-			"duplicate").startsWith("Line 17:");
-		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 11:").
+			"duplicate").startsWith("Line 14:");
+		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 9:").
 			contains("expected_outcome");
 	}
 
@@ -454,44 +580,68 @@ public final class ScenarioTest
 	{
 		// Requirement: R-C20
 		requireThat(refusal(VARIABLES + TURN + "## Assertions\n\nThe reply is short.\n"), "prose").
-			startsWith("Line 11:");
+			startsWith("Line 9:");
 		requireThat(refusal(VARIABLES + TURN + "## Assertions\n"), "empty").contains("no assertion");
 	}
 
 	/**
-	 * Verifies that a placeholder for an undeclared variable in a turn, an assertion statement or a {@code tool:}
-	 * line is refused at its line.
+	 * Verifies that a placeholder for an undeclared variable in a turn, an assertion's description or its
+	 * {@code tool} is refused at its line.
 	 */
 	@Test
 	public void refusesUndeclaredPlaceholder()
 	{
 		// Requirement: R-C20
 		requireThat(refusal(VARIABLES + "## Scenario\n\nSummarize `{{note}}`.\n\n" + ASSERTIONS), "turn").
-			startsWith("Line 8:").contains("{{note}}");
+			startsWith("Line 6:").contains("{{note}}");
 		requireThat(refusal(VARIABLES + TURN + """
 			## Assertions
 
 			### summary_given
 
-			kind: effect
-			tool: read-in-full docs/{{file}}
-
-			The reply summarizes the notes.
-			"""), "tool").startsWith("Line 14:").contains("{{file}}");
+			- **kind**: effect
+			- **tool**: `read-in-full docs/{{file}}`
+			- **description**: The reply summarizes the notes.
+			"""), "tool").startsWith("Line 12:").contains("{{file}}");
 		requireThat(refusal(VARIABLES + TURN + """
 			## Assertions
 
 			### summary_given
 
-			kind: effect
+			- **kind**: effect
+			- **description**: The reply summarizes {{release}}.
+			"""), "statement").startsWith("Line 12:").contains("{{release}}");
+	}
 
-			The reply summarizes {{release}}.
-			"""), "statement").startsWith("Line 15:").contains("{{release}}");
+	/**
+	 * Verifies that a fixture pattern outside a code span, without a {@code fixtures} directory, with a glob before
+	 * that directory, with nothing after it or with an absolute path is refused at its line, as is a
+	 * {@code patterns} key without a pattern.
+	 */
+	@Test
+	public void refusesMalformedPatterns()
+	{
+		// Requirement: R-C21
+		String start = VARIABLES + "## Fixtures\n\n";
+		String end = "\n" + TURN + ASSERTIONS;
+		requireThat(refusal(start + "- **patterns**: fixtures/**\n" + end), "outsideCodeSpan").
+			startsWith("Line 6:").contains("code span");
+		requireThat(refusal(start + "- **patterns**: `docs/**`\n" + end), "noFixtures").startsWith("Line 6:").
+			contains("fixtures");
+		requireThat(refusal(start + "- **patterns**: `*/fixtures/**`\n" + end), "globBeforeFixtures").
+			startsWith("Line 6:");
+		requireThat(refusal(start + "- **patterns**: `fixtures`\n" + end), "nothingAfter").startsWith("Line 6:");
+		requireThat(refusal(start + "- **patterns**: `/tests/fixtures/**`\n" + end), "absolute").
+			startsWith("Line 6:");
+		requireThat(refusal(start + "- **patterns**:\n" + end), "none").startsWith("Line 6:");
+		requireThat(refusal(start + "- **patterns**:\n  - fixtures/**\n" + end), "nestedOutsideCodeSpan").
+			startsWith("Line 7:");
 	}
 
 	/**
 	 * Verifies that a rendered scenario parses back into the same variables, turns and assertions, including a
-	 * description holding a pipe, numbered turns and a {@code tool:} line.
+	 * description that spans several lines, numbered turns, a turn that holds a heading or a key-value line, and a
+	 * {@code tool} that holds backticks.
 	 *
 	 * @throws ScenarioFormatException if the rendered scenario is refused
 	 */
@@ -500,18 +650,29 @@ public final class ScenarioTest
 	{
 		// Requirement: R-W11
 		Scenario scenario = new Scenario(
-			List.of(new VariableDeclaration("notes", "The notes file | without its directory"),
+			List.of(new VariableDeclaration("notes", "The notes file | without\nits directory"),
 				new VariableDeclaration("release", "The release to look up")),
-			List.of("Open `docs/{{notes}}`.", "When was {{release}} published?\n\nAnswer with a date."),
+			List.of("Open `docs/{{notes}}`.", "When was {{release}} published?\n\nAnswer with a date.",
+				"Fix this:\n## Notes\n- **kind**: effect"),
 			List.of(new Assertion("whole_file_read", AssertionKind.EFFECT, "read-in-full docs/{{notes}}",
-					"The agent reads all of `docs/{{notes}}`."),
+					"The agent reads all of `docs/{{notes}}`.\n\nIt reads nothing else."),
+				new Assertion("command_quoted", AssertionKind.EFFECT, "exact-text \"Run `make`.\"",
+					"The reply quotes the command."),
 				new Assertion("no_edit", AssertionKind.GUARD, null, "The agent changes no file.")));
 		requireThat(Scenario.parse(scenario.render()), "parsed").isEqualTo(scenario);
 
-		Scenario single = new Scenario(List.of(new VariableDeclaration("notes", "The release-notes file name")),
-			List.of("Summarize `docs/{{notes}}`."),
-			List.of(new Assertion("summary_given", AssertionKind.EFFECT, null, "The reply summarizes the notes.")));
-		requireThat(single.render(), "single").isEqualTo(VARIABLES + "\n" + TURN + "\n" + ASSERTIONS);
+		requireThat(single().render(), "single").isEqualTo(VARIABLES + "\n" + TURN + "\n" + ASSERTIONS);
+
+		Scenario heading = new Scenario(single().variables(), List.of("Fix `docs/{{notes}}`:\n## Notes"),
+			single().assertions());
+		requireThat(heading.render(), "heading").isEqualTo(VARIABLES + """
+
+			## Scenario
+
+			- **description**: Fix `docs/{{notes}}`:
+			  ## Notes
+
+			""" + ASSERTIONS);
 	}
 
 	/**
@@ -542,13 +703,14 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that rewriting a recorded scenario file keeps its title, the text before its first section and its
-	 * design goals, wherever they lie, and replaces every other section with the rendered scenario.
+	 * Verifies that rewriting a recorded scenario file keeps its title, the text before its first section, its design
+	 * goals and its fixture patterns, wherever they lie, appends the given patterns, and replaces every other section
+	 * with the rendered scenario.
 	 *
 	 * @throws ScenarioFormatException if the recorded file or the written file is refused
 	 */
 	@Test
-	public void rewrittenFileKeepsTitleAndDesignGoals() throws ScenarioFormatException
+	public void rewriteKeepsPreambleAndPatterns() throws ScenarioFormatException
 	{
 		// Requirement: R-W11
 		String recorded = """
@@ -556,11 +718,14 @@ public final class ScenarioTest
 
 			Written for the 2.0 release.
 
+			## Fixtures
+
+			- **patterns**:
+			  - `../fixtures/**`
+
 			## Variables
 
-			| Name | Description |
-			|---|---|
-			| file | The notes |
+			- **file**: The notes
 
 			## Design Goals
 
@@ -577,13 +742,10 @@ public final class ScenarioTest
 
 			### summary_given
 
-			kind: effect
-
-			The reply summarizes the notes.
+			- **kind**: effect
+			- **description**: The reply summarizes the notes.
 			""";
-		Scenario scenario = single();
-		String file = scenario.rewrite(recorded);
-		requireThat(file, "file").isEqualTo("""
+		String head = """
 			# Release notes
 
 			Written for the 2.0 release.
@@ -595,8 +757,25 @@ public final class ScenarioTest
 			## Scenario
 			```
 
-			""" + VARIABLES + "\n" + TURN + "\n" + ASSERTIONS);
+			""" + VARIABLES + "\n";
+		Scenario scenario = single();
+		String file = scenario.rewrite(recorded, List.of());
+		requireThat(file, "file").isEqualTo(head + """
+			## Fixtures
+
+			- **patterns**: `../fixtures/**`
+
+			""" + TURN + "\n" + ASSERTIONS);
 		requireThat(Scenario.parse(file), "parsed").isEqualTo(scenario);
+
+		String appended = scenario.rewrite(recorded, List.of("fixtures/**"));
+		requireThat(Scenario.fixturePatterns(appended), "appended").isEqualTo(List.of("../fixtures/**", "fixtures/**"));
+
+		String withoutSection = scenario.rewrite(VARIABLES + TURN + ASSERTIONS, List.of("fixtures/a\\{b\\}.md"));
+		requireThat(Scenario.fixturePatterns(withoutSection), "withoutSection").
+			isEqualTo(List.of("fixtures/**", "fixtures/a\\{b\\}.md"));
+		requireThat(scenario.rewrite(VARIABLES + TURN + ASSERTIONS, List.of()), "default").
+			isEqualTo(VARIABLES + "\n" + TURN + "\n" + ASSERTIONS);
 	}
 
 	/**
@@ -613,15 +792,15 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that a scenario whose text would read back differently, such as a turn holding a section heading, is
-	 * refused rather than written.
+	 * Verifies that a scenario whose text would read back differently, such as a description that ends with spaces,
+	 * is refused rather than written.
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*## Notes.*")
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*differently.*")
 	public void refusesTextThatReadsBackDifferently()
 	{
 		// Requirement: R-W11
-		new Scenario(List.of(new VariableDeclaration("notes", "The notes file")),
-			List.of("Summarize `docs/{{notes}}`.\n## Notes\nKeep it short."),
+		new Scenario(List.of(new VariableDeclaration("notes", "The notes file  ")),
+			List.of("Summarize `docs/{{notes}}`."),
 			List.of(new Assertion("summary_given", AssertionKind.EFFECT, null, "The reply summarizes the notes."))).
 			render();
 	}

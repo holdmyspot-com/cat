@@ -2,10 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| confidence | The confidence level of the procedure, a percentage such as `95%` or `99%` |
-| error_rate | The largest rate of false certification, 100% less `confidence`, such as `5%` for 95% |
+- **confidence**: The confidence level of the procedure, a percentage such as `95%` or `99%`
+- **error_rate**: The largest rate of false certification, 100% less `confidence`, such as `5%` for 95%
 
 ## Scenario
 
@@ -20,14 +18,12 @@ the time. It does not assign a {{confidence}} posterior probability to a specifi
 
 ### material_distinction_retained
 
-kind: effect
-
-The answer retains the distinction between the procedure's repeated-use error guarantee and the probability of one
-specific certificate; concision does not turn the former into the latter.
+- **kind**: effect
+- **description**: The answer retains the distinction between the procedure's repeated-use error guarantee and the
+  probability of one specific certificate; concision does not turn the former into the latter.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/write-clearly.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
+  before its first governed action.

@@ -21,21 +21,26 @@ import java.util.regex.Pattern;
 final class ScenarioParser
 {
 	private static final String VARIABLES = "Variables";
+	private static final String FIXTURES = "Fixtures";
 	private static final String SCENARIO = "Scenario";
 	private static final String ASSERTIONS = "Assertions";
+	private static final String DESIGN_GOALS = "Design Goals";
 	/**
 	 * The level-2 sections that a scenario may have.
 	 */
-	private static final String DESIGN_GOALS = "Design Goals";
-	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, SCENARIO, ASSERTIONS);
+	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, FIXTURES, SCENARIO, ASSERTIONS);
+	private static final String PATTERNS = "patterns";
+	private static final String KIND = "kind";
+	private static final String TOOL = "tool";
+	private static final String DESCRIPTION = "description";
 	/**
-	 * Matches a table separator cell, such as {@code ---} or {@code :---:}.
+	 * Matches a key-value pair {@code - **key**: value}, capturing the key and the value's first line.
 	 */
-	private static final Pattern SEPARATOR_CELL = Pattern.compile(":?-+:?");
+	private static final Pattern ITEM = Pattern.compile("- \\*\\*([^*]+)\\*\\*:(.*)");
 	/**
-	 * Matches a key line of an assertion, capturing the key and its value.
+	 * The indentation of the lines that continue a pair's value.
 	 */
-	private static final Pattern KEY_LINE = Pattern.compile("([A-Za-z][A-Za-z_-]*):(.*)");
+	private static final String INDENT = "  ";
 	/**
 	 * Matches the opening of a fenced code block, capturing its fence.
 	 */
@@ -57,6 +62,18 @@ final class ScenarioParser
 	 * @param end     the index of the line after its last line
 	 */
 	private record Section(int heading, int end)
+	{
+	}
+
+	/**
+	 * A key-value pair.
+	 *
+	 * @param key   the key
+	 * @param line  the index of the line that holds the key
+	 * @param end   the index of the line after its value
+	 * @param value the value, with the indentation of its continuation lines removed, stripped
+	 */
+	private record Pair(String key, int line, int end, String value)
 	{
 	}
 
@@ -129,6 +146,8 @@ final class ScenarioParser
 				throw new ScenarioFormatException(location + "The scenario has no ## " + name + " section");
 		}
 		List<VariableDeclaration> variables = variables(sections.get(VARIABLES));
+		if (sections.containsKey(FIXTURES))
+			patterns(sections.get(FIXTURES));
 		Set<String> names = new HashSet<>();
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
@@ -145,6 +164,37 @@ final class ScenarioParser
 			// Every rule of the constructor is checked above with its line
 			throw new AssertionError("A checked scenario was refused", e);
 		}
+	}
+
+	/**
+	 * Returns the fixture patterns, without checking the other sections.
+	 *
+	 * @return the patterns of the {@code ## Fixtures} section, or {@value FixturePattern#DEFAULT} alone if the content
+	 *         has no such section
+	 * @throws ScenarioFormatException if a section is unknown or repeated, a title follows a section, or the
+	 *                                 {@code ## Fixtures} section is malformed
+	 */
+	List<String> fixturePatterns() throws ScenarioFormatException
+	{
+		List<String> declared = declaredPatterns();
+		if (declared.isEmpty())
+			return List.of(FixturePattern.DEFAULT);
+		return declared;
+	}
+
+	/**
+	 * Returns the fixture patterns that the {@code ## Fixtures} section declares, without checking the other sections.
+	 *
+	 * @return the patterns, or an empty list if the content has no {@code ## Fixtures} section
+	 * @throws ScenarioFormatException if a section is unknown or repeated, a title follows a section, or the
+	 *                                 {@code ## Fixtures} section is malformed
+	 */
+	List<String> declaredPatterns() throws ScenarioFormatException
+	{
+		Section section = sections().get(FIXTURES);
+		if (section == null)
+			return List.of();
+		return patterns(section);
 	}
 
 	/**
@@ -210,7 +260,7 @@ final class ScenarioParser
 				if (!SECTIONS.contains(name))
 				{
 					throw error(i, "the section ## " + name + " is not part of the scenario format. Sections: ## Design " +
-						"Goals, ## Variables, ## Scenario and ## Assertions");
+						"Goals, ## Variables, ## Fixtures, ## Scenario and ## Assertions");
 				}
 				if (sections.containsKey(name) || name.equals(current))
 					throw error(i, "the section ## " + name + " appears twice");
@@ -228,101 +278,217 @@ final class ScenarioParser
 	}
 
 	/**
-	 * Parses the variables table.
+	 * Parses the variables.
 	 *
 	 * @param section the {@code ## Variables} section
-	 * @return the declared variables, in table order
-	 * @throws ScenarioFormatException if the table is malformed or declares no valid variable
+	 * @return the declared variables, in order
+	 * @throws ScenarioFormatException if the section holds prose or declares no valid variable
 	 */
 	private List<VariableDeclaration> variables(Section section) throws ScenarioFormatException
 	{
-		int first = section.heading() + 1;
-		while (first < section.end() && lines.get(first).isBlank())
-			++first;
-		if (first == section.end())
-			throw error(section.heading(), "the ## Variables section has no table");
-		int end = first;
-		while (end < section.end() && !lines.get(end).isBlank())
-			++end;
-		for (int i = end; i < section.end(); ++i)
+		List<Pair> pairs = pairs(section.heading() + 1, section.end(), "the ## Variables section holds only " +
+			"key-value pairs, such as - **notes**: The release-notes file name");
+		if (pairs.isEmpty())
 		{
-			if (!lines.get(i).isBlank())
-				throw error(i, "text follows the variables table; the section holds only the table");
+			throw error(section.heading(), "the ## Variables section declares no variable, so the prompt test has no " +
+				"test cases to vary");
 		}
-
-		List<String> header = cells(first);
-		if (!header.equals(List.of("Name", "Description")))
-			throw error(first, "the variables table's columns must be exactly Name and Description");
-		if (first + 1 == end)
-			throw error(first, "the variables table has no separator row");
-		List<String> separator = cells(first + 1);
-		if (separator.size() != 2 || !separator.stream().allMatch(cell -> SEPARATOR_CELL.matcher(cell).matches()))
-			throw error(first + 1, "the variables table's second row must be its separator, such as |---|---|");
-
 		List<VariableDeclaration> variables = new ArrayList<>();
-		Set<String> names = new HashSet<>();
-		for (int i = first + 2; i < end; ++i)
+		for (Pair pair : pairs)
 		{
-			List<String> row = cells(i);
-			if (row.size() != 2)
-			{
-				throw error(i, "a row of the variables table has " + row.size() + " cells, but it must have 2. Write " +
-					"a literal | in a cell as \\|");
-			}
-			String name = row.get(0);
+			String name = pair.key();
 			if (!Identifier.SNAKE_CASE.matcher(name).matches())
-				throw error(i, "the variable name '" + name + "' must be lowercase words joined by underscores");
+				throw error(pair.line(), "the variable name '" + name + "' must be lowercase words joined by underscores");
 			if (name.equals(TestCase.EXPECTED_OUTCOME))
 			{
-				throw error(i, "the variable name " + TestCase.EXPECTED_OUTCOME + " is reserved for the test case's " +
-					"expected outcome");
+				throw error(pair.line(), "the variable name " + TestCase.EXPECTED_OUTCOME + " is reserved for the test " +
+					"case's expected outcome");
 			}
-			if (!names.add(name))
-				throw error(i, "the variable " + name + " is declared twice");
-			if (row.get(1).isBlank())
-				throw error(i, "the variable " + name + " has no description");
-			variables.add(new VariableDeclaration(name, row.get(1)));
-		}
-		if (variables.isEmpty())
-		{
-			throw error(first, "the variables table declares no variable, so the prompt test has no test cases to " +
-				"vary");
+			if (pair.value().isEmpty())
+				throw error(pair.line(), "the variable " + name + " has no description");
+			variables.add(new VariableDeclaration(name, pair.value()));
 		}
 		return variables;
 	}
 
 	/**
-	 * Splits a table row into its cells.
+	 * Parses the fixture patterns, written as code spans separated by commas or as nested items that each hold one.
 	 *
-	 * @param index the row's line index
-	 * @return the stripped cells, with each {@code \|} replaced by {@code |}
-	 * @throws ScenarioFormatException if the row does not start and end with {@code |}
+	 * @param section the {@code ## Fixtures} section
+	 * @return the patterns, in order
+	 * @throws ScenarioFormatException if the section holds prose, a key other than {@code patterns}, or no pattern, or
+	 *                                 a pattern is malformed
 	 */
-	private List<String> cells(int index) throws ScenarioFormatException
+	private List<String> patterns(Section section) throws ScenarioFormatException
 	{
-		String row = lines.get(index).strip();
-		if (row.length() < 2 || !row.startsWith("|") || !row.endsWith("|") || row.endsWith("\\|"))
-			throw error(index, "a table row must start and end with |");
-		List<String> cells = new ArrayList<>();
-		StringBuilder cell = new StringBuilder();
-		for (int i = 1; i < row.length() - 1; ++i)
+		List<Pair> pairs = pairs(section.heading() + 1, section.end(), "the ## Fixtures section holds only " +
+			"key-value pairs, such as - **patterns**: `fixtures/**`");
+		requireKeys(pairs, Set.of(PATTERNS), PATTERNS);
+		Pair pair = find(pairs, PATTERNS);
+		if (pair == null)
+			throw error(section.heading(), "the ## Fixtures section has no - **patterns**: pair");
+
+		List<String> patterns = new ArrayList<>();
+		if (firstValue(pair).isEmpty())
 		{
-			char character = row.charAt(i);
-			if (character == '\\' && row.charAt(i + 1) == '|')
+			for (int i = pair.line() + 1; i < pair.end(); ++i)
 			{
-				cell.append('|');
-				++i;
+				String line = lines.get(i);
+				if (line.isBlank())
+					continue;
+				String nested = line.substring(INDENT.length());
+				List<String> spans = List.of();
+				if (nested.startsWith("- "))
+					spans = codeSpans(i, nested.substring("- ".length()));
+				if (spans.size() != 1)
+				{
+					throw error(i, "a nested pattern must be a list item that holds one code span, such as " +
+						"- `fixtures/**`");
+				}
+				patterns.add(pattern(i, spans.getFirst()));
 			}
-			else if (character == '|')
-			{
-				cells.add(cell.toString().strip());
-				cell.setLength(0);
-			}
-			else
-				cell.append(character);
 		}
-		cells.add(cell.toString().strip());
-		return cells;
+		else
+		{
+			for (String span : codeSpans(pair.line(), pair.value()))
+				patterns.add(pattern(pair.line(), span));
+		}
+		if (patterns.isEmpty())
+			throw error(pair.line(), "the key patterns names no pattern, such as `fixtures/**`");
+		return patterns;
+	}
+
+	/**
+	 * Reads code spans separated by commas.
+	 *
+	 * @param index the index of the line that holds them
+	 * @param text  the text
+	 * @return the content of each span, in order
+	 * @throws ScenarioFormatException if {@code text} holds anything other than code spans separated by commas
+	 */
+	private List<String> codeSpans(int index, String text) throws ScenarioFormatException
+	{
+		try
+		{
+			return CodeSpan.parseList(text);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw error(index, e.getMessage());
+		}
+	}
+
+	/**
+	 * Validates a fixture pattern.
+	 *
+	 * @param index   the index of the line that holds it
+	 * @param pattern the pattern
+	 * @return {@code pattern}
+	 * @throws ScenarioFormatException if the pattern is malformed
+	 */
+	private String pattern(int index, String pattern) throws ScenarioFormatException
+	{
+		try
+		{
+			FixturePattern.parse(pattern);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw error(index, e.getMessage());
+		}
+		return pattern;
+	}
+
+	/**
+	 * Reads the key-value pairs of a range of lines. Each pair is an item {@code - **key**: value} whose value continues
+	 * on the following blank lines and lines indented by two spaces.
+	 *
+	 * @param start the index of the first line
+	 * @param end   the index of the line after the last
+	 * @param prose the problem to report for a line that is neither a pair nor part of one's value
+	 * @return the pairs, in order
+	 * @throws ScenarioFormatException if a line is neither a pair nor part of one's value, or a key appears twice
+	 */
+	private List<Pair> pairs(int start, int end, String prose) throws ScenarioFormatException
+	{
+		List<Pair> pairs = new ArrayList<>();
+		Set<String> keys = new HashSet<>();
+		String key = null;
+		int keyLine = -1;
+		List<String> value = new ArrayList<>();
+		for (int i = start; i < end; ++i)
+		{
+			String line = lines.get(i);
+			Matcher item = ITEM.matcher(line);
+			if (item.matches())
+			{
+				if (key != null)
+					pairs.add(new Pair(key, keyLine, i, String.join("\n", value).strip()));
+				key = item.group(1);
+				if (!keys.add(key))
+					throw error(i, "the key " + key + " appears twice");
+				keyLine = i;
+				value.clear();
+				value.add(item.group(2));
+			}
+			else if (line.isBlank())
+				value.add("");
+			else if (key != null && line.startsWith(INDENT))
+				value.add(line.substring(INDENT.length()));
+			else
+				throw error(i, prose);
+		}
+		if (key != null)
+			pairs.add(new Pair(key, keyLine, end, String.join("\n", value).strip()));
+		return pairs;
+	}
+
+	/**
+	 * Rejects a key that a block does not define.
+	 *
+	 * @param pairs   the block's pairs
+	 * @param defined the keys that the block defines
+	 * @param names   the defined keys, as the problem lists them
+	 * @throws ScenarioFormatException if a pair's key is not defined
+	 */
+	private void requireKeys(List<Pair> pairs, Set<String> defined, String names) throws ScenarioFormatException
+	{
+		for (Pair pair : pairs)
+		{
+			if (!defined.contains(pair.key()))
+				throw error(pair.line(), "the key " + pair.key() + " is not defined here. Keys: " + names);
+		}
+	}
+
+	/**
+	 * Finds a pair by its key.
+	 *
+	 * @param pairs the pairs
+	 * @param key   the key
+	 * @return the pair with that key, or {@code null} if no pair has it
+	 */
+	private static Pair find(List<Pair> pairs, String key)
+	{
+		for (Pair pair : pairs)
+		{
+			if (pair.key().equals(key))
+				return pair;
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the part of a pair's value on its key's line.
+	 *
+	 * @param pair the pair
+	 * @return the text after the key's colon, stripped
+	 */
+	private String firstValue(Pair pair)
+	{
+		Matcher item = ITEM.matcher(lines.get(pair.line()));
+		if (!item.matches())
+			throw new AssertionError("A pair's line is not an item: " + lines.get(pair.line()));
+		return item.group(2).strip();
 	}
 
 	/**
@@ -358,7 +524,7 @@ final class ScenarioParser
 		List<Integer> headings = subsections(section);
 		if (headings.isEmpty())
 		{
-			String turn = text(section.heading() + 1, section.end());
+			String turn = turn(section.heading() + 1, section.end(), "the ## Scenario section");
 			if (turn.isEmpty())
 				throw error(section.heading(), "the ## Scenario section has no turn");
 			return List.of(turn);
@@ -375,12 +541,48 @@ final class ScenarioParser
 				throw error(heading, "the subsection ### " + title + " must be ### " + expected + ": turns are " +
 					"numbered from 1 in order");
 			}
-			String turn = text(heading + 1, end(headings, k, section));
+			String turn = turn(heading + 1, end(headings, k, section), "### " + expected);
 			if (turn.isEmpty())
 				throw error(heading, expected + " is empty");
 			turns.add(turn);
 		}
 		return turns;
+	}
+
+	/**
+	 * Parses one turn, written as prose or as a {@code description} pair.
+	 *
+	 * @param start the index of the first line
+	 * @param end   the index of the line after the last
+	 * @param block the section or subsection that holds the turn, as the problem names it
+	 * @return the turn, or an empty string if every line is blank
+	 * @throws ScenarioFormatException if the turn mixes prose with pairs, has a key other than {@code description}, or
+	 *                                 its {@code description} has no value
+	 */
+	private String turn(int start, int end, String block) throws ScenarioFormatException
+	{
+		int first = start;
+		while (first < end && lines.get(first).isBlank())
+			++first;
+		if (first == end)
+			return "";
+		String mixed = block + " mixes prose with key-value pairs; write the turn either as prose or as " +
+			"- **description**: followed by the turn";
+		if (fenced[first] || !ITEM.matcher(lines.get(first)).matches())
+		{
+			for (int i = first; i < end; ++i)
+			{
+				if (!fenced[i] && ITEM.matcher(lines.get(i)).matches())
+					throw error(i, mixed);
+			}
+			return text(start, end);
+		}
+		List<Pair> pairs = pairs(start, end, mixed);
+		requireKeys(pairs, Set.of(DESCRIPTION), DESCRIPTION);
+		Pair description = pairs.getFirst();
+		if (description.value().isEmpty())
+			throw error(description.line(), "the key description has no value; write the turn after it");
+		return description.value();
 	}
 
 	/**
@@ -423,68 +625,80 @@ final class ScenarioParser
 	}
 
 	/**
-	 * Parses one assertion's body.
+	 * Parses one assertion's pairs.
 	 *
 	 * @param id      the assertion's identifier
 	 * @param heading the index of its heading line
-	 * @param end     the index of the line after its body
+	 * @param end     the index of the line after its last line
 	 * @return the assertion
-	 * @throws ScenarioFormatException if the body does not start with its key lines or has no statement
+	 * @throws ScenarioFormatException if the assertion holds prose or an undefined key, lacks its {@code kind} or
+	 *                                 {@code description}, or holds an invalid value
 	 */
 	private Assertion assertion(String id, int heading, int end) throws ScenarioFormatException
 	{
-		int i = heading + 1;
-		while (i < end && lines.get(i).isBlank())
-			++i;
-		if (i == end)
-			throw error(heading, "the assertion " + id + " has no kind: line and no statement");
-		AssertionKind kind = null;
-		String tool = null;
-		for (; i < end && !lines.get(i).isBlank(); ++i)
+		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + id + " holds only key-value pairs, such as " +
+			"- **kind**: effect");
+		requireKeys(pairs, Set.of(KIND, TOOL, DESCRIPTION), "kind, tool and description");
+
+		Pair kindPair = find(pairs, KIND);
+		if (kindPair == null)
 		{
-			Matcher keyLine = KEY_LINE.matcher(lines.get(i).strip());
-			if (!keyLine.matches())
-			{
-				if (kind == null)
-					throw error(i, "an assertion's body must start with kind: effect or kind: guard");
-				throw error(i, "a key line has the form key: value; put a blank line before the assertion's statement");
-			}
-			String key = keyLine.group(1);
-			String value = keyLine.group(2).strip();
-			if (kind == null)
-			{
-				if (!key.equals("kind"))
-					throw error(i, "an assertion's body must start with kind: effect or kind: guard");
-				kind = switch (value)
-				{
-					case "effect" -> AssertionKind.EFFECT;
-					case "guard" -> AssertionKind.GUARD;
-					default -> throw error(i, "kind: " + value + " must be kind: effect or kind: guard");
-				};
-			}
-			else if (key.equals("tool"))
-			{
-				if (tool != null)
-					throw error(i, "the assertion " + id + " has two tool: lines");
-				if (value.isEmpty())
-					throw error(i, "tool: names no built-in tool");
-				try
-				{
-					BuiltInTool.parse(value);
-				}
-				catch (IllegalArgumentException e)
-				{
-					throw error(i, "tool: " + e.getMessage());
-				}
-				tool = value;
-			}
-			else
-				throw error(i, "the key line " + key + ": is unknown. Key lines: kind: and tool:");
+			throw error(heading, "the assertion " + id + " has no kind; add - **kind**: effect or " +
+				"- **kind**: guard");
 		}
-		String statement = text(i, end);
-		if (statement.isEmpty())
-			throw error(heading, "the assertion " + id + " has no statement");
-		return new Assertion(id, kind, tool, statement);
+		AssertionKind kind = switch (kindPair.value())
+		{
+			case "effect" -> AssertionKind.EFFECT;
+			case "guard" -> AssertionKind.GUARD;
+			default -> throw error(kindPair.line(), "the kind " + kindPair.value() + " must be effect or guard");
+		};
+
+		String tool = null;
+		Pair toolPair = find(pairs, TOOL);
+		if (toolPair != null)
+			tool = tool(toolPair);
+
+		Pair description = find(pairs, DESCRIPTION);
+		if (description == null)
+			throw error(heading, "the assertion " + id + " has no description; add - **description**: followed by it");
+		if (description.value().isEmpty())
+			throw error(description.line(), "the key description has no value");
+		return new Assertion(id, kind, tool, description.value());
+	}
+
+	/**
+	 * Parses an assertion's {@code tool}, written as one code span.
+	 *
+	 * @param pair the {@code tool} pair
+	 * @return the built-in tool and its arguments
+	 * @throws ScenarioFormatException if the value is empty, is not one code span, or names no built-in tool or gives
+	 *                                 it unsuitable arguments
+	 */
+	private String tool(Pair pair) throws ScenarioFormatException
+	{
+		if (pair.value().isEmpty())
+			throw error(pair.line(), "the key tool names no built-in tool");
+		List<String> spans;
+		try
+		{
+			spans = CodeSpan.parseList(pair.value());
+		}
+		catch (IllegalArgumentException _)
+		{
+			spans = List.of();
+		}
+		if (spans.size() != 1)
+			throw error(pair.line(), "the tool must be one code span, such as `read-in-full docs/{{notes}}`");
+		String tool = spans.getFirst();
+		try
+		{
+			BuiltInTool.parse(tool);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw error(pair.line(), "the tool " + e.getMessage());
+		}
+		return tool;
 	}
 
 	/**

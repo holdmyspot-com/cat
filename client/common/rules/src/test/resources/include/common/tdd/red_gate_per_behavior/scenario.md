@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| method | The name of the service's public resumption method, such as `resumeCancelled` |
+- **method**: The name of the service's public resumption method, such as `resumeCancelled`
 
 ## Scenario
 
@@ -29,36 +27,32 @@ How should the developer handle this correction and its evidence?
 
 ### new_outcome_needs_own_red_gate
 
-kind: effect
-
-For request 1: The response does not reuse the committed-cancellation test as a red receipt for the conflicting-owner
-behavior. It requires a focused test that exercises the conflict and fails for that behavior before the production check
-changes.
+- **kind**: effect
+- **description**: For request 1: The response does not reuse the committed-cancellation test as a red receipt for the
+  conflicting-owner behavior. It requires a focused test that exercises the conflict and fails for that behavior before
+  the production check changes.
 
 ### preserve_prior_green
 
-kind: guard
-
-For request 1: The response retains the already-passing committed-cancellation test; it does not restart or discard that
-valid work.
+- **kind**: guard
+- **description**: For request 1: The response retains the already-passing committed-cancellation test; it does not
+  restart or discard that valid work.
 
 ### exercise_the_claimed_boundary
 
-kind: effect
-
-For request 2: The response does not treat lookup tests as proof of the public resumption behavior. It calls for a
-focused failing test reaching the affected resumption decision before the behavior change, using a practical testable
-path if needed.
+- **kind**: effect
+- **description**: For request 2: The response does not treat lookup tests as proof of the public resumption behavior.
+  It calls for a focused failing test reaching the affected resumption decision before the behavior change, using a
+  practical testable path if needed.
 
 ### dormant_is_not_external
 
-kind: effect
-
-For request 2: The response does not classify the locally always-rejecting preflight as an external boundary exception
-or claim the resumption behavior is verified while it remains unreachable.
+- **kind**: effect
+- **description**: For request 2: The response does not classify the locally always-rejecting preflight as an external
+  boundary exception or claim the resumption behavior is verified while it remains unreachable.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/tdd.md` before its first governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/tdd.md` before its
+  first governed action.

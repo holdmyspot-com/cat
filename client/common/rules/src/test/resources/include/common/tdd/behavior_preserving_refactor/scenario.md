@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| extracted_code | The existing code that the developer extracts into a private helper, such as `parsing expression` or `date-normalization loop` |
+- **extracted_code**: The existing code that the developer extracts into a private helper, such as `parsing expression`
+  or `date-normalization loop`
 
 ## Scenario
 
@@ -16,13 +15,12 @@ behavioral change yet and asks whether a deliberately failing new test is requir
 
 ### no_invented_red_test
 
-kind: guard
-
-The response permits the behavior-preserving extraction without inventing a failing behavior test. It requires the
-existing focused tests to remain passing and a red-test gate if a subsequent edit changes observable behavior.
+- **kind**: guard
+- **description**: The response permits the behavior-preserving extraction without inventing a failing behavior test. It
+  requires the existing focused tests to remain passing and a red-test gate if a subsequent edit changes observable
+  behavior.
 
 ### guidance_selection
 
-kind: guard
-
-The executor does not select `rules/include/common/tdd.md` for this request.
+- **kind**: guard
+- **description**: The executor does not select `rules/include/common/tdd.md` for this request.

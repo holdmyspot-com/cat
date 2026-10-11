@@ -447,7 +447,7 @@ public final class GuardPilot
 
 		/**
 		 * Runs a completed trial's built-in tools. A failed tool decides the trial without a judge; otherwise the
-		 * trial waits for a judge of the assertions without a {@code tool:} line and of the assertion
+		 * trial waits for a judge of the assertions without a {@code tool} and of the assertion
 		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide, or evidence that cannot be
 		 * rendered, makes the trial a failed run.
 		 *

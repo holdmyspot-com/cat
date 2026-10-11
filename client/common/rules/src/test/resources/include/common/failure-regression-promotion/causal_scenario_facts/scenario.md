@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| ticket | The ticket number that tracks the job-adapter report, such as `BUG-219` |
+- **ticket**: The ticket number that tracks the job-adapter report, such as `BUG-219`
 
 ## Scenario
 
@@ -23,29 +21,26 @@ scenario and what the scenario must check.
 
 ### reported_case
 
-kind: effect
-
-The runner regression keeps the missing-file observation, existing callable route, premature new-skill decision, and
-the check of the installed route before a new boundary. The reusable scenario does not require the incidental `Q7`
-label to make that decision.
+- **kind**: effect
+- **description**: The runner regression keeps the missing-file observation, existing callable route, premature
+  new-skill decision, and the check of the installed route before a new boundary. The reusable scenario does not require
+  the incidental `Q7` label to make that decision.
 
 ### analogous_case
 
-kind: effect
-
-The facade regression keeps the missing-class observation, existing submit/observe operations, and the check of their
-combined result before a new adapter. It does not make the tracking number part of the decision or acceptance.
+- **kind**: effect
+- **description**: The facade regression keeps the missing-class observation, existing submit/observe operations, and
+  the check of their combined result before a new adapter. It does not make the tracking number part of the decision or
+  acceptance.
 
 ### literal_input_counterexample
 
-kind: effect
-
-The parser regression preserves both exact header forms because changing their case changes the required outcome. It
-does not apply the label-omission rule to a literal input whose spelling is the tested condition.
+- **kind**: effect
+- **description**: The parser regression preserves both exact header forms because changing their case changes the
+  required outcome. It does not apply the label-omission rule to a literal input whose spelling is the tested condition.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/failure-regression-promotion.md` before
-its first governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects
+  `rules/include/common/failure-regression-promotion.md` before its first governed action.

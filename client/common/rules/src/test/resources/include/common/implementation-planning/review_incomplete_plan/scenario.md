@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| independent_feature | A feature unrelated to activity import that the plan postpones, such as `admin-status display` or `audit-log export page` |
+- **independent_feature**: A feature unrelated to activity import that the plan postpones, such as
+  `admin-status display` or `audit-log export page`
 
 ## Scenario
 
@@ -14,23 +13,22 @@ Review this implementation plan for AI agents. Acceptance requires an imported u
 
 ### observable_decisions
 
-kind: effect
-
-Reports material findings rather than `APPROVED`: unsupported identity premise, unresolved executor decisions, conflicting writers, and delayed boundary evidence. Its corrections preserve the acceptance contract and allow independent ready work. It preserves the injected review response form.
+- **kind**: effect
+- **description**: Reports material findings rather than `APPROVED`: unsupported identity premise, unresolved executor
+  decisions, conflicting writers, and delayed boundary evidence. Its corrections preserve the acceptance contract and
+  allow independent ready work. It preserves the injected review response form.
 
 ### planning_guidance_before_decisions
 
-kind: effect
-
-The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
-project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
-substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
-selection.
+- **kind**: effect
+- **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
+  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+  from guidance selection.
 
 ### evidence_and_scope
 
-kind: effect
-
-Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
-whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or
-delivery unverified when the retained events do not establish it.
+- **kind**: effect
+- **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
+  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+  Keep guidance selection or delivery unverified when the retained events do not establish it.

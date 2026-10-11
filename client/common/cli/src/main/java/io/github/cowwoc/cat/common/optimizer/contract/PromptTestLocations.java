@@ -2,8 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -122,33 +124,6 @@ public final class PromptTestLocations
 	}
 
 	/**
-	 * Returns the {@value PromptTestFiles#FIXTURES} directories that a prompt test directory inherits from: those of
-	 * its test root and of each directory between the root and the prompt test directory.
-	 *
-	 * @param directory a prompt test directory, relative to the project
-	 * @return the inherited {@value PromptTestFiles#FIXTURES} directories, innermost first, or an empty list if the
-	 *   directory lies in neither {@code .cat/tests} nor a module's {@code src/test/resources}
-	 * @throws NullPointerException     if {@code directory} is null
-	 * @throws IllegalArgumentException if {@code directory} is absolute
-	 */
-	public static List<Path> inheritedFixtures(Path directory)
-	{
-		requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
-		Path normalized = directory.normalize();
-		Optional<Path> testRoot = testRoot(normalized);
-		if (testRoot.isEmpty())
-			return List.of();
-		Path root = testRoot.get();
-		List<Path> inherited = new ArrayList<>();
-		for (Path ancestor = normalized.getParent(); ancestor != null && ancestor.startsWith(root);
-			ancestor = ancestor.getParent())
-		{
-			inherited.add(ancestor.resolve(PromptTestFiles.FIXTURES));
-		}
-		return inherited;
-	}
-
-	/**
 	 * Removes the Markdown suffix from a path.
 	 *
 	 * @param path a path
@@ -207,23 +182,24 @@ public final class PromptTestLocations
 	/**
 	 * Returns the paths that staging leaves out of a candidate so that a trial cannot read the prompt tests: the
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
-	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and the
-	 * {@value PromptTestFiles#FIXTURES} directories that those directories inherit from.
+	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and each
+	 * {@value PromptTestFiles#FIXTURES} directory inside the test root that a cited {@value PromptTestFiles#SCENARIO}'s
+	 * fixture patterns name.
 	 *
 	 * @param contract the contract
 	 * @param target   the campaign target, relative to the project
+	 * @param project  the project directory, which the cited scenarios are read from
 	 * @return the excluded paths, relative to the project
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code target} is absolute
+	 * @throws IOException              if a cited {@value PromptTestFiles#SCENARIO} cannot be read
 	 */
-	public static Set<Path> excluded(Contract contract, Path target)
+	public static Set<Path> excluded(Contract contract, Path target, Path project) throws IOException
 	{
+		requireThat(project, "project").isNotNull();
 		Set<Path> excluded = new LinkedHashSet<>();
 		for (Location location : of(contract, target).values())
-		{
 			excluded.add(location.directory());
-			excluded.addAll(inheritedFixtures(location.directory()));
-		}
 		for (PromptTest test : contract.tests())
 		{
 			for (String citation : test.regressionScenarios())
@@ -234,12 +210,51 @@ public final class PromptTestLocations
 				if (scenario.getFileName().toString().equals(PromptTestFiles.SCENARIO) && scenario.getParent() != null)
 				{
 					excluded.add(scenario.getParent());
-					excluded.addAll(inheritedFixtures(scenario.getParent()));
+					excluded.addAll(sharedFixtures(project, scenario));
 				}
 				else
 					excluded.add(scenario);
 			}
 		}
 		return excluded;
+	}
+
+	/**
+	 * Returns the {@value PromptTestFiles#FIXTURES} directories outside a scenario's directory that its fixture
+	 * patterns name inside its test root.
+	 *
+	 * @param project  the project directory
+	 * @param scenario a {@value PromptTestFiles#SCENARIO}, normalized and relative to the project
+	 * @return the directories, relative to the project, or an empty set if the file does not exist or its
+	 *   {@code ## Fixtures} section cannot be read
+	 * @throws IOException if the file cannot be read
+	 */
+	private static Set<Path> sharedFixtures(Path project, Path scenario) throws IOException
+	{
+		Path file = project.resolve(scenario);
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return Set.of();
+		List<String> patterns;
+		try
+		{
+			patterns = Scenario.fixturePatterns(Files.readString(file));
+		}
+		catch (ScenarioFormatException _)
+		{
+			// Reading the prompt test reports the malformed section; staging leaves out the scenario's directory alone
+			return Set.of();
+		}
+		Path directory = scenario.getParent();
+		Optional<Path> testRoot = testRoot(directory);
+		if (testRoot.isEmpty())
+			return Set.of();
+		Set<Path> shared = new LinkedHashSet<>();
+		for (String pattern : patterns)
+		{
+			Path base = FixturePattern.parse(pattern).base(directory);
+			if (base.startsWith(testRoot.get()) && !base.startsWith(directory))
+				shared.add(base);
+		}
+		return shared;
 	}
 }

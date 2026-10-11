@@ -1010,7 +1010,7 @@ public final class OptimizerCore implements Core
 		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
 			campaign.ceiling());
 		PilotFile file = pilotFile(root, campaign);
-		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign));
+		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), control, excluded, file.read(),
 			scope.random());
 		file.write(pilots);

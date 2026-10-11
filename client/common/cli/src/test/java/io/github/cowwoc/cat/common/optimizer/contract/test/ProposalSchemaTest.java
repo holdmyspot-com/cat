@@ -679,19 +679,19 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that a test that cannot be written as a regression scenario, because its turn holds a section heading
-	 * that would read back as another section, is rejected at the test's location.
+	 * Verifies that a test that cannot be written as a regression scenario, because its turn opens a code fence that
+	 * would hide the sections after it, is rejected at the test's location.
 	 */
 	@Test
 	public void rejectsTestThatCannotBeWrittenAsScenario()
 	{
 		// Requirement: R-W11
 		String[] turns = {"tests", "1", "turns"};
-		ArrayNode heading = json.createArrayNode().add("List three {{kind}}.\n## Notes\nKeep it short.");
+		ArrayNode fence = json.createArrayNode().add("List three {{kind}}.\n```\nKeep it short.");
 
-		InvalidProposalException e = rejection(changed(turns, heading));
+		InvalidProposalException e = rejection(changed(turns, fence));
 
-		requireThat(String.join(" | ", e.problems()), "problems").contains("$.tests[1]").contains("## Notes");
+		requireThat(String.join(" | ", e.problems()), "problems").contains("$.tests[1]").contains("scenario.md");
 	}
 
 	/**

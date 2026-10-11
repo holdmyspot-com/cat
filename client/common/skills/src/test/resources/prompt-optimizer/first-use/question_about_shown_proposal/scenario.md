@@ -8,10 +8,10 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| target | The project-relative path of the committed prompt file that the campaign targets, such as `AGENTS.md` or `docs/AGENTS.md` |
-| question | A question about one figure that the proposal states, such as `how many nested sessions does this need at minimum?` |
+- **target**: The project-relative path of the committed prompt file that the campaign targets, such as `AGENTS.md` or
+  `docs/AGENTS.md`
+- **question**: A question about one figure that the proposal states, such as
+  `how many nested sessions does this need at minimum?`
 
 ## Scenario
 
@@ -27,19 +27,18 @@ Before I decide: {{question}}
 
 ### answer_from_shown_proposal
 
-kind: effect
-
-The turn 2 reply answers with the figure that the proposal states, quoting or citing it from
-the proposal rather than computing a new estimate.
+- **kind**: effect
+- **description**: The turn 2 reply answers with the figure that the proposal states, quoting or citing it from the
+  proposal rather than computing a new estimate.
 
 ### no_repeated_proposal
 
-kind: effect
-
-The turn 2 reply does not repeat the whole proposal, because no launcher result arrived since it was shown.
+- **kind**: effect
+- **description**: The turn 2 reply does not repeat the whole proposal, because no launcher result arrived since it was
+  shown.
 
 ### no_launcher_step
 
-kind: guard
-
-During turn 2 the agent runs no launcher command that changes the campaign, and it does not confirm the contract.
+- **kind**: guard
+- **description**: During turn 2 the agent runs no launcher command that changes the campaign, and it does not confirm
+  the contract.

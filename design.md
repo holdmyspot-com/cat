@@ -131,7 +131,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Assertion | One statement about a trial that a prompt test checks, under its own heading in the scenario's `## Assertions` section. It is a guard or an effect assertion, and a built-in tool or the judge decides it ([§6.3](#63-prompt-tests-and-test-cases), [§6.4](#64-judge)). |
 | Guard assertion | An assertion that an agent passes almost always even without the target prompt, such as answering a search question correctly. It protects an operation that the prompt must not harm. |
 | Effect assertion | An assertion that the target prompt exists to make true, such as reading a long file whole. Any assertion that is not a guard is an effect assertion. |
-| Variable | A named input of a prompt test, declared in its `## Variables` table and written `{{name}}` in its turns, assertions and fixtures ([§6.3](#63-prompt-tests-and-test-cases)). |
+| Variable | A named input of a prompt test, declared in its `## Variables` section and written `{{name}}` in its turns, assertions and fixtures ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Test case | A prompt test with one value for each of its variables, together with its expected outcome. The contract author writes the test cases. Every trial of the same values is a trial of the same test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Expected outcome | The result that a compliant reply gives for a test case, such as the date that the turn asks for. CAT splits test cases into parts by it, and adds to every prompt test an assertion that the reply's result matches it ([§6.3](#63-prompt-tests-and-test-cases)). "Expected outcome" never means a trial's pass or fail result. |
 | Held-out part | The test cases of each prompt test that only formal trials, control trials of an attempt and the incumbent's baseline trials draw. No session that shapes a candidate sees them ([§6.3](#63-prompt-tests-and-test-cases)). |
@@ -139,7 +139,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Value generator | A function built into CAT that expands a seed and parameters, such as a line count, into fixture text, giving the same bytes on every machine ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Values file | The committed `values.json` beside a scenario, which holds its test cases' values and expected outcomes. Delivery writes it at the end of a campaign ([§4.7](#47-delivery)). |
 | Reply | Every assistant message the trial agent sends during one turn, in order: its interim messages, such as a progress note before a tool call, and its final response (D29). |
-| Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it on a `tool:` line ([§6.4](#64-judge)). |
+| Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
 | Decision procedure | The built-in tools plus the frozen judge, which together give each assertion of a trial its pass label ([§2.1](#21-claims), [§6.4](#64-judge)). |
 | Control trial | A trial of the incumbent with every target prompt file emptied, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
@@ -1352,25 +1352,35 @@ assertions check the target's effect on behavior that other guidance governs (us
 has these sections:
 
 - `# <Title>` and `## Design Goals`, which say what the test proves;
-- `## Variables`, a Markdown table with exactly the columns `Name` and `Description`. Each row declares one variable:
-  its snake_case name and what its value represents. Cells are single lines, and a literal `|` in a cell is written
-  `\|`. A prompt test with no variable has no test cases to split, so CAT refuses it;
-- `## Scenario`, the turn sequence. A single turn is the section's text. Several turns are `### Turn <n>` subsections,
-  numbered from 1;
-- `## Assertions`, one `### <id>` subsection per assertion, with a snake_case id. Its body starts with key lines:
-  `kind: effect` or `kind: guard`, then optionally `tool: <name> <arguments>` ([§6.4](#64-judge)). The prose that
-  follows states the assertion.
+- `## Variables`, one key-value pair per variable: the key is its snake_case name and the value says what the variable's
+  value represents. A prompt test with no variable has no test cases to split, so CAT refuses it;
+- `## Fixtures`, optional, the key `patterns`, which lists glob patterns for the files copied into each trial's
+  workspace ([Shared fixtures](#63-prompt-tests-and-test-cases)). Without the section, `patterns` is `fixtures/**`;
+- `## Scenario`, the turn sequence. A single turn is the section's `description`. Several turns are `### Turn <n>`
+  subsections, numbered from 1, each with its own `description`;
+- `## Assertions`, one `### <id>` subsection per assertion, with a snake_case id. Its keys are `kind`, which is `effect`
+  or `guard`; optionally `tool`, a code span holding `<name> <arguments>` ([§6.4](#64-judge)); and `description`, which
+  states the assertion.
+
+**Section content (user rulings, 2026-10-10).** `# <Title>` and `## Design Goals` are prose for readers. Every other
+section's own content, the text before its first subsection, is key-value pairs: a list item whose bold key is followed
+by a colon and the value, `- **key**: value`. A key with several values lists them as nested items or as code spans
+separated by commas, and a value continues on lines indented under its item, where it may hold several paragraphs.
+`## Scenario` and each of its `### Turn <n>` subsections alone may instead hold prose, which is the value of their
+`description` key; when they hold key-value pairs, `description` must have a value. A section that holds only
+subsections, such as `## Assertions`, has no content of its own, and the rules apply to each subsection. CAT refuses a
+key that the section does not define, prose in a section of key-value pairs, and a section that mixes the two.
+Line-oriented `key: value` text could not be told apart from prose that begins with a word and a colon, so the format
+never uses it.
 
 An example, `long_document_read_whole/scenario.md`:
 
 ```markdown
 ## Variables
 
-| Name | Description |
-|---|---|
-| notes | The release-notes file name, without its directory |
-| release | The release whose publication date the turn asks for |
-| before | Log text placed before the release's entry |
+- **notes**: The release-notes file name, without its directory
+- **release**: The release whose publication date the turn asks for
+- **before**: Log text placed before the release's entry
 
 ## Scenario
 
@@ -1380,10 +1390,9 @@ When was release {{release}} published? The notes are in `docs/{{notes}}`.
 
 ### whole_file_read
 
-kind: effect
-tool: read-in-full docs/{{notes}}
-
-The agent reads all of `docs/{{notes}}` before it answers.
+- **kind**: effect
+- **tool**: `read-in-full docs/{{notes}}`
+- **description**: The agent reads all of `docs/{{notes}}` before it answers.
 ```
 
 `{{name}}` is a placeholder for a declared variable. CAT replaces only declared names, so other text in double
@@ -1392,7 +1401,7 @@ stands for the test case's expected outcome, and no variable may take that name.
 cases: they come from the contract author ([§6.1](#61-derivation-and-confirmation)). An assertion whose id is
 `expected_outcome` is reserved too.
 
-**Declared kind.** An assertion's `kind:` line states how the contract author expects it to fare without the target
+**Declared kind.** An assertion's `kind` states how the contract author expects it to fare without the target
 prompt, and CAT checks that expectation instead of deriving it. The guard pilot
 ([§6.1](#61-derivation-and-confirmation)) measures each assertion's pass rate without the prompt and warns on a guard
 below `p_min`. A low rate is what an effect assertion predicts. On a guard it means that the control comparison on that
@@ -1408,14 +1417,24 @@ in a file name must be a single name: not empty, not `.` or `..`, without `/`, `
 pattern that must match a literal brace in a fixture's name escapes it, because many file-pattern tools, Java's
 `PathMatcher` among them, read `{a,b}` as alternation.
 
-**Shared fixtures.** A prompt test also receives the files under the `fixtures/` directories of its ancestors, from the
-test root (`.cat/tests` or a module's `src/test/resources`) down to its guidance's scenario directory. A file of an
-inner directory replaces the file at the same relative path of an outer one, so a prompt test overrides a shared file by
-holding its own copy. Shared files follow the same placeholder rules as the prompt test's own. Staging leaves out every
-inherited `fixtures/` directory, as it does the prompt test directories. Delivery writes a fixture into the prompt
-test's own `fixtures/` unless the prompt test does not record that file and the innermost ancestor that records it holds
-the same bytes, so an unchanged shared file stays shared. A file that only some prompt tests of a guidance use, such as
-a recorded tool output that a scenario links to, lies outside any `fixtures/` directory.
+**Shared fixtures (user rulings, 2026-10-10).** Prompt tests share files through a `fixtures/` directory outside any
+prompt test, such as `<path>/fixtures/` beside the prompt tests of one guidance, which each prompt test that uses them
+names in its `patterns`, for example `fixtures/**`, `../fixtures/{AGENTS.md,docs/glossary.md}`. A pattern is relative to
+the prompt test directory and has the form `<directory>/fixtures/<glob>`, in the glob syntax of Java's `PathMatcher`, so
+`**` crosses directories, `{a,b}` is alternation and `\` escapes a literal brace; Markdown keeps a backslash in a code
+span. A file's path in the workspace is its path below the `fixtures/` its pattern names. A pattern must stay inside the
+test root (`.cat/tests` or a module's `src/test/resources`), and CAT refuses a pattern that matches no file, which
+catches a misspelled or stale name. CAT copies the patterns' files in list order, so when two patterns yield the same
+workspace path, the later pattern's file replaces the earlier one's, as copying the list from start to end by hand
+would. Shared files follow the same placeholder rules as the prompt test's own: a placeholder for a variable that the
+prompt test does not declare stays as written. Staging leaves out every `fixtures/` directory that a cited or delivered
+prompt test names, as it does the prompt test directories. Delivery leaves a shared file that the campaign did not
+change where it is. It writes a changed one into the prompt test's own `fixtures/` and makes that copy the one trials
+receive: it appends `fixtures/**` to `patterns` when no pattern covers the copy, and appends a pattern naming the copy
+alone when a later pattern would still replace it, so delivery never edits a file that other prompt tests read. A prompt
+test that delivery creates holds its own copies, and an edited prompt test keeps its recorded `## Fixtures`. Directories
+never pass files to their descendants implicitly: a guidance's prompt tests that need different shared files would
+otherwise each receive every file their ancestors hold.
 
 **Test cases (user rulings, 2026-10-09 and 2026-10-10).** A test case is a prompt test with one value for each of its
 variables, together with its **expected outcome**: the result a compliant reply gives, such as the date that the turn
@@ -1442,7 +1461,7 @@ it is being tested and costs a different number of tokens per line than real tex
 anything. Generated text never decides a test case's expected outcome: only the values the contract author writes do.
 The contract author's instructions list each generator's words and date range, so it can write facts that the filler
 never contains. A generated value may appear only in fixture file contents; CAT refuses one in a turn, an assertion, a
-`tool:` line or a file name.
+`tool` value or a file name.
 
 **Development and held-out parts (user ruling, 2026-10-10).** CAT draws a random salt when it validates a campaign's
 first proposal and keeps it for the campaign. It assigns each test case to the **development part** or the **held-out
@@ -1549,10 +1568,10 @@ prompt's behaviour, such as an answer found only by reading a long file whole, d
 general requirement that each reply correctly and completely does what the turn asked: a judge disagrees less often on a
 specific expected answer than on "complete and correct", and every judge error counts against the minimum pass rate.
 
-**Built-in tools (user rulings, 2026-10-10).** A mechanical assertion names a tool built into CAT on its `tool:`
-line. CAT runs the tool on the trial record with no model, and its verdict is final: the judge neither repeats nor
+**Built-in tools (user rulings, 2026-10-10).** A mechanical assertion names a tool built into CAT in its `tool`
+key. CAT runs the tool on the trial record with no model, and its verdict is final: the judge neither repeats nor
 overrides it. The built-in tools are a closed set that CAT implements and its own unit tests verify; no user or model
-writes their code. The `tool:` line names CAT's built-in tool, not a tool of the trial agent; an assertion's prose may
+writes their code. The `tool` key names CAT's built-in tool, not a tool of the trial agent; an assertion's prose may
 still describe the agent's tools, such as "the agent used the Read tool". Arguments are separated by spaces; an argument
 that contains a space or a double quote is written in double quotes, with `\"` and `\\` escapes. CAT replaces
 placeholders in each argument after splitting, so a value with spaces stays one argument. A built-in tool that examines
@@ -1588,7 +1607,7 @@ because the judge decides the trial's behaviour, not the prompt system that the 
 (H32).
 
 **Judge.** The contract names one frozen judge profile: the role profile ([§3.1](#31-nested-sessions)), prompt, rubric,
-decision rule and result schema. The judge decides every assertion without a `tool:` line from the trial record, which
+decision rule and result schema. The judge decides every assertion without a `tool` key from the trial record, which
 it receives as its **evidence section**, with the test case's values and expected outcome. It receives each turn's
 reply as that turn's messages in order, so an interim message is judged like the final response. It sees the built-in
 tool results as evidence but cannot override them. It returns `pass` or `fail` with a rationale for each assertion it
@@ -2019,13 +2038,14 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D57 | Treat a provider refusal like a rate-limit rejection, through one hold per harness that every CAT process and nested runner honours (user rulings, 2026-10-06). | In E8 at concurrency 16, bursts of HTTP 403s from OpenAI's edge failed up to 451 of 474 requests a minute. A 403 was an ordinary infrastructure failure, so each failed session freed its slot at once and its trial reran within a minute, while Codex retried each failing turn about 10 times in 12 seconds, so requests rose to about 500 a minute. 403s tracked new connections: a minute after one with 10 or more new connections had a 403 52% of the time, against 6% below 10. A per-process backoff leaves other campaigns and runners connecting. Codex's own retries stay at its defaults: it accepts no retry limits for its built-in `openai` provider, and a provider under another id changes the requests Codex sends, such as its `version` header. | Every CAT process of a harness waits while one of them is refused. A refusal that persists past a 30-minute hold pauses the campaign instead of retrying forever. Sessions already running when a hold starts still make Codex's own retries, at most about 11 requests each. |
 | D58 | Have each prompt author attempt correct every kind of failure it receives, other than a test or contract defect, an infrastructure fault or a conflict; when a kind fails again after an earlier attempt targeted it, explain why its instruction must be followed instead of restating it (user request, 2026-10-07). | In P15's development of the Codex read rule under `gpt-6-luna`/low with a 5,000-token output limit, 8 of 13 failures in 1,200 lazy-load runs began with a mistyped or invented command path, and they went on to give up, skip the rules or list a whole directory; no edit had targeted them because they looked like model limitations. An edit that restated the instruction behind a recurring failure, finishing every part of a file, did not change its rate over 500 runs. | The prompt author's manifest groups the failures into kinds and names the hunks for each, and CAT rejects a manifest that leaves a correctable kind without a hunk. The prompt author also receives the lineage's earlier manifests. An attempt grows with the number of kinds; the minimality pass still removes hunks that the promotion runs do not need, so a kind whose hunk is removed returns through a later round. |
 | D59 | Add six approaches learned from tuning a prompt by hand, and let each round continue a prompt test's approach list where its previous round stopped (user ruling, 2026-10-07). | Hand tuning of a Codex file-reading prompt found edits that changed results noticeably and that the first three approaches did not ask for. Removing examples that replies copied moved correct search answers from 10 points below the rate without the prompt to 11 points above it. Stating the consequence of `max_output_tokens` beside the instruction cut its use from 4 in 100 runs to none. Prescribing the quoted command form, which replies could not misapply, instead of the piped form cut failures from 21 in 250 runs to 5. Putting the text to copy last on its line cut miscopies from 12–15 in 550 runs to 4. Defining a placeholder before its use cut wrong paths from 4 in 250 runs to 1. Stating the finished command instead of a line range to build cut wrong re-reads from 4 in 59 runs to none in 52, and writing the plugin directory in place of its placeholder cut failures from 4 in 250 runs to 1. Restarting the list each round would never reach approaches after the third. | A round still makes 3 or 2 attempts, so a prompt test reaches all nine approaches only after three weak or five sequential rounds. The evidence comes from one prompt and one harness, and the order of the new approaches is a guess; the recorded per-attempt promotion results measure both. |
-| D60 | Make a prompt test a directory holding `scenario.md` with a variables table, turns with `{{name}}` placeholders and assertions, plus `fixtures/` copied into each trial's workspace with placeholders replaced, and write its test cases to a values file at delivery (user rulings, 2026-10-10). | Prose context let the contract author describe a workspace that trials staged differently, and fixed text gave one test case per scenario. Model-written fixture programs would put unvalidated code between the contract and the trial. Keeping test cases only in campaign state would lose them, so a later campaign could not reuse them. | Every recorded scenario must be converted, and a later campaign's held-out part holds only new test cases whose expected outcomes differ from committed ones. |
+| D60 | Make a prompt test a directory holding `scenario.md` with variables, turns with `{{name}}` placeholders and assertions, plus `fixtures/` copied into each trial's workspace with placeholders replaced, and write its test cases to a values file at delivery (user rulings, 2026-10-10). | Prose context let the contract author describe a workspace that trials staged differently, and fixed text gave one test case per scenario. Model-written fixture programs would put unvalidated code between the contract and the trial. Keeping test cases only in campaign state would lose them, so a later campaign could not reuse them. | Every recorded scenario must be converted, and a later campaign's held-out part holds only new test cases whose expected outcomes differ from committed ones. |
 | D61 | Split test cases into the development and held-out parts by a salted hash of their normalized expected outcome, keep committed test cases in development, and refuse a new development test case whose outcome equals a held-out one (user ruling, 2026-10-10). | Hashing the variables that change the outcome, which each test marked, depended on the contract author marking them; a missed mark put one answer in both parts. Hashing all values put the same answer in both parts in different workspaces. | A prompt test needs at least 2 distinct expected outcomes in each part, and test cases that differ only in filler share a part. |
 | D62 | Add to every prompt test an assertion that the reply's result matches the test case's expected outcome, a guard when every other assertion is a guard and an effect otherwise (user ruling, 2026-10-10). | The core-task requirement asked the judge whether a reply was correct and complete, which judges decide less consistently than a named answer, and every judge error counts against the minimum pass rate. | Every trial needs a judge session, and every test case needs an expected outcome. |
-| D63 | Decide a mechanical assertion with a tool built into CAT, named on its `tool:` line and verified by CAT's unit tests, and use the judge for every other assertion (user ruling, 2026-10-10). | Checks written by the contract author needed known-good and known-bad controls, which the contract author also wrote, so they validated nothing the author did not already believe. | A closed set of built-in tools to implement and maintain; an assertion that no built-in tool fits stays with the judge. |
+| D63 | Decide a mechanical assertion with a tool built into CAT, named in its `tool` key and verified by CAT's unit tests, and use the judge for every other assertion (user ruling, 2026-10-10). | Checks written by the contract author needed known-good and known-bad controls, which the contract author also wrote, so they validated nothing the author did not already believe. | A closed set of built-in tools to implement and maintain; an assertion that no built-in tool fits stays with the judge. |
 | D64 | Generate filler with value generators built into CAT, recorded in the values file as a name, version, seed and parameters (user ruling, 2026-10-10). | Storing every generated line would make values files megabytes long. A model writing filler costs tokens on every test case and can place answers in it. A program that the contract author writes would run unreviewed code. | Each generator keeps every version, so old values files rebuild the same files; filler only looks real line by line. |
 | D65 | Certify each cell at a minimum pass rate `p_min` that the user confirms per campaign, between 0.80 and 0.99, with a default of 0.95, and require each assertion's pass probability to be no more than 0.05 below its rate without the target prompt (user ruling, 2026-10-10; the range and the control mixture are internal design). | A fixed 95% cannot express a prompt test whose agent fails often for reasons the prompt cannot fix, and certifying only against the minimum lets a prompt that degrades a guard below its unprompted rate pass. A minimum below 0.80 tells the user little; above 0.99 needs 474 all-pass trials per cell. | Control trials pair with formal trials in every certified cell, the readiness gate and caps depend on `p_min`, and an attempt ends `not certified: below control` when the control comparison proves a regression. |
 | D66 | Before confirmation, run about 20 control trials per prompt test in its weakest cell on development test cases, and show each assertion's pass rate in the proposal, warning on a guard below the minimum pass rate `p_min` (user ruling, 2026-10-10). | Waiting for the formal phase to learn that a guard fails without the prompt spends an attempt's allowance on a contract error. Refusing a proposal on pilot rates would decide a question that only the user can: whether the agent really fails without the prompt. | About 20 trials per prompt test and revision before confirmation, which spend no allowance. |
+| D67 | Write the data sections of `scenario.md`, `## Variables`, `## Fixtures` and each assertion, as `- **key**: value` items; let only `## Scenario` and its turns hold prose, which is their `description`; and name each prompt test's fixture files with glob `patterns` that are copied in list order, the last copy of a path winning, so prompt tests share files from a pooled `fixtures/` directory (user rulings, 2026-10-10). | Bare `kind:` and `tool:` lines look like prose that starts with a word and a colon, so a reader cannot tell structure from statement without knowing the parser's rule, and a table needs `\|` escapes and one-line cells. Prompt tests of one guidance kept identical copies of their files, and implicit inheritance from ancestor directories gave every prompt test each file its ancestors hold, even the ones it must not see. Copying in list order gives what a person copying the list by hand would get. | Every recorded scenario is converted again, a shared pattern for a name with braces must escape them, and a pattern placed early can be silently replaced by a later one. |
 
 ## 14. Acceptance evidence
 
@@ -2036,7 +2056,7 @@ a named end-to-end boundary.
 | Goal | Required evidence |
 |---|---|
 | G1 | **End-to-end in both harnesses:** a dirty base is refused before any fork. A deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/work/`; keeping the incumbent instead of a regressing certified candidate also removes it, and an uncertified campaign keeps its files; an interrupted removal completes on the next command. **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate, up to 4; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
-| G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, an unknown key line, a malformed variables table, an undeclared or generated placeholder outside fixture contents, an unknown `tool:` check or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
+| G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key, a fixture pattern that leaves the test root or matches no file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the readiness gate and the baseline at minimum pass rates other than 0.95; the control e-values on fixed pair paths, including `not certified: below control` and certification held back until the control comparison is decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; a new judge version makes it historical; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |

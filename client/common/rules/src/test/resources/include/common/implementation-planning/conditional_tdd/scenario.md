@@ -2,11 +2,9 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| first_key | The first key inserted into the cache, a single capital letter |
-| second_key | The second key inserted, a single capital letter different from the first |
-| third_key | The key inserted last, a single capital letter different from the other two |
+- **first_key**: The first key inserted into the cache, a single capital letter
+- **second_key**: The second key inserted, a single capital letter different from the first
+- **third_key**: The key inserted last, a single capital letter different from the other two
 
 ## Scenario
 
@@ -16,39 +14,39 @@ Create an implementation plan for AI agents handling two independent importer ch
 
 ### observable_decisions
 
-kind: effect
-
-Checks the authentic provider replay premise before fixing dependent expectations or implementation; the draft mock is insufficient evidence. Keeps the required guarantee unresolved if sandbox observations cannot establish it. Leaves provider-dependent choices conditional and advances the independent cache correction. Repairs the cache test's compilation/setup problem, then requires a behavior-specific failure showing the wrong eviction before production changes. Does not count compilation as red, suspend all test-first work, invent a durable identity, or claim planned checks have run.
+- **kind**: effect
+- **description**: Checks the authentic provider replay premise before fixing dependent expectations or implementation;
+  the draft mock is insufficient evidence. Keeps the required guarantee unresolved if sandbox observations cannot
+  establish it. Leaves provider-dependent choices conditional and advances the independent cache correction. Repairs the
+  cache test's compilation/setup problem, then requires a behavior-specific failure showing the wrong eviction before
+  production changes. Does not count compilation as red, suspend all test-first work, invent a durable identity, or
+  claim planned checks have run.
 
 ### planning_guidance_before_decisions
 
-kind: effect
-
-The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
-project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
-substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
-selection.
+- **kind**: effect
+- **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
+  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+  from guidance selection.
 
 ### test_first_and_project_verification
 
-kind: effect
-
-Before fixing production-edit order, the executor successfully reads `rules/include/common/tdd.md` and schedules
-complete-project verification after focused and integration checks and before implementation handoff. It does not claim
-planned checks ran, count a compilation failure as behavioral red evidence, or invent a project command. Guidance
-selection and the scheduled acceptance checks are assessed separately.
+- **kind**: effect
+- **description**: Before fixing production-edit order, the executor successfully reads `rules/include/common/tdd.md`
+  and schedules complete-project verification after focused and integration checks and before implementation handoff. It
+  does not claim planned checks ran, count a compilation failure as behavioral red evidence, or invent a project
+  command. Guidance selection and the scheduled acceptance checks are assessed separately.
 
 ### unresolved_provider_guidance
 
-kind: effect
-
-The executor successfully reads `rules/include/common/monotonic-progress.md` while the provider replay premise remains
-unresolved.
+- **kind**: effect
+- **description**: The executor successfully reads `rules/include/common/monotonic-progress.md` while the provider
+  replay premise remains unresolved.
 
 ### evidence_and_scope
 
-kind: effect
-
-Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
-whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or
-delivery unverified when the retained events do not establish it.
+- **kind**: effect
+- **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
+  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+  Keep guidance selection or delivery unverified when the retained events do not establish it.

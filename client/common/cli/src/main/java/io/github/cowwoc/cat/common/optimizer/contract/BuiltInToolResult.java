@@ -18,7 +18,7 @@ public record BuiltInToolResult(Assertion assertion, boolean passed, String obse
 	 * @param passed    {@code true} if the trial passed the tool
 	 * @param observed  what the tool found, quoting the evidence
 	 * @throws NullPointerException     if {@code assertion} or {@code observed} are null
-	 * @throws IllegalArgumentException if {@code assertion} has no {@code tool:} line or {@code observed} is blank
+	 * @throws IllegalArgumentException if {@code assertion} has no {@code tool} or {@code observed} is blank
 	 */
 	public BuiltInToolResult
 	{
@@ -38,7 +38,7 @@ public record BuiltInToolResult(Assertion assertion, boolean passed, String obse
 	}
 
 	/**
-	 * Returns the result as one line: the assertion, its {@code tool:} line, the outcome and the observed value. A
+	 * Returns the result as one line: the assertion, its {@code tool}, the outcome and the observed value. A
 	 * failure also names its behavior.
 	 *
 	 * @return the description

@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| rejection_condition | The condition under which the product contract requires the service to reject an export, such as `its confirmed read-only metadata changes` or `a selected document is deleted before the export completes` |
+- **rejection_condition**: The condition under which the product contract requires the service to reject an export, such
+  as `its confirmed read-only metadata changes` or `a selected document is deleted before the export completes`
 
 ## Scenario
 
@@ -21,31 +20,27 @@ the smallest correction needed before implementation planning; do not implement 
 
 ### source_obligations_survive_design
 
-kind: effect
-
-The review compares the design with the authoritative contract and identifies the missing rejection of an export if {{rejection_condition}},
-durable completed result, and failure interval before the caller first observes completion. It does not approve the
-design merely because its three journeys are coherent.
+- **kind**: effect
+- **description**: The review compares the design with the authoritative contract and identifies the missing rejection
+  of an export if {{rejection_condition}}, durable completed result, and failure interval before the caller first
+  observes completion. It does not approve the design merely because its three journeys are coherent.
 
 ### acceptance_and_authority
 
-kind: effect
-
-The review requires design decisions and observable evidence for each missing obligation before dependent assignments
-are made. It keeps any unsupported mechanism or genuinely missing product decision unresolved with a named owner,
-without guessing an answer or treating a proposed test as passing evidence.
+- **kind**: effect
+- **description**: The review requires design decisions and observable evidence for each missing obligation before
+  dependent assignments are made. It keeps any unsupported mechanism or genuinely missing product decision unresolved
+  with a named owner, without guessing an answer or treating a proposed test as passing evidence.
 
 ### no_format_requirement
 
-kind: guard
-
-The review permits the contract and corrected design to express obligations through shared rules, use cases, a mapping,
-or another authoritative form. It does not require another journey document or duplicate the already supplied product
-contract.
+- **kind**: guard
+- **description**: The review permits the contract and corrected design to express obligations through shared rules, use
+  cases, a mapping, or another authoritative form. It does not require another journey document or duplicate the already
+  supplied product contract.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/design-quality.md`
+  before its first governed action.

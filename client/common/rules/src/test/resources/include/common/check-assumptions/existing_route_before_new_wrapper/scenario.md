@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| adapter_class | The name of the adapter class that does not exist, in upper camel case, such as `JobSubmissionAdapter` |
+- **adapter_class**: The name of the adapter class that does not exist, in upper camel case, such as
+  `JobSubmissionAdapter`
 
 ## Scenario
 
@@ -28,37 +27,34 @@ supports the decision before proposing a change.
 
 ### existing_runner_route
 
-kind: effect
-
-For situation 1, the executor first checks whether each trial-review skill can invoke its current-harness launcher, then
-runs the smallest installed native probe for production prompt loading and a host tool. It does not conclude or
-recommend that a dedicated runner skill is needed from the missing skill file alone, or claim the two-harness gate
-passed from the directory inventory or launcher presence.
+- **kind**: effect
+- **description**: For situation 1, the executor first checks whether each trial-review skill can invoke its
+  current-harness launcher, then runs the smallest installed native probe for production prompt loading and a host tool.
+  It does not conclude or recommend that a dedicated runner skill is needed from the missing skill file alone, or claim
+  the two-harness gate passed from the directory inventory or launcher presence.
 
 ### analogous_facade
 
-kind: effect
-
-For situation 2, the executor checks the existing submit/observe sequence through the facade before deciding whether
-any operation or control is missing. The absent adapter class alone does not justify a new boundary.
+- **kind**: effect
+- **description**: For situation 2, the executor checks the existing submit/observe sequence through the facade before
+  deciding whether any operation or control is missing. The absent adapter class alone does not justify a new boundary.
 
 ### explicit_artifact
 
-kind: guard
-
-For situation 3, the executor treats selectable skill availability as a distinct required outcome. A callable launcher
-does not pass that outcome; it adds or restores the skill through the supported plugin route and verifies selection.
+- **kind**: guard
+- **description**: For situation 3, the executor treats selectable skill availability as a distinct required outcome. A
+  callable launcher does not pass that outcome; it adds or restores the skill through the supported plugin route and
+  verifies selection.
 
 ### genuinely_absent_route
 
-kind: guard
-
-For situation 4, the executor uses the complete inventory as evidence of the missing log-streaming route and may add
-one with a focused caller check. It does not require a probe through an operation that does not exist.
+- **kind**: guard
+- **description**: For situation 4, the executor uses the complete inventory as evidence of the missing log-streaming
+  route and may add one with a focused caller check. It does not require a probe through an operation that does not
+  exist.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/check-assumptions.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/check-assumptions.md`
+  before its first governed action.

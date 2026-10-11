@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| term | The documented term for the time CAT keeps a feedback report, such as `retention period` or `storage term` |
+- **term**: The documented term for the time CAT keeps a feedback report, such as `retention period` or `storage term`
 
 ## Scenario
 
@@ -29,37 +27,34 @@ bound for every such group. Name the user-facing concept and define it in two se
 
 ### established_term_is_reused
 
-kind: effect
-
-For request 1: The description calls the concept the **{{term}}**, rather than introducing a synonym for the
-same concept, and states what the returned number represents.
+- **kind**: effect
+- **description**: For request 1: The description calls the concept the **{{term}}**, rather than introducing a synonym
+  for the same concept, and states what the returned number represents.
 
 ### related_name_clarifies_relationship
 
-kind: effect
-
-For request 2: The selected name uses the established **certification** terminology to make the relationship easy to
-infer, while the definition clearly distinguishes the grouping record from a certification result.
+- **kind**: effect
+- **description**: For request 2: The selected name uses the established **certification** terminology to make the
+  relationship easy to infer, while the definition clearly distinguishes the grouping record from a certification
+  result.
 
 ### independent_name_avoids_false_relationship
 
-kind: effect
-
-For request 3: The selected name does not present the durable effort as a kind of **session** merely to reuse existing
-terminology. The definition uses a clear independent name and explains that the effort can span multiple sessions.
+- **kind**: effect
+- **description**: For request 3: The selected name does not present the durable effort as a kind of **session** merely
+  to reuse existing terminology. The definition uses a clear independent name and explains that the effort can span
+  multiple sessions.
 
 ### name_signals_subject_and_purpose
 
-kind: effect
-
-For request 4: The selected name tells readers that the concept groups scenarios and receives a separate compliance
-measurement. It does not replace that meaning with a generic phrase such as **use category** or require readers to
-understand the internal tree's **leaf** terminology.
+- **kind**: effect
+- **description**: For request 4: The selected name tells readers that the concept groups scenarios and receives a
+  separate compliance measurement. It does not replace that meaning with a generic phrase such as **use category** or
+  require readers to understand the internal tree's **leaf** terminology.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/write-clearly.md`,
-`rules/include/common/consistent-terminology.md`, `rules/include/documentation/general.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`,
+  `rules/include/common/consistent-terminology.md`, `rules/include/documentation/general.md` before its first governed
+  action.

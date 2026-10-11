@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| archive | The kind of offline archive whose format is migrated, such as `photo library archive` or `mailbox archive` |
+- **archive**: The kind of offline archive whose format is migrated, such as `photo library archive` or
+  `mailbox archive`
 
 ## Scenario
 
@@ -14,23 +13,22 @@ Create an implementation plan for AI agents migrating the format of an offline {
 
 ### observable_decisions
 
-kind: effect
-
-Questions the cross-volume atomic-replacement premise, assigns the platform/recovery check before fixing dependent publication behavior, permits standalone conversion work, and keeps publication and recovery coherent. Does not require arbitrary per-entry publication slices that violate the archive contract.
+- **kind**: effect
+- **description**: Questions the cross-volume atomic-replacement premise, assigns the platform/recovery check before
+  fixing dependent publication behavior, permits standalone conversion work, and keeps publication and recovery
+  coherent. Does not require arbitrary per-entry publication slices that violate the archive contract.
 
 ### planning_guidance_before_decisions
 
-kind: effect
-
-The retained events establish a successful read of `rules/include/common/implementation-planning.md` before the first
-project inspection or decision about behavior coverage, assignments, dependencies, or checks. A failed lookup,
-substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately from guidance
-selection.
+- **kind**: effect
+- **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
+  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+  from guidance selection.
 
 ### evidence_and_scope
 
-kind: effect
-
-Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept alternative decompositions
-whose stated dependencies and checks satisfy the request; do not grade by literal phrases. Keep guidance selection or
-delivery unverified when the retained events do not establish it.
+- **kind**: effect
+- **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
+  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+  Keep guidance selection or delivery unverified when the retained events do not establish it.

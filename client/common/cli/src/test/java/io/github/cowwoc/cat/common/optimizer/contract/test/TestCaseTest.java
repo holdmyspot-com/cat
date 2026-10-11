@@ -57,8 +57,8 @@ public final class TestCaseTest
 		fixtures.add(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")));
 		fixtures.add(new PromptTestFiles.Fixture("logo.png", false, Set.of()));
 		fixtures.addAll(List.of(extraFixtures));
-		return new PromptTestFiles(Path.of("/project/tests"), Path.of("/project/tests/case"), scenario, fixtures,
-			List.of());
+		return new PromptTestFiles(Path.of("/project/tests"), Path.of("/project/tests/case"), scenario,
+			List.of("fixtures/**"), fixtures, List.of());
 	}
 
 	/**
@@ -173,7 +173,7 @@ public final class TestCaseTest
 		requireThat(files.problems(testCase(LOGS, LOGS)).toString(), "turnAndName").contains("notes");
 
 		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(),
-			List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of())), List.of());
+			files.patterns(), List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of())), List.of());
 		requireThat(unused.problems(testCase(new TestValue.Text("a.md"), LOGS)).toString(), "unused").
 			contains("before");
 	}

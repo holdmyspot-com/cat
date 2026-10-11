@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| bypass_method | The name of the public store method that publishes a document without approval, such as `publishDraft` |
+- **bypass_method**: The name of the public store method that publishes a document without approval, such as
+  `publishDraft`
 
 ## Scenario
 
@@ -25,30 +24,27 @@ publication receipt. Identify which components can be called complete and which 
 
 ### contract_wide_closure
 
-kind: effect
-
-The reviewer keeps the state component open despite its green checks, names the reachable approval bypass through `{{bypass_method}}`, missing
-durable receipt field, and restart evidence, and asks for checks at the boundaries that prove each assigned obligation.
-It preserves the passing evidence for unaffected behavior.
+- **kind**: effect
+- **description**: The reviewer keeps the state component open despite its green checks, names the reachable approval
+  bypass through `{{bypass_method}}`, missing durable receipt field, and restart evidence, and asks for checks at the
+  boundaries that prove each assigned obligation. It preserves the passing evidence for unaffected behavior.
 
 ### integrated_compilable_dependency
 
-kind: effect
-
-The reviewer does not count the endpoint test's compilation failure as a behavioral red result or start dependent
-implementation from that older tree. It calls for a fresh endpoint snapshot containing the integrated state change,
-then focused and combined handoff checks. It allows the independent search-index work to proceed now.
+- **kind**: effect
+- **description**: The reviewer does not count the endpoint test's compilation failure as a behavioral red result or
+  start dependent implementation from that older tree. It calls for a fresh endpoint snapshot containing the integrated
+  state change, then focused and combined handoff checks. It allows the independent search-index work to proceed now.
 
 ### one_current_design
 
-kind: effect
-
-The reviewer keeps the old review receipt as provenance but removes or clearly retires its pre-receipt API instruction
-from the executable plan. The current API section remains the single implementation instruction.
+- **kind**: effect
+- **description**: The reviewer keeps the old review receipt as provenance but removes or clearly retires its
+  pre-receipt API instruction from the executable plan. The current API section remains the single implementation
+  instruction.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/design-quality.md`
+  before its first governed action.

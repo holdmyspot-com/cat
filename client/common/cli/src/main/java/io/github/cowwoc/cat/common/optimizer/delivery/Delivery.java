@@ -10,8 +10,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.FixturePattern;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
+import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.ConcurrentEdit;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
@@ -273,16 +275,20 @@ public final class Delivery
 	/**
 	 * Returns the files that write the prompt tests: each test's values file, its regression scenario and its fixture
 	 * files under {@value PromptTestFiles#FIXTURES}. A test that delivery creates gets a new scenario titled with its
-	 * identifier. A test that edits a recorded scenario keeps that scenario's title and design goals; a recorded
-	 * scenario that does not follow the scenario format is replaced as a created one would be. Recorded fixture files
-	 * that the test no longer names are kept. A fixture that the test inherits unchanged from an ancestor
-	 * {@value PromptTestFiles#FIXTURES} directory, and that its own directory does not record, stays shared and is not
-	 * written.
+	 * identifier and its own copy of every fixture. A test that edits a recorded scenario keeps that scenario's title,
+	 * design goals and fixture patterns; a recorded scenario that does not follow the scenario format is replaced as a
+	 * created one would be. Recorded fixture files that the test no longer names are kept.
+	 * <p>
+	 * For an edited test, a fixture whose file the recorded patterns select from a shared
+	 * {@value PromptTestFiles#FIXTURES} directory with the same bytes stays there and is not written. Any other fixture
+	 * is written to the test's own directory, and a pattern is appended so that the copy is selected: {@code fixtures/**}
+	 * if no pattern of the own directory selects it, or a pattern that names the copy alone if a later pattern would
+	 * still replace it.
 	 *
 	 * @param selected the delivered overlay, whose recorded files the edited scenarios start from
 	 * @param tests the prompt tests
 	 * @return the test files
-	 * @throws IOException if a recorded scenario cannot be read
+	 * @throws IOException if a recorded file cannot be read
 	 */
 	private TestFiles testFiles(Overlay selected, List<DeliveredTest> tests) throws IOException
 	{
@@ -296,56 +302,137 @@ public final class Delivery
 			files.put(directory.resolve(ValuesFile.NAME), new FileContent(values.toString().getBytes(UTF_8)));
 
 			Path scenarioPath = directory.resolve(PromptTestFiles.SCENARIO);
-			String scenario;
+			Optional<String> recorded = Optional.empty();
+			List<String> patterns = List.of();
 			if (test.location().created())
-			{
 				createdDirectories.add(directory);
-				scenario = test.scenarioFile(Optional.empty());
-			}
 			else
 			{
-				scenario = test.scenarioFile(workspace.readFile(selected, scenarioPath).
-					map(recorded -> new String(recorded.bytes(), UTF_8)));
+				recorded = workspace.readFile(selected, scenarioPath).map(file -> new String(file.bytes(), UTF_8));
+				if (recorded.isPresent())
+					patterns = recordedPatterns(recorded.get());
 			}
-			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
-			Path fixtures = directory.resolve(PromptTestFiles.FIXTURES);
+
+			List<String> appended = new ArrayList<>();
+			Path own = directory.resolve(PromptTestFiles.FIXTURES);
 			for (FixtureFile fixture : test.fixtures())
 			{
 				byte[] content = fixture.content().getBytes(UTF_8);
-				Path path = fixtures.resolve(fixture.path());
-				if (workspace.readFile(selected, path).isEmpty() && isInheritedUnchanged(selected, directory,
-					fixture.path(), content))
+				if (!patterns.isEmpty())
 				{
-					continue;
+					List<String> current = new ArrayList<>(patterns);
+					current.addAll(appended);
+					if (isSharedUnchanged(selected, directory, current, fixture.path(), content))
+						continue;
+					appended.addAll(selectingPatterns(selected, directory, current, fixture.path()));
 				}
-				files.put(path, new FileContent(content));
+				files.put(own.resolve(fixture.path()), new FileContent(content));
 			}
+
+			String scenario = test.scenarioFile(recorded, appended);
+			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
 		}
 		return new TestFiles(files, createdDirectories);
 	}
 
 	/**
-	 * Indicates whether a prompt test inherits a fixture unchanged: the innermost ancestor
-	 * {@value PromptTestFiles#FIXTURES} directory that records the fixture's path holds the same bytes.
+	 * Returns the fixture patterns of a recorded scenario.
+	 *
+	 * @param recorded the recorded {@value PromptTestFiles#SCENARIO}
+	 * @return the patterns, in order, or an empty list if the scenario's sections cannot be read, so that delivery
+	 *   replaces the file with a new scenario
+	 */
+	private static List<String> recordedPatterns(String recorded)
+	{
+		try
+		{
+			return Scenario.fixturePatterns(recorded);
+		}
+		catch (ScenarioFormatException _)
+		{
+			return List.of();
+		}
+	}
+
+	/**
+	 * Indicates whether the file that a prompt test's patterns select for a fixture lies in a shared
+	 * {@value PromptTestFiles#FIXTURES} directory and holds the fixture's bytes.
 	 *
 	 * @param selected  the delivered overlay
 	 * @param directory the prompt test's directory, relative to the project
-	 * @param path      the fixture's path inside a {@value PromptTestFiles#FIXTURES} directory
+	 * @param patterns  the prompt test's fixture patterns, in order
+	 * @param path      the fixture's workspace path
 	 * @param content   the fixture's content
-	 * @return {@code true} if the inherited file holds {@code content}, or {@code false} if no ancestor records the path
-	 *   or the innermost one that does holds other bytes
+	 * @return {@code true} if the last pattern that selects a recorded file at {@code path} names a directory other
+	 *   than the test's own and that file holds {@code content}
 	 * @throws IOException if a recorded file cannot be read
 	 */
-	private boolean isInheritedUnchanged(Overlay selected, Path directory, String path, byte[] content)
-		throws IOException
+	private boolean isSharedUnchanged(Overlay selected, Path directory, List<String> patterns, String path,
+		byte[] content) throws IOException
 	{
-		for (Path inherited : PromptTestLocations.inheritedFixtures(directory))
+		Path own = directory.resolve(PromptTestFiles.FIXTURES);
+		for (String text : patterns.reversed())
 		{
-			Optional<FileContent> recorded = workspace.readFile(selected, inherited.resolve(path));
-			if (recorded.isPresent())
-				return Arrays.equals(recorded.get().bytes(), content);
+			FixturePattern pattern = FixturePattern.parse(text);
+			Optional<FileContent> file = selectedFile(selected, directory, pattern, path);
+			if (file.isPresent())
+				return !pattern.base(directory).equals(own) && Arrays.equals(file.get().bytes(), content);
 		}
 		return false;
+	}
+
+	/**
+	 * Returns the recorded file that a pattern selects at a workspace path.
+	 *
+	 * @param selected  the delivered overlay
+	 * @param directory the prompt test's directory, relative to the project
+	 * @param pattern   the pattern
+	 * @param path      the workspace path
+	 * @return the file's content, or an empty value if the pattern does not match {@code path}, its directory lies
+	 *   outside the project, or the file is not recorded
+	 * @throws IOException if the file cannot be read
+	 */
+	private Optional<FileContent> selectedFile(Overlay selected, Path directory, FixturePattern pattern, String path)
+		throws IOException
+	{
+		Path base = pattern.base(directory);
+		if (base.startsWith("..") || !pattern.matches(path))
+			return Optional.empty();
+		return workspace.readFile(selected, base.resolve(path));
+	}
+
+	/**
+	 * Returns the patterns to append so that a prompt test selects its own copy of a fixture.
+	 *
+	 * @param selected  the delivered overlay
+	 * @param directory the prompt test's directory, relative to the project
+	 * @param patterns  the prompt test's fixture patterns, in order
+	 * @param path      the fixture's workspace path
+	 * @return {@value FixturePattern#DEFAULT} if no pattern of the own directory matches {@code path}, a pattern that
+	 *   names the copy alone if a later pattern selects a recorded file at {@code path} from another directory, or an
+	 *   empty list otherwise
+	 * @throws IOException if a recorded file cannot be read
+	 */
+	private List<String> selectingPatterns(Overlay selected, Path directory, List<String> patterns, String path)
+		throws IOException
+	{
+		Path own = directory.resolve(PromptTestFiles.FIXTURES);
+		int lastOwn = -1;
+		for (int i = 0; i < patterns.size(); ++i)
+		{
+			FixturePattern pattern = FixturePattern.parse(patterns.get(i));
+			if (pattern.base(directory).equals(own) && pattern.matches(path))
+				lastOwn = i;
+		}
+		if (lastOwn == -1)
+			return List.of(FixturePattern.DEFAULT);
+		for (int i = lastOwn + 1; i < patterns.size(); ++i)
+		{
+			FixturePattern pattern = FixturePattern.parse(patterns.get(i));
+			if (!pattern.base(directory).equals(own) && selectedFile(selected, directory, pattern, path).isPresent())
+				return List.of(FixturePattern.exact(path));
+		}
+		return List.of();
 	}
 
 	/**

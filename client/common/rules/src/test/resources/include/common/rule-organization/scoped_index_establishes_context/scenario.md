@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| library | A Java library, other than JUnit, whose configuration a focused rule covers, such as `Logback` or `Hibernate` |
+- **library**: A Java library, other than JUnit, whose configuration a focused rule covers, such as `Logback` or
+  `Hibernate`
 
 ## Scenario
 
@@ -21,35 +20,32 @@ the Java index loads.
 
 ### reported_case
 
-kind: effect
-
-The {{library}} route belongs in the Java index and names only its additional {{library}}-configuration trigger. It does not
-ask the reader to decide again whether Java is in use. The default index has no competing {{library}} route.
+- **kind**: effect
+- **description**: The {{library}} route belongs in the Java index and names only its additional
+  {{library}}-configuration trigger. It does not ask the reader to decide again whether Java is in use. The default
+  index has no competing {{library}} route.
 
 ### nearest_negative
 
-kind: effect
-
-The Java JUnit task loads the Java index but not the {{library}} companion. The JavaScript task does not load the Java index
-or the {{library}} companion.
+- **kind**: effect
+- **description**: The Java JUnit task loads the Java index but not the {{library}} companion. The JavaScript task does
+  not load the Java index or the {{library}} companion.
 
 ### analogous_case
 
-kind: effect
-
-The pytest route belongs in the Python index and names its pytest trigger without repeating the Python-index scope.
+- **kind**: effect
+- **description**: The pytest route belongs in the Python index and names its pytest trigger without repeating the
+  Python-index scope.
 
 ### earlier_route_counterexample
 
-kind: effect
-
-The Java-specific decision that arises before the scoped index loads keeps its required Java context in the earlier
-route. If the index selection itself cannot establish required context, the proposed fix changes its scope or the
-route's placement instead of repeating the parent condition inside it.
+- **kind**: effect
+- **description**: The Java-specific decision that arises before the scoped index loads keeps its required Java context
+  in the earlier route. If the index selection itself cannot establish required context, the proposed fix changes its
+  scope or the route's placement instead of repeating the parent condition inside it.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/rule-organization.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/rule-organization.md`
+  before its first governed action.

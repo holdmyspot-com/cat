@@ -217,10 +217,11 @@ complete content; a scenario in the current format also gives the content of eac
 scenario whose guidance belongs to this prompt system, write a prompt test that preserves its turns, expected
 behaviour, assertions and fixtures, and put its exact citation in that test's `regression_scenarios`.
 
-- A scenario in the current format states its variables in a table, its turns under `## Scenario`, with one
-  `### Turn <n>` subsection per turn when it has several, and each assertion under `## Assertions` as a `### <id>`
-  subsection with its `kind:` line, its optional `tool:` line and its statement. Copy them, give each assertion the
-  requirement of this contract that it checks, and write the test cases, which a scenario never states.
+- A scenario in the current format states each variable as a `- **<name>**: <description>` pair under
+  `## Variables`, its turns under `## Scenario`, with one `### Turn <n>` subsection per turn when it has several, and
+  each assertion under `## Assertions` as a `### <id>` subsection whose `kind`, optional `tool` and `description`
+  pairs give its kind, its built-in tool and its statement. Copy them, give each assertion the requirement of this
+  contract that it checks, and write the test cases, which a scenario never states.
 - A scenario in the current format may list the test cases that earlier campaigns committed. CAT adds them to the
   test that cites the scenario, so keep the scenario's variables, and write new test cases whose values and expected
   outcomes differ from the committed ones.

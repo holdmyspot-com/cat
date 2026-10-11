@@ -16,8 +16,8 @@ import java.util.Optional;
  * the {@link Driver}.
  * <p>
  * The driver supplies the contract's frozen judge profile; the protocol writes the prompt. The driver requests a
- * judge only after every built-in tool of the trial passed. The judge decides each assertion without a {@code tool:}
- * line, and always the assertion that the reply's result matches the test case's expected outcome.
+ * judge only after every built-in tool of the trial passed. The judge decides each assertion without a {@code tool},
+ * and always the assertion that the reply's result matches the test case's expected outcome.
  */
 public interface JudgeProtocol
 {

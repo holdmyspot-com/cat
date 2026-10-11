@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| slice_count | The number of sequential behavior slices, written as a word between three and eight |
+- **slice_count**: The number of sequential behavior slices, written as a word between three and eight
 
 ## Scenario
 
@@ -23,23 +21,20 @@ Explain the verification boundary for both.
 
 ### local_slice_gate
 
-kind: effect
-
-The agent closes the first local slice using its declared focused test and owned-path quality checks. It does not
-launch the full reactor after every slice merely for reassurance and does not claim the project build passes from a
-selected-module command or the stale earlier build receipt.
+- **kind**: effect
+- **description**: The agent closes the first local slice using its declared focused test and owned-path quality checks.
+  It does not launch the full reactor after every slice merely for reassurance and does not claim the project build
+  passes from a selected-module command or the stale earlier build receipt.
 
 ### integration_and_terminal_gates
 
-kind: effect
-
-The agent runs each project's complete documented build without invented scope selectors at the declared integration
-handoff. The immediate whole-project pass request likewise requires a fresh complete build before the claim; the
-cadence rule cannot defer that explicit terminal gate. It keeps a failed or unrun complete build open.
+- **kind**: effect
+- **description**: The agent runs each project's complete documented build without invented scope selectors at the
+  declared integration handoff. The immediate whole-project pass request likewise requires a fresh complete build before
+  the claim; the cadence rule cannot defer that explicit terminal gate. It keeps a failed or unrun complete build open.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/build-verification.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/build-verification.md`
+  before its first governed action.

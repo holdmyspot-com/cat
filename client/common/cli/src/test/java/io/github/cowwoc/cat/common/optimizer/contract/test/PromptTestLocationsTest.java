@@ -2,12 +2,15 @@ package io.github.cowwoc.cat.common.optimizer.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations.Location;
 
 import org.testng.annotations.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -79,39 +82,57 @@ public final class PromptTestLocationsTest
 	/**
 	 * The paths that staging excludes are every prompt test's directory and every scenario that a prompt test cites
 	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format. The
-	 * {@code fixtures/} directories that such a directory inherits from are excluded too.
+	 * {@code fixtures/} directories that a cited scenario's fixture patterns name inside its test root are excluded
+	 * too.
+	 *
+	 * @throws IOException if a file cannot be written or read
 	 */
 	@Test
-	public void excludedPathsCoverEveryCitedScenario()
+	public void excludedPathsCoverEveryCitedScenario() throws IOException
 	{
-		// Requirement: R-W11
-		Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
-			"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
-			"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
-			"safety", List.of("/home/user/.cat/tests/main/asks_first/scenario.md")));
-		requireThat(PromptTestLocations.excluded(contract, TARGET), "excluded").isEqualTo(Set.of(
-			Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
-			Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
-			Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/fixtures"),
-			Path.of(".cat/tests/other/fixtures"), Path.of(".cat/tests/fixtures")));
+		// Requirement: R-W11, R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"project"));
+			Path cited = Files.createDirectories(project.resolve(".cat/tests/main/tone_kept"));
+			Files.writeString(cited.resolve("scenario.md"), """
+				## Fixtures
+
+				- **patterns**: `fixtures/**`, `../fixtures/**`, `../../shared/fixtures/a.md`, `../../../../fixtures/**`
+				""");
+			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
+				"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
+				"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
+				"safety", List.of("/home/user/.cat/tests/main/asks_first/scenario.md")));
+			requireThat(PromptTestLocations.excluded(contract, TARGET, project), "excluded").isEqualTo(Set.of(
+				Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
+				Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
+				Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/fixtures"),
+				Path.of(".cat/tests/shared/fixtures")));
+		}
 	}
 
 	/**
-	 * The {@code fixtures/} directories that staging excludes for a prompt test of guidance packaged as a module
-	 * resource are those between the module's test resources and the prompt test's directory, the test resources
-	 * included.
+	 * A prompt test that delivery creates holds its own fixtures, so staging excludes only its directory.
+	 *
+	 * @throws IOException if a file cannot be read
 	 */
 	@Test
-	public void excludedPathsCoverModuleFixtures()
+	public void createdTestsExcludeOnlyTheirDirectories() throws IOException
 	{
 		// Requirement: R-W11, R-C21
-		Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
-			"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
-		Path target = Path.of("client/codex/cli/src/main/resources/rules/codex/read-file.md");
-		Path tests = Path.of("client/codex/cli/src/test/resources");
-		requireThat(PromptTestLocations.excluded(contract, target), "excluded").isEqualTo(Set.of(
-			tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
-			tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/fixtures"),
-			tests.resolve("codex/fixtures"), tests.resolve("fixtures")));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"project"));
+			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
+				"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
+			Path target = Path.of("client/codex/cli/src/main/resources/rules/codex/read-file.md");
+			Path tests = Path.of("client/codex/cli/src/test/resources");
+			requireThat(PromptTestLocations.excluded(contract, target, project), "excluded").isEqualTo(Set.of(
+				tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
+				tests.resolve("codex/read-file/safety")));
+		}
 	}
 }

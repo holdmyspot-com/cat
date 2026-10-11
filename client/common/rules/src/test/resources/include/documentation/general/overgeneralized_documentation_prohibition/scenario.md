@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| leaked_details | The implementation details that the product document discussed unnecessarily, such as `package assembly and source publication` |
+- **leaked_details**: The implementation details that the product document discussed unnecessarily, such as
+  `package assembly and source publication`
 
 ## Scenario
 
@@ -17,21 +16,18 @@ verification." Write the final generalized rule.
 
 ### causal_scope
 
-kind: effect
-
-The response scopes the exclusion to replaceable implementation details that are not part of the documented interface;
-it does not prohibit every sentence without an immediate decision or action mapping.
+- **kind**: effect
+- **description**: The response scopes the exclusion to replaceable implementation details that are not part of the
+  documented interface; it does not prohibit every sentence without an immediate decision or action mapping.
 
 ### allowed_documentation
 
-kind: guard
-
-The response preserves purpose, context, definitions, rationale, or examples when they help readers understand the
-documented contract without exposing replaceable implementation choices.
+- **kind**: guard
+- **description**: The response preserves purpose, context, definitions, rationale, or examples when they help readers
+  understand the documented contract without exposing replaceable implementation choices.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/documentation/general.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/documentation/general.md`
+  before its first governed action.

@@ -17,7 +17,7 @@ import java.util.Set;
 
 /**
  * One kind of trial that checks one or more requirements through its assertions. A trial passes when it passes every
- * assertion: CAT decides an assertion that has a {@code tool:} line with its built-in tool, and a judge decides the
+ * assertion: CAT decides an assertion that has a {@code tool} with its built-in tool, and a judge decides the
  * others. CAT adds the assertion {@value TestCase#EXPECTED_OUTCOME}, which the judge decides, to every test.
  *
  * @param id the identifier that is unique within the contract
@@ -82,9 +82,9 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *   not one valid segment, or two fixtures landing on one path), a test case appears twice, two fixtures share a
 	 *   path, two assertions share an identifier, an assertion has the reserved identifier
 	 *   {@value TestCase#EXPECTED_OUTCOME}, an assertion checks a requirement that the test does not check, a
-	 *   requirement has no assertion, an assertion's statement or {@code tool:} line names a placeholder that is
-	 *   neither a variable nor {@value TestCase#EXPECTED_OUTCOME}, a {@code tool:} line examines a turn that the test
-	 *   does not have, or a test case's values make a {@code tool:} line invalid
+	 *   requirement has no assertion, an assertion's statement or {@code tool} names a placeholder that is
+	 *   neither a variable nor {@value TestCase#EXPECTED_OUTCOME}, a {@code tool} examines a turn that the test
+	 *   does not have, or a test case's values make a {@code tool} invalid
 	 */
 	public PromptTest
 	{
@@ -234,7 +234,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns the variables that turns, assertion statements and {@code tool:} lines name.
+	 * Returns the variables that turns, assertion statements and {@code tool} values name.
 	 *
 	 * @param turns the turns
 	 * @param assertions the declared assertions
@@ -305,7 +305,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 
 	/**
 	 * Rejects an assertion that names a placeholder or a turn that its test does not have, or whose
-	 * {@code tool:} line a test case's values make invalid.
+	 * {@code tool} a test case's values make invalid.
 	 *
 	 * @param id the test's identifier
 	 * @param names the names of the test's variables
@@ -346,7 +346,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			}
 			catch (IllegalArgumentException e)
 			{
-				throw new IllegalArgumentException("A test case of test '" + id + "' makes the tool: line of the " +
+				throw new IllegalArgumentException("A test case of test '" + id + "' makes the tool of the " +
 					"assertion '" + assertion.id() + "' invalid: " + e.getMessage(), e);
 			}
 		}
@@ -411,7 +411,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns the assertions that the judge decides: those without a {@code tool:} line, then
+	 * Returns the assertions that the judge decides: those without a {@code tool}, then
 	 * {@value TestCase#EXPECTED_OUTCOME}.
 	 *
 	 * @return the assertions
@@ -491,7 +491,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Runs the built-in tool of every assertion that has a {@code tool:} line on a trial's record.
+	 * Runs the built-in tool of every assertion that has a {@code tool} on a trial's record.
 	 *
 	 * @param testCase the test case that the trial ran
 	 * @param record the trial's record

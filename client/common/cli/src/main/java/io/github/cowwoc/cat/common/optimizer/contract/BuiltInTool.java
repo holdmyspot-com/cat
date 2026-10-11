@@ -16,8 +16,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * A built-in tool: CAT decides an assertion from a trial's record without a judge, as the assertion's {@code tool:}
- * line names.
+ * A built-in tool: CAT decides an assertion from a trial's record without a judge, as the assertion's {@code tool}
+ * names.
  * <p>
  * Each tool detects one behavior, which names the failure that development groups. Its arguments may hold
  * {@code {{name}}} placeholders, replaced by the test case's values after the line is split, so a value that holds
@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 public sealed interface BuiltInTool
 {
 	/**
-	 * Splits a {@code tool:} line into its arguments.
+	 * Splits an assertion's {@code tool} value into its arguments.
 	 * <p>
 	 * Arguments are separated by whitespace. An argument that starts with a double quote extends to the next unescaped
 	 * double quote and may hold whitespace; inside it, {@code \"} stands for a double quote and {@code \\} for a
@@ -45,7 +45,7 @@ public sealed interface BuiltInTool
 	}
 
 	/**
-	 * Parses a {@code tool:} line.
+	 * Parses an assertion's {@code tool} value.
 	 *
 	 * @param line the line, which starts with the tool's name
 	 * @return the tool
@@ -58,7 +58,7 @@ public sealed interface BuiltInTool
 	}
 
 	/**
-	 * Returns the tool's name, as the {@code tool:} line writes it.
+	 * Returns the tool's name, as an assertion's {@code tool} value writes it.
 	 *
 	 * @return the name
 	 */

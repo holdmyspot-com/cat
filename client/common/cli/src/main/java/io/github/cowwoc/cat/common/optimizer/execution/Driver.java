@@ -659,7 +659,7 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Runs a completed trial's built-in tools first. A failed tool fails the trial with the record of each failed
 	 * tool and no judge runs; a failed development trial waits for its triage before the failure is recorded.
-	 * Otherwise the trial waits for a judge of the assertions without a {@code tool:} line and of the assertion
+	 * Otherwise the trial waits for a judge of the assertions without a {@code tool} and of the assertion
 	 * {@value TestCase#EXPECTED_OUTCOME}, which receives the tool results as evidence. A tool that the record cannot
 	 * decide, or evidence that cannot be rendered, makes the run an infrastructure failure.
 	 *
@@ -759,7 +759,7 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param heading the record's first line
 	 * @param results the tools' results
-	 * @return the record: the heading, then one line per tool naming its assertion, its {@code tool:} line, its
+	 * @return the record: the heading, then one line per tool naming its assertion, its {@code tool}, its
 	 *   behavior and its observed value
 	 */
 	private static String toolRecord(String heading, List<BuiltInToolResult> results)
@@ -1303,14 +1303,17 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Returns the paths that a staged source leaves out so that a trial cannot read the prompt tests.
 	 *
-	 * @return the confirmed contract's prompt test directories and cited regression scenarios, relative to the project
+	 * @return the confirmed contract's prompt test directories, cited regression scenarios and the shared fixture
+	 *   directories that the cited scenarios name, relative to the project
+	 * @throws IOException if a cited scenario cannot be read
 	 */
-	private Set<Path> excludedTests()
+	private Set<Path> excludedTests() throws IOException
 	{
 		if (!campaign.isConfirmed())
 			return Set.of();
-		Path target = campaign.header().root().relativize(campaign.header().target());
-		return PromptTestLocations.excluded(campaign.contract(), target);
+		Path root = campaign.header().root();
+		Path target = root.relativize(campaign.header().target());
+		return PromptTestLocations.excluded(campaign.contract(), target, root);
 	}
 
 	/**

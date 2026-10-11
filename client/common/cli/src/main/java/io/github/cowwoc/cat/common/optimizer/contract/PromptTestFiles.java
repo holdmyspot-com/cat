@@ -32,11 +32,12 @@ import tools.jackson.databind.json.JsonMapper;
  * @param root      the test root, which holds the prompt test directory or is that directory
  * @param directory the prompt test directory
  * @param scenario  the parsed scenario
+ * @param patterns  the fixture patterns, in order
  * @param fixtures  the fixture files, sorted by path
  * @param testCases the test cases of the values file, or an empty list if the directory has none
  */
-public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
-	List<TestCase> testCases)
+public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<String> patterns,
+	List<PromptTestFiles.Fixture> fixtures, List<TestCase> testCases)
 {
 	/**
 	 * The scenario's file name.
@@ -88,10 +89,12 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * @param root      the test root, which holds the prompt test directory or is that directory
 	 * @param directory the prompt test directory
 	 * @param scenario  the parsed scenario
+	 * @param patterns  the fixture patterns, in order
 	 * @param fixtures  the fixture files, sorted by path
 	 * @param testCases the test cases of the values file, or an empty list if the directory has none
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or a pattern is
+	 *                                  malformed
 	 */
 	public PromptTestFiles
 	{
@@ -101,6 +104,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
 				"\ndirectory: " + directory);
 		requireThat(scenario, "scenario").isNotNull();
+		patterns = List.copyOf(patterns);
+		for (String pattern : patterns)
+			FixturePattern.parse(pattern);
 		fixtures = List.copyOf(fixtures);
 		testCases = List.copyOf(testCases);
 	}
@@ -108,9 +114,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Reads a prompt test directory.
 	 * <p>
-	 * The prompt test's fixtures are the files under the {@code fixtures/} directories of the test root, of each
-	 * directory between it and the prompt test directory, and of the prompt test directory. A file of an inner
-	 * directory replaces the file at the same path of an outer one.
+	 * The prompt test's fixtures are the files that the patterns of its {@code ## Fixtures} section select, or the files
+	 * of its own {@code fixtures/} directory if it has no such section. A file that a later pattern selects replaces
+	 * the file at the same workspace path that an earlier pattern selects.
 	 *
 	 * @param json      the JSON mapper that reads the values file
 	 * @param root      the test root, which holds the prompt test directory or is that directory
@@ -119,8 +125,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}
 	 * @throws IOException              if a file cannot be read
-	 * @throws ScenarioFormatException  if the scenario or the values file does not follow the format, a fixture is a
-	 *                                  symbolic link, or a committed test case is not valid for the prompt test
+	 * @throws ScenarioFormatException  if the scenario or the values file does not follow the format, a fixture pattern
+	 *                                  leaves the test root or selects no file, a fixture is a symbolic link, or a
+	 *                                  committed test case is not valid for the prompt test
 	 */
 	public static PromptTestFiles read(JsonMapper json, Path root, Path directory)
 		throws IOException, ScenarioFormatException
@@ -132,15 +139,32 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
 				"\ndirectory: " + directory);
 		Path scenarioFile = directory.resolve(SCENARIO);
-		Scenario scenario = new ScenarioParser(scenarioFile + ": ", Files.readString(scenarioFile)).parse();
+		ScenarioParser parser = new ScenarioParser(scenarioFile + ": ", Files.readString(scenarioFile));
+		Scenario scenario = parser.parse();
 		Set<String> declared = new HashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
 			declared.add(variable.name());
-		// A fixture of an inner directory replaces the ancestor's fixture at the same path
+		List<String> patterns = parser.declaredPatterns();
+		// The implicit pattern lets a prompt test without fixtures omit both the section and the directory
+		boolean implicit = patterns.isEmpty();
+		if (implicit)
+			patterns = List.of(FixturePattern.DEFAULT);
+
+		// A file that a later pattern selects replaces the file at the same path that an earlier one selects
 		Map<String, Fixture> byPath = new HashMap<>();
-		for (Path fixtureDirectory : fixtureDirectories(root, directory))
+		for (String text : patterns)
 		{
-			for (Fixture fixture : readFixtures(fixtureDirectory, declared))
+			FixturePattern pattern = FixturePattern.parse(text);
+			Path base = pattern.base(directory);
+			if (!base.startsWith(root.normalize()))
+			{
+				throw new ScenarioFormatException(scenarioFile + ": the fixture pattern " + text + " leaves the test " +
+					"root " + root + "; name a fixtures directory inside it");
+			}
+			List<Fixture> selected = readFixtures(base, declared, pattern);
+			if (selected.isEmpty() && !implicit)
+				throw new ScenarioFormatException(scenarioFile + ": the fixture pattern " + text + " selects no file");
+			for (Fixture fixture : selected)
 				byPath.put(fixture.path(), fixture);
 		}
 		List<Fixture> fixtures = new ArrayList<>(byPath.values());
@@ -148,13 +172,13 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 
 		Path valuesFile = directory.resolve(ValuesFile.NAME);
 		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
-			return new PromptTestFiles(root, directory, scenario, fixtures, List.of());
+			return new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
 		List<TestCase> testCases;
 		try (BufferedReader in = Files.newBufferedReader(valuesFile))
 		{
 			testCases = ValuesFile.read(json, in, valuesFile.toString());
 		}
-		PromptTestFiles files = new PromptTestFiles(root, directory, scenario, fixtures, List.of());
+		PromptTestFiles files = new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
 		for (int i = 0; i < testCases.size(); ++i)
 		{
 			List<String> problems = files.problems(testCases.get(i));
@@ -164,44 +188,21 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 					"prompt test: " + String.join("; ", problems));
 			}
 		}
-		return new PromptTestFiles(root, directory, scenario, fixtures, testCases);
+		return new PromptTestFiles(root, directory, scenario, patterns, fixtures, testCases);
 	}
 
 	/**
-	 * Returns the {@code fixtures} directories that a prompt test directory inherits, outermost first.
+	 * Lists the fixtures that a pattern selects.
 	 *
-	 * @param root      the test root
-	 * @param directory the prompt test directory, at or below {@code root}
-	 * @return the {@code fixtures} directories of {@code root}, of each directory between them and of
-	 *   {@code directory}
-	 */
-	private static List<Path> fixtureDirectories(Path root, Path directory)
-	{
-		List<Path> fixtureDirectories = new ArrayList<>();
-		Path current = root;
-		fixtureDirectories.add(current.resolve(FIXTURES));
-		if (!directory.equals(root))
-		{
-			for (Path name : root.relativize(directory))
-			{
-				current = current.resolve(name);
-				fixtureDirectories.add(current.resolve(FIXTURES));
-			}
-		}
-		return fixtureDirectories;
-	}
-
-	/**
-	 * Lists the fixtures of one {@code fixtures/} directory.
-	 *
-	 * @param root     the {@code fixtures/} directory, which need not exist
+	 * @param root     the pattern's {@code fixtures/} directory, which need not exist
 	 * @param declared the declared variable names
+	 * @param pattern  the pattern
 	 * @return the fixtures, sorted by path
 	 * @throws IOException             if a fixture cannot be read
-	 * @throws ScenarioFormatException if a fixture is a symbolic link or another file that is neither a regular file
-	 *                                 nor a directory
+	 * @throws ScenarioFormatException if a selected file is a symbolic link or another file that is neither a regular
+	 *                                 file nor a directory
 	 */
-	private static List<Fixture> readFixtures(Path root, Set<String> declared)
+	private static List<Fixture> readFixtures(Path root, Set<String> declared, FixturePattern pattern)
 		throws IOException, ScenarioFormatException
 	{
 		if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS))
@@ -220,12 +221,14 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				LinkOption.NOFOLLOW_LINKS);
 			if (attributes.isDirectory())
 				continue;
+			String relative = root.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+			if (!pattern.matches(relative))
+				continue;
 			if (!attributes.isRegularFile())
 			{
 				throw new ScenarioFormatException(path + ": a fixture must be a regular file, but this is a symbolic " +
 					"link or another special file");
 			}
-			String relative = root.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
 			String content = utf8(Files.readAllBytes(path));
 			if (content == null)
 				fixtures.add(new Fixture(relative, false, Set.of()));
@@ -253,11 +256,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		requireThat(fixture, "fixture").isNotNull();
 		if (!fixtures.contains(fixture))
 			throw new IllegalArgumentException("The fixture is not one of this prompt test's: " + fixture.path());
-		List<Path> fixtureDirectories = fixtureDirectories(root, directory);
-		for (Path fixtureDirectory : fixtureDirectories.reversed())
+		for (String text : patterns.reversed())
 		{
-			Path source = fixtureDirectory.resolve(fixture.path());
-			if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
+			FixturePattern pattern = FixturePattern.parse(text);
+			Path source = pattern.base(directory).resolve(fixture.path());
+			if (pattern.matches(fixture.path()) && Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
 				return source;
 		}
 		throw new IllegalArgumentException("The fixture's file no longer exists: " + fixture.path());
@@ -304,7 +307,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * Returns why a test case is not valid for a prompt test.
 	 *
 	 * @param declared the names of the prompt test's variables
-	 * @param inText   the variables that its turns, assertion statements and {@code tool:} lines name
+	 * @param inText   the variables that its turns, assertion statements and assertions' {@code tool} values name
 	 * @param fixtures its fixtures
 	 * @param testCase the test case
 	 * @return the problems, or an empty list if the test case is valid

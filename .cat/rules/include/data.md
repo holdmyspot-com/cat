@@ -26,6 +26,22 @@ campaign identifier made of a timestamp and a random suffix, spells each CAT-nam
 delimiters. JSON or YAML whose format another tool owns, such as a harness settings file, a protocol message, or a
 harness's skill or agent frontmatter, keeps that owner's spelling.
 
+Write a key-value pair in project-owned Markdown, outside its YAML frontmatter, as a list item whose bold key is
+followed by a colon and the value:
+
+```markdown
+- **key**: value
+```
+
+Give a key several values either as nested list items or as code spans separated by commas:
+
+```markdown
+- **key**:
+  - value1
+  - value2
+- **key**: `value 1`, `value2`
+```
+
 When input can grow independently of the current operation and its records can be handled independently, keep working
 memory bounded: read one record or a bounded chunk, process it, and discard it before reading the next. Use a buffered
 reader or streaming parser for JSONL, rollback journals, logs, line-oriented exports, and similarly unbounded record

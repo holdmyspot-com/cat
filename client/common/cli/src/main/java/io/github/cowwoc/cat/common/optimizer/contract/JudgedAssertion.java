@@ -11,7 +11,7 @@ import java.util.Map;
  * An assertion that the judge decides, with the requirement that it checks and the behaviors through which a trial
  * can fail it.
  *
- * @param assertion   the assertion, which has no {@code tool:} line
+ * @param assertion   the assertion, which has no {@code tool}
  * @param requirement the requirement that the assertion checks, or {@code null} for
  *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
  */
@@ -20,11 +20,11 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	/**
 	 * Creates a judged assertion.
 	 *
-	 * @param assertion   the assertion, which has no {@code tool:} line
+	 * @param assertion   the assertion, which has no {@code tool}
 	 * @param requirement the requirement that the assertion checks, or {@code null} for
 	 *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
 	 * @throws NullPointerException     if {@code assertion} is null
-	 * @throws IllegalArgumentException if {@code assertion} has a {@code tool:} line, or {@code requirement} is null
+	 * @throws IllegalArgumentException if {@code assertion} has a {@code tool}, or {@code requirement} is null
 	 *                                  for any assertion other than {@value TestCase#EXPECTED_OUTCOME}
 	 */
 	public JudgedAssertion
@@ -43,7 +43,7 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 *
 	 * @param test         the prompt test
 	 * @param requirements every requirement of the contract
-	 * @return the test's assertions without a {@code tool:} line, then {@value TestCase#EXPECTED_OUTCOME}
+	 * @return the test's assertions without a {@code tool}, then {@value TestCase#EXPECTED_OUTCOME}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an assertion checks a requirement that {@code requirements} does not list
 	 */

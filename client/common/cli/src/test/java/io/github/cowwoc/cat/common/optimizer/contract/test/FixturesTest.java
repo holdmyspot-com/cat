@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -35,10 +36,8 @@ public final class FixturesTest
 	private static final String SCENARIO = """
 		## Variables
 
-		| Name | Description |
-		|---|---|
-		| notes | The notes file name |
-		| before | Log text before the entry |
+		- **notes**: The notes file name
+		- **before**: Log text before the entry
 
 		## Scenario
 
@@ -48,9 +47,8 @@ public final class FixturesTest
 
 		### answer_given
 
-		kind: guard
-
-		The reply states {{expected_outcome}}.
+		- **kind**: guard
+		- **description**: The reply states {{expected_outcome}}.
 		""";
 	/**
 	 * Bytes that are not valid UTF-8 and contain a placeholder's spelling.
@@ -88,7 +86,7 @@ public final class FixturesTest
 	}
 
 	/**
-	 * Reads a prompt test directory that is its own test root, so it inherits no fixtures.
+	 * Reads a prompt test directory that is its own test root.
 	 *
 	 * @param directory the prompt test directory
 	 * @return the prompt test's files
@@ -185,49 +183,128 @@ public final class FixturesTest
 	}
 
 	/**
-	 * Verifies that a prompt test also copies the fixtures of each directory between its test root and its own
-	 * directory, from the outermost inward, that a nearer directory's file replaces an outer file at the same path,
-	 * and that a {@code fixtures/} directory outside the test root is not read.
+	 * Returns a scenario that copies the files of the given fixture patterns.
+	 *
+	 * @param patterns the patterns, each written as a code span
+	 * @return the scenario
+	 */
+	private static String withPatterns(String... patterns)
+	{
+		StringJoiner spans = new StringJoiner(", ");
+		for (String pattern : patterns)
+			spans.add("`" + pattern + "`");
+		return "## Fixtures\n\n- **patterns**: " + spans + "\n\n" + SCENARIO;
+	}
+
+	/**
+	 * Creates a test root that holds a guidance directory with shared fixtures and a prompt test below it with its own
+	 * fixtures, and a {@code fixtures/} directory outside the test root.
+	 *
+	 * @param cleanup removes the directories
+	 * @return the test root
+	 * @throws IOException if a file cannot be written
+	 */
+	private static Path sharedFixtures(TemporaryDirectories cleanup) throws IOException
+	{
+		Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			"test-root"));
+		Files.createDirectories(outside.resolve("fixtures"));
+		Files.writeString(outside.resolve("fixtures/outside.md"), "Not a fixture");
+		Path root = Files.createDirectories(outside.resolve("tests"));
+		Path guidance = Files.createDirectories(root.resolve("guidance"));
+		Files.createDirectories(guidance.resolve("fixtures/docs"));
+		Files.writeString(guidance.resolve("fixtures/AGENTS.md"), "Published on {{expected_outcome}}");
+		Files.writeString(guidance.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the guidance");
+		Files.writeString(guidance.resolve("fixtures/docs/glossary.md"), "Not named");
+		Path directory = Files.createDirectories(guidance.resolve("case"));
+		Files.createDirectories(directory.resolve("fixtures/docs"));
+		Files.writeString(directory.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the case");
+		Files.writeString(directory.resolve("fixtures/own.md"), "Own");
+		return root;
+	}
+
+	/**
+	 * Verifies that a prompt test copies the files that its fixture patterns name, in list order, so that the later
+	 * pattern's file replaces an earlier one at the same workspace path, and that a shared file it does not name is
+	 * not copied.
 	 *
 	 * @throws IOException             if a file cannot be written or read
 	 * @throws ScenarioFormatException if the prompt test is refused
 	 */
 	@Test
-	public void inheritsAncestorFixtures() throws IOException, ScenarioFormatException
+	public void copiesPatternsInListOrder() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
-				"test-root"));
-			Files.createDirectories(outside.resolve("fixtures"));
-			Files.writeString(outside.resolve("fixtures/outside.md"), "Not a fixture");
-			Path root = Files.createDirectories(outside.resolve("tests"));
-			Files.createDirectories(root.resolve("fixtures/docs"));
-			Files.writeString(root.resolve("fixtures/shared.md"), "From the test root");
-			Files.writeString(root.resolve("fixtures/docs/{{notes}}"), "From the test root");
-			Path guidance = Files.createDirectories(root.resolve("guidance"));
-			Files.createDirectories(guidance.resolve("fixtures/docs"));
-			Files.writeString(guidance.resolve("fixtures/AGENTS.md"), "Published on {{expected_outcome}}");
-			Files.writeString(guidance.resolve("fixtures/docs/{{notes}}"), "From the guidance");
-			Path directory = Files.createDirectories(guidance.resolve("case"));
-			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-			Files.createDirectories(directory.resolve("fixtures/docs"));
-			Files.writeString(directory.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the case");
+			Path root = sharedFixtures(cleanup);
+			Path directory = root.resolve("guidance/case");
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
+				withPatterns("fixtures/**", "../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}"));
 
 			PromptTestFiles files = PromptTestFiles.read(json, root, directory);
 			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
 				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
 				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
-				new PromptTestFiles.Fixture("shared.md", true, Set.of())));
+				new PromptTestFiles.Fixture("own.md", true, Set.of())));
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			Fixtures.copy(files, testCase("notes.md"), workspace);
-			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "docs/notes.md", "shared.md"));
+			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "docs/notes.md", "own.md"));
 			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
 				isEqualTo("Published on 2025-03-04");
-			requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").endsWith("\nFrom the case");
-			requireThat(Files.readString(workspace.resolve("shared.md")), "shared").isEqualTo("From the test root");
+			requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").endsWith("\nFrom the guidance");
+
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
+				withPatterns("../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}", "fixtures/**"));
+			Path reversed = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"workspace"));
+			Fixtures.copy(PromptTestFiles.read(json, root, directory), testCase("notes.md"), reversed);
+			requireThat(Files.readString(reversed.resolve("docs/notes.md")), "reversed").endsWith("\nFrom the case");
+		}
+	}
+
+	/**
+	 * Verifies that a fixture pattern that leaves the test root, and one that matches no file, are refused, while a
+	 * prompt test without a {@code ## Fixtures} section and without a {@code fixtures/} directory has no fixtures.
+	 *
+	 * @throws IOException             if a file cannot be written or read
+	 * @throws ScenarioFormatException if a valid prompt test is refused
+	 */
+	@Test
+	public void refusesEscapingAndUnmatchedPatterns() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = sharedFixtures(cleanup);
+			Path directory = root.resolve("guidance/case");
+			Path scenario = directory.resolve(PromptTestFiles.SCENARIO);
+			Files.writeString(scenario, withPatterns("fixtures/**", "../../../fixtures/**"));
+			try
+			{
+				PromptTestFiles.read(json, root, directory);
+				throw new AssertionError("A pattern outside the test root was accepted");
+			}
+			catch (ScenarioFormatException e)
+			{
+				requireThat(e.getMessage(), "outsideRoot").contains("../../../fixtures/**").contains("test root");
+			}
+
+			Files.writeString(scenario, withPatterns("fixtures/**", "../fixtures/missing.md"));
+			try
+			{
+				PromptTestFiles.read(json, root, directory);
+				throw new AssertionError("A pattern that matches no file was accepted");
+			}
+			catch (ScenarioFormatException e)
+			{
+				requireThat(e.getMessage(), "matchesNothing").contains("../fixtures/missing.md").contains("no file");
+			}
+
+			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
+			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			requireThat(PromptTestFiles.read(json, root, bare).fixtures(), "bare").isEmpty();
 		}
 	}
 

@@ -112,9 +112,7 @@ public final class DeliveryTest
 
 		## Variables
 
-		| Name | Description |
-		|---|---|
-		| file | The notes file |
+		- **file**: The notes file
 
 		## Scenario
 
@@ -124,9 +122,8 @@ public final class DeliveryTest
 
 		### read
 
-		kind: effect
-
-		The reply reads the file.
+		- **kind**: effect
+		- **description**: The reply reads the file.
 		""";
 
 	/**
@@ -792,42 +789,75 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A prompt test's fixture that it inherits unchanged from a {@code fixtures/} directory between its test root and
-	 * its own directory stays shared: delivery does not copy it into the prompt test's own {@code fixtures/}. A fixture
-	 * whose content differs from the inherited file is written there, where it replaces the inherited file.
+	 * An edited prompt test's fixture that a shared {@code fixtures/} directory supplies unchanged stays shared:
+	 * delivery does not copy it into the prompt test's own {@code fixtures/}. A fixture whose content differs is
+	 * written there, and delivery appends a fixture pattern so that the copy replaces the shared file:
+	 * {@code fixtures/**} when no pattern names the prompt test's own {@code fixtures/}, or a pattern naming the copy
+	 * alone when a later pattern would still replace it.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back
 	 */
 	@Test
-	public void inheritedFixtureStaysShared() throws IOException, ScenarioFormatException
+	public void sharedFixtureStaysShared() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-W11, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path sharedNotes = TESTS.resolve("fixtures/docs/{{notes}}");
-			Path sharedAgents = Path.of(".cat/tests/fixtures/AGENTS.md");
+			Path sharedAgents = TESTS.resolve("fixtures/AGENTS.md");
 			String notes = "Release {{notes}} fixes the installer.\n";
+			Path ownPatternScenario = TESTS.resolve("release_notes").resolve(PromptTestFiles.SCENARIO);
+			String ownPatternRecorded = RECORDED_SCENARIO + "\n## Fixtures\n\n- **patterns**: `fixtures/**`, " +
+				"`../fixtures/{AGENTS.md,docs/**}`\n";
+			Path sharedOnlyScenario = TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO);
+			String sharedOnlyRecorded = RECORDED_SCENARIO + "\n## Fixtures\n\n- **patterns**: `../fixtures/**`\n";
 			Fixture fixture = Fixture.create(cleanup).
 				commit(sharedNotes, notes.getBytes(UTF_8)).
-				commit(sharedAgents, "Reply briefly.\n".getBytes(UTF_8));
+				commit(sharedAgents, "Reply briefly.\n".getBytes(UTF_8)).
+				commit(ownPatternScenario, ownPatternRecorded.getBytes(UTF_8)).
+				commit(sharedOnlyScenario, sharedOnlyRecorded.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
-			DeliveredTest created = promptTest("created_summary", true);
-			DeliveredTest test = new DeliveredTest(created.id(), created.location(), created.scenario(), DESIGN_GOALS,
-				created.testCases(), List.of(new FixtureFile("AGENTS.md", "Reply in one sentence.\n"),
-				new FixtureFile("docs/{{notes}}", notes)));
+			List<FixtureFile> fixtures = List.of(new FixtureFile("AGENTS.md", "Reply in one sentence.\n"),
+				new FixtureFile("docs/{{notes}}", notes));
+			DeliveredTest ownPattern = withFixtures(promptTest("release_notes", false), fixtures);
+			DeliveredTest sharedOnly = withFixtures(promptTest("release_dates", false), fixtures);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
-				Map.of(sharedNotes, content(notes), sharedAgents, content("Reply briefly.\n"))).
+				Map.of(sharedNotes, content(notes), sharedAgents, content("Reply briefly.\n"), ownPatternScenario,
+					content(ownPatternRecorded), sharedOnlyScenario, content(sharedOnlyRecorded))).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
-					RECORD, List.of(test));
+					RECORD, List.of(ownPattern, sharedOnly));
 
 			requireDelivered(result);
-			Path own = fixture.resolve(test.location().directory().resolve(PromptTestFiles.FIXTURES));
-			requireThat(read(own.resolve("AGENTS.md")), "agents").isEqualTo("Reply in one sentence.\n");
-			requireThat(Files.notExists(own.resolve("docs")), "notesAreShared").isTrue();
+			for (DeliveredTest test : List.of(ownPattern, sharedOnly))
+			{
+				Path own = fixture.resolve(test.location().directory().resolve(PromptTestFiles.FIXTURES));
+				requireThat(read(own.resolve("AGENTS.md")), "agents").withContext(test.id(), "id").
+					isEqualTo("Reply in one sentence.\n");
+				requireThat(Files.notExists(own.resolve("docs")), "notesAreShared").withContext(test.id(), "id").
+					isTrue();
+			}
 			requireThat(read(fixture.resolve(sharedNotes)), "sharedNotes").isEqualTo(notes);
+			requireThat(read(fixture.resolve(sharedAgents)), "sharedAgents").isEqualTo("Reply briefly.\n");
+			requireThat(Scenario.fixturePatterns(read(fixture.resolve(ownPatternScenario))), "ownPattern").
+				isEqualTo(List.of("fixtures/**", "../fixtures/{AGENTS.md,docs/**}", "fixtures/AGENTS.md"));
+			requireThat(Scenario.fixturePatterns(read(fixture.resolve(sharedOnlyScenario))), "sharedOnly").
+				isEqualTo(List.of("../fixtures/**", "fixtures/**"));
 		}
+	}
+
+	/**
+	 * Returns a prompt test with other fixtures.
+	 *
+	 * @param test     the prompt test
+	 * @param fixtures the fixtures
+	 * @return the prompt test with {@code fixtures}
+	 */
+	private static DeliveredTest withFixtures(DeliveredTest test, List<FixtureFile> fixtures)
+	{
+		return new DeliveredTest(test.id(), test.location(), test.scenario(), test.designGoals(), test.testCases(),
+			fixtures);
 	}
 
 	/**
@@ -905,6 +935,9 @@ public final class DeliveryTest
 	 * A crash after any file of a delivery that writes a prompt test, before the journal records it, is followed by a
 	 * restart that resumes the same delivery: every change, including the prompt test's files, is written exactly once
 	 * across both runs, and the delivery completes.
+	 * <p>
+	 * The test can take about a second: each of the 7 crash points needs an untouched project, so it creates a fixture
+	 * with its own Git repository and runs two deliveries for each.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back

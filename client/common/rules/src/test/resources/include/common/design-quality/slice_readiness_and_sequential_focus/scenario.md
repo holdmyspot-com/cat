@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| ready_item | An unrelated work item that is ready in situation 2, such as `documentation work item` or `dashboard color update` |
+- **ready_item**: An unrelated work item that is ready in situation 2, such as `documentation work item` or
+  `dashboard color update`
 
 ## Scenario
 
@@ -26,37 +25,32 @@ evidence needed before switching or starting dependent work.
 
 ### open_predecessor_and_current_work
 
-kind: effect
-
-For situation 1, the executor keeps the currently runnable W0 probe as the sequential work item through its recorded
-result. It does not begin W1 native interruption or infer readiness from W1 local persistence. If that probe becomes
-unrunnable, it records the exact missing evidence and reason before moving to W1 local persistence or another ready
-independent slice; it does not claim all of W1 is blocked.
+- **kind**: effect
+- **description**: For situation 1, the executor keeps the currently runnable W0 probe as the sequential work item
+  through its recorded result. It does not begin W1 native interruption or infer readiness from W1 local persistence. If
+  that probe becomes unrunnable, it records the exact missing evidence and reason before moving to W1 local persistence
+  or another ready independent slice; it does not claim all of W1 is blocked.
 
 ### sequential_acceptance
 
-kind: effect
-
-For situation 2, the executor runs the API slice's focused caller acceptance test and handles its result before moving
-to the {{ready_item}}. Compilation is not the slice's acceptance result.
+- **kind**: effect
+- **description**: For situation 2, the executor runs the API slice's focused caller acceptance test and handles its
+  result before moving to the {{ready_item}}. Compilation is not the slice's acceptance result.
 
 ### specific_gate_not_whole_component
 
-kind: effect
-
-For situation 3, the executor permits W1 native interruption work because its specific predecessor passed, despite the
-unrelated W0 generation-write probe remaining open.
+- **kind**: effect
+- **description**: For situation 3, the executor permits W1 native interruption work because its specific predecessor
+  passed, despite the unrelated W0 generation-write probe remaining open.
 
 ### independent_parallel_work
 
-kind: guard
-
-For situation 4, the executor permits both isolated independent work units to proceed concurrently; sequential focus
-does not force one independent worker to wait for the other.
+- **kind**: guard
+- **description**: For situation 4, the executor permits both isolated independent work units to proceed concurrently;
+  sequential focus does not force one independent worker to wait for the other.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/design-quality.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/design-quality.md`
+  before its first governed action.

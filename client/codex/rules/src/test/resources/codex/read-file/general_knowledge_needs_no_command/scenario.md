@@ -7,9 +7,14 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| status | A standard HTTP status code, such as 404 or 503 |
+- **status**: A standard HTTP status code, such as 404 or 503
+- **sign_off**: The team name that `docs/style-guide.md` requires as every reply's last line after `-- `, such as
+  `Release Desk`
+
+## Fixtures
+
+- **patterns**: `../fixtures/AGENTS.md`, `../fixtures/docs/glossary.md`, `../fixtures/docs/release-notes.md`,
+  `../fixtures/docs/style-guide.md`
 
 ## Scenario
 
@@ -19,14 +24,12 @@ What does HTTP status {{status}} mean?
 
 ### no_command
 
-kind: guard
-tool: no-tool-call
-
-The agent runs no command and calls no tool: no `exec` call, no `read-file` call, and no command such as `pwd`, `ls`,
-`rg` or `printf`.
+- **kind**: guard
+- **tool**: `no-tool-call`
+- **description**: The agent runs no command and calls no tool: no `exec` call, no `read-file` call, and no command such
+  as `pwd`, `ls`, `rg` or `printf`.
 
 ### direct_answer
 
-kind: guard
-
-The final response answers the question directly and asks the user no question.
+- **kind**: guard
+- **description**: The final response answers the question directly and asks the user no question.

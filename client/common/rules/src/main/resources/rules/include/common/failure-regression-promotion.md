@@ -42,13 +42,21 @@ none can express that decision.
 Write `scenario.md` with these sections and no others:
 
 - `# <Title>`, optionally followed by `## Design Goals`, which says what the scenario proves.
-- `## Variables`: a table with exactly the columns `Name` and `Description` and one row per variable, with a snake_case
-  name and single-line cells. Declare at least one variable, such as a file name, a value that the turn asks about or
-  part of a turn's wording, and choose them so that different values lead to different expected outcomes.
+- `## Variables`: one `- **<name>**: <description>` pair per variable, with a snake_case name. Declare at least one
+  variable, such as a file name, a value that the turn asks about or part of a turn's wording, and choose them so that
+  different values lead to different expected outcomes.
+- `## Fixtures`, only when the scenario reads files that other scenarios share: `- **patterns**: ` followed by code
+  spans separated by commas, such as `` `fixtures/**`, `../fixtures/AGENTS.md` ``. Each pattern is
+  `<directory>/fixtures/<glob>`, relative to the scenario's directory and inside its test directory, and must select a
+  file; a later pattern's file replaces an earlier one at the same path. Without the section, the scenario reads its
+  own `fixtures/**`.
 - `## Scenario`: the turn's text, or `### Turn <n>` subsections numbered from 1 when there are several turns. State the
   situation that the agent faces in the turn itself.
-- `## Assertions`: one `### <id>` subsection per assertion, with a snake_case id. Its body starts with `kind: effect`,
-  or `kind: guard` for behavior that holds without the corrected guidance, then a blank line and the statement.
+- `## Assertions`: one `### <id>` subsection per assertion, with a snake_case id, holding `- **kind**: effect`, or
+  `- **kind**: guard` for behavior that holds without the corrected guidance, then `- **description**: ` and the
+  statement.
+
+A pair's value continues on following lines indented by two spaces.
 
 Write `{{<name>}}` wherever a variable's value belongs, in the turns, the assertions and the fixtures' names and
 contents. `{{expected_outcome}}` and the assertion id `expected_outcome` are reserved. Do not write test cases or their

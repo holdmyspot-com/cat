@@ -2,9 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| threshold | The defect rate that separates the lines that eventually qualify from those that may never qualify, a percentage such as `1%` or `0.5%` |
+- **threshold**: The defect rate that separates the lines that eventually qualify from those that may never qualify, a
+  percentage such as `1%` or `0.5%`
 
 ## Scenario
 
@@ -26,21 +25,18 @@ Handle each of the following independent requests. Answer them in order and labe
 
 ### conditioned_probability_subset_retained
 
-kind: effect
-
-For request 1: The rewritten conclusion applies eventual qualification only to the production lines whose defect rate is
-below {{threshold}}; it does not broaden that conclusion to every production line.
+- **kind**: effect
+- **description**: For request 1: The rewritten conclusion applies eventual qualification only to the production lines
+  whose defect rate is below {{threshold}}; it does not broaden that conclusion to every production line.
 
 ### conditioned_state_subset_retained
 
-kind: effect
-
-For request 2: The revised release note limits availability through the new endpoint to tenants that completed the
-migration and does not claim that every tenant can use it.
+- **kind**: effect
+- **description**: For request 2: The revised release note limits availability through the new endpoint to tenants that
+  completed the migration and does not claim that every tenant can use it.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/write-clearly.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
+  before its first governed action.

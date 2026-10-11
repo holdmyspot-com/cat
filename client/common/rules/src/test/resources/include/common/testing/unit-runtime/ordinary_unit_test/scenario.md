@@ -2,9 +2,7 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| field | The required field that the input is missing, such as `name` or `created_at` |
+- **field**: The required field that the input is missing, such as `name` or `created_at`
 
 ## Scenario
 
@@ -16,14 +14,12 @@ testing rules to load to review the test's claim, exercised boundary, and assert
 
 ### focused_route
 
-kind: effect
-
-The task loads the general testing rule. It does not load the unit-runtime companion because the task does not measure
-or reduce a unit test's runtime or decide whether a costly fixture is needed.
+- **kind**: effect
+- **description**: The task loads the general testing rule. It does not load the unit-runtime companion because the task
+  does not measure or reduce a unit test's runtime or decide whether a costly fixture is needed.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/testing.md` before its first governed
-action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/testing.md` before its
+  first governed action.

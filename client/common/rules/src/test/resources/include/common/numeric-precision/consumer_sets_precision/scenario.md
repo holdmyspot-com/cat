@@ -2,10 +2,8 @@
 
 ## Variables
 
-| Name | Description |
-|---|---|
-| batch_trials | The number of trials in a batch, a multiple of 5 between 10 and 200, such as `50` |
-| limit_factor | Two fifths of `batch_trials`, such as `20` for 50 trials |
+- **batch_trials**: The number of trials in a batch, a multiple of 5 between 10 and 200, such as `50`
+- **limit_factor**: Two fifths of `batch_trials`, such as `20` for 50 trials
 
 ## Scenario
 
@@ -28,22 +26,19 @@ target allows in {{batch_trials}} trials, rounded down to a whole number of fail
 
 ### approximate_consumer_uses_floating_point
 
-kind: guard
-
-For request 1: The method computes the rate in `double` arithmetic after converting `target` once. It does not perform
-`BigDecimal` arithmetic and then convert the result to `double` when returning it.
+- **kind**: guard
+- **description**: For request 1: The method computes the rate in `double` arithmetic after converting `target` once. It
+  does not perform `BigDecimal` arithmetic and then convert the result to `double` when returning it.
 
 ### exact_consumer_stays_exact
 
-kind: effect
-
-For request 2: The method computes the limit with exact arithmetic, such as `BigDecimal` or integer arithmetic on the
-rate's hundredths, through the rounding down. It does not compute `{{limit_factor}} × (1 − target)` as a `double` before taking the
-floor, so every target yields the exact floor.
+- **kind**: effect
+- **description**: For request 2: The method computes the limit with exact arithmetic, such as `BigDecimal` or integer
+  arithmetic on the rate's hundredths, through the rounding down. It does not compute `{{limit_factor}} × (1 − target)`
+  as a `double` before taking the floor, so every target yields the exact floor.
 
 ### guidance_selection
 
-kind: effect
-
-The retained events establish that the executor selects `rules/include/common/numeric-precision.md` before its first
-governed action.
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/numeric-precision.md`
+  before its first governed action.

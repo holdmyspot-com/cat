@@ -30,7 +30,7 @@ import tools.jackson.databind.node.ObjectNode;
  * The shape of the proposal is defined once, in {@code optimizer/contract/proposal.schema.json}. Validation first
  * checks the shape, which rejects a missing item, an unknown item and an aggregate count in place of a list. It then
  * builds the contract, whose constructors enforce the rules that a schema cannot express, such as test cases that
- * give a value to each declared variable, references that name a listed requirement and {@code tool:} lines that name
+ * give a value to each declared variable, references that name a listed requirement and {@code tool} values that name
  * a built-in tool with arguments that suit it. Both the confirmation of contract author output and the loading of a
  * stored contract parse through this class, so both apply these rules.
  */
