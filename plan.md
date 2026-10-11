@@ -1925,12 +1925,13 @@ The riskiest pure code, built first.
 ### WI-70 — Paged command output for Codex (user request, 2026-10-11)
 
 - **Programs:** ship `run-part` and `read-part` as Java launchers of the Codex image (user request, 2026-10-11:
-  Java rather than bash). Both run without the image's private `/tmp`, so saved output outlives the call. Like every
-  jlink launcher (user request, 2026-10-11), they run Java in a UTF-8 `LC_CTYPE` when the caller's is not UTF-8, so
-  Java can name files that are not ASCII; `run-part` restores the caller's locale for the command. `run-part` runs the
-  command on standard input, saves its output and exit status in a new file under `${TMPDIR}`, and prints the first part;
-  `read-part` prints a later part. Each part fits Codex's 10,000-token exec budget after JSON escaping and ends with a
-  bracketed line that names the command printing the next part, or with `[End of …]` and the exit status.
+  Java rather than bash). Like every jlink launcher (user requests, 2026-10-11), they share the caller's `/tmp`, so
+  saved output outlives the call, with only the JVM's performance-data directory private, and they run Java in a UTF-8
+  `LC_CTYPE` when the caller's is not UTF-8, so Java can name files that are not ASCII; `run-part` restores the
+  caller's locale for the command. `run-part` runs the command on standard input, saves its output and exit status in a
+  new file under `${TMPDIR}`, and prints the first part; `read-part` prints a later part. Each part fits Codex's
+  10,000-token exec budget after JSON escaping and ends with a bracketed line that names the command printing the next
+  part, or with `[End of …]` and the exit status.
 - **Hook:** add a Codex PostToolUse hook that, when Codex cut a `run-part` or `read-part` result because the agent set
   `max_output_tokens`, replaces its last bracketed line with an instruction to rerun that command without the limit;
   every other result passes unchanged. Register and trust it beside the existing hooks.
@@ -1940,10 +1941,10 @@ The riskiest pure code, built first.
   distribution entry.
 - **Tests:** unit tests for both programs (part sizes after JSON escaping, quotes, control bytes and characters that
   are not ASCII, long lines, reassembly, exit status, usage errors, a missing or binary file, the caller's locale);
-  unit tests for the hook (a cut part, an uncut part, another command); `DistributionMain` launches both unsandboxed.
+  unit tests for the hook (a cut part, an uncut part, another command); `DistributionMain` launches both.
   One bats test covers the template of every jlink launcher (user request, 2026-10-11: no bats test per program): a
-  sandboxed and an unsandboxed launcher run from a path with spaces in the C locale, the latter naming a file that is
-  not ASCII.
+  launcher run through Bubblewrap and one run directly start from a path with spaces in the C locale, the latter naming
+  a file that is not ASCII.
 - **Exit:** unit tests and bats pass; the full build passes.
 
 ### WI-71 — Read-file prompt tests (user rulings, 2026-10-08 and 2026-10-11)

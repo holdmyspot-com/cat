@@ -1,8 +1,7 @@
 #!/usr/bin/env bats
 
 # Tests the template that every generated jlink launcher shares: a launcher runs its program from a runtime path that
-# contains spaces, with or without Bubblewrap's private /tmp, and Java can name a file that is not ASCII in the caller's
-# C locale.
+# contains spaces, through Bubblewrap or directly, and Java can name a file that is not ASCII in the caller's C locale.
 
 load bootstrap-helpers
 

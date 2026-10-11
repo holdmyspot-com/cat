@@ -408,8 +408,7 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers of the Codex image. {@code run-part} and {@code read-part} run without a private
-	 * {@code /tmp}, since {@code run-part} saves output there that later calls read, and agents read files there.
+	 * Returns the launchers of the Codex image.
 	 *
 	 * @return the launchers
 	 */
@@ -429,9 +428,9 @@ public final class DistributionMain
 			new JlinkImageBuilder.Launcher("post-tool-use", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexPostToolUseHook"),
 			new JlinkImageBuilder.Launcher("run-part", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.CodexRunPart", false),
+				"io.github.cowwoc.cat.codex.CodexRunPart"),
 			new JlinkImageBuilder.Launcher("read-part", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.CodexReadPart", false),
+				"io.github.cowwoc.cat.codex.CodexReadPart"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer")));
 	}

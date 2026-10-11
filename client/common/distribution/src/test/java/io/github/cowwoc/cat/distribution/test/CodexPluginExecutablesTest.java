@@ -52,19 +52,18 @@ public final class CodexPluginExecutablesTest
 	}
 
 	/**
-	 * Verifies that the Codex image launches {@code run-part} and {@code read-part} without a private {@code /tmp},
-	 * since {@code run-part} saves output there that later calls read, and agents read files there.
+	 * Verifies that the Codex image launches {@code run-part} and {@code read-part}.
 	 */
 	@Test
-	public void codexImageLaunchesPartsUnsandboxed()
+	public void codexImageLaunchesParts()
 	{
 		List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.access().codexLaunchers();
 
 		requireThat(launchers, "launchers").
 			contains(new JlinkImageBuilder.Launcher("run-part", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.CodexRunPart", false)).
+				"io.github.cowwoc.cat.codex.CodexRunPart")).
 			contains(new JlinkImageBuilder.Launcher("read-part", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.CodexReadPart", false));
+				"io.github.cowwoc.cat.codex.CodexReadPart"));
 	}
 
 	/**

@@ -68,8 +68,8 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
-	 * Verifies launcher rewriting requests a private temporary filesystem, falls back to Java without bwrap, and runs
-	 * Java in a UTF-8 {@code LC_CTYPE}.
+	 * Verifies that launcher rewriting gives Java a private performance-data directory but the caller's {@code /tmp},
+	 * falls back to Java without bwrap, and runs Java in a UTF-8 {@code LC_CTYPE}.
 	 */
 	@Test
 	public void rewritesLauncherWithPerfDataIsolation() throws IOException
@@ -81,42 +81,17 @@ public final class JlinkImageBuilderTest
 			Files.delete(output);
 			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
 			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
-				List.of(new JlinkImageBuilder.Launcher("plugin-info", "jdk.compiler", "com.sun.tools.javac.Main")), output);
+				List.of(new JlinkImageBuilder.Launcher("read-part", "jdk.compiler", "com.sun.tools.javac.Main")), output);
 
-			String launcher = Files.readString(output.resolve("bin/plugin-info"));
+			String launcher = Files.readString(output.resolve("bin/read-part"));
 			requireThat(launcher, "launcher").
-				contains("bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev --").
+				contains("bwrap --bind / / --tmpfs \"/tmp/hsperfdata_$(id -un)\" --proc /proc --dev /dev --").
+				doesNotContain("--tmpfs /tmp ").
 				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'").
 				contains("if command -v bwrap >/dev/null 2>&1; then").
 				contains("\nfi\nexec \"$DIR/java\" ").
 				contains(LOCALE_SETUP + "if command -v bwrap").
 				doesNotContain("PerfDisableSharedMem");
-		}
-	}
-
-	/**
-	 * Verifies that a launcher whose program uses the caller's files runs Java directly, without the private temporary
-	 * filesystem, without the shared performance-data file that sandboxed JVMs could contend for, and in a UTF-8
-	 * {@code LC_CTYPE} that keeps the caller's locale for the programs that Java starts.
-	 */
-	@Test
-	public void rewritesUnsandboxedLauncher() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			FakeToolProvider tool = new FakeToolProvider(0, "");
-			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
-			Files.delete(output);
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
-			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
-				List.of(new JlinkImageBuilder.Launcher("read-part", "jdk.compiler", "com.sun.tools.javac.Main", false)),
-				output);
-
-			String launcher = Files.readString(output.resolve("bin/read-part"));
-			requireThat(launcher, "launcher").
-				doesNotContain("bwrap").
-				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr -XX:-UsePerfData'").
-				contains(LOCALE_SETUP + "exec \"$DIR/java\" ");
 		}
 	}
 
