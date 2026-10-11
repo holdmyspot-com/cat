@@ -9,8 +9,7 @@ import org.testng.annotations.Test;
 import java.util.List;
 
 /**
- * Tests that each harness's jlink image registers the {@code prompt-optimizer} launcher. The packaged launchers are run
- * by {@code prompt-optimizer.bats} against the built images.
+ * Tests that each harness's jlink image registers the {@code prompt-optimizer} launcher.
  */
 public final class PromptOptimizerLauncherTest
 {
