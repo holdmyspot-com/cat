@@ -27,5 +27,5 @@ Write a concise summary that stands alone and names the high-level feature, beha
 correction. Use the grammatical form that states the change most clearly; do not require imperative wording when a
 declarative outcome is clearer.
 
-Add a body only when it is needed to explain material context, limitations, or consequences that the subject cannot
-state concisely. Do not use filenames, paths, or implementation steps as the explanation of what the commit delivers.
+Add a body only when it is needed to state the reason for the change, or to explain material context, limitations, or
+consequences, that the subject cannot state concisely. Do not use filenames, paths, or implementation steps as the explanation of what the commit delivers.

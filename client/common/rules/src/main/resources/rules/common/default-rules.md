@@ -180,6 +180,8 @@ When assessing an apparently absent condition, a helper's apparent limitation, o
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, lazy load
 `../include/common/git-history-scope.md`.
 
+When creating or revising a Git commit message, lazy load `../include/common/commit-messages.md`.
+
 When removing, replacing, renaming, or ending compatibility for a supported contract, lazy load
 `../include/common/contract-retirement.md` to classify affected contracts and verify complete retirement.
 
