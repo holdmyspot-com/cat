@@ -22,16 +22,18 @@ public final class ToolScopeTest
 	}
 
 	/**
-	 * Verifies a tool operation defaults its CAT work root to the gitignored project directory.
+	 * Verifies a tool operation defaults to the project that encloses the process's working directory. The test
+	 * compares against an explicit scope for that directory rather than a fixed checkout layout, because a
+	 * developer's checkout may hold a nested {@code .cat} directory that makes a subdirectory the nearest project.
 	 */
 	@Test
-	public void defaultsWorkToProjectDirectory()
+	public void defaultsToWorkingDirectory()
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new ToolScope();
+			ToolScope explicit = ToolScope.forWorkingDirectory(Path.of("").toAbsolutePath()))
 		{
-			Path projectRoot = Path.of("../../..").toAbsolutePath().normalize();
-			requireThat(scope.catWork(), "catWork").isEqualTo(projectRoot.resolve(".cat/work"));
-			requireThat(scope.temporaryWorkRoot(), "temporaryWorkRoot").isEqualTo(projectRoot.resolve(".cat/work/temp"));
+			requireThat(scope.catWork(), "catWork").isEqualTo(explicit.catWork());
+			requireThat(scope.temporaryWorkRoot(), "temporaryWorkRoot").isEqualTo(explicit.temporaryWorkRoot());
 		}
 	}
 
