@@ -372,15 +372,15 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the layer of the Codex plugin's own resources, including the {@code client/bin/read-file} script that the
-	 * Codex read-file rule tells agents to run.
+	 * Returns the layer of the Codex plugin's own resources, including the script that the Codex read-file rule tells
+	 * agents to run and the launcher of the PostToolUse hook.
 	 *
 	 * @param jar the Codex plugin resource JAR
 	 * @return the layer
 	 */
 	static ArtifactLayer codexPluginLayer(Path jar)
 	{
-		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/bin/read-file"));
+		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/bin/read-file", "hooks/post-tool-use.sh"));
 	}
 
 	/**
@@ -408,7 +408,8 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers of the Codex image.
+	 * Returns the launchers of the Codex image. {@code run-part} and {@code read-part} run without a private
+	 * {@code /tmp}, since {@code run-part} saves output there that later calls read, and agents read files there.
 	 *
 	 * @return the launchers
 	 */
@@ -425,6 +426,12 @@ public final class DistributionMain
 				"io.github.cowwoc.cat.codex.CodexSessionStartHook"),
 			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexSubagentStartHook"),
+			new JlinkImageBuilder.Launcher("post-tool-use", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexPostToolUseHook"),
+			new JlinkImageBuilder.Launcher("run-part", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexRunPart", false),
+			new JlinkImageBuilder.Launcher("read-part", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexReadPart", false),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer")));
 	}

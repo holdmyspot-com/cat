@@ -15,12 +15,13 @@ public final class CodexHookDelivery
 {
 	private static final String SESSION_START = "cat@cat:hooks/hooks.json:session_start:0:0";
 	private static final String SUBAGENT_START = "cat@cat:hooks/hooks.json:subagent_start:0:0";
+	private static final String POST_TOOL_USE = "cat@cat:hooks/hooks.json:post_tool_use:0:0";
 
 	/**
-	 * Verifies that Codex has accepted CAT's two context hooks before a CAT-enabled run starts.
+	 * Verifies that Codex has accepted CAT's hooks before a CAT-enabled run starts.
 	 *
 	 * @param response the harness {@code hooks/list} response
-	 * @throws IOException if either CAT hook is unavailable or not trusted
+	 * @throws IOException if a CAT hook is unavailable or not trusted
 	 */
 	public static void verifyConfiguredHooks(JsonNode response) throws IOException
 	{
@@ -28,6 +29,7 @@ public final class CodexHookDelivery
 		JsonNode hooks = response.path("result").path("data").path(0).path("hooks");
 		verifyConfiguredHook(hooks, SESSION_START);
 		verifyConfiguredHook(hooks, SUBAGENT_START);
+		verifyConfiguredHook(hooks, POST_TOOL_USE);
 	}
 
 	/**
@@ -103,7 +105,7 @@ public final class CodexHookDelivery
 	}
 
 	/**
-	 * Returns the reader-facing name of one CAT context hook.
+	 * Returns the reader-facing name of one CAT hook.
 	 *
 	 * @param key the configured CAT hook key
 	 * @return the hook name
@@ -113,7 +115,9 @@ public final class CodexHookDelivery
 		assert key != null;
 		if (key.equals(SESSION_START))
 			return "session start";
-		return "subagent start";
+		if (key.equals(SUBAGENT_START))
+			return "subagent start";
+		return "post tool use";
 	}
 
 	/**

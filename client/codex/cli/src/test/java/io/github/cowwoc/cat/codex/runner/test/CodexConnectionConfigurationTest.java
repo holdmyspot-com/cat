@@ -359,7 +359,7 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies only CAT's approved context-hook hashes are copied into an isolated configuration.
+	 * Verifies only CAT's approved hook hashes are copied into an isolated configuration.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -379,6 +379,9 @@ public final class CodexConnectionConfigurationTest
 				[hooks.state."cat@cat:hooks/hooks.json:subagent_start:0:0"]
 				trusted_hash = "sha256:b29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
 
+				[hooks.state."cat@cat:hooks/hooks.json:post_tool_use:0:0"]
+				trusted_hash = "sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
+
 				[hooks.state."other:hooks/hooks.json:session_start:0:0"]
 				trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 				""");
@@ -391,6 +394,8 @@ public final class CodexConnectionConfigurationTest
 					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				contains("[hooks.state.\"cat@cat:hooks/hooks.json:subagent_start:0:0\"]").contains(
 					"trusted_hash = \"sha256:b29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
+				contains("[hooks.state.\"cat@cat:hooks/hooks.json:post_tool_use:0:0\"]").contains(
+					"trusted_hash = \"sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				doesNotContain("other:hooks/hooks.json").doesNotContain("enabled = true");
 		}
 	}

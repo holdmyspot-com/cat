@@ -29,7 +29,7 @@ public final class CodexConnectionConfiguration
 	private static final Pattern NETWORK_ACCESS = Pattern.compile("^network_access\\s*=\\s*(true|false)\\s*(?:#.*)?$");
 	private static final Pattern CAT_PERMISSION_SECTION = Pattern.compile("^\\[permissions\\.cat(?:[.].*)?]\\s*$");
 	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
-		"cat@cat:hooks/hooks.json:subagent_start:0:0");
+		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
 	private static final Pattern TRUSTED_HASH = Pattern.compile(
 		"(?m)^trusted_hash\\s*=\\s*\\\"(sha256:[0-9a-f]{64})\\\"\\s*$");
 
@@ -338,7 +338,7 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Copies the host's existing approvals for CAT's context-injection hooks into an isolated Codex home.
+	 * Copies the host's existing approvals for CAT's hooks into an isolated Codex home.
 	 * <p>
 	 * The copied value is only an expected hook hash. Codex compares it against the installed artifact's current hook
 	 * hash before execution, so a changed hook remains untrusted.

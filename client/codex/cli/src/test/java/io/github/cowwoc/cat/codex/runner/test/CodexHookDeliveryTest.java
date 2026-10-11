@@ -31,6 +31,27 @@ public final class CodexHookDeliveryTest
 	}
 
 	/**
+	 * Verifies CAT refuses a run while its PostToolUse hook, which repairs cut command output, is untrusted.
+	 *
+	 * @throws IOException if the hook is untrusted
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*post tool use hook is untrusted.*")
+	public void rejectsUntrustedPostToolUseHook() throws IOException
+	{
+		try (ToolScope scope = new ToolScope())
+		{
+			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
+				{"result":{"data":[{"hooks":[
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:post_tool_use:0:0","trustStatus":"untrusted"}
+				]}]}}
+				"""));
+		}
+	}
+
+	/**
 	 * Verifies a turn that creates a subagent fails when Codex omits that subagent's start-hook event.
 	 */
 	@Test(expectedExceptions = IOException.class,

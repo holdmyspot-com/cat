@@ -191,7 +191,7 @@ public final class CodexRunner
 			if (installCat)
 			{
 				// Plugin hooks are untrusted in every fresh runner home and app-server has no approval operation. Reuse
-				// only the user's existing approvals for CAT's stable context hooks; Codex rejects each if its normalized
+				// only the user's existing approvals for CAT's hooks; Codex rejects each if its normalized
 				// declaration differs, while preserving the workspace-write sandbox for the actual run.
 				CodexConnectionConfiguration.copyTrustedCatHooks(hostHome.resolve("config.toml"),
 					isolatedConfiguration);

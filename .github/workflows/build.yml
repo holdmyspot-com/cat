@@ -50,3 +50,5 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-codex.bats
       - name: Verify read-file script boundaries
         run: bats client/common/distribution/src/test/bats/read-file.bats
+      - name: Verify run-part and read-part boundaries
+        run: bats client/common/distribution/src/test/bats/run-part.bats

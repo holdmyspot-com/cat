@@ -35,8 +35,11 @@ public final class JlinkImageBuilder
 	 * @param name the launcher filename
 	 * @param module the module containing the entry point
 	 * @param mainClass the entry-point class
+	 * @param sandboxed {@code true} to run the JVM with a private {@code /tmp} when Bubblewrap is available;
+	 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide; such a
+	 *   JVM runs in a UTF-8 {@code LC_CTYPE} so that it can name every file
 	 */
-	public record Launcher(String name, String module, String mainClass)
+	public record Launcher(String name, String module, String mainClass, boolean sandboxed)
 	{
 		/**
 		 * Validates the launcher configuration.
@@ -44,6 +47,9 @@ public final class JlinkImageBuilder
 		 * @param name the launcher filename
 		 * @param module the module containing the entry point
 		 * @param mainClass the entry-point class
+		 * @param sandboxed {@code true} to run the JVM with a private {@code /tmp} when Bubblewrap is available;
+		 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide;
+		 *   such a JVM runs in a UTF-8 {@code LC_CTYPE} so that it can name every file
 		 * @throws NullPointerException if {@code name}, {@code module}, or {@code mainClass} are null
 		 * @throws IllegalArgumentException if {@code name}, {@code module}, or {@code mainClass} are blank
 		 */
@@ -52,6 +58,20 @@ public final class JlinkImageBuilder
 			requireThat(name, "name").isNotBlank();
 			requireThat(module, "module").isNotBlank();
 			requireThat(mainClass, "mainClass").isNotBlank();
+		}
+
+		/**
+		 * Defines a launcher whose JVM runs with a private {@code /tmp} when Bubblewrap is available.
+		 *
+		 * @param name the launcher filename
+		 * @param module the module containing the entry point
+		 * @param mainClass the entry-point class
+		 * @throws NullPointerException if {@code name}, {@code module}, or {@code mainClass} are null
+		 * @throws IllegalArgumentException if {@code name}, {@code module}, or {@code mainClass} are blank
+		 */
+		public Launcher(String name, String module, String mainClass)
+		{
+			this(name, module, mainClass, true);
 		}
 	}
 
@@ -141,14 +161,18 @@ public final class JlinkImageBuilder
 	}
 
 	/**
-	 * Makes jlink launchers work from installation paths containing whitespace and gives each launched JVM an isolated
-	 * temporary filesystem when Bubblewrap is available.
+	 * Makes jlink launchers work from installation paths containing whitespace and gives each sandboxed launcher's JVM
+	 * an isolated temporary filesystem when Bubblewrap is available.
 	 * <p>
 	 * jlink emits {@code $DIR/java -m ...}. With {@code DIR=/opt/CAT Plugin/bin}, the shell splits that command at
 	 * the space. This method replaces it with {@code exec "$DIR/java" -m ...}, after deriving {@code DIR} from a
 	 * quoted launcher path. The temporary filesystem keeps HotSpot's supported shared performance-data feature enabled
 	 * without allowing separately sandboxed JVMs that reuse a namespace PID to contend for the same host {@code /tmp}
-	 * file.
+	 * file. A launcher that is not sandboxed runs Java directly and disables the performance-data file instead. Java
+	 * names files in the character set of {@code LC_CTYPE}, which in the C locale cannot name a file whose name is not
+	 * ASCII, so such a launcher also runs Java in a UTF-8 {@code LC_CTYPE}. It keeps the caller's {@code LC_ALL} and
+	 * {@code LC_CTYPE} in {@code CAT_CALLER_LC_ALL} and {@code CAT_CALLER_LC_CTYPE}, each {@code +} followed by the
+	 * value or {@code -} when it is unset, for the programs that Java starts.
 	 *
 	 * @param output the runtime-image directory
 	 * @param launchers the launchers to rewrite
@@ -159,7 +183,7 @@ public final class JlinkImageBuilder
 		// The CLI's standard output carries structured responses. Keep JVM warnings observable on standard error instead
 		// of letting an unrelated runtime diagnostic corrupt that response channel.
 		String unconfiguredVmOptions = "JLINK_VM_OPTIONS=\n";
-		String configuredVmOptions = "JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'\n";
+		String logOptions = "-Xlog:all=off:stdout -Xlog:all=warning:stderr";
 		String unquotedDirectory = "DIR=`dirname $0`\n";
 		String unquotedInvocation = "$DIR/java ";
 		String quotedDirectory = "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n";
@@ -175,9 +199,26 @@ public final class JlinkImageBuilder
 			if (invocationEnd < 0)
 				throw new IOException("Jlink launcher invocation has no line ending: " + script);
 			String arguments = content.substring(invocationStart + unquotedInvocation.length(), invocationEnd);
-			String isolatedInvocation = "if command -v bwrap >/dev/null 2>&1; then\n" +
-				"  exec bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev -- \"$DIR/java\" " + arguments +
-				"\nfi\nexec \"$DIR/java\" " + arguments;
+			String configuredVmOptions;
+			String isolatedInvocation;
+			if (launcher.sandboxed())
+			{
+				configuredVmOptions = "JLINK_VM_OPTIONS='" + logOptions + "'\n";
+				isolatedInvocation = "if command -v bwrap >/dev/null 2>&1; then\n" +
+					"  exec bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev -- \"$DIR/java\" " + arguments +
+					"\nfi\nexec \"$DIR/java\" " + arguments;
+			}
+			else
+			{
+				configuredVmOptions = "JLINK_VM_OPTIONS='" + logOptions + " -XX:-UsePerfData'\n";
+				isolatedInvocation = """
+					CAT_CALLER_LC_ALL=${LC_ALL+"+$LC_ALL"}
+					CAT_CALLER_LC_CTYPE=${LC_CTYPE+"+$LC_CTYPE"}
+					export CAT_CALLER_LC_ALL="${CAT_CALLER_LC_ALL:--}" CAT_CALLER_LC_CTYPE="${CAT_CALLER_LC_CTYPE:--}"
+					unset LC_ALL
+					export LC_CTYPE=C.UTF-8
+					exec "$DIR/java"\s""" + arguments;
+			}
 			String rewritten = content.replace(unconfiguredVmOptions, configuredVmOptions).
 				replace(unquotedDirectory, quotedDirectory);
 			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + isolatedInvocation +

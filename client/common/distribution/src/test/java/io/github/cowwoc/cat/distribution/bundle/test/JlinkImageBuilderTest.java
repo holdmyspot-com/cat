@@ -75,6 +75,36 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
+	 * Verifies that a launcher whose program uses the caller's files runs Java directly, without the private temporary
+	 * filesystem, without the shared performance-data file that sandboxed JVMs could contend for, and in a UTF-8
+	 * {@code LC_CTYPE} that keeps the caller's locale for the programs that Java starts.
+	 */
+	@Test
+	public void rewritesUnsandboxedLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FakeToolProvider tool = new FakeToolProvider(0, "");
+			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Files.delete(output);
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
+			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
+				List.of(new JlinkImageBuilder.Launcher("read-part", "jdk.compiler", "com.sun.tools.javac.Main", false)),
+				output);
+
+			String launcher = Files.readString(output.resolve("bin/read-part"));
+			requireThat(launcher, "launcher").
+				doesNotContain("bwrap").
+				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr -XX:-UsePerfData'").
+				contains("\nexec \"$DIR/java\" ").
+				contains("CAT_CALLER_LC_ALL=${LC_ALL+\"+$LC_ALL\"}\n").
+				contains("CAT_CALLER_LC_CTYPE=${LC_CTYPE+\"+$LC_CTYPE\"}\n").
+				contains("export CAT_CALLER_LC_ALL=\"${CAT_CALLER_LC_ALL:--}\" " +
+					"CAT_CALLER_LC_CTYPE=\"${CAT_CALLER_LC_CTYPE:--}\"\nunset LC_ALL\nexport LC_CTYPE=C.UTF-8\n");
+		}
+	}
+
+	/**
 	 * Verifies jlink diagnostics are included in failures.
 	 */
 	@Test
