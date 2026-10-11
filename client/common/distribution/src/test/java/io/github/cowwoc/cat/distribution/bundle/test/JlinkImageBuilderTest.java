@@ -22,6 +22,24 @@ import org.testng.annotations.Test;
  */
 public final class JlinkImageBuilderTest
 {
+	/**
+	 * The lines that run Java in a UTF-8 {@code LC_CTYPE} when the caller's is not UTF-8, keeping the caller's locale for
+	 * the programs that Java starts.
+	 */
+	private static final String LOCALE_SETUP = """
+		case ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} in
+		  *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) ;;
+		  *)
+		    CAT_CALLER_LC_ALL=${LC_ALL+"+$LC_ALL"}
+		    CAT_CALLER_LC_CTYPE=${LC_CTYPE+"+$LC_CTYPE"}
+		    export CAT_CALLER_LC_ALL="${CAT_CALLER_LC_ALL:--}"
+		    export CAT_CALLER_LC_CTYPE="${CAT_CALLER_LC_CTYPE:--}"
+		    unset LC_ALL
+		    export LC_CTYPE=C.UTF-8
+		    ;;
+		esac
+		""";
+
 	/** Creates a test instance. */
 	public JlinkImageBuilderTest()
 	{
@@ -50,7 +68,8 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
-	 * Verifies launcher rewriting requests a private temporary filesystem and falls back to Java without bwrap.
+	 * Verifies launcher rewriting requests a private temporary filesystem, falls back to Java without bwrap, and runs
+	 * Java in a UTF-8 {@code LC_CTYPE}.
 	 */
 	@Test
 	public void rewritesLauncherWithPerfDataIsolation() throws IOException
@@ -70,6 +89,7 @@ public final class JlinkImageBuilderTest
 				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'").
 				contains("if command -v bwrap >/dev/null 2>&1; then").
 				contains("\nfi\nexec \"$DIR/java\" ").
+				contains(LOCALE_SETUP + "if command -v bwrap").
 				doesNotContain("PerfDisableSharedMem");
 		}
 	}
@@ -96,11 +116,7 @@ public final class JlinkImageBuilderTest
 			requireThat(launcher, "launcher").
 				doesNotContain("bwrap").
 				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr -XX:-UsePerfData'").
-				contains("\nexec \"$DIR/java\" ").
-				contains("CAT_CALLER_LC_ALL=${LC_ALL+\"+$LC_ALL\"}\n").
-				contains("CAT_CALLER_LC_CTYPE=${LC_CTYPE+\"+$LC_CTYPE\"}\n").
-				contains("export CAT_CALLER_LC_ALL=\"${CAT_CALLER_LC_ALL:--}\" " +
-					"CAT_CALLER_LC_CTYPE=\"${CAT_CALLER_LC_CTYPE:--}\"\nunset LC_ALL\nexport LC_CTYPE=C.UTF-8\n");
+				contains(LOCALE_SETUP + "exec \"$DIR/java\" ");
 		}
 	}
 

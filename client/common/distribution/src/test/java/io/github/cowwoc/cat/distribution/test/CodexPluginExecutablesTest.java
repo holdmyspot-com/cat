@@ -26,8 +26,8 @@ import org.testng.annotations.Test;
 
 /**
  * Tests that the Codex plugin installs its scripts and hook launcher as executables, and that the Codex image launches
- * {@code run-part} and {@code read-part}. The packaged programs' behavior is tested by {@code read-file.bats} and
- * {@code run-part.bats} against the built Codex image.
+ * {@code run-part} and {@code read-part}. {@code read-file.bats} tests the packaged {@code read-file} script, and
+ * {@code jlink-launchers.bats} tests the launcher template against the built Codex image.
  */
 public final class CodexPluginExecutablesTest
 {

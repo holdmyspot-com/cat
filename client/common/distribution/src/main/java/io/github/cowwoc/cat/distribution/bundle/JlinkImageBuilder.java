@@ -36,8 +36,7 @@ public final class JlinkImageBuilder
 	 * @param module the module containing the entry point
 	 * @param mainClass the entry-point class
 	 * @param sandboxed {@code true} to run the JVM with a private {@code /tmp} when Bubblewrap is available;
-	 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide; such a
-	 *   JVM runs in a UTF-8 {@code LC_CTYPE} so that it can name every file
+	 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide
 	 */
 	public record Launcher(String name, String module, String mainClass, boolean sandboxed)
 	{
@@ -48,8 +47,7 @@ public final class JlinkImageBuilder
 		 * @param module the module containing the entry point
 		 * @param mainClass the entry-point class
 		 * @param sandboxed {@code true} to run the JVM with a private {@code /tmp} when Bubblewrap is available;
-		 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide;
-		 *   such a JVM runs in a UTF-8 {@code LC_CTYPE} so that it can name every file
+		 *   {@code false} for a program that works with the caller's files, which a private {@code /tmp} would hide
 		 * @throws NullPointerException if {@code name}, {@code module}, or {@code mainClass} are null
 		 * @throws IllegalArgumentException if {@code name}, {@code module}, or {@code mainClass} are blank
 		 */
@@ -161,18 +159,21 @@ public final class JlinkImageBuilder
 	}
 
 	/**
-	 * Makes jlink launchers work from installation paths containing whitespace and gives each sandboxed launcher's JVM
-	 * an isolated temporary filesystem when Bubblewrap is available.
+	 * Makes jlink launchers work from installation paths containing whitespace and in every locale, and gives each
+	 * sandboxed launcher's JVM an isolated temporary filesystem when Bubblewrap is available.
 	 * <p>
 	 * jlink emits {@code $DIR/java -m ...}. With {@code DIR=/opt/CAT Plugin/bin}, the shell splits that command at
 	 * the space. This method replaces it with {@code exec "$DIR/java" -m ...}, after deriving {@code DIR} from a
 	 * quoted launcher path. The temporary filesystem keeps HotSpot's supported shared performance-data feature enabled
 	 * without allowing separately sandboxed JVMs that reuse a namespace PID to contend for the same host {@code /tmp}
-	 * file. A launcher that is not sandboxed runs Java directly and disables the performance-data file instead. Java
-	 * names files in the character set of {@code LC_CTYPE}, which in the C locale cannot name a file whose name is not
-	 * ASCII, so such a launcher also runs Java in a UTF-8 {@code LC_CTYPE}. It keeps the caller's {@code LC_ALL} and
-	 * {@code LC_CTYPE} in {@code CAT_CALLER_LC_ALL} and {@code CAT_CALLER_LC_CTYPE}, each {@code +} followed by the
-	 * value or {@code -} when it is unset, for the programs that Java starts.
+	 * file. A launcher that is not sandboxed runs Java directly and disables the performance-data file instead.
+	 * <p>
+	 * Java names files and decodes its arguments in the character set of {@code LC_CTYPE}, which in the C locale cannot
+	 * name a file whose name is not ASCII. When the caller's {@code LC_CTYPE} is not UTF-8, every launcher therefore runs
+	 * Java in {@code LC_CTYPE=C.UTF-8}. It keeps the caller's {@code LC_ALL} and {@code LC_CTYPE} in
+	 * {@code CAT_CALLER_LC_ALL} and {@code CAT_CALLER_LC_CTYPE}, each {@code +} followed by the value or {@code -} when
+	 * it is unset, so that a program can run a command in the caller's locale. A caller whose locale is already UTF-8
+	 * keeps it, so that the programs that Java starts inherit it unchanged.
 	 *
 	 * @param output the runtime-image directory
 	 * @param launchers the launchers to rewrite
@@ -187,6 +188,19 @@ public final class JlinkImageBuilder
 		String unquotedDirectory = "DIR=`dirname $0`\n";
 		String unquotedInvocation = "$DIR/java ";
 		String quotedDirectory = "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n";
+		String localeSetup = """
+			case ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} in
+			  *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) ;;
+			  *)
+			    CAT_CALLER_LC_ALL=${LC_ALL+"+$LC_ALL"}
+			    CAT_CALLER_LC_CTYPE=${LC_CTYPE+"+$LC_CTYPE"}
+			    export CAT_CALLER_LC_ALL="${CAT_CALLER_LC_ALL:--}"
+			    export CAT_CALLER_LC_CTYPE="${CAT_CALLER_LC_CTYPE:--}"
+			    unset LC_ALL
+			    export LC_CTYPE=C.UTF-8
+			    ;;
+			esac
+			""";
 		for (Launcher launcher : launchers)
 		{
 			Path script = output.resolve("bin").resolve(launcher.name());
@@ -211,17 +225,11 @@ public final class JlinkImageBuilder
 			else
 			{
 				configuredVmOptions = "JLINK_VM_OPTIONS='" + logOptions + " -XX:-UsePerfData'\n";
-				isolatedInvocation = """
-					CAT_CALLER_LC_ALL=${LC_ALL+"+$LC_ALL"}
-					CAT_CALLER_LC_CTYPE=${LC_CTYPE+"+$LC_CTYPE"}
-					export CAT_CALLER_LC_ALL="${CAT_CALLER_LC_ALL:--}" CAT_CALLER_LC_CTYPE="${CAT_CALLER_LC_CTYPE:--}"
-					unset LC_ALL
-					export LC_CTYPE=C.UTF-8
-					exec "$DIR/java"\s""" + arguments;
+				isolatedInvocation = "exec \"$DIR/java\" " + arguments;
 			}
 			String rewritten = content.replace(unconfiguredVmOptions, configuredVmOptions).
 				replace(unquotedDirectory, quotedDirectory);
-			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + isolatedInvocation +
+			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + localeSetup + isolatedInvocation +
 				rewritten.substring(rewritten.indexOf('\n', rewritten.indexOf(unquotedInvocation)));
 			Files.writeString(script, rewritten, UTF_8);
 		}

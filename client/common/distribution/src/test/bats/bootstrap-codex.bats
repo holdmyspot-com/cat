@@ -210,17 +210,6 @@ SCRIPT
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
 	! grep -q '^codex ' "${COMMAND_LOG}"
 }
-@test "generated Codex launchers work when the runtime path contains spaces" {
-	runtime="${TEST_ROOT}/generated runtime"
-	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
-	create_fake_bwrap
-
-	run env PATH="${FAKE_BIN}:${PATH}" "${runtime}/client/bin/plugin-info"
-
-	[ "${status}" -eq 0 ]
-	[[ "${output}" == "harness=codex"$'\n'* ]]
-}
-
 @test "generated Codex SessionStart launcher injects bundled routing and project rules" {
 	project="${TEST_ROOT}/generated session project"
 	mkdir -p "${project}/.cat/rules/common"
