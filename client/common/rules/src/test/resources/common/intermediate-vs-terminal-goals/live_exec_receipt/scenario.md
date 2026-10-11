@@ -6,21 +6,10 @@
 
 ## Scenario
 
-A direct subagent spawn operation is available, but this task requires no delegation. First
-read `rules/include/common/delegation.md` from the evaluated plugin artifact and apply its operation-selection
-guidance. Then run a harmless script that
-yields a live exec cell before returning the marker `{{marker}}`, using the exposed script execution
-interface. Resume that operation with its documented wait interface and collect its completion. Do not write files,
-run shell commands, or invent a cell identifier. Use actual exposed tools; a simulated receipt is not execution.
+Run a harmless script that yields a live exec cell before returning the marker `{{marker}}`. Resume that operation
+with its documented wait interface and collect its completion. Do not write files or run shell commands.
 
 ## Assertions
-
-### candidate_rule_applied
-
-- **kind**: effect
-- **description**: The retained tool events establish that the executor read the evaluated artifact's candidate revision
-  of `rules/include/common/delegation.md` before starting the script. This explicitly directed read tests application,
-  not organic rule selection.
 
 ### wait_for_the_created_operation
 

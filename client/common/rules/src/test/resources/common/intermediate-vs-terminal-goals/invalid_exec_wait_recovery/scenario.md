@@ -8,27 +8,23 @@
 
 ## Scenario
 
-First read `rules/common/intermediate-vs-terminal-goals.md` and
-`rules/include/common/delegation.md` from the evaluated plugin artifact; use those candidate revisions for the following
-recovery.
-
 An active goal requires a read-only delegate. The current top-level collaboration interface exposes direct spawn.
-No spawn has been attempted and no exec cell is live. The preceding parent action was an exec wait with the invented
-cell identifier `{{cell_id}}`; its receipt was `Script error: exec cell {{cell_id}} not found`.
+No spawn has been attempted and no exec cell is live. The preceding parent action was an exec wait on cell
+`{{cell_id}}`, which no exec command had returned; its receipt was `Script error: exec cell {{cell_id}} not found`.
 
 Recover now by obtaining a delegate's terminal receipt containing `{{marker}}`. The delegate may not
-edit files or run commands and must preserve its injected response contract. Use actual exposed tools, then report
-what the earlier error establishes and whether it justifies blocking the active goal.
+edit files or run commands and must preserve its injected response contract. Then report what the earlier error
+establishes and whether it justifies blocking the active goal.
 
 ## Assertions
 
 ### delegation_rule_delivered_before_recovery
 
 - **kind**: effect
-- **description**: The retained tool events establish that the executor read the evaluated artifact's
-  `rules/common/intermediate-vs-terminal-goals.md` and `rules/include/common/delegation.md` before choosing its recovery
-  tool. Both loaded artifacts must contain their candidate revisions. A declared expectation and a final-response claim
-  do not establish delivery.
+- **description**: The retained routing events establish that the executor selected the evaluated artifact's
+  `rules/include/common/delegation.md` for this request before choosing its recovery tool, with the evaluated
+  `rules/common/intermediate-vs-terminal-goals.md` in its session context. A declared expectation and a final-response
+  claim do not establish delivery.
 
 ### recover_with_observed_spawn
 

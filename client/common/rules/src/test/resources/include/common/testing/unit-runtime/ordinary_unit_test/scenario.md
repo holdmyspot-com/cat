@@ -7,8 +7,8 @@
 ## Scenario
 
 Review a proposed unit test for a parser's error message when an input is missing the required field `{{field}}`. The proposed test
-calls the parser directly with one input and asserts the reported error. No source edit is requested. Decide which
-testing rules to load to review the test's claim, exercised boundary, and assertion.
+calls the parser directly with one input and asserts the reported error. No source edit is requested. Say whether to
+accept the test as written; if not, say what should change.
 
 ## Assertions
 

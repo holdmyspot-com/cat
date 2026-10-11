@@ -9,7 +9,7 @@
 
 Continue the active implementation goal. Before proceeding, have an independent reviewer inspect the proposed {{change}}
 against its stated acceptance criteria and return a short evidence-backed review receipt. The reviewer
-must not modify files or run commands. Report the review receipt and whether the requested review has actually started.
+must not modify files or run commands. Report the review receipt and whether the review has started.
 
 ## Assertions
 
