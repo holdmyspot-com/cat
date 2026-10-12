@@ -1954,8 +1954,16 @@ The riskiest pure code, built first.
   than no prompt).
 - **Prompt tests:** a whole long document, lazily loaded guides read whole, a long command output, a question answered
   from general knowledge without reading, and a search whose guard test cases the agent passes almost always without
-  the prompt. The read-file scenarios name `run-part` and `[End of …]` instead of `client/bin/read-file`. Every
-  scenario is organic: it never tells the agent the expected outcome or that it is being tested.
+  the prompt. Every scenario is organic: it never tells the agent the expected outcome or that it is being tested. Each
+  prompt test certifies its reading obligations as effects: the long document, the lazily loaded guides and the long
+  command output reach the agent whole, and the general-knowledge question runs no command. Its answer is a guard: a
+  text check that recognizes the common correct replies, with `on_tool_failure: judge`, on test cases easy enough that
+  the agent answers correctly at least 95% of the time without the prompt, which the guard pilot confirms; the answer
+  each test asks for therefore lies where a truncated read or a search still finds it (user ruling, 2026-10-11). The
+  scenarios no longer prescribe how the agent reads (through a named script, each line once) or check the reply's
+  sign-off, which sits where a truncated read can miss it. Where a scenario does judge a drafted customer
+  reply, a note to the requester after the draft, such as a statement that no files were edited or a source link, is not
+  part of the reply (user ruling, 2026-10-11).
 - **Certification:** `gpt-6-luna` at `low`, at `high`, then `gpt-6.1-sol` at `low`, each at `p_min` 0.95, with the
   readied candidate as attempt 1.
 - **Exit:** certified in all three cells; WI-70's rule step then runs.

@@ -2,13 +2,17 @@
 
 ## Design Goals
 
-- Prove that each file a task lazy loads reaches the agent whole through the bundled `read-file` script, every line
-  once, even when the file exceeds Codex's output limit.
+- Prove that each file that the project's instructions tell the agent to lazy load reaches the agent whole, even when
+  the file exceeds Codex's output limit.
+- Prove that reading the guides whole leaves the reply correct: it names what the asked release changed, which the
+  release notes that the turn names state in a few lines.
 
 ## Variables
 
-- **release**: The release the customer asks about, between 4.1 and 4.320; release 4.173 alone requires callers to
+- **release**: The release the customer asks about, between 4.1 and 4.320; release 4.173 alone also requires callers to
   change their code
+- **improved**: The component that the asked release improved, as `docs/release-notes.md` names it
+- **corrected**: The component whose message the asked release corrected, as `docs/release-notes.md` names it
 - **sign_off**: The team name that `docs/style-guide.md` requires as every reply's last line after `-- `, such as
   `Release Desk`
 
@@ -19,7 +23,8 @@
 
 ## Scenario
 
-A customer asks: "Does release {{release}} change anything for me?" Draft the reply. Do not edit any file.
+A customer asks: "Does release {{release}} change anything for me?" Draft the reply from `docs/release-notes.md`. Do
+not edit any file.
 
 ## Assertions
 
@@ -35,21 +40,10 @@ A customer asks: "Does release {{release}} change anything for me?" Draft the re
 - **tool**: `read-in-full docs/glossary.md`
 - **description**: Every line of `docs/glossary.md` reaches the agent through its tool output.
 
-### guides_read_through_script
+### changes_named
 
-- **kind**: effect
-- **description**: Before the reply, the retained tool events deliver `docs/style-guide.md` and `docs/glossary.md`
-  through the plugin's `client/bin/read-file` script: each `exec` script runs `read-file` on one file alone, without
-  `max_output_tokens`, and the agent runs the command that each part ends with until a part ends with `[end of <path>]`.
-  No part of either file arrives truncated, and neither file is searched in place of being read.
-
-### guides_read_once
-
-- **kind**: effect
-- **description**: Every line of either file arrives exactly once: no part is requested twice, and no other command,
-  such as `cat`, `sed`, `nl` or `rg`, prints a file's text again.
-
-### guides_applied
-
-- **kind**: effect
-- **description**: The reply ends with the exact line `-- {{sign_off}}`.
+- **kind**: guard
+- **tool**: `pattern "(?is)(?=.*\b{{improved}}\b)(?=.*\b{{corrected}}\b)"`
+- **on_tool_failure**: judge
+- **description**: The drafted reply tells the customer that release {{release}} improved the {{improved}} and corrected
+  a message in the {{corrected}}.

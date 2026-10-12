@@ -864,7 +864,6 @@
 
 - Improved the parser so repeated runs finish sooner on large inputs.
 - Corrected a message in the uploader that named the wrong option.
-- {{change}}
 
 ## Release 4.174
 
@@ -1480,6 +1479,7 @@
 
 - Improved the importer so repeated runs finish sooner on large inputs.
 - Corrected a message in the report builder that named the wrong option.
+- {{change}}
 
 ## Release 4.297
 

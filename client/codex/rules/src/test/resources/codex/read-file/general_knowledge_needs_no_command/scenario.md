@@ -8,6 +8,7 @@
 ## Variables
 
 - **status**: A standard HTTP status code, such as 404 or 503
+- **reason**: The status's standard reason phrase, such as `Not Found` or `Service Unavailable`
 - **sign_off**: The team name that `docs/style-guide.md` requires as every reply's last line after `-- `, such as
   `Release Desk`
 
@@ -26,10 +27,12 @@ What does HTTP status {{status}} mean?
 
 - **kind**: guard
 - **tool**: `no-tool-call`
-- **description**: The agent runs no command and calls no tool: no `exec` call, no `read-file` call, and no command such
-  as `pwd`, `ls`, `rg` or `printf`.
+- **description**: The agent runs no command and calls no tool: no `exec` call and no command such as `pwd`, `ls`, `rg`
+  or `printf`.
 
-### direct_answer
+### status_explained
 
 - **kind**: guard
-- **description**: The final response answers the question directly and asks the user no question.
+- **tool**: `pattern "(?i){{reason}}"`
+- **on_tool_failure**: judge
+- **description**: The reply explains HTTP status {{status}} as {{reason}}.
