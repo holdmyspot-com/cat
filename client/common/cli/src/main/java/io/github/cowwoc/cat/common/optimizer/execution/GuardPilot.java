@@ -472,7 +472,7 @@ public final class GuardPilot
 			String section = "";
 			try
 			{
-				TrialEvidence evidence = TrialEvidence.read(sessions, completed, source);
+				TrialEvidence evidence = TrialEvidence.read(sessions, completed);
 				results = pilot.test.decide(testCase.testCase(), evidence);
 				if (contract.judge().prompt().contains("{{evidence}}"))
 					section = evidence.render();

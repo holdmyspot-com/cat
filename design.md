@@ -1135,6 +1135,11 @@ copied unchanged. A generated value is expanded only into file contents ([§6.3]
 refuses a test case whose fixture path collides with a path of the staged source or with another fixture, so a
 fixture never silently replaces project content.
 
+**Initial project (user ruling, 2026-10-12).** Before the first turn, the runner copies each trial's workspace, fixtures
+included, to the run's **initial project**. A built-in tool that reads a file as it was when the trial started, and the
+trial record's file changes, compare with that copy rather than with the staged source, so a fixture is part of the
+workspace that the trial started with, not a file that the trial created.
+
 **Control source.** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot use one more staged source: the
 incumbent with every target prompt file emptied to zero bytes, so the files still exist but give no instruction. It is
 the same for every candidate. The proposal lists the emptied paths. Its plugin copy is built from it in the same way, so
@@ -1641,7 +1646,7 @@ is `turn=<n>`.
 | `exit-status <regex> <status>` | the last recorded command that matches the expression exited with the status |
 | `tool-used <tool>`, `tool-unused <tool>` | the trial called, or never called, the tool |
 | `no-tool-call` | the trial made no tool call |
-| `read-in-full <path>` | every non-blank line of the file as staged appeared in the trial's tool output, as a whole output line or after a line-number prefix |
+| `read-in-full <path>` | every non-blank line of the file in the initial project appeared in the trial's tool output, as a whole output line or after a line-number prefix |
 | `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the trial's tool output |
 
 **Judge on tool failure (user ruling, 2026-10-11).** An assertion's `on_tool_failure` says what a failure of its
@@ -1666,7 +1671,7 @@ CAT refuses a proposal that names such a built-in tool for a harness that cannot
 neither a built-in tool nor the judge reads a log. It holds, per turn and in order: every tool call with its input, its
 exit status when the harness reports one (H30) and its complete output; each child agent's activity in the same form;
 and each hook's outcome by status only. After the turns, it lists every file the trial changed with its difference from
-the staged source. The record is complete, so a built-in tool or the judge can establish that something did not happen,
+the initial project. The record is complete, so a built-in tool or the judge can establish that something did not happen,
 and it is de-duplicated: streaming fragments, telemetry and the prompt text injected at session start are left out,
 because the judge decides the trial's behaviour, not the prompt system that the candidate snapshot already identifies
 (H32).

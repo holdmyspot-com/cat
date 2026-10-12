@@ -633,16 +633,18 @@ public final class GuardPilotTest
 		{
 			Path evidence = directory.resolve("sessions").resolve(String.valueOf(number));
 			Path effects = evidence.resolve("project");
+			Path initialProject = evidence.resolve("initial-project");
 			try
 			{
 				Files.createDirectories(effects);
+				Files.createDirectories(initialProject);
 			}
 			catch (IOException e)
 			{
 				throw new UncheckedIOException(e);
 			}
 			return new SessionResult.Completed(evidence.resolve("transcript"), List.of(List.of(reply)), effects,
-				"model", "reasoning", null, List.of(), "none", List.of());
+				initialProject, "model", "reasoning", null, List.of(), "none", List.of());
 		}
 
 		@Override

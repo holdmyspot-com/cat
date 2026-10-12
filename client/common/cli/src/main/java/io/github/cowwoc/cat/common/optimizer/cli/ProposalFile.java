@@ -193,7 +193,7 @@ final class ProposalFile
 		// validates the text again. The proposal file stands in for the session's transcript.
 		SessionResult.Completed result = new SessionResult.Completed(file,
 			List.of(List.of(derivation)),
-			project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
+			project, project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
 		return Optional.of(new Stored(result, profiles, root.get("salt").asLong()));
 	}
 

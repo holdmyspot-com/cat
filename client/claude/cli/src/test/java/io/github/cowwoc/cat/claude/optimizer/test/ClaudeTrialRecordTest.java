@@ -39,12 +39,12 @@ public final class ClaudeTrialRecordTest
 	}
 
 	/**
-	 * A trial record of recorded activity and a staged file.
+	 * A trial record of recorded activity and of files as they were when the trial started.
 	 *
 	 * @param activity the activity read from the events
-	 * @param staged the text of each staged file, by path
+	 * @param initial the text of each file when the trial started, by path
 	 */
-	private record Recorded(SessionEvidence activity, Map<String, String> staged) implements TrialRecord
+	private record Recorded(SessionEvidence activity, Map<String, String> initial) implements TrialRecord
 	{
 		@Override
 		public List<List<String>> replies()
@@ -77,9 +77,9 @@ public final class ClaudeTrialRecordTest
 		}
 
 		@Override
-		public Optional<String> staged(String path)
+		public Optional<String> initial(String path)
 		{
-			return Optional.ofNullable(staged.get(path));
+			return Optional.ofNullable(initial.get(path));
 		}
 	}
 

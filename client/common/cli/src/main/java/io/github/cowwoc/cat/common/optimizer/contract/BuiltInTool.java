@@ -773,8 +773,8 @@ public sealed interface BuiltInTool
 	}
 
 	/**
-	 * Every non-blank line of a staged file appeared in the trial's tool output, as a whole output line or after a
-	 * line-number prefix.
+	 * Every non-blank line of a file, as it was when the trial started, appeared in the trial's tool output, as a whole
+	 * output line or after a line-number prefix.
 	 *
 	 * @param path the normalized project-relative path of the file, which uses {@code /} as the separator
 	 */
@@ -821,7 +821,7 @@ public sealed interface BuiltInTool
 			throws IOException, UndecidableToolException
 		{
 			String filled = ToolRecords.path(this, path, textByName);
-			List<String> lines = ToolRecords.stagedLines(record, filled);
+			List<String> lines = ToolRecords.initialLines(record, filled);
 			Set<String> seen = ToolRecords.outputLines(record);
 			int missing = 0;
 			String firstMissing = null;
@@ -844,8 +844,8 @@ public sealed interface BuiltInTool
 	}
 
 	/**
-	 * At most a percentage of a staged file's non-blank lines appeared in the trial's tool output, as whole output
-	 * lines or after a line-number prefix.
+	 * At most a percentage of the non-blank lines of a file, as it was when the trial started, appeared in the trial's
+	 * tool output, as whole output lines or after a line-number prefix.
 	 *
 	 * @param path    the normalized project-relative path of the file, which uses {@code /} as the separator
 	 * @param percent the largest percentage of the lines that may appear, from 0 to 100
@@ -902,7 +902,7 @@ public sealed interface BuiltInTool
 			throws IOException, UndecidableToolException
 		{
 			String filled = ToolRecords.path(this, path, textByName);
-			List<String> lines = ToolRecords.stagedLines(record, filled);
+			List<String> lines = ToolRecords.initialLines(record, filled);
 			Set<String> output = ToolRecords.outputLines(record);
 			int seen = 0;
 			for (String line : lines)

@@ -679,8 +679,7 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
-			results = test.decide(testCase.testCase(), TrialEvidence.read(context.sessions(), completed,
-				trial.source()));
+			results = test.decide(testCase.testCase(), TrialEvidence.read(context.sessions(), completed));
 		}
 		catch (IOException | UndecidableToolException e)
 		{
@@ -700,7 +699,7 @@ public final class Driver implements AutoCloseable
 				complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
 				return;
 			}
-			Optional<String> section = renderEvidence(trial.key(), completed, trial.source(), now);
+			Optional<String> section = renderEvidence(trial.key(), completed, now);
 			if (section.isPresent())
 			{
 				triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
@@ -712,12 +711,12 @@ public final class Driver implements AutoCloseable
 		String section = "";
 		if (judgeRendersEvidence())
 		{
-			Optional<String> rendered = renderEvidence(trial.key(), completed, trial.source(), now);
+			Optional<String> rendered = renderEvidence(trial.key(), completed, now);
 			if (rendered.isEmpty())
 				return;
 			section = rendered.get();
 		}
-		judgingQueue.add(new Judging(trial.key(), testCase, trial.source(), completed, section, judged, results, 1,
+		judgingQueue.add(new Judging(trial.key(), testCase, completed, section, judged, results, 1,
 			trial.concurrency()));
 	}
 
@@ -737,17 +736,16 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param key the logical trial
 	 * @param completed the trial session's result
-	 * @param source the staged source copied at the start of the trial
 	 * @param now the current time
 	 * @return the rendered evidence, or empty if it could not be rendered
 	 * @throws IOException if the store cannot be written
 	 */
-	private Optional<String> renderEvidence(TrialKey key, SessionResult.Completed completed, Path source,
-		Instant now) throws IOException
+	private Optional<String> renderEvidence(TrialKey key, SessionResult.Completed completed, Instant now)
+		throws IOException
 	{
 		try
 		{
-			return Optional.of(TrialEvidence.read(context.sessions(), completed, source).render());
+			return Optional.of(TrialEvidence.read(context.sessions(), completed).render());
 		}
 		catch (IOException e)
 		{
@@ -867,7 +865,7 @@ public final class Driver implements AutoCloseable
 		String section = judging.evidenceSection();
 		if (!judgeRendersEvidence())
 		{
-			Optional<String> rendered = renderEvidence(judging.key(), judging.evidence(), judging.source(), now);
+			Optional<String> rendered = renderEvidence(judging.key(), judging.evidence(), now);
 			if (rendered.isEmpty())
 				return;
 			section = rendered.get();
@@ -1024,7 +1022,7 @@ public final class Driver implements AutoCloseable
 		throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(testCase, trial);
-		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects());
+		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects(), trial.initialProject());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
 			triage, observed, trialInputTokens(trial), trial.responses(), files);
 		if (campaign.identity().differences(observed).isEmpty())
@@ -1288,7 +1286,7 @@ public final class Driver implements AutoCloseable
 			FileInventory before = context.workspace().scanAuthoringCopy(copy);
 			Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 			String edits = CampaignEdits.of(context.workspace(), incumbent, overlay, context.promptSources());
-			Map<Integer, String> sections = renderFailureSections(working, overlay);
+			Map<Integer, String> sections = renderFailureSections();
 			PromptAuthorBrief brief = PromptAuthorBrief.of(campaign, number, overlay.fork(), edits, sections);
 			SessionRequest request = context.promptAuthor().request(brief, copy);
 			SessionHandle handle = context.sessions().start(request);
@@ -1320,30 +1318,24 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Renders the evidence section of each of the working candidate's development failures, as a judge receives it,
-	 * against the staged source that the failure's trial started from. A failure whose trial's transcript or effects
-	 * are no longer retained has no section.
+	 * against the project as the failure's trial started. A failure whose trial's transcript, effects or initial
+	 * project are no longer retained has no section.
 	 *
-	 * @param working the working candidate, whose development failures are rendered
-	 * @param overlay the working candidate's overlay
 	 * @return each rendered section, keyed by the failure's index in the working candidate's development failures
-	 * @throws IOException if the working candidate cannot be staged or a retained trial's evidence cannot be read
+	 * @throws IOException if a retained trial's evidence cannot be read
 	 */
-	private Map<Integer, String> renderFailureSections(Candidate working, Overlay overlay) throws IOException
+	private Map<Integer, String> renderFailureSections() throws IOException
 	{
 		List<Failure> failures = campaign.development().failures();
 		Map<Integer, String> sections = new HashMap<>();
-		if (failures.isEmpty())
-			return sections;
-		// Development failures belong to the working candidate, so its staged source is the one each trial started from
-		Path source = context.workspace().stage(overlay, excludedTests());
-		staged.put(working.snapshot(), overlay.identity());
 		for (int index = 0; index < failures.size(); ++index)
 		{
 			TrialFiles files = failures.get(index).files();
-			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()))
+			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()) &&
+				Files.isDirectory(files.initialProject()))
 			{
 				SessionEvidence activity = context.sessions().readEvidence(files.transcript());
-				sections.put(index, EvidenceSection.render(activity, files.effects(), source));
+				sections.put(index, EvidenceSection.render(activity, files.effects(), files.initialProject()));
 			}
 		}
 		return sections;
@@ -1676,7 +1668,7 @@ public final class Driver implements AutoCloseable
 			if (session instanceof InFlight.Trial)
 				++concurrency;
 		}
-		register(new InFlight.Trial(key, trial.testCase(), source, now, concurrency, handle));
+		register(new InFlight.Trial(key, trial.testCase(), now, concurrency, handle));
 	}
 
 	/**

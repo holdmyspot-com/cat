@@ -34,6 +34,8 @@ public sealed interface SessionResult
 	 * @param transcript the retained harness event archive
 	 * @param responses each turn's assistant messages in order, ending with its final response
 	 * @param effects the directory that holds the session's project effects
+	 * @param initialProject a copy of the session's project as it was before the first turn, with the files that the
+	 *   request added to the source
 	 * @param model the model observed in harness events, or {@code null} if the events did not name one
 	 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if the events did not
 	 *   name one
@@ -44,8 +46,8 @@ public sealed interface SessionResult
 	 *   loading
 	 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
 	 */
-	record Completed(Path transcript, List<List<String>> responses, Path effects, String model, String reasoning,
-		TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
+	record Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
+		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
 		implements SessionResult
 	{
 		/**
@@ -54,6 +56,8 @@ public sealed interface SessionResult
 		 * @param transcript the retained harness event archive
 		 * @param responses each turn's assistant messages in order, ending with its final response
 		 * @param effects the directory that holds the session's project effects
+		 * @param initialProject a copy of the session's project as it was before the first turn, with the files that
+		 *   the request added to the source
 		 * @param model the model observed in harness events, or {@code null} if the events did not name one
 		 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if the events did
 		 *   not name one
@@ -61,9 +65,9 @@ public sealed interface SessionResult
 		 * @param windows the rate-limit windows that the harness reported during the session
 		 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading
 		 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
-		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects}, {@code windows},
-		 *   {@code promptSources} or {@code toolCalls} are null, or a response list, message or {@code toolCalls}
-		 *   element is null
+		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects},
+		 *   {@code initialProject}, {@code windows}, {@code promptSources} or {@code toolCalls} are null, or a response
+		 *   list, message or {@code toolCalls} element is null
 		 * @throws IllegalArgumentException if {@code promptSources} is blank
 		 */
 		public Completed
@@ -71,6 +75,7 @@ public sealed interface SessionResult
 			requireThat(transcript, "transcript").isNotNull();
 			requireThat(responses, "responses").isNotNull();
 			requireThat(effects, "effects").isNotNull();
+			requireThat(initialProject, "initialProject").isNotNull();
 			requireThat(windows, "windows").isNotNull();
 			requireThat(promptSources, "promptSources").isNotBlank();
 			responses = responses.stream().map(List::copyOf).toList();

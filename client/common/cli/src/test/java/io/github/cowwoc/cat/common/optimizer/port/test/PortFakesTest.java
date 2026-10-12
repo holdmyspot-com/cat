@@ -158,7 +158,8 @@ public final class PortFakesTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void completedRequiresPromptSources()
 	{
-		new SessionResult.Completed(Path.of("transcript.jsonl"), List.of(List.of("ok")), Path.of("effects"), "model", null,
+		new SessionResult.Completed(Path.of("transcript.jsonl"), List.of(List.of("ok")), Path.of("effects"),
+			Path.of("initial-project"), "model", null,
 			null, List.of(), " ", List.of());
 	}
 }

@@ -698,7 +698,8 @@ public final class PromptAuthorTest
 		String report = response.replace("{\"needed_edits\":",
 			"{\"kinds\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
 		return new SessionResult.Completed(Path.of("/runs/prompt-author-3/artifacts/transcript.jsonl"),
-			List.of(List.of("working", report)), COPY, "prompt-author-model", null, null, List.of(), "none", List.of());
+			List.of(List.of("working", report)), COPY, COPY.resolveSibling("initial-project"), "prompt-author-model", null,
+			null, List.of(), "none", List.of());
 	}
 
 	/**

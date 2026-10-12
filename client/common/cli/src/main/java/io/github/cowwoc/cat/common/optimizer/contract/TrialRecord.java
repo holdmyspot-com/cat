@@ -50,12 +50,12 @@ public interface TrialRecord
 	Optional<String> content(String path) throws IOException;
 
 	/**
-	 * Returns the text of a file as it was staged, before the trial started.
+	 * Returns the text of a file as it was when the trial started, before its first turn.
 	 *
 	 * @param path a normalized path relative to the workspace, which uses {@code /} as the separator
-	 * @return the file's text, or empty if the path was not a regular file of the staged workspace
+	 * @return the file's text, or empty if the path was not a regular file of the workspace when the trial started
 	 * @throws NullPointerException if {@code path} is null
 	 * @throws IOException if the file cannot be read
 	 */
-	Optional<String> staged(String path) throws IOException;
+	Optional<String> initial(String path) throws IOException;
 }

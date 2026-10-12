@@ -494,7 +494,8 @@ public final class StatusReportTest
 				long input = 30;
 				if (harness.snapshot(request).equals(Builder.INCUMBENT))
 					input = 70;
-				return new SessionResult.Completed(trial.transcript(), trial.responses(), trial.effects(), trial.model(),
+				return new SessionResult.Completed(trial.transcript(), trial.responses(), trial.effects(),
+					trial.initialProject(), trial.model(),
 					trial.reasoning(), new TokenUsage(input, 10, 1, 0), trial.windows(),
 					trial.promptSources(), trial.toolCalls());
 			});

@@ -24,7 +24,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Lists every trial file change against the staged source, omitting the same state as the inventory scanner.
+ * Lists every change that a trial made to the project's files since the trial started, omitting the same state as the
+ * inventory scanner.
  */
 public final class FileChanges
 {
@@ -41,18 +42,18 @@ public final class FileChanges
 	 * Renders each changed file in path order. Valid UTF-8 text without NUL bytes receives a unified diff;
 	 * a file larger than 200,000 bytes on either side receives a note naming its effects path.
 	 *
-	 * @param source the staged source the trial copied
+	 * @param initialProject the trial's project as it was when the trial started
 	 * @param effects the trial's final working directory
 	 * @return the file changes, or an explicit statement that no files changed
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if either path is not a directory
 	 * @throws IOException if a file cannot be read
 	 */
-	public static String render(Path source, Path effects) throws IOException
+	public static String render(Path initialProject, Path effects) throws IOException
 	{
-		requireThat(source, "source").isNotNull();
+		requireThat(initialProject, "initialProject").isNotNull();
 		requireThat(effects, "effects").isNotNull();
-		FileInventory before = InventoryScanner.scan(source, Set.of());
+		FileInventory before = InventoryScanner.scan(initialProject, Set.of());
 		FileInventory after = InventoryScanner.scan(effects, Set.of());
 		List<PathChange> changes = InventoryDiff.between(before, after).changes();
 		if (changes.isEmpty())
@@ -62,10 +63,12 @@ public final class FileChanges
 		{
 			switch (change)
 			{
-				case Added added -> append(result, "Created", change.path(), null, added.after(), source, effects);
-				case Removed removed -> append(result, "Deleted", change.path(), removed.before(), null, source, effects);
+				case Added added -> append(result, "Created", change.path(), null, added.after(), initialProject,
+					effects);
+				case Removed removed -> append(result, "Deleted", change.path(), removed.before(), null, initialProject,
+					effects);
 				case Modified modified -> append(result, "Modified", change.path(), modified.before(), modified.after(),
-					source, effects);
+					initialProject, effects);
 			}
 		}
 		return result.toString();
@@ -79,22 +82,22 @@ public final class FileChanges
 	 * @param path the path relative to the compared directories
 	 * @param before the earlier entry, or null
 	 * @param after the later entry, or null
-	 * @param source the staged source
+	 * @param initialProject the trial's project as it was when the trial started
 	 * @param effects the trial directory
 	 * @throws IOException if file contents cannot be read
 	 */
 	private static void append(StringBuilder result, String operation, Path path, FileEntry before, FileEntry after,
-		Path source, Path effects) throws IOException
+		Path initialProject, Path effects) throws IOException
 	{
 		result.append(operation).append(": ").append(path);
-		Path sourceFile = source.resolve(path);
+		Path initialFile = initialProject.resolve(path);
 		Path effectsFile = effects.toAbsolutePath().normalize().resolve(path);
-		if (oversized(sourceFile, before) || oversized(effectsFile, after))
+		if (oversized(initialFile, before) || oversized(effectsFile, after))
 		{
 			appendNote(result, "oversized", effectsFile, after);
 			return;
 		}
-		String earlier = text(sourceFile, before);
+		String earlier = text(initialFile, before);
 		String later = text(effectsFile, after);
 		if (before != null && earlier == null || after != null && later == null)
 		{

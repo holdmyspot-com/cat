@@ -32,13 +32,11 @@ sealed interface InFlight
 	 *
 	 * @param key the logical trial
 	 * @param testCase the trial's test case
-	 * @param source the staged source copied at the start of the trial
 	 * @param startedAt when the session started
 	 * @param concurrency the number of trial sessions running immediately after this one started
 	 * @param handle the session
 	 */
-	record Trial(TrialKey key, DrawnTestCase testCase, Path source, Instant startedAt, int concurrency,
-		SessionHandle handle)
+	record Trial(TrialKey key, DrawnTestCase testCase, Instant startedAt, int concurrency, SessionHandle handle)
 		implements InFlight
 	{
 	}
@@ -97,7 +95,6 @@ sealed interface InFlight
 	 *
 	 * @param key the logical trial
 	 * @param testCase the trial's test case
-	 * @param source the staged source copied at the start of the trial
 	 * @param evidence the trial session's result, which every judge attempt receives unchanged
 	 * @param evidenceSection the rendered trial activity and file changes, unchanged across judge attempts; empty
 	 *   when the frozen judge template does not name it
@@ -106,7 +103,7 @@ sealed interface InFlight
 	 * @param attempt the judge attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 */
-	record Judging(TrialKey key, DrawnTestCase testCase, Path source, SessionResult.Completed evidence,
+	record Judging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence,
 		String evidenceSection, List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int attempt,
 		int concurrency)
 	{
@@ -117,7 +114,7 @@ sealed interface InFlight
 		 */
 		Judging retry()
 		{
-			return new Judging(key, testCase, source, evidence, evidenceSection, assertions, results, attempt + 1,
+			return new Judging(key, testCase, evidence, evidenceSection, assertions, results, attempt + 1,
 				concurrency);
 		}
 	}

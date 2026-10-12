@@ -39,8 +39,8 @@ public final class TrialEvidenceTest
 	private static TrialEvidence evidence(Path effects, List<List<String>> replies)
 	{
 		return new TrialEvidence(new SessionResult.Completed(effects.resolveSibling("transcript"), replies, effects,
-			"model-a", null, null, List.of(), "none", List.of()), new SessionEvidence(List.of()),
-			effects.resolveSibling("source"));
+			effects.resolveSibling("initial-project"), "model-a", null, null, List.of(), "none", List.of()),
+			new SessionEvidence(List.of()));
 	}
 
 	/**
@@ -144,10 +144,10 @@ public final class TrialEvidenceTest
 		List<ToolCall> calls = List.of(new ToolCall("Bash", "true", 0), new ToolCall("Read", null, null),
 			new ToolCall("Bash", "false", 1), new ToolCall("Bash", "true", null));
 		SessionResult.Completed trial = new SessionResult.Completed(Path.of("transcript"), List.of(List.of("done")),
-			Path.of("effects"), "model-a", null, null, List.of(), "none", calls);
+			Path.of("effects"), Path.of("initial-project"), "model-a", null, null, List.of(), "none", calls);
 
-		requireThat(new TrialEvidence(trial, new SessionEvidence(List.of()), Path.of("source")).toolCalls(),
-			"toolCalls").isEqualTo(Optional.of(calls));
+		requireThat(new TrialEvidence(trial, new SessionEvidence(List.of())).toolCalls(), "toolCalls").
+			isEqualTo(Optional.of(calls));
 	}
 
 	/**
@@ -165,42 +165,48 @@ public final class TrialEvidenceTest
 			new SessionEvidence.Hook(1, SessionEvidence.ROOT_AGENT, "PreToolUse", "completed"),
 			new SessionEvidence.Assistant(1, SessionEvidence.ROOT_AGENT, 1, ""), child));
 		SessionResult.Completed trial = new SessionResult.Completed(Path.of("transcript"), List.of(List.of("done")),
-			Path.of("effects"), "model-a", null, null, List.of(), "none", List.of());
+			Path.of("effects"), Path.of("initial-project"), "model-a", null, null, List.of(), "none", List.of());
 
-		requireThat(new TrialEvidence(trial, activity, Path.of("source")).tools(), "tools").
+		requireThat(new TrialEvidence(trial, activity).tools(), "tools").
 			isEqualTo(List.of(read, child));
 	}
 
 	/**
-	 * Verifies that the record reads a file as it was staged, apart from the trial's changes, and renders the judge's
-	 * evidence section from the activity and the changes against the staged source.
+	 * Verifies that the record reads a file as it was when the trial started, apart from the trial's changes, including
+	 * a fixture that the trial's staged source lacks, and renders the judge's evidence section from the activity and the
+	 * changes since the trial started.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void readsTheStagedSourceAndRendersTheSection() throws IOException
+	public void readsInitialProjectAndRendersSection() throws IOException
 	{
 		// Requirement: R-C9
 		// Requirement: R-E21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("trial-evidence"));
-			Path source = Files.createDirectories(root.resolve("source"));
+			Path initialProject = Files.createDirectories(root.resolve("initial-project"));
 			Path effects = Files.createDirectories(root.resolve("project"));
-			Files.writeString(source.resolve("notes.md"), "before\n", UTF_8);
+			Files.writeString(initialProject.resolve("notes.md"), "before\n", UTF_8);
+			Files.writeString(initialProject.resolve("fixture.md"), "fixture\n", UTF_8);
 			Files.writeString(effects.resolve("notes.md"), "after\n", UTF_8);
+			Files.writeString(effects.resolve("fixture.md"), "fixture\n", UTF_8);
 			SessionEvidence activity = new SessionEvidence(List.of(new SessionEvidence.Tool(1,
 				SessionEvidence.ROOT_AGENT, "shell", "cat notes.md", true, 0, "before\n")));
 			TrialEvidence evidence = new TrialEvidence(new SessionResult.Completed(root.resolve("transcript"),
-				List.of(List.of("done")), effects, "model-a", null, null, List.of(), "none", List.of()), activity, source);
+				List.of(List.of("done")), effects, initialProject, "model-a", null, null, List.of(), "none", List.of()),
+				activity);
 
-			requireThat(evidence.staged("notes.md"), "staged").isEqualTo(Optional.of("before\n"));
+			requireThat(evidence.initial("notes.md"), "initial").isEqualTo(Optional.of("before\n"));
+			requireThat(evidence.initial("fixture.md"), "initialFixture").isEqualTo(Optional.of("fixture\n"));
 			requireThat(evidence.content("notes.md"), "content").isEqualTo(Optional.of("after\n"));
-			requireThat(evidence.staged("missing.md"), "missingStaged").isEmpty();
+			requireThat(evidence.initial("missing.md"), "missingInitial").isEmpty();
 			requireThat(evidence.render(), "section").
-				isEqualTo(EvidenceSection.render(activity, effects, source)).
+				isEqualTo(EvidenceSection.render(activity, effects, initialProject)).
 				startsWith("Effects directory: " + effects + "\n\n" + activity.render()).
-				contains("Modified: notes.md");
+				contains("Modified: notes.md").
+				doesNotContain("fixture.md");
 		}
 	}
 }

@@ -20,8 +20,8 @@ import java.util.Optional;
 
 /**
  * The record of a completed trial that its built-in tools and its judge decide from: every turn's ordered assistant
- * messages, every tool call of the main agent and its children, the staged source and the project copy that holds
- * the trial's file effects.
+ * messages, every tool call of the main agent and its children, the copy of the project as it was when the trial
+ * started, and the project copy that holds the trial's file effects.
  * <p>
  * Unreported exit statuses remain null. A recorded list with no calls lets a built-in tool decide that the trial
  * never called a tool.
@@ -34,24 +34,20 @@ public final class TrialEvidence implements TrialRecord
 {
 	private final SessionResult.Completed trial;
 	private final SessionEvidence activity;
-	private final Path source;
 
 	/**
 	 * Creates the record of a trial.
 	 *
 	 * @param trial    the trial session's result
 	 * @param activity the trial's activity, read from its harness events
-	 * @param source   the staged source copied at the start of the trial
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public TrialEvidence(SessionResult.Completed trial, SessionEvidence activity, Path source)
+	public TrialEvidence(SessionResult.Completed trial, SessionEvidence activity)
 	{
 		requireThat(trial, "trial").isNotNull();
 		requireThat(activity, "activity").isNotNull();
-		requireThat(source, "source").isNotNull();
 		this.trial = trial;
 		this.activity = activity;
-		this.source = source;
 	}
 
 	/**
@@ -59,28 +55,26 @@ public final class TrialEvidence implements TrialRecord
 	 *
 	 * @param sessions the port that ran the trial, which reads its harness events
 	 * @param trial    the trial session's result
-	 * @param source   the staged source copied at the start of the trial
 	 * @return the record
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the trial's transcript cannot be read
 	 */
-	public static TrialEvidence read(SessionPort sessions, SessionResult.Completed trial, Path source)
-		throws IOException
+	public static TrialEvidence read(SessionPort sessions, SessionResult.Completed trial) throws IOException
 	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(trial, "trial").isNotNull();
-		return new TrialEvidence(trial, sessions.readEvidence(trial.transcript()), source);
+		return new TrialEvidence(trial, sessions.readEvidence(trial.transcript()));
 	}
 
 	/**
 	 * Renders the record as the judge's evidence section.
 	 *
 	 * @return the section
-	 * @throws IOException if the source or the project copy cannot be read
+	 * @throws IOException if either copy of the project cannot be read
 	 */
 	public String render() throws IOException
 	{
-		return EvidenceSection.render(activity, trial.effects(), source);
+		return EvidenceSection.render(activity, trial.effects(), trial.initialProject());
 	}
 
 	@Override
@@ -125,14 +119,14 @@ public final class TrialEvidence implements TrialRecord
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * A file whose real location lies outside the staged source is not a staged file. Bytes that are not valid UTF-8
-	 * are replaced.
+	 * A file whose real location lies outside the copy of the project as it was when the trial started is not a file
+	 * of that copy. Bytes that are not valid UTF-8 are replaced.
 	 */
 	@Override
-	public Optional<String> staged(String path) throws IOException
+	public Optional<String> initial(String path) throws IOException
 	{
 		requireThat(path, "path").isNotNull();
-		return read(source, path);
+		return read(trial.initialProject(), path);
 	}
 
 	/**

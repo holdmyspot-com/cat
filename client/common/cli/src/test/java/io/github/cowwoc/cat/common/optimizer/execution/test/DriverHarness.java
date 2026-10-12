@@ -369,7 +369,8 @@ public final class DriverHarness
 	public SessionResult.Completed derived(String response)
 	{
 		return new SessionResult.Completed(directory.resolve("values-transcript"), List.of(List.of(response)),
-			directory.resolve("values-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
+			directory.resolve("values-effects"), directory.resolve("values-initial-project"), JUDGE_MODEL, null, null,
+			List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -393,7 +394,8 @@ public final class DriverHarness
 	public SessionResult.Completed triaged(String response)
 	{
 		return new SessionResult.Completed(directory.resolve("triage-transcript"), List.of(List.of(response)),
-			directory.resolve("triage-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
+			directory.resolve("triage-effects"), directory.resolve("triage-initial-project"), JUDGE_MODEL, null, null,
+			List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -494,7 +496,8 @@ public final class DriverHarness
 	public SessionResult.Completed judged(String response)
 	{
 		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(List.of(response)),
-			directory.resolve("judge-effects"), JUDGE_MODEL, null, null, List.of(), PROMPT_SOURCES, List.of());
+			directory.resolve("judge-effects"), directory.resolve("judge-initial-project"), JUDGE_MODEL, null, null,
+			List.of(), PROMPT_SOURCES, List.of());
 	}
 
 	/**
@@ -575,9 +578,11 @@ public final class DriverHarness
 		++trialResults;
 		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
 		Path effects = evidence.resolve("project");
+		Path initialProject = evidence.resolve("initial-project");
 		try
 		{
 			Files.createDirectories(effects);
+			Files.createDirectories(initialProject);
 		}
 		catch (IOException e)
 		{
@@ -585,7 +590,7 @@ public final class DriverHarness
 		}
 		judgments.put(effects, Verdict.PASS);
 		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(List.of(response)),
-			effects, model, "reasoning-1", null, List.of(), promptSources, List.of());
+			effects, initialProject, model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}
 
 	/**
@@ -664,7 +669,8 @@ public final class DriverHarness
 		// supply
 		fakeWorkspace.editAuthoringCopy(request.source(), new FileInventory(effects, entries));
 		return new SessionResult.Completed(directory.resolve("prompt-author-transcript"), List.of(List.of("done")),
-			effects, MODEL, "reasoning-1", null, List.of(), PROMPT_SOURCES, List.of());
+			effects, effects.resolveSibling("initial-project"), MODEL, "reasoning-1", null, List.of(), PROMPT_SOURCES,
+			List.of());
 	}
 
 	/**

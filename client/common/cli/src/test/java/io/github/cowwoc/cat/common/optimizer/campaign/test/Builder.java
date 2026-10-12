@@ -91,7 +91,7 @@ public final class Builder
 	 * read.
 	 */
 	public static final TrialFiles FILES = new TrialFiles(Path.of("/runs/trial/transcript.jsonl"),
-		Path.of("/runs/trial/effects"));
+		Path.of("/runs/trial/effects"), Path.of("/runs/trial/initial-project"));
 
 	private Header header = new Header("campaign-1", Path.of("/project"),
 		Path.of("/project/CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE);

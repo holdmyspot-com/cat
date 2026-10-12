@@ -470,7 +470,8 @@ public final class OptimizerCoreTest
 					followUps.add(turn.get());
 					List<List<String>> responses = new ArrayList<>(first.responses());
 					responses.addAll(reply.responses());
-					response = new SessionResult.Completed(first.transcript(), responses, first.effects(), first.model(),
+					response = new SessionResult.Completed(first.transcript(), responses, first.effects(), first.initialProject(),
+						first.model(),
 						first.reasoning(), first.usage(), first.windows(), first.promptSources(), first.toolCalls());
 				}
 			}
@@ -479,7 +480,7 @@ public final class OptimizerCoreTest
 			{
 				int index = (int) requests.stream().filter(started -> started.role() == request.role()).count() - 1;
 				response = new SessionResult.Completed(completed.transcript(), completed.responses(),
-					completed.effects(),
+					completed.effects(), completed.initialProject(),
 					completed.model(), completed.reasoning(), tokens.get(index % tokens.size()), completed.windows(),
 					completed.promptSources(), completed.toolCalls());
 			}
@@ -684,22 +685,23 @@ public final class OptimizerCoreTest
 			{
 				Path transcript = Files.createTempFile(scratch, "transcript", ".jsonl");
 				Path effects = Files.createTempDirectory(scratch, "effects");
+				Path initialProject = Files.createTempDirectory(scratch, "initial-project");
 				return switch (request.role())
 				{
 					case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> new SessionResult.Completed(transcript,
 						List.of(List.of("working", contractAuthor.apply(contractAuthors.getAndIncrement()))), effects,
-						"model", null, null, List.of(), "hook: none", List.of()));
+						initialProject, "model", null, null, List.of(), "hook: none", List.of()));
 					case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
-						map(_ -> List.of("answer")).toList(), effects, "model", null, null, List.of(), "CLAUDE.md",
-							List.of());
+						map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
+						"CLAUDE.md", List.of());
 					case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
-						"model", null, null, List.of(), "CLAUDE.md", List.of());
+						initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
 					case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
 						"{\"impact\": \"blocking\", \"rationale\": \"The answer is incomplete.\"}")), effects,
-						"model", null, null, List.of(), "CLAUDE.md", List.of());
+						initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
 					case PROMPT_AUTHOR -> new SessionResult.Completed(transcript,
-						List.of(List.of("{\"needed_edits\": []}")), effects,
-						"model", null, null, List.of(), "CLAUDE.md", List.of());
+						List.of(List.of("{\"needed_edits\": []}")), effects, initialProject, "model", null, null,
+						List.of(), "CLAUDE.md", List.of());
 				};
 			}
 			catch (IOException e)

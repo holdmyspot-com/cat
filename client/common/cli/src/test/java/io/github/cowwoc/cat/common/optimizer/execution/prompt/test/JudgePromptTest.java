@@ -454,7 +454,8 @@ public final class JudgePromptTest
 	 */
 	private static SessionResult.Completed completed(List<List<String>> responses, Path transcript, Path effects)
 	{
-		return new SessionResult.Completed(transcript, responses, effects, "model", null, null, List.of(), "none",
+		return new SessionResult.Completed(transcript, responses, effects, effects.resolveSibling("initial-project"),
+			"model", null, null, List.of(), "none",
 			List.of());
 	}
 }

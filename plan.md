@@ -574,7 +574,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E16 | The observed model comes from harness events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
 | R-E17 | A trial session starts under its cell's profile and the contract author, judge and prompt author sessions under the role profile (the `optimize-xhigh` binding); each runner passes the model and effort to its harness; the observed profile is recorded per cell and decides comparability. | §3.1, §5, §6.6 | WI-16 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (requested profile reaches the harness arguments), `MeasurementIdentityTest`; E: E1 per harness |
 | R-E20 | The contract author, judge and prompt author sessions run without CAT's plugin in both harnesses; trial sessions install CAT unless a plugin under test that does not depend on CAT replaces it (R-W12). The prompt author brief carries the complete text of its six role rules and the contract author brief the contract-design rule, read from the installed artifact with lazy-load paths naming its files; the judge brief carries none. | §3.1, D37 | WI-27 | U: runner session tests per harness, `PromptAuthorTest`, contract author prompt test |
-| R-E21 | The trial record holds per turn the tool calls with input, exit status when reported and complete output, child activity and hook status, then the trial's file changes against the staged source, without streaming fragments, telemetry or injected session-start text, from each harness's events; the built-in tools and the judge both read it. | §6.4, D36 | WI-28, WI-63 | U: trial record tests on recorded events per harness, `JudgePromptTest` |
+| R-E21 | The trial record holds per turn the tool calls with input, exit status when reported and complete output, child activity and hook status, then the trial's file changes against the trial's initial project, without streaming fragments, telemetry or injected session-start text, from each harness's events; the built-in tools and the judge both read it. | §6.4, D36 | WI-28, WI-63, WI-74 | U: trial record tests on recorded events per harness, `JudgePromptTest` |
 | R-E22 | Weakest cell: within the certification scope (for weakest cell only, within the latest versions), the lowest effort of the least capable model by CAT's shipped capability ranking (families ranked from the vendor's published model documentation, with its address and reading date; within a family, older versions below newer), with no trial; a prompt test with one cell uses it; the user may correct or extend the ranking in revision feedback; CAT refuses to confirm while an inventory model's family is unranked. | §6.6, D27 | WI-32 | U: `CapabilityRankingTest` (resource order for both harnesses, version order within a family, an unranked family), `CellTierTest` (weakest cell per scope, one cell, a corrected ranking) |
 | R-E23 | Formal cell order: within a prompt test, formal trials go only to open cells, its development cells and each other scope cell whose development cells and lower cells (model ranked no higher and effort no higher, by the capability ranking) are all certified; among open cells, fewest formal outcomes first. | §3.3, D45 | WI-35 | U: `SchedulerTest` (no formal trial in a stronger cell while a development cell is undecided; incomparable cells open together; a cell opens once every cell below it is certified; a weakest-only scope is unaffected) |
 | R-E24 | Held-out content unreadable: the snapshot, the proposal and the trial records live in the campaign's held-out directory, and formal and baseline trials and judges run under a held-out run root; development trials, targeted runs, triage, diagnosis, prompt authors and the contract author run with their harness sandbox denying reads of both directories for commands and file tools, in both harnesses; formal and baseline trials and judges deny nothing; a host with the sandbox off is refused. | §4.1, §6.3, D46 | WI-36, WI-37, WI-40 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (the deny list per role), store layout and format tests, the refusal; V: one prompt author session per harness asked to print the snapshot by its absolute path gets no content, including after the snapshot is rewritten, and a development trial still passes |
@@ -2014,6 +2014,19 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; in WI-71's campaign, a control trial's installed `read-file.md` is
   empty and a candidate trial's equals the candidate's.
 
+### WI-74 — Initial project (user ruling, 2026-10-12)
+
+- **Problem:** the reading tools and the file changes compared a trial with its staged source, which holds no fixtures,
+  so `read-in-full` of a fixture was undecidable and the judge saw every fixture as a file that the trial created.
+- **Runners:** `HarnessRunManager.snapshotProject` copies the run's project, after the fixtures and before the Git
+  baseline, to `initial-project` beside it; `CodexRunner` and `ClaudeRunner` call it for every run.
+- **Evidence:** a completed session carries its initial project; the trial record's starting file text and
+  `FileChanges` read it, and a retained failure stores it, so `campaign.json` moves to format version 38.
+- **Closes:** R-E21's comparison with the workspace that the trial started with.
+- **Tests:** `HarnessRunManagerTest` (the snapshot keeps the project and fixtures after the project changes),
+  `TrialEvidenceTest` (a fixture's starting text is read, and fixtures are not file changes).
+- **Exit:** unit tests pass; the full build passes; the read-file pilot decides `read-in-full` of a fixture.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2130,6 +2143,7 @@ blocks only the part of a work item that it names.
 | WI-71 | WI-69, WI-70, WI-72, WI-73 |
 | WI-72 | WI-63 |
 | WI-73 | WI-65 |
+| WI-74 | WI-28, WI-63 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

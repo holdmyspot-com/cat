@@ -193,6 +193,7 @@ public final class CodexRunner
 			manager.copyProject(project, run);
 			if (fixtures != null)
 				manager.copyFixtures(fixtures, run);
+			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));

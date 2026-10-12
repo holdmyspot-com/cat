@@ -103,21 +103,21 @@ final class ToolRecords
 	}
 
 	/**
-	 * Returns the non-blank lines of a staged file, without trailing whitespace.
+	 * Returns the non-blank lines of a file as it was when the trial started, without trailing whitespace.
 	 *
 	 * @param record the trial's record
 	 * @param path   the normalized project-relative path
 	 * @return the lines, in file order
 	 * @throws IOException               if the file cannot be read
-	 * @throws UndecidableToolException if the path was not a staged file
+	 * @throws UndecidableToolException if the path was not a file when the trial started
 	 */
-	static List<String> stagedLines(TrialRecord record, String path) throws IOException, UndecidableToolException
+	static List<String> initialLines(TrialRecord record, String path) throws IOException, UndecidableToolException
 	{
-		Optional<String> staged = record.staged(path);
-		if (staged.isEmpty())
-			throw new UndecidableToolException("`" + path + "` was not a staged file");
+		Optional<String> initial = record.initial(path);
+		if (initial.isEmpty())
+			throw new UndecidableToolException("`" + path + "` was not a file when the trial started");
 		List<String> lines = new ArrayList<>();
-		for (String line : staged.get().split("\n", -1))
+		for (String line : initial.get().split("\n", -1))
 		{
 			String stripped = line.stripTrailing();
 			if (!stripped.isEmpty())

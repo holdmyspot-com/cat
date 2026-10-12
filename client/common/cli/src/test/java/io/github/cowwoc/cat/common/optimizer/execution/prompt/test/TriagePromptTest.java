@@ -180,7 +180,8 @@ public final class TriagePromptTest
 	 */
 	private static SessionResult.Completed completed(List<List<String>> responses)
 	{
-		return new SessionResult.Completed(TRANSCRIPT, responses, EFFECTS, "model", null, null, List.of(), "none",
+		return new SessionResult.Completed(TRANSCRIPT, responses, EFFECTS, EFFECTS.resolveSibling("initial-project"),
+			"model", null, null, List.of(), "none",
 			List.of());
 	}
 }

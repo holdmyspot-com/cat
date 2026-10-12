@@ -302,7 +302,8 @@ public final class ValuesPromptTest
 	private static SessionResult.Completed completed(String response)
 	{
 		return new SessionResult.Completed(Path.of("/runs/values/transcript.jsonl"), List.of(List.of(response)),
-			DIRECTORY, "contract-author-model", null, null, List.of(), "none", List.of());
+			DIRECTORY, DIRECTORY.resolveSibling("initial-project"), "contract-author-model", null, null, List.of(), "none",
+			List.of());
 	}
 
 	/**

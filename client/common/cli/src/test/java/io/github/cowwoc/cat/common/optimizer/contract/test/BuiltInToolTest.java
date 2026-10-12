@@ -24,11 +24,11 @@ import org.testng.annotations.Test;
 public final class BuiltInToolTest
 {
 	/**
-	 * The text of the staged file that the reading tools examine.
+	 * The text, when the trial started, of the file that the reading tools examine.
 	 */
 	private static final String NOTES = "# Notes\n\nalpha\nbeta\n\ngamma\ndelta\n";
 	/**
-	 * The path of the staged file that the reading tools examine.
+	 * The path of the file that the reading tools examine.
 	 */
 	private static final String NOTES_PATH = "docs/notes.md";
 
@@ -45,10 +45,10 @@ public final class BuiltInToolTest
 	 * @param replies every turn's reply
 	 * @param tools every tool call
 	 * @param after the text of each file after the trial, by path
-	 * @param staged the text of each file as staged, by path
+	 * @param initial the text of each file when the trial started, by path
 	 */
 	private record Recorded(List<List<String>> replies, List<Tool> tools, Map<String, String> after,
-		Map<String, String> staged) implements TrialRecord
+		Map<String, String> initial) implements TrialRecord
 	{
 		@Override
 		public boolean exists(String path)
@@ -63,9 +63,9 @@ public final class BuiltInToolTest
 		}
 
 		@Override
-		public Optional<String> staged(String path)
+		public Optional<String> initial(String path)
 		{
-			return Optional.ofNullable(staged.get(path));
+			return Optional.ofNullable(initial.get(path));
 		}
 	}
 
@@ -376,12 +376,12 @@ public final class BuiltInToolTest
 	}
 
 	/**
-	 * Verifies that a reading tool of a file that was not staged leaves the tool undecided.
+	 * Verifies that a reading tool of a file that did not exist when the trial started leaves the tool undecided.
 	 *
 	 * @throws IOException if a record cannot be read
 	 */
 	@Test(expectedExceptions = UndecidableToolException.class)
-	public void readingAFileThatWasNotStagedIsUndecided() throws IOException, UndecidableToolException
+	public void readingAFileAbsentAtStartIsUndecided() throws IOException, UndecidableToolException
 	{
 		// Requirement: R-C9
 		BuiltInTool.parse("read-in-full docs/missing.md").decide(tools(), Map.of());

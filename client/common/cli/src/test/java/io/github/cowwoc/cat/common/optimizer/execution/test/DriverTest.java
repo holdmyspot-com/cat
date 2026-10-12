@@ -194,6 +194,7 @@ public final class DriverTest
 			{
 				SessionResult.Completed completed = harness.passed();
 				return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
+					completed.initialProject(),
 					completed.model(), completed.reasoning(), new TokenUsage(80, 0, 0, 0), completed.windows(),
 					completed.promptSources(), completed.toolCalls());
 			});
@@ -302,6 +303,7 @@ public final class DriverTest
 				if (!changed.get())
 					return judgment;
 				return new SessionResult.Completed(judgment.transcript(), judgment.responses(), judgment.effects(),
+					judgment.initialProject(),
 					"changed-judge", judgment.reasoning(), judgment.usage(), judgment.windows(), judgment.promptSources(),
 					judgment.toolCalls());
 			});
@@ -499,6 +501,7 @@ public final class DriverTest
 		TokenUsage usage = new TokenUsage(count * 100L, count * 20L, count * 30L, count * 10L);
 		sessions.add(usage);
 		return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
+			completed.initialProject(),
 			completed.model(), completed.reasoning(), usage, completed.windows(), completed.promptSources(),
 			completed.toolCalls());
 	}
@@ -1449,8 +1452,8 @@ public final class DriverTest
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of("""
 					{"needed_edits": [], "kinds": [{"name":"missing instruction","failures":["%s"],
 					  "classification":"guidance","hunks":[]}], "hunks": [], "conflicts": []}
-					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0)))), edited.effects(), edited.model(),
-					edited.reasoning(), edited.usage(), edited.windows(),
+					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0)))), edited.effects(),
+					edited.initialProject(), edited.model(), edited.reasoning(), edited.usage(), edited.windows(),
 					edited.promptSources(), edited.toolCalls());
 			});
 			try (Driver driver = harness.open())
@@ -1526,6 +1529,7 @@ public final class DriverTest
 					 "failures":["unknown"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
 					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.initialProject(),
 					edited.model(),
 					edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
 					edited.toolCalls());
@@ -1565,6 +1569,7 @@ public final class DriverTest
 					 "failures":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
 					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.initialProject(),
 					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
 					edited.toolCalls());
 			});
@@ -1610,6 +1615,7 @@ public final class DriverTest
 					 "failures":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
 					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.initialProject(),
 					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
 					edited.toolCalls());
 			});
@@ -2412,7 +2418,8 @@ public final class DriverTest
 				harness.clock().advance(Duration.ofMinutes(3));
 				SessionResult.Completed passed = harness.passed();
 				started.getLast().end(new SessionResult.Completed(passed.transcript(), passed.responses(),
-					passed.effects(), passed.model(), passed.reasoning(), usage, windows, passed.promptSources(),
+					passed.effects(), passed.initialProject(), passed.model(), passed.reasoning(), usage, windows,
+					passed.promptSources(),
 					passed.toolCalls()));
 				driver.step();
 
@@ -4170,7 +4177,8 @@ public final class DriverTest
 				{
 					SessionResult.Completed completed = harness.completed("red, green, blue", DriverHarness.MODEL);
 					return new SessionResult.Completed(completed.transcript(), List.of(List.of(BROKEN,
-						"red, green, blue")), completed.effects(), completed.model(), completed.reasoning(),
+						"red, green, blue")), completed.effects(), completed.initialProject(), completed.model(),
+						completed.reasoning(),
 						completed.usage(), completed.windows(), completed.promptSources(), completed.toolCalls());
 				}
 				return compliant(harness, request);

@@ -62,7 +62,7 @@ public final class PromptAuthorManifestTest
 			{"needed_edits": [], "kinds": [], "hunks": [], "conflicts": []}
 			""";
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
+			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.neededEdits(result).isPresent(), "accepted").isTrue();
 	}
 
@@ -83,7 +83,7 @@ public final class PromptAuthorManifestTest
 			 "resolutions":["Keep asking","Allow deletion"],"recommended":1,"reason":"Keeps permission."}]}
 			""";
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
+			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "accepted").isTrue();
 		PromptAuthorConflict conflict = prompt.report(result).orElseThrow().conflicts().getFirst();
 		requireThat(conflict.resolutions(), "resolutions").isEqualTo(List.of("Keep asking", "Allow deletion"));
@@ -129,7 +129,8 @@ public final class PromptAuthorManifestTest
 			""");
 		((ObjectNode) report.get("conflicts").get(0)).set(property, json.readTree(value));
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"),
-			List.of(List.of(json.writeValueAsString(report))), Path.of("/effects"), "model", null, null,
+			List.of(List.of(json.writeValueAsString(report))), Path.of("/effects"), Path.of("/initial-project"), "model",
+			null, null,
 			List.of(), "none", List.of());
 		requireThat(prompt.report(result), "malformed").isEmpty();
 	}
@@ -421,7 +422,7 @@ public final class PromptAuthorManifestTest
 			 "kinds":[],"hunks":[],"conflicts":[]}
 			""".formatted(path);
 		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), "model", null, null, List.of(), "none", List.of());
+			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "reader").isEqualTo(accepted);
 		String schema = PromptTemplateSecrets.access().readResource("/optimizer/prompt-author/report.schema.json");
 		String pattern = json.readTree(schema).get("$defs").get("path").get("pattern").asString();

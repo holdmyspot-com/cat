@@ -604,6 +604,40 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that the snapshot of a run's project holds the copied files and fixtures, and keeps them as they were
+	 * when the project changes afterward.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void snapshotKeepsInitialProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				"cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project/docs"));
+			Files.writeString(project.resolve("guide.md"), "project guide");
+			Path fixtures = Files.createDirectories(root.resolve("fixtures/docs"));
+			Files.writeString(fixtures.resolve("notes.md"), "fixture notes");
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(root.resolve("project"), run);
+			manager.copyFixtures(root.resolve("fixtures"), run);
+
+			manager.snapshotProject(run);
+
+			Path copy = run.directory().resolve("project");
+			Files.writeString(copy.resolve("docs/guide.md"), "edited guide");
+			Files.delete(copy.resolve("docs/notes.md"));
+			Path snapshot = run.directory().resolve("initial-project");
+			requireThat(Files.readString(snapshot.resolve("docs/guide.md")), "projectFile").isEqualTo("project guide");
+			requireThat(Files.readString(snapshot.resolve("docs/notes.md")), "fixture").isEqualTo("fixture notes");
+		}
+	}
+
+	/**
 	 * Verifies copied project files retain their executable permission on POSIX filesystems.
 	 *
 	 * @throws IOException if the filesystem operation fails

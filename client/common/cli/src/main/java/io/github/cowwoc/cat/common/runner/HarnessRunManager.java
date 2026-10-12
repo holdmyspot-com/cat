@@ -449,6 +449,38 @@ public final class HarnessRunManager
 	}
 
 	/**
+	 * Copies the project of an owned run to its {@code initial-project} directory, so that the project's files can be
+	 * compared with the files as they were before the harness changed them.
+	 *
+	 * @param run the owned run
+	 * @throws IOException if copying fails
+	 */
+	public void snapshotProject(HarnessRun run) throws IOException
+	{
+		requireThat(run, "run").isNotNull();
+		Path source = run.directory().resolve("project");
+		Path destination = run.directory().resolve("initial-project");
+		Files.walkFileTree(source, new SimpleFileVisitor<>()
+		{
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+				throws IOException
+			{
+				Files.createDirectory(destination.resolve(source.relativize(directory)));
+				return CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+				throws IOException
+			{
+				Files.copy(file, destination.resolve(source.relativize(file)), COPY_ATTRIBUTES, NOFOLLOW_LINKS);
+				return CONTINUE;
+			}
+		});
+	}
+
+	/**
 	 * Records a failed run without deleting its diagnostics.
 	 *
 	 * @param run the owned run

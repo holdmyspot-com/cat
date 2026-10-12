@@ -143,7 +143,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 37;
+	private static final int FORMAT_VERSION = 38;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -840,6 +840,7 @@ final class CampaignJson
 		ObjectNode node = json.createObjectNode();
 		node.put("transcript", files.transcript().toString());
 		node.put("effects", files.effects().toString());
+		node.put("initial_project", files.initialProject().toString());
 		return node;
 	}
 
@@ -854,7 +855,8 @@ final class CampaignJson
 		JsonNode files = nullable(node, "files");
 		if (files == null)
 			return null;
-		return new TrialFiles(Path.of(text(files, "transcript")), Path.of(text(files, "effects")));
+		return new TrialFiles(Path.of(text(files, "transcript")), Path.of(text(files, "effects")),
+			Path.of(text(files, "initial_project")));
 	}
 
 	/**

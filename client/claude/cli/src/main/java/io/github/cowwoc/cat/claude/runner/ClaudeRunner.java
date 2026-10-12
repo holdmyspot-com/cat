@@ -151,6 +151,7 @@ public final class ClaudeRunner
 			manager.copyProject(project, run);
 			if (fixtures != null)
 				manager.copyFixtures(fixtures, run);
+			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");

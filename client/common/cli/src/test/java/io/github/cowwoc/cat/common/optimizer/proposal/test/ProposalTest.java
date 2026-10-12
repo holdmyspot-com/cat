@@ -156,6 +156,7 @@ public final class ProposalTest
 	{
 		return new SessionResult.Completed(Path.of("/runs/contract-author/artifacts/transcript.jsonl"),
 			List.of(List.of("I will inspect the prompt system.", response)), Path.of("/runs/contract-author/project"),
+			Path.of("/runs/contract-author/initial-project"),
 			"model",
 				null,
 			null, List.of(), OBSERVED, List.of());
@@ -172,10 +173,11 @@ public final class ProposalTest
 		SessionResult.Completed earlier = session("{\"answer\":1}");
 		SessionResult.Completed invalidFinal = new SessionResult.Completed(earlier.transcript(),
 			List.of(List.of("{\"answer\":1}"), List.of("{\"answer\":2}", "No structured output.")),
-			earlier.effects(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
+			earlier.effects(), earlier.initialProject(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
 		requireThat(responses.parseFinalResponse(invalidFinal), "invalidFinal").isEmpty();
 		SessionResult.Completed validFinal = new SessionResult.Completed(earlier.transcript(),
 			List.of(List.of("{\"answer\":1}"), List.of("Working.", "{\"answer\":2}")), earlier.effects(),
+			earlier.initialProject(),
 			earlier.model(), null, null, List.of(), OBSERVED, List.of());
 		requireThat(responses.parseFinalResponse(validFinal).orElseThrow().get("answer").asInt(), "finalAnswer").
 			isEqualTo(2);
