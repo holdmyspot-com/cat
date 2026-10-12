@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -201,6 +202,45 @@ public final class GuardPilotTest
 			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(0);
 			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").isEqualTo(0);
 			requireThat(safety.trials().getFirst().record(), "record").contains("forbidden-text " + BROKEN);
+		}
+	}
+
+	/**
+	 * A trial that fails a built-in tool whose {@code on_tool_failure} is {@code judge} runs its judge, which decides
+	 * that tool's assertion along with the assertions that the judge always decides.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void failedToolLeftToJudge() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		// Requirement: R-C9
+		Contract tiered = TierFixtures.tieredContract();
+		List<MappedAssertion> assertions = new ArrayList<>(tiered.findTest("safety").orElseThrow().assertions());
+		assertions.add(new MappedAssertion(new Assertion("reply_intact", AssertionKind.GUARD,
+			"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r2"));
+		Contract contract = withSafety(tiered, assertions);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-deferred"));
+			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			{
+				if (isSafety(request))
+					return BROKEN;
+				return "pass";
+			});
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
+				new SplittableRandom(3)).get("safety");
+
+			requireThat(sessions.requests(SessionRole.JUDGE).stream().
+				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").
+				isEqualTo((long) GuardPilot.TRIALS);
+			requireThat(safety.decided("reply_intact"), "toolDecided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.passes("reply_intact"), "toolPasses").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(GuardPilot.TRIALS);
 		}
 	}
 

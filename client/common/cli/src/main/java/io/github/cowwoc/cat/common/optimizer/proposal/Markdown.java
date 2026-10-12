@@ -437,7 +437,7 @@ public final class Markdown
 
 	/**
 	 * Lists a test's requirements and its assertions: each declared one with its kind, the requirement it checks and
-	 * the built-in tool that decides it or the judge, then the assertion that CAT adds.
+	 * what decides it, the built-in tool, the judge or both, then the assertion that CAT adds.
 	 *
 	 * @param test the prompt test
 	 */
@@ -474,8 +474,13 @@ public final class Markdown
 			text.append("The judge decides it.\n");
 			return;
 		}
-		text.append("The built-in tool `").append(assertion.tool()).append("` decides it; a failure is the " +
-			"behavior `").append(assertion.builtInTool().orElseThrow().behavior()).append("`.\n");
+		text.append("The built-in tool `").append(assertion.tool());
+		switch (assertion.onToolFailure())
+		{
+			case FAIL -> text.append("` decides it; a failure is the behavior `").
+				append(assertion.builtInTool().orElseThrow().behavior()).append("`.\n");
+			case JUDGE -> text.append("` decides it when it passes; when it fails, the judge decides it.\n");
+		}
 	}
 
 	/**

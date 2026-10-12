@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
+import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
@@ -248,6 +249,60 @@ public final class ScenarioTest
 			""");
 		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(new Assertion("answer_correct",
 			AssertionKind.GUARD, null, "The reply states {{expected_outcome}}.")));
+	}
+
+	/**
+	 * Verifies that an assertion can leave a failure of its built-in tool to the judge, that {@code fail} is the
+	 * default, and that a rendered scenario writes {@code on_tool_failure} only when it is {@code judge}.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesToolFailureLeftToJudge() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + """
+			## Assertions
+
+			### component_named
+
+			- **kind**: effect
+			- **tool**: `pattern "(?i)session store"`
+			- **on_tool_failure**: judge
+			- **description**: The reply names the session store in any wording.
+
+			### notes_read
+
+			- **kind**: effect
+			- **tool**: `read-in-full docs/{{notes}}`
+			- **on_tool_failure**: fail
+			- **description**: The agent reads all of `docs/{{notes}}`.
+			""");
+		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(
+			new Assertion("component_named", AssertionKind.EFFECT, "pattern \"(?i)session store\"",
+				OnToolFailure.JUDGE, "The reply names the session store in any wording."),
+			new Assertion("notes_read", AssertionKind.EFFECT, "read-in-full docs/{{notes}}", OnToolFailure.FAIL,
+				"The agent reads all of `docs/{{notes}}`.")));
+		String rendered = scenario.render();
+		requireThat(Scenario.parse(rendered), "parsed").isEqualTo(scenario);
+		requireThat(rendered, "rendered").contains("- **on_tool_failure**: judge\n");
+		requireThat(rendered.indexOf("on_tool_failure"), "first").isEqualTo(rendered.lastIndexOf("on_tool_failure"));
+	}
+
+	/**
+	 * Verifies that {@code on_tool_failure} without a {@code tool}, or with a value other than {@code fail} or
+	 * {@code judge}, is refused at its line.
+	 */
+	@Test
+	public void refusesInvalidToolFailure()
+	{
+		// Requirement: R-C20
+		String heading = VARIABLES + TURN + "## Assertions\n\n### summary_given\n\n- **kind**: effect\n";
+		String description = "- **description**: The reply summarizes the notes.\n";
+		requireThat(refusal(heading + "- **on_tool_failure**: judge\n" + description), "noTool").
+			startsWith("Line 12:").contains("tool");
+		requireThat(refusal(heading + "- **tool**: `pattern notes`\n- **on_tool_failure**: retry\n" + description),
+			"unknownValue").startsWith("Line 13:").contains("retry");
 	}
 
 	/**

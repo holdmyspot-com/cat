@@ -32,6 +32,7 @@ final class ScenarioParser
 	private static final String PATTERNS = "patterns";
 	private static final String KIND = "kind";
 	private static final String TOOL = "tool";
+	private static final String ON_TOOL_FAILURE = "on_tool_failure";
 	private static final String DESCRIPTION = "description";
 	/**
 	 * Matches a key-value pair {@code - **key**: value}, capturing the key and the value's first line.
@@ -632,13 +633,15 @@ final class ScenarioParser
 	 * @param end     the index of the line after its last line
 	 * @return the assertion
 	 * @throws ScenarioFormatException if the assertion holds prose or an undefined key, lacks its {@code kind} or
-	 *                                 {@code description}, or holds an invalid value
+	 *                                 {@code description}, has an {@code on_tool_failure} without a {@code tool}, or
+	 *                                 holds an invalid value
 	 */
 	private Assertion assertion(String id, int heading, int end) throws ScenarioFormatException
 	{
 		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + id + " holds only key-value pairs, such as " +
 			"- **kind**: effect");
-		requireKeys(pairs, Set.of(KIND, TOOL, DESCRIPTION), "kind, tool and description");
+		requireKeys(pairs, Set.of(KIND, TOOL, ON_TOOL_FAILURE, DESCRIPTION), "kind, tool, on_tool_failure and " +
+			"description");
 
 		Pair kindPair = find(pairs, KIND);
 		if (kindPair == null)
@@ -658,12 +661,30 @@ final class ScenarioParser
 		if (toolPair != null)
 			tool = tool(toolPair);
 
+		OnToolFailure onToolFailure = OnToolFailure.FAIL;
+		Pair onToolFailurePair = find(pairs, ON_TOOL_FAILURE);
+		if (onToolFailurePair != null)
+		{
+			if (toolPair == null)
+			{
+				throw error(onToolFailurePair.line(), "the key on_tool_failure needs a tool whose failure it handles; " +
+					"add - **tool**: or remove it");
+			}
+			onToolFailure = switch (onToolFailurePair.value())
+			{
+				case "fail" -> OnToolFailure.FAIL;
+				case "judge" -> OnToolFailure.JUDGE;
+				default -> throw error(onToolFailurePair.line(), "the on_tool_failure " + onToolFailurePair.value() +
+					" must be fail or judge");
+			};
+		}
+
 		Pair description = find(pairs, DESCRIPTION);
 		if (description == null)
 			throw error(heading, "the assertion " + id + " has no description; add - **description**: followed by it");
 		if (description.value().isEmpty())
 			throw error(description.line(), "the key description has no value");
-		return new Assertion(id, kind, tool, description.value());
+		return new Assertion(id, kind, tool, onToolFailure, description.value());
 	}
 
 	/**

@@ -67,6 +67,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
@@ -3505,7 +3506,7 @@ public final class DriverTest
 				requireThat(failure.get("cell").asString(), "cell").isEqualTo(TierFixtures.BIG_MEDIUM);
 				// Requirement: R-C18
 				JudgedAssertion judged = JudgedAssertion.of(contract.findTest(failure.get("test").asString()).
-					orElseThrow(), contract.requirements()).getFirst();
+					orElseThrow(), contract.requirements(), List.of()).getFirst();
 				JsonNode expected = JsonMapper.builder().build().createArrayNode().addObject().
 					put("assertion_id", judged.assertion().id()).put("behavior", judged.behaviors().getFirst());
 				requireThat(failure.get("failed_assertions"), "failedAssertions").
@@ -4435,6 +4436,52 @@ public final class DriverTest
 				filter(request -> judgeTest(request).equals("plain_list")).findFirst().orElseThrow().turns().getFirst();
 			requireThat(turn, "turn").contains("\"assertion_id\" : \"runs_true\"").
 				contains("\"assertion_id\" : \"true_succeeds\"").doesNotContain("\"passed\" : false");
+		}
+	}
+
+	/**
+	 * Verifies that a failed built-in tool whose {@code on_tool_failure} is {@code judge} does not fail the trial: the
+	 * judge decides its assertion, receives the tool's failed result as evidence, and the trial passes when the judge
+	 * passes it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failedToolLeftToJudge() throws IOException
+	{
+		// Requirement: R-C9
+		// Requirement: R-C5
+		MappedAssertion intact = new MappedAssertion(new Assertion("list_intact", AssertionKind.GUARD,
+			"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r1");
+		Contract contract = withAssertions(Map.of("plain_list", List.of(intact)));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(request ->
+			{
+				if (isPlainList(request))
+					return harness.completed(BROKEN, DriverHarness.MODEL);
+				return harness.passed();
+			});
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, state -> state.pending() != null ||
+					!plainListOutcomes(state).isEmpty());
+			}
+			List<TestCaseOutcomes> outcomes = plainListOutcomes(campaign);
+			requireThat(outcomes, "outcomes").isNotEmpty();
+			for (TestCaseOutcomes outcome : outcomes)
+				requireThat(outcome.passes(), "passes").isEqualTo(outcome.outcomes());
+			SessionRequest request = judgeRequests(harness).stream().
+				filter(candidate -> judgeTest(candidate).equals("plain_list")).findFirst().orElseThrow();
+			List<String> decided = new ArrayList<>();
+			for (JsonNode assertion : harness.decidedAssertions(request))
+				decided.add(assertion.get("id").asString());
+			requireThat(decided, "decided").containsExactly(List.of("list_intact", "expected_outcome"));
+			requireThat(request.turns().getFirst(), "turn").contains("\"assertion_id\" : \"list_intact\"").
+				contains("\"passed\" : false");
 		}
 	}
 

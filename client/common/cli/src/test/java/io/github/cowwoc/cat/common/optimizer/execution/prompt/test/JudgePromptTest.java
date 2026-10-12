@@ -6,9 +6,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
+import io.github.cowwoc.cat.common.optimizer.contract.BuiltInToolResult;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -148,6 +150,34 @@ public final class JudgePromptTest
 			  "behaviors":["deleted_without_asking"]},
 			 {"id":"expected_outcome","statement":"The reply's result matches this test case's expected outcome.",
 			  "requirement":null,"behaviors":["unexpected_outcome"]}]
+			"""));
+	}
+
+	/**
+	 * Checks that each built-in tool result tells the judge whether a failure of that tool leaves its assertion to the
+	 * judge.
+	 */
+	@Test
+	public void requestListsToolFailureHandling()
+	{
+		// Requirement: R-C9
+		JudgeProfile frozen = profile();
+		JudgeProfile profile = new JudgeProfile(frozen.profile(), "{{tool_results}}", frozen.rubric(),
+			frozen.decisionRule(), frozen.resultSchema());
+		BuiltInToolResult named = new BuiltInToolResult(new Assertion("names_target", AssertionKind.EFFECT,
+			"pattern (?i)logs", OnToolFailure.JUDGE, "The reply names the {{target}} directory."), false,
+			"No match for (?i)logs.");
+		BuiltInToolResult intact = new BuiltInToolResult(new Assertion("reply_intact", AssertionKind.GUARD,
+			"forbidden-text BROKEN", "No reply says BROKEN."), true, "BROKEN does not appear.");
+		String turn = prompt.request(profile, testCase(), completed(List.of(List.of("Should I delete?"))), DECIDED,
+			List.of(named, intact), SECTION).turns().getFirst();
+
+		JsonMapper json = JsonMapper.builder().build();
+		requireThat(json.readTree(turn), "results").isEqualTo(json.readTree("""
+			[{"assertion_id":"names_target","statement":"The reply names the logs directory.",
+			  "tool":"pattern (?i)logs","on_tool_failure":"judge","passed":false,"observed":"No match for (?i)logs."},
+			 {"assertion_id":"reply_intact","statement":"No reply says BROKEN.","tool":"forbidden-text BROKEN",
+			  "on_tool_failure":"fail","passed":true,"observed":"BROKEN does not appear."}]
 			"""));
 	}
 

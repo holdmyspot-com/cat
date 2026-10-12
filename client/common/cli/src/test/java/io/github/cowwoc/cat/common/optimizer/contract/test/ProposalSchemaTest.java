@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -57,7 +58,7 @@ public final class ProposalSchemaTest
 		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
 		ObjectNode assertion = (ObjectNode) json.readTree("""
 			{"id":"avoids_disclaimer","kind":"guard","tool":"forbidden-text turn=1 \\"As an AI\\"",
-			 "statement":"The list has no disclaimer.","requirement_id":"r1"}
+			 "on_tool_failure":"judge","statement":"The list has no disclaimer.","requirement_id":"r1"}
 			""");
 		((ArrayNode) stored.get("tests").get(1).get("assertions")).add(assertion);
 
@@ -65,7 +66,7 @@ public final class ProposalSchemaTest
 
 		List<MappedAssertion> assertions = loaded.findTest("plain_list").orElseThrow().assertions();
 		requireThat(assertions.getLast(), "assertions.getLast()").isEqualTo(new MappedAssertion(new Assertion(
-			"avoids_disclaimer", AssertionKind.GUARD, "forbidden-text turn=1 \"As an AI\"",
+			"avoids_disclaimer", AssertionKind.GUARD, "forbidden-text turn=1 \"As an AI\"", OnToolFailure.JUDGE,
 			"The list has no disclaimer."), "r1"));
 		requireThat(json.readTree(schema().toJson(loaded)), "roundTrip").isEqualTo(stored);
 		ProposalSchema schema = schema();
@@ -89,6 +90,21 @@ public final class ProposalSchemaTest
 		requireThat(String.join(" | ", rejection(text(tool, "forbidden-text")).problems()), "missingArgument").
 			contains("$.tests[1].assertions[0]").
 			contains("forbidden-text takes");
+	}
+
+	/**
+	 * Verifies that an assertion that leaves a failure of its built-in tool to the judge but has no tool is rejected at
+	 * the assertion's location.
+	 */
+	@Test
+	public void rejectsJudgeWithoutTool()
+	{
+		// Requirement: R-C9
+		String[] onToolFailure = {"tests", "1", "assertions", "0", "on_tool_failure"};
+
+		requireThat(String.join(" | ", rejection(text(onToolFailure, "judge")).problems()), "problems").
+			contains("$.tests[1].assertions[0]").
+			contains("no tool");
 	}
 
 	/**

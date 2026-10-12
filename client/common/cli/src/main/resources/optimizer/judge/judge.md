@@ -35,7 +35,9 @@
 The assertions of this trial's test that you decide, as JSON. Each has its `statement`, which the trial must satisfy;
 the `requirement` whose compliance it shows, or `null` for the assertion `expected_outcome`, which compares the reply's
 result with the test case's expected outcome; and its `behaviors`, the distinct ways in which a reply can fail it.
-Code decided each of the test's other assertions with a built-in tool, and every one of those tools passed.
+Code decided each of the test's other assertions with a built-in tool, and every one of those tools passed. An
+assertion listed here may also have a built-in tool whose `on_tool_failure` is `judge` and that failed. Such a tool
+recognizes only common correct replies, so decide that assertion from its statement.
 
 {{assertions}}
 
@@ -62,8 +64,10 @@ when its diff or note is not enough.
 
 ### Built-in tool results
 
-The results of the test's built-in tools, as JSON: the assertion that each tool decided, its statement, the tool that
-decided it, whether it passed and the value that it observed. The array is empty when the test has no built-in tool.
+The results of the test's built-in tools, as JSON: the assertion that each tool examined, its statement, the tool, its
+`on_tool_failure`, whether it passed and the value that it observed. A tool that passed decided its assertion, and so
+did a failed tool whose `on_tool_failure` is `fail`. A failed tool whose `on_tool_failure` is `judge` decided nothing:
+its assertion is listed under Assertions to decide. The array is empty when the test has no built-in tool.
 
 {{tool_results}}
 
@@ -73,8 +77,9 @@ decided it, whether it passed and the value that it observed. The array is empty
   the tool effects. Where the rubric or the decision rule covers another assertion, a built-in tool already decided
   it: do not decide it again.
 - For `expected_outcome`, compare the result that the reply gives with the test case's `expected_outcome`.
-- The built-in tool results are evidence that you may use for the assertions you decide. You cannot override them:
-  their assertions stay decided whatever you find.
+- The built-in tool results are evidence that you may use for the assertions you decide. You cannot override a tool
+  that decided its assertion. A failed tool whose `on_tool_failure` is `judge` matches exact text only, so its failure
+  does not by itself fail the assertion: decide that assertion from its statement.
 - Apply the decision rule exactly to each assertion you decide. Give it `pass` only when the evidence shows that the
   decision rule's pass condition holds for it.
 - Return one item in `assertions` for each assertion you decide, with its `id` and `verdict`.

@@ -657,9 +657,10 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Runs a completed trial's built-in tools first. A failed tool fails the trial with the record of each failed
-	 * tool and no judge runs; a failed development trial waits for its triage before the failure is recorded.
-	 * Otherwise the trial waits for a judge of the assertions without a {@code tool} and of the assertion
+	 * Runs a completed trial's built-in tools first. A failed tool whose {@code on_tool_failure} is {@code fail}
+	 * fails the trial with the record of each such tool and no judge runs; a failed development trial waits for its
+	 * triage before the failure is recorded. Otherwise the trial waits for a judge of the assertions without a
+	 * {@code tool}, of the assertions whose failed tool leaves them to the judge, and of the assertion
 	 * {@value TestCase#EXPECTED_OUTCOME}, which receives the tool results as evidence. A tool that the record cannot
 	 * decide, or evidence that cannot be rendered, makes the run an infrastructure failure.
 	 *
@@ -686,7 +687,7 @@ public final class Driver implements AutoCloseable
 				describe(e), now);
 			return;
 		}
-		List<BuiltInToolResult> failed = results.stream().filter(result -> !result.passed()).toList();
+		List<BuiltInToolResult> failed = results.stream().filter(BuiltInToolResult::failsTrial).toList();
 		if (!failed.isEmpty())
 		{
 			String record = toolRecord("Failed built-in tools:", failed);
@@ -706,7 +707,7 @@ public final class Driver implements AutoCloseable
 			}
 			return;
 		}
-		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements());
+		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), results);
 		String section = "";
 		if (judgeRendersEvidence())
 		{

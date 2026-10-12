@@ -74,8 +74,9 @@ The development test cases that failed for the working candidate, as JSON. Each 
 `expected_outcome`, the assertions it failed in `failed_assertions`, each with its `assertion_id` and the `behavior`
 through which it failed, the reason for its failure in `rationale`, and the targeted reruns of the same test case
 against the working candidate in `diagnostic_reruns`, each with its verdict and its `rationale`. A `rationale` is the
-judge's rationale or, when no judge ran, the record of CAT's built-in tools that failed: for each one, the assertion,
-its `tool`, the behavior and the value that the tool observed. No judge runs when a built-in tool failed. The
+judge's rationale or, when no judge ran, the record of CAT's built-in tools that failed the trial: for each one, the
+assertion, its `tool`, the behavior and the value that the tool observed. No judge runs when a built-in tool fails the
+trial; a tool whose `on_tool_failure` is `judge` never fails it. The
 `impact` is `blocking` when the reply left the user without the turn's correct and complete result, `self_recovering`
 when the reply still delivered that result and the failure cost only extra work, and `null` when no impact was
 decided. The `responses` array holds one ordered array of assistant messages per turn, including interim messages

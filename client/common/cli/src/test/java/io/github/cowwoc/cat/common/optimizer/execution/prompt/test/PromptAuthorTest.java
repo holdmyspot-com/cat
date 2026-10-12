@@ -586,7 +586,8 @@ public final class PromptAuthorTest
 
 		requireThat(turn, "turn").
 			contains("when no judge ran, the record of CAT's built-in tools that failed").
-			contains("No judge runs when a built-in tool failed.");
+			contains("No judge runs when a built-in tool fails the").
+			contains("a tool whose `on_tool_failure` is `judge` never fails it.");
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
 		requireThat(failures.get(0).get("rationale").asString(), "rationale").

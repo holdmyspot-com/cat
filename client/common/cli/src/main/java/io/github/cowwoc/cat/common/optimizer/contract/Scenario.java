@@ -179,6 +179,8 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns, 
 			appendPair(text, "kind", assertion.kind().name().toLowerCase(Locale.ROOT));
 			if (assertion.tool() != null)
 				appendPair(text, "tool", CodeSpan.render(assertion.tool()));
+			if (assertion.onToolFailure() == OnToolFailure.JUDGE)
+				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.statement());
 		}
 

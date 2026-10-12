@@ -28,6 +28,28 @@ public record BuiltInToolResult(Assertion assertion, boolean passed, String obse
 	}
 
 	/**
+	 * Indicates whether the result fails the trial without a judge.
+	 *
+	 * @return {@code true} if the tool failed and its assertion's {@code on_tool_failure} is
+	 *   {@link OnToolFailure#FAIL}
+	 */
+	public boolean failsTrial()
+	{
+		return !passed && assertion.onToolFailure() == OnToolFailure.FAIL;
+	}
+
+	/**
+	 * Indicates whether the result leaves its assertion to the judge.
+	 *
+	 * @return {@code true} if the tool failed and its assertion's {@code on_tool_failure} is
+	 *   {@link OnToolFailure#JUDGE}
+	 */
+	public boolean leftToJudge()
+	{
+		return !passed && assertion.onToolFailure() == OnToolFailure.JUDGE;
+	}
+
+	/**
 	 * Returns the behavior that a failure of the tool shows.
 	 *
 	 * @return the behavior's name

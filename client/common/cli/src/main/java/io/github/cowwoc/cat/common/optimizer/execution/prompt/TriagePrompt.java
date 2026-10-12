@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
+import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
@@ -96,6 +97,7 @@ public final class TriagePrompt implements TriageProtocol
 				put("assertion_id", result.assertion().id()).
 				put("statement", result.assertion().statement(textByName)).
 				put("tool", result.assertion().tool()).
+				put("on_tool_failure", EnumNames.lowerCase(result.assertion().onToolFailure())).
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}

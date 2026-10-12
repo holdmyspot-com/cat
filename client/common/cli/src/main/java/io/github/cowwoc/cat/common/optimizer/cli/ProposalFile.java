@@ -45,9 +45,10 @@ final class ProposalFile
 	/**
 	 * The version of the proposal layout, including regression scenario citations, the variables of each prompt test
 	 * and whether each is outcome-changing, the triggers of the requirements, the shipped capability
-	 * ranking, the salt, the judge prompt's placeholders and the assertions of each prompt test.
+	 * ranking, the salt, the judge prompt's placeholders and the assertions of each prompt test, including what a
+	 * failure of each assertion's built-in tool means.
 	 */
-	private static final int FORMAT_VERSION = 15;
+	private static final int FORMAT_VERSION = 16;
 	private final Path file;
 	private final JsonMapper json;
 

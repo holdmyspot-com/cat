@@ -4,14 +4,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * An assertion that the judge decides, with the requirement that it checks and the behaviors through which a trial
  * can fail it.
  *
- * @param assertion   the assertion, which has no {@code tool}
+ * @param assertion   the assertion, which has no {@code tool} or leaves a failure of its tool to the judge
  * @param requirement the requirement that the assertion checks, or {@code null} for
  *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
  */
@@ -20,17 +22,22 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	/**
 	 * Creates a judged assertion.
 	 *
-	 * @param assertion   the assertion, which has no {@code tool}
+	 * @param assertion   the assertion, which has no {@code tool} or leaves a failure of its tool to the judge
 	 * @param requirement the requirement that the assertion checks, or {@code null} for
 	 *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
 	 * @throws NullPointerException     if {@code assertion} is null
-	 * @throws IllegalArgumentException if {@code assertion} has a {@code tool}, or {@code requirement} is null
-	 *                                  for any assertion other than {@value TestCase#EXPECTED_OUTCOME}
+	 * @throws IllegalArgumentException if a failure of {@code assertion}'s {@code tool} fails the trial, or
+	 *                                  {@code requirement} is null for any assertion other than
+	 *                                  {@value TestCase#EXPECTED_OUTCOME}
 	 */
 	public JudgedAssertion
 	{
 		requireThat(assertion, "assertion").isNotNull();
-		requireThat(assertion.tool(), "assertion.tool()").isNull();
+		if (assertion.tool() != null && assertion.onToolFailure() == OnToolFailure.FAIL)
+		{
+			throw new IllegalArgumentException("The assertion '" + assertion.id() + "' has a tool whose failure fails " +
+				"the trial, so no judge decides it");
+		}
 		if (requirement == null && !assertion.id().equals(TestCase.EXPECTED_OUTCOME))
 		{
 			throw new IllegalArgumentException("The assertion '" + assertion.id() + "' checks no requirement, but only " +
@@ -39,25 +46,35 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	}
 
 	/**
-	 * Returns the assertions of a test that the judge decides.
+	 * Returns the assertions of a test that the judge decides in one trial.
 	 *
 	 * @param test         the prompt test
 	 * @param requirements every requirement of the contract
-	 * @return the test's assertions without a {@code tool}, then {@value TestCase#EXPECTED_OUTCOME}
+	 * @param results      the results of the trial's built-in tools
+	 * @return the test's assertions without a {@code tool} or whose result {@link BuiltInToolResult#leftToJudge()
+	 *   leaves them to the judge}, in the test's order, then {@value TestCase#EXPECTED_OUTCOME}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an assertion checks a requirement that {@code requirements} does not list
 	 */
-	public static List<JudgedAssertion> of(PromptTest test, List<Requirement> requirements)
+	public static List<JudgedAssertion> of(PromptTest test, List<Requirement> requirements,
+		List<BuiltInToolResult> results)
 	{
 		requireThat(test, "test").isNotNull();
 		requireThat(requirements, "requirements").isNotNull();
+		requireThat(results, "results").isNotNull();
 		Map<String, Requirement> requirementById = new HashMap<>();
 		for (Requirement requirement : requirements)
 			requirementById.put(requirement.id(), requirement);
+		Set<String> leftToJudge = new HashSet<>();
+		for (BuiltInToolResult result : results)
+		{
+			if (result.leftToJudge())
+				leftToJudge.add(result.assertion().id());
+		}
 		List<JudgedAssertion> judged = new ArrayList<>();
 		for (MappedAssertion mapped : test.assertions())
 		{
-			if (mapped.assertion().tool() != null)
+			if (mapped.assertion().tool() != null && !leftToJudge.contains(mapped.assertion().id()))
 				continue;
 			Requirement requirement = requirementById.get(mapped.requirementId());
 			if (requirement == null)

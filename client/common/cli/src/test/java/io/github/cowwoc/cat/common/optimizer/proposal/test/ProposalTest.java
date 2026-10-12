@@ -1577,7 +1577,8 @@ public final class ProposalTest
 
 		String declared = changedDerivation(output -> ((ArrayNode) output.at("/tests/0/assertions")).
 			addObject().put("id", TestCase.EXPECTED_OUTCOME).put("kind", "effect").putNull("tool").
-			put("statement", "The summary matches the expected outcome.").put("requirement_id", "r1"));
+			put("on_tool_failure", "fail").put("statement", "The summary matches the expected outcome.").
+			put("requirement_id", "r1"));
 		try
 		{
 			contractAuthor.proposal(session(declared), PROFILES, SALT);
@@ -1639,7 +1640,7 @@ public final class ProposalTest
 		// Requirement: R-E21
 		String output = changedDerivation(proposal -> ((ArrayNode) proposal.at("/tests/0/assertions")).
 			addObject().put("id", "runs_true").put("kind", "guard").put("tool", "exit-status ^true$ 0").
-			put("statement", "The command true succeeds.").put("requirement_id", "r1"));
+			put("on_tool_failure", "fail").put("statement", "The command true succeeds.").put("requirement_id", "r1"));
 		contractAuthor.proposal(session(output), PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
@@ -1693,6 +1694,32 @@ public final class ProposalTest
 			built-in tool `file-exists {{target}}` decides it; a failure is the behavior `file_missing`.
 			  - `expected_outcome` (guard, added by CAT): %s The judge decides it.
 			""".formatted(Assertion.EXPECTED_OUTCOME_STATEMENT));
+	}
+
+	/**
+	 * Verifies that the proposal says when a built-in tool's failure leaves its assertion to the judge.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void rendersToolFailureLeftToJudge() throws InvalidProposalException
+	{
+		// Requirement: R-C9
+		ObjectNode derivation = (ObjectNode) json.readTree(fixture("derivation-with-checks.json"));
+		for (JsonNode test : derivation.get("tests"))
+		{
+			for (JsonNode assertion : test.get("assertions"))
+			{
+				if (assertion.get("id").asString().equals("lists_three_items"))
+					((ObjectNode) assertion).put("on_tool_failure", "judge");
+			}
+		}
+
+		requireThat(rendered(json.writeValueAsString(derivation)), "text").contains("""
+			  - `lists_three_items` (effect, requirement `r1`): The reply to turn 1 lists exactly three items. The \
+			built-in tool `count turn=1 "(?m)^- \\\\S" 3 3` decides it when it passes; when it fails, the judge \
+			decides it.
+			""");
 	}
 
 	/**

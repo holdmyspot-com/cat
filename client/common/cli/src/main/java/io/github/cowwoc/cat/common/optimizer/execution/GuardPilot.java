@@ -446,8 +446,9 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Runs a completed trial's built-in tools. A failed tool decides the trial without a judge; otherwise the
-		 * trial waits for a judge of the assertions without a {@code tool} and of the assertion
+		 * Runs a completed trial's built-in tools. A failed tool whose {@code on_tool_failure} is {@code fail} decides
+		 * the trial without a judge; otherwise the trial waits for a judge of the assertions without a {@code tool}, of
+		 * the assertions whose failed tool leaves them to the judge, and of the assertion
 		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide, or evidence that cannot be
 		 * rendered, makes the trial a failed run.
 		 *
@@ -472,22 +473,26 @@ public final class GuardPilot
 				pilot.failed();
 				return;
 			}
-			Map<String, Boolean> assertions = new LinkedHashMap<>();
-			for (BuiltInToolResult result : results)
-				assertions.put(result.assertion().id(), result.passed());
-			if (assertions.containsValue(false))
+			if (results.stream().anyMatch(BuiltInToolResult::failsTrial))
 			{
+				// An assertion that a failed tool leaves to the judge stays undecided, because no judge runs
+				Map<String, Boolean> assertions = new LinkedHashMap<>();
+				for (BuiltInToolResult result : results)
+				{
+					if (!result.leftToJudge())
+						assertions.put(result.assertion().id(), result.passed());
+				}
 				StringBuilder record = new StringBuilder("Failed built-in tools:");
 				for (BuiltInToolResult result : results)
 				{
-					if (!result.passed())
+					if (result.failsTrial())
 						record.append("\n- ").append(result.describe());
 				}
 				pilot.decided(trial.position(), new PilotTrial(testCase.testCase().describedValues(),
 					testCase.testCase().expectedOutcome(), assertions, record.toString()));
 				return;
 			}
-			List<JudgedAssertion> judged = JudgedAssertion.of(pilot.test, contract.requirements());
+			List<JudgedAssertion> judged = JudgedAssertion.of(pilot.test, contract.requirements(), results);
 			queue.addFirst(new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1));
 		}
 

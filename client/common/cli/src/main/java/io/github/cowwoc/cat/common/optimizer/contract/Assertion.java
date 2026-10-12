@@ -10,13 +10,15 @@ import java.util.Optional;
 /**
  * One assertion of a scenario: a statement that a compliant trial satisfies.
  *
- * @param id        the identifier that is unique within the scenario
- * @param kind      whether the assertion requires the prompt's effect or guards against a harm
- * @param tool      the built-in tool and its arguments that decide the assertion, or {@code null} if the judge
- *                  decides it
- * @param statement what the assertion requires
+ * @param id            the identifier that is unique within the scenario
+ * @param kind          whether the assertion requires the prompt's effect or guards against a harm
+ * @param tool          the built-in tool and its arguments that decide the assertion, or {@code null} if the judge
+ *                      decides it
+ * @param onToolFailure what a failure of {@code tool} means; {@link OnToolFailure#FAIL} when {@code tool} is
+ *                      {@code null}
+ * @param statement     what the assertion requires
  */
-public record Assertion(String id, AssertionKind kind, String tool, String statement)
+public record Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement)
 {
 	/**
 	 * What the assertion that CAT adds to every prompt test requires.
@@ -26,6 +28,38 @@ public record Assertion(String id, AssertionKind kind, String tool, String state
 
 	/**
 	 * Creates an assertion.
+	 *
+	 * @param id            the identifier that is unique within the scenario
+	 * @param kind          whether the assertion requires the prompt's effect or guards against a harm
+	 * @param tool          the built-in tool and its arguments that decide the assertion, or {@code null} if the
+	 *                      judge decides it
+	 * @param onToolFailure what a failure of {@code tool} means; {@link OnToolFailure#FAIL} when {@code tool} is
+	 *                      {@code null}
+	 * @param statement     what the assertion requires
+	 * @throws NullPointerException     if {@code id}, {@code kind}, {@code onToolFailure} or {@code statement} are
+	 *                                  null
+	 * @throws IllegalArgumentException if {@code id} is not lowercase words joined by underscores, {@code tool} does
+	 *                                  not name a built-in tool with arguments that suit it, {@code onToolFailure} is
+	 *                                  {@link OnToolFailure#JUDGE} without a {@code tool}, or {@code statement} is
+	 *                                  blank
+	 */
+	public Assertion
+	{
+		requireThat(id, "id").matches(Identifier.SNAKE_CASE);
+		requireThat(kind, "kind").isNotNull();
+		requireThat(onToolFailure, "onToolFailure").isNotNull();
+		if (tool != null)
+			BuiltInTool.parse(tool);
+		else if (onToolFailure == OnToolFailure.JUDGE)
+		{
+			throw new IllegalArgumentException("The assertion '" + id + "' leaves a tool failure to the judge but has " +
+				"no tool");
+		}
+		requireThat(statement, "statement").isNotBlank();
+	}
+
+	/**
+	 * Creates an assertion whose built-in tool, if any, fails the trial when it fails.
 	 *
 	 * @param id        the identifier that is unique within the scenario
 	 * @param kind      whether the assertion requires the prompt's effect or guards against a harm
@@ -37,13 +71,9 @@ public record Assertion(String id, AssertionKind kind, String tool, String state
 	 *                                  not name a built-in tool with arguments that suit it, or {@code statement} is
 	 *                                  blank
 	 */
-	public Assertion
+	public Assertion(String id, AssertionKind kind, String tool, String statement)
 	{
-		requireThat(id, "id").matches(Identifier.SNAKE_CASE);
-		requireThat(kind, "kind").isNotNull();
-		if (tool != null)
-			BuiltInTool.parse(tool);
-		requireThat(statement, "statement").isNotBlank();
+		this(id, kind, tool, OnToolFailure.FAIL, statement);
 	}
 
 	/**

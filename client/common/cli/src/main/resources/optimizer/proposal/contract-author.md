@@ -149,13 +149,18 @@ its test. Give each requirement that the test checks at least one assertion. For
   prompts exist to make the assertion true, such as reading a long file whole. Any assertion that is not a guard is an
   effect;
 - `statement`: what the assertion requires, in words that the judge can decide from the trial's record;
-- `tool`: the built-in tool that decides the assertion, or `null` when the judge decides it.
+- `tool`: the built-in tool that decides the assertion, or `null` when the judge decides it;
+- `on_tool_failure`: what a failure of `tool` means: `fail` when the failure fails the trial; `judge` when the judge
+  then decides the assertion from its statement. Write `fail` when `tool` is `null`.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
 that passes when the agent called its Read tool. The statement may still describe the agent's tools, such as "the agent
-used the Read tool". Give a built-in tool only when it observes everything that the assertion requires; whether a reply
-is correct, relevant, complete or appropriate stays with the judge. A built-in tool's verdict is final: the judge
-neither repeats nor overrides it. A failed built-in tool names the behavior in the table below, so list that behavior on
+used the Read tool". Under `fail`, give a built-in tool only when it observes everything that the assertion requires;
+whether a reply is correct, relevant, complete or appropriate stays with the judge. Under `judge`, the tool may fail a
+reply that satisfies the statement but must pass no reply that the statement rejects, such as a `pattern` for the usual
+phrasings of a correct answer; write the whole requirement in the statement, because the judge decides from it. A
+built-in tool that passes decides its assertion, and so does one that fails under `fail`: the judge neither repeats nor
+overrides it. A built-in tool that fails under `fail` names the behavior in the table below, so list that behavior on
 the assertion's requirement.
 
 Write a built-in tool's name followed by its arguments, separated by spaces. Write an argument that contains a space or
@@ -192,10 +197,11 @@ user's feedback changes it. A higher rate needs more trials to prove.
 ### Judge rubric and decision rule
 
 - `judge.rubric`: the criteria that the judge applies to one trial's text, file effects and tool effects for each
-  assertion without a built-in tool, including `expected_outcome`. For `expected_outcome`, say which differences from
-  the expected outcome still match, such as another spelling of the same date.
+  assertion without a built-in tool or whose `on_tool_failure` is `judge`, including `expected_outcome`. For
+  `expected_outcome`, say which differences from the expected outcome still match, such as another spelling of the
+  same date.
 - `judge.decision_rule`: exactly when each assertion that the judge decides passes and when it fails. The judge sees
-  the built-in tool results as evidence but cannot override them.
+  the built-in tool results as evidence but cannot override a tool that decided its assertion.
 
 ### Guard pilot
 
@@ -219,9 +225,10 @@ behaviour, assertions and fixtures, and put its exact citation in that test's `r
 
 - A scenario in the current format states each variable as a `- **<name>**: <description>` pair under
   `## Variables`, its turns under `## Scenario`, with one `### Turn <n>` subsection per turn when it has several, and
-  each assertion under `## Assertions` as a `### <id>` subsection whose `kind`, optional `tool` and `description`
-  pairs give its kind, its built-in tool and its statement. Copy them, give each assertion the requirement of this
-  contract that it checks, and write the test cases, which a scenario never states.
+  each assertion under `## Assertions` as a `### <id>` subsection whose `kind`, optional `tool`, optional
+  `on_tool_failure` and `description` pairs give its kind, its built-in tool, what a failure of that tool means (`fail`
+  when absent) and its statement. Copy them, give each assertion the requirement of this contract that it checks, and
+  write the test cases, which a scenario never states.
 - A scenario in the current format may list the test cases that earlier campaigns committed. CAT adds them to the
   test that cites the scenario, so keep the scenario's variables, and write new test cases whose values and expected
   outcomes differ from the committed ones.

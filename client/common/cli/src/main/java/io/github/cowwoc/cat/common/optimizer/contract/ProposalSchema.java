@@ -403,6 +403,7 @@ public final class ProposalSchema
 			assertionNode.put("id", assertion.id());
 			assertionNode.put("kind", EnumNames.lowerCase(assertion.kind()));
 			assertionNode.put("tool", assertion.tool());
+			assertionNode.put("on_tool_failure", EnumNames.lowerCase(assertion.onToolFailure()));
 			assertionNode.put("statement", assertion.statement());
 			assertionNode.put("requirement_id", mapped.requirementId());
 		}
@@ -598,7 +599,8 @@ public final class ProposalSchema
 		{
 			return attempt(location, () -> new MappedAssertion(new Assertion(text(node, "id"),
 				EnumNames.parse(text(node, "kind"), AssertionKind.class), optionalText(node, "tool"),
-				text(node, "statement")), text(node, "requirement_id")));
+				EnumNames.parse(text(node, "on_tool_failure"), OnToolFailure.class), text(node, "statement")),
+				text(node, "requirement_id")));
 		}
 
 		/**

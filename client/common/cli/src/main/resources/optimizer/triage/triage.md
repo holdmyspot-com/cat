@@ -33,7 +33,7 @@
 
 ### Failure
 
-Why the trial failed: the judge's rationale, or the built-in tools that failed.
+Why the trial failed: the judge's rationale, or the built-in tools that failed the trial.
 
 {{failure}}
 
@@ -58,8 +58,9 @@ The trial's project directory after the trial, {{effects}}, is available read-on
 when its diff or note is not enough.
 
 The results of the test's built-in tools, as JSON: the assertion that each tool decided, what that assertion
-requires, the tool and its arguments, whether it passed and the value that it observed. The array is empty when the
-test has no built-in tool or none ran.
+requires, the tool and its arguments, its `on_tool_failure`, whether it passed and the value that it observed. A failed
+tool whose `on_tool_failure` is `judge` did not fail the trial: the judge decided its assertion. The array is empty
+when the test has no built-in tool or none ran.
 
 {{tool_results}}
 
