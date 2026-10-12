@@ -4,6 +4,8 @@
 
 - For a change that the user names, let the user review it one use case at a time, with each use case's changed code
   shown in the order it runs, starting at the code that first runs when that use case's actor acts.
+- Let the user tell from the overview that its use cases are separate behaviors, each started by its own actor action,
+  and not consecutive steps of one flow.
 - Account for every changed hunk: show it in a use-case step or with a test, or list it as non-executable or as code
   that no presented use case runs, so the user can see which changes the walkthrough did not cover.
 - Present one use case per turn and present the next one only after the user approves the current one or asks to move
@@ -70,8 +72,11 @@ file instead of by use case.
 ### 4. Present the overview and the first use case
 
 Start the first response with the base and head commits, the number of changed files and hunks, and a table of the use
-cases with their number, name, entry point, number of steps, and number of changed hunks. Then present the first use
-case.
+cases with their number, name, entry point, number of steps, and number of changed hunks. Head the table's first column
+`Use case`. When there is more than one use case, introduce the table with a sentence that says the change is reviewed
+as that many separate use cases: each row is a different behavior that starts when its own actor acts, the rows are
+not steps of one flow that run one after another, and the review presents them one per turn in the table's order. Then
+present the first use case.
 
 Present each use case in this form:
 
