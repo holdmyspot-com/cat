@@ -31,9 +31,12 @@ import java.util.Optional;
  *   {@link WorkspaceFixtures#NONE} for every other session
  * @param plugin the plugin under test that a trial installs in place of the harness default; empty for a trial
  *   whose prompt files are not in a plugin, and for every other session
+ * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
+ *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, Optional<TrialPlugin> plugin)
+	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, Optional<TrialPlugin> plugin,
+	Optional<FollowUp> followUp)
 {
 	/**
 	 * Creates a request whose workspace receives no fixtures.
@@ -79,6 +82,29 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	}
 
 	/**
+	 * Creates a request that ends after its listed turns.
+	 *
+	 * @param role the kind of work that the session performs
+	 * @param part the part of the contract whose content the session may read
+	 * @param source the directory that the session works in
+	 * @param turns the complete turn sequence, sent one turn at a time
+	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
+	 * @param timeLimit how long the session may run before its remaining turns are abandoned
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
+	 * @param plugin the plugin under test that a trial installs in place of the harness default
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
+	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or a plugin
+	 */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, Optional<TrialPlugin> plugin)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugin, Optional.empty());
+	}
+
+	/**
 	 * Creates a request.
 	 *
 	 * @param role the kind of work that the session performs
@@ -90,6 +116,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
 	 * @param plugin the plugin under test that a trial installs in place of the harness default
+	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
@@ -115,6 +142,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(profile, "profile").isNotNull();
 		requireThat(files, "files").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(followUp, "followUp").isNotNull();
 		if (role != SessionRole.TRIAL && !files.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session receives no fixtures");
 		if (role != SessionRole.TRIAL && plugin.isPresent())

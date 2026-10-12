@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.port.FollowUp;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
@@ -334,6 +335,54 @@ public final class RunnerSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(
 				List.of(List.of("interim-0", "final-0"), List.of("interim-1", "final-1")));
+		}
+	}
+
+	/**
+	 * Verifies that a session sends the turn that its follow-up chooses from the replies to the listed turns, and that
+	 * the result includes the reply to that turn.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void sendsFollowUpTurn() throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			List<String> sent = new CopyOnWriteArrayList<>();
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+				HarnessRun run = manager.create(TestSessions.HARNESS);
+				manager.initialize(run, root, root, "scripted", List.of("scripted"));
+				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
+				BufferedReader requests = new BufferedReader(input);
+				for (int turn = 0; turn < 3; ++turn)
+				{
+					sent.add(requests.readLine());
+					output.write("{\"type\":\"turn_completed\",\"assistant_response\":\"reply-" + turn + "\"," +
+						"\"assistant_messages\":[\"reply-" + turn + "\"]}\n");
+				}
+				requests.readLine();
+			});
+			SessionRequest listed = request(root, List.of(), "one", "two");
+			FollowUp followUp = completed -> Optional.of("after " + completed.responses().getLast().getLast());
+			SessionRequest request = new SessionRequest(listed.role(), listed.part(), listed.source(), listed.turns(),
+				listed.readOnly(), listed.timeLimit(), listed.profile(), listed.files(), listed.plugin(),
+				Optional.of(followUp));
+
+			SessionResult result = await(sessions.start(request));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(
+				List.of(List.of("reply-0"), List.of("reply-1"), List.of("reply-2")));
+			requireThat(sent.getLast(), "followUpTurn").contains("after reply-1");
 		}
 	}
 

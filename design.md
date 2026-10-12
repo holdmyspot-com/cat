@@ -755,7 +755,8 @@ every assertion, or one whose `on_tool_failure` is `fail` has already failed, CA
 a judge ([§6.4](#64-judge)). Every
 trial runs as one invocation of the harness for its whole turn sequence.
 
-A judge or contract author output that does not match its schema is an infrastructure failure. A contract author, judge, triage or prompt author
+A judge or contract author output that does not match its schema is an infrastructure failure, after the contract
+author's one correction turn ([§6.1](#61-derivation-and-confirmation)). A contract author, judge, triage or prompt author
 session that reaches its time limit is stopped and is an infrastructure failure whose message names the session and
 the limit; a trial's time limit is behaviour unless the provider produced no output ([§3.2](#32-logical-trials)).
 A triage output that does not match its schema reruns the triage, and a third failure makes the failure blocking
@@ -1333,6 +1334,11 @@ Aggregate counts never stand in for the items themselves. The proposal lists:
   ways to resolve it and the recommended one with its reason;
 - the symbolic-link report ([§4.5](#45-symbolic-link-warning)), the authentication and volume warning
   ([§3.5](#35-volume-safeguards)), the minimum session count, and known limitations.
+
+CAT validates the proposal before presenting it. When CAT refuses it, CAT sends the problems back to the same contract
+author session once, so that the author corrects the proposal with its inspection still in context; that turn has a
+time limit of its own. A corrected proposal that CAT also refuses ends the derivation with its problems. The user then
+runs `start` again, or `revise` with feedback when an earlier proposal is still stored.
 
 The user gives feedback, and CAT regenerates and presents the complete proposal again. Only a confirmed proposal governs
 trials, and nothing but the guard pilot runs before confirmation. CAT refuses to confirm a proposal that lists a

@@ -895,10 +895,22 @@ public final class OptimizerCore implements Core
 		if (!unsupported.isEmpty())
 			return report(root, campaign, null, unsupported);
 		SessionRequest request;
+		long salt;
+		String invalidRetry;
 		if (previous == null)
-			request = protocol.request(staged, profiles);
+		{
+			salt = scope.random().nextLong();
+			request = protocol.request(staged, profiles, salt);
+			invalidRetry = "Run `start` again to retry.";
+		}
 		else
+		{
+			// Revision keeps the salt, so the test cases that the user reviewed keep their parts
+			salt = previous.contract().salt();
 			request = protocol.request(staged, profiles, previous, feedback, pilotFile(root, campaign).read());
+			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
+			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
+		}
 		SessionResult result = await(scope.sessions().start(request));
 		SessionResult.Completed completed;
 		switch (result)
@@ -954,12 +966,6 @@ public final class OptimizerCore implements Core
 			store.replaceSnapshot(campaign);
 		}
 
-		// Revision keeps the salt, so the test cases that the user reviewed keep their parts
-		long salt;
-		if (previous == null)
-			salt = scope.random().nextLong();
-		else
-			salt = previous.contract().salt();
 		DerivedProposal derived;
 		try
 		{
@@ -968,7 +974,7 @@ public final class OptimizerCore implements Core
 		catch (InvalidProposalException e)
 		{
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
-				String.join("; ", e.problems()) + ". Run `revise` with feedback, or `start`, to retry.");
+				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);

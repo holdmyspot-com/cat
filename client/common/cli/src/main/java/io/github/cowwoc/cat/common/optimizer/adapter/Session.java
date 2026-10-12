@@ -204,17 +204,52 @@ final class Session implements SessionHandle
 				String prompt = request.turns().get(turn - 1);
 				if (turn == 1)
 					prompt = brief;
-				events.startTurn();
-				feed.send(turnRequest(prompt));
-				outcome = awaitOutcome(turn);
+				outcome = sendTurn(turn, prompt);
 				if (outcome != Outcome.TURN_COMPLETED)
 					break;
-				if (events.rejection().isEmpty() && !events.refused() && events.error() == null)
-					settings.capacity().completeTurn();
+			}
+			if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
+				request.followUp().isPresent())
+			{
+				Optional<String> followUp = request.followUp().get().next(completed());
+				if (followUp.isPresent())
+				{
+					// The follow-up turn answers the replies so far, so it gets a time limit of its own
+					limitDeadline = clock.instant().plus(request.timeLimit());
+					outcome = sendTurn(turn + 1, followUp.get());
+				}
 			}
 		}
 		stopRunner(runner, outcome);
 		return result();
+	}
+
+	/**
+	 * Sends one turn and waits for it to end.
+	 *
+	 * @param turn the turn's number, starting at 1
+	 * @param prompt the turn's prompt
+	 * @return how the wait ended
+	 * @throws IOException if the harness's hold cannot be updated
+	 */
+	private Outcome sendTurn(int turn, String prompt) throws IOException
+	{
+		events.startTurn();
+		feed.send(turnRequest(prompt));
+		Outcome outcome = awaitOutcome(turn);
+		if (outcome == Outcome.TURN_COMPLETED && isTurnClean())
+			settings.capacity().completeTurn();
+		return outcome;
+	}
+
+	/**
+	 * Returns whether the provider neither rejected nor refused the session and the harness reported no error.
+	 *
+	 * @return {@code true} if the session is clean
+	 */
+	private boolean isTurnClean()
+	{
+		return events.rejection().isEmpty() && !events.refused() && events.error() == null;
 	}
 
 	/**
@@ -505,9 +540,19 @@ final class Session implements SessionHandle
 			if (failure != null)
 				return new SessionResult.Failed(failure, windows);
 		}
+		return completed();
+	}
+
+	/**
+	 * Returns the session's replies and effects so far as a completed result.
+	 *
+	 * @return the result
+	 */
+	private SessionResult.Completed completed()
+	{
 		Path artifacts = runDirectory().resolve("artifacts");
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
-			runDirectory().resolve("project"), events.model(), events.reasoning(), events.usage(), windows,
+			runDirectory().resolve("project"), events.model(), events.reasoning(), events.usage(), events.windows(),
 			sink.promptSources(), events.toolCalls());
 	}
 

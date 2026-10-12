@@ -16,7 +16,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerators;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
+import io.github.cowwoc.cat.common.optimizer.port.FollowUp;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -61,6 +63,11 @@ public final class ContractAuthorProtocol
 	 * response.
 	 */
 	private static final String OUTPUT_RESOURCE = "/optimizer/proposal/contract-author-output.md";
+	/**
+	 * The turn that returns the problems of a refused proposal to the contract author, so that it can correct the
+	 * proposal with its inspection still in context.
+	 */
+	private static final String CORRECTION_RESOURCE = "/optimizer/proposal/contract-author-correction.md";
 	private static final String FINDINGS_RESOURCE = "/optimizer/proposal/contract-author-findings.schema.json";
 	/**
 	 * The value of the revision placeholders when there is nothing to revise.
@@ -75,6 +82,7 @@ public final class ContractAuthorProtocol
 	private final PromptTemplate prompt;
 	private final String outputSchema;
 	private final String outputTurn;
+	private final PromptTemplate correction;
 	private final RegressionScenarios scenarios;
 	private final boolean reportsExitStatus;
 
@@ -106,6 +114,7 @@ public final class ContractAuthorProtocol
 		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
 		this.outputTurn = PromptTemplate.readResource(OUTPUT_RESOURCE);
+		this.correction = PromptTemplate.load(CORRECTION_RESOURCE);
 	}
 
 	/**
@@ -144,14 +153,15 @@ public final class ContractAuthorProtocol
 	 *   loads it as it would in production
 	 * @param profiles the harness's profile inventory, which a profile restriction selects from, and its capability
 	 *   ranking
+	 * @param salt the salt that CAT drew for the proposal, which the session validates the proposal with
 	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public SessionRequest request(Path promptSystem, ProfileEvidence profiles)
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, long salt)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		return request(promptSystem, profiles, NONE, NONE);
+		return request(promptSystem, profiles, NONE, NONE, salt);
 	}
 
 	/**
@@ -164,7 +174,8 @@ public final class ContractAuthorProtocol
 	 * @param feedback the user's feedback
 	 * @param pilots the latest guard pilot of each prompt test of {@code previous} that has one, by prompt test; the
 	 *   request shows their results after the previous proposal
-	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
+	 * @return a request whose proposal keeps the salt of {@code previous}, so the test cases that the user reviewed keep
+	 *   their parts, and whose role is whose role is {@link SessionRole#CONTRACT_AUTHOR}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code feedback} is blank
 	 */
@@ -177,7 +188,7 @@ public final class ContractAuthorProtocol
 		requireThat(feedback, "feedback").isNotBlank();
 		requireThat(pilots, "pilots").isNotNull();
 		return request(promptSystem, profiles, previous.derivation() + "\n\nGuard pilot results of the previous " +
-			"proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback);
+			"proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback, previous.contract().salt());
 	}
 
 	/**
@@ -187,9 +198,11 @@ public final class ContractAuthorProtocol
 	 * @param evidence the harness's profile inventory and its capability ranking
 	 * @param previous the previous proposal, or {@code none}
 	 * @param feedback the user's feedback, or {@code none}
-	 * @return the request
+	 * @param salt the salt that CAT drew for the proposal
+	 * @return the request, which returns the problems of a refused proposal to the session once
 	 */
-	private SessionRequest request(Path promptSystem, ProfileEvidence evidence, String previous, String feedback)
+	private SessionRequest request(Path promptSystem, ProfileEvidence evidence, String previous, String feedback,
+		long salt)
 	{
 		ProfileCatalog inventory = evidence.inventory();
 		StringJoiner profiles = new StringJoiner("\n");
@@ -204,8 +217,34 @@ public final class ContractAuthorProtocol
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
 			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
 			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll()));
+		FollowUp correct = result -> correction(result, evidence, salt);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
-			outputTurn), List.of(), TIME_LIMIT, judge.role());
+			outputTurn), List.of(), TIME_LIMIT, judge.role(), WorkspaceFixtures.NONE, Optional.empty(),
+			Optional.of(correct));
+	}
+
+	/**
+	 * Returns the turn that asks the contract author to correct its proposal.
+	 *
+	 * @param result the session's result after it sent the proposal
+	 * @param profiles the profile inventory and its capability ranking
+	 * @param salt the salt that CAT drew for the proposal
+	 * @return the turn that lists the proposal's problems, or empty if the proposal is valid
+	 */
+	private Optional<String> correction(SessionResult.Completed result, ProfileEvidence profiles, long salt)
+	{
+		try
+		{
+			proposal(result, profiles, salt);
+			return Optional.empty();
+		}
+		catch (InvalidProposalException e)
+		{
+			StringJoiner problems = new StringJoiner("\n");
+			for (String problem : e.problems())
+				problems.add("- " + problem);
+			return Optional.of(correction.fill(Map.of("problems", problems.toString())));
+		}
 	}
 
 	/**

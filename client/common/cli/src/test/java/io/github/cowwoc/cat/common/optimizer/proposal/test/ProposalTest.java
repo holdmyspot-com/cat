@@ -269,7 +269,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-E13
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES);
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -855,7 +855,7 @@ public final class ProposalTest
 		// Requirement: R-E22
 		// Requirement: R-C1
 		ProfileEvidence evidence = evidence(ContractFixtures.TWO_PROFILES, Map.of());
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence).turns().getFirst(), "request").
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence, SALT).turns().getFirst(), "request").
 			contains("Capability ranking, most capable first (test ranking in inventory order): big, small");
 
 		String revised = changedDerivation(output ->
@@ -1500,14 +1500,14 @@ public final class ProposalTest
 	public void requestListsTheProfileInventory()
 	{
 		// Requirement: R-C10
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of())).
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of()), SALT).
 			turns(). getFirst();
 		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
 			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
 
 		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of())).turns().getFirst(), "plainPrompt").
-			contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), SALT).turns().getFirst(),
+			"plainPrompt").contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
 	}
 
 	/**
@@ -1519,7 +1519,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-C9
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");
@@ -1553,7 +1553,7 @@ public final class ProposalTest
 	public void requestAsksForRegressionScenarios()
 	{
 		// Requirement: R-I3
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("### Recorded regression scenarios").
 			contains("regression_scenarios").contains("prompt test");
 	}
@@ -1693,7 +1693,7 @@ public final class ProposalTest
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
 				new RegressionScenarios.Current(files, List.of())))), true);
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		Contract contract = contractAuthor.proposal(session(output), PROFILES, SALT).contract();
 
 		requireThat(prompt, "prompt").contains("Committed test cases, which CAT adds to the test that cites this " +
@@ -2168,7 +2168,7 @@ public final class ProposalTest
 		// Requirement: R-E20
 		// Requirement: R-C13
 		// Requirement: R-C14
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
@@ -2367,7 +2367,7 @@ public final class ProposalTest
 	public void requestAsksForTriggersAndAbsentTests()
 	{
 		// Requirement: R-D17
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`trigger`").contains("`absent_triggers`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -2387,7 +2387,7 @@ public final class ProposalTest
 	public void requestAsksForFailureBehaviors()
 	{
 		// Requirement: R-C18
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`behaviors`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -2508,7 +2508,7 @@ public final class ProposalTest
 	public void outputSchemaRequiresTestCases()
 	{
 		// Requirement: R-C16
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");

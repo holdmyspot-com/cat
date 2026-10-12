@@ -384,6 +384,10 @@ public final class OptimizerCoreTest
 	private static final class ScriptedSessions implements SessionPort
 	{
 		private final List<SessionRequest> requests = new ArrayList<>();
+		/**
+		 * The turns that the sessions' follow-ups chose, in the order that they were sent.
+		 */
+		private final List<String> followUps = new ArrayList<>();
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
 		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
@@ -458,6 +462,18 @@ public final class OptimizerCoreTest
 			requests.add(request);
 			clock.advance(Duration.ofMinutes(1));
 			SessionResult response = script.apply(request);
+			if (request.followUp().isPresent() && response instanceof SessionResult.Completed first)
+			{
+				Optional<String> turn = request.followUp().get().next(first);
+				if (turn.isPresent() && script.apply(request) instanceof SessionResult.Completed reply)
+				{
+					followUps.add(turn.get());
+					List<List<String>> responses = new ArrayList<>(first.responses());
+					responses.addAll(reply.responses());
+					response = new SessionResult.Completed(first.transcript(), responses, first.effects(), first.model(),
+						first.reasoning(), first.usage(), first.windows(), first.promptSources(), first.toolCalls());
+				}
+			}
 			List<TokenUsage> tokens = usage.getOrDefault(request.role(), List.of());
 			if (!tokens.isEmpty() && response instanceof SessionResult.Completed completed)
 			{
@@ -967,6 +983,94 @@ public final class OptimizerCoreTest
 				contains("reported.md");
 			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
 				"proposalFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a refused proposal gets one correction turn in the same contract author session, which names the
+	 * refusal reasons, and that the corrected proposal is presented.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startCorrectsRefusedProposal() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, reply ->
+			{
+				if (reply == 0)
+					return "invalid proposal";
+				return derivation(_ ->
+				{
+				});
+			});
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.message(), "message").isNull();
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
+				isEqualTo(1);
+			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
+			requireThat(repository.sessions().followUps.getFirst(), "correction").
+				contains("the final response is not exactly one JSON object");
+			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
+				"proposalFileExists").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that when the corrected first proposal is also refused, CAT asks for {@code start} only, because no
+	 * stored proposal exists for {@code revise} to regenerate.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void refusedFirstProposalNamesStart() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> "invalid proposal");
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
+			requireThat(result.message(), "message").contains("The contract author's proposal is invalid").
+				endsWith("Run `start` again to retry.").doesNotContain("revise");
+		}
+	}
+
+	/**
+	 * Verifies that when a revised proposal is refused after its correction turn, CAT still offers {@code revise}, which
+	 * regenerates the stored proposal.
+	 *
+	 * @throws Exception if the test fails unexpectedly
+	 */
+	@Test
+	public void refusedRevisionOffersRevise() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, reply ->
+			{
+				if (reply == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return "invalid proposal";
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			CommandResult revised = repository.core().revise(id, "cover the formal tone");
+
+			requireThat(revised.message(), "message").contains("The contract author's proposal is invalid").
+				endsWith("Run `revise` with feedback, or `start`, to retry.");
 		}
 	}
 
@@ -2045,9 +2149,10 @@ public final class OptimizerCoreTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
+			// The first session's proposal and its correction are both invalid
 			Repository repository = repository(cleanup, number ->
 			{
-				if (number == 0)
+				if (number < 2)
 					return "invalid";
 				return derivation(_ -> {});
 			});

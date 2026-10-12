@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,11 +74,16 @@ public final class RoleBriefTest
 		throws InterruptedException, ExecutionException, TimeoutException
 	{
 		List<String> prompts = new CopyOnWriteArrayList<>();
+		// A follow-up turn, such as the contract author's correction of a refused proposal, needs a reply too
+		int turns = request.turns().size();
+		if (request.followUp().isPresent())
+			++turns;
+		List<Turn> replies = Collections.nCopies(turns, Turn.replies("ok"));
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
-				request.turns().stream().map(_ -> Turn.replies("ok")).toList(), input, output, prompts));
+				replies, input, output, prompts));
 
 		SessionResult result = sessions.start(request).completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
 		requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
@@ -142,7 +148,7 @@ public final class RoleBriefTest
 				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
 				true);
 			SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
-				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()));
+				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), ContractFixtures.SALT);
 
 			List<String> delivered = deliver(root, artifact, request);
 
@@ -155,7 +161,7 @@ public final class RoleBriefTest
 					requireThat(delivered.getFirst(), "brief").doesNotContain("Complete guidance for " + rule);
 			}
 			requireThat(delivered.getFirst(), "brief").doesNotContain("\n{{rules}}\n");
-			requireThat(delivered.getLast(), "outputTurn").isEqualTo(request.turns().getLast());
+			requireThat(delivered.get(1), "outputTurn").isEqualTo(request.turns().getLast());
 		}
 	}
 
