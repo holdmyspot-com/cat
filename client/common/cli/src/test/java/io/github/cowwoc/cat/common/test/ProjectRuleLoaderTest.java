@@ -200,6 +200,36 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies the harness rule on reading a file whole follows the CAT environment directly and precedes every other
+	 * rule, including a harness rule whose filename sorts before it.
+	 */
+	@Test
+	public void loadsReadFileRuleAfterEnvironment() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
+			write(plugin, "rules/harnessa/a-rendering.md", "# Rendering\n\nRendering guidance\n");
+			write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRead guidance\n");
+			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
+
+			String context;
+			try (ToolScope scope = new ToolScope())
+			{
+				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+			}
+
+			requireThat(context, "context").startsWith("# CAT environment");
+			int readFile = context.indexOf("# Reading files");
+			requireThat(readFile, "readFile").isLessThan(context.indexOf("# Routes")).
+				isLessThan(context.indexOf("# Rendering")).isLessThan(context.indexOf("# Project"));
+		}
+	}
+
+	/**
 	 * Verifies declared prerequisite rules are injected first and YAML metadata remains out of the context.
 	 */
 	@Test

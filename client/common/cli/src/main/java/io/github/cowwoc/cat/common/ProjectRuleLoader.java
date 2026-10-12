@@ -49,6 +49,12 @@ public final class ProjectRuleLoader
 	 * directory. The loader injects it before every other rule, so each name is defined before a rule refers to it.
 	 */
 	private static final String ENVIRONMENT_RULE = "cat-env.md";
+	/**
+	 * The filename of the bundled harness rule that tells the agent how to read a file whole. The loader injects it
+	 * right after the environment rule, before every rule that asks the agent to read a file, such as a lazy-load
+	 * directive.
+	 */
+	private static final String READ_FILE_RULE = "read-file.md";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -235,9 +241,9 @@ public final class ProjectRuleLoader
 		loadDirectory(projectRoot, projectRules.resolve(harness), projectRules, RuleRoot.PROJECT,
 			audience, rules);
 		List<Rule> ordered = ordered(rules);
-		String environment = "rules/" + harness + "/" + ENVIRONMENT_RULE;
-		ordered.sort(Comparator.comparing(rule -> rule.root() != RuleRoot.PLUGIN ||
-			!rule.path().equals(environment)));
+		List<String> leading = List.of("rules/" + harness + "/" + ENVIRONMENT_RULE,
+			"rules/" + harness + "/" + READ_FILE_RULE);
+		ordered.sort(Comparator.comparingInt(rule -> leadingRank(rule, leading)));
 		List<String> context = new ArrayList<>(ordered.stream().map(Rule::context).toList());
 		if (userRulesRoot != null)
 		{
@@ -249,6 +255,24 @@ public final class ProjectRuleLoader
 		if (!lazyDependencies.isBlank())
 			context.add(lazyDependencies);
 		return String.join("\n\n---\n", context);
+	}
+
+	/**
+	 * Returns where a rule goes among the rules that the loader injects first.
+	 *
+	 * @param rule    the rule
+	 * @param leading the plugin rule paths that go first, in their injection order
+	 * @return the index of the rule's path in {@code leading} when the rule is a plugin rule, otherwise the size of
+	 *         {@code leading}, which places the rule after them
+	 */
+	private static int leadingRank(Rule rule, List<String> leading)
+	{
+		if (rule.root() != RuleRoot.PLUGIN)
+			return leading.size();
+		int index = leading.indexOf(rule.path());
+		if (index == -1)
+			return leading.size();
+		return index;
 	}
 
 	/**
