@@ -303,6 +303,66 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that the directory Claude started in stays the project directory after the agent changes into a
+	 * subdirectory, so the hooks neither write a context file into the subdirectory nor miss it when the session ends.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void keepsLaunchDirectoryAfterCd() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(project, ".cat/rules/common/rule.md", "launch project");
+			Path module = Files.createDirectories(project.resolve("module"));
+			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_PROJECT_DIR", project.toString());
+
+			HookResult result = invoke("{\"cwd\":\"" + module + "\"}", environment, module);
+			Path context = referencedFile(context(result));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(Files.readString(context), "context").contains("launch project");
+			try (ToolScope scope = ToolScope.forWorkingDirectory(project))
+			{
+				requireThat(context.startsWith(scope.catTemp()), "contextInLaunchDirectory").isTrue();
+			}
+			requireThat(Files.exists(module.resolve(".cat")), "moduleCatExists").isFalse();
+
+			String sessionId = context.getFileName().toString().replace(".md", "");
+			String error = invokeSessionEnd("{\"cwd\":\"" + module + "\",\"session_id\":\"" + sessionId + "\"}",
+				environment, module);
+
+			requireThat(error, "sessionEndError").isEmpty();
+			requireThat(Files.exists(context), "contextExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a {@code CLAUDE_PROJECT_DIR} that is not a directory fails the hook safely.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void rejectsMissingLaunchDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+
+			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_PROJECT_DIR", project.resolve("missing").toString()), project);
+
+			requireThat(result.output(), "output").isEqualTo("{}\n");
+			requireThat(result.error(), "error").contains("CLAUDE_PROJECT_DIR is not a directory");
+			requireThat(Files.exists(project.resolve(".cat")), "projectCatExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies Claude receives the hook's plugin root wherever a bundled rule writes the plugin-root directive, while
 	 * the {@code ${CAT_PLUGIN_ROOT}} notation stays as written.
 	 */

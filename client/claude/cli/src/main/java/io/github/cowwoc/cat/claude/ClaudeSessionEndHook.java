@@ -52,7 +52,7 @@ public final class ClaudeSessionEndHook
 			if (args.length != 0)
 				throw new IllegalArgumentException("SessionEnd accepts no arguments");
 			JsonNode event = scope.readEvent("SessionEnd", input);
-			Path projectDir = scope.projectDir(event, workingDirectory);
+			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
 			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
 			{
 				ClaudeSessionContext.delete(toolScope.catTemp(), event);

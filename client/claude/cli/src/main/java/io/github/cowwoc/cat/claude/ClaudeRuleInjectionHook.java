@@ -57,7 +57,7 @@ final class ClaudeRuleInjectionHook
 			if (args.length != 0)
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
 			JsonNode event = scope.readEvent(eventName, input);
-			Path projectDir = scope.projectDir(event, workingDirectory);
+			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
 			scope.createCatTemp(projectDir);
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
