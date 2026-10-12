@@ -76,6 +76,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -1640,7 +1641,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Stages a started trial's candidate and starts its session. A failure to start is an infrastructure failure.
+	 * Stages a started trial's candidate and its copy of the plugin under test, then starts its session. A failure to
+	 * start is an infrastructure failure.
 	 *
 	 * @param trial the trial, whose start is persisted
 	 * @param now the current time
@@ -1658,9 +1660,10 @@ public final class Driver implements AutoCloseable
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
 			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
+			Optional<TrialPlugin> plugin = TrialPlugins.of(campaign.contract().plugin(), context.workspace(), source);
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				WorkspaceFixtures.of(test, trial.testCase().testCase())));
+				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugin));
 		}
 		catch (IOException e)
 		{

@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -10,7 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -75,27 +73,7 @@ public final class StagedSources
 			return directory;
 		Dereferenced files = Dereferenced.of(candidate.snapshot());
 		files.requireResolvable();
-		Files.createDirectories(storage);
-		// Build beside the final directory and rename, so that no reader sees a half-built source
-		Path partial = Files.createTempDirectory(storage, "partial-");
-		try
-		{
-			files.writeTo(tree, candidate, partial, excluded);
-			try
-			{
-				Files.move(partial, directory, ATOMIC_MOVE);
-			}
-			catch (FileSystemException e)
-			{
-				// A concurrent request built the same source first if the directory exists now
-				if (!Files.isDirectory(directory))
-					throw e;
-			}
-		}
-		finally
-		{
-			TemporaryDirectories.deleteRecursively(partial);
-		}
+		FileTree.build(directory, partial -> files.writeTo(tree, candidate, partial, excluded));
 		return directory;
 	}
 

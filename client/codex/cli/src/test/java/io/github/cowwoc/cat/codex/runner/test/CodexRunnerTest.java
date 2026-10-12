@@ -36,6 +36,19 @@ public final class CodexRunnerTest
 	}
 
 	/**
+	 * Verifies a plugin under test is installed from its own run-local marketplace, which bears its name.
+	 */
+	@Test
+	public void installsPluginUnderTestByName()
+	{
+		// Requirement: R-W12
+		requireThat(CodexRunner.pluginSetupCommands("codex", Path.of("marketplace"), "release-docs"), "commands").
+			isEqualTo(List.of(
+				List.of("codex", "plugin", "marketplace", "add", "marketplace"),
+				List.of("codex", "plugin", "add", "release-docs@release-docs")));
+	}
+
+	/**
 	 * Verifies the app-server runs CAT's hooks when CAT is installed, and loads no plugin when it is not.
 	 */
 	@Test

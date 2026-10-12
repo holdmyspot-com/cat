@@ -11,16 +11,20 @@ import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import org.testng.annotations.DataProvider;
@@ -825,5 +829,101 @@ public final class ProposalSchemaTest
 		rejection(number(path, 0.995));
 		InvalidProposalException e = rejection(number(path, 0.955));
 		requireThat(String.join(" | ", e.problems()), "problems").contains("minimumPassRate");
+	}
+
+	/**
+	 * Verifies that a plugin root survives parsing and writing, and that a contract without one has none.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void parsesPluginRoot() throws InvalidProposalException
+	{
+		String[] path = {"plugin_under_test"};
+		Contract contract = schema().parse(changed(path, json.readTree("""
+			{"root": "plugins/release-docs", "base": null, "mappings": [], "depends_on_cat": false,
+			 "cat_evidence": "Its manifest names no dependency and its skills invoke no CAT skill."}
+			""")));
+
+		requireThat(contract.plugin(), "plugin").isEqualTo(Optional.of(new PluginUnderTest.Root(
+			Path.of("plugins/release-docs"), false,
+			"Its manifest names no dependency and its skills invoke no CAT skill.")));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+		requireThat(schema().parse(ContractFixtures.resource("valid-proposal.json")).plugin(), "withoutPlugin").
+			isEmpty();
+	}
+
+	/**
+	 * Verifies that a built plugin survives parsing and writing with the base digest that CAT computes, and that the
+	 * plugin, its mappings, its base digest and whether trials install CAT each change the contract's identity.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void builtPluginIsPartOfTheIdentity() throws InvalidProposalException
+	{
+		String[] path = {"plugin_under_test"};
+		Contract contract = schema().parse(changed(path, json.readTree("""
+			{"root": null, "base": "/opt/cat/plugin", "depends_on_cat": true, "cat_evidence": "It is CAT.",
+			 "mappings": [{"source": "client/rules/codex", "target": "rules/codex"}]}
+			""")));
+		PluginUnderTest.Built built = (PluginUnderTest.Built) contract.plugin().orElseThrow();
+		requireThat(built.mappings(), "mappings").isEqualTo(List.of(new PluginUnderTest.Mapping(
+			Path.of("client/rules/codex"), Path.of("rules/codex"))));
+		Contract digested = with(contract, built.withBaseDigest("a".repeat(64)));
+
+		requireThat(schema().parse(schema().toJson(digested)), "reread").isEqualTo(digested);
+		ProposalSchema schema = schema();
+		Set<Sha256> identities = new HashSet<>();
+		identities.add(ContractIdentity.of(schema, with(contract, null)));
+		identities.add(ContractIdentity.of(schema, digested));
+		identities.add(ContractIdentity.of(schema, with(contract, built.withBaseDigest("b".repeat(64)))));
+		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Built(built.base(),
+			built.baseDigest(), List.of(new PluginUnderTest.Mapping(Path.of("client/rules"), Path.of("rules"))),
+			true, "It is CAT."))));
+		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Built(built.base(),
+			built.baseDigest(), built.mappings(), false, "It is CAT."))));
+		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Root(Path.of("plugin"), true,
+			"It is CAT."))));
+		requireThat(identities.size(), "identities.size()").isEqualTo(6);
+	}
+
+	/**
+	 * Verifies that a plugin under test with an unknown key, with both forms, or with neither form is rejected, and
+	 * that the contract author cannot supply the base digest.
+	 */
+	// Requirement: R-W12
+	@Test
+	public void rejectsInvalidPluginUnderTest()
+	{
+		String[] path = {"plugin_under_test"};
+		rejection(changed(path, json.readTree("""
+			{"root": "plugin", "base": null, "mappings": [], "depends_on_cat": false, "cat_evidence": "None.",
+			 "version": "1.0"}
+			""")));
+		rejection(changed(path, json.readTree("""
+			{"root": "plugin", "base": "/opt/plugin", "mappings": [], "depends_on_cat": false, "cat_evidence": "None."}
+			""")));
+		rejection(changed(path, json.readTree("""
+			{"root": null, "base": null, "mappings": [], "depends_on_cat": false, "cat_evidence": "None."}
+			""")));
+		JsonNode plugin = schema().derivationSchema().get("properties").get("plugin_under_test");
+		requireThat(plugin.get("properties").has("base_digest"), "derivationHasBaseDigest").isFalse();
+	}
+
+	/**
+	 * Returns a contract with another plugin under test.
+	 *
+	 * @param contract the contract
+	 * @param plugin the plugin under test, or null for none
+	 * @return the contract
+	 */
+	private static Contract with(Contract contract, PluginUnderTest plugin)
+	{
+		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
+			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(),
+			Optional.ofNullable(plugin));
 	}
 }

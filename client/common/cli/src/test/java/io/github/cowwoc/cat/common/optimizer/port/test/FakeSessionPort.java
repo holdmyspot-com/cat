@@ -117,6 +117,13 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
+	public List<String> unapprovedHooks(Path plugin)
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		return List.of();
+	}
+
+	@Override
 	public Optional<String> findHeldOutExposure(Path project)
 	{
 		requireThat(project, "project").isNotNull();

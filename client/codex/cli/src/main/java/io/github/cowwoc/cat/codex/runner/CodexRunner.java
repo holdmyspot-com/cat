@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.runner.HarnessProjectRepository;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.PluginManifest;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,6 +33,10 @@ import java.util.Set;
 public final class CodexRunner
 {
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("CODEX_API_KEY", "OPENAI_API_KEY");
+	/**
+	 * The path of a Codex plugin's manifest, relative to the plugin directory.
+	 */
+	private static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
 	private final ProcessStarter processes;
 
 	/**
@@ -106,7 +111,7 @@ public final class CodexRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, null, manager, executable, environment, model, "", installCat, null,
+		return start(artifact, project, null, null, manager, executable, environment, model, "", installCat, null,
 			List.of(), List.of(), 0);
 	}
 
@@ -130,7 +135,7 @@ public final class CodexRunner
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent)
 		throws IOException
 	{
-		return start(artifact, project, null, manager, executable, environment, model, effort, installCat, agent,
+		return start(artifact, project, null, null, manager, executable, environment, model, effort, installCat, agent,
 			List.of(), List.of(), 0);
 	}
 
@@ -140,6 +145,9 @@ public final class CodexRunner
 	 * @param artifact the complete Codex artifact
 	 * @param project the validator project
 	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
+	 * @param plugin the optional plugin under test, which is installed into the isolated home from the marketplace
+	 *   that bears its manifest's name, beside CAT when {@code installCat} is set, with the user's approvals of its
+	 *   hooks
 	 * @param manager the run manager
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
@@ -155,7 +163,8 @@ public final class CodexRunner
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, Path fixtures, HarnessRunManager manager, String executable,
+	HarnessRunSession start(Path artifact, Path project, Path fixtures, Path plugin, HarnessRunManager manager,
+		String executable,
 		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, int toolOutputTokenLimit) throws IOException
 	{
@@ -188,11 +197,20 @@ public final class CodexRunner
 				temporaryDirectory, toolOutputTokenLimit);
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
 				readOnlyEvidence, deniedReads);
+			String pluginName = "";
+			if (plugin != null)
+			{
+				pluginName = PluginManifest.name(plugin, MANIFEST);
+				// Plugin hooks are untrusted in every fresh runner home; reuse the user's approvals of the plugin under
+				// test's hooks as for CAT's below
+				CodexConnectionConfiguration.copyTrustedHooks(hostHome.resolve("config.toml"), isolatedConfiguration,
+					pluginName);
+			}
 			if (installCat)
 			{
-				// Plugin hooks are untrusted in every fresh runner home and app-server has no approval operation. Reuse
-				// only the user's existing approvals for CAT's hooks; Codex rejects each if its normalized
-				// declaration differs, while preserving the workspace-write sandbox for the actual run.
+				// Plugin hooks are untrusted in every fresh runner home. Reuse only the user's existing approvals for
+				// CAT's hooks; Codex rejects each if its normalized declaration differs, while preserving the
+				// workspace-write sandbox for the actual run.
 				CodexConnectionConfiguration.copyTrustedCatHooks(hostHome.resolve("config.toml"),
 					isolatedConfiguration);
 			}
@@ -216,7 +234,16 @@ public final class CodexRunner
 				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run, "marketplace-add");
 				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-add");
 			}
-			List<String> command = appServerCommand(executable, installCat);
+			if (plugin != null)
+			{
+				Path marketplace = CodexMarketplace.create(plugin, pluginName, pluginName, isolatedHome);
+				List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, pluginName);
+				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run,
+					"plugin-under-test-marketplace-add");
+				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run,
+					"plugin-under-test-add");
+			}
+			List<String> command = appServerCommand(executable, installCat || plugin != null);
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
@@ -264,17 +291,17 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the command that starts the app-server. With CAT installed, the app-server enables hooks so CAT's hooks
-	 * run; without it, the app-server disables plugins so no installed plugin affects the run.
+	 * Returns the command that starts the app-server. With a plugin installed, the app-server enables hooks so the
+	 * plugin's hooks run; without one, the app-server disables plugins so no installed plugin affects the run.
 	 *
 	 * @param executable the Codex executable
-	 * @param installCat {@code true} if CAT is installed into the isolated home
+	 * @param pluginsInstalled {@code true} if CAT or a plugin under test is installed into the isolated home
 	 * @return the app-server command
 	 */
-	public static List<String> appServerCommand(String executable, boolean installCat)
+	public static List<String> appServerCommand(String executable, boolean pluginsInstalled)
 	{
 		requireThat(executable, "executable").isNotBlank();
-		if (installCat)
+		if (pluginsInstalled)
 			return List.of(executable, "app-server", "--stdio", "--enable", "hooks");
 		return List.of(executable, "app-server", "--stdio", "--disable", "plugins");
 	}
@@ -288,11 +315,26 @@ public final class CodexRunner
 	 */
 	public static List<List<String>> pluginSetupCommands(String executable, Path marketplace)
 	{
+		return pluginSetupCommands(executable, marketplace, CodexMarketplace.CAT);
+	}
+
+	/**
+	 * Returns the isolated setup commands that install a plugin from its own run-local marketplace, which bears the
+	 * plugin's name.
+	 *
+	 * @param executable the Codex executable
+	 * @param marketplace the run-local marketplace directory
+	 * @param name the plugin's manifest name
+	 * @return the ordered marketplace-add and plugin-add commands
+	 */
+	public static List<List<String>> pluginSetupCommands(String executable, Path marketplace, String name)
+	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(marketplace, "marketplace").isNotNull();
+		requireThat(name, "name").isNotBlank();
 		return List.of(
 			List.of(executable, "plugin", "marketplace", "add", marketplace.toString()),
-			List.of(executable, "plugin", "add", "cat@cat"));
+			List.of(executable, "plugin", "add", name + "@" + name));
 	}
 
 	/**

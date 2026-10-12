@@ -26,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
@@ -111,12 +112,12 @@ public final class GuardPilot
 
 	/**
 	 * Returns the identity of a prompt test's definition: the test and the requirements that it checks, which the
-	 * trials and the judge receive.
+	 * trials and the judge receive, and the plugin under test that the trials install.
 	 *
 	 * @param contract the proposed contract
 	 * @param test a prompt test of {@code contract}
-	 * @return the identity, which changes whenever the scenario, the test cases, the assertions or a checked
-	 *   requirement changes
+	 * @return the identity, which changes whenever the scenario, the test cases, the assertions, a checked
+	 *   requirement or the plugin under test changes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Sha256 definition(Contract contract, PromptTest test)
@@ -140,7 +141,8 @@ public final class GuardPilot
 	 * @param random draws the seed of each test's development stream
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the control source cannot be staged
+	 * @throws IllegalArgumentException if the contract's built plugin under test has no base digest
+	 * @throws IOException if the control source or its copy of the plugin under test cannot be staged
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 	 *   is interrupted too.
 	 */
@@ -175,7 +177,10 @@ public final class GuardPilot
 			pilots.put(test.id(), null);
 		}
 		if (!pending.isEmpty())
-			new Run(contract, workspace.stage(control, excluded), pending).run();
+		{
+			Path source = workspace.stage(control, excluded);
+			new Run(contract, source, TrialPlugins.of(contract.plugin(), workspace, source), pending).run();
+		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
 		return pilots;
@@ -318,6 +323,7 @@ public final class GuardPilot
 	{
 		private final Contract contract;
 		private final Path source;
+		private final Optional<TrialPlugin> plugin;
 		private final List<Pilot> pilots;
 		private final Deque<Job> queue = new ArrayDeque<>();
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
@@ -329,12 +335,15 @@ public final class GuardPilot
 		 *
 		 * @param contract the proposed contract
 		 * @param source the staged control source
+		 * @param plugin the copy of the plugin under test that belongs to {@code source}, or empty if the target
+		 *   prompt files are not in a plugin
 		 * @param pilots the pilots to run, in contract order
 		 */
-		Run(Contract contract, Path source, List<Pilot> pilots)
+		Run(Contract contract, Path source, Optional<TrialPlugin> plugin, List<Pilot> pilots)
 		{
 			this.contract = contract;
 			this.source = source;
+			this.plugin = plugin;
 			this.pilots = pilots;
 		}
 
@@ -408,7 +417,7 @@ public final class GuardPilot
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
 						trial.testCase().turns(), List.of(), trial.pilot().test.timeLimit(), trial.pilot().cell.profile(),
-						WorkspaceFixtures.of(trial.pilot().test, trial.testCase().testCase()));
+						WorkspaceFixtures.of(trial.pilot().test, trial.testCase().testCase()), plugin);
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};

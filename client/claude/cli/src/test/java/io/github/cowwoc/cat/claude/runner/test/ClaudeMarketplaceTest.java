@@ -61,6 +61,47 @@ public final class ClaudeMarketplaceTest
 	}
 
 	/**
+	 * Verifies that a plugin under test gets a marketplace named after it, so it installs beside CAT without replacing
+	 * CAT's marketplace.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	// Requirement: R-W12
+	@Test
+	public void createsPluginUnderTestMarketplace() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("release-docs-"));
+			Files.writeString(plugin.resolve("README.md"), "release docs");
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-home-"));
+
+			Path marketplace = ClaudeMarketplace.create(plugin, "release-docs", "Release notes", home);
+
+			requireThat(marketplace, "marketplace").isEqualTo(home.resolve("plugins/release-docs-marketplace"));
+			requireThat(Files.readString(marketplace.resolve("plugins/release-docs/README.md")), "pluginContents").
+				isEqualTo("release docs");
+			requireThat(Files.readString(marketplace.resolve(".claude-plugin/marketplace.json")), "metadata").isEqualTo("""
+			{
+			\t"name": "release-docs",
+			\t"owner":
+			\t{
+			\t\t"name": "cowwoc"
+			\t},
+			\t"plugins":
+			\t[
+			\t\t{
+			\t\t\t"name": "release-docs",
+			\t\t\t"source": "./plugins/release-docs",
+			\t\t\t"description": "Release notes"
+			\t\t}
+			\t]
+			}
+			""");
+		}
+	}
+
+	/**
 	 * Verifies the Bubblewrap launch-configuration workaround creates only an inert configuration at the inspected
 	 * ancestor path.
 	 *

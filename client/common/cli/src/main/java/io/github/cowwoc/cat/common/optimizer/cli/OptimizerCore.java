@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
@@ -60,6 +61,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
+import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
@@ -505,10 +507,13 @@ public final class OptimizerCore implements Core
 			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 			if (loaded.isConfirmed())
 				fork = fork.including(participants(root, derived).existing());
-			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(root, loaded).read());
+			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(root, loaded).read(),
+				pluginCheck(root, loaded, fork.inventory(), derived));
 			if (!proposal.isConfirmable(certificationScope))
 				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 			requireParticipantsHeld(root, fork, derived);
+			if (proposal.contract().plugin().orElse(null) instanceof PluginUnderTest.Built built)
+				fork.workspace().copyPluginBase(built);
 			List<CampaignEvent> events = new ArrayList<>(moveOnto(root, loaded, fork));
 			events.addAll(proposal.confirmation(scope.random().nextLong(), certificationScope));
 			return apply(root, loaded, events);
@@ -971,10 +976,12 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, then
-	 * presents the proposal with the pilot's results. The fork first records the proposal's trial fixtures and derived
-	 * prompt sources, so the pilot's trials see the files that formal trials will see. Before confirmation, the fork
-	 * also leaves out those that an earlier proposal needed and this one does not. After confirmation, nothing leaves
-	 * the fork, and the campaign stays on its current fork until the user confirms the revision.
+	 * presents the proposal with the pilot's results. The pilot's control trials install the plugin under test as the
+	 * plugin check records it; a proposal whose plugin under test the check refuses runs no pilot. The fork first
+	 * records the proposal's trial fixtures and derived prompt sources, so the pilot's trials see the files that formal
+	 * trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and this one
+	 * does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until the user
+	 * confirms the revision.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -1006,16 +1013,27 @@ public final class OptimizerCore implements Core
 		}
 
 		FileInventory inventory = fork.inventory();
-		Overlay control = ControlSource.of(inventory, authority(root, campaign, inventory));
-		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
-			campaign.ceiling());
+		PluginCheck plugin = pluginCheck(root, campaign, inventory, derived);
 		PilotFile file = pilotFile(root, campaign);
-		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
-		Map<String, PilotResult> pilots = pilot.run(derived.contract(), control, excluded, file.read(),
-			scope.random());
-		file.write(pilots);
+		Map<String, PilotResult> pilots;
+		if (plugin.refusals().isEmpty())
+		{
+			Overlay control = ControlSource.of(inventory, authority(root, campaign, inventory));
+			GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
+				campaign.ceiling());
+			Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
+			// The control trials install the plugin as the check recorded its base, as formal trials will
+			pilots = pilot.run(derived.contract().withPlugin(plugin.plugin()), control, excluded, file.read(),
+				scope.random());
+			file.write(pilots);
+		}
+		else
+		{
+			// Control trials cannot install a plugin under test that the check refuses
+			pilots = Map.of();
+		}
 
-		Proposal proposal = proposal(root, campaign, fork, derived, pilots);
+		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
 		return report(root, campaign, proposal.render(), null);
 	}
 
@@ -1060,11 +1078,12 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
+	 * @param plugin the check of the proposal's plugin under test
 	 * @return the proposal
 	 * @throws IOException if the host's login or the target's certification record cannot be read
 	 */
 	private Proposal proposal(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
-		Map<String, PilotResult> pilots) throws IOException
+		Map<String, PilotResult> pilots, PluginCheck plugin) throws IOException
 	{
 		FileInventory inventory = fork.inventory();
 		Authority authority = authority(root, campaign, inventory);
@@ -1087,7 +1106,35 @@ public final class OptimizerCore implements Core
 					derived.contract().minimumPassRate())));
 		}
 		return Proposal.of(derived, campaign, links, controlFiles, scope.sessions().hostLogin(), scope.calibrator(),
-			schema, incumbent, pilots);
+			schema, incumbent, pilots, plugin);
+	}
+
+	/**
+	 * Checks the plugin under test of a proposal against the fork's files and the plugin's base, and lists the
+	 * plugin's hooks that trials do not run because the user has not approved them in the harness.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param inventory the fork's files
+	 * @param derived the proposal
+	 * @return the check
+	 * @throws IOException if the plugin's base or manifest cannot be read
+	 */
+	private PluginCheck pluginCheck(Path root, Campaign campaign, FileInventory inventory, DerivedProposal derived)
+		throws IOException
+	{
+		SortedSet<Path> controlFiles = ControlSource.promptFiles(inventory, authority(root, campaign, inventory));
+		PluginCheck check = PluginCheck.of(derived.contract().plugin(), inventory, controlFiles);
+		if (check.plugin().isPresent() && check.refusals().isEmpty())
+		{
+			Path directory = switch (check.plugin().get())
+			{
+				case PluginUnderTest.Root plugin -> root.resolve(plugin.directory());
+				case PluginUnderTest.Built plugin -> plugin.base();
+			};
+			return check.withUnapprovedHooks(scope.sessions().unapprovedHooks(directory));
+		}
+		return check;
 	}
 
 	/**

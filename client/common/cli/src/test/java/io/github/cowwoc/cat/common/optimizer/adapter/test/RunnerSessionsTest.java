@@ -7,11 +7,14 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -216,6 +219,80 @@ public final class RunnerSessionsTest
 			requireThat(effortOnly.contains("--model"), "effortOnlyModel").isFalse();
 			requireThat(ScriptedHarness.optionValue(effortOnly, "--effort"), "effortOnlyEffort").isEqualTo("low");
 		}
+	}
+
+	/**
+	 * Verifies that a trial installs its plugin under test from the trial's copy: CAT itself from the copy alone,
+	 * another plugin with the CAT artifact only when it depends on CAT; and that a trial without one installs CAT as
+	 * the settings say.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	// Requirement: R-W12
+	@Test(timeOut = 120_000)
+	public void installsPluginUnderTest()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path artifact = manifest(root.resolve("artifact"), "cat");
+			Path catCopy = manifest(root.resolve("plugins/cat"), "cat");
+			Path otherCopy = manifest(root.resolve("plugins/release-docs"), "release-docs");
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "",
+				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			for (TrialPlugin plugin : List.of(new TrialPlugin(catCopy, false), new TrialPlugin(otherCopy, true),
+				new TrialPlugin(otherCopy, false)))
+			{
+				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, Optional.of(plugin))));
+			}
+			await(sessions.start(request(source, List.of(), "go")));
+
+			List<String> cat = arguments.get(0);
+			requireThat(ScriptedHarness.optionValue(cat, "--artifact"), "catArtifact").isEqualTo(catCopy.toString());
+			requireThat(cat, "cat").contains("--install-cat").doesNotContain("--plugin");
+			List<String> withCat = arguments.get(1);
+			requireThat(ScriptedHarness.optionValue(withCat, "--artifact"), "withCatArtifact").
+				isEqualTo(artifact.toString());
+			requireThat(ScriptedHarness.optionValue(withCat, "--plugin"), "withCatPlugin").
+				isEqualTo(otherCopy.toString());
+			requireThat(withCat, "withCat").contains("--install-cat");
+			List<String> alone = arguments.get(2);
+			requireThat(ScriptedHarness.optionValue(alone, "--plugin"), "alonePlugin").isEqualTo(otherCopy.toString());
+			requireThat(alone, "alone").doesNotContain("--install-cat");
+			List<String> withoutPlugin = arguments.get(3);
+			requireThat(ScriptedHarness.optionValue(withoutPlugin, "--artifact"), "withoutPluginArtifact").
+				isEqualTo(artifact.toString());
+			requireThat(withoutPlugin, "withoutPlugin").contains("--install-cat").doesNotContain("--plugin");
+		}
+	}
+
+	/**
+	 * Creates a plugin directory whose Codex manifest has a name.
+	 *
+	 * @param directory the plugin directory
+	 * @param name the manifest's name
+	 * @return {@code directory}
+	 * @throws IOException if the manifest cannot be written
+	 */
+	private static Path manifest(Path directory, String name) throws IOException
+	{
+		Path manifest = Files.createDirectories(directory.resolve(".codex-plugin")).resolve("plugin.json");
+		Files.writeString(manifest, "{\"name\": \"" + name + "\"}");
+		return directory;
 	}
 
 	/**

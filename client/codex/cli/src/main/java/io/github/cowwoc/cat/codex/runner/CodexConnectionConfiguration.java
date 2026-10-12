@@ -7,8 +7,11 @@ import io.github.cowwoc.cat.common.BoundedInput;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -372,6 +375,72 @@ public final class CodexConnectionConfiguration
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, approvals.toString(), java.nio.file.StandardOpenOption.CREATE,
 			java.nio.file.StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Copies the user's approvals of a plugin's hooks into an isolated configuration, under the run-local marketplace
+	 * that bears the plugin's name. Codex keys an approval by the plugin, its marketplace and the hook, and rejects an
+	 * approval whose recorded hash differs from the hook's normalized declaration, so an approval of another version of
+	 * the hook gives it no trust.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param plugin the plugin's manifest name
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code plugin} is blank
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copyTrustedHooks(Path source, Path destination, String plugin) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(destination, "destination").isNotNull();
+		requireThat(plugin, "plugin").isNotBlank();
+		// The user's approval names the marketplace that the user installed the plugin from; the run-local marketplace
+		// bears the plugin's name instead, so each approval is rewritten under it
+		StringBuilder approvals = new StringBuilder(256);
+		for (Entry<String, String> approval : pluginHookApprovals(source, plugin).entrySet())
+		{
+			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(plugin).append('@').
+				append(plugin).append(':').append(approval.getKey()).append("\"]").append(System.lineSeparator()).
+				append("trusted_hash = \"").append(approval.getValue()).append('"').append(System.lineSeparator());
+		}
+		if (approvals.isEmpty())
+			return;
+		Files.createDirectories(destination.getParent());
+		Files.writeString(destination, approvals.toString(), java.nio.file.StandardOpenOption.CREATE,
+			java.nio.file.StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Returns the user's approvals of a plugin's hooks, from any marketplace. Codex keys an approval by
+	 * {@code <plugin>@<marketplace>:<hook>}, where {@code <hook>} is the hooks file relative to the plugin directory,
+	 * the event in snake case, the matcher group's index and the handler's index, separated by colons.
+	 *
+	 * @param source the host configuration file
+	 * @param plugin the plugin's manifest name
+	 * @return each approved hook's key without the plugin and marketplace, mapped to the hash that the user approved,
+	 *   in configuration order; empty if {@code source} is not a file
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code plugin} is blank
+	 * @throws IOException if the configuration cannot be read
+	 */
+	public static Map<String, String> pluginHookApprovals(Path source, String plugin) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(plugin, "plugin").isNotBlank();
+		Map<String, String> approvals = new LinkedHashMap<>();
+		if (!Files.isRegularFile(source))
+			return approvals;
+		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		Matcher state = Pattern.compile("(?ms)^\\[hooks\\.state\\.\"" + Pattern.quote(plugin) +
+			"@[^:\"]+:([^\"]+)\"]\\R(.*?)(?=^\\[|\\z)").matcher(configuration);
+		while (state.find())
+		{
+			Matcher hash = TRUSTED_HASH.matcher(state.group(2));
+			if (hash.find())
+				approvals.put(state.group(1), hash.group(1));
+		}
+		return approvals;
 	}
 
 	/**

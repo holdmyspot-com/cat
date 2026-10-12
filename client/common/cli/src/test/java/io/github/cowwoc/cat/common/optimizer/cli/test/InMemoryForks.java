@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.cli.test;
 
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -44,6 +45,10 @@ final class InMemoryForks implements Forks
 	private final Map<Path, Set<Path>> created = new HashMap<>();
 	private final Map<Path, List<FileInventory>> versions = new HashMap<>();
 	private final List<Set<Path>> selections = new ArrayList<>();
+	/**
+	 * The workspace of every fork that this class created or opened, in creation order.
+	 */
+	private final List<FakeWorkspacePort> workspaces = new ArrayList<>();
 	private boolean dirty;
 	private boolean excludeAdded;
 	private boolean removalDenied;
@@ -93,6 +98,19 @@ final class InMemoryForks implements Forks
 	List<Set<Path>> selections()
 	{
 		return List.copyOf(selections);
+	}
+
+	/**
+	 * Returns the built plugins whose bases the workspaces of every fork copied.
+	 *
+	 * @return the plugins, in fork creation order and then request order
+	 */
+	List<PluginUnderTest.Built> copiedBases()
+	{
+		List<PluginUnderTest.Built> copied = new ArrayList<>();
+		for (FakeWorkspacePort workspace : workspaces)
+			copied.addAll(workspace.copiedBases());
+		return copied;
 	}
 
 	/**
@@ -193,6 +211,7 @@ final class InMemoryForks implements Forks
 			this.excludeAdded = excludeAdded;
 			this.inventory = inventory;
 			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
+			workspaces.add(workspace);
 			if (current)
 				inventories.put(campaign, inventory);
 		}

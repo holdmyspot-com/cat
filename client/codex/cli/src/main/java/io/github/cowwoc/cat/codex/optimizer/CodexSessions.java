@@ -114,6 +114,13 @@ public final class CodexSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<String> unapprovedHooks(Path plugin) throws IOException
+	{
+		return CodexHookApprovals.unapproved(plugin, settings().configurationDirectory(),
+			JsonMapper.builder().build());
+	}
+
+	@Override
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new AppServerEvents(json);

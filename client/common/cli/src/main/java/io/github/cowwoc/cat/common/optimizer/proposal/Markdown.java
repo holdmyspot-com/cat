@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
@@ -71,6 +72,7 @@ public final class Markdown
 	private final CertificationStatus incumbent;
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
+	private final PluginCheck plugin;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
 	/**
@@ -88,10 +90,12 @@ public final class Markdown
 	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
+	 * @param plugin the check of the plugin under test
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, SortedSet<Path> controlFiles,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
-		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered)
+		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
+		PluginCheck plugin)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -104,6 +108,7 @@ public final class Markdown
 		this.incumbent = incumbent;
 		this.pilots = pilots;
 		this.delivered = delivered;
+		this.plugin = plugin;
 	}
 
 	/**
@@ -136,6 +141,7 @@ public final class Markdown
 		trialProfiles();
 		judge();
 		controlSource();
+		pluginUnderTest();
 		guardPilot();
 		fixtures();
 		procedure();
@@ -590,12 +596,57 @@ public final class Markdown
 	}
 
 	/**
-	 * Shows how often each assertion passed in the guard pilot's control trials.
+	 * Shows the plugin under test, if the contract has one: the plugin that each trial installs, each mapped file
+	 * whose content differs from the base's, and whether trials install CAT, with the contract author's evidence.
+	 */
+	private void pluginUnderTest()
+	{
+		if (plugin.plugin().isEmpty())
+			return;
+		heading("Plugin under test");
+		PluginUnderTest underTest = plugin.plugin().get();
+		switch (underTest)
+		{
+			case PluginUnderTest.Root root -> text.append("Each trial installs the plugin root `").
+				append(root.directory()).append("` of its staged source.\n");
+			case PluginUnderTest.Built built ->
+			{
+				text.append("Each trial installs a copy of the built plugin `").append(built.base()).
+					append("` with these directories of its staged source written over it:\n\n");
+				for (PluginUnderTest.Mapping mapping : built.mappings())
+				{
+					text.append("- `").append(mapping.source()).append("` → `").append(mapping.target()).
+						append("`\n");
+				}
+			}
+		}
+		if (!plugin.differing().isEmpty())
+		{
+			text.append("\nWarning: the content of these mapped files differs from the base's, because the base " +
+				"predates them or the build changes them. Trials load the project's content:\n\n");
+			for (Path path : plugin.differing())
+				text.append("- `").append(path).append("`\n");
+		}
+		if (underTest.dependsOnCat())
+			text.append("\nTrials install CAT: ");
+		else
+			text.append("\nTrials do not install CAT: ");
+		text.append(underTest.catEvidence()).append('\n');
+	}
+
+	/**
+	 * Shows how often each assertion passed in the guard pilot's control trials, or why none ran.
 	 */
 	private void guardPilot()
 	{
 		heading("Guard pilot");
-		text.append(PilotReport.render(contract, pilots));
+		if (plugin.refusals().isEmpty())
+			text.append(PilotReport.render(contract, pilots));
+		else
+		{
+			text.append("CAT ran no control trials, because trials cannot install a plugin under test that " +
+				"confirmation refuses. Once a revision corrects the plugin under test, CAT runs them.\n");
+		}
 	}
 
 	/**

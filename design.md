@@ -1108,7 +1108,8 @@ in more than one plugin. A mapped file whose content differs from the base's is 
 the source or its build may transform the file; trials load the source's content. Each trial installs the plugin copy
 of its staged source into the trial's harness home under the plugin's own name, and the trial's project copy keeps the
 project's own files. The runner reuses the user's existing approvals of the plugin's hooks, as it does for CAT's. A
-hook that the user has not approved does not run in trials, and the proposal lists it as a limitation.
+Codex hook that the user has not approved does not run in trials, and the proposal lists it as a limitation. Claude Code
+runs every hook of an installed plugin without an approval, so its proposals list none.
 
 A trial installs CAT only when the plugin under test depends on it: its manifest declares the dependency, or its prompt
 files invoke CAT's skills, agents or commands or name CAT's plugin directory. The contract author proposes the

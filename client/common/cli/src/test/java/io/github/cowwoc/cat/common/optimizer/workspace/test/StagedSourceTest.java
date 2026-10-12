@@ -9,6 +9,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -419,6 +420,116 @@ public final class StagedSourceTest
 			port.deleteStaged(overlay.identity());
 			requireThat(Files.exists(staged), "deletedExists").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that a built plugin's copy for a candidate holds the candidate's edit of a mapped file, that the copy for
+	 * the control source holds the emptied file, that both keep the base's other files, that the base is unchanged, and
+	 * that deleting the candidate deletes its copy.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	// Requirement: R-W12
+	@Test
+	public void builtPluginCopyHoldsStagedFiles() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			LinkedProject project = ProjectFixtures.linkedProject(root);
+			Path base = pluginBase(root.resolve("plugin-base"));
+			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
+				InventoryScanner.scan(base, Set.of()).identity().hex(),
+				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+				"No prompt file invokes a CAT skill.");
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			FileInventory fork = project.tree().inventory();
+			Overlay candidate = Overlay.of(fork).write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE);
+			Overlay control = ControlSource.of(fork, new Authority(Set.of(Path.of("rules")), Set.of(), fork));
+
+			Path candidateCopy = port.pluginCopy(plugin, port.stage(candidate, Set.of()));
+			Path controlCopy = port.pluginCopy(plugin, port.stage(control, Set.of()));
+
+			Map<Path, FileEntry> candidateFiles = InventoryScanner.scan(candidateCopy, Set.of()).entries();
+			requireThat(candidateFiles.get(Path.of("rules/codex/a.md")), "candidateEdit").
+				isEqualTo(file("candidate rule a"));
+			requireThat(candidateFiles.get(Path.of("rules/codex/b.md")), "candidateUnedited").isEqualTo(file("rule b"));
+			requireThat(candidateFiles.get(Path.of("skills/plan.md")), "candidateBaseFile").
+				isEqualTo(file("installed skill"));
+			Map<Path, FileEntry> controlFiles = InventoryScanner.scan(controlCopy, Set.of()).entries();
+			requireThat(controlFiles.get(Path.of("rules/codex/a.md")), "controlEmptied").isEqualTo(file(""));
+			requireThat(controlFiles.get(Path.of("skills/plan.md")), "controlBaseFile").
+				isEqualTo(file("installed skill"));
+			requireThat(Files.readString(base.resolve("rules/codex/a.md")), "base").isEqualTo("installed rule a");
+
+			port.deleteStaged(candidate.identity());
+			requireThat(Files.exists(candidateCopy), "deletedCopyExists").isFalse();
+			requireThat(controlCopy, "controlCopy").isDirectory();
+		}
+	}
+
+	/**
+	 * Verifies that a plugin root's copy is that directory of the staged source.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	// Requirement: R-W12
+	@Test
+	public void pluginRootCopyIsStagedDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path staged = port.stage(Overlay.of(project.tree().inventory()), Set.of());
+
+			Path copy = port.pluginCopy(new PluginUnderTest.Root(Path.of("rules"), true,
+				"The rules invoke CAT's skills."), staged);
+
+			requireThat(copy, "copy").isEqualTo(staged.resolve("rules"));
+		}
+	}
+
+	/**
+	 * Verifies that a built plugin's base is not copied once its files differ from the identity that the proposal
+	 * froze, so trials never install a base that the user did not confirm.
+	 *
+	 * @throws IOException if the fixture cannot be created, or because the base changed
+	 */
+	// Requirement: R-W12
+	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp = ".*plugin-base.*")
+	public void refusesChangedPluginBase() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			LinkedProject project = ProjectFixtures.linkedProject(root);
+			Path base = pluginBase(root.resolve("plugin-base"));
+			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
+				InventoryScanner.scan(base, Set.of()).identity().hex(),
+				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+				"No prompt file invokes a CAT skill.");
+			Files.writeString(base.resolve("skills/plan.md"), "reinstalled skill");
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+
+			port.copyPluginBase(plugin);
+		}
+	}
+
+	/**
+	 * Creates a built plugin's base: a Codex manifest, two installed rules and a skill.
+	 *
+	 * @param base the directory to create
+	 * @return {@code base}
+	 * @throws IOException if a file cannot be written
+	 */
+	private static Path pluginBase(Path base) throws IOException
+	{
+		writeFile(base.resolve(".codex-plugin/plugin.json"), "{\"name\": \"cat\"}", READ_WRITE);
+		writeFile(base.resolve("rules/codex/a.md"), "installed rule a", READ_WRITE);
+		writeFile(base.resolve("rules/codex/b.md"), "installed rule b", READ_WRITE);
+		writeFile(base.resolve("skills/plan.md"), "installed skill", READ_WRITE);
+		return base;
 	}
 
 	/**

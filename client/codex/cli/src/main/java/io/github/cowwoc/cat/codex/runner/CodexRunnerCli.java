@@ -146,9 +146,9 @@ public final class CodexRunnerCli
 			try (HarnessCapacity.Permit _ = capacityForMaximum.apply(options.maximumConcurrency()).acquire())
 			{
 				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(),
-					options.fixtures(), manager, options.executable(), environment, options.model(), options.effort(),
-					options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit), manager,
-					options.keepRun(), input, output);
+					options.fixtures(), options.plugin(), manager, options.executable(), environment, options.model(),
+					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit),
+					manager, options.keepRun(), input, output);
 			}
 		}
 	}

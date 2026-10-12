@@ -83,6 +83,7 @@ public final class Proposal
 	private final CertificationStatus incumbent;
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
+	private final PluginCheck plugin;
 
 	/**
 	 * Creates a proposal.
@@ -100,11 +101,12 @@ public final class Proposal
 	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
+	 * @param plugin the check of the plugin under test
 	 */
 	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
 		SortedSet<Path> controlFiles, HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews,
 		List<String> caps, CertificationStatus incumbent, Map<String, PilotResult> pilots,
-		Map<String, DeliveredTest> delivered)
+		Map<String, DeliveredTest> delivered, PluginCheck plugin)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -118,6 +120,7 @@ public final class Proposal
 		this.incumbent = incumbent;
 		this.pilots = Collections.unmodifiableMap(new LinkedHashMap<>(pilots));
 		this.delivered = Collections.unmodifiableMap(new LinkedHashMap<>(delivered));
+		this.plugin = plugin;
 	}
 
 	/**
@@ -187,6 +190,36 @@ public final class Proposal
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
 		Map<String, PilotResult> pilots)
 	{
+		return of(derived, campaign, links, controlFiles, login, calibrator, schema, incumbent, pilots,
+			PluginCheck.NONE);
+	}
+
+	/**
+	 * Completes a contract author's proposal for presentation, showing the target's delivered certification, the
+	 * guard pilot of each prompt test and the plugin under test.
+	 *
+	 * @param derived the contract author's proposal
+	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
+	 *   requested
+	 * @param links the symbolic links of the prompt system and the staged fixtures
+	 * @param controlFiles the target prompt files that the control source empties, relative to the project directory
+	 * @param login how the host's harness account is billed
+	 * @param calibrator calibrates the caps of the first certification attempts
+	 * @param schema the proposal schema, which identifies the contract
+	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
+	 *   proposes, or empty if the target has none
+	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
+	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
+	 * @throws IllegalStateException if the campaign cannot accept a confirmation
+	 */
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Set<Path> controlFiles,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
+		Map<String, PilotResult> pilots, PluginCheck plugin)
+	{
+		requireThat(plugin, "plugin").isNotNull();
 		requireThat(incumbent, "incumbent").isNotNull();
 		requireThat(pilots, "pilots").isNotNull();
 		requireThat(derived, "derived").isNotNull();
@@ -198,13 +231,18 @@ public final class Proposal
 		requireThat(schema, "schema").isNotNull();
 
 		Contract proposed = derived.contract();
+		requireThat(plugin.plugin().isPresent(), "plugin.plugin().isPresent()").
+			isEqualTo(proposed.plugin().isPresent(), "derived.contract().plugin().isPresent()");
 		List<String> limitations = new ArrayList<>(proposed.limitations());
 		limitations.add(DERIVED_LOADING_LIMIT);
 		limitations.add(CONTROL_SOURCE_LIMIT);
 		if (!links.entries().isEmpty())
 			limitations.add(LinkReport.STAGING_CONSEQUENCE);
+		if (!plugin.unapprovedHooks().isEmpty())
+			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
-			proposed.judge(), proposed.fixtures(), limitations, proposed.minimumPassRate(), proposed.salt());
+			proposed.judge(), proposed.fixtures(), limitations, proposed.minimumPassRate(), proposed.salt(),
+			plugin.plugin());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())
 		{
@@ -239,7 +277,21 @@ public final class Proposal
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
 		return new Proposal(derived, contract, schema, links, sortedControlFiles, login, campaign.ceiling(), previews,
-			caps, incumbent.orElse(null), pilots, delivered);
+			caps, incumbent.orElse(null), pilots, delivered, plugin);
+	}
+
+	/**
+	 * Returns the limitation that a contract records when trials do not run some hooks of the plugin under test.
+	 *
+	 * @param unapprovedHooks the plugin's hooks that trials do not run, each as its event and command
+	 * @return the limitation
+	 */
+	private static String pluginHooksLimit(List<String> unapprovedHooks)
+	{
+		return "Trials do not run these hooks of the plugin under test, because the user has not approved them in " +
+			"the harness: " + String.join("; ", unapprovedHooks) + ". A hook also does not run if its declaration " +
+			"changed after the user approved it. Approve the hooks in the harness and run revise, or accept that " +
+			"trials can behave differently from sessions in which those hooks run.";
 	}
 
 	/**
@@ -286,8 +338,8 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, tests with too few distinct expected outcomes in a part, unranked models and a described scope
-	 * without described cells, in that order.
+	 * requirements, an invalid plugin under test, tests with too few distinct expected outcomes in a part, unranked
+	 * models and a described scope without described cells, in that order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -300,6 +352,7 @@ public final class Proposal
 		String links = linksAndConflictsRefusal();
 		if (!links.isEmpty())
 			reasons.add(links);
+		reasons.addAll(plugin.refusals());
 		reasons.addAll(splitRefusals());
 		TrialProfiles profiles = contract.profiles();
 		List<String> unranked = profiles.unranked();
@@ -390,7 +443,7 @@ public final class Proposal
 	public String render()
 	{
 		return new Markdown(derived, contract, links, controlFiles, login, ceiling, previews, caps, incumbent, pilots,
-			delivered).render();
+			delivered, plugin).render();
 	}
 
 	/**

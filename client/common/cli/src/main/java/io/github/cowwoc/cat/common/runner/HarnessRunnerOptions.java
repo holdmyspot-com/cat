@@ -25,11 +25,13 @@ import java.util.List;
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
  * @param fixtures the optional directory whose files are copied into the project on top of {@code project}, refusing
  *   any path that the project holds already
+ * @param plugin the optional plugin under test, a plugin directory that is installed into the isolated harness home
+ *   under its manifest's name, beside CAT when {@code installCat} is also set
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency,
-	List<Path> deniedReads, Path fixtures)
+	List<Path> deniedReads, Path fixtures, Path plugin)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -129,6 +131,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.deniedReads.add(Path.of(value));
 			else if (option.equals("--fixtures"))
 				options.fixtures = Path.of(value);
+			else if (option.equals("--plugin"))
+				options.plugin = Path.of(value);
 			else
 				throw new IllegalArgumentException("Unsupported option: " + option);
 			index += 2;
@@ -141,7 +145,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency,
-			options.deniedReads, options.fixtures);
+			options.deniedReads, options.fixtures, options.plugin);
 	}
 
 	/**
@@ -155,7 +159,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " --artifact <path> [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
-			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] [--deny-read <path>]... [--fixtures <path>]";
+			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] [--deny-read <path>]... " +
+			"[--fixtures <path>] [--plugin <path>]";
 	}
 
 	/**
@@ -175,8 +180,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
 	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
-	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt} and
-	 *   {@code fixtures}
+	 * @param plugin the optional plugin under test, a plugin directory that is installed into the isolated harness
+	 *   home under its manifest's name
+	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
+	 *   {@code fixtures} and {@code plugin}
 	 * @throws IllegalArgumentException if {@code executable} is blank, or {@code runRoot} or an element of
 	 *   {@code deniedReads} is not absolute
 	 */
@@ -213,5 +220,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean includeUserRules = true;
 		private final List<Path> deniedReads = new ArrayList<>();
 		private Path fixtures;
+		private Path plugin;
 	}
 }

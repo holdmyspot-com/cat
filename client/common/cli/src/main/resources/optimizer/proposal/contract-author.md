@@ -11,6 +11,8 @@
 - Name every prompt file that loads for this prompt system although no harness event reports it loading,
   together with the documented rule that loads it, so CAT can record that this loading was derived rather than
   observed.
+- Name the harness plugin that holds the target prompt files, how a build assembles it from the project and whether
+  it needs CAT, so that each trial installs that plugin with the trial's version of the prompt files.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so
   CAT can show it to the user before confirmation.
 - Turn every recorded regression scenario of a prompt source into a prompt test that cites that scenario, converting a
@@ -249,6 +251,27 @@ the file's `path` and the documented `rule` that loads it. No harness reports lo
 every instruction file that the harness reads by convention, including the one in the current directory, and every
 rule file that CAT's rule loader injects. Harness events report hook runs, and some harnesses report their skill
 inventory; do not list those.
+
+### Plugin under test
+
+`plugin_under_test` names the harness plugin that holds the target prompt files, or is `null` when they are not in a
+plugin. Each trial installs that plugin from a copy that holds the trial's version of the prompt files, and no other
+plugin of the user's harness.
+
+- Give `root` when the plugin runs from the project's files as they are: the project-relative directory that holds
+  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json` and the target prompt files. Set `base` to `null` and
+  `mappings` to an empty list.
+- Give `base` when a build assembles the plugin from the project's files, so that no project directory with a plugin
+  manifest holds the target prompt files: the absolute path of a built plugin directory, such as the plugin that the
+  harness installed. Set `root` to `null`. Find the build step that copies the target prompt files into the plugin,
+  and give each project directory that it copies file for file as a `mappings` entry: its `source`, relative to the
+  project, and the `target` directory that receives its files, relative to the plugin directory. Cover every target
+  prompt file. CAT refuses a mapping when a file of its source has no file at the mapped path in the base, because the
+  plugin's users never receive that file.
+- Set `depends_on_cat` to `true` when the plugin needs CAT installed beside it: its manifest names CAT as a dependency,
+  or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory. Quote the manifest entry
+  or file passages that show it in `cat_evidence`, or say that none exist. A plugin that is CAT itself is installed
+  alone, from its copy.
 
 ### Scope conditions
 

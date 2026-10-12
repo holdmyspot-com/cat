@@ -29,7 +29,8 @@ public final class HarnessRunnerOptionsTest
 			contains("--artifact <path>").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
-			contains("--fixtures <path>");
+			contains("--fixtures <path>").
+			contains("--plugin <path>");
 	}
 
 	/**
@@ -85,6 +86,23 @@ public final class HarnessRunnerOptionsTest
 
 		requireThat(result.fixtures(), "fixtures").isEqualTo(Path.of("/runs/fixtures/trial"));
 		requireThat(without.fixtures(), "without").isNull();
+	}
+
+	/**
+	 * Verifies that {@code --plugin} names the plugin under test that the isolated home receives, and that it is absent
+	 * unless given.
+	 */
+	@Test
+	public void parsesPluginUnderTest()
+	{
+		// Requirement: R-W12
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
+			"--plugin", "/campaign/plugins/candidate"}, "harness", Path.of("/caller-temp"));
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
+			"harness", Path.of("/caller-temp"));
+
+		requireThat(result.plugin(), "plugin").isEqualTo(Path.of("/campaign/plugins/candidate"));
+		requireThat(without.plugin(), "without").isNull();
 	}
 
 	/**

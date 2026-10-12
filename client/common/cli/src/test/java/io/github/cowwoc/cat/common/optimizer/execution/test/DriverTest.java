@@ -69,6 +69,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -112,6 +113,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.report.CellReport;
 import io.github.cowwoc.cat.common.optimizer.report.OptimizationReport.InputComparison;
@@ -3157,6 +3159,43 @@ public final class DriverTest
 	}
 
 	/**
+	 * Each trial installs the copy of the plugin under test that belongs to its staged source, so that the trial loads
+	 * its candidate's prompt files through the plugin.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void trialsInstallPluginUnderTest() throws IOException
+	{
+		// Requirement: R-W12
+		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base"), "a".repeat(64),
+			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+			"No prompt file invokes a CAT skill, agent or command.");
+		Contract contract = ContractFixtures.contract().withPlugin(Optional.of(plugin));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("plugin-trials")),
+				new Builder().confirmed(contract, 1).working(1).build());
+			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
+			harness.trials(request ->
+			{
+				trials.add(request);
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> trials.size() >= 2);
+			}
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+			{
+				TrialPlugin expected = new TrialPlugin(harness.workspace().pluginCopy(plugin, trial.source()), false);
+				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+			}
+		}
+	}
+
+	/**
 	 * Under the latest-versions scope, development samples only each test's weakest cell, and the candidate is
 	 * committed once that cell is ready. The weakest cells start one development trial short of readiness.
 	 *
@@ -4756,6 +4795,12 @@ public final class DriverTest
 			public HostLogin hostLogin() throws IOException
 			{
 				return delegate.hostLogin();
+			}
+
+			@Override
+			public List<String> unapprovedHooks(Path plugin) throws IOException
+			{
+				return delegate.unapprovedHooks(plugin);
 			}
 
 			@Override

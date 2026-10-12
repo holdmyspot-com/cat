@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
@@ -13,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -49,6 +51,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
+import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
@@ -62,6 +65,7 @@ import io.github.cowwoc.cat.common.secrets.PromptTemplateSecrets;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -105,6 +109,10 @@ public final class ProposalTest
 	 * The target prompt files that the control source empties.
 	 */
 	private static final Set<Path> CONTROL_FILES = Set.of(Path.of("prompts/rules.md"), Path.of("prompts/main.md"));
+	/**
+	 * The contract author's evidence that a plugin under test does not depend on CAT.
+	 */
+	private static final String NO_CAT_EVIDENCE = "No prompt file invokes a CAT skill, agent or command.";
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
@@ -1076,6 +1084,204 @@ public final class ProposalTest
 		requireThat(prompt, "prompt").contains(first.derivation() + "\n\nGuard pilot results of the previous " +
 			"proposal:\n\n").
 			contains("- `asks_before_deleting` (guard): 15 of 20 passed (75.0%). Warning: below the minimum pass rate");
+	}
+
+	/**
+	 * Verifies that confirmation is refused when a built plugin maps a project file to a path that the plugin's base
+	 * does not hold, because a trial's plugin would then hold a file that the plugin's users never receive.
+	 *
+	 * @throws IOException if the base cannot be written or read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void refusesMappingMissingFromBase() throws IOException, InvalidProposalException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
+			Files.createDirectories(base.resolve("rules/codex"));
+			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
+			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+				Path.of("source/rules/read-file.md"), regularFile("Read the whole file."),
+				Path.of("source/rules/search.md"), regularFile("Search before reading.")));
+
+			Proposal proposal = pluginProposal(builtPlugin(base), project,
+				Set.of(Path.of("source/rules/read-file.md")));
+
+			requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
+				contains("`source/rules/search.md`").contains("`rules/codex/search.md`");
+		}
+	}
+
+	/**
+	 * Verifies that confirmation is refused when the target prompt files lie in two plugins, since a trial installs
+	 * one plugin under test, and allowed when they lie in one.
+	 *
+	 * @throws IOException if a base cannot be read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void refusesTargetsInTwoPlugins() throws IOException, InvalidProposalException
+	{
+		FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+			Path.of("plugins/docs/.codex-plugin/plugin.json"), regularFile("{\"name\": \"docs\"}"),
+			Path.of("plugins/docs/rules.md"), regularFile("Cite every source."),
+			Path.of("plugins/style/.claude-plugin/plugin.json"), regularFile("{\"name\": \"style\"}"),
+			Path.of("plugins/style/rules.md"), regularFile("Use plain words.")));
+		ObjectNode root = json.createObjectNode();
+		root.put("root", "plugins/docs");
+		root.putNull("base");
+		root.putArray("mappings");
+		root.put("depends_on_cat", false);
+		root.put("cat_evidence", "No prompt file invokes a CAT skill, agent or command.");
+
+		Proposal both = pluginProposal(root, project, Set.of(Path.of("plugins/docs/rules.md"),
+			Path.of("plugins/style/rules.md")));
+		Proposal one = pluginProposal(root, project, Set.of(Path.of("plugins/docs/rules.md")));
+
+		requireThat(both.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
+			contains("`plugins/docs`").contains("`plugins/style`");
+		requireThat(one.isConfirmable(CertificationScope.WEAKEST_CELL), "oneConfirmable").isTrue();
+	}
+
+	/**
+	 * Verifies that the proposal lists a built plugin, warns of each mapped file whose content differs from the base's,
+	 * states whether trials install CAT with the contract author's evidence, and freezes the identity of the base's
+	 * files into the contract.
+	 *
+	 * @throws IOException if the base cannot be written or read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void listsPluginUnderTest() throws IOException, InvalidProposalException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
+			Files.createDirectories(base.resolve("rules/codex"));
+			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
+			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+				Path.of("source/rules/read-file.md"), regularFile("Read every line of the file.")));
+
+			Proposal proposal = pluginProposal(builtPlugin(base), project,
+				Set.of(Path.of("source/rules/read-file.md")));
+
+			requireThat(proposal.isConfirmable(CertificationScope.WEAKEST_CELL), "confirmable").isTrue();
+			requireThat(proposal.render(), "text").contains("\n## Plugin under test\n").
+				contains("`" + base + "`").
+				contains("- `source/rules` → `rules/codex`\n").
+				contains("Warning: the content of these mapped files differs from the base's").
+				contains(":\n\n- `source/rules/read-file.md`\n").
+				contains("Trials do not install CAT: " + NO_CAT_EVIDENCE);
+			PluginUnderTest.Built frozen = (PluginUnderTest.Built) proposal.contract().plugin().orElseThrow();
+			requireThat(frozen.baseDigest(), "baseDigest").matches("[0-9a-f]{64}");
+		}
+	}
+
+	/**
+	 * Verifies that the proposal names each hook of the plugin under test that trials do not run, and records no hook
+	 * limitation when trials run every hook.
+	 *
+	 * @throws IOException if the base cannot be written or read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	// Requirement: R-W12
+	@Test
+	public void listsUnapprovedPluginHooks() throws IOException, InvalidProposalException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
+			Files.createDirectories(base.resolve("rules/codex"));
+			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
+			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+				Path.of("source/rules/read-file.md"), regularFile("Read the whole file.")));
+			Set<Path> targets = Set.of(Path.of("source/rules/read-file.md"));
+
+			Proposal unapproved = pluginProposal(builtPlugin(base), project, targets,
+				List.of("SessionStart `./log.sh`", "PostToolUse `./check.sh`"));
+			Proposal approved = pluginProposal(builtPlugin(base), project, targets, List.of());
+
+			requireThat(unapproved.contract().limitations(), "unapproved").contains(
+				"Trials do not run these hooks of the plugin under test, because the user has not approved them in " +
+				"the harness: SessionStart `./log.sh`; PostToolUse `./check.sh`. A hook also does not run if its " +
+				"declaration changed after the user approved it. Approve the hooks in the harness and run revise, " +
+				"or accept that trials can behave differently from sessions in which those hooks run.");
+			requireThat(approved.contract().limitations().stream().
+				filter(limitation -> limitation.contains("hooks of the plugin under test")).toList(), "approved").
+				isEmpty();
+		}
+	}
+
+	/**
+	 * Returns a built plugin under test whose base is a directory and whose one mapping writes the project's
+	 * {@code source/rules} over the base's {@code rules/codex}.
+	 *
+	 * @param base the base directory
+	 * @return the contract author's {@code plugin_under_test} object
+	 */
+	private ObjectNode builtPlugin(Path base)
+	{
+		ObjectNode plugin = json.createObjectNode();
+		plugin.putNull("root");
+		plugin.put("base", base.toString());
+		plugin.putArray("mappings").addObject().put("source", "source/rules").put("target", "rules/codex");
+		plugin.put("depends_on_cat", false);
+		plugin.put("cat_evidence", NO_CAT_EVIDENCE);
+		return plugin;
+	}
+
+	/**
+	 * Returns the proposal of the valid contract author output with a plugin under test, checked against a project.
+	 *
+	 * @param plugin the contract author's {@code plugin_under_test} object
+	 * @param project the project's files
+	 * @param targets the target prompt files, relative to the project directory
+	 * @return the proposal
+	 * @throws IOException if the plugin's base cannot be read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	private Proposal pluginProposal(ObjectNode plugin, FileInventory project, Set<Path> targets)
+		throws IOException, InvalidProposalException
+	{
+		return pluginProposal(plugin, project, targets, List.of());
+	}
+
+	/**
+	 * Returns the proposal of the valid contract author output with a plugin under test, checked against a project.
+	 *
+	 * @param plugin the contract author's {@code plugin_under_test} object
+	 * @param project the project's files
+	 * @param targets the target prompt files, relative to the project directory
+	 * @param unapprovedHooks the plugin's hooks that trials do not run
+	 * @return the proposal
+	 * @throws IOException if the plugin's base cannot be read
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	private Proposal pluginProposal(ObjectNode plugin, FileInventory project, Set<Path> targets,
+		List<String> unapprovedHooks) throws IOException, InvalidProposalException
+	{
+		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(output ->
+			output.set("plugin_under_test", plugin))), PROFILES, SALT);
+		PluginCheck check = PluginCheck.of(derived.contract().plugin(), project, targets).
+			withUnapprovedHooks(unapprovedHooks);
+		return Proposal.of(derived, new Builder().build(), noLinks(), targets, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), check);
+	}
+
+	/**
+	 * Returns a project file entry.
+	 *
+	 * @param content the file's content
+	 * @return the entry
+	 */
+	private static FileEntry.RegularFile regularFile(String content)
+	{
+		return new FileEntry.RegularFile(Sha256.of(content.getBytes(UTF_8)),
+			PosixFilePermissions.fromString("rw-r--r--"));
 	}
 
 	/**

@@ -1,13 +1,16 @@
 package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,6 +75,53 @@ final class FileTree
 				return FileVisitResult.CONTINUE;
 			}
 		});
+	}
+
+	/**
+	 * Builds a directory under a temporary name beside it and renames it into place, so that no reader sees it half
+	 * built. When a concurrent build of the same directory finishes first, its result is kept.
+	 *
+	 * @param directory the directory to build, which must not exist
+	 * @param build writes the directory's contents into the empty directory that it receives
+	 * @throws IOException if the directory cannot be built
+	 */
+	static void build(Path directory, DirectoryBuilder build) throws IOException
+	{
+		Path parent = Files.createDirectories(directory.getParent());
+		Path partial = Files.createTempDirectory(parent, "partial-");
+		try
+		{
+			build.writeTo(partial);
+			try
+			{
+				Files.move(partial, directory, ATOMIC_MOVE);
+			}
+			catch (FileSystemException e)
+			{
+				// A concurrent request built the same directory first if it exists now
+				if (!Files.isDirectory(directory))
+					throw e;
+			}
+		}
+		finally
+		{
+			TemporaryDirectories.deleteRecursively(partial);
+		}
+	}
+
+	/**
+	 * Writes the contents of a directory that {@link #build(Path, DirectoryBuilder)} renames into place.
+	 */
+	@FunctionalInterface
+	interface DirectoryBuilder
+	{
+		/**
+		 * Writes the contents.
+		 *
+		 * @param directory the empty directory to write into
+		 * @throws IOException if a file cannot be written
+		 */
+		void writeTo(Path directory) throws IOException;
 	}
 
 	/**

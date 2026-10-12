@@ -77,6 +77,18 @@ public interface SessionPort
 	HostLogin hostLogin() throws IOException;
 
 	/**
+	 * Returns the hooks of a plugin that sessions of this harness do not run because the user has not approved them
+	 * in the harness.
+	 *
+	 * @param plugin the plugin directory
+	 * @return each hook as its event and its command in Markdown code, in declaration order; empty if the harness runs
+	 *   every hook of an installed plugin
+	 * @throws NullPointerException if {@code plugin} is null
+	 * @throws IOException if the plugin's manifest is missing or invalid, or a file cannot be read
+	 */
+	List<String> unapprovedHooks(Path plugin) throws IOException;
+
+	/**
 	 * Finds a host setting that keeps the harness sandbox from denying sessions of the development part reads of
 	 * held-out content.
 	 *

@@ -80,6 +80,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<String> unapprovedHooks(Path plugin)
+	{
+		return List.of();
+	}
+
+	@Override
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new Events(json);

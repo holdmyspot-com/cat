@@ -24,9 +24,11 @@ import java.util.Set;
  *   to exceed it
  * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are split
  *   into the development part and the held-out part
+ * @param plugin the harness plugin that holds the target prompt files, or empty if they are not in a plugin
  */
 public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
-	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt)
+	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt,
+	Optional<PluginUnderTest> plugin)
 {
 	/**
 	 * The minimum pass rate when the contract author proposes none.
@@ -46,6 +48,28 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public static final int MINIMUM_PASS_RATE_DECIMALS = 2;
 
 	/**
+	 * Creates a contract whose target prompt files are not in a plugin.
+	 *
+	 * @param requirements every requirement and its source
+	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
+	 * @param profiles the trial profiles and the cells, which are the statistical units
+	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
+	 * @param fixtures the ignored files that trials need
+	 * @param limitations the material interactions and conditions that the contract does not cover
+	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
+	 *   proven to exceed it
+	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
+	 *   split into the development part and the held-out part
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the values
+	 */
+	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
+		TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt)
+	{
+		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, Optional.empty());
+	}
+
+	/**
 	 * Creates a contract.
 	 *
 	 * @param requirements every requirement and its source
@@ -58,6 +82,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 *   proven to exceed it
 	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
 	 *   split into the development part and the held-out part
+	 * @param plugin the harness plugin that holds the target prompt files, or empty if they are not in a plugin
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, two requirements or two tests
 	 *   share an identifier, a test names a requirement that the contract does not list, {@code minimumPassRate} is
@@ -75,6 +100,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		requireThat(judge, "judge").isNotNull();
 		requireThat(fixtures, "fixtures").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
 		requireThat(minimumPassRate, "minimumPassRate").
 			isBetween(LOWEST_MINIMUM_PASS_RATE, true, HIGHEST_MINIMUM_PASS_RATE, true);
 		requireThat(minimumPassRate.stripTrailingZeros().scale(), "minimumPassRate.stripTrailingZeros().scale()").
@@ -177,7 +203,19 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public Contract withScope(CertificationScope scope)
 	{
 		return new Contract(requirements, tests, profiles.withScope(scope), judge, fixtures, limitations,
-			minimumPassRate, salt);
+			minimumPassRate, salt, plugin);
+	}
+
+	/**
+	 * Returns this contract with a plugin under test.
+	 *
+	 * @param value the harness plugin that holds the target prompt files, or empty if they are not in a plugin
+	 * @return the contract
+	 * @throws NullPointerException if {@code value} is null
+	 */
+	public Contract withPlugin(Optional<PluginUnderTest> value)
+	{
+		return new Contract(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, value);
 	}
 
 	/**

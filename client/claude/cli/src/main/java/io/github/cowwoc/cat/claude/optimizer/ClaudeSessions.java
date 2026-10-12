@@ -229,6 +229,14 @@ public final class ClaudeSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<String> unapprovedHooks(Path plugin)
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		// Claude Code runs every hook of an installed plugin without asking the user to approve it
+		return List.of();
+	}
+
+	@Override
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new StreamJsonEvents(json);

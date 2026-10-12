@@ -69,6 +69,35 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies a plugin under test installs from the marketplace that bears its name.
+	 */
+	// Requirement: R-W12
+	@Test
+	public void installsPluginUnderTestByName()
+	{
+		List<List<String>> commands = ClaudeRunner.pluginSetupCommands("claude", Path.of("release-docs-marketplace"),
+			"release-docs");
+
+		requireThat(commands, "commands").isEqualTo(List.of(
+			List.of("claude", "plugin", "marketplace", "add", "release-docs-marketplace"),
+			List.of("claude", "plugin", "install", "release-docs@release-docs")));
+	}
+
+	/**
+	 * Verifies a run with a plugin under test grants Claude access to that plugin and to spilled hook context.
+	 */
+	// Requirement: R-W12
+	@Test
+	public void permitsPluginUnderTestDirectory()
+	{
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "",
+			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of());
+
+		requireThat(command, "command").contains("release-docs-marketplace/plugins/release-docs").
+			contains("hook-results");
+	}
+
+	/**
 	 * Verifies a Claude worktree subagent can resolve its reported spill-context path without access beyond hook results.
 	 */
 	@Test

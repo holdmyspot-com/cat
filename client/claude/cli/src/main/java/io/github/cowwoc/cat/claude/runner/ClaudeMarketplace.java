@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Creates Claude's isolated local CAT marketplace.
+ * Creates Claude's isolated local plugin marketplaces.
  */
 public final class ClaudeMarketplace
 {
@@ -31,26 +31,38 @@ public final class ClaudeMarketplace
 	 */
 	public static Path create(Path artifact, Path home) throws IOException
 	{
-		requireThat(artifact, "artifact").isNotNull();
+		return create(artifact, "cat", "An agentic workflow with a focus on reliability and developer experience", home);
+	}
+
+	/**
+	 * Copies a plugin into a marketplace named after it and replaces the marketplace metadata when it already exists.
+	 *
+	 * @param plugin the plugin directory
+	 * @param name the plugin's manifest name, which also names its marketplace
+	 * @param description the plugin's description in the marketplace
+	 * @param home the isolated Claude configuration directory
+	 * @return the local marketplace root
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code name} or {@code description} are blank
+	 * @throws IOException if the marketplace cannot be created
+	 */
+	public static Path create(Path plugin, String name, String description, Path home) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(name, "name").isNotBlank();
+		requireThat(description, "description").isNotBlank();
 		requireThat(home, "home").isNotNull();
-		Path root = home.resolve("plugins/cat-marketplace");
-		Path plugin = root.resolve("plugins/cat");
-		LocalMarketplace.copy(artifact, plugin);
-		//WORKAROUND: https://github.com/anthropics/claude-code/issues/84563
-		// Bubblewrap masks .mcp.json in every added directory; the read-only plugin mount cannot create its absent target.
-		// An empty configuration provides that target without granting the agent write access or configuring an MCP server.
-		Files.writeString(plugin.resolve(".mcp.json"), """
-			{
-			\t"mcpServers":
-			\t{
-			\t}
-			}
-			""");
+		Path root = home.resolve("plugins/" + name + "-marketplace");
+		Path copy = root.resolve("plugins/" + name);
+		LocalMarketplace.copy(plugin, copy);
+		// A plugin's own MCP configuration already provides the target that Bubblewrap masks
+		if (Files.notExists(copy.resolve(".mcp.json")))
+			writeEmptyMcpConfiguration(copy);
 		Path metadata = root.resolve(".claude-plugin/marketplace.json");
 		Files.createDirectories(metadata.getParent());
 		Files.writeString(metadata, """
 			{
-			\t"name": "cat",
+			\t"name": "%1$s",
 			\t"owner":
 			\t{
 			\t\t"name": "cowwoc"
@@ -58,13 +70,13 @@ public final class ClaudeMarketplace
 			\t"plugins":
 			\t[
 			\t\t{
-			\t\t\t"name": "cat",
-			\t\t\t"source": "./plugins/cat",
-			\t\t\t"description": "An agentic workflow with a focus on reliability and developer experience"
+			\t\t\t"name": "%1$s",
+			\t\t\t"source": "./plugins/%1$s",
+			\t\t\t"description": "%2$s"
 			\t\t}
 			\t]
 			}
-			""");
+			""".formatted(name, description));
 		return root;
 	}
 

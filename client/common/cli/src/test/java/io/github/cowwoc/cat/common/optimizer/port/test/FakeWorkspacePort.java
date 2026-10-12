@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.port.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -55,6 +56,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 	private final Map<Path, FileContent> contents = new HashMap<>();
 	private final Map<Path, FileInventory> promptAuthorEffects = new HashMap<>();
 	private final List<Overlay> materialized = new ArrayList<>();
+	private final List<PluginUnderTest.Built> copiedBases = new ArrayList<>();
 	private FileInventory worktree;
 	private int copiesPrepared;
 
@@ -173,6 +175,44 @@ public final class FakeWorkspacePort implements WorkspacePort
 				throw WrappedCheckedException.wrap(e);
 			}
 			staged.remove(candidate);
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The fake names the copy after the staged source under {@code plugins} and creates nothing.
+	 */
+	@Override
+	public Path pluginCopy(PluginUnderTest plugin, Path source)
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(source, "source").isNotNull();
+		if (plugin instanceof PluginUnderTest.Built built)
+			requireThat(built.baseDigest(), "plugin.baseDigest()").isNotEmpty();
+		return root.resolve("plugins").resolve(source.getFileName());
+	}
+
+	@Override
+	public void copyPluginBase(PluginUnderTest.Built plugin)
+	{
+		synchronized (lock)
+		{
+			requireThat(plugin, "plugin").isNotNull();
+			copiedBases.add(plugin);
+		}
+	}
+
+	/**
+	 * Returns the built plugins whose bases were copied, in request order.
+	 *
+	 * @return the plugins
+	 */
+	public List<PluginUnderTest.Built> copiedBases()
+	{
+		synchronized (lock)
+		{
+			return List.copyOf(copiedBases);
 		}
 	}
 

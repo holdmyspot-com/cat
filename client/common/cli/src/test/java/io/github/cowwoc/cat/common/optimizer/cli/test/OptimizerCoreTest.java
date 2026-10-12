@@ -29,6 +29,7 @@ import io.github.cowwoc.cat.common.optimizer.cli.Commands;
 import io.github.cowwoc.cat.common.optimizer.cli.OptimizerCore;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
@@ -53,6 +54,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.proposal.test.ProposalTest;
@@ -82,6 +84,7 @@ import tools.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -384,6 +387,10 @@ public final class OptimizerCoreTest
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
 		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
+		/**
+		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory.
+		 */
+		private final Map<Path, List<String>> unapprovedHooks = new HashMap<>();
 
 		/**
 		 * Creates the port.
@@ -431,6 +438,12 @@ public final class OptimizerCoreTest
 		public HostLogin hostLogin()
 		{
 			return HostLogin.UNKNOWN;
+		}
+
+		@Override
+		public List<String> unapprovedHooks(Path plugin)
+		{
+			return unapprovedHooks.getOrDefault(plugin, List.of());
 		}
 
 		@Override
@@ -489,6 +502,17 @@ public final class OptimizerCoreTest
 		List<SessionRequest> requests(SessionRole role)
 		{
 			return requests.stream().filter(request -> request.role() == role).toList();
+		}
+
+		/**
+		 * Sets the hooks of a plugin that the user has not approved in the harness.
+		 *
+		 * @param plugin the plugin directory
+		 * @param hooks the hooks, each as its event and command
+		 */
+		void unapprovedHooks(Path plugin, List<String> hooks)
+		{
+			unapprovedHooks.put(plugin, hooks);
 		}
 	}
 
@@ -1613,6 +1637,111 @@ public final class OptimizerCoreTest
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of(".env.example")).
 				contains(Path.of("CLAUDE.md"));
 		}
+	}
+
+	/**
+	 * Verifies that the guard pilot's control trials install the plugin under test, and that confirmation copies the
+	 * plugin's base as the contract records it, so that later trials never read the base live.
+	 */
+	@Test
+	public void confirmCopiesPluginBase() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath();
+			Files.createDirectory(base.resolve(".codex-plugin"));
+			Files.writeString(base.resolve(".codex-plugin/plugin.json"), "{\"name\": \"style\"}\n");
+			Repository repository = repository(scope, _ -> derivation(output ->
+				output.set("plugin_under_test", builtPlugin(base))));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+			{
+				requireThat(trial.plugin().map(TrialPlugin::dependsOnCat), "dependsOnCat").
+					isEqualTo(Optional.of(false));
+			}
+
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+
+			Optional<PluginUnderTest> confirmed = repository.load(id).contract().plugin();
+			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(confirmed.orElseThrow()));
+		}
+	}
+
+	/**
+	 * Verifies that the proposal names the hooks of the plugin under test that the harness reports the user has not
+	 * approved, by the plugin's base.
+	 */
+	@Test
+	public void proposalNamesUnapprovedHooks() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath();
+			Files.createDirectory(base.resolve(".codex-plugin"));
+			Files.writeString(base.resolve(".codex-plugin/plugin.json"), "{\"name\": \"style\"}\n");
+			Repository repository = repository(scope, _ -> derivation(output ->
+				output.set("plugin_under_test", builtPlugin(base))));
+			repository.sessions().unapprovedHooks(base, List.of("SessionStart `./start.sh`"));
+
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(started.proposal(), "proposal").contains("the user has not approved them in the harness: " +
+				"SessionStart `./start.sh`.");
+		}
+	}
+
+	/**
+	 * Verifies that a proposal whose plugin under test is refused runs no guard pilot, because its trials could not
+	 * install the plugin, and that confirmation names the refusal.
+	 */
+	@Test
+	public void refusedPluginRunsNoPilot() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath().resolve("missing");
+			Repository repository = repository(scope, _ -> derivation(output ->
+				output.set("plugin_under_test", builtPlugin(base))));
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+			String id = started.status().campaignId();
+			requireThat(repository.sessions().requests(SessionRole.TRIAL), "trials").isEmpty();
+			requireThat(started.proposal(), "proposal").contains("CAT ran no control trials");
+
+			CommandRefusedException refusal = null;
+			try
+			{
+				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e;
+			}
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(refusal.getMessage(), "message").contains("`" + base + "`").contains("is not a directory");
+		}
+	}
+
+	/**
+	 * Returns a built plugin under test that does not depend on CAT and whose one mapping writes the project's
+	 * {@code rules} directory over the base's {@code rules/codex}.
+	 *
+	 * @param base the base directory
+	 * @return the contract author's {@code plugin_under_test} object
+	 */
+	private static ObjectNode builtPlugin(Path base)
+	{
+		ObjectNode plugin = JSON.createObjectNode();
+		plugin.putNull("root");
+		plugin.put("base", base.toString());
+		plugin.putArray("mappings").addObject().put("source", "rules").put("target", "rules/codex");
+		plugin.put("depends_on_cat", false);
+		plugin.put("cat_evidence", "No prompt file invokes a CAT skill, agent or command.");
+		return plugin;
 	}
 
 	/**

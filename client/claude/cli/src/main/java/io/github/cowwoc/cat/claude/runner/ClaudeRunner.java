@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.runner.HarnessProjectRepository;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
+import io.github.cowwoc.cat.common.runner.PluginManifest;
 import io.github.cowwoc.cat.common.runner.UserRuleTree;
 
 import java.io.IOException;
@@ -41,6 +42,10 @@ public final class ClaudeRunner
 {
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN");
+	/**
+	 * The path of a Claude plugin's manifest, relative to the plugin directory.
+	 */
+	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
 
 	/**
 	 * Resolves the launch configuration Bubblewrap inspects beside one run's Claude temporary directory.
@@ -97,7 +102,7 @@ public final class ClaudeRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, null, manager, executable, environment, model, "", installCat, true, null,
+		return start(artifact, project, null, null, manager, executable, environment, model, "", installCat, true, null,
 			List.of(), List.of());
 	}
 
@@ -107,6 +112,8 @@ public final class ClaudeRunner
 	 * @param artifact the complete Claude artifact
 	 * @param project the validator project
 	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
+	 * @param plugin the optional plugin under test, which is installed into the isolated home from the marketplace
+	 *   that bears its manifest's name, beside CAT when {@code installCat} is set
 	 * @param manager the run manager
 	 * @param executable the Claude executable
 	 * @param environment the isolated environment
@@ -120,9 +127,10 @@ public final class ClaudeRunner
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, Path fixtures, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, String effort, boolean installCat, boolean includeUserRules,
-		ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
+	HarnessRunSession start(Path artifact, Path project, Path fixtures, Path plugin, HarnessRunManager manager,
+		String executable, Map<String, String> environment, String model, String effort, boolean installCat,
+		boolean includeUserRules, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads)
+		throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -133,7 +141,7 @@ public final class ClaudeRunner
 		requireThat(effort, "effort").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
-		HarnessArtifact.validate(artifact, Path.of(".claude-plugin/plugin.json"));
+		HarnessArtifact.validate(artifact, MANIFEST);
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		HarnessRunnerScope scope = new MainHarnessRunnerScope();
@@ -175,19 +183,30 @@ public final class ClaudeRunner
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 			// copying the caller's settings so that no inherited value turns it off.
 			ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
-			Path marketplace = null;
-			if (installCat)
-				marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
 			Path worktree = run.directory().resolve("project");
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
+			List<Path> plugins = new ArrayList<>();
 			if (installCat)
 			{
-				HarnessCommand.execute(List.of(executable, "plugin", "marketplace", "add", marketplace.toString()),
-					worktree, isolatedEnvironment, manager, run, "marketplace-add");
-				HarnessCommand.execute(List.of(executable, "plugin", "install", "cat@cat"), worktree,
-					isolatedEnvironment, manager, run, "plugin-install");
+				Path marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
+				List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, "cat");
+				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run,
+					"marketplace-add");
+				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-install");
+				plugins.add(marketplace.resolve("plugins/cat"));
+			}
+			if (plugin != null)
+			{
+				String name = PluginManifest.name(plugin, MANIFEST);
+				Path marketplace = ClaudeMarketplace.create(plugin, name, name, isolatedConfiguration);
+				List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, name);
+				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run,
+					"plugin-under-test-marketplace-add");
+				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run,
+					"plugin-under-test-install");
+				plugins.add(marketplace.resolve("plugins/" + name));
 			}
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
@@ -199,8 +218,8 @@ public final class ClaudeRunner
 				selectedEffort = agent.effort();
 				selectedAgent = agent.name();
 			}
-			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, marketplace, installCat,
-				hookResults, readOnlyEvidence);
+			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
+				readOnlyEvidence);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
@@ -395,20 +414,67 @@ public final class ClaudeRunner
 	public static List<String> command(String executable, String model, String effort, String agent, Path marketplace,
 		boolean installCat, Path hookResults, List<Path> readOnlyEvidence)
 	{
+		List<Path> plugins = List.of();
+		if (installCat)
+		{
+			requireThat(marketplace, "marketplace").isNotNull();
+			plugins = List.of(marketplace.resolve("plugins/cat"));
+		}
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence);
+	}
+
+	/**
+	 * Returns the commands that add a local plugin marketplace and install the plugin that bears its name.
+	 *
+	 * @param executable the Claude executable
+	 * @param marketplace the local marketplace root
+	 * @param name the plugin's manifest name, which also names its marketplace
+	 * @return the marketplace and install commands, in execution order
+	 * @throws NullPointerException if {@code marketplace} is null
+	 * @throws IllegalArgumentException if {@code executable} or {@code name} are blank
+	 */
+	public static List<List<String>> pluginSetupCommands(String executable, Path marketplace, String name)
+	{
+		requireThat(executable, "executable").isNotBlank();
+		requireThat(marketplace, "marketplace").isNotNull();
+		requireThat(name, "name").isNotBlank();
+		return List.of(
+			List.of(executable, "plugin", "marketplace", "add", marketplace.toString()),
+			List.of(executable, "plugin", "install", name + "@" + name));
+	}
+
+	/**
+	 * Builds a Claude command with an explicit profile, optional direct agent, installed plugins and immutable evidence
+	 * directories.
+	 *
+	 * @param executable the Claude executable
+	 * @param model the requested model
+	 * @param effort the requested reasoning effort
+	 * @param agent the optional direct CAT agent name
+	 * @param plugins the directories of the plugins installed in the isolated home
+	 * @param hookResults the hook context directory
+	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @return the complete harness command
+	 */
+	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
+		Path hookResults, List<Path> readOnlyEvidence)
+	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotNull();
 		requireThat(effort, "effort").isNotNull();
 		requireThat(agent, "agent").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
 		requireThat(hookResults, "hookResults").isNotNull();
-		if (installCat)
-			requireThat(marketplace, "marketplace").isNotNull();
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits", "--verbose",
 			"--include-partial-messages", "--no-session-persistence"));
-		if (installCat)
+		for (Path plugin : plugins)
 		{
 			command.add("--add-dir");
-			command.add(marketplace.resolve("plugins/cat").toString());
+			command.add(plugin.toString());
+		}
+		if (!plugins.isEmpty())
+		{
 			// Claude writes spilled hook context under this run-owned directory. Allowing it lets the required
 			// SessionStart instruction read it without granting the isolated home or disabling sandboxing.
 			command.add("--add-dir");

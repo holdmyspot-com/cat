@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -39,6 +40,7 @@ public final class Workspace implements WorkspacePort
 	private final ForkTree tree;
 	private final StagedSources stagedSources;
 	private final AuthoringCopies authoringCopies;
+	private final PluginCopies pluginCopies;
 	private final Path worktree;
 	private final Path worktreeMirror;
 
@@ -46,8 +48,8 @@ public final class Workspace implements WorkspacePort
 	 * Creates the workspace of a fork.
 	 *
 	 * @param tree the fork's files
-	 * @param storage the campaign storage directory, which holds the staged sources, the authoring copies and the
-	 *   mirror of the read-only external participants
+	 * @param storage the campaign storage directory, which holds the staged sources, the authoring copies, the
+	 *   plugin copies and the mirror of the read-only external participants
 	 * @param worktree the optimization worktree's directory
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -60,6 +62,7 @@ public final class Workspace implements WorkspacePort
 		this.tree = tree;
 		this.stagedSources = new StagedSources(tree, normalizedStorage.resolve("staged"));
 		this.authoringCopies = new AuthoringCopies(tree, normalizedStorage.resolve("authoring"));
+		this.pluginCopies = new PluginCopies(normalizedStorage.resolve("plugins"));
 		this.worktree = worktree.toAbsolutePath().normalize();
 		this.worktreeMirror = normalizedStorage.resolve("worktree-external");
 	}
@@ -85,6 +88,19 @@ public final class Workspace implements WorkspacePort
 	public void deleteStaged(Sha256 candidate) throws IOException
 	{
 		stagedSources.delete(candidate);
+		pluginCopies.delete(candidate);
+	}
+
+	@Override
+	public Path pluginCopy(PluginUnderTest plugin, Path source) throws IOException
+	{
+		return pluginCopies.copy(plugin, source);
+	}
+
+	@Override
+	public void copyPluginBase(PluginUnderTest.Built plugin) throws IOException
+	{
+		pluginCopies.copyBase(plugin);
 	}
 
 	@Override

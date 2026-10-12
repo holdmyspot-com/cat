@@ -393,6 +393,12 @@ public final class SliceTest
 		}
 
 		@Override
+		public List<String> unapprovedHooks(Path plugin) throws IOException
+		{
+			return delegate.unapprovedHooks(plugin);
+		}
+
+		@Override
 		public Optional<String> findHeldOutExposure(Path project) throws IOException
 		{
 			return delegate.findHeldOutExposure(project);

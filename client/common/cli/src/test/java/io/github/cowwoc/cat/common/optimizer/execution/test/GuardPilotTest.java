@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -39,6 +40,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
@@ -334,6 +336,66 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * Each control trial installs the copy of the plugin under test that belongs to the staged control source.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void controlTrialsInstallPlugin() throws IOException, InterruptedException
+	{
+		// Requirement: R-W12
+		PluginUnderTest plugin = builtPlugin("a");
+		Contract contract = TierFixtures.tieredContract().withPlugin(Optional.of(plugin));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			FakeWorkspacePort workspace = workspace(directory);
+
+			pilot(sessions, workspace, 4).run(contract, control(), Set.of(), Map.of(), new SplittableRandom(9));
+
+			Path source = workspace.stage(control(), Set.of());
+			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source), true);
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+		}
+	}
+
+	/**
+	 * A stored pilot no longer applies once the files of the plugin's base change, because its control trials
+	 * installed the old files.
+	 */
+	@Test
+	public void pluginBaseChangesDefinition()
+	{
+		// Requirement: R-W12
+		Contract contract = TierFixtures.tieredContract();
+		PromptTest test = contract.tests().getFirst();
+		GuardPilot pilot = pilot(new ScriptedPort(Path.of("unused"), _ -> "pass"), workspace(Path.of("unused")), 4);
+
+		Sha256 before = pilot.definition(contract.withPlugin(Optional.of(builtPlugin("a"))), test);
+		Sha256 after = pilot.definition(contract.withPlugin(Optional.of(builtPlugin("b"))), test);
+
+		requireThat(after, "after").isNotEqualTo(before);
+	}
+
+	/**
+	 * Returns a built plugin under test that depends on CAT.
+	 *
+	 * @param digit the hexadecimal digit that every position of the base digest holds
+	 * @return the plugin
+	 */
+	private static PluginUnderTest builtPlugin(String digit)
+	{
+		return new PluginUnderTest.Built(Path.of("/plugin-base"), digit.repeat(64),
+			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), true,
+			"The prompt files invoke CAT skills.");
+	}
+
+	/**
 	 * A rate limit stops the pilot from starting another session, and every unfinished test records why it stopped,
 	 * so that the stored result is not reused.
 	 *
@@ -611,6 +673,12 @@ public final class GuardPilotTest
 		public HostLogin hostLogin()
 		{
 			return HostLogin.UNKNOWN;
+		}
+
+		@Override
+		public List<String> unapprovedHooks(Path plugin)
+		{
+			return List.of();
 		}
 
 		@Override

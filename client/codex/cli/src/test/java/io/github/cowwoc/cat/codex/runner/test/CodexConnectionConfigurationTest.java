@@ -399,4 +399,41 @@ public final class CodexConnectionConfigurationTest
 				doesNotContain("other:hooks/hooks.json").doesNotContain("enabled = true");
 		}
 	}
+
+	/**
+	 * Verifies the user's approvals of a plugin's hooks reach the isolated configuration under the run-local
+	 * marketplace that bears the plugin's name, and that no other plugin's approvals do.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void copiesTrustedPluginHooks() throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-hook-trust-"));
+			Path source = root.resolve("host.toml");
+			Path destination = root.resolve("isolated/config.toml");
+			Files.writeString(source, """
+				[hooks.state."release-docs@acme:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
+				enabled = true
+
+				[hooks.state."release-docs-extra@acme:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:b29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
+
+				[hooks.state."cat@cat:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
+				""");
+
+			CodexConnectionConfiguration.copyTrustedHooks(source, destination, "release-docs");
+
+			String configuration = Files.readString(destination);
+			requireThat(configuration, "configuration").contains(
+				"[hooks.state.\"release-docs@release-docs:hooks/hooks.json:session_start:0:0\"]").contains(
+					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
+				doesNotContain("release-docs-extra").doesNotContain("cat@cat").doesNotContain("enabled = true");
+		}
+	}
 }
