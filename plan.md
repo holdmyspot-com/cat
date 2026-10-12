@@ -573,7 +573,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
 | R-E16 | The observed model comes from harness events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
 | R-E17 | A trial session starts under its cell's profile and the contract author, judge and prompt author sessions under the role profile (the `optimize-xhigh` binding); each runner passes the model and effort to its harness; the observed profile is recorded per cell and decides comparability. | §3.1, §5, §6.6 | WI-16 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (requested profile reaches the harness arguments), `MeasurementIdentityTest`; E: E1 per harness |
-| R-E20 | The contract author, judge and prompt author sessions run without CAT's plugin in both harnesses; trial sessions keep it. The prompt author brief carries the complete text of its six role rules and the contract author brief the contract-design rule, read from the installed artifact with lazy-load paths naming its files; the judge brief carries none. | §3.1, D37 | WI-27 | U: runner session tests per harness, `PromptAuthorTest`, contract author prompt test |
+| R-E20 | The contract author, judge and prompt author sessions run without CAT's plugin in both harnesses; trial sessions install CAT unless a plugin under test that does not depend on CAT replaces it (R-W12). The prompt author brief carries the complete text of its six role rules and the contract author brief the contract-design rule, read from the installed artifact with lazy-load paths naming its files; the judge brief carries none. | §3.1, D37 | WI-27 | U: runner session tests per harness, `PromptAuthorTest`, contract author prompt test |
 | R-E21 | The trial record holds per turn the tool calls with input, exit status when reported and complete output, child activity and hook status, then the trial's file changes against the staged source, without streaming fragments, telemetry or injected session-start text, from each harness's events; the built-in tools and the judge both read it. | §6.4, D36 | WI-28, WI-63 | U: trial record tests on recorded events per harness, `JudgePromptTest` |
 | R-E22 | Weakest cell: within the certification scope (for weakest cell only, within the latest versions), the lowest effort of the least capable model by CAT's shipped capability ranking (families ranked from the vendor's published model documentation, with its address and reading date; within a family, older versions below newer), with no trial; a prompt test with one cell uses it; the user may correct or extend the ranking in revision feedback; CAT refuses to confirm while an inventory model's family is unranked. | §6.6, D27 | WI-32 | U: `CapabilityRankingTest` (resource order for both harnesses, version order within a family, an unranked family), `CellTierTest` (weakest cell per scope, one cell, a corrected ranking) |
 | R-E23 | Formal cell order: within a prompt test, formal trials go only to open cells, its development cells and each other scope cell whose development cells and lower cells (model ranked no higher and effort no higher, by the capability ranking) are all certified; among open cells, fewest formal outcomes first. | §3.3, D45 | WI-35 | U: `SchedulerTest` (no formal trial in a stronger cell while a development cell is undecided; incomparable cells open together; a cell opens once every cell below it is certified; a weakest-only scope is unaffected) |
@@ -594,6 +594,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W9 | Cleanup: once a certified candidate's delivery completes and is verified, or the user keeps the incumbent instead of a regressing certified candidate and the prompt-test delivery that follows completes and is verified, CAT removes the optimization worktree, the campaign's runs in both run roots and then the campaign directory; an interrupted removal completes on the next command for the target; every other campaign keeps its files. | §4.1, §4.7 | WI-43 | U: `CleanupTest` (each ending, fault before each step); E: E1 |
 | R-W10 | Control source: the incumbent's staged source with every target prompt file emptied to zero bytes, the same for every candidate, its paths listed in the proposal. | §4.4 | WI-65 | U: `StagedSourceTest`, `ProposalTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
+| R-W12 | Plugin under test: the contract names a plugin root in the project, or a built base with mappings from source directories to plugin directories; CAT copies the base at confirmation; each staged source, the control source included, has a plugin copy with its mapped files written over the base; each trial installs that copy, with CAT only when the confirmed contract says the plugin depends on it, and reuses the user's approvals of its hooks; a mapping to a path missing from the base, or targets in two plugins, is refused; a mapped file that differs from the base is a warning; the plugin under test is part of the measurement identity. | §3.1, §4.4, §5, §6.1, D69 | WI-73 | U: `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
 
 ### 3.6 Measurement, contract and lifecycle
 
@@ -1980,6 +1981,35 @@ The riskiest pure code, built first.
 - **Exit:** `ScenarioTest`, `ProposalSchemaTest`, `JudgePromptTest`, `DriverTest` and `GuardPilotTest` cover each side;
   the read-file lazy prompt test's answer assertion can use `judge`.
 
+### WI-73 — Plugin under test (user ruling, 2026-10-11)
+
+- **Contract:** the proposal schema carries an optional plugin under test: a plugin root (a project directory holding
+  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json`), or a base directory with mappings from project source
+  directories to plugin directories; and whether trials install CAT, with the contract author's evidence. The contract
+  author prompt says how to find the plugin, its mappings and its dependency on CAT. For WI-71, the mapping is
+  `client/codex/rules/src/main/resources/rules/codex/` onto the plugin's `rules/codex/`, and the base is the installed
+  Codex CAT artifact; the common rules module is not a one-to-one copy, because its build moves the path-scoped rules.
+- **Validation:** a mapping whose source file has no file at its plugin path in the base, or target prompt files in two
+  plugins, is refused; a mapped file whose content differs from the base's is a warning; the proposal lists the plugin,
+  the differing files, unapproved hooks and the CAT decision.
+- **Staging:** CAT copies the base into campaign storage at confirmation; each staged source, and the control source,
+  gets a plugin copy with its mapped files written over the base copy, so a candidate's edit and an emptied control
+  file reach it.
+- **Runners:** `CodexRunner` and `ClaudeRunner` install a given plugin directory into the trial home under the
+  manifest's name, reuse the user's hook approvals for it, and install CAT only when asked; when the plugin under test
+  is CAT, its copy is the installed CAT, including Codex's agent definitions. Role sessions still run without plugins
+  and read their rules from the installed CAT artifact.
+- **Identity:** the plugin root, or the base copy's identity and the mappings, and whether trials install CAT, are
+  material conditions.
+- **Closes:** R-W12.
+- **Tests:** `ProposalSchemaTest` (both forms, an unknown key), `ProposalTest` (the refusals, the warning, the listed
+  plugin), `StagedSourceTest` (a candidate edit and an emptied control file in the plugin copy, the base unchanged),
+  `MeasurementIdentityTest` (each plugin condition material), `CodexRunnerTest` and `ClaudeRunnerTest` (the plugin
+  copy installed, CAT installed only when asked, hook approvals of the plugin reused), `CodexSessionsTest` and
+  `ClaudeSessionsTest` (trial settings carry the plugin copy, role sessions unchanged).
+- **Exit:** unit tests pass; the full build passes; in WI-71's campaign, a control trial's installed `read-file.md` is
+  empty and a candidate trial's equals the candidate's.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2093,8 +2123,9 @@ blocks only the part of a work item that it names.
 | WI-68 | WI-66, WI-67 |
 | WI-69 | WI-61 |
 | WI-70 | none for the scripts and hook; its rule step needs WI-71 |
-| WI-71 | WI-69, WI-70 |
+| WI-71 | WI-69, WI-70, WI-72, WI-73 |
 | WI-72 | WI-63 |
+| WI-73 | WI-65 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
