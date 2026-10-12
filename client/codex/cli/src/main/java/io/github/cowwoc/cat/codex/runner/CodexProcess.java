@@ -522,14 +522,18 @@ public final class CodexProcess implements HarnessProcess
 	 *
 	 * @param response the response JSON
 	 * @return the non-blank thread ID
-	 * @throws IOException if the response is malformed or omits the ID
+	 * @throws IOException if Codex did not start the thread, or the response is malformed or omits the ID
 	 */
 	private String threadId(String response) throws IOException
 	{
 		assert response != null;
 		try
 		{
-			JsonNode id = scope.json().readTree(response).path("result").path("thread").path("id");
+			JsonNode tree = scope.json().readTree(response);
+			JsonNode error = tree.path("error").path("message");
+			if (error.isString())
+				throw new IOException("Codex app-server did not start the thread: " + error.stringValue());
+			JsonNode id = tree.path("result").path("thread").path("id");
 			if (!id.isString() || id.stringValue().isBlank())
 				throw new IOException("Codex app-server returned no thread identifier");
 			return id.stringValue();

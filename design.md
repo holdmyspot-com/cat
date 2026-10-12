@@ -1011,6 +1011,12 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
 The runs of formal and baseline trials and of judges go under a held-out run root beside the runner's own run root, so
 that sessions whose output reaches development can be denied them as one directory.
 
+Codex enforces those denials through a sandbox helper that refuses to start when it cannot use the directory
+`/tmp/codex-daemon-<uid>`, and a Codex sandbox hides that directory from the commands it runs. A campaign started from
+a sandboxed Codex session could therefore start no session that is denied reads. When `bwrap` is on the `PATH`, the
+Codex runner starts the app-server under bubblewrap with a private, empty `/tmp`, keeping a run directory below `/tmp`
+visible.
+
 Loading a campaign reads only the snapshot, so its cost does not grow with the number of trials. Trial records are read
 for diagnosis, reports and reconciliation of the in-flight tail. CAT never rebuilds state by replaying all trials.
 

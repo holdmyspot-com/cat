@@ -19,12 +19,15 @@ import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.PluginManifest;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -37,6 +40,10 @@ public final class CodexRunner
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
+	/**
+	 * The system's shared temporary directory, which the app-server replaces with a private one.
+	 */
+	private static final Path TMP = Path.of("/tmp");
 	private final ProcessStarter processes;
 
 	/**
@@ -243,7 +250,10 @@ public final class CodexRunner
 				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run,
 					"plugin-under-test-add");
 			}
-			List<String> command = appServerCommand(executable, installCat || plugin != null);
+			List<String> appServer = appServerCommand(executable, installCat || plugin != null);
+			List<String> command = bubblewrap(environment).
+				map(bubblewrap -> withPrivateTmp(appServer, bubblewrap, run.directory())).
+				orElse(appServer);
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
@@ -304,6 +314,56 @@ public final class CodexRunner
 		if (pluginsInstalled)
 			return List.of(executable, "app-server", "--stdio", "--enable", "hooks");
 		return List.of(executable, "app-server", "--stdio", "--disable", "plugins");
+	}
+
+	/**
+	 * Returns a command that runs another command under bubblewrap with a private, empty {@code /tmp}. A Codex sandbox
+	 * hides the directory {@code /tmp/codex-daemon-<uid>} from the commands it runs, and the sandbox helper of an
+	 * app-server started there refuses to start without that directory. The app-server cannot then start a thread that
+	 * denies reads, so a runner started from a sandboxed Codex session could not start its session.
+	 *
+	 * @param command the command to run
+	 * @param bubblewrap the bubblewrap executable
+	 * @param runDirectory the run's directory, which stays visible when it is below {@code /tmp}
+	 * @return the command that runs {@code command} with a private {@code /tmp}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory)
+	{
+		requireThat(command, "command").isNotEmpty();
+		requireThat(bubblewrap, "bubblewrap").isNotNull();
+		requireThat(runDirectory, "runDirectory").isNotNull();
+		List<String> wrapped = new ArrayList<>(List.of(bubblewrap.toString(), "--dev-bind", "/", "/", "--tmpfs",
+			TMP.toString()));
+		Path absoluteRun = runDirectory.toAbsolutePath().normalize();
+		if (absoluteRun.startsWith(TMP))
+			wrapped.addAll(List.of("--bind", absoluteRun.toString(), absoluteRun.toString()));
+		// Codex dies when bubblewrap does, so stopping the recorded harness process also stops Codex
+		wrapped.addAll(List.of("--die-with-parent", "--"));
+		wrapped.addAll(command);
+		return wrapped;
+	}
+
+	/**
+	 * Returns the first executable {@code bwrap} file in the directories of the caller's {@code PATH}.
+	 *
+	 * @param environment the caller's environment
+	 * @return the bubblewrap executable, or empty if the {@code PATH} has none
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static Optional<Path> bubblewrap(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		String path = environment.getOrDefault("PATH", "");
+		for (String directory : path.split(File.pathSeparator))
+		{
+			if (directory.isEmpty())
+				continue;
+			Path candidate = Path.of(directory, "bwrap");
+			if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
+				return Optional.of(candidate);
+		}
+		return Optional.empty();
 	}
 
 	/**

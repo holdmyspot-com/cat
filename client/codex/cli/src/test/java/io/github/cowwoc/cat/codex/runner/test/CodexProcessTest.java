@@ -165,6 +165,21 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that when Codex refuses to start the thread, the failure reports Codex's own error message.
+	 *
+	 * @throws IOException if the app-server's process cannot be closed
+	 */
+	@Test(timeOut = 10_000, expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Codex app-server did not start the thread: error creating thread: " +
+			"fs sandbox helper failed")
+	public void reportsThreadStartError() throws IOException
+	{
+		AppServer server = new AppServer(NO_ANSWER, NO_ANSWER).
+			refusingThreadStart("error creating thread: fs sandbox helper failed");
+		server.start().close();
+	}
+
+	/**
 	 * Verifies that notifications Codex prints during start-up, such as {@code thread/started}, reach the first
 	 * turn's listener ahead of that turn's own lines, that the first turn's archived events are those same lines,
 	 * and that a later turn's listener does not receive the start-up notifications again.
@@ -419,6 +434,7 @@ public final class CodexProcessTest
 		private volatile long turnRequestId;
 		private volatile boolean closesOutputAfterTurnStart;
 		private volatile boolean notifiesThreadStarted;
+		private volatile String threadStartError = "";
 
 		/**
 		 * Creates an app-server that has not started.
@@ -454,6 +470,19 @@ public final class CodexProcessTest
 		private AppServer notifyingThreadStarted()
 		{
 			notifiesThreadStarted = true;
+			return this;
+		}
+
+		/**
+		 * Makes the app-server answer {@code thread/start} with a JSON-RPC error instead of a thread. The error's shape
+		 * follows the response that codex-cli 0.160.0 printed when its sandbox helper could not start.
+		 *
+		 * @param message the error's message
+		 * @return this app-server
+		 */
+		private AppServer refusingThreadStart(String message)
+		{
+			threadStartError = message;
 			return this;
 		}
 
@@ -538,9 +567,17 @@ public final class CodexProcessTest
 					"\"codexHome\":\"/codex-home\",\"platformFamily\":\"unix\",\"platformOs\":\"linux\"}}");
 				case "thread/start" ->
 				{
-					if (notifiesThreadStarted)
-						process.emit(threadStarted(request.path("params").path("model").asString("")));
-					process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" + ROOT_THREAD + "\"}}}");
+					if (threadStartError.isEmpty())
+					{
+						if (notifiesThreadStarted)
+							process.emit(threadStarted(request.path("params").path("model").asString("")));
+						process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" + ROOT_THREAD + "\"}}}");
+					}
+					else
+					{
+						process.emit("{\"error\":{\"code\":-32603,\"message\":" + json.writeValueAsString(threadStartError) +
+							"},\"id\":" + id + "}");
+					}
 				}
 				case "turn/start" ->
 				{

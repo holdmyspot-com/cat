@@ -3,9 +3,15 @@ package io.github.cowwoc.cat.codex.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.codex.runner.CodexRunner;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -58,5 +64,59 @@ public final class CodexRunnerTest
 			List.of("codex", "app-server", "--stdio", "--enable", "hooks"));
 		requireThat(CodexRunner.appServerCommand("codex", false), "withoutCat").isEqualTo(
 			List.of("codex", "app-server", "--stdio", "--disable", "plugins"));
+	}
+
+	/**
+	 * Verifies the app-server runs under bubblewrap with a private, empty {@code /tmp}, so that a Codex sandbox around
+	 * the runner cannot hide the directory that the app-server's own sandbox needs there.
+	 */
+	@Test
+	public void startsAppServerWithPrivateTmp()
+	{
+		List<String> command = CodexRunner.appServerCommand("codex", false);
+
+		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap"), Path.of("/work/run")),
+			"command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp",
+			"--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
+	}
+
+	/**
+	 * Verifies a run directory below {@code /tmp} stays visible inside the private {@code /tmp}.
+	 */
+	@Test
+	public void keepsRunDirectoryInPrivateTmp()
+	{
+		List<String> command = CodexRunner.appServerCommand("codex", true);
+
+		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap"), Path.of("/tmp/runs/run")),
+			"command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp",
+			"--bind", "/tmp/runs/run", "/tmp/runs/run", "--die-with-parent", "--", "codex", "app-server", "--stdio",
+			"--enable", "hooks"));
+	}
+
+	/**
+	 * Verifies bubblewrap is the first executable {@code bwrap} on the caller's {@code PATH}, skipping a file of that
+	 * name that is not executable, and that it is absent when no directory on the {@code PATH} has one.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void findsBubblewrapOnPath() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path empty = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path unusable = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Files.createFile(unusable.resolve("bwrap"), PosixFilePermissions.asFileAttribute(
+				PosixFilePermissions.fromString("rw-r--r--")));
+			Path usable = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path bwrap = Files.createFile(usable.resolve("bwrap"), PosixFilePermissions.asFileAttribute(
+				PosixFilePermissions.fromString("rwxr-xr-x")));
+			String path = empty + File.pathSeparator + unusable + File.pathSeparator + usable;
+
+			requireThat(CodexRunner.bubblewrap(Map.of("PATH", path)), "found").isEqualTo(Optional.of(bwrap));
+			requireThat(CodexRunner.bubblewrap(Map.of("PATH", empty.toString())), "absent").isEmpty();
+			requireThat(CodexRunner.bubblewrap(Map.of()), "withoutPath").isEmpty();
+		}
 	}
 }
