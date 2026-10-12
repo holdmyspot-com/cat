@@ -24,8 +24,13 @@ import org.testng.annotations.Test;
  */
 public final class CodexRunPartTest
 {
-	private static final Path READ_PART = Path.of("/plugin/client/bin/read-part");
+	private static final Path READ_PART = Path.of("/plugin/bin/read-part");
 	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)]\n\\z");
+	/**
+	 * A folder that no CAT project contains, so that {@code run-part} saves the output of a command that runs there
+	 * under {@code TMPDIR}.
+	 */
+	private static final Path OUTSIDE_PROJECT = Path.of("/");
 
 	/**
 	 * Creates a test instance.
@@ -35,8 +40,9 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that the command's standard output and standard error are saved in one file, that the last part exits
-	 * with the command's exit status, and that the status is saved next to the output for {@code read-part}.
+	 * Verifies that the command's standard output and standard error are saved in one file under {@code TMPDIR} when no
+	 * CAT project contains the folder that the command runs in, that the last part exits with the command's exit status,
+	 * and that the status is saved next to the output for {@code read-part}.
 	 *
 	 * @throws IOException if the temporary folder cannot be created or read
 	 */
@@ -47,7 +53,8 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart("printf 'out\\n'\necho err >&2\nexit 3\n", false, Map.of("TMPDIR", temporary.toString()));
+			Call call = runPart("printf 'out\\n'\necho err >&2\nexit 3\n", false, OUTSIDE_PROJECT,
+				Map.of("TMPDIR", temporary.toString()));
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").isTrue();
@@ -56,6 +63,32 @@ public final class CodexRunPartTest
 			requireThat(call.output(), "output").isEqualTo("out\nerr\n[End of " + saved + "]\n");
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
+		}
+	}
+
+	/**
+	 * Verifies that a command runs in its folder and that its output is saved in the CAT temporary folder of the nearest
+	 * project that contains that folder, so that it stays inside the project.
+	 *
+	 * @throws IOException if the temporary folders cannot be created
+	 */
+	@Test
+	public void savesOutputInProjectTemp() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path catTemp = Files.createDirectories(project.resolve(".cat/work/temp"));
+			Path folder = Files.createDirectories(project.resolve("src/main"));
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+
+			Call call = runPart("pwd", false, folder, Map.of("TMPDIR", temporary.toString()));
+
+			Matcher lastPart = LAST_PART.matcher(call.output());
+			requireThat(lastPart.find(), "lastPart").isTrue();
+			Path saved = Path.of(lastPart.group("path"));
+			requireThat(saved.getParent().getParent(), "folder").isEqualTo(catTemp);
+			requireThat(call.output(), "output").isEqualTo(folder + "\n[End of " + saved + "]\n");
 		}
 	}
 
@@ -74,7 +107,7 @@ public final class CodexRunPartTest
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", "thread",
 				"CODEX_HOME", temporary.toString());
 
-			Call call = runPart("seq 1 20000; exit 4", false, environment);
+			Call call = runPart("seq 1 20000; exit 4", false, OUTSIDE_PROJECT, environment);
 
 			requireThat(call.output(), "output").startsWith("1\n2\n3\n").
 				matches("(?s).*\\[More output follows\\. Before any other command or answer, run: " +
@@ -95,7 +128,7 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart("cat; echo done", false, Map.of("TMPDIR", temporary.toString()));
+			Call call = runPart("cat; echo done", false, OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()));
 
 			requireThat(call.output(), "output").startsWith("done\n[End of ");
 			requireThat(call.status(), "status").isEqualTo(0);
@@ -118,7 +151,7 @@ public final class CodexRunPartTest
 				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
 
 			Call call = runPart("printf '%s|%s|%s\\n' \"${LC_ALL-unset}\" \"${LC_CTYPE-unset}\" " +
-				"\"${CAT_CALLER_LC_ALL-unset}\"", false, environment);
+				"\"${CAT_CALLER_LC_ALL-unset}\"", false, OUTSIDE_PROJECT, environment);
 
 			requireThat(call.output(), "output").startsWith("C|unset|unset\n");
 		}
@@ -135,8 +168,8 @@ public final class CodexRunPartTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			for (Call call : List.of(runPart(" \n\t\n", false, Map.of("TMPDIR", temporary.toString())),
-				runPart("echo typed", true, Map.of("TMPDIR", temporary.toString()))))
+			for (Call call : List.of(runPart(" \n\t\n", false, OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString())),
+				runPart("echo typed", true, OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()))))
 			{
 				requireThat(call.status(), "status").isEqualTo(2);
 				requireThat(call.output(), "output").isEmpty();
@@ -155,15 +188,17 @@ public final class CodexRunPartTest
 	 *
 	 * @param command the command on standard input
 	 * @param terminal {@code true} if standard input is a terminal
+	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment
 	 * @return the call's streams and exit status
 	 */
-	private static Call runPart(String command, boolean terminal, Map<String, String> environment)
+	private static Call runPart(String command, boolean terminal, Path workingDirectory,
+		Map<String, String> environment)
 	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			READ_PART, environment, output, new PrintStream(error, true, UTF_8));
+			workingDirectory, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
 		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
 	}
 

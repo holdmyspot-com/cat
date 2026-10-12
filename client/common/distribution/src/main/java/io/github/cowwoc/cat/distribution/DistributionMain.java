@@ -372,7 +372,7 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the layer of the Codex plugin's own resources, including the script that the Codex read-file rule tells
+	 * Returns the layer of the Codex plugin's own resources, including the scripts that the Codex read-file rule tells
 	 * agents to run and the launcher of the PostToolUse hook.
 	 *
 	 * @param jar the Codex plugin resource JAR
@@ -380,7 +380,8 @@ public final class DistributionMain
 	 */
 	static ArtifactLayer codexPluginLayer(Path jar)
 	{
-		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/bin/read-file", "hooks/post-tool-use.sh"));
+		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("bin/read-part", "bin/run-part",
+			"client/bin/read-file", "hooks/post-tool-use.sh"));
 	}
 
 	/**

@@ -52,3 +52,5 @@ jobs:
         run: bats client/common/distribution/src/test/bats/read-file.bats
       - name: Verify the jlink launcher template
         run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
+      - name: Verify the Codex plugin's part launchers
+        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats

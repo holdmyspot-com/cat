@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexReadPartTest
 {
-	private static final Path READ_PART = Path.of("/plugin/client/bin/read-part");
+	private static final Path READ_PART = Path.of("/plugin/bin/read-part");
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/**
 	 * The line that ends a part that more parts follow.

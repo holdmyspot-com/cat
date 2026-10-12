@@ -26,8 +26,10 @@ import org.testng.annotations.Test;
 
 /**
  * Tests that the Codex plugin installs its scripts and hook launcher as executables, and that the Codex image launches
- * {@code run-part} and {@code read-part}. {@code read-file.bats} tests the packaged {@code read-file} script, and
- * {@code jlink-launchers.bats} tests the launcher template against the built Codex image.
+ * {@code run-part} and {@code read-part}. {@code read-file.bats} tests the packaged {@code read-file} script,
+ * {@code jlink-launchers.bats} tests the launcher template against the built Codex image, and
+ * {@code codex-plugin-launchers.bats} tests the {@code run-part} and {@code read-part} launchers in the plugin's
+ * {@code bin} folder.
  */
 public final class CodexPluginExecutablesTest
 {
@@ -46,6 +48,8 @@ public final class CodexPluginExecutablesTest
 	{
 		return new Object[][]
 		{
+			{"bin/read-part"},
+			{"bin/run-part"},
 			{"client/bin/read-file"},
 			{"hooks/post-tool-use.sh"}
 		};

@@ -104,14 +104,15 @@ public final class CodexReadPart
 	}
 
 	/**
-	 * Returns the path of a launcher of the runtime image that runs this program.
+	 * Returns the path of a launcher that agents run: the launcher of the same name in the {@code bin} folder of the
+	 * plugin whose {@code client} folder holds the runtime image that runs this program.
 	 *
 	 * @param name the launcher's name
 	 * @return the path
 	 */
 	static Path launcher(String name)
 	{
-		return Path.of(System.getProperty("java.home"), "bin", name);
+		return Path.of(System.getProperty("java.home")).resolveSibling("bin").resolve(name);
 	}
 
 	/**
