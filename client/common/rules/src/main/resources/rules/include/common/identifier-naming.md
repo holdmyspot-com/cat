@@ -15,7 +15,9 @@ depends-on:
 ## Guidance
 
 When identifier naming is in scope, list every affected type, function, and method in the relevant source languages.
-For each one, use its contract, callers, and implementation to state its responsibility or behavior and its target in
+For a change or its review, an identifier is affected when the change adds or renames it or changes its
+responsibility; do not propose renaming an unchanged identifier while reviewing an unrelated edit. A requested naming
+audit affects every identifier in its stated scope. For each one, use its contract, callers, and implementation to state its responsibility or behavior and its target in
 plain language. Then check that its name communicates that same statement under the Clear Writing naming criteria.
 Correct each name that fails the check, or report it when renaming is outside the task's scope.
 
