@@ -3,7 +3,6 @@
 ## Design Goals
 
 - Keep designs focused, extensible at real variation points, and verifiable against observable outcomes.
-- Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
 <!-- In a feature-plan review, contract derivation needed source bytes that inspection had not retained. Another call
      handoff needed a claim before its producer supplied one. Defining each producer result and readiness point in one
      place exposes both timing gaps; the obligation inventory still covers requirements outside the traced use-cases. -->
@@ -20,13 +19,6 @@ A design must:
 
 - Preserve codebase coherence: use established terminology, abstractions, module boundaries, and conventions unless a
   deliberate replacement improves them consistently.
-- When a caller-facing parameter represents one of a known finite set of domain choices, expose a constrained domain
-  type at that boundary. Use the language's idiomatic form, such as an enum, literal union, algebraic data type, or
-  closed value object; do not declare that type and then accept a broad primitive such as a string or number instead.
-  Preserve the constrained type through internal calls. At an untyped ingress such as a request, file, or command-line
-  argument, validate the raw value once and convert it to the constrained type before calling the domain API. Do not
-  apply this rule to genuinely open-ended text or numeric input. Test one accepted value and one excluded value at the
-  public boundary.
 - Reuse suitable existing project and JDK facilities before introducing new abstractions, dependencies, or
   reimplementations.
 - Add an extension boundary only when a supported variation needs independently replaceable behavior; otherwise keep

@@ -10,8 +10,7 @@ depends-on:
   API and collaboration boundaries compatible with them.
 - Make components replaceable and testable only where a supported variation or external integration needs a boundary,
   without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
-- Keep a collaborating family of implementation-only top-level types discoverable through one focused package, without
-  leaking their enclosing component's name into every local type.
+- Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
 
 ## Guidance
 
@@ -39,25 +38,17 @@ need it, and move it into production only after identifying an actual production
 concurrency guarantee in caller-visible terms, then choose state-management mechanisms that preserve it; do not add
 concurrency machinery merely as speculative protection.
 
-When a component needs several related top-level implementation types, place that family in a package named for their
-shared domain and keep the entry point and its non-public collaborators together there when their dependencies permit.
-Use the package to establish that context: an implementation-only type should state its local responsibility, such as
-`PublicCommands`, rather than repeat its enclosing component's name. Retain a component prefix only when callers
-must distinguish equally plausible types across package boundaries. Do not create a package for a single incidental
-helper or move a component by widening package-private dependencies merely to satisfy this organization; first extract
-or relocate the dependent family through a reviewed boundary.
-
-Apply the same naming and package decision to test-source collaborators. A test that proves one component's public or
-internal boundary belongs with that component family and uses its local responsibility as the class name, such as
-`PublicCommandsTest`; it must not repeat the production component merely because the test source has a broader package.
-Whenever creating or moving a top-level implementation or test type, compare its simple name with its package context
-before compiling: remove a component prefix that the package already establishes, or record the cross-package ambiguity
-that requires retaining it.
-
 Expose only the operations intended callers need. Do not add a wrapper, override, helper, or command that merely passes
 the same inputs to another operation; add one only when it changes behavior, visibility, contract, or composition. Do
 not introduce a builder merely to reduce mandatory argument count; use one when optional values, independent defaults,
 staged required-value checks, or named configuration materially improve the API.
+
+When a caller-facing parameter represents one of a known finite set of domain choices, expose a constrained domain type
+at that boundary. Use the language's idiomatic form, such as an enum, literal union, algebraic data type, or closed
+value object; do not declare that type and then accept a broad primitive such as a string or number instead. Preserve
+the constrained type through internal calls. At an untyped ingress such as a request, file, or command-line argument,
+validate the raw value once and convert it to the constrained type before calling the domain API. Do not apply this rule
+to genuinely open-ended text or numeric input. Test one accepted value and one excluded value at the public boundary.
 
 When designing or changing an externally callable API, derive the caller-visible guarantees first. For each offered
 input, output, option, overload, or operation, check whether it lets callers violate a required guarantee merely by

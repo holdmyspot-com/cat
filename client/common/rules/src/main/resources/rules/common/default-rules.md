@@ -132,6 +132,9 @@ task is not such a plan.
 Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
 
+When creating, moving, or renaming a top-level implementation or test type, lazy load
+`../include/common/type-organization.md`.
+
 Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
 result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
 benefit, or other future outcome, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs
